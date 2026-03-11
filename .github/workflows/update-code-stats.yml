@@ -1,0 +1,65 @@
+name: Update Code Statistics
+
+on:
+  # 每周一自动运行
+  schedule:
+    - cron: '0 0 * * 1'
+  
+  # 手动触发
+  workflow_dispatch:
+  
+  # 每次推送到主分支时运行（可选）
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取完整的 Git 历史
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Generate code statistics
+        run: |
+          python tools/code_stats/generate_code_stats.py
+      
+      - name: Update README
+        run: |
+          python tools/code_stats/auto_update_readme.py
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add tools/code_stats/code_stats.json README.md
+          git commit -m "chore: update code statistics [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: No changes detected
+        if: steps.check_changes.outputs.changed == 'false'
+        run: |
+          echo "ℹ️ No changes in code statistics"

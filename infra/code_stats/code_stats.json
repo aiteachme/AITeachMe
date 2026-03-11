@@ -1,0 +1,2014 @@
+{
+  "generated_at": "2026-02-25T14:33:53.598421",
+  "total_commits_analyzed": 251,
+  "stats": [
+    {
+      "date": "2025-11-20",
+      "commit": "add3f01",
+      "total_lines": 6578,
+      "code_lines": 5358,
+      "other_lines": 1220,
+      "message": "feat: add authentication flow with forgot password"
+    },
+    {
+      "date": "2025-11-20",
+      "commit": "c4d7671",
+      "total_lines": 6807,
+      "code_lines": 5545,
+      "other_lines": 1262,
+      "message": "fix: update user email management and avatar handl"
+    },
+    {
+      "date": "2025-11-20",
+      "commit": "1ab3fb3",
+      "total_lines": 6884,
+      "code_lines": 5594,
+      "other_lines": 1290,
+      "message": "feat: enhance error handling and exception managem"
+    },
+    {
+      "date": "2025-11-20",
+      "commit": "c1e5073",
+      "total_lines": 7153,
+      "code_lines": 5849,
+      "other_lines": 1304,
+      "message": "feat: implement user settings management and clien"
+    },
+    {
+      "date": "2025-11-20",
+      "commit": "1b81db8",
+      "total_lines": 7252,
+      "code_lines": 5931,
+      "other_lines": 1321,
+      "message": "feat: implement theme management and enhance UI st"
+    },
+    {
+      "date": "2025-11-20",
+      "commit": "8985c90",
+      "total_lines": 7252,
+      "code_lines": 5931,
+      "other_lines": 1321,
+      "message": "feat: enhance UI styling with new primary text col"
+    },
+    {
+      "date": "2025-11-21",
+      "commit": "c83e78a",
+      "total_lines": 8214,
+      "code_lines": 6691,
+      "other_lines": 1523,
+      "message": "feat: 实现了 agent 的核心部分 GPUMonitor 和 TaskManager"
+    },
+    {
+      "date": "2025-11-23",
+      "commit": "bc57335",
+      "total_lines": 10388,
+      "code_lines": 8497,
+      "other_lines": 1891,
+      "message": "feat: implement FlowHive agent core functionality "
+    },
+    {
+      "date": "2025-11-23",
+      "commit": "fe7b814",
+      "total_lines": 10393,
+      "code_lines": 8500,
+      "other_lines": 1893,
+      "message": "feat: add initial project setup with requirements "
+    },
+    {
+      "date": "2025-11-23",
+      "commit": "752bf6a",
+      "total_lines": 10538,
+      "code_lines": 8612,
+      "other_lines": 1926,
+      "message": "feat: enhance agent configuration and GPU monitori"
+    },
+    {
+      "date": "2025-11-23",
+      "commit": "8dabb84",
+      "total_lines": 11121,
+      "code_lines": 9083,
+      "other_lines": 2038,
+      "message": "feat: add NodesPage for monitoring GPU nodes and e"
+    },
+    {
+      "date": "2025-11-24",
+      "commit": "d3bb295",
+      "total_lines": 11242,
+      "code_lines": 9197,
+      "other_lines": 2045,
+      "message": "refactor: update GPU information display and enhan"
+    },
+    {
+      "date": "2025-11-24",
+      "commit": "f2f2d9f",
+      "total_lines": 12134,
+      "code_lines": 9968,
+      "other_lines": 2166,
+      "message": "feat: enhance GPU monitoring and API integration"
+    },
+    {
+      "date": "2025-11-24",
+      "commit": "096a640",
+      "total_lines": 12642,
+      "code_lines": 10399,
+      "other_lines": 2243,
+      "message": "feat: implement CommandListInput and JsonObjectInp"
+    },
+    {
+      "date": "2025-11-26",
+      "commit": "9a51184",
+      "total_lines": 13524,
+      "code_lines": 11131,
+      "other_lines": 2393,
+      "message": "feat: implement persistent shell management for ta"
+    },
+    {
+      "date": "2025-11-29",
+      "commit": "397b674",
+      "total_lines": 13658,
+      "code_lines": 11243,
+      "other_lines": 2415,
+      "message": "feat: 整合侧边栏上下文以优化导航与布局"
+    },
+    {
+      "date": "2025-11-29",
+      "commit": "ff469b4",
+      "total_lines": 14153,
+      "code_lines": 11625,
+      "other_lines": 2528,
+      "message": "feat: 通过自动刷新增强身份验证与令牌管理；增强GPU监控功能，支持进程名称检索与界面更新"
+    },
+    {
+      "date": "2025-11-30",
+      "commit": "e68222c",
+      "total_lines": 14846,
+      "code_lines": 12202,
+      "other_lines": 2644,
+      "message": "feat: enhance API key management and authenticatio"
+    },
+    {
+      "date": "2025-11-30",
+      "commit": "7d8af66",
+      "total_lines": 14921,
+      "code_lines": 12267,
+      "other_lines": 2654,
+      "message": "feat: implement task management endpoints and enha"
+    },
+    {
+      "date": "2025-11-30",
+      "commit": "54e982f",
+      "total_lines": 15763,
+      "code_lines": 12767,
+      "other_lines": 2996,
+      "message": "feat: enhance SSL/TLS support and task management "
+    },
+    {
+      "date": "2025-12-01",
+      "commit": "df0a68b",
+      "total_lines": 17190,
+      "code_lines": 13840,
+      "other_lines": 3350,
+      "message": "feat: enhance web client with documentation and UI"
+    },
+    {
+      "date": "2025-12-01",
+      "commit": "221eb8a",
+      "total_lines": 17277,
+      "code_lines": 13922,
+      "other_lines": 3355,
+      "message": "feat: add Footer component and update pages for co"
+    },
+    {
+      "date": "2025-12-01",
+      "commit": "7eefadc",
+      "total_lines": 18014,
+      "code_lines": 14616,
+      "other_lines": 3398,
+      "message": "feat: enhance authentication and email management "
+    },
+    {
+      "date": "2025-12-01",
+      "commit": "cc99d02",
+      "total_lines": 18014,
+      "code_lines": 14616,
+      "other_lines": 3398,
+      "message": "feat: update UI components and styles for improved"
+    },
+    {
+      "date": "2025-12-02",
+      "commit": "f6dfa1f",
+      "total_lines": 19834,
+      "code_lines": 15643,
+      "other_lines": 4191,
+      "message": "feat: add comprehensive documentation for web clie"
+    },
+    {
+      "date": "2025-12-02",
+      "commit": "87314d4",
+      "total_lines": 20385,
+      "code_lines": 16030,
+      "other_lines": 4355,
+      "message": "feat: add MIT license for agent component and upda"
+    },
+    {
+      "date": "2025-12-02",
+      "commit": "92a5ec8",
+      "total_lines": 20532,
+      "code_lines": 16149,
+      "other_lines": 4383,
+      "message": "feat: implement lazy loading and custom dropdown c"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "9ae5d5c",
+      "total_lines": 21713,
+      "code_lines": 17048,
+      "other_lines": 4665,
+      "message": "feat: implement Server-Sent Events (SSE) for real-"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "dc30250",
+      "total_lines": 21930,
+      "code_lines": 17225,
+      "other_lines": 4705,
+      "message": "feat: implement manual task start workflow and add"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "bf9def5",
+      "total_lines": 22143,
+      "code_lines": 17408,
+      "other_lines": 4735,
+      "message": "feat: add platform information tracking and search"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "f6da522",
+      "total_lines": 22710,
+      "code_lines": 17865,
+      "other_lines": 4845,
+      "message": "feat: enhance platform detection, task log streami"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "6517fac",
+      "total_lines": 24223,
+      "code_lines": 19025,
+      "other_lines": 5198,
+      "message": "feat: update agent documentation and version, remo"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "993c028",
+      "total_lines": 23969,
+      "code_lines": 18785,
+      "other_lines": 5184,
+      "message": "feat: remove logs page and adjust z-index for mobi"
+    },
+    {
+      "date": "2025-12-03",
+      "commit": "52e4762",
+      "total_lines": 24319,
+      "code_lines": 19020,
+      "other_lines": 5299,
+      "message": "feat: add documentation page with navigation, TOC,"
+    },
+    {
+      "date": "2025-12-04",
+      "commit": "3b5e283",
+      "total_lines": 24012,
+      "code_lines": 18935,
+      "other_lines": 5077,
+      "message": "feat: enhance deployment documentation and introdu"
+    },
+    {
+      "date": "2025-12-05",
+      "commit": "6702c80",
+      "total_lines": 24543,
+      "code_lines": 19093,
+      "other_lines": 5450,
+      "message": "feat: update agent licensing and enhance task mana"
+    },
+    {
+      "date": "2025-12-05",
+      "commit": "8875e0d",
+      "total_lines": 24521,
+      "code_lines": 19074,
+      "other_lines": 5447,
+      "message": "refactor: update licensing details and remove proj"
+    },
+    {
+      "date": "2025-12-05",
+      "commit": "163a55f",
+      "total_lines": 24846,
+      "code_lines": 19270,
+      "other_lines": 5576,
+      "message": "feat: integrate i18next for internationalization a"
+    },
+    {
+      "date": "2025-12-05",
+      "commit": "4c14d4e",
+      "total_lines": 25409,
+      "code_lines": 19630,
+      "other_lines": 5779,
+      "message": "feat: add GPU monitor interval setting and enhance"
+    },
+    {
+      "date": "2025-12-05",
+      "commit": "d6c5f82",
+      "total_lines": 25536,
+      "code_lines": 19745,
+      "other_lines": 5791,
+      "message": "feat: enhance cleanup process and task management "
+    },
+    {
+      "date": "2025-12-06",
+      "commit": "c3609b7",
+      "total_lines": 25650,
+      "code_lines": 19767,
+      "other_lines": 5883,
+      "message": "feat: update user settings model and enhance notif"
+    },
+    {
+      "date": "2025-12-06",
+      "commit": "1cfdde6",
+      "total_lines": 25650,
+      "code_lines": 19768,
+      "other_lines": 5882,
+      "message": "feat: enhance CreateTaskPanel and TaskDetailPanel "
+    },
+    {
+      "date": "2025-12-07",
+      "commit": "52972ac",
+      "total_lines": 27142,
+      "code_lines": 20676,
+      "other_lines": 6466,
+      "message": "feat: implement cryptographic identity verificatio"
+    },
+    {
+      "date": "2025-12-07",
+      "commit": "c454c11",
+      "total_lines": 27201,
+      "code_lines": 20704,
+      "other_lines": 6497,
+      "message": "fix: enhance agent management and WebSocket handli"
+    },
+    {
+      "date": "2025-12-07",
+      "commit": "459a841",
+      "total_lines": 27497,
+      "code_lines": 20958,
+      "other_lines": 6539,
+      "message": "feat: enhance agent ownership verification and imp"
+    },
+    {
+      "date": "2025-12-07",
+      "commit": "47cd5da",
+      "total_lines": 28565,
+      "code_lines": 21797,
+      "other_lines": 6768,
+      "message": "refacter: 重构前端的数据管理，分离数据维护和显示逻辑，加快页面响应"
+    },
+    {
+      "date": "2025-12-08",
+      "commit": "1463418",
+      "total_lines": 29890,
+      "code_lines": 22884,
+      "other_lines": 7006,
+      "message": "feat: implement message management system with SSE"
+    },
+    {
+      "date": "2025-12-08",
+      "commit": "6040050",
+      "total_lines": 30112,
+      "code_lines": 23060,
+      "other_lines": 7052,
+      "message": "feat: enhance agent management and ownership featu"
+    },
+    {
+      "date": "2025-12-08",
+      "commit": "685479f",
+      "total_lines": 30657,
+      "code_lines": 23557,
+      "other_lines": 7100,
+      "message": "refactor: streamline user and message handling in "
+    },
+    {
+      "date": "2025-12-08",
+      "commit": "3d243e0",
+      "total_lines": 30802,
+      "code_lines": 23694,
+      "other_lines": 7108,
+      "message": "refactor: update CSS imports and enhance message h"
+    },
+    {
+      "date": "2025-12-09",
+      "commit": "ab61fdd",
+      "total_lines": 31264,
+      "code_lines": 24054,
+      "other_lines": 7210,
+      "message": "feat: enhance user and message handling with batch"
+    },
+    {
+      "date": "2025-12-10",
+      "commit": "edfa9b7",
+      "total_lines": 31823,
+      "code_lines": 24526,
+      "other_lines": 7297,
+      "message": "feat: enhance user registration and email verifica"
+    },
+    {
+      "date": "2025-12-10",
+      "commit": "de0373e",
+      "total_lines": 32218,
+      "code_lines": 24882,
+      "other_lines": 7336,
+      "message": "feat: enhance user profile and registration valida"
+    },
+    {
+      "date": "2025-12-18",
+      "commit": "babbe85",
+      "total_lines": 32780,
+      "code_lines": 25388,
+      "other_lines": 7392,
+      "message": "feat: add GPU metrics visualization and enhance ad"
+    },
+    {
+      "date": "2025-12-19",
+      "commit": "99dee68",
+      "total_lines": 32890,
+      "code_lines": 25463,
+      "other_lines": 7427,
+      "message": "style(web): enhance agent information retrieval an"
+    },
+    {
+      "date": "2025-12-19",
+      "commit": "9f7d223",
+      "total_lines": 33112,
+      "code_lines": 25642,
+      "other_lines": 7470,
+      "message": "style: reorganize project structure"
+    },
+    {
+      "date": "2025-12-20",
+      "commit": "cddf1d4",
+      "total_lines": 36247,
+      "code_lines": 28345,
+      "other_lines": 7902,
+      "message": "feat(flow): introduce flow management features and"
+    },
+    {
+      "date": "2025-12-20",
+      "commit": "c1de626",
+      "total_lines": 36474,
+      "code_lines": 28497,
+      "other_lines": 7977,
+      "message": "feat(task): enhance task management with agent ass"
+    },
+    {
+      "date": "2025-12-21",
+      "commit": "5a1fbb2",
+      "total_lines": 36508,
+      "code_lines": 28518,
+      "other_lines": 7990,
+      "message": "refactor: remove cleanup script and update memory "
+    },
+    {
+      "date": "2025-12-21",
+      "commit": "5bbf7e9",
+      "total_lines": 37397,
+      "code_lines": 29281,
+      "other_lines": 8116,
+      "message": "feat: implement run-centric task management and UI"
+    },
+    {
+      "date": "2025-12-21",
+      "commit": "27f7568",
+      "total_lines": 36905,
+      "code_lines": 28894,
+      "other_lines": 8011,
+      "message": "refactor: unify event streaming with SSE and remov"
+    },
+    {
+      "date": "2025-12-23",
+      "commit": "c3323c2",
+      "total_lines": 36957,
+      "code_lines": 28935,
+      "other_lines": 8022,
+      "message": "feat: Enhanced password complexity validation; mod"
+    },
+    {
+      "date": "2025-12-23",
+      "commit": "8fb717e",
+      "total_lines": 36969,
+      "code_lines": 28938,
+      "other_lines": 8031,
+      "message": "feat(auth): implement password complexity validati"
+    },
+    {
+      "date": "2025-12-24",
+      "commit": "0af009b",
+      "total_lines": 38588,
+      "code_lines": 30143,
+      "other_lines": 8445,
+      "message": "refactor: restructure services architecture and en"
+    },
+    {
+      "date": "2025-12-24",
+      "commit": "90294b1",
+      "total_lines": 39465,
+      "code_lines": 30836,
+      "other_lines": 8629,
+      "message": "refactor: reorganize services and enhance caching "
+    },
+    {
+      "date": "2025-12-25",
+      "commit": "c02e5b6",
+      "total_lines": 42685,
+      "code_lines": 32852,
+      "other_lines": 9833,
+      "message": "refactor: remove deprecated flow service and enhan"
+    },
+    {
+      "date": "2025-12-25",
+      "commit": "4c98d09",
+      "total_lines": 42719,
+      "code_lines": 32878,
+      "other_lines": 9841,
+      "message": "refactor: update logging directory structure and e"
+    },
+    {
+      "date": "2025-12-26",
+      "commit": "dbfba52",
+      "total_lines": 43639,
+      "code_lines": 33548,
+      "other_lines": 10091,
+      "message": "feat: implement RBAC and ABAC models for comprehen"
+    },
+    {
+      "date": "2025-12-26",
+      "commit": "7dde2a4",
+      "total_lines": 48450,
+      "code_lines": 36783,
+      "other_lines": 11667,
+      "message": "Squashed commit of the following:"
+    },
+    {
+      "date": "2025-12-27",
+      "commit": "d5ea12e",
+      "total_lines": 65668,
+      "code_lines": 49279,
+      "other_lines": 16389,
+      "message": "feat(app_v2): implement domain-driven architecture"
+    },
+    {
+      "date": "2025-12-27",
+      "commit": "1f9afe9",
+      "total_lines": 70278,
+      "code_lines": 52582,
+      "other_lines": 17696,
+      "message": "feat(app_v2): introduce dependency injection conta"
+    },
+    {
+      "date": "2025-12-27",
+      "commit": "9041f95",
+      "total_lines": 76757,
+      "code_lines": 57445,
+      "other_lines": 19312,
+      "message": "feat(app_v2): migrate and enhance API endpoints wi"
+    },
+    {
+      "date": "2025-12-27",
+      "commit": "fa21af6",
+      "total_lines": 88445,
+      "code_lines": 65213,
+      "other_lines": 23232,
+      "message": "feat(infra): implement comprehensive infrastructur"
+    },
+    {
+      "date": "2025-12-28",
+      "commit": "c9856be",
+      "total_lines": 96512,
+      "code_lines": 72056,
+      "other_lines": 24456,
+      "message": "feat(app_v2): implement comprehensive API layer wi"
+    },
+    {
+      "date": "2025-12-28",
+      "commit": "6bcd226",
+      "total_lines": 96029,
+      "code_lines": 71736,
+      "other_lines": 24293,
+      "message": "refactor(app_v2): reorganize domain DTOs from sche"
+    },
+    {
+      "date": "2025-12-28",
+      "commit": "b4ec080",
+      "total_lines": 96174,
+      "code_lines": 71772,
+      "other_lines": 24402,
+      "message": "refactor(domains): consolidate agent and auth serv"
+    },
+    {
+      "date": "2025-12-28",
+      "commit": "4b035ee",
+      "total_lines": 96308,
+      "code_lines": 71908,
+      "other_lines": 24400,
+      "message": "refactor(api_v1): reorganize API layer with featur"
+    },
+    {
+      "date": "2025-12-28",
+      "commit": "9be6516",
+      "total_lines": 96598,
+      "code_lines": 72125,
+      "other_lines": 24473,
+      "message": "refactor: rename flowhive to fluxhive and update b"
+    },
+    {
+      "date": "2025-12-29",
+      "commit": "6bacfa0",
+      "total_lines": 96515,
+      "code_lines": 72062,
+      "other_lines": 24453,
+      "message": "feat: update branding and documentation, add new f"
+    },
+    {
+      "date": "2025-12-29",
+      "commit": "288d493",
+      "total_lines": 103656,
+      "code_lines": 76122,
+      "other_lines": 27534,
+      "message": "feat(frontend): implement comprehensive API layer "
+    },
+    {
+      "date": "2025-12-30",
+      "commit": "bdcdb8b",
+      "total_lines": 109400,
+      "code_lines": 81073,
+      "other_lines": 28327,
+      "message": "refactor(frontend): reorganize web-client with fea"
+    },
+    {
+      "date": "2025-12-30",
+      "commit": "e464096",
+      "total_lines": 110142,
+      "code_lines": 81517,
+      "other_lines": 28625,
+      "message": "refactor(app_v2): reorganize code structure and im"
+    },
+    {
+      "date": "2025-12-31",
+      "commit": "ae94ff2",
+      "total_lines": 111211,
+      "code_lines": 82157,
+      "other_lines": 29054,
+      "message": "refactor(app_v2): integrate database models and en"
+    },
+    {
+      "date": "2025-12-31",
+      "commit": "ba59df0",
+      "total_lines": 112210,
+      "code_lines": 82762,
+      "other_lines": 29448,
+      "message": "refactor(app_v2): integrate database initializatio"
+    },
+    {
+      "date": "2025-12-31",
+      "commit": "5864049",
+      "total_lines": 116181,
+      "code_lines": 86400,
+      "other_lines": 29781,
+      "message": "refactor(app_v2): restructure database layer with "
+    },
+    {
+      "date": "2025-12-31",
+      "commit": "6ad1604",
+      "total_lines": 117521,
+      "code_lines": 87408,
+      "other_lines": 30113,
+      "message": "refactor(app_v2): migrate database layer from sess"
+    },
+    {
+      "date": "2026-01-01",
+      "commit": "324a8ae",
+      "total_lines": 117782,
+      "code_lines": 87742,
+      "other_lines": 30040,
+      "message": "fix(app_v2): implement agent registration and WebS"
+    },
+    {
+      "date": "2026-01-01",
+      "commit": "9d420b0",
+      "total_lines": 117317,
+      "code_lines": 87498,
+      "other_lines": 29819,
+      "message": "refactor(app_v2): reorganize API layer with featur"
+    },
+    {
+      "date": "2026-01-01",
+      "commit": "4180641",
+      "total_lines": 118615,
+      "code_lines": 88516,
+      "other_lines": 30099,
+      "message": "feat(app_v2): implement event-driven architecture "
+    },
+    {
+      "date": "2026-01-01",
+      "commit": "55ca85d",
+      "total_lines": 120272,
+      "code_lines": 88528,
+      "other_lines": 31744,
+      "message": "refactor(app_v2): integrate agent runtime adapter "
+    },
+    {
+      "date": "2026-01-02",
+      "commit": "2a5d8a7",
+      "total_lines": 119888,
+      "code_lines": 88228,
+      "other_lines": 31660,
+      "message": "refactor(app_v2): consolidate authentication and u"
+    },
+    {
+      "date": "2026-01-02",
+      "commit": "8e89c78",
+      "total_lines": 118972,
+      "code_lines": 88502,
+      "other_lines": 30470,
+      "message": "refactor(app_v2): integrate multi-layer caching an"
+    },
+    {
+      "date": "2026-01-02",
+      "commit": "c1a7a97",
+      "total_lines": 117217,
+      "code_lines": 87295,
+      "other_lines": 29922,
+      "message": "refactor(app_v2): standardize usecase DTOs and enh"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "a65bf71",
+      "total_lines": 117210,
+      "code_lines": 87210,
+      "other_lines": 30000,
+      "message": "refactor(app_v2): standardize logging across API, "
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "96a354c",
+      "total_lines": 117235,
+      "code_lines": 87296,
+      "other_lines": 29939,
+      "message": "refactor(app_v2): restructure configuration and st"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "4170754",
+      "total_lines": 36508,
+      "code_lines": 28518,
+      "other_lines": 7990,
+      "message": "chore: add pre-commit configuration and update git"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "5811cf2",
+      "total_lines": 117235,
+      "code_lines": 87296,
+      "other_lines": 29939,
+      "message": "Merge commit '96a354c52389c50f2e130c10e56ce8cefc96"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "136dac0",
+      "total_lines": 95779,
+      "code_lines": 71746,
+      "other_lines": 24033,
+      "message": "chore(app_legacy): remove legacy application codeb"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "e782621",
+      "total_lines": 97160,
+      "code_lines": 72810,
+      "other_lines": 24350,
+      "message": "refactor(app_v2): standardize configuration, versi"
+    },
+    {
+      "date": "2026-01-03",
+      "commit": "0dd1d3a",
+      "total_lines": 97175,
+      "code_lines": 72824,
+      "other_lines": 24351,
+      "message": "feat(app_v2): add agent version tracking and enhan"
+    },
+    {
+      "date": "2026-01-04",
+      "commit": "ccea2d2",
+      "total_lines": 97489,
+      "code_lines": 73037,
+      "other_lines": 24452,
+      "message": "refactor(auth): enhance rate limiting and verifica"
+    },
+    {
+      "date": "2026-01-04",
+      "commit": "d9eb22f",
+      "total_lines": 97715,
+      "code_lines": 73231,
+      "other_lines": 24484,
+      "message": "feat(agent,control-server,web-client): enhance log"
+    },
+    {
+      "date": "2026-01-05",
+      "commit": "9cd175a",
+      "total_lines": 97982,
+      "code_lines": 73433,
+      "other_lines": 24549,
+      "message": "feat(control-server,web-client): enhance task mana"
+    },
+    {
+      "date": "2026-01-05",
+      "commit": "e6eac55",
+      "total_lines": 98776,
+      "code_lines": 74080,
+      "other_lines": 24696,
+      "message": "refactor(control-server,web-client): restructure c"
+    },
+    {
+      "date": "2026-01-07",
+      "commit": "cb59c98",
+      "total_lines": 95394,
+      "code_lines": 70975,
+      "other_lines": 24419,
+      "message": "feat(control-server,web-client): enhance task exec"
+    },
+    {
+      "date": "2026-01-07",
+      "commit": "1a3ba7f",
+      "total_lines": 96148,
+      "code_lines": 71577,
+      "other_lines": 24571,
+      "message": "feat(web-client): refactor tasks topology view and"
+    },
+    {
+      "date": "2026-01-07",
+      "commit": "ab5e234",
+      "total_lines": 96564,
+      "code_lines": 71939,
+      "other_lines": 24625,
+      "message": "feat(web-client): add mini run buttons and enhance"
+    },
+    {
+      "date": "2026-01-08",
+      "commit": "66478b8",
+      "total_lines": 97950,
+      "code_lines": 73048,
+      "other_lines": 24902,
+      "message": "feat(control-server,web-client): add task and agen"
+    },
+    {
+      "date": "2026-01-08",
+      "commit": "4a38228",
+      "total_lines": 98577,
+      "code_lines": 73468,
+      "other_lines": 25109,
+      "message": "refactor(agent,web-client): enhance encoding handl"
+    },
+    {
+      "date": "2026-01-08",
+      "commit": "b01ac17",
+      "total_lines": 101547,
+      "code_lines": 75708,
+      "other_lines": 25839,
+      "message": "refactor(control-server,web-client): enhance run e"
+    },
+    {
+      "date": "2026-01-08",
+      "commit": "4beeb65",
+      "total_lines": 101960,
+      "code_lines": 76011,
+      "other_lines": 25949,
+      "message": "refactor(web-client): restructure layout component"
+    },
+    {
+      "date": "2026-01-09",
+      "commit": "ebb469e",
+      "total_lines": 101996,
+      "code_lines": 76039,
+      "other_lines": 25957,
+      "message": "refactor(web-client): enhance floating panel compo"
+    },
+    {
+      "date": "2026-01-09",
+      "commit": "ab03662",
+      "total_lines": 102967,
+      "code_lines": 76703,
+      "other_lines": 26264,
+      "message": "feat(control-server,web-client): add single run re"
+    },
+    {
+      "date": "2026-01-09",
+      "commit": "747ca2e",
+      "total_lines": 103162,
+      "code_lines": 76836,
+      "other_lines": 26326,
+      "message": "refactor(web-client): restructure layout architect"
+    },
+    {
+      "date": "2026-01-09",
+      "commit": "5c1fdd9",
+      "total_lines": 103316,
+      "code_lines": 76928,
+      "other_lines": 26388,
+      "message": "refactor(web-client): restructure layout component"
+    },
+    {
+      "date": "2026-01-10",
+      "commit": "51f55ed",
+      "total_lines": 103447,
+      "code_lines": 77034,
+      "other_lines": 26413,
+      "message": "refactor(web-client): restructure field layout com"
+    },
+    {
+      "date": "2026-01-10",
+      "commit": "4ca753e",
+      "total_lines": 102609,
+      "code_lines": 76257,
+      "other_lines": 26352,
+      "message": "docs(web-client): add frontend design principles a"
+    },
+    {
+      "date": "2026-01-10",
+      "commit": "3bfdd9f",
+      "total_lines": 103975,
+      "code_lines": 77415,
+      "other_lines": 26560,
+      "message": "refactor(web-client): reorganize button and icon c"
+    },
+    {
+      "date": "2026-01-12",
+      "commit": "d12f7d3",
+      "total_lines": 106433,
+      "code_lines": 79011,
+      "other_lines": 27422,
+      "message": "feat(control-server): implement attribute-based ac"
+    },
+    {
+      "date": "2026-01-12",
+      "commit": "a91c226",
+      "total_lines": 105615,
+      "code_lines": 78601,
+      "other_lines": 27014,
+      "message": "refactor(control-server): migrate from RBAC to ABA"
+    },
+    {
+      "date": "2026-01-12",
+      "commit": "1f5d0f2",
+      "total_lines": 105072,
+      "code_lines": 78181,
+      "other_lines": 26891,
+      "message": "refactor(control-server): consolidate dependency i"
+    },
+    {
+      "date": "2026-01-12",
+      "commit": "1510dde",
+      "total_lines": 105229,
+      "code_lines": 78208,
+      "other_lines": 27021,
+      "message": "refactor(control-server): normalize agent ownershi"
+    },
+    {
+      "date": "2026-01-13",
+      "commit": "3aad948",
+      "total_lines": 106386,
+      "code_lines": 79084,
+      "other_lines": 27302,
+      "message": "feat(control-server,web-client): implement RBAC AP"
+    },
+    {
+      "date": "2026-01-13",
+      "commit": "26ea368",
+      "total_lines": 106491,
+      "code_lines": 79178,
+      "other_lines": 27313,
+      "message": "chore(docs,control-server,web-client): update docu"
+    },
+    {
+      "date": "2026-01-13",
+      "commit": "c3695ad",
+      "total_lines": 106653,
+      "code_lines": 79275,
+      "other_lines": 27378,
+      "message": "chore(control-server,agent,web-client,docs): initi"
+    },
+    {
+      "date": "2026-01-14",
+      "commit": "5734481",
+      "total_lines": 106481,
+      "code_lines": 79123,
+      "other_lines": 27358,
+      "message": "refactor(web-client,control-server): streamline UI"
+    },
+    {
+      "date": "2026-01-14",
+      "commit": "b52402c",
+      "total_lines": 110413,
+      "code_lines": 82170,
+      "other_lines": 28243,
+      "message": "feat(control-server,web-client): implement OAuth a"
+    },
+    {
+      "date": "2026-01-14",
+      "commit": "d5e11dc",
+      "total_lines": 113768,
+      "code_lines": 84704,
+      "other_lines": 29064,
+      "message": "feat(control-server): implement phone number authe"
+    },
+    {
+      "date": "2026-01-14",
+      "commit": "f2339e9",
+      "total_lines": 116709,
+      "code_lines": 87079,
+      "other_lines": 29630,
+      "message": "feat(control-server): implement multi-provider ema"
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "9a4371f",
+      "total_lines": 118725,
+      "code_lines": 88502,
+      "other_lines": 30223,
+      "message": "feat(control-server,web-client): implement market-"
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "c6806cf",
+      "total_lines": 118943,
+      "code_lines": 88632,
+      "other_lines": 30311,
+      "message": "feat(control-server,web-client,docs): enhance SMTP"
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "08351e6",
+      "total_lines": 118963,
+      "code_lines": 88643,
+      "other_lines": 30320,
+      "message": "Add backward compatibility route for WebSocket /ws"
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "b104296",
+      "total_lines": 119050,
+      "code_lines": 88743,
+      "other_lines": 30307,
+      "message": "chore(agent,web-client,docs): reorganize brand ass"
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "7bcfa1d",
+      "total_lines": 119084,
+      "code_lines": 88770,
+      "other_lines": 30314,
+      "message": "chore(web-client): bump version to 0.3.1 and add b"
+    },
+    {
+      "date": "2026-01-16",
+      "commit": "51c8804",
+      "total_lines": 119286,
+      "code_lines": 88900,
+      "other_lines": 30386,
+      "message": "refactor(web-client): enhance responsive layout an"
+    },
+    {
+      "date": "2026-01-16",
+      "commit": "0982417",
+      "total_lines": 120277,
+      "code_lines": 89531,
+      "other_lines": 30746,
+      "message": "refactor(control-server,web-client,docs): reorgani"
+    },
+    {
+      "date": "2026-01-17",
+      "commit": "0f83d15",
+      "total_lines": 120279,
+      "code_lines": 89532,
+      "other_lines": 30747,
+      "message": "fix: 修复 TaskStatus 枚举大小写不匹配问题"
+    },
+    {
+      "date": "2026-01-19",
+      "commit": "42c2468",
+      "total_lines": 120335,
+      "code_lines": 89561,
+      "other_lines": 30774,
+      "message": "chore(docs,web-client): reorganize documentation s"
+    },
+    {
+      "date": "2026-01-19",
+      "commit": "9e44231",
+      "total_lines": 120337,
+      "code_lines": 89562,
+      "other_lines": 30775,
+      "message": "Merge branch 'main' into dev"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "1ecfd0e",
+      "total_lines": 121066,
+      "code_lines": 90144,
+      "other_lines": 30922,
+      "message": "feat(agent,control-server,web-client): implement a"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "fd186e1",
+      "total_lines": 121697,
+      "code_lines": 90508,
+      "other_lines": 31189,
+      "message": "refactor: migrate version management to pyproject."
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "c0cd090",
+      "total_lines": 121699,
+      "code_lines": 90509,
+      "other_lines": 31190,
+      "message": "test: add comment to test version check"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "922ab11",
+      "total_lines": 121707,
+      "code_lines": 90513,
+      "other_lines": 31194,
+      "message": "fix: correct git path handling in version check sc"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "425252f",
+      "total_lines": 122028,
+      "code_lines": 90733,
+      "other_lines": 31295,
+      "message": "Squashed commit of the following:"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "6c9a1df",
+      "total_lines": 122830,
+      "code_lines": 91322,
+      "other_lines": 31508,
+      "message": "refactor(control-server): implement websocket adap"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "cbf25cb",
+      "total_lines": 122915,
+      "code_lines": 91379,
+      "other_lines": 31536,
+      "message": "chore(ci,tools): configure UTF-8 encoding for Wind"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "ab114fd",
+      "total_lines": 122741,
+      "code_lines": 91232,
+      "other_lines": 31509,
+      "message": "refactor(control-server,web-client): remove prefer"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "4d344f2",
+      "total_lines": 123474,
+      "code_lines": 91770,
+      "other_lines": 31704,
+      "message": "feat(web-client): implement progressive loading op"
+    },
+    {
+      "date": "2026-01-20",
+      "commit": "19e0eac",
+      "total_lines": 123482,
+      "code_lines": 91771,
+      "other_lines": 31711,
+      "message": "feat(control-server): migrate language preference "
+    },
+    {
+      "date": "2026-01-21",
+      "commit": "e963192",
+      "total_lines": 123920,
+      "code_lines": 92215,
+      "other_lines": 31705,
+      "message": "refactor(control-server): modularize user domain a"
+    },
+    {
+      "date": "2026-01-21",
+      "commit": "a02a676",
+      "total_lines": 127600,
+      "code_lines": 95023,
+      "other_lines": 32577,
+      "message": "refactor(control-server): split users domain into "
+    },
+    {
+      "date": "2026-01-22",
+      "commit": "8c6c7e8",
+      "total_lines": 128769,
+      "code_lines": 95969,
+      "other_lines": 32800,
+      "message": "refactor(control-server): organize authentication "
+    },
+    {
+      "date": "2026-01-22",
+      "commit": "852ff74",
+      "total_lines": 125373,
+      "code_lines": 93358,
+      "other_lines": 32015,
+      "message": "refactor(control-server): complete users domain sp"
+    },
+    {
+      "date": "2026-01-22",
+      "commit": "9414bb6",
+      "total_lines": 125892,
+      "code_lines": 93761,
+      "other_lines": 32131,
+      "message": "refactor(control-server,web-client): migrate autho"
+    },
+    {
+      "date": "2026-01-22",
+      "commit": "8629667",
+      "total_lines": 128413,
+      "code_lines": 95581,
+      "other_lines": 32832,
+      "message": "refactor(control-plane): restructure control plane"
+    },
+    {
+      "date": "2026-01-22",
+      "commit": "7896345",
+      "total_lines": 134231,
+      "code_lines": 99682,
+      "other_lines": 34549,
+      "message": "feat(agent,control-server): implement websocket au"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "a6fb459",
+      "total_lines": 138212,
+      "code_lines": 102757,
+      "other_lines": 35455,
+      "message": "refactor(agent): restructure codebase into layered"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "56c00bf",
+      "total_lines": 135286,
+      "code_lines": 100578,
+      "other_lines": 34708,
+      "message": "refactor(agent): complete layered architecture mig"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "f0ff24f",
+      "total_lines": 135781,
+      "code_lines": 100861,
+      "other_lines": 34920,
+      "message": "refactor(agent): reorganize authentication layer a"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "48645f9",
+      "total_lines": 135804,
+      "code_lines": 100878,
+      "other_lines": 34926,
+      "message": "refactor(agent): migrate documentation to Chinese "
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "54c18b4",
+      "total_lines": 135818,
+      "code_lines": 100984,
+      "other_lines": 34834,
+      "message": "refactor(control-server): reorganize API layer int"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "2120c3d",
+      "total_lines": 137005,
+      "code_lines": 101845,
+      "other_lines": 35160,
+      "message": "refactor(agent,control-server): reorganize WebSock"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "a3ee7ba",
+      "total_lines": 136881,
+      "code_lines": 101770,
+      "other_lines": 35111,
+      "message": "refactor(agent, control-server): enhance authentic"
+    },
+    {
+      "date": "2026-01-23",
+      "commit": "f3e8dd4",
+      "total_lines": 136727,
+      "code_lines": 101661,
+      "other_lines": 35066,
+      "message": "chore(control-server): clean up legacy migration t"
+    },
+    {
+      "date": "2026-01-24",
+      "commit": "5d320d6",
+      "total_lines": 137083,
+      "code_lines": 101908,
+      "other_lines": 35175,
+      "message": "refactor(control-server): consolidate WebSocket an"
+    },
+    {
+      "date": "2026-01-25",
+      "commit": "eefd376",
+      "total_lines": 150751,
+      "code_lines": 111885,
+      "other_lines": 38866,
+      "message": "refactor(control-server): restructure API layer wi"
+    },
+    {
+      "date": "2026-01-26",
+      "commit": "3deebe1",
+      "total_lines": 140993,
+      "code_lines": 104485,
+      "other_lines": 36508,
+      "message": "chore(control-server): update version and enhance "
+    },
+    {
+      "date": "2026-01-26",
+      "commit": "321e1a8",
+      "total_lines": 139495,
+      "code_lines": 103662,
+      "other_lines": 35833,
+      "message": "chore(control-server, web-client): remove legacy m"
+    },
+    {
+      "date": "2026-01-28",
+      "commit": "4294f0d",
+      "total_lines": 139811,
+      "code_lines": 103898,
+      "other_lines": 35913,
+      "message": "feat(control-server, web-client): add is_primary f"
+    },
+    {
+      "date": "2026-01-28",
+      "commit": "edc6815",
+      "total_lines": 139852,
+      "code_lines": 103930,
+      "other_lines": 35922,
+      "message": "feat(control-server): add email and phone fields t"
+    },
+    {
+      "date": "2026-01-28",
+      "commit": "76f65a1",
+      "total_lines": 142109,
+      "code_lines": 105943,
+      "other_lines": 36166,
+      "message": "feat(web-client): add advanced visual effects comp"
+    },
+    {
+      "date": "2026-01-29",
+      "commit": "008100f",
+      "total_lines": 142120,
+      "code_lines": 105962,
+      "other_lines": 36158,
+      "message": "refactor(web-client): reorganize UI components wit"
+    },
+    {
+      "date": "2026-01-29",
+      "commit": "f702ff3",
+      "total_lines": 148796,
+      "code_lines": 111614,
+      "other_lines": 37182,
+      "message": "feat(web-client): add advanced background componen"
+    },
+    {
+      "date": "2026-01-29",
+      "commit": "3e28b72",
+      "total_lines": 151280,
+      "code_lines": 113726,
+      "other_lines": 37554,
+      "message": "feat(web-client): add interactive visual effects c"
+    },
+    {
+      "date": "2026-01-29",
+      "commit": "f0efc27",
+      "total_lines": 151599,
+      "code_lines": 114001,
+      "other_lines": 37598,
+      "message": "chore: add Git LFS support and file size validatio"
+    },
+    {
+      "date": "2026-01-29",
+      "commit": "5d7af31",
+      "total_lines": 151667,
+      "code_lines": 114061,
+      "other_lines": 37606,
+      "message": "feat(web-client): add pagination to components pag"
+    },
+    {
+      "date": "2026-01-30",
+      "commit": "03bfced",
+      "total_lines": 151667,
+      "code_lines": 114061,
+      "other_lines": 37606,
+      "message": "chore: add brand assets and enable media file trac"
+    },
+    {
+      "date": "2026-01-30",
+      "commit": "86543ce",
+      "total_lines": 152096,
+      "code_lines": 114470,
+      "other_lines": 37626,
+      "message": "refactor(web-client, control-server): reorganize f"
+    },
+    {
+      "date": "2026-01-30",
+      "commit": "f3134ce",
+      "total_lines": 153572,
+      "code_lines": 115458,
+      "other_lines": 38114,
+      "message": "feat(web-client): add testing infrastructure and c"
+    },
+    {
+      "date": "2026-01-30",
+      "commit": "8c702d9",
+      "total_lines": 153799,
+      "code_lines": 115632,
+      "other_lines": 38167,
+      "message": "feat(web-client): add password strength indicator "
+    },
+    {
+      "date": "2026-01-30",
+      "commit": "4d7be12",
+      "total_lines": 153835,
+      "code_lines": 115660,
+      "other_lines": 38175,
+      "message": "feat(web-client): add image error handling and fal"
+    },
+    {
+      "date": "2026-01-31",
+      "commit": "81b1d0d",
+      "total_lines": 153835,
+      "code_lines": 115660,
+      "other_lines": 38175,
+      "message": "style(web-client): refactor smoked glass effects t"
+    },
+    {
+      "date": "2026-01-31",
+      "commit": "b804ea6",
+      "total_lines": 153114,
+      "code_lines": 115296,
+      "other_lines": 37818,
+      "message": "feat(control-server): add CAPTCHA integration with"
+    },
+    {
+      "date": "2026-01-31",
+      "commit": "567e1f6",
+      "total_lines": 154101,
+      "code_lines": 115993,
+      "other_lines": 38108,
+      "message": "feat(auth): add username availability check endpoi"
+    },
+    {
+      "date": "2026-01-31",
+      "commit": "1ef61b9",
+      "total_lines": 151388,
+      "code_lines": 113921,
+      "other_lines": 37467,
+      "message": "feat(control-server, web-client): remove flows fea"
+    },
+    {
+      "date": "2026-02-01",
+      "commit": "7cf9a68",
+      "total_lines": 150218,
+      "code_lines": 113040,
+      "other_lines": 37178,
+      "message": "refactor(control-server, web-client): reorganize a"
+    },
+    {
+      "date": "2026-02-01",
+      "commit": "1888253",
+      "total_lines": 154608,
+      "code_lines": 116476,
+      "other_lines": 38132,
+      "message": "feat(control-server, web-client): add two-factor a"
+    },
+    {
+      "date": "2026-02-01",
+      "commit": "3adb080",
+      "total_lines": 154785,
+      "code_lines": 116599,
+      "other_lines": 38186,
+      "message": "feat(auth, oauth): implement OAuth service integra"
+    },
+    {
+      "date": "2026-02-02",
+      "commit": "ded7d9e",
+      "total_lines": 161503,
+      "code_lines": 121498,
+      "other_lines": 40005,
+      "message": "feat(auth, passkeys): implement WebAuthn/passkey a"
+    },
+    {
+      "date": "2026-02-02",
+      "commit": "8bc55b0",
+      "total_lines": 162503,
+      "code_lines": 122328,
+      "other_lines": 40175,
+      "message": "feat(auth): implement unified verification system "
+    },
+    {
+      "date": "2026-02-03",
+      "commit": "7750ad5",
+      "total_lines": 171612,
+      "code_lines": 129009,
+      "other_lines": 42603,
+      "message": "feat(verification): implement comprehensive sensit"
+    },
+    {
+      "date": "2026-02-03",
+      "commit": "f7cc449",
+      "total_lines": 169416,
+      "code_lines": 127369,
+      "other_lines": 42047,
+      "message": "chore(verification): finalize verification system "
+    },
+    {
+      "date": "2026-02-03",
+      "commit": "419a943",
+      "total_lines": 170116,
+      "code_lines": 127883,
+      "other_lines": 42233,
+      "message": "refactor(api): reorganize API routes into versione"
+    },
+    {
+      "date": "2026-02-03",
+      "commit": "a4b6c20",
+      "total_lines": 170417,
+      "code_lines": 127941,
+      "other_lines": 42476,
+      "message": "refactor(usecases): migrate DTOs from centralized "
+    },
+    {
+      "date": "2026-02-03",
+      "commit": "7c26b79",
+      "total_lines": 170416,
+      "code_lines": 127940,
+      "other_lines": 42476,
+      "message": "refactor(api, web-client): update websocket routes"
+    },
+    {
+      "date": "2026-02-04",
+      "commit": "17d7693",
+      "total_lines": 171775,
+      "code_lines": 128701,
+      "other_lines": 43074,
+      "message": "refactor(authentication, settings): rename client "
+    },
+    {
+      "date": "2026-02-04",
+      "commit": "8930ea2",
+      "total_lines": 172639,
+      "code_lines": 129205,
+      "other_lines": 43434,
+      "message": "refactor(authentication, api, web-client): rename "
+    },
+    {
+      "date": "2026-02-04",
+      "commit": "eb711e3",
+      "total_lines": 171585,
+      "code_lines": 128588,
+      "other_lines": 42997,
+      "message": "refactor(auth, web-client): remove client_info dep"
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "64b60ca",
+      "total_lines": 171420,
+      "code_lines": 128480,
+      "other_lines": 42940,
+      "message": "refactor(api, auth): unify permission and verifica"
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "97f22f7",
+      "total_lines": 171291,
+      "code_lines": 128384,
+      "other_lines": 42907,
+      "message": "chore(api, deps): consolidate permission imports a"
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "c308d3b",
+      "total_lines": 171511,
+      "code_lines": 128497,
+      "other_lines": 43014,
+      "message": "refactor(access_control, api): consolidate account"
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "1f20b56",
+      "total_lines": 172744,
+      "code_lines": 129302,
+      "other_lines": 43442,
+      "message": "docs(specs): add permission-verification-refactor "
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "09c9491",
+      "total_lines": 173322,
+      "code_lines": 129769,
+      "other_lines": 43553,
+      "message": "refactor(verification, protocols): migrate step-up"
+    },
+    {
+      "date": "2026-02-05",
+      "commit": "44ecca8",
+      "total_lines": 173509,
+      "code_lines": 129623,
+      "other_lines": 43886,
+      "message": "refactor(domains, access_control): remove flows do"
+    },
+    {
+      "date": "2026-02-06",
+      "commit": "ec86b54",
+      "total_lines": 171456,
+      "code_lines": 128598,
+      "other_lines": 42858,
+      "message": "refactor(rbac, api, usecases): complete permission"
+    },
+    {
+      "date": "2026-02-06",
+      "commit": "b0c3e41",
+      "total_lines": 172497,
+      "code_lines": 129313,
+      "other_lines": 43184,
+      "message": "chore(tools, ci): add code statistics tool and aut"
+    },
+    {
+      "date": "2026-02-06",
+      "commit": "9cdc05b",
+      "total_lines": 174933,
+      "code_lines": 131307,
+      "other_lines": 43626,
+      "message": "refactor(usecases, protocols, web-client): migrate"
+    },
+    {
+      "date": "2026-02-06",
+      "commit": "8d863d8",
+      "total_lines": 175265,
+      "code_lines": 131481,
+      "other_lines": 43784,
+      "message": "chore(web-client): complete form components migrat"
+    },
+    {
+      "date": "2026-02-09",
+      "commit": "f27825a",
+      "total_lines": 174904,
+      "code_lines": 131210,
+      "other_lines": 43694,
+      "message": "chore(web-client): finalize form components migrat"
+    },
+    {
+      "date": "2026-02-09",
+      "commit": "ace9fa9",
+      "total_lines": 174528,
+      "code_lines": 130876,
+      "other_lines": 43652,
+      "message": "refactor(web-client): migrate textarea components "
+    },
+    {
+      "date": "2026-02-10",
+      "commit": "c5a6829",
+      "total_lines": 174528,
+      "code_lines": 130876,
+      "other_lines": 43652,
+      "message": "refactor(architecture): rename infrastructure to i"
+    },
+    {
+      "date": "2026-02-11",
+      "commit": "0d1cf8c",
+      "total_lines": 177310,
+      "code_lines": 132852,
+      "other_lines": 44458,
+      "message": "refactor(agent, control-server): split task and ag"
+    },
+    {
+      "date": "2026-02-11",
+      "commit": "c2bcf9b",
+      "total_lines": 177312,
+      "code_lines": 132856,
+      "other_lines": 44456,
+      "message": "refactor(tasks): rename execute endpoints and cons"
+    },
+    {
+      "date": "2026-02-11",
+      "commit": "a759939",
+      "total_lines": 178255,
+      "code_lines": 133511,
+      "other_lines": 44744,
+      "message": "feat(runs): add run attempt deletion endpoints and"
+    },
+    {
+      "date": "2026-02-11",
+      "commit": "66c22d2",
+      "total_lines": 178616,
+      "code_lines": 133789,
+      "other_lines": 44827,
+      "message": "feat(web-client): add run status icons and migrate"
+    },
+    {
+      "date": "2026-02-11",
+      "commit": "9f5fc5e",
+      "total_lines": 178575,
+      "code_lines": 133765,
+      "other_lines": 44810,
+      "message": "fix(runs): use transaction context manager and upd"
+    },
+    {
+      "date": "2026-02-12",
+      "commit": "29e1d58",
+      "total_lines": 181411,
+      "code_lines": 135759,
+      "other_lines": 45652,
+      "message": "feat(variables): add dynamic variable replacement "
+    },
+    {
+      "date": "2026-02-12",
+      "commit": "8e04134",
+      "total_lines": 182241,
+      "code_lines": 136428,
+      "other_lines": 45813,
+      "message": "feat(storage): refactor storage layer with adapter"
+    },
+    {
+      "date": "2026-02-16",
+      "commit": "52f0bb2",
+      "total_lines": 186978,
+      "code_lines": 140002,
+      "other_lines": 46976,
+      "message": "refactor(tasks, runs): restructure task and run en"
+    },
+    {
+      "date": "2026-02-17",
+      "commit": "d53b0b0",
+      "total_lines": 252091,
+      "code_lines": 189497,
+      "other_lines": 62594,
+      "message": "feat(monorepo): scaffold web-client with admin con"
+    },
+    {
+      "date": "2026-02-17",
+      "commit": "184c3ad",
+      "total_lines": 194816,
+      "code_lines": 144876,
+      "other_lines": 49940,
+      "message": "refactor(web-client): migrate to monorepo structur"
+    },
+    {
+      "date": "2026-02-18",
+      "commit": "33cab16",
+      "total_lines": 196791,
+      "code_lines": 146455,
+      "other_lines": 50336,
+      "message": "refactor(web-client): fix truncated Chinese charac"
+    },
+    {
+      "date": "2026-02-18",
+      "commit": "b783d8e",
+      "total_lines": 196422,
+      "code_lines": 146180,
+      "other_lines": 50242,
+      "message": "refactor(web-client): consolidate overlay componen"
+    },
+    {
+      "date": "2026-02-19",
+      "commit": "1213bb1",
+      "total_lines": 196418,
+      "code_lines": 146176,
+      "other_lines": 50242,
+      "message": "refactor(web-client): migrate to shadcn/ui compone"
+    },
+    {
+      "date": "2026-02-19",
+      "commit": "e8aba54",
+      "total_lines": 196510,
+      "code_lines": 146239,
+      "other_lines": 50271,
+      "message": "feat(control-server, web-client): add task metadat"
+    },
+    {
+      "date": "2026-02-19",
+      "commit": "f164b52",
+      "total_lines": 196397,
+      "code_lines": 146238,
+      "other_lines": 50159,
+      "message": "refactor(web-client): consolidate layout component"
+    },
+    {
+      "date": "2026-02-20",
+      "commit": "ef737a6",
+      "total_lines": 196592,
+      "code_lines": 146415,
+      "other_lines": 50177,
+      "message": "feat(consumer-app): add settings page and GPU deta"
+    },
+    {
+      "date": "2026-02-20",
+      "commit": "e7e69c4",
+      "total_lines": 196830,
+      "code_lines": 146677,
+      "other_lines": 50153,
+      "message": "refactor(web-client): reorganize theme system with"
+    },
+    {
+      "date": "2026-02-20",
+      "commit": "331f185",
+      "total_lines": 197513,
+      "code_lines": 147299,
+      "other_lines": 50214,
+      "message": "style(web-client): migrate to semantic border toke"
+    },
+    {
+      "date": "2026-02-20",
+      "commit": "6594981",
+      "total_lines": 197335,
+      "code_lines": 147167,
+      "other_lines": 50168,
+      "message": "docs(docs-site): add frontmatter metadata and refa"
+    },
+    {
+      "date": "2026-02-21",
+      "commit": "a53a221",
+      "total_lines": 197769,
+      "code_lines": 147561,
+      "other_lines": 50208,
+      "message": "feat(docs-site): add document search and sidebar o"
+    },
+    {
+      "date": "2026-02-21",
+      "commit": "5c90a73",
+      "total_lines": 197944,
+      "code_lines": 147714,
+      "other_lines": 50230,
+      "message": "feat(docs-site): extract markdown rendering and do"
+    },
+    {
+      "date": "2026-02-21",
+      "commit": "80a8378",
+      "total_lines": 197979,
+      "code_lines": 147746,
+      "other_lines": 50233,
+      "message": "refactor(web-client): consolidate console layout i"
+    },
+    {
+      "date": "2026-02-21",
+      "commit": "08d3628",
+      "total_lines": 198215,
+      "code_lines": 147900,
+      "other_lines": 50315,
+      "message": "feat(i18n): extract internationalization into shar"
+    },
+    {
+      "date": "2026-02-21",
+      "commit": "5fd5fb9",
+      "total_lines": 198215,
+      "code_lines": 147900,
+      "other_lines": 50315,
+      "message": "feat(i18n): extract internationalization into shar"
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "96f140b",
+      "total_lines": 201000,
+      "code_lines": 150360,
+      "other_lines": 50640,
+      "message": "feat(ui): add data display components library with"
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "599a60a",
+      "total_lines": 200981,
+      "code_lines": 150341,
+      "other_lines": 50640,
+      "message": "refactor(ui): replace FloatingPanel with Modal com"
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "a069376",
+      "total_lines": 201108,
+      "code_lines": 150455,
+      "other_lines": 50653,
+      "message": "feat(tasks): add description field support across "
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "8f6593e",
+      "total_lines": 203401,
+      "code_lines": 152485,
+      "other_lines": 50916,
+      "message": "feat(agent,control-server,web-client): add artifac"
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "a27c169",
+      "total_lines": 203688,
+      "code_lines": 152685,
+      "other_lines": 51003,
+      "message": "feat(agent): refactor logging and configuration wi"
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "0b609dd",
+      "total_lines": 203926,
+      "code_lines": 152865,
+      "other_lines": 51061,
+      "message": "feat(ui,agents,tasks): migrate card components to "
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "93e1326",
+      "total_lines": 204221,
+      "code_lines": 153124,
+      "other_lines": 51097,
+      "message": "feat(tasks,runs): add run output items support wit"
+    },
+    {
+      "date": "2026-02-23",
+      "commit": "7c95708",
+      "total_lines": 204247,
+      "code_lines": 153193,
+      "other_lines": 51054,
+      "message": "feat(task-detail): add task detail page with confi"
+    },
+    {
+      "date": "2026-02-23",
+      "commit": "bf88837",
+      "total_lines": 204587,
+      "code_lines": 153465,
+      "other_lines": 51122,
+      "message": "feat(runs): replace log paths with file record for"
+    },
+    {
+      "date": "2026-02-23",
+      "commit": "3991e4b",
+      "total_lines": 207598,
+      "code_lines": 155880,
+      "other_lines": 51718,
+      "message": "feat(runs): add smart retry with error classificat"
+    },
+    {
+      "date": "2026-02-23",
+      "commit": "b12ddb7",
+      "total_lines": 207744,
+      "code_lines": 155979,
+      "other_lines": 51765,
+      "message": "fix(arch): resolve all import boundary violations "
+    },
+    {
+      "date": "2026-02-23",
+      "commit": "dc5c58f",
+      "total_lines": 206362,
+      "code_lines": 154979,
+      "other_lines": 51383,
+      "message": "refactor(arch): remove deprecated functions and cl"
+    },
+    {
+      "date": "2026-02-24",
+      "commit": "2ffb9c7",
+      "total_lines": 207971,
+      "code_lines": 156077,
+      "other_lines": 51894,
+      "message": "feat(artifacts): implement content-addressable sto"
+    },
+    {
+      "date": "2026-02-25",
+      "commit": "8615297",
+      "total_lines": 209276,
+      "code_lines": 157029,
+      "other_lines": 52247,
+      "message": "feat(logging): implement log seal-on-complete with"
+    },
+    {
+      "date": "2026-02-25",
+      "commit": "5fa3e91",
+      "total_lines": 209285,
+      "code_lines": 157042,
+      "other_lines": 52243,
+      "message": "fix(sse,logging): improve SSE connection handling "
+    },
+    {
+      "date": "2026-02-25",
+      "commit": "f283a19",
+      "total_lines": 209412,
+      "code_lines": 157122,
+      "other_lines": 52290,
+      "message": "feat(logging): migrate to unified log manager with"
+    }
+  ]
+}
