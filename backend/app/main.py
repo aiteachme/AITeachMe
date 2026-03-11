@@ -13,4 +13,4 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"message": "AiTeachMe backend is running!"}
+    return {"message": "AiTeachMe backend is running!!!!!"}
