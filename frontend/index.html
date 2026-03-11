@@ -1,64 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AiTeachMe - 前端部署测试</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f9fafb;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            color: #1f2937;
-        }
-        .container {
-            background-color: white;
-            padding: 3rem 4rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-            text-align: center;
-            max-width: 600px;
-        }
-        h1 {
-            color: #3b82f6;
-            margin-bottom: 1.5rem;
-            font-size: 2.2rem;
-        }
-        p {
-            font-size: 1.15rem;
-            line-height: 1.7;
-            color: #4b5563;
-        }
-        .code {
-            background-color: #f3f4f6;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-family: monospace;
-            color: #ef4444;
-        }
-        .status {
-            display: inline-block;
-            background-color: #10b981;
-            color: white;
-            padding: 0.5rem 1.2rem;
-            border-radius: 9999px;
-            font-weight: bold;
-            font-size: 1rem;
-            margin-top: 2rem;
-            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AiTeachMe</title>
+  <meta name="description" content="AiTeachMe - AI-powered learning platform" />
+  <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 AiTeachMe - 这是自动部署！</h1>
-        <p>如果你能通过网址看到这个页面，说明我们的 <b>自动化部署（CI/CD）</b> 已经生效啦！</p>
-        <p>刚才我们只做了一件事：向仓库推送了一点代码（<span class="code">git push</span>）。剩下的（从获取代码到呈现网页）全是 <b>GitHub Actions</b> 自动跑完的。</p>
-        <div class="status">✓ GitHub Pages 部署成功</div>
-    </div>
+  <div id="app">
+    <h1>AiTeachMe</h1>
+    <p id="status">正在连接后端...</p>
+    <button id="check-btn">检查后端状态</button>
+  </div>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
