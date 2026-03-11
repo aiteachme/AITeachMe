@@ -1,0 +1,20 @@
+name: Trigger Deploy Webhooks
+
+on:
+  push:
+    branches:
+      - main  # 仅在推送或合并到 main 分支时触发
+
+jobs:
+  deploy:
+    name: Trigger Cloudflare & Render Hooks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Cloudflare Pages (Frontend) Build
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/7a535f14-d72e-48b4-9341-484a01539a06"
+
+      - name: Trigger Render (Backend) Build
+        run: |
+          curl -X POST "https://api.render.com/deploy/srv-d6ore72a214c73f6mk60?key=pvdsQm6bSbo"
