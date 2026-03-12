@@ -30,19 +30,36 @@ jobs:
         run: |
           echo "⏳ 等待 Render 部署完成..."
 
-          MAX_WAIT=900  # 最多等待 15 分钟
-          INTERVAL=30   # 每 30 秒检查一次
+          # 检查 API Key 是否配置
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "⚠️ RENDER_API_KEY 未配置，跳过状态监测"
+            echo "💡 请在 GitHub Settings → Secrets 中添加 RENDER_API_KEY"
+            exit 0
+          fi
+
+          MAX_WAIT=900
+          INTERVAL=30
           ELAPSED=0
 
           while [ $ELAPSED -lt $MAX_WAIT ]; do
-            # 获取最新的部署状态
             DEPLOY_INFO=$(curl -s "https://api.render.com/v1/services/${SERVICE_ID}/deploys?limit=1" \
               -H "Accept: application/json" \
               -H "Authorization: Bearer ${RENDER_API_KEY}")
 
-            # 提取状态
-            STATUS=$(echo "$DEPLOY_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data[0]['deploy']['status'] if data else 'unknown')")
-            DEPLOY_ID=$(echo "$DEPLOY_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data[0]['deploy']['id'] if data else 'unknown')")
+            if echo "$DEPLOY_INFO" | grep -q "Unauthorized"; then
+              echo "❌ API Key 无效或已过期"
+              exit 1
+            fi
+
+            STATUS=$(echo "$DEPLOY_INFO" | jq -r '.[0].deploy.status // "unknown"' 2>/dev/null || echo "error")
+            DEPLOY_ID=$(echo "$DEPLOY_INFO" | jq -r '.[0].deploy.id // "unknown"' 2>/dev/null || echo "error")
+
+            if [ "$STATUS" = "error" ]; then
+              echo "⚠️ 无法解析部署状态，等待下次检查..."
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
+            fi
 
             echo "📊 部署状态: $STATUS (ID: $DEPLOY_ID)"
 
@@ -58,7 +75,6 @@ jobs:
               exit 1
             fi
 
-            # 显示进度
             if [ "$STATUS" = "building" ]; then
               echo "🔨 正在构建..."
             elif [ "$STATUS" = "deploying" ]; then
