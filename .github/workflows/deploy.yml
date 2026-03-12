@@ -16,5 +16,68 @@ jobs:
           curl -X POST "https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/7a535f14-d72e-48b4-9341-484a01539a06"
 
       - name: Trigger Render (Backend) Build
+        id: trigger_render
         run: |
-          curl -X POST "https://api.render.com/deploy/srv-d6ore72a214c73f6mk60?key=pvdsQm6bSbo"
+          echo "🚀 触发 Render 后端部署..."
+          RESPONSE=$(curl -s -X POST "https://api.render.com/deploy/srv-d6ore72a214c73f6mk60?key=pvdsQm6bSbo")
+          echo "Response: $RESPONSE"
+          echo "✅ 部署已触发，开始监测状态..."
+
+      - name: Wait for Render Deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: srv-d6ore72a214c73f6mk60
+        run: |
+          echo "⏳ 等待 Render 部署完成..."
+
+          MAX_WAIT=900  # 最多等待 15 分钟
+          INTERVAL=30   # 每 30 秒检查一次
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            # 获取最新的部署状态
+            DEPLOY_INFO=$(curl -s "https://api.render.com/v1/services/${SERVICE_ID}/deploys?limit=1" \
+              -H "Accept: application/json" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}")
+
+            # 提取状态
+            STATUS=$(echo "$DEPLOY_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data[0]['deploy']['status'] if data else 'unknown')")
+            DEPLOY_ID=$(echo "$DEPLOY_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data[0]['deploy']['id'] if data else 'unknown')")
+
+            echo "📊 部署状态: $STATUS (ID: $DEPLOY_ID)"
+
+            if [ "$STATUS" = "live" ]; then
+              echo "✅ 后端部署成功！"
+              echo "🔗 服务地址: https://aiteachme.onrender.com"
+              exit 0
+            elif [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ]; then
+              echo "❌ 后端部署失败！状态: $STATUS"
+              exit 1
+            elif [ "$STATUS" = "canceled" ]; then
+              echo "⚠️ 部署已取消"
+              exit 1
+            fi
+
+            # 显示进度
+            if [ "$STATUS" = "building" ]; then
+              echo "🔨 正在构建..."
+            elif [ "$STATUS" = "deploying" ]; then
+              echo "📦 正在部署..."
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "⏰ 部署超时（超过 ${MAX_WAIT} 秒）"
+          exit 1
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "================================"
+          echo "📋 部署摘要"
+          echo "================================"
+          echo "前端: Cloudflare Pages"
+          echo "后端: Render (https://aiteachme.onrender.com)"
+          echo "================================"
