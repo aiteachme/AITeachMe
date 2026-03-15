@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import re
 
+# 脚本所在目录，用于定位 JSON 数据文件
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_JSON_PATH = str(SCRIPT_DIR / 'code_stats.json')
+
 
 def run_git_command(cmd: List[str], ignore_errors: bool = False) -> str:
     """执行 Git 命令并返回输出
@@ -45,7 +49,7 @@ def run_git_command(cmd: List[str], ignore_errors: bool = False) -> str:
         return ""
 
 
-def load_existing_stats(json_path: str = 'tools/code_stats/code_stats.json') -> Optional[Dict]:
+def load_existing_stats(json_path: str = DEFAULT_JSON_PATH) -> Optional[Dict]:
     """加载已存在的统计数据"""
     json_file = Path(json_path)
     
@@ -284,7 +288,7 @@ def generate_stats_data(max_commits: int = 50, incremental: bool = True, all_his
     }
 
 
-def save_stats_json(data: Dict, output_path: str = 'tools/code_stats/code_stats.json'):
+def save_stats_json(data: Dict, output_path: str = DEFAULT_JSON_PATH):
     """保存统计数据为 JSON"""
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)

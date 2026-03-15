@@ -2,11 +2,18 @@
 
 FastAPI 后端服务。
 
-## 本地开发
+## 依赖管理
+
+所有依赖在 `backend/pyproject.toml` 中声明，`requirements.txt` 用于锁定版本。
 
 ```bash
-# 安装依赖
-pip install -r requirements.txt
+cd backend
+
+# 安装依赖（从 pyproject.toml）
+pip install -e .
+
+# 安装测试依赖（可选）
+pip install -e ".[test]"
 
 # 启动开发服务器
 uvicorn app.main:app --reload --port 8000
@@ -28,5 +35,5 @@ uvicorn app.main:app --reload --port 8000
 |--------|-----|
 | Runtime | Python |
 | Root Directory | `backend` |
-| Build Command | `pip install -r requirements.txt` |
+| Build Command | `pip install -e .` |
 | Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
