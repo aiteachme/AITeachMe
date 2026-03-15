@@ -15,6 +15,7 @@ from sqlmodel import Session
 from app.ai.interact.retriever import retrieve
 from app.ai.interact.context_builder import build_system_prompt
 from app.ai.interact.streamer import stream_chat_response
+from app.schemas.llm import ChatMessage, USER
 
 logger = structlog.get_logger()
 
@@ -47,7 +48,7 @@ async def chat_stream(
     )
 
     # 3. 追加用户当前问题
-    messages.append({"role": "user", "content": question})
+    messages.append(ChatMessage(role=USER, content=question))
 
     logger.info(
         "chat_pipeline_ready",

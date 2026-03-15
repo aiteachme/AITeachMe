@@ -15,6 +15,7 @@ from sqlmodel import Session
 
 from app.core.llm import acompletion_structured
 from app.repositories import knowledge_repo, exam_repo, profile_repo
+from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.repositories.models import (
     Question,
     QuestionType,
@@ -121,7 +122,7 @@ def _build_generation_prompt(
     recent_mistake_stems: list[str],
     difficulty_distribution: dict[str, float] | None,
     requested_knowledge_points: list[str] | None,
-) -> list[dict]:
+) -> list[ChatMessage]:
     """构建考试生成的 LLM 消息。"""
     kp_section = ""
     if requested_knowledge_points:
@@ -159,7 +160,7 @@ def _build_generation_prompt(
         f"{kp_section}{weak_section}{avoid_section}{diff_section}"
     )
 
-    return [{"role": "system", "content": system_msg}]
+    return [ChatMessage(role=SYSTEM, content=system_msg)]
 
 
 def _to_question_models(exam: GeneratedExam) -> list[Question]:

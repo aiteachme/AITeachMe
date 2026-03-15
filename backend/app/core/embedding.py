@@ -36,7 +36,7 @@ async def aembed_texts(texts: list[str]) -> list[list[float]]:
 
     try:
         response = await litellm.aembedding(
-            model=settings.embedding_model,
+            model=f"openai/{settings.embedding_model}",
             input=texts,
             api_base=settings.llm_base_url,
             api_key=settings.llm_api_key,

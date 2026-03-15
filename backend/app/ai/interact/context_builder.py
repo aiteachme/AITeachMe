@@ -17,6 +17,7 @@ from app.repositories.chat_repo import get_recent_turns
 from app.repositories.exam_repo import list_mistakes_by_subject
 from app.repositories.profile_repo import get_weak_points
 from app.ai.interact.retriever import RetrievalResult
+from app.schemas.llm import ChatMessage, SYSTEM, USER, ASSISTANT
 
 
 _SYSTEM_PROMPT_BASE = """你是 AITeachMe 的 AI 学习助手，专注于为学生提供个性化的学科辅导。
@@ -38,7 +39,7 @@ def build_system_prompt(
     *,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
-) -> list[dict]:
+) -> list[ChatMessage]:
     """
     构建完整的系统提示词消息列表。
 
@@ -75,14 +76,14 @@ def build_system_prompt(
         )
 
     system_content = "\n".join(parts)
-    messages: list[dict] = [{"role": "system", "content": system_content}]
+    messages: list[ChatMessage] = [ChatMessage(role=SYSTEM, content=system_content)]
 
     # 6. 注入最近对话历史
     recent_messages = get_recent_turns(
         session, subject, n_turns=settings.chat_history_turns
     )
     for msg in recent_messages:
-        messages.append({"role": msg.role, "content": msg.content})
+        messages.append(ChatMessage(role=msg.role, content=msg.content))
 
     return messages
 

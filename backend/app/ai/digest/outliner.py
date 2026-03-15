@@ -16,6 +16,7 @@ import structlog
 
 from app.core.llm import acompletion_structured
 from app.repositories.models import KnowledgeGraphNode
+from app.schemas.llm import ChatMessage, SYSTEM, USER
 
 logger = structlog.get_logger()
 
@@ -59,8 +60,8 @@ async def extract_outline(markdown: str) -> list[OutlineItem]:
         LLMCallError: LLM 调用失败时抛出（由 core/llm 统一处理重试）。
     """
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": markdown},
+        ChatMessage(role=SYSTEM, content=_SYSTEM_PROMPT),
+        ChatMessage(role=USER, content=markdown),
     ]
     result = await acompletion_structured(
         response_model=OutlineResult,

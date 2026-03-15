@@ -14,6 +14,7 @@ from pathlib import Path
 import structlog
 
 from app.core.exceptions import FileParseError
+from app.schemas.llm import ChatMessage, USER
 
 logger = structlog.get_logger()
 
@@ -139,9 +140,9 @@ async def parse_image(file_path: str | Path) -> str:
     b64 = base64.b64encode(image_data).decode("utf-8")
 
     messages = [
-        {
-            "role": "user",
-            "content": [
+        ChatMessage(
+            role=USER,
+            content=[
                 {
                     "type": "text",
                     "text": (
@@ -154,7 +155,7 @@ async def parse_image(file_path: str | Path) -> str:
                     "image_url": {"url": f"data:{mime_type};base64,{b64}"},
                 },
             ],
-        }
+        )
     ]
 
     try:
