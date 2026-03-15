@@ -4,8 +4,6 @@
 注入最近 N 轮对话摘要（内存中，无需额外表）、
 UserProfile 薄弱点（mastery < 0.6）和 Mistake 记录到系统提示词。
 处理可选的 selected_context 作为高优先级上下文。
-
-需求：8.2, 8.3, 8.7
 """
 
 from __future__ import annotations

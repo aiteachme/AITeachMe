@@ -4,8 +4,6 @@ SSE 流式传输与断连检测 — Interact 引擎流式输出层
 以 SSE 事件流式传输 LLM 响应：event: token、event: done、event: error。
 通过 request.is_disconnected() 检测客户端断连，通过 aclose() 取消 LLM 生成。
 完成后保存用户 + 助手 ChatMessage 对，共享 turn_id（UUID）；仅在助手消息上存储 contexts。
-
-需求：8.4, 8.5, 8.6
 """
 
 from __future__ import annotations

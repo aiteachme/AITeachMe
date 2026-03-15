@@ -3,8 +3,6 @@
 
 流程：校验 → 临时落盘 → 创建 RawFile → 移动到最终位置 → 解析 → 创建 Knowledge → 触发 Digest。
 Digest 引擎通过 FastAPI BackgroundTasks 异步执行，不阻塞上传接口。
-
-需求：5.1, 5.2, 5.3, 5.8, 5.9
 """
 
 from __future__ import annotations

@@ -3,8 +3,6 @@
 
 GET /api/v1/knowledge/{subject}/outline — 知识大纲树
 GET /api/v1/knowledge/{subject}/document — Markdown 文档分页列表
-
-需求：7.10, 7.11
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ from app.services.knowledge_service import get_outlines, get_documents
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 
 
-@router.get("/{subject}/outline", response_model=list[OutlineResponse])
+@router.post("/{subject}/outline", response_model=list[OutlineResponse])
 async def get_knowledge_outline(
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
@@ -32,15 +30,15 @@ async def get_knowledge_outline(
     return get_outlines(session, subject)
 
 
-@router.get("/{subject}/document", response_model=DocumentListResponse)
+@router.post("/{subject}/document", response_model=DocumentListResponse)
 async def list_knowledge_documents(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> DocumentListResponse:
     """返回 Markdown 文档分页列表。"""
     items, total = get_documents(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return DocumentListResponse(
         items=[

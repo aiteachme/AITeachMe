@@ -3,8 +3,6 @@
 
 所有解析器输出 CommonMark 兼容的 Markdown。
 图片解析通过多模态 LLM 调用，失败时由调用方标记 parse_failed。
-
-需求：5.4, 5.5, 5.6, 5.7, 6.1
 """
 
 from __future__ import annotations

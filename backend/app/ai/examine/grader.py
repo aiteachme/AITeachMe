@@ -4,8 +4,6 @@
 客观题（single_choice、fill_blank）：确定性字符串比较
 主观题（short_answer）：LLM 二元判分（0 或 1）
 为每道错题生成 AI 错因分析，写入 Mistake 表
-
-需求：10.1, 10.2, 10.3, 10.4
 """
 
 from __future__ import annotations

@@ -3,8 +3,6 @@
 
 查询 chunk_embeddings，支持学科过滤，返回 top-k 块并按相似度降序排列。
 检查相似度阈值（默认 0.3），标记低相关性结果。
-
-需求：8.1, 8.9
 """
 
 from __future__ import annotations

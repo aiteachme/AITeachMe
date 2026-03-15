@@ -8,8 +8,6 @@ LangGraph 状态机 — Digest 引擎工作流
 workflow 节点不自行重试 LLM，仅处理 success/fail；
 LLM 重试统一由 core/llm.py 负责。
 重试耗尽后设置 pipeline_stage 为 failed。
-
-需求：7.1, 7.4, 7.8, 7.9
 """
 
 from __future__ import annotations

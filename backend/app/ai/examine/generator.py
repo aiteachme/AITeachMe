@@ -3,8 +3,6 @@
 
 读取 KnowledgeGraphNode 获取知识范围，优先考查薄弱点（mastery < 0.6），
 检查 Mistake 表避免重复最近的错题。
-
-需求：9.1, 9.2, 9.3, 9.4, 9.6
 """
 
 from __future__ import annotations

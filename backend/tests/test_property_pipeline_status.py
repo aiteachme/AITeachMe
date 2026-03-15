@@ -3,8 +3,6 @@
 
 验证 compute_pipeline_status 对所有 parse_status × pipeline_stage 组合返回正确的
 stage/progress/message，progress 单调递增。
-
-验证需求：5.10
 """
 
 import os

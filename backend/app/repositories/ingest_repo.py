@@ -1,7 +1,5 @@
 """
 RawFile CRUD — 文件摄入相关数据访问
-
-需求：5.2, 5.10, 5.11
 """
 
 from sqlmodel import Session, select, func

@@ -4,8 +4,6 @@
 调用 LLM 阅读 Markdown 并生成层级知识大纲。
 写入 KnowledgeGraphNode 记录，关联 knowledge_id 外键。
 更新 Knowledge.pipeline_stage 为 outlined。
-
-需求：7.3
 """
 
 from __future__ import annotations
