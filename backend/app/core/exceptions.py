@@ -58,6 +58,16 @@ class FileParseError(AITeachMeError):
         super().__init__(detail=detail)
 
 
+class MissingLLMApiKeyError(AITeachMeError):
+    """LLM API Key 未配置"""
+
+    error_code = "LLM_API_KEY_MISSING"
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(detail="未配置 LLM_API_KEY，当前功能需要先配置该密钥后才能使用")
+
+
 class FileTooLargeError(AITeachMeError):
     """上传文件超过大小限制"""
 
