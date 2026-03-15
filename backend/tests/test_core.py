@@ -2,7 +2,6 @@
 测试基础设施层：config、exceptions、logger、subject 校验
 """
 
-import os
 import pytest
 from http import HTTPStatus
 
@@ -51,13 +50,20 @@ class TestConfig:
         s = Settings(embedding_model="unknown-model-xyz")
         assert s.embedding_dim == 1536
 
-    def test_settings_missing_api_key_raises(self, monkeypatch):
+    def test_settings_missing_api_key_is_allowed(self, monkeypatch):
         """缺少 llm_api_key 时抛出错误。"""
         monkeypatch.delenv("LLM_API_KEY", raising=False)
         from app.core.config import Settings
-        from pydantic import ValidationError
-        with pytest.raises(ValidationError):
-            Settings(_env_file=None)
+        s = Settings(_env_file=None)
+        assert s.llm_api_key is None
+
+    def test_require_llm_api_key_raises_when_missing(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        from app.core.config import Settings
+        from app.core.exceptions import MissingLLMApiKeyError
+        s = Settings(_env_file=None)
+        with pytest.raises(MissingLLMApiKeyError):
+            s.require_llm_api_key()
 
 
 # ─── Exceptions ───
@@ -101,6 +107,13 @@ class TestExceptions:
         err = ExamNotFoundError(42)
         assert "42" in err.detail
         assert err.status_code == HTTPStatus.NOT_FOUND
+
+    def test_missing_llm_api_key_error(self):
+        from app.core.exceptions import MissingLLMApiKeyError
+        err = MissingLLMApiKeyError()
+        assert "LLM_API_KEY" in err.detail
+        assert err.error_code == "LLM_API_KEY_MISSING"
+        assert err.status_code == HTTPStatus.SERVICE_UNAVAILABLE
 
     def test_custom_error_code_override(self):
         from app.core.exceptions import AITeachMeError

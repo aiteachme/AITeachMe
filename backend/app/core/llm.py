@@ -32,6 +32,7 @@ _TIMEOUT_S = 60
 async def acompletion(messages: list[ChatMessage], **kwargs) -> str:
     """异步 LLM 补全，60s 超时，最多重试 3 次（递增退避）。"""
     settings = get_settings()
+    api_key = settings.require_llm_api_key()
     last_exc: Exception | None = None
 
     for attempt in range(1, _MAX_RETRIES + 1):
@@ -41,7 +42,7 @@ async def acompletion(messages: list[ChatMessage], **kwargs) -> str:
                 model=f"openai/{settings.llm_model}",
                 messages=messages,
                 api_base=settings.llm_base_url,
-                api_key=settings.llm_api_key,
+                api_key=api_key,
                 timeout=_TIMEOUT_S,
                 **kwargs,
             )
@@ -87,6 +88,7 @@ async def acompletion_structured(
 ) -> T:
     """异步结构化输出，使用 Instructor。重试由本层统一处理。"""
     settings = get_settings()
+    api_key = settings.require_llm_api_key()
     client = instructor.from_litellm(litellm.acompletion)
     last_exc: Exception | None = None
 
@@ -98,7 +100,7 @@ async def acompletion_structured(
                 messages=messages,
                 response_model=response_model,
                 api_base=settings.llm_base_url,
-                api_key=settings.llm_api_key,
+                api_key=api_key,
                 timeout=_TIMEOUT_S,
                 max_retries=0,
                 **kwargs,
@@ -140,13 +142,14 @@ async def acompletion_structured(
 async def acompletion_stream(messages: list[ChatMessage], **kwargs) -> AsyncGenerator[str, None]:
     """异步流式补全，逐 token 产出内容字符串。不重试。"""
     settings = get_settings()
+    api_key = settings.require_llm_api_key()
     start = time.monotonic()
     try:
         response = await litellm.acompletion(
             model=f"openai/{settings.llm_model}",
             messages=messages,
             api_base=settings.llm_base_url,
-            api_key=settings.llm_api_key,
+            api_key=api_key,
             timeout=_TIMEOUT_S,
             stream=True,
             **kwargs,
