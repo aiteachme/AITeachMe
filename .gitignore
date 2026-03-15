@@ -23,6 +23,7 @@ venv/
 dist/
 build/
 .hypothesis/
+.pytest_cache/
 
 # Node
 node_modules/
