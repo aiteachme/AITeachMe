@@ -4,8 +4,6 @@
 POST /api/v1/upload — 上传文件
 GET  /api/v1/upload/{task_id}/status — 流水线聚合状态
 GET  /api/v1/files/{subject} — 分页列表文件
-
-需求：5.2, 5.3, 5.10, 5.11
 """
 
 from __future__ import annotations
@@ -86,7 +84,7 @@ async def upload_file(
     )
 
 
-@router.get("/upload/{task_id}/status", response_model=PipelineStatusResponse)
+@router.post("/upload/{task_id}/status", response_model=PipelineStatusResponse)
 async def get_pipeline_status(
     task_id: int = Path(...),
     session: Session = Depends(get_db),
@@ -101,15 +99,15 @@ async def get_pipeline_status(
     return PipelineStatusResponse(**status)
 
 
-@router.get("/files/{subject}", response_model=FileListResponse)
+@router.post("/files/{subject}", response_model=FileListResponse)
 async def list_files(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> FileListResponse:
     """分页列表该学科所有已上传文件及其状态。"""
     items, total = list_raw_files_by_subject(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return FileListResponse(
         items=[

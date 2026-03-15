@@ -5,8 +5,6 @@
 - n 个答案产生 n 个 AnswerRecord
 - 每个错误答案恰好产生一个 Mistake 且 analysis 非空
 - score = correct_count / total × 100
-
-验证需求：10.1, 10.2, 10.3
 """
 
 import os

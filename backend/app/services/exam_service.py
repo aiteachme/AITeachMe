@@ -1,7 +1,5 @@
 """
 考试编排 — 协调 generator → 保存 → 返回，submit → grader → profile
-
-需求：9.5, 10.1, 10.6
 """
 
 from __future__ import annotations

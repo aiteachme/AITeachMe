@@ -1,7 +1,5 @@
 """
 知识查询编排 — 大纲树构建、文档分页列表
-
-需求：7.10, 7.11
 """
 
 from __future__ import annotations

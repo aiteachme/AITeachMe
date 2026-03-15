@@ -4,8 +4,6 @@
 通过 core/embedding.py 批量计算嵌入向量。
 写入 Chunk 表和 chunk_embeddings 虚拟表。
 更新 Knowledge.pipeline_stage 为 embedded。
-
-需求：7.6, 7.7
 """
 
 from __future__ import annotations

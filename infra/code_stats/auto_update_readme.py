@@ -9,14 +9,17 @@ import sys
 from pathlib import Path
 from generate_code_stats import generate_quickchart_url, generate_shields_io_badge
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_JSON_PATH = str(SCRIPT_DIR / 'code_stats.json')
 
-def load_stats_data(json_path: str = 'tools/code_stats/code_stats.json') -> dict:
+
+def load_stats_data(json_path: str = DEFAULT_JSON_PATH) -> dict:
     """加载统计数据"""
     json_file = Path(json_path)
     
     if not json_file.exists():
         print(f"❌ 统计数据文件不存在: {json_file}")
-        print("💡 请先运行: python tools/code_stats/generate_code_stats.py")
+        print("💡 请先运行: python infra/code_stats/generate_code_stats.py")
         sys.exit(1)
     
     with open(json_file, 'r', encoding='utf-8') as f:

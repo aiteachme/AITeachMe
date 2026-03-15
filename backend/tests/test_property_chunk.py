@@ -5,8 +5,6 @@
 - len(chunks) >= 1（至少产生一个 Chunk）
 - 无内容丢失：原文中的段落文本、列表项、标题文本均可在某个 chunk 中找到
 - 每个 chunk.level 值在 1~3 之间
-
-验证需求：7.5
 """
 
 import os

@@ -1,7 +1,5 @@
 """
 ChatMessage CRUD — 对话记录数据访问
-
-需求：8.6, 8.8
 """
 
 from __future__ import annotations

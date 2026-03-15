@@ -1,7 +1,5 @@
 """
 健康检查端点 — GET /api/health
-
-需求：12.4
 """
 
 from fastapi import APIRouter

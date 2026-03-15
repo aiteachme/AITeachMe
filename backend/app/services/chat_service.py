@@ -1,7 +1,5 @@
 """
 RAG 对话编排 — 协调 retriever → context_builder → streamer 流水线
-
-需求：8.1, 8.2, 8.4
 """
 
 from __future__ import annotations

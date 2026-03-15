@@ -1,7 +1,5 @@
 """
 Exam + Question + ExamSubmission + AnswerRecord + Mistake CRUD
-
-需求：9.5, 10.1, 10.2, 10.3, 10.5, 11.6
 """
 
 from __future__ import annotations

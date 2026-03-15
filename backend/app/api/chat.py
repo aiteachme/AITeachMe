@@ -3,8 +3,6 @@
 
 POST /api/v1/subjects/{subject}/chat — SSE 流式对话
 GET  /api/v1/subjects/{subject}/chat/history — 分页对话历史
-
-需求：8.1, 8.4, 8.8
 """
 
 from __future__ import annotations
@@ -44,15 +42,15 @@ async def chat(
     return StreamingResponse(generator, media_type="text/event-stream")
 
 
-@router.get("/{subject}/chat/history", response_model=ChatHistoryResponse)
+@router.post("/{subject}/chat/history", response_model=ChatHistoryResponse)
 async def get_chat_history(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
     """分页对话历史。"""
     items, total = list_messages_by_subject(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return ChatHistoryResponse(
         items=[

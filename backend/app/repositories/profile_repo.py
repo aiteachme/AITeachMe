@@ -1,7 +1,5 @@
 """
 UserProfile CRUD — 掌握度画像数据访问
-
-需求：11.1, 11.3, 11.4
 """
 
 from __future__ import annotations

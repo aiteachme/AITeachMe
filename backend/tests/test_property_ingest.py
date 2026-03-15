@@ -4,8 +4,6 @@
 Property 1  — 解析器往返一致性（Parser Round-Trip）
 Property 11 — 学科名称校验（Subject Validation）
 Property 10 — 流水线状态机（Pipeline State Machine）
-
-验证需求：5.1, 5.10, 6.1, 6.3, 7.2, 7.4, 7.7, 7.9
 """
 
 import os

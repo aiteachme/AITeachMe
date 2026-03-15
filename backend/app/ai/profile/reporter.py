@@ -1,7 +1,5 @@
 """
 学习报告生成 — 总体掌握度、薄弱点 Top 5、复习建议
-
-需求：11.3, 11.5
 """
 
 from __future__ import annotations

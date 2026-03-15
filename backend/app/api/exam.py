@@ -4,8 +4,6 @@
 POST /api/v1/subjects/{subject}/exam/generate — 生成考卷
 POST /api/v1/exam/{exam_id}/submit — 提交答卷
 GET  /api/v1/subjects/{subject}/exam/history — 考试历史
-
-需求：9.1, 9.5, 10.1, 10.5, 10.6
 """
 
 from __future__ import annotations
@@ -98,17 +96,17 @@ async def submit_answers(
     )
 
 
-@router.get("/subjects/{subject}/exam/history", response_model=ExamHistoryResponse)
+@router.post("/subjects/{subject}/exam/history", response_model=ExamHistoryResponse)
 async def get_exam_history(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> ExamHistoryResponse:
     """分页考试历史。"""
     from app.repositories.exam_repo import list_exam_history_by_subject
 
     items, total = list_exam_history_by_subject(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return ExamHistoryResponse(
         items=[
