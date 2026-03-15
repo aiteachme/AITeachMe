@@ -1,8 +1,8 @@
 """
 文件类型路由 + Markdown Pretty Printer
 
-根据文件扩展名路由到正确的解析器，未知格式抛�?UnsupportedFileTypeError�?
-Pretty_Printer �?Markdown 进行规范化（去除多余空行、统一换行）�?
+根据文件扩展名路由到正确的解析器，未知格式抛出 UnsupportedFileTypeError。
+Pretty_Printer 对 Markdown 进行规范化（去除多余空行、统一换行）。
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from app.agents.ingest.parsers import parse_pdf, parse_pptx, parse_docx, parse_i
 
 logger = structlog.get_logger()
 
-# 扩展�?�?解析器映�?
+# 扩展名 → 解析器映射
 _PARSER_MAP: dict[str, callable] = {
     ".pdf": parse_pdf,
     ".ppt": parse_pptx,
@@ -33,16 +33,16 @@ SUPPORTED_EXTENSIONS = frozenset(_PARSER_MAP.keys())
 
 
 async def parse_file(file_path: str | Path) -> str:
-    """根据文件扩展名路由到对应解析器，返回 Markdown 文本�?
+    """根据文件扩展名路由到对应解析器，返回 Markdown 文本。
 
     Args:
-        file_path: 文件路径�?
+        file_path: 文件路径。
 
     Returns:
-        规范化后�?Markdown 文本�?
+        规范化后的 Markdown 文本。
 
     Raises:
-        UnsupportedFileTypeError: 不支持的文件格式�?
+        UnsupportedFileTypeError: 不支持的文件格式。
     """
     file_path = Path(file_path)
     ext = file_path.suffix.lower()
@@ -57,7 +57,7 @@ async def parse_file(file_path: str | Path) -> str:
 
 
 def pretty_print(markdown: str) -> str:
-    """Markdown 规范化：去除多余空行、修剪尾部空白、确保文件末尾换行�?""
+    """Markdown 规范化：去除多余空行、修剪尾部空白、确保文件末尾换行。"""
     if not markdown:
         return ""
 
@@ -66,7 +66,7 @@ def pretty_print(markdown: str) -> str:
     # 去除每行尾部空白
     lines = [line.rstrip() for line in lines]
 
-    # 合并连续空行为最多一个空�?
+    # 合并连续空行为最多一个空行
     result: list[str] = []
     prev_blank = False
     for line in lines:
@@ -83,7 +83,7 @@ def pretty_print(markdown: str) -> str:
         result.pop()
 
     text = "\n".join(result)
-    # 确保文件末尾有换�?
+    # 确保文件末尾有换行
     if text and not text.endswith("\n"):
         text += "\n"
     return text

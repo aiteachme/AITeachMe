@@ -1,9 +1,9 @@
 """
-自动判分与错题分�?
+自动判分与错题分析
 
 客观题（single_choice、fill_blank）：确定性字符串比较
-主观题（short_answer）：LLM 二元判分�? �?1�?
-为每道错题生�?AI 错因分析，写�?Mistake �?
+主观题（short_answer）：LLM 二元判分（0 或 1）
+为每道错题生成 AI 错因分析，写入 Mistake 表
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ async def grade_exam(
     answers: dict[str, str],
 ) -> tuple[ExamSubmission, list[AnswerRecord], list[Mistake]]:
     """
-    判分完整流程�?
+    判分完整流程：
 
-    1. 逐题判分（客观题确定性比较，主观�?LLM 判分�?
+    1. 逐题判分（客观题确定性比较，主观题 LLM 判分）
     2. 计算总分 score = correct_count / total × 100
     3. 创建 ExamSubmission + AnswerRecord
-    4. 为错题生�?AI 错因分析 �?Mistake
-    5. 触发 Profile 引擎更新掌握�?
+    4. 为错题生成 AI 错因分析 → Mistake
+    5. 触发 Profile 引擎更新掌握度
 
     Returns:
         (submission, answer_records, mistakes)
@@ -77,7 +77,7 @@ async def grade_exam(
         session, submission, records
     )
 
-    # 4. 为错题生�?AI 错因分析
+    # 4. 为错题生成 AI 错因分析
     wrong_results = [
         (r, rec)
         for r, rec in zip(grading_results, records)
@@ -109,29 +109,29 @@ async def grade_exam(
 
 
 async def _grade_single(question: Question, user_answer: str) -> bool:
-    """判分单道题目�?""
+    """判分单道题目。"""
     q_type = question.type
 
     if q_type in (QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value):
-        # 客观题：确定性字符串比较（忽略首尾空白、大小写�?
+        # 客观题：确定性字符串比较（忽略首尾空白、大小写）
         return user_answer.strip().lower() == question.answer.strip().lower()
 
     if q_type == QuestionType.SHORT_ANSWER.value:
         # 主观题：LLM 二元判分
         return await _llm_grade_short_answer(question, user_answer)
 
-    # 未知题型，默认按字符串比�?
+    # 未知题型，默认按字符串比较
     return user_answer.strip().lower() == question.answer.strip().lower()
 
 
 async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
-    """LLM 二元判分：判断简答题是否基本正确�? �?1）�?""
+    """LLM 二元判分：判断简答题是否基本正确（0 或 1）。"""
     messages = [
         ChatMessage(
             role=SYSTEM,
             content=(
                 "你是一位严谨的阅卷老师。请判断学生的回答是否基本正确。\n"
-                "只需回复 1（基本正确）�?0（不正确），不要输出其他内容�?
+                "只需回复 1（基本正确）或 0（不正确），不要输出其他内容。"
             ),
         ),
         ChatMessage(
@@ -140,7 +140,7 @@ async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
                 f"题目：{question.stem}\n"
                 f"参考答案：{question.answer}\n"
                 f"学生回答：{user_answer}\n\n"
-                f"判分�? �?0）："
+                f"判分（1 或 0）："
             ),
         ),
     ]
@@ -154,11 +154,11 @@ async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
 
 
 async def _generate_mistake_analysis(question: Question, user_answer: str) -> str:
-    """为错题生�?AI 错因分析�?""
+    """为错题生成 AI 错因分析。"""
     messages = [
         ChatMessage(
             role=SYSTEM,
-            content="你是一位耐心的老师，请分析学生答错的原因并给出改进建议。简洁明了，100字以内�?,
+            content="你是一位耐心的老师，请分析学生答错的原因并给出改进建议。简洁明了，100字以内。",
         ),
         ChatMessage(
             role=USER,
@@ -175,7 +175,7 @@ async def _generate_mistake_analysis(question: Question, user_answer: str) -> st
         return await acompletion(messages)
     except Exception:
         logger.warning("mistake_analysis_fallback", question_key=question.question_key)
-        return "错因分析生成失败，请参考正确答案自行复习�?
+        return "错因分析生成失败，请参考正确答案自行复习。"
 
 
 

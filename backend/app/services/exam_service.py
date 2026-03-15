@@ -1,5 +1,5 @@
 """
-考试编排 �?协调 generator �?保存 �?返回，submit �?grader �?profile
+考试编排 — 协调 generator → 保存 → 返回，submit → grader → profile
 """
 
 from __future__ import annotations
@@ -31,10 +31,10 @@ async def create_exam(
     knowledge_points: list[str] | None = None,
 ) -> tuple[Exam, list[Question]]:
     """
-    生成考卷并持久化�?
+    生成考卷并持久化。
 
     Returns:
-        (exam, questions) �?questions 不含 answer（由 API �?DTO 过滤�?
+        (exam, questions) — questions 不含 answer（由 API 层 DTO 过滤）
     """
     # 1. AI 生成题目
     questions = await generate_exam(
@@ -45,7 +45,7 @@ async def create_exam(
         knowledge_points=knowledge_points,
     )
 
-    # 2. 持久�?
+    # 2. 持久化
     exam = Exam(subject=subject)
     exam, questions = exam_repo.create_exam_with_questions(session, exam, questions)
 
@@ -60,7 +60,7 @@ async def submit_exam(
     answers: dict[str, str],
 ) -> tuple[ExamSubmission, list[AnswerRecord], list[Mistake], list[Question]]:
     """
-    提交答卷 �?判分 �?profile 更新�?
+    提交答卷 → 判分 → profile 更新。
 
     Returns:
         (submission, answer_records, mistakes, questions)
@@ -72,7 +72,7 @@ async def submit_exam(
 
     questions = exam_repo.get_questions_by_exam_id(session, exam_id)
 
-    # 2. 判分（含 profile 更新�?
+    # 2. 判分（含 profile 更新）
     submission, records, mistakes = await grade_exam(
         session,
         exam_id=exam_id,
