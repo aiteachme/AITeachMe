@@ -6,6 +6,10 @@ FastAPI 后端服务。
 
 所有依赖在 `backend/pyproject.toml` 中声明，`requirements.txt` 用于锁定版本。
 
+
++设计环境变量
+
+
 ```bash
 pip install -e .
 uvicorn app.main:app --reload --port 8000

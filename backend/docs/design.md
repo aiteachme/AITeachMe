@@ -1,511 +1,309 @@
-# AITeachMe — 后端架构设计文档
+# AITeachMe Backend Design
 
+## 1. 文档目标
 
-# 设计文档
+本文档描述 `backend/app` 当前真实可运行的后端结构、核心数据流和后续演进边界。
 
-## 一、技术选型 — The "All-in-SQLite" Stack
+这次重构明确采用以下约束：
 
-| 层级 | 选型 | 一句话理由 |
+- 不变更现有路由路径
+- 不变更现有 HTTP 方法
+- 不变更现有请求/响应 JSON 结构
+- 不引入数据库 schema 迁移
+- 重点提升代码可读性、模块职责清晰度和 OpenAPI / Redoc 可读性
+
+本文档区分两类内容：
+
+- 当前实现：已经在仓库中落地并与代码保持一致
+- 未来演进：作为后续版本的扩展方向，不应被误解为当前结构
+
+## 2. 当前架构总览
+
+### 2.1 技术栈
+
+| 层 | 当前选型 | 说明 |
 | --- | --- | --- |
-| **Web 框架** | FastAPI | 原生异步 + 自动 OpenAPI 文档 + 类型安全，Python AI 后端事实标准 |
-| **数据库** | SQLite + sqlite-vec | **架构灵魂**——关系表与向量 Embedding 共存于单个 `.db` 文件，彻底零配置 |
-| **ORM** | SQLModel | Pydantic（校验）+ SQLAlchemy（ORM）合一，一份模型同时用于 API 校验与建表 |
-| **Agent 编排** | LangGraph | 状态机（State Graph）模式，比 CrewAI 更透明可控，适合教学循环的条件分支 |
-| **文档解析** | MarkItDown / PyMuPDF4LLM | 微软开源，专为将复杂文档（表格、公式、排版）转化为 LLM 友好 Markdown 而生 |
-| **结构化输出** | Instructor | 强制 LLM 输出符合 JSON Schema 的结构化数据，自动重试与校验 |
-| **LLM 调用** | LiteLLM | 统一接口适配 100+ 模型（OpenAI / Claude / DeepSeek / 本地模型） |
+| Web 框架 | FastAPI | 提供异步接口、依赖注入和 OpenAPI 文档生成 |
+| 数据库 | SQLite + sqlite-vec | 同时承载关系数据和向量检索，降低部署复杂度 |
+| ORM / 数据模型 | SQLModel | 用于表模型和数据库访问 |
+| LLM 调用 | LiteLLM | 统一对接聊天与 embedding 模型 |
+| 结构化输出 | Instructor | 用于大纲提取、试卷生成等结构化 LLM 输出 |
+| Agent 编排 | LangGraph | 目前主要用于 Digest 流程编排 |
+| 文档解析 | MarkItDown / PyMuPDF4LLM | 将上传文件转为后续处理使用的 Markdown |
 
-### 架构分层
+### 2.2 运行时分层
 
-```Plain
-┌─────────────────────────────────────────────────────────────────┐
-│                       🖥  前端展示层                             │
-│          Streamlit (MVP)  →  Reflex / Web / Desktop             │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │  HTTP · WebSocket · SSE
-┌──────────────────────▼──────────────────────────────────────────┐
-│                     ⚙️  FastAPI 服务层                           │
-│   ┌──────────┬──────────┬──────────┬──────────┬──────────┐     │
-│   │ Ingest   │ Digest   │ Interact │ Examine  │ Profile  │     │
-│   │ Engine   │ Engine   │ Engine   │ Engine   │ Engine   │     │
-│   └──────────┴──────────┴──────────┴──────────┴──────────┘     │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────────┐
-│                    🧠  LangGraph 编排层                          │
-│           状态机工作流 · Agent 调度 · Tool Calling                │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────────┐
-│                    💾  数据持久层                                 │
-│       SQLite（关系） + sqlite-vec（向量） + 本地文件系统          │
-└─────────────────────────────────────────────────────────────────┘
+```text
+app/
+├── main.py                 FastAPI 应用工厂、生命周期、路由注册
+├── api/                    路由层，保持 thin controller
+├── services/               编排层，连接 API、仓储、agents
+├── repositories/           数据访问层，负责 SQLModel CRUD 与查询
+├── agents/                 业务能力实现层
+├── schemas/                API 请求/响应模型
+├── core/                   配置、数据库、日志、异常、LLM/embedding 封装
+└── utils/                  轻量工具函数
 ```
 
----
+### 2.3 当前引用方向
 
-## 二、项目目录结构
+当前代码约束为单向依赖，避免横向耦合：
 
-### 2.1 源码工程结构
+- `api -> services -> repositories / agents -> core`
+- `schemas` 主要被 `api` 和少量 `services` 用于响应模型装配
+- `repositories` 不依赖 `api`
+- `agents` 不依赖 `api`
 
-```Plain
-aiteachme/
-│
-├── pyproject.toml                      # 项目元数据、依赖、构建配置
-├── requirements.txt                    # pip 依赖锁定
-├── Dockerfile
-│
-├── app/                                # -------- 应用主包 --------
-│   ├── __init__.py
-│   ├── main.py                         # FastAPI 应用工厂 & 路由注册
-│   ├── config.py                       # Pydantic Settings 环境配置
-│   ├── database.py                     # SQLite + sqlite-vec 引擎初始化
-│   │
-│   ├── models/                         # ---- 数据库模型 (SQLModel) ----
-│   │   ├── __init__.py
-│   │   ├── raw_file.py                 # RawFile：上传文件元数据
-│   │   ├── knowledge.py                # Knowledge：知识长文档
-│   │   ├── chunk.py                    # Chunk + Chunks_vec：切块 & 向量
-│   │   ├── knowledge_graph.py          # KnowledgeNode：知识图谱节点
-│   │   ├── chat.py                     # ChatMessage：对话记录
-│   │   ├── exam.py                     # Exam + Question：试卷 & 题目
-│   │   ├── mistake.py                  # Mistake：错题本
-│   │   └── profile.py                  # UserProfile：学习画像
-│   │
-│   ├── schemas/                        # ---- Pydantic 请求 / 响应 DTO ----
-│   │   ├── __init__.py
-│   │   ├── upload.py                   # 上传文件请求 & 进度响应
-│   │   ├── knowledge.py                # 知识文档 & 图谱响应
-│   │   ├── chat.py                     # 对话请求 & 流式响应
-│   │   ├── exam.py                     # 出题请求 & 判分响应
-│   │   └── profile.py                  # 画像 & 学习报告响应
-│   │
-│   ├── api/                            # ---- 路由层 (Thin Controller) ----
-│   │   ├── __init__.py
-│   │   ├── deps.py                     # 公共依赖注入 (DB Session, Auth…)
-│   │   ├── upload.py                   # POST /upload, GET /upload/status
-│   │   ├── knowledge.py                # GET /knowledge, /knowledge/doc
-│   │   ├── chat.py                     # POST /chat, GET /chat/history
-│   │   ├── exam.py                     # POST /exam/generate, /exam/submit
-│   │   └── profile.py                  # GET /profile, /profile/report
-│   │
-│   ├── agents/                        # ---- 五大引擎 (核心业务) ----
-│   │   ├── __init__.py
-│   │   │
-│   │   ├── ingest/                     # 📥 摄入解析引擎
-│   │   │   ├── __init__.py
-│   │   │   ├── orchestrator.py         #   解析调度：按文件类型路由
-│   │   │   ├── parsers/                #   各格式解析器
-│   │   │   │   ├── pdf.py              #     PDF → Markdown (PyMuPDF4LLM/MarkItDown)
-│   │   │   │   ├── pptx.py             #     PPT → Markdown (python-pptx)
-│   │   │   │   ├── image.py            #     图片 → 文本 (PaddleOCR)
-│   │   │   │   └── docx.py             #     Word → Markdown (python-docx)
-│   │   │   └── tasks.py                #   异步任务入口
-│   │   │
-│   │   ├── digest/                     # 📚 消化索引引擎
-│   │   │   ├── __init__.py
-│   │   │   ├── workflow.py             #   LangGraph 状态机工作流
-│   │   │   ├── cleaner.py              #   Markdown 清洗
-│   │   │   ├── chunker.py              #   按标题层级切块
-│   │   │   ├── embedder.py             #   批量向量化 (LiteLLM)
-│   │   │   └── graph_builder.py        #   知识图谱构建
-│   │   │
-│   │   ├── interact/                   # 💬 交互辅导引擎
-│   │   │   ├── __init__.py
-│   │   │   ├── workflow.py             #   LangGraph 教学循环
-│   │   │   ├── retriever.py            #   RAG 向量检索
-│   │   │   ├── memory.py              #   对话记忆压缩
-│   │   │   └── tutor.py                #   苏格拉底式教学 Agent
-│   │   │
-│   │   ├── examine/                    # 📝 测验判卷引擎
-│   │   │   ├── __init__.py
-│   │   │   ├── workflow.py             #   LangGraph 出题→判卷流
-│   │   │   ├── generator.py            #   Instructor 结构化出题
-│   │   │   └── grader.py               #   自动判分 + 错因分析
-│   │   │
-│   │   └── profile/                    # 📊 学习画像引擎
-│   │       ├── __init__.py
-│   │       ├── tracker.py              #   掌握度计算 (BKT)
-│   │       └── reporter.py             #   画像报告生成
-│   │
-│   └── core/                           # ---- 基础设施 & 工具 ----
-│       ├── __init__.py
-│       ├── llm.py                      # LiteLLM 统一封装
-│       ├── embedding.py                # Embedding 统一封装
-│       ├── logger.py                   # 结构化日志
-│       └── exceptions.py               # 全局异常定义
-│
-└── tests/                              # -------- 测试 --------
-    ├── conftest.py
-    ├── test_ingest.py
-    ├── test_digest.py
-    ├── test_interact.py
-    ├── test_examine.py
-    └── test_profile.py
+这不是严格的 DDD 或六边形架构，但对当前 MVP 规模足够清晰，并保留了后续拆分空间。
+
+## 3. 当前目录说明
+
+### 3.1 app 目录
+
+```text
+app/
+├── api/
+│   ├── health.py           健康检查
+│   ├── upload.py           上传、任务状态、文件列表
+│   ├── knowledge.py        大纲与文档查询
+│   ├── chat.py             流式对话与历史消息
+│   ├── exam.py             出题、交卷、考试历史
+│   ├── profile.py          画像、报告、错题本
+│   ├── deps.py             公共依赖
+│   └── docs.py             OpenAPI 公共响应定义
+├── services/
+│   ├── upload_service.py   上传与解析编排
+│   ├── knowledge_service.py
+│   ├── chat_service.py
+│   ├── exam_service.py
+│   ├── profile_service.py
+│   ├── presenters.py       ORM/查询结果 -> API DTO 映射
+│   └── upload_support.py   上传路径与聚合状态辅助逻辑
+├── repositories/
+│   ├── models.py           所有 SQLModel 表与枚举
+│   ├── ingest_repo.py
+│   ├── knowledge_repo.py
+│   ├── chat_repo.py
+│   ├── exam_repo.py
+│   └── profile_repo.py
+├── agents/
+│   ├── ingest/             文件解析
+│   ├── digest/             Markdown 清洗、大纲提取、切块、向量化、工作流
+│   ├── interact/           检索、上下文拼装、流式输出
+│   ├── examine/            试卷生成与判分
+│   └── profile/            掌握度更新与报告生成
+├── schemas/                API 请求/响应模型与 API 枚举
+├── core/                   settings、db、llm、embedding、logger、exceptions
+└── utils/                  subject 校验等轻量工具
 ```
 
-**架构说明：**
+### 3.2 为什么不是 `models/` 目录
 
-*   **五大引擎模式**：每个引擎对应一个核心业务能力，内部采用 LangGraph 状态机编排
-    
-*   **引用链规则**：`api/` → `engines/` → `core/` + `models/`，严格单向依赖
-    
-*   **演进路径**：未来可将 `engines/` 平滑演进为 `agents/` 中的独立服务（参见 standard-01 第 10 节）
-    
+历史设计文档里曾经规划过 `app/models/` 拆分多个表模型文件，但当前仓库实际没有这样做。
 
-### 2.2 运行时数据目录
+当前真实实现是：
 
-每位用户的学科数据独立存放，核心理念：**一个学科 = 一个文件夹 + 一个** `**.db**` **文件**。
+- 所有表模型集中在 `app/repositories/models.py`
+- 这样做减少了 MVP 阶段的跳转成本
+- 代价是单文件偏大，但目前仍在可维护范围内
 
-```Plain
-work_dir/                                 # 本地数据根目录
-├── config.yaml                           # 全局配置（API Key、模型选择…）
-│
-└── <subject>/                            # 每个学科一个目录（如 "计算机网络"）
-    ├── raw/                              #   用户上传的原始文件
-    ├── markdown/                         #   Ingest 解析后的 Markdown（与 raw 一一对应）
-    ├── assets/                           #   从文档中提取的图片资源
-    │
-    └── <subject>.db                      #   该学科的 SQLite 数据库 ──────────────
-         │                                #                                       │
-         ├─ RawFiles          上传文件元数据 + 解析状态 (pending→processed)          │
-         ├─ Knowledge         知识长文档（Markdown，可直接渲染展示）                  │
-         ├─ Chunks            Knowledge 按标题切分的最小知识块                      │
-         ├─ Chunks_vec        Chunks 的 Embedding 向量（sqlite-vec 虚表）          │
-         ├─ KnowledgeGraph    知识点层级大纲 / 图谱节点                             │
-         ├─ ChatHistory       Interact 对话日志                                    │
-         ├─ Examine           生成的测验试卷（JSON 题目列表）                       │
-         ├─ Mistakes          错题本（含 AI 错因分析）                               │
-         └─ UserProfile       各知识点掌握度画像 (mastery 0.0~1.0)                 │
-                                          #  ─────────────────────────────────────
-```
+因此本文档不再将不存在的 `app/models/` 结构描述为现状。
 
----
+## 4. 核心数据流
 
-## 三、五大引擎设计
+### 4.1 Upload / Ingest
 
-### 3.1 Ingest Engine — 摄入解析 — "先让 AI 老师读取知识"
+1. `POST /api/v1/upload` 接收文件与 `subject`
+2. `upload_service.handle_upload()` 完成：
+   - 文件大小校验
+   - 临时落盘
+   - 创建 `RawFile`
+   - 移动到正式路径
+3. `upload_service.process_and_parse()` 完成：
+   - 更新 `parse_status`
+   - 调用 ingest parser 转 Markdown
+   - 保存 Markdown 文件
+   - 创建 `Knowledge`
+4. API 层通过 `BackgroundTasks` 触发 Digest 工作流
 
-将用户上传的多格式资料统一转化为系统可读的结构化文本。
+### 4.2 Digest
 
-|  | 说明 |
+Digest 负责把解析后的 Markdown 变成可读、可检索、可导航的数据。
+
+当前阶段顺序：
+
+1. `clean`
+2. `outline`
+3. `store_knowledge`
+4. `chunk`
+5. `embed`
+
+状态持久化字段为 `Knowledge.pipeline_stage`，值为：
+
+- `pending`
+- `cleaned`
+- `outlined`
+- `stored`
+- `chunked`
+- `embedded`
+- `failed`
+
+当前实现特点：
+
+- 用 LangGraph 串联步骤
+- 每个步骤成功后统一写回阶段
+- `failed` 可恢复为从 `clean` 重新开始
+- `embedded` 视为已完成，不再重复执行
+
+### 4.3 Interact
+
+对话链路由以下部分组成：
+
+1. `chat_service.chat_stream()`
+2. `retriever.retrieve()` 执行向量检索
+3. `context_builder.build_system_prompt()` 注入：
+   - 检索到的知识块
+   - 用户划词上下文
+   - 最近对话
+   - 薄弱点
+   - 近期错题
+4. `streamer.stream_chat_response()` 执行流式 LLM 输出并持久化对话
+
+当前对话响应保持为 SSE，不改协议。
+
+### 4.4 Examine
+
+试卷链路：
+
+1. `exam_service.create_exam()`
+2. `agents.examine.generator.generate_exam()` 使用结构化输出生成题目
+3. 保存 `Exam` 和 `Question`
+4. `exam_service.submit_exam()` 触发判分
+5. `agents.examine.grader.grade_exam()`：
+   - 客观题规则判分
+   - 主观题 LLM 判分
+   - 错题分析
+   - 更新画像
+
+### 4.5 Profile
+
+画像链路：
+
+1. `tracker.update_profiles_from_grading()` 按知识点增量更新掌握度
+2. `reporter.generate_report()` 聚合：
+   - overall mastery
+   - weak points top 5
+   - LLM 生成复习建议
+
+## 5. 数据模型
+
+当前所有表位于 `app/repositories/models.py`。
+
+关键表如下：
+
+| 表 | 用途 |
 | --- | --- |
-| **输入** | 上传文件 `UploadFile`（PDF / PPT / 图片），存入 `<subject>/raw/` |
-| **输出** | 结构化 Markdown（存入 `<subject>/markdown/`）+ 独立图片资源（存入 `<subject>/assets/`） |
+| `raw_file` | 上传文件元数据与解析状态 |
+| `knowledge` | 解析后的知识文档及 digest 阶段 |
+| `chunk` | 面向检索的知识块 |
+| `chunk_embeddings` | sqlite-vec 虚表，保存 chunk embedding |
+| `knowledge_graph_node` | 文档大纲树节点 |
+| `chat_message` | 历史问答记录 |
+| `exam` | 考卷主表 |
+| `question` | 考卷题目 |
+| `exam_submission` | 交卷记录 |
+| `answer_record` | 每题作答结果 |
+| `mistake` | 错题与错因分析 |
+| `user_profile` | 按知识点聚合的掌握度画像 |
 
-**核心工作流：**
+说明：
 
-1.  用户上传 → 文件落盘 `/raw` → `RawFiles` 表记录状态 `pending`
-    
-2.  按文件类型路由到对应解析器，将文件转为 Markdown + 图片
-    
-    1.  **导包解析**（快速、免费）：PyMuPDF4LLM / MarkItDown、python-pptx、PaddleOCR
-        
-    2.  **大模型解析**（慢、贵、高精度）：文档转图片 → 多模态 LLM 视觉理解
-        
-    3.  自动分离图片与文本，图片用本地相对路径引用
-        
-3.  Markdown 落入 `/markdown`（与原件一一对应），更新 `RawFiles` 状态 → `processed`
-    
-4.  **自动触发** Digest Engine 进行后续索引
-    
+- 本次重构不修改以上表结构
+- 本次重构不新增迁移脚本
+- 重点优化的是代码组织与文档表达，而非持久化模型
 
-#### 细节
+## 6. API 设计约束
 
-1.  输入模态包括 text(直接粘贴文本) jpg, png, webp +音频+视频
-    
+### 6.1 兼容性约束
 
-是否要再外部检索？（应该可以使用api的工具
+为了保持前端兼容，本次重构明确不做以下改动：
 
-支持文本文件，支持所有正常格式（直接用markitdown）的话
+- 不把现有查询型 `POST` 改成 `GET`
+- 不重命名现有路径
+- 不重命名现有字段
+- 不调整 SSE 响应格式
 
-*   输入api\_key或者api\_key+base\_url后，不用自己手动选模型，只用自己选预期价格
-    
+### 6.2 本次增强点
 
-阿里云百炼
+虽然接口契约不变，但 OpenAPI 文档应更清晰：
 
-*   平台大
-    
-*   配置也比较简单
-    
+- 每个 endpoint 增加 summary / description / response_description
+- 公共错误响应使用统一模型
+- 请求/响应字段增加描述与示例
+- 用 API 枚举补足 `parse_status`、`pipeline_stage`、`question_type` 等字段说明
 
-报销记录
+## 7. 当前已知边界
 
-一个就是暂时用的阿里云百炼，或者就用硅基流动
+### 7.1 当前结构的优点
 
-还有一个就是agent ide，这里我都是咸鱼买的
+- 对小团队和 MVP 开发速度友好
+- SQLite + sqlite-vec 部署简单
+- `api / services / repositories / agents` 边界对当前规模足够清楚
+- 通过 `schemas` 能较好支撑 Redoc/OpenAPI
 
-推荐 claude code, codex, antigravity
+### 7.2 当前结构的限制
 
-报账的时候单独找我说下
+- `repositories/models.py` 仍然偏大
+- 部分 service 仍承担了少量 DTO 组装职责
+- 单体 SQLite 适合单机场景，不适合高并发横向扩容
+- Digest / Examine / Interact 的流程编排深度还不一致
 
----
+## 8. 未来演进
 
-### 3.2 Digest Engine — 消化索引 — "AI 老师备课提炼考点"
+以下内容属于未来方向，不代表当前实现：
 
-将 Ingest 解析出的文档分门别类、分章节整理，提取知识图谱，切块并向量化。
+### 8.1 模型拆分
 
-|  | 说明 |
-| --- | --- |
-| **输入** | Ingest 输出的 Markdown 文本 |
-| **输出** | 向量数据（`Chunks_vec`）+ 知识点层级树（`KnowledgeGraph`） |
+可以在后续版本将 `repositories/models.py` 拆分为：
 
-**核心工作流（LangGraph 状态机）：**
+- `models/content.py`
+- `models/chat.py`
+- `models/exam.py`
+- `models/profile.py`
 
-1.  **清洗** — 去除多余空行、修正格式
-    
-2.  **知识大纲提取** — LLM 通读 Markdown，生成层级大纲 → 写入 `KnowledgeGraph` 表
-    
-3.  **长文档落库** — 清洗后适合阅读的 Markdown → 写入 `Knowledge` 表（供前端滑选展示）
-    
-4.  **切块与向量化** — 按标题层级 Chunking → 计算 Embedding → 写入 `Chunks` + `Chunks_vec`，与 KnowledgeGraph 节点 ID 外键绑定
-    
+前提是：
 
----
+- 不破坏现有导入路径的稳定性，或先完成统一导入层
+- 伴随测试完善一起进行
 
-### 3.3 Interact Engine — 交互辅导 — "一对一苏格拉底教学"
+### 8.2 服务拆分
 
-基于 RAG 的全天候在线 AI 教师智能体，引导用户独立思考。
+如果业务规模继续增大，可考虑演进为：
 
-|  | 说明 |
-| --- | --- |
-| **输入** | 用户提问字符串（自由提问 或 **划词提问**——选中知识文档原文进行提问） |
-| **输出** | 结合 RAG 的 SSE 流式回复 + QA 对话记录入库（含用户掌握情况记忆） |
+- API Gateway
+- Content / Knowledge 服务
+- Chat 服务
+- Exam 服务
+- Profile 服务
 
-**核心工作流（LangGraph 教学循环）：**
+当前代码中 `services` 与 `agents` 的边界，就是未来服务拆分的最小雏形。
 
-1.  **RAG 检索** — 去 `Chunks_vec` 做相似度搜索，捞出最相关的知识切块
-    
-2.  **记忆加载** — 加载历史对话摘要 + 错题整理 + 用户画像薄弱项
-    
-3.  **思考与生成** — LLM 结合"检索知识" + "用户记忆" + "当前问题"，以苏格拉底式引导生成回复，**SSE 流式返回**
-    
-4.  **入库** — 问答追加进 `ChatHistory` 表
-    
+### 8.3 更强的异步执行
 
----
+当前 upload 后的 digest 由 FastAPI `BackgroundTasks` 驱动，后续可升级为：
 
-### 3.4 Examine Engine — 测验判卷 — "摸底考试与错因分析"
+- 任务队列
+- 可重试 worker
+- 独立 pipeline monitor
 
-策略性出题 + 自动判分 + 深度错因分析。
+但这些都不属于这次重构的范围。
 
-|  | 说明 |
-| --- | --- |
-| **输入** | 知识点范围（默认随机按章节）、参考试卷格式（可选）、用户画像（可选）、历史作答（可选） |
-| **输出** | **生成阶段**：JSON 结构化考卷（题干、选项、答案、解析分离）；**判卷阶段**：判分 + 错因分析 |
-
-**核心工作流：**
-
-1.  **出题** — 读取 `KnowledgeGraph` 确定范围 + `UserProfile` 锁定薄弱项 + 历史错题避免重复 → Instructor 结构化生成 `{题目, 选项, 答案, 解析}` → 自我校验 → 存入 `Examine` 表
-    
-2.  **判卷** — 收卷后自动判分，错题写入 `Mistakes` 表（含 AI 错因分析），**自动触发** Profile Engine 更新画像
-    
-
----
-
-### 3.5 Profile Engine — 学习画像 — "比你更了解你自己"
-
-持续跟踪用户在每个知识点上的掌握情况——**"真人教师脑中那份对每个学生的了解"的数字化映射**。
-
-|  | 说明 |
-| --- | --- |
-| **输入** | Examine 判分结果 + Interact 对话记录 + 用户主动上传的错题 |
-| **输出** | 各知识点掌握度（0.0~1.0）、薄弱项排序列表、学习进度报告（雷达图/进度条）、复习建议 |
-
-**核心工作流：**
-
-1.  **数据采集** — 每次 Examine 判分后自动触发，提取每题 `knowledge_points` + `is_correct` 写入 `UserProfile`
-    
-2.  **掌握度计算** — MVP 使用 `P(掌握) = correct / attempts`；Phase 2 升级 BKT 贝叶斯知识追踪模型
-    
-3.  **薄弱项识别** — 筛选 `mastery < 0.6` 按升序排列
-    
-4.  **画像供给** — ① → Interact：注入 `sys_prompt`，让 AI 教师重点讲解薄弱项；② → Examine：优先从薄弱知识点出题
-    
-
----
-
-### 引擎协作全景
-
-```Plain
-    ┌────────────┐          ┌────────────┐
-    │  用户上传   │─────────▶│   Ingest   │ ──── 解析资料
-    └────────────┘          └──────┬─────┘
-                                   │ 自动触发
-                            ┌──────▼─────┐
-                            │   Digest   │ ──── 切块·建图谱·向量化
-                            └──────┬─────┘
-                   ┌───────────────┼───────────────┐
-                   ▼               ▼               ▼
-           ┌──────────────┐ ┌──────────────┐ ┌────────────┐
-           │  Interact    │ │  Examine     │ │ Knowledge  │
-           │  RAG 对话辅导 │ │  策略出题判卷 │ │ Graph 展示 │
-           └──────┬───────┘ └──────┬───────┘ └────────────┘
-                  │                │
-                  └────────┬───────┘
-                           ▼
-                   ┌──────────────┐
-                   │   Profile    │ ──── 画像计算·薄弱项识别
-                   └──────┬───────┘
-            ┌─────────────┴─────────────┐
-            ▼                           ▼
-    Interact Engine              Examine Engine
-    (个性化辅导策略)              (针对薄弱项出题)
-```
-
----
-
-## 四、API 接口设计
-
-### 4.1 资料上传与解析 · Ingest
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `POST` | `/upload` | 上传文档。`file: UploadFile`, `subject: str` → 返回 `task_id`，后台异步解析 |
-| `GET` | `/upload/{task_id}/status` | 查询解析进度（pending → processing → processed / failed） |
-| `GET` | `/files/{subject}` | 列出该学科全部已上传文件及状态 |
-
-### 4.2 知识展现 · Digest / Knowledge
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/knowledge/{subject}/outline` | 获取知识大纲树 / 图谱结构（`KnowledgeGraph`） |
-| `GET` | `/knowledge/{subject}/document` | 获取可渲染的 Markdown 长文档（`Knowledge` 表） |
-
-### 4.3 智能辅导 · Interact
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `POST` | `/chat` | 发送提问。`subject`, `question`, `selected_context`(可选) → **SSE 流式回复** |
-| `GET` | `/chat/history/{subject}` | 拉取该学科历史对话记录 |
-
-### 4.4 测验诊断 · Examine
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `POST` | `/exam/generate` | AI 生成考卷。`subject`, `knowledge_points`(可选), `template`(可选) |
-| `POST` | `/exam/{exam_id}/submit` | 提交作答并自动判分。`answers: Dict[str, str]` → 返回成绩 + 错因分析 |
-| `GET` | `/exam/history/{subject}` | 历史测验列表 |
-
-### 4.5 学习画像 · Profile
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/profile/{subject}` | 获取各知识点掌握度与薄弱项列表 |
-| `GET` | `/profile/{subject}/report` | 学习进度报告 + 下一步复习建议 |
-| `GET` | `/mistakes/{subject}` | 错题本列表 |
-
----
-
-## 五、数据库设计蓝图
-
-| 表名 | 核心职责 | 关键字段 |
-| --- | --- | --- |
-| **RawFiles** | 上传文件元数据 & 解析状态追踪 | `id`, `subject`, `filename`, `filetype`, `status`, `file_path` |
-| **Knowledge** | 解析归纳后的长文知识文档（Markdown，直接展示） | `doc_id`, `subject`, `title`, `content`, `source_file_id` |
-| **Chunks** | Knowledge 按标题切分后的最小知识块 | `chunk_id`, `doc_id`, `title`, `level`, `content`, `prev/next_chunk_id` |
-| **Chunks\_vec** | sqlite-vec 向量虚表，存储 Embedding 用于 RAG | `chunk_id`, `embedding FLOAT[1536]` |
-| **KnowledgeGraph** | 知识点层级大纲 / 图谱节点（自引用树） | `node_id`, `parent_id`, `doc_id`, `title`, `level`, `order` |
-| **ChatHistory** | Interact 对话日志 | `id`, `user_id`, `subject`, `role`, `content`, `contexts` |
-| **Examine** | 生成的测验试卷 | `exam_id`, `user_id`, `subject`, `questions`(JSON) |
-| **Mistakes** | 错题本（含 AI 错因分析） | `mistake_id`, `exam_id`, `question_id`, `user_answer`, `analysis` |
-| **UserProfile** | 知识点掌握度画像 | `user_id`, `subject`, `knowledge_point`, `mastery`, `attempts`, `correct` |
-
----
-
-## 六、架构演进与标准合规
-
-### 6.1 与项目标准的关系
-
-本设计文档遵循以下项目标准：
-
-*   **\[standard-01-project-directory-architecture.md\](./github\_standards/standard-01-project-directory-architecture.md)**
-    
-    *   采用 MVP 兼容形态的目录结构
-        
-    *   五大引擎架构符合 standard-01 第 4.3 节的要求
-        
-    *   引用链规则遵循 standard-01 第 7 节的约束
-        
-    *   为未来演进为 `agents/` 预留清晰边界（standard-01 第 10 节）
-        
-*   **\[standard-02-git-branch-management.md\](./github\_standards/standard-02-git-branch-management.md)**
-    
-    *   开发流程遵循 feature/bugfix/hotfix 分支策略
-        
-    *   Commit message 遵循 Conventional Commits 规范
-        
-    *   PR 审查要求至少 1 人 approve
-        
-
-### 6.2 技术选型与参考项目
-
-本设计的技术选型参考了 `[related_projects.md](./related_projects.md)` 的深度调研：
-
-| 模块 | 本设计选型 | 参考项目 | 选型理由 |
-| --- | --- | --- | --- |
-| **智能体框架** | LangGraph | LangGraph, AutoGen, CrewAI | 状态机模式最适合教学循环，可视化调试能力强 |
-| **文档解析** | PyMuPDF4LLM / MarkItDown | Marker, Docling, MinerU | 微软开源，专为 LLM 优化，零配置 |
-| **向量数据库** | sqlite-vec | Qdrant, ChromaDB, Weaviate | 嵌入式，零配置，符合 All-in-SQLite 理念 |
-| **结构化输出** | Instructor | LangChain Evaluation | 强制 LLM 输出 JSON Schema，自动重试 |
-| **LLM 调用** | LiteLLM | OpenAI SDK, Anthropic SDK | 统一接口适配 100+ 模型 |
-
-### 6.3 MVP 到正式版的演进路径
-
-根据 standard-01 第 10 节的演进规则，本架构的演进路径如下：
-
-```Plain
-MVP 阶段（当前）                    正式版阶段（未来）
-─────────────────────────────────────────────────────────
-backend/                        →  services/
-  app/                             ├── gateway/
-    engines/                       ├── content-service/
-      ├── ingest/           →      └── ...
-      ├── digest/           →  agents/
-      ├── interact/         →      ├── ingest-agent/
-      ├── examine/          →      ├── digest-agent/
-      └── profile/          →      ├── interact-agent/
-                                   ├── examine-agent/
-                                   └── profile-agent/
-```
-
-**演进要求：**
-
-*   五大引擎的边界清晰，便于未来独立部署为微服务或 Agent
-    
-*   引擎之间通过明确的接口或编排层调用，避免紧耦合
-    
-*   共享代码逐步提取到 `packages/backend/`
-    
-*   API 契约定义逐步迁移到 `packages/schemas/`
-    
-
-### 6.4 架构决策记录
-
-| 决策 | 理由 | 权衡 |
-| --- | --- | --- |
-| **All-in-SQLite** | 零配置，降低部署门槛 | 牺牲了分布式能力，但 MVP 阶段足够 |
-| **五大引擎架构** | 业务边界清晰，便于演进 | 比传统分层复杂，但更符合 AI 应用特点 |
-| **LangGraph 编排** | 状态机模式适合教学循环 | 学习曲线较陡，但可视化调试能力强 |
-| **PyMuPDF4LLM** | 专为 LLM 优化，零配置 | 功能不如 Marker 强大，但足够 MVP |
-| **Instructor** | 强制结构化输出，避免解析失败 | 增加了依赖，但大幅提升稳定性 |
-
----
-
-## 七、相关文档
-
-*   **项目标准**
-    
-    *   \[standard-01-project-directory-architecture.md\](./github\_standards/standard-01-project-directory-architecture.md) - 项目目录架构标准
-        
-    *   \[standard-02-git-branch-management.md\](./github\_standards/standard-02-git-branch-management.md) - Git 分支管理规范
-        
-*   **设计文档**
-    
-    *   \[backend\_design.md\](./backend\_design.md) - 完整代码级设计文档
-        
-    *   \[short.md\](./short.md) - 项目概述与愿景
-        
-*   **技术调研**
-    
-    *   \[related\_projects.md\](./related\_projects.md) - 参考项目深度调研
+## 9. 本次重构结论
+
+这次 `/app` 重构的落点不是“推翻重来”，而是：
+
+- 保留已验证可运行的对外契约
+- 让目录职责更一致
+- 让工作流实现更可读
+- 让 OpenAPI 更适合前端、测试和后续维护
+- 让设计文档只描述真实现状和明确标注的未来方向

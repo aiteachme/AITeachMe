@@ -1,98 +1,79 @@
-"""
-画像端点
-
-GET /api/v1/profile/{subject} — 分页掌握度列表
-GET /api/v1/profile/{subject}/report — 学习进度报告
-GET /api/v1/mistakes/{subject} — 分页错题列表
-"""
+"""Profile mastery, report, and mistake-book routes."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from sqlmodel import Session
 
+from app.api.docs import build_error_responses
 from app.api.deps import get_db, validate_subject, PaginationParams
 from app.schemas.profile import (
-    ProfileItem,
+    MistakeListResponse,
     ProfileResponse,
     ReportResponse,
-    MistakeItem,
-    MistakeListResponse,
 )
 from app.services.profile_service import get_profiles, get_report, get_mistakes
+from app.services.presenters import (
+    to_mistake_list_response,
+    to_profile_response,
+    to_report_response,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["profile"])
 
 
-@router.post("/profile/{subject}", response_model=ProfileResponse)
+@router.post(
+    "/profile/{subject}",
+    response_model=ProfileResponse,
+    summary="获取学习画像",
+    description="分页返回指定学科下的知识点掌握度记录。",
+    response_description="掌握度分页列表。",
+    responses=build_error_responses([400, 500]),
+)
 async def list_profiles(
-    body: PaginationParams,
+    body: PaginationParams = Body(..., description="分页参数。"),
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> ProfileResponse:
-    """分页掌握度列表。"""
+    """Return paginated mastery records for one subject."""
     items, total = await get_profiles(
         session, subject, limit=body.limit, offset=body.offset
     )
-    return ProfileResponse(
-        items=[
-            ProfileItem(
-                knowledge_point=p.knowledge_point,
-                mastery=p.mastery,
-                attempts=p.attempts,
-                correct=p.correct,
-            )
-            for p in items
-        ],
-        total=total,
-    )
+    return to_profile_response(items, total)
 
 
-@router.post("/profile/{subject}/report", response_model=ReportResponse)
+@router.post(
+    "/profile/{subject}/report",
+    response_model=ReportResponse,
+    summary="获取学习报告",
+    description="汇总总体掌握度、薄弱点 Top 5 与个性化复习建议。",
+    response_description="学习报告。",
+    responses=build_error_responses([400, 500, 502, 503]),
+)
 async def get_learning_report(
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> ReportResponse:
-    """学习进度报告。"""
+    """Return an aggregated learning report for one subject."""
     report = await get_report(session, subject)
-    return ReportResponse(
-        overall_mastery=report["overall_mastery"],
-        weak_points_top5=[
-            ProfileItem(
-                knowledge_point=p.knowledge_point,
-                mastery=p.mastery,
-                attempts=p.attempts,
-                correct=p.correct,
-            )
-            for p in report["weak_points_top5"]
-        ],
-        suggestions=report["suggestions"],
-    )
+    return to_report_response(report)
 
 
-@router.post("/mistakes/{subject}", response_model=MistakeListResponse)
+@router.post(
+    "/mistakes/{subject}",
+    response_model=MistakeListResponse,
+    summary="获取错题本",
+    description="分页返回指定学科下的错题列表及 AI 错因分析。",
+    response_description="错题分页列表。",
+    responses=build_error_responses([400, 500]),
+)
 async def list_mistakes(
-    body: PaginationParams,
+    body: PaginationParams = Body(..., description="分页参数。"),
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> MistakeListResponse:
-    """分页错题列表。"""
+    """Return paginated mistake-book entries for one subject."""
     items, total = await get_mistakes(
         session, subject, limit=body.limit, offset=body.offset
     )
-    return MistakeListResponse(
-        items=[
-            MistakeItem(
-                id=item["id"],
-                question_stem=item["question_stem"],
-                question_type=item["question_type"],
-                user_answer=item["user_answer"],
-                correct_answer=item["correct_answer"],
-                analysis=item["analysis"],
-                knowledge_point=item["knowledge_point"],
-                created_at=item["created_at"],
-            )
-            for item in items
-        ],
-        total=total,
-    )
+    return to_mistake_list_response(items, total)

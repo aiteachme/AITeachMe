@@ -22,20 +22,17 @@ from app.repositories.ingest_repo import (
     update_parse_status,
     delete_raw_file,
 )
-from app.repositories.knowledge_repo import create_knowledge, get_knowledge_by_raw_file_id
+from app.repositories.knowledge_repo import create_knowledge
 from app.repositories.models import RawFile, Knowledge, ParseStatus, PipelineStage
+from app.services.presenters import require_id
+from app.services.upload_support import (
+    build_markdown_path,
+    build_raw_file_path,
+    get_data_dir,
+)
 from app.utils.subject import validate_subject
 
 logger = structlog.get_logger()
-
-
-def _get_data_dir() -> Path:
-    return Path(get_settings().data_dir)
-
-
-def _prefix(record_id: int) -> str:
-    """前缀分桶：取 id 字符串前两位。"""
-    return str(record_id)[:2]
 
 
 async def handle_upload(
@@ -61,7 +58,7 @@ async def handle_upload(
     ext = Path(filename).suffix.lower()
 
     # 1. 保存到 data/temp/
-    data_dir = _get_data_dir()
+    data_dir = get_data_dir()
     temp_dir = data_dir / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,13 +76,11 @@ async def handle_upload(
         parse_status=ParseStatus.PENDING,
     )
     raw_file = create_raw_file(session, raw_file)
-    record_id = raw_file.id
+    record_id = require_id(raw_file.id, "RawFile.id")
 
     # 3. 移动到 data/raw/<prefix>/<id>.<ext>
-    prefix = _prefix(record_id)
-    raw_dir = data_dir / "raw" / prefix
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    final_path = raw_dir / f"{record_id}{ext}"
+    final_path = build_raw_file_path(record_id, ext)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         shutil.move(str(temp_path), str(final_path))
@@ -135,11 +130,8 @@ async def process_and_parse(session: Session, raw_file_id: int) -> Knowledge | N
         return None
 
     # 保存 Markdown 到 data/markdown/<prefix>/<id>.md
-    data_dir = _get_data_dir()
-    prefix = _prefix(raw_file_id)
-    md_dir = data_dir / "markdown" / prefix
-    md_dir.mkdir(parents=True, exist_ok=True)
-    md_path = md_dir / f"{raw_file_id}.md"
+    md_path = build_markdown_path(raw_file_id)
+    md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(markdown_text, encoding="utf-8")
 
     # 更新 parse_status 为 parsed
@@ -155,46 +147,12 @@ async def process_and_parse(session: Session, raw_file_id: int) -> Knowledge | N
         pipeline_stage=PipelineStage.PENDING,
     )
     knowledge = create_knowledge(session, knowledge)
+    knowledge_id = require_id(knowledge.id, "Knowledge.id")
 
     logger.info(
         "parse_complete",
         raw_file_id=raw_file_id,
-        knowledge_id=knowledge.id,
+        knowledge_id=knowledge_id,
         md_path=str(md_path),
     )
     return knowledge
-
-
-def compute_pipeline_status(
-    raw_file: RawFile, knowledge: Knowledge | None
-) -> dict:
-    """根据 parse_status 和 pipeline_stage 计算聚合状态。
-
-    Returns:
-        dict with keys: stage, progress, message, error
-    """
-    if raw_file.parse_status == ParseStatus.PENDING:
-        return {"stage": "upload", "progress": 0, "message": "等待解析", "error": None}
-    if raw_file.parse_status == ParseStatus.PARSING:
-        return {"stage": "parse", "progress": 20, "message": "正在解析文档", "error": None}
-    if raw_file.parse_status == ParseStatus.PARSE_FAILED:
-        return {"stage": "failed", "progress": 100, "message": "解析失败", "error": "文件解析失败"}
-
-    # parse_status == parsed
-    if knowledge is None:
-        return {"stage": "parse", "progress": 30, "message": "解析完成，准备索引", "error": None}
-
-    stage_map = {
-        PipelineStage.PENDING:  ("digest", 40, "等待消化索引"),
-        PipelineStage.CLEANED:  ("digest", 50, "Markdown 清洗完成"),
-        PipelineStage.OUTLINED: ("digest", 60, "大纲提取完成"),
-        PipelineStage.STORED:   ("digest", 70, "知识落库完成"),
-        PipelineStage.CHUNKED:  ("digest", 80, "文档切块完成"),
-        PipelineStage.EMBEDDED: ("done", 100, "处理完成"),
-        PipelineStage.FAILED:   ("failed", 100, "索引失败"),
-    }
-    stage, progress, message = stage_map.get(
-        knowledge.pipeline_stage, ("digest", 40, "处理中")
-    )
-    error = "消化索引失败" if knowledge.pipeline_stage == PipelineStage.FAILED else None
-    return {"stage": stage, "progress": progress, "message": message, "error": error}

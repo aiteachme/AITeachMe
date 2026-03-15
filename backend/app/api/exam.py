@@ -1,39 +1,45 @@
-"""
-考试端点
-
-POST /api/v1/subjects/{subject}/exam/generate — 生成考卷
-POST /api/v1/exam/{exam_id}/submit — 提交答卷
-GET  /api/v1/subjects/{subject}/exam/history — 考试历史
-"""
+"""Exam generation, submission, and history routes."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path
 from sqlmodel import Session
 
+from app.api.docs import build_error_responses
 from app.api.deps import get_db, validate_subject, PaginationParams
 from app.schemas.exam import (
+    AnswerResultItem,
     ExamGenerateRequest,
+    ExamHistoryResponse,
     ExamResponse,
-    QuestionItem,
     SubmitRequest,
     SubmitResponse,
-    AnswerResultItem,
-    ExamHistoryItem,
-    ExamHistoryResponse,
 )
 from app.services.exam_service import create_exam, submit_exam
+from app.services.presenters import (
+    to_answer_result_item,
+    to_exam_history_response,
+    to_exam_response,
+    to_submit_response,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["exam"])
 
 
-@router.post("/subjects/{subject}/exam/generate", response_model=ExamResponse)
+@router.post(
+    "/subjects/{subject}/exam/generate",
+    response_model=ExamResponse,
+    summary="生成测验",
+    description="根据学科、知识点范围和难度分布要求生成一份新考卷。",
+    response_description="新生成的考卷信息。",
+    responses=build_error_responses([400, 500, 502, 503]),
+)
 async def generate_exam(
-    body: ExamGenerateRequest,
+    body: ExamGenerateRequest = Body(..., description="考卷生成请求体。"),
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> ExamResponse:
-    """AI 生成考卷。响应中不暴露 answer 字段。"""
+    """Generate a new exam while preserving the existing public response shape."""
     exam, questions = await create_exam(
         session,
         subject=subject,
@@ -41,29 +47,23 @@ async def generate_exam(
         difficulty_distribution=body.difficulty_distribution,
         knowledge_points=body.knowledge_points,
     )
-    return ExamResponse(
-        exam_id=exam.id,  # type: ignore[arg-type]
-        questions=[
-            QuestionItem(
-                question_key=q.question_key,
-                type=q.type,
-                stem=q.stem,
-                options=q.options,
-                knowledge_point=q.knowledge_point,
-                difficulty=q.difficulty,
-            )
-            for q in questions
-        ],
-    )
+    return to_exam_response(exam.id, questions)
 
 
-@router.post("/exam/{exam_id}/submit", response_model=SubmitResponse)
+@router.post(
+    "/exam/{exam_id}/submit",
+    response_model=SubmitResponse,
+    summary="提交答卷",
+    description="根据 exam_id 提交用户答案并返回总分、逐题判分结果及错因分析。",
+    response_description="判分结果摘要。",
+    responses=build_error_responses([404, 500, 502, 503]),
+)
 async def submit_answers(
-    body: SubmitRequest,
-    exam_id: int = Path(...),
+    body: SubmitRequest = Body(..., description="答卷提交请求体。"),
+    exam_id: int = Path(..., description="待提交考卷的 ID。", examples=[5]),
     session: Session = Depends(get_db),
 ) -> SubmitResponse:
-    """提交答卷并判分。"""
+    """Submit answers for one exam and return grading results."""
     answers_dict = {a.question_key: a.answer for a in body.answers}
     submission, records, mistakes, questions = await submit_exam(
         session, exam_id=exam_id, answers=answers_dict
@@ -79,7 +79,7 @@ async def submit_answers(
         q = q_map.get(next((qq.question_key for qq in questions if qq.id == r.question_id), ""))
         mistake = m_map.get(r.id)
         results.append(
-            AnswerResultItem(
+            to_answer_result_item(
                 question_key=q.question_key if q else "",
                 is_correct=r.is_correct,
                 user_answer=r.user_answer,
@@ -89,34 +89,26 @@ async def submit_answers(
             )
         )
 
-    return SubmitResponse(
-        submission_id=submission.id,  # type: ignore[arg-type]
-        score=submission.score,
-        results=results,
-    )
+    return to_submit_response(submission.id, submission.score, results)
 
 
-@router.post("/subjects/{subject}/exam/history", response_model=ExamHistoryResponse)
+@router.post(
+    "/subjects/{subject}/exam/history",
+    response_model=ExamHistoryResponse,
+    summary="获取考试历史",
+    description="分页返回指定学科下的历史考卷与最近提交信息。",
+    response_description="考试历史分页列表。",
+    responses=build_error_responses([400, 500]),
+)
 async def get_exam_history(
-    body: PaginationParams,
+    body: PaginationParams = Body(..., description="分页参数。"),
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> ExamHistoryResponse:
-    """分页考试历史。"""
+    """Return paginated exam history for one subject."""
     from app.repositories.exam_repo import list_exam_history_by_subject
 
     items, total = list_exam_history_by_subject(
         session, subject, limit=body.limit, offset=body.offset
     )
-    return ExamHistoryResponse(
-        items=[
-            ExamHistoryItem(
-                exam_id=item["exam_id"],
-                submission_id=item.get("submission_id"),
-                score=item.get("score"),
-                created_at=item["created_at"],
-            )
-            for item in items
-        ],
-        total=total,
-    )
+    return to_exam_history_response(items, total)

@@ -1,4 +1,4 @@
-"""LLM 消息类型定义 — 替代裸 dict，提供类型安全提示。"""
+"""Typed helpers for internal LLM message payloads."""
 
 from typing import Literal, TypedDict, Union
 

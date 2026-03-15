@@ -15,6 +15,7 @@ from sqlmodel import Session
 from app.core.config import get_settings
 from app.core.embedding import aembed_texts
 from app.repositories.knowledge_repo import ChunkSearchResult, vector_search
+from app.services.presenters import require_id
 
 logger = structlog.get_logger()
 
@@ -40,17 +41,20 @@ async def retrieve(
     similarity_threshold: float | None = None,
 ) -> list[RetrievalResult]:
     """
-    对用户查询进行向量检索，返回按相似度降序排列的结果。
+    Retrieve the most relevant chunks for one user query.
 
     Args:
-        session: 数据库会话
-        query: 用户查询文本
-        subject: 学科标识
-        top_k: 返回的最大结果数（默认从 settings.rag_top_k 读取）
-        similarity_threshold: 相似度阈值（默认从 settings.rag_similarity_threshold 读取）
+        session: 数据库会话。
+        query: 用户查询文本。
+        subject: 学科标识。
+        top_k: 返回的最大结果数；未传入时读取配置。
+        similarity_threshold: 相似度阈值；未传入时读取配置。
 
     Returns:
-        按相似度降序排列的 RetrievalResult 列表
+        按相似度降序排列的 `RetrievalResult` 列表。
+
+    Raises:
+        LLMCallError: 查询向量生成失败时由 embedding 层抛出。
     """
     settings = get_settings()
     top_k = top_k or settings.rag_top_k
@@ -69,7 +73,7 @@ async def retrieve(
     for sr in search_results:
         chunk = sr.chunk
         results.append(RetrievalResult(
-            chunk_id=chunk.id,  # type: ignore[arg-type]
+            chunk_id=require_id(chunk.id, "Chunk.id"),
             knowledge_id=chunk.knowledge_id,
             title=chunk.title,
             header_path=chunk.header_path,

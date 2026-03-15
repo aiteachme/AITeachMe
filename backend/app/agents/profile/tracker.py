@@ -24,13 +24,13 @@ def update_profiles_from_grading(
     user_id: str = "local",
 ) -> None:
     """
-    根据判分结果批量更新 UserProfile 掌握度。
+    Update mastery profiles incrementally from one grading result batch.
 
     Args:
-        session: 数据库会话
-        subject: 学科标识
-        grading_results: 判分结果列表，每项包含 {"question": Question, "is_correct": bool}
-        user_id: 用户 ID，默认 "local"
+        session: 数据库会话。
+        subject: 学科标识。
+        grading_results: 判分结果列表，每项至少包含 `question` 和 `is_correct`。
+        user_id: 用户 ID，默认 `local`。
     """
     if not grading_results:
         return
