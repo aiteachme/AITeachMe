@@ -13,7 +13,7 @@ from sqlmodel import Session
 
 from app.core.llm import acompletion_structured
 from app.repositories import knowledge_repo, exam_repo, profile_repo
-from app.schemas.llm import ChatMessage, SYSTEM, USER
+from app.schemas.llm import ChatMessage, SYSTEM
 from app.repositories.models import (
     Question,
     QuestionType,
@@ -57,13 +57,20 @@ async def generate_exam(
     knowledge_points: list[str] | None = None,
 ) -> list[Question]:
     """
-    生成结构化考卷。
+    Generate a structured exam based on knowledge coverage and learner state.
 
-    1. 读取 KnowledgeGraphNode 获取知识范围
-    2. 读取 UserProfile 薄弱点优先出题
-    3. 读取 Mistake 避免重复近期错题
-    4. 调用 LLM 结构化输出
-    5. 返回 Question 列表（未持久化，由 service 层保存）
+    Args:
+        session: 数据库会话。
+        subject: 学科标识。
+        num_questions: 目标题目数量。
+        difficulty_distribution: 可选难度分布。
+        knowledge_points: 可选指定知识点范围。
+
+    Returns:
+        尚未持久化的 `Question` 模型列表，由 service 层统一保存。
+
+    Raises:
+        LLMCallError: 结构化出题失败时由 LLM 封装层抛出。
     """
     # 1. 获取知识范围
     graph_nodes = knowledge_repo.list_graph_nodes_by_subject(session, subject)
@@ -80,7 +87,7 @@ async def generate_exam(
     recent_stems = [m["question_stem"] for m in recent_mistakes]
 
     # 4. 构建 prompt
-    messages = _build_generation_prompt(
+    messages = _build_exam_generation_messages(
         subject=subject,
         num_questions=num_questions,
         all_knowledge_points=all_kp,
@@ -111,7 +118,7 @@ async def generate_exam(
     return questions
 
 
-def _build_generation_prompt(
+def _build_exam_generation_messages(
     *,
     subject: str,
     num_questions: int,
@@ -121,7 +128,7 @@ def _build_generation_prompt(
     difficulty_distribution: dict[str, float] | None,
     requested_knowledge_points: list[str] | None,
 ) -> list[ChatMessage]:
-    """构建考试生成的 LLM 消息。"""
+    """Build the LLM message list used to generate one structured exam."""
     kp_section = ""
     if requested_knowledge_points:
         kp_section = f"重点考查以下知识点：{', '.join(requested_knowledge_points)}\n"
@@ -162,7 +169,7 @@ def _build_generation_prompt(
 
 
 def _to_question_models(exam: GeneratedExam) -> list[Question]:
-    """将 LLM 结构化输出转换为 Question SQLModel 实例。"""
+    """Convert Instructor output into `Question` ORM objects ready for persistence."""
     questions: list[Question] = []
     for gq in exam.questions:
         # 规范化枚举值

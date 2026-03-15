@@ -7,7 +7,7 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.ai.profile.reporter import generate_report
+from app.agents.profile.reporter import generate_report
 from app.repositories import profile_repo, exam_repo
 from app.repositories.models import UserProfile
 

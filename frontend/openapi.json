@@ -1,0 +1,2443 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AITeachMe",
+    "description": "AI 驱动的个性化学习助手后端。当前版本保持现有接口兼容，同时通过更完整的字段说明、示例和错误响应定义，让 OpenAPI / Redoc 更易读。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "健康检查",
+        "description": "返回后端服务的基础健康状态，用于前端或部署平台探活。",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "服务健康状态。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/upload": {
+      "post": {
+        "tags": [
+          "upload"
+        ],
+        "summary": "上传学习资料",
+        "description": "接收一个文件并同步完成落盘与解析，然后通过后台任务触发 Digest 消化索引流程。",
+        "operationId": "upload_file_api_v1_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_api_v1_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已受理的上传任务信息。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "接口可能返回的错误响应。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求通过了基础校验，但业务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/upload/{task_id}/status": {
+      "post": {
+        "tags": [
+          "upload"
+        ],
+        "summary": "查询上传任务状态",
+        "description": "返回上传、解析与 Digest 三段流程聚合后的当前进度，适合前端轮询展示。",
+        "operationId": "get_pipeline_status_api_v1_upload__task_id__status_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "上传任务 ID，即 RawFile 记录 ID。",
+              "examples": [
+                42
+              ],
+              "title": "Task Id"
+            },
+            "description": "上传任务 ID，即 RawFile 记录 ID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务聚合状态。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求的资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/{subject}": {
+      "post": {
+        "tags": [
+          "upload"
+        ],
+        "summary": "列出学科文件",
+        "description": "分页返回指定学科下的全部上传文件及其解析状态。",
+        "operationId": "list_files_api_v1_files__subject__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "文件分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/{subject}/outline": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "获取知识大纲",
+        "description": "返回指定学科下每篇知识文档对应的树形大纲结构。",
+        "operationId": "get_knowledge_outline_api_v1_knowledge__subject__outline_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "按知识文档分组的大纲树列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OutlineResponse"
+                  },
+                  "title": "Response Get Knowledge Outline Api V1 Knowledge  Subject  Outline Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/{subject}/document": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "列出知识文档",
+        "description": "分页返回指定学科下已存储的 Markdown 知识文档及其 Digest 阶段。",
+        "operationId": "list_knowledge_documents_api_v1_knowledge__subject__document_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "知识文档分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/chat": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "发起流式对话",
+        "description": "结合学科资料、检索结果、近期对话、错题和薄弱项生成 SSE 流式回答。响应会依次发送 `token`、`done` 或 `error` 事件。",
+        "operationId": "chat_api_v1_subjects__subject__chat_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest",
+                "description": "对话请求体。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 事件流，事件类型包括 token / done / error。",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游 LLM 或外部依赖调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖配置缺失或暂时不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/chat/history": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "获取对话历史",
+        "description": "分页返回指定学科的历史聊天消息列表。",
+        "operationId": "get_chat_history_api_v1_subjects__subject__chat_history_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "聊天记录分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/generate": {
+      "post": {
+        "tags": [
+          "exam"
+        ],
+        "summary": "生成测验",
+        "description": "根据学科、知识点范围和难度分布要求生成一份新考卷。",
+        "operationId": "generate_exam_api_v1_subjects__subject__exam_generate_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExamGenerateRequest",
+                "description": "考卷生成请求体。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "新生成的考卷信息。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExamResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游 LLM 或外部依赖调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖配置缺失或暂时不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exam/{exam_id}/submit": {
+      "post": {
+        "tags": [
+          "exam"
+        ],
+        "summary": "提交答卷",
+        "description": "根据 exam_id 提交用户答案并返回总分、逐题判分结果及错因分析。",
+        "operationId": "submit_answers_api_v1_exam__exam_id__submit_post",
+        "parameters": [
+          {
+            "name": "exam_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "待提交考卷的 ID。",
+              "examples": [
+                5
+              ],
+              "title": "Exam Id"
+            },
+            "description": "待提交考卷的 ID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest",
+                "description": "答卷提交请求体。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "判分结果摘要。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求的资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游 LLM 或外部依赖调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖配置缺失或暂时不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/history": {
+      "post": {
+        "tags": [
+          "exam"
+        ],
+        "summary": "获取考试历史",
+        "description": "分页返回指定学科下的历史考卷与最近提交信息。",
+        "operationId": "get_exam_history_api_v1_subjects__subject__exam_history_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "考试历史分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExamHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/{subject}": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "获取学习画像",
+        "description": "分页返回指定学科下的知识点掌握度记录。",
+        "operationId": "list_profiles_api_v1_profile__subject__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "掌握度分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/{subject}/report": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "获取学习报告",
+        "description": "汇总总体掌握度、薄弱点 Top 5 与个性化复习建议。",
+        "operationId": "get_learning_report_api_v1_profile__subject__report_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "学习报告。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游 LLM 或外部依赖调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖配置缺失或暂时不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mistakes/{subject}": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "获取错题本",
+        "description": "分页返回指定学科下的错题列表及 AI 错因分析。",
+        "operationId": "list_mistakes_api_v1_mistakes__subject__post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。",
+              "examples": [
+                "math"
+              ],
+              "title": "Subject"
+            },
+            "description": "学科标识，仅允许字母、数字、下划线和连字符，系统会自动转为小写。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaginationParams",
+                "description": "分页参数。"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "错题分页列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MistakeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部出现未处理异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnswerItem": {
+        "properties": {
+          "question_key": {
+            "type": "string",
+            "title": "Question Key",
+            "description": "对应题目的 question_key。",
+            "examples": [
+              "q1"
+            ]
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "用户作答内容。",
+            "examples": [
+              "P(A|B)=P(AB)/P(B)"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_key",
+          "answer"
+        ],
+        "title": "AnswerItem",
+        "description": "Single submitted answer item."
+      },
+      "AnswerResultItem": {
+        "properties": {
+          "question_key": {
+            "type": "string",
+            "title": "Question Key",
+            "description": "题目键。"
+          },
+          "is_correct": {
+            "type": "boolean",
+            "title": "Is Correct",
+            "description": "该题是否判定为正确。"
+          },
+          "user_answer": {
+            "type": "string",
+            "title": "User Answer",
+            "description": "用户提交的答案。"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer",
+            "description": "系统参考答案。"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "标准解析或评分说明。"
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis",
+            "description": "错题分析；答对时通常为空。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_key",
+          "is_correct",
+          "user_answer",
+          "correct_answer",
+          "explanation"
+        ],
+        "title": "AnswerResultItem",
+        "description": "Per-question grading result returned after submission."
+      },
+      "Body_upload_file_api_v1_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "待上传的学习资料文件，如 PDF、PPT 或图片。"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "学科标识，仅允许字母、数字、下划线和连字符。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "subject"
+        ],
+        "title": "Body_upload_file_api_v1_upload_post"
+      },
+      "ChatHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页内的消息列表。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "历史消息总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ChatHistoryResponse",
+        "description": "Paginated response for historical chat messages.",
+        "example": {
+          "items": [
+            {
+              "content": "我们先从事件 A 和 B 的关系来想。",
+              "created_at": "2026-03-15T08:00:00Z",
+              "id": 1001,
+              "role": "assistant",
+              "turn_id": "5c4d8b2e-1453-4a5f-b7ad-b558e3a1df6d"
+            }
+          ],
+          "total": 1
+        }
+      },
+      "ChatMessageItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "消息记录 ID。",
+            "examples": [
+              1001
+            ]
+          },
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "同一轮用户问答共享的 turn_id。"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ChatRoleValue",
+            "description": "消息角色。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "消息正文内容。"
+          },
+          "contexts": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexts",
+            "description": "仅助手消息可能携带的检索上下文摘要。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "消息创建时间（UTC）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "turn_id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "ChatMessageItem",
+        "description": "Single persisted chat message item returned by history endpoints."
+      },
+      "ChatRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "用户当前提问内容。",
+            "examples": [
+              "什么是条件概率？"
+            ]
+          },
+          "selected_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Context",
+            "description": "前端划词提问时附带的高优先级上下文片段。"
+          },
+          "source_chunk_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Chunk Id",
+            "description": "selected_context 对应的知识切块 ID。",
+            "examples": [
+              12
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ChatRequest",
+        "description": "Request body for the subject chat endpoint.",
+        "example": {
+          "question": "什么是条件概率？",
+          "selected_context": "条件概率是指在事件 B 已发生的条件下事件 A 发生的概率。",
+          "source_chunk_id": 12
+        }
+      },
+      "ChatRoleValue": {
+        "type": "string",
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "title": "ChatRoleValue",
+        "description": "Chat role values persisted in history and surfaced via API responses."
+      },
+      "DifficultyValue": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "medium",
+          "hard"
+        ],
+        "title": "DifficultyValue",
+        "description": "Supported question difficulty values exposed by exam endpoints."
+      },
+      "DocumentItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "知识文档 ID。",
+            "examples": [
+              7
+            ]
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "知识文档标题。",
+            "examples": [
+              "lesson1.pdf"
+            ]
+          },
+          "markdown_content": {
+            "type": "string",
+            "title": "Markdown Content",
+            "description": "可直接渲染的 Markdown 正文。"
+          },
+          "pipeline_stage": {
+            "$ref": "#/components/schemas/PipelineStageValue",
+            "description": "Digest 流水线当前阶段。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "markdown_content",
+          "pipeline_stage"
+        ],
+        "title": "DocumentItem",
+        "description": "Knowledge document plus its digest progress."
+      },
+      "DocumentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页返回的知识文档列表。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "满足条件的知识文档总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DocumentListResponse",
+        "description": "Paginated response for stored knowledge documents.",
+        "example": {
+          "items": [
+            {
+              "id": 7,
+              "markdown_content": "# 第一章\n内容摘要",
+              "pipeline_stage": "embedded",
+              "title": "lesson1.pdf"
+            }
+          ],
+          "total": 1
+        }
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "面向调用方的错误说明。"
+          },
+          "error_code": {
+            "type": "string",
+            "title": "Error Code",
+            "description": "稳定的机器可读错误码。",
+            "examples": [
+              "INVALID_SUBJECT"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail",
+          "error_code"
+        ],
+        "title": "ErrorResponse",
+        "description": "Standardized error payload returned by global exception handlers.",
+        "example": {
+          "detail": "未配置 LLM_API_KEY，当前功能需要先配置该密钥后才能使用",
+          "error_code": "LLM_API_KEY_MISSING"
+        }
+      },
+      "ExamGenerateRequest": {
+        "properties": {
+          "num_questions": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Num Questions",
+            "description": "期望生成的题目数量。",
+            "default": 10
+          },
+          "difficulty_distribution": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty Distribution",
+            "description": "可选的难度分布，键为 easy/medium/hard，值为比例。"
+          },
+          "knowledge_points": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Points",
+            "description": "可选的指定知识点范围；为空时由系统自动选取。"
+          }
+        },
+        "type": "object",
+        "title": "ExamGenerateRequest",
+        "description": "Request body for generating a new exam.",
+        "example": {
+          "difficulty_distribution": {
+            "easy": 0.3,
+            "hard": 0.2,
+            "medium": 0.5
+          },
+          "knowledge_points": [
+            "条件概率",
+            "贝叶斯公式"
+          ],
+          "num_questions": 10
+        }
+      },
+      "ExamHistoryItem": {
+        "properties": {
+          "exam_id": {
+            "type": "integer",
+            "title": "Exam Id",
+            "description": "考卷 ID。"
+          },
+          "submission_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Id",
+            "description": "最近一次提交记录 ID。"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "最近一次提交得分。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "考卷创建时间（UTC）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_id",
+          "created_at"
+        ],
+        "title": "ExamHistoryItem",
+        "description": "Single exam history item."
+      },
+      "ExamHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExamHistoryItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页内的考试记录列表。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "历史考试记录总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ExamHistoryResponse",
+        "description": "Paginated response for exam history entries.",
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-03-15T08:00:00Z",
+              "exam_id": 5,
+              "score": 80.0,
+              "submission_id": 9
+            }
+          ],
+          "total": 1
+        }
+      },
+      "ExamResponse": {
+        "properties": {
+          "exam_id": {
+            "type": "integer",
+            "title": "Exam Id",
+            "description": "新生成考卷的 ID。",
+            "examples": [
+              5
+            ]
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionItem"
+            },
+            "type": "array",
+            "title": "Questions",
+            "description": "考卷题目列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_id",
+          "questions"
+        ],
+        "title": "ExamResponse",
+        "description": "Response returned after a new exam has been generated.",
+        "example": {
+          "exam_id": 5,
+          "questions": [
+            {
+              "difficulty": "easy",
+              "knowledge_point": "条件概率",
+              "options": [
+                "P(A|B)=P(AB)/P(B)",
+                "P(A)+P(B)"
+              ],
+              "question_key": "q1",
+              "stem": "下列哪个公式表示条件概率？",
+              "type": "single_choice"
+            }
+          ]
+        }
+      },
+      "FileItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "原始文件记录 ID。",
+            "examples": [
+              42
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "上传文件名。",
+            "examples": [
+              "lesson1.pdf"
+            ]
+          },
+          "filetype": {
+            "type": "string",
+            "title": "Filetype",
+            "description": "文件扩展名，不含点。",
+            "examples": [
+              "pdf"
+            ]
+          },
+          "parse_status": {
+            "$ref": "#/components/schemas/ParseStatusValue",
+            "description": "原始文件解析阶段状态。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "文件记录创建时间（UTC）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "filetype",
+          "parse_status",
+          "created_at"
+        ],
+        "title": "FileItem",
+        "description": "Single uploaded file record returned by file listing endpoints."
+      },
+      "FileListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FileItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页内的文件记录列表。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "满足条件的文件总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FileListResponse",
+        "description": "Paginated response for uploaded files under the same subject.",
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-03-15T08:00:00Z",
+              "filename": "lesson1.pdf",
+              "filetype": "pdf",
+              "id": 42,
+              "parse_status": "parsed"
+            }
+          ],
+          "total": 1
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "服务健康状态。",
+            "default": "ok"
+          }
+        },
+        "type": "object",
+        "title": "HealthResponse",
+        "description": "Health-check response returned by the `/api/health` endpoint.",
+        "example": {
+          "status": "ok"
+        }
+      },
+      "MistakeItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "错题记录 ID。"
+          },
+          "question_stem": {
+            "type": "string",
+            "title": "Question Stem",
+            "description": "题干内容。"
+          },
+          "question_type": {
+            "$ref": "#/components/schemas/QuestionTypeValue",
+            "description": "题目类型。"
+          },
+          "user_answer": {
+            "type": "string",
+            "title": "User Answer",
+            "description": "用户答案。"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer",
+            "description": "参考答案。"
+          },
+          "analysis": {
+            "type": "string",
+            "title": "Analysis",
+            "description": "AI 生成的错因分析。"
+          },
+          "knowledge_point": {
+            "type": "string",
+            "title": "Knowledge Point",
+            "description": "关联知识点。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "错题记录创建时间（UTC）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question_stem",
+          "question_type",
+          "user_answer",
+          "correct_answer",
+          "analysis",
+          "knowledge_point",
+          "created_at"
+        ],
+        "title": "MistakeItem",
+        "description": "Single mistake-book item composed from exam and grading records."
+      },
+      "MistakeListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MistakeItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页内的错题列表。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "错题总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "MistakeListResponse",
+        "description": "Paginated response for the subject mistake book.",
+        "example": {
+          "items": [
+            {
+              "analysis": "对公式中的条件与先验关系混淆。",
+              "correct_answer": "P(A|B)=P(B|A)P(A)/P(B)",
+              "created_at": "2026-03-15T08:00:00Z",
+              "id": 3,
+              "knowledge_point": "贝叶斯公式",
+              "question_stem": "贝叶斯公式的表达式是什么？",
+              "question_type": "short_answer",
+              "user_answer": "忘记了"
+            }
+          ],
+          "total": 1
+        }
+      },
+      "OutlineNode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "知识图谱节点 ID。",
+            "examples": [
+              1
+            ]
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "节点标题。",
+            "examples": [
+              "第一章 概率基础"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "节点层级深度，1 表示顶层。",
+            "examples": [
+              1
+            ]
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineNode"
+            },
+            "type": "array",
+            "title": "Children",
+            "description": "当前节点的直接子节点。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "level"
+        ],
+        "title": "OutlineNode",
+        "description": "Tree node returned by the knowledge outline endpoint."
+      },
+      "OutlineResponse": {
+        "properties": {
+          "knowledge_id": {
+            "type": "integer",
+            "title": "Knowledge Id",
+            "description": "知识文档 ID。",
+            "examples": [
+              7
+            ]
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "知识文档标题。",
+            "examples": [
+              "lesson1.pdf"
+            ]
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "该文档的大纲树根节点列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_id",
+          "title",
+          "nodes"
+        ],
+        "title": "OutlineResponse",
+        "description": "Outline tree grouped by knowledge document.",
+        "example": {
+          "knowledge_id": 7,
+          "nodes": [
+            {
+              "children": [],
+              "id": 1,
+              "level": 1,
+              "title": "第一章 概率基础"
+            }
+          ],
+          "title": "lesson1.pdf"
+        }
+      },
+      "PaginationParams": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "单次返回的最大记录数。",
+            "default": 100,
+            "examples": [
+              20
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "description": "基于 0 的分页偏移量。",
+            "default": 0,
+            "examples": [
+              0
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PaginationParams",
+        "description": "Shared pagination request body used by list-style POST endpoints.",
+        "example": {
+          "limit": 20,
+          "offset": 0
+        }
+      },
+      "ParseStatusValue": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "parsing",
+          "parsed",
+          "parse_failed"
+        ],
+        "title": "ParseStatusValue",
+        "description": "Raw file parsing status values returned by upload-related endpoints."
+      },
+      "PipelineStageValue": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "cleaned",
+          "outlined",
+          "stored",
+          "chunked",
+          "embedded",
+          "failed"
+        ],
+        "title": "PipelineStageValue",
+        "description": "Digest pipeline stage values returned by knowledge-related endpoints."
+      },
+      "PipelineStatusResponse": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/PipelineStatusStage",
+            "description": "聚合后的高层处理阶段。"
+          },
+          "progress": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "description": "0 到 100 的粗粒度进度值。",
+            "examples": [
+              60
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "面向前端展示的当前状态说明。"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "失败时的简短错误说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "progress",
+          "message"
+        ],
+        "title": "PipelineStatusResponse",
+        "description": "Aggregated progress view spanning upload, parse, and digest stages.",
+        "example": {
+          "message": "大纲提取完成",
+          "progress": 60,
+          "stage": "digest"
+        }
+      },
+      "PipelineStatusStage": {
+        "type": "string",
+        "enum": [
+          "upload",
+          "parse",
+          "digest",
+          "done",
+          "failed"
+        ],
+        "title": "PipelineStatusStage",
+        "description": "High-level upload pipeline stages exposed to API callers."
+      },
+      "ProfileItem": {
+        "properties": {
+          "knowledge_point": {
+            "type": "string",
+            "title": "Knowledge Point",
+            "description": "知识点名称。",
+            "examples": [
+              "条件概率"
+            ]
+          },
+          "mastery": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery",
+            "description": "掌握度估计值，范围 0.0 到 1.0；无数据时为空。"
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attempts",
+            "description": "累计作答次数。"
+          },
+          "correct": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Correct",
+            "description": "累计答对次数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_point",
+          "attempts",
+          "correct"
+        ],
+        "title": "ProfileItem",
+        "description": "Single knowledge-point mastery record."
+      },
+      "ProfileResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前分页内的掌握度记录。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "掌握度记录总数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ProfileResponse",
+        "description": "Paginated response for profile mastery items.",
+        "example": {
+          "items": [
+            {
+              "attempts": 5,
+              "correct": 3,
+              "knowledge_point": "条件概率",
+              "mastery": 0.6
+            }
+          ],
+          "total": 1
+        }
+      },
+      "QuestionItem": {
+        "properties": {
+          "question_key": {
+            "type": "string",
+            "title": "Question Key",
+            "description": "题目稳定键，如 q1、q2。",
+            "examples": [
+              "q1"
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/QuestionTypeValue",
+            "description": "题目类型。"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem",
+            "description": "题干内容。"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "单选题候选项；非单选题通常为空。"
+          },
+          "knowledge_point": {
+            "type": "string",
+            "title": "Knowledge Point",
+            "description": "题目对应的知识点。"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyValue",
+            "description": "题目难度。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_key",
+          "type",
+          "stem",
+          "knowledge_point",
+          "difficulty"
+        ],
+        "title": "QuestionItem",
+        "description": "Public exam question DTO that intentionally hides the correct answer."
+      },
+      "QuestionTypeValue": {
+        "type": "string",
+        "enum": [
+          "single_choice",
+          "fill_blank",
+          "short_answer"
+        ],
+        "title": "QuestionTypeValue",
+        "description": "Supported question type values exposed by exam endpoints."
+      },
+      "ReportResponse": {
+        "properties": {
+          "overall_mastery": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Mastery",
+            "description": "总体掌握度估计值，按已有做题记录加权计算。"
+          },
+          "weak_points_top5": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileItem"
+            },
+            "type": "array",
+            "title": "Weak Points Top5",
+            "description": "掌握度最低的前 5 个知识点。"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggestions",
+            "description": "结合画像生成的复习建议列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weak_points_top5",
+          "suggestions"
+        ],
+        "title": "ReportResponse",
+        "description": "Aggregated learning report used by the profile report endpoint.",
+        "example": {
+          "overall_mastery": 0.72,
+          "suggestions": [
+            "优先复习贝叶斯公式的应用题。"
+          ],
+          "weak_points_top5": [
+            {
+              "attempts": 5,
+              "correct": 2,
+              "knowledge_point": "贝叶斯公式",
+              "mastery": 0.4
+            }
+          ]
+        }
+      },
+      "SubmitRequest": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerItem"
+            },
+            "type": "array",
+            "title": "Answers",
+            "description": "按题目键提交的答案列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "SubmitRequest",
+        "description": "Request body for submitting answers to an existing exam.",
+        "example": {
+          "answers": [
+            {
+              "answer": "P(A|B)=P(AB)/P(B)",
+              "question_key": "q1"
+            }
+          ]
+        }
+      },
+      "SubmitResponse": {
+        "properties": {
+          "submission_id": {
+            "type": "integer",
+            "title": "Submission Id",
+            "description": "答卷提交记录 ID。",
+            "examples": [
+              9
+            ]
+          },
+          "score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "百分制得分。",
+            "examples": [
+              80.0
+            ]
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerResultItem"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "逐题判分结果。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission_id",
+          "score",
+          "results"
+        ],
+        "title": "SubmitResponse",
+        "description": "Exam grading summary returned after a submission is processed.",
+        "example": {
+          "results": [
+            {
+              "correct_answer": "P(A|B)=P(AB)/P(B)",
+              "explanation": "由条件概率定义可得。",
+              "is_correct": true,
+              "question_key": "q1",
+              "user_answer": "P(A|B)=P(AB)/P(B)"
+            }
+          ],
+          "score": 80.0,
+          "submission_id": 9
+        }
+      },
+      "UploadResponse": {
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "title": "Task Id",
+            "description": "上传任务 ID，可用于轮询处理状态。",
+            "examples": [
+              42
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "客户端上传的原始文件名。",
+            "examples": [
+              "lesson1.pdf"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "归一化后的学科标识。",
+            "examples": [
+              "math"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "filename",
+          "subject"
+        ],
+        "title": "UploadResponse",
+        "description": "Response returned immediately after a file is accepted for processing.",
+        "example": {
+          "filename": "lesson1.pdf",
+          "subject": "math",
+          "task_id": 42
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

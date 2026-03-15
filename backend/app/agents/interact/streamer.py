@@ -17,14 +17,14 @@ from sqlmodel import Session
 
 from app.core.llm import acompletion_stream
 from app.repositories.chat_repo import create_message_pair
-from app.ai.interact.retriever import RetrievalResult
+from app.agents.interact.retriever import RetrievalResult
 from app.schemas.llm import ChatMessage
 
 logger = structlog.get_logger()
 
 
 def _sse_event(event: str, data: dict) -> str:
-    """格式化单条 SSE 事件。"""
+    """Format one SSE frame using the standard `event` + `data` shape."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
@@ -38,13 +38,21 @@ async def stream_chat_response(
     retrieval_results: list[RetrievalResult],
 ) -> AsyncGenerator[str, None]:
     """
-    流式生成 SSE 响应。
+    Stream a chat response as SSE frames and persist the completed turn.
 
-    完成后将用户问题和助手回复保存为 ChatMessage 对。
-    检测客户端断连后取消 LLM 生成，节省 token。
+    Args:
+        request: 当前 HTTP 请求对象，用于探测客户端断连。
+        session: 数据库会话。
+        messages: 发送给 LLM 的完整消息列表。
+        subject: 当前学科标识。
+        user_question: 用户原始问题。
+        retrieval_results: 用于回答的检索结果列表。
 
     Yields:
-        SSE 格式的字符串事件
+        符合 SSE 协议的字符串事件。
+
+    Raises:
+        不直接向上抛出异常；遇到错误时会产出 `event: error` 帧。
     """
     collected_content: list[str] = []
     disconnected = False
@@ -65,7 +73,7 @@ async def stream_chat_response(
         if not disconnected:
             # 保存对话记录
             full_response = "".join(collected_content)
-            contexts = _build_contexts_payload(retrieval_results)
+            contexts = _serialize_contexts_payload(retrieval_results)
 
             user_msg, assistant_msg = create_message_pair(
                 session,
@@ -88,10 +96,10 @@ async def stream_chat_response(
         })
 
 
-def _build_contexts_payload(
+def _serialize_contexts_payload(
     results: list[RetrievalResult],
 ) -> list[dict] | None:
-    """将检索结果转换为 contexts JSON 载荷。"""
+    """Convert retrieval results into the persisted `contexts` payload shape."""
     if not results:
         return None
     return [

@@ -22,7 +22,12 @@ async def generate_report(
     user_id: str = "local",
 ) -> dict:
     """
-    生成学习进度报告。
+    Generate an aggregated learning report for one subject and user.
+
+    Args:
+        session: 数据库会话。
+        subject: 学科标识。
+        user_id: 用户 ID，当前默认单机环境下为 `local`。
 
     Returns:
         {
@@ -30,6 +35,9 @@ async def generate_report(
             "weak_points_top5": list[UserProfile],
             "suggestions": list[str],
         }
+
+    Raises:
+        LLMCallError: 个性化建议生成失败时可能由底层抛出，但内部提供回退建议。
     """
     # 获取所有有测试记录的 profile（mastery 非 null）
     all_profiles, _ = profile_repo.list_profiles_by_subject(
@@ -72,7 +80,7 @@ async def _generate_suggestions(
     overall_mastery: float | None,
     weak_points: list[UserProfile],
 ) -> list[str]:
-    """通过 LLM 生成个性化复习建议。无薄弱点时返回默认建议。"""
+    """Generate short study suggestions, with a deterministic fallback on failure."""
     if not weak_points:
         return ["当前没有明显薄弱项，建议继续保持学习节奏，定期复习巩固。"]
 

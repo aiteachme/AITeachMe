@@ -11,7 +11,7 @@ from __future__ import annotations
 import structlog
 
 from app.core.embedding import aembed_texts
-from app.ai.digest.chunker import ChunkData
+from app.agents.digest.chunker import ChunkData
 from app.repositories.models import Chunk
 
 logger = structlog.get_logger()

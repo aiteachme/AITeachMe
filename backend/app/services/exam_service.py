@@ -7,8 +7,8 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.ai.examine.generator import generate_exam
-from app.ai.examine.grader import grade_exam
+from app.agents.examine.generator import generate_exam
+from app.agents.examine.grader import grade_exam
 from app.core.exceptions import ExamNotFoundError
 from app.repositories import exam_repo
 from app.repositories.models import (

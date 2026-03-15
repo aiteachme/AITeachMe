@@ -25,9 +25,11 @@ def create_exam_with_questions(
     session.add(exam)
     session.commit()
     session.refresh(exam)
+    if exam.id is None:
+        raise ValueError("Exam.id is unexpectedly None after persistence")
 
     for q in questions:
-        q.exam_id = exam.id  # type: ignore[assignment]
+        q.exam_id = exam.id
         session.add(q)
     session.commit()
     for q in questions:
@@ -57,9 +59,11 @@ def create_submission_with_records(
     session.add(submission)
     session.commit()
     session.refresh(submission)
+    if submission.id is None:
+        raise ValueError("ExamSubmission.id is unexpectedly None after persistence")
 
     for r in records:
-        r.submission_id = submission.id  # type: ignore[assignment]
+        r.submission_id = submission.id
         session.add(r)
     session.commit()
     for r in records:
