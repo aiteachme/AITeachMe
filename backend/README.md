@@ -7,14 +7,16 @@ FastAPI 后端服务。
 所有依赖在 `backend/pyproject.toml` 中声明，`requirements.txt` 用于锁定版本。
 
 ```bash
-cd backend
-
-# 安装依赖（从 pyproject.toml）
 pip install -e .
-
-# 启动开发服务器
 uvicorn app.main:app --reload --port 8000
 ```
+
+## 导出api文档
+
+```bash
+python scripts/export_api_docs.py
+```
+
 
 访问 http://localhost:8000/api/health 验证是否正常运行。
 
