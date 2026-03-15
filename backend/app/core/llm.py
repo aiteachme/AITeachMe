@@ -19,6 +19,7 @@ import structlog
 
 from app.core.config import get_settings
 from app.core.exceptions import LLMCallError, LLMTimeoutError
+from app.schemas.llm import ChatMessage
 
 logger = structlog.get_logger()
 
@@ -28,8 +29,8 @@ _MAX_RETRIES = 3
 _TIMEOUT_S = 60
 
 
-async def acompletion(messages: list[dict], **kwargs) -> str:
-    """异步 LLM 补全，60s 超时，最多重试 3 次（递增退避），记录耗时和 token 用量。"""
+async def acompletion(messages: list[ChatMessage], **kwargs) -> str:
+    """异步 LLM 补全，60s 超时，最多重试 3 次（递增退避）。"""
     settings = get_settings()
     last_exc: Exception | None = None
 
@@ -37,7 +38,7 @@ async def acompletion(messages: list[dict], **kwargs) -> str:
         start = time.monotonic()
         try:
             response = await litellm.acompletion(
-                model=settings.llm_model,
+                model=f"openai/{settings.llm_model}",
                 messages=messages,
                 api_base=settings.llm_base_url,
                 api_key=settings.llm_api_key,
@@ -70,11 +71,10 @@ async def acompletion(messages: list[dict], **kwargs) -> str:
             last_exc = exc
 
         if attempt < _MAX_RETRIES:
-            backoff = attempt * 2  # 2s, 4s
+            backoff = attempt * 2
             logger.info("llm_retry_backoff", next_attempt=attempt + 1, backoff_s=backoff)
             await asyncio.sleep(backoff)
 
-    # 所有重试耗尽
     if isinstance(last_exc, LLMTimeoutError):
         raise last_exc
     raise LLMCallError(reason=str(last_exc)) from last_exc
@@ -82,7 +82,7 @@ async def acompletion(messages: list[dict], **kwargs) -> str:
 
 async def acompletion_structured(
     response_model: type[T],
-    messages: list[dict],
+    messages: list[ChatMessage],
     **kwargs,
 ) -> T:
     """异步结构化输出，使用 Instructor。重试由本层统一处理。"""
@@ -94,13 +94,13 @@ async def acompletion_structured(
         start = time.monotonic()
         try:
             result = await client.chat.completions.create(
-                model=settings.llm_model,
+                model=f"openai/{settings.llm_model}",
                 messages=messages,
                 response_model=response_model,
                 api_base=settings.llm_base_url,
                 api_key=settings.llm_api_key,
                 timeout=_TIMEOUT_S,
-                max_retries=0,  # Instructor 层不重试，由本函数统一重试
+                max_retries=0,
                 **kwargs,
             )
             elapsed = time.monotonic() - start
@@ -137,13 +137,13 @@ async def acompletion_structured(
     raise LLMCallError(reason=str(last_exc)) from last_exc
 
 
-async def acompletion_stream(messages: list[dict], **kwargs) -> AsyncGenerator[str, None]:
-    """异步流式补全，逐 token 产出内容字符串。不重试（流式场景不适合重试）。"""
+async def acompletion_stream(messages: list[ChatMessage], **kwargs) -> AsyncGenerator[str, None]:
+    """异步流式补全，逐 token 产出内容字符串。不重试。"""
     settings = get_settings()
     start = time.monotonic()
     try:
         response = await litellm.acompletion(
-            model=settings.llm_model,
+            model=f"openai/{settings.llm_model}",
             messages=messages,
             api_base=settings.llm_base_url,
             api_key=settings.llm_api_key,

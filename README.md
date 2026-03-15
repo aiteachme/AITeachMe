@@ -1,6 +1,6 @@
 <div align="center">
   <img
-    src="./docs/brand/atm-proj-logo-trans.png"
+    src="./docs/brand/atm-proj-logo-trans-comp.png"
     alt="AI TeachMe"
     style="height:300px; width:auto; display:block; margin:0 auto -8px auto;"
   />
@@ -12,6 +12,7 @@
   <p style="margin:0;">
     <img src="https://img.shields.io/badge/Python-3.10+-green" alt="Python" />
     <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/代码行数-2.4k-blue" alt="Lines of Code" />
     <img src="https://img.shields.io/badge/Status-MVP-orange" alt="Status" />
     <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
   </p>
@@ -38,8 +39,6 @@ AITeachMe/
 ├── frontend/          # 前端应用 (React + TypeScript)
 ├── backend/           # 后端应用 (Python + FastAPI)
 ├── docs/              # 项目文档
-│   ├── standards/     # 技术规范文档
-│   └── local-dev.md   # 本地开发指南
 ├── scripts/           # 工程脚本
 ├── datasets/          # 数据集与样本
 ├── models/            # AI 模型资源

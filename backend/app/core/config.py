@@ -11,6 +11,8 @@ _EMBEDDING_DIM_MAP: dict[str, int] = {
     "text-embedding-3-large": 3072,     # OpenAI
     "BAAI/bge-large-zh-v1.5": 1024,    # 硅基流动
     "BAAI/bge-m3": 1024,               # 硅基流动
+    "qwen3-embedding-8b": 4096,        # 阿里云百炼 / AIHubMix
+    "qwen3-embedding-0.6b": 1024,      # 阿里云百炼 / AIHubMix (轻量)
 }
 
 _DEFAULT_EMBEDDING_DIM = 1536

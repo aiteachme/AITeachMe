@@ -20,6 +20,7 @@ from sqlmodel import Session
 from app.core.llm import acompletion_stream
 from app.repositories.chat_repo import create_message_pair
 from app.ai.interact.retriever import RetrievalResult
+from app.schemas.llm import ChatMessage
 
 logger = structlog.get_logger()
 
@@ -32,7 +33,7 @@ def _sse_event(event: str, data: dict) -> str:
 async def stream_chat_response(
     request: Request,
     session: Session,
-    messages: list[dict],
+    messages: list[ChatMessage],
     *,
     subject: str,
     user_question: str,

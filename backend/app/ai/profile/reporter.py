@@ -12,6 +12,7 @@ from sqlmodel import Session
 from app.core.llm import acompletion
 from app.repositories import profile_repo
 from app.repositories.models import UserProfile
+from app.schemas.llm import ChatMessage, SYSTEM, USER
 
 logger = structlog.get_logger()
 
@@ -84,22 +85,22 @@ async def _generate_suggestions(
     mastery_desc = f"{overall_mastery:.0%}" if overall_mastery is not None else "暂无数据"
 
     messages = [
-        {
-            "role": "system",
-            "content": (
+        ChatMessage(
+            role=SYSTEM,
+            content=(
                 "你是一位学习顾问。根据学生的掌握度数据，给出 3~5 条简洁的复习建议。"
                 "每条建议一句话，直接给出行动建议，不要编号。"
             ),
-        },
-        {
-            "role": "user",
-            "content": (
+        ),
+        ChatMessage(
+            role=USER,
+            content=(
                 f"学科：{subject}\n"
                 f"总体掌握度：{mastery_desc}\n"
                 f"薄弱知识点：\n{weak_desc}\n\n"
                 f"请给出复习建议："
             ),
-        },
+        ),
     ]
 
     try:

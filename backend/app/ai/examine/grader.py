@@ -16,6 +16,7 @@ from sqlmodel import Session
 from app.core.llm import acompletion
 from app.ai.profile.tracker import update_profiles_from_grading
 from app.repositories import exam_repo
+from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.repositories.models import (
     Question,
     QuestionType,
@@ -128,22 +129,22 @@ async def _grade_single(question: Question, user_answer: str) -> bool:
 async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
     """LLM 二元判分：判断简答题是否基本正确（0 或 1）。"""
     messages = [
-        {
-            "role": "system",
-            "content": (
+        ChatMessage(
+            role=SYSTEM,
+            content=(
                 "你是一位严谨的阅卷老师。请判断学生的回答是否基本正确。\n"
                 "只需回复 1（基本正确）或 0（不正确），不要输出其他内容。"
             ),
-        },
-        {
-            "role": "user",
-            "content": (
+        ),
+        ChatMessage(
+            role=USER,
+            content=(
                 f"题目：{question.stem}\n"
                 f"参考答案：{question.answer}\n"
                 f"学生回答：{user_answer}\n\n"
                 f"判分（1 或 0）："
             ),
-        },
+        ),
     ]
     try:
         result = await acompletion(messages)
@@ -157,20 +158,20 @@ async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
 async def _generate_mistake_analysis(question: Question, user_answer: str) -> str:
     """为错题生成 AI 错因分析。"""
     messages = [
-        {
-            "role": "system",
-            "content": "你是一位耐心的老师，请分析学生答错的原因并给出改进建议。简洁明了，100字以内。",
-        },
-        {
-            "role": "user",
-            "content": (
+        ChatMessage(
+            role=SYSTEM,
+            content="你是一位耐心的老师，请分析学生答错的原因并给出改进建议。简洁明了，100字以内。",
+        ),
+        ChatMessage(
+            role=USER,
+            content=(
                 f"题目：{question.stem}\n"
                 f"正确答案：{question.answer}\n"
                 f"学生回答：{user_answer}\n"
                 f"知识点：{question.knowledge_point}\n\n"
                 f"请分析错因："
             ),
-        },
+        ),
     ]
     try:
         return await acompletion(messages)
