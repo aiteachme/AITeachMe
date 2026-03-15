@@ -1,5 +1,5 @@
 """
-RAG 对话编排 — 协调 retriever → context_builder → streamer 流水线
+RAG 对话编排 �?协调 retriever �?context_builder �?streamer 流水�?
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import structlog
 from fastapi import Request
 from sqlmodel import Session
 
-from app.ai.interact.retriever import retrieve
-from app.ai.interact.context_builder import build_system_prompt
-from app.ai.interact.streamer import stream_chat_response
+from app.agents.interact.retriever import retrieve
+from app.agents.interact.context_builder import build_system_prompt
+from app.agents.interact.streamer import stream_chat_response
 from app.schemas.llm import ChatMessage, USER
 
 logger = structlog.get_logger()
@@ -28,15 +28,15 @@ async def chat_stream(
     source_chunk_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """
-    RAG 对话完整流水线：检索 → 构建提示词 → 流式生成。
+    RAG 对话完整流水线：检�?�?构建提示�?�?流式生成�?
 
     Returns:
         SSE 事件的异步生成器
     """
-    # 1. 向量检索
+    # 1. 向量检�?
     retrieval_results = await retrieve(session, question, subject)
 
-    # 2. 构建系统提示词 + 历史对话
+    # 2. 构建系统提示�?+ 历史对话
     messages = build_system_prompt(
         session,
         subject,
@@ -55,7 +55,7 @@ async def chat_stream(
         num_messages=len(messages),
     )
 
-    # 4. 流式生成并保存
+    # 4. 流式生成并保�?
     async for event in stream_chat_response(
         request,
         session,

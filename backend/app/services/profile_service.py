@@ -1,5 +1,5 @@
 """
-画像查询编排 — 协调画像列表、报告生成、错题列表
+画像查询编排 �?协调画像列表、报告生成、错题列�?
 """
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.ai.profile.reporter import generate_report
+from app.agents.profile.reporter import generate_report
 from app.repositories import profile_repo, exam_repo
 from app.repositories.models import UserProfile
 
@@ -22,7 +22,7 @@ async def get_profiles(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[UserProfile], int]:
-    """分页查询学科下所有知识点掌握度。"""
+    """分页查询学科下所有知识点掌握度�?""
     return profile_repo.list_profiles_by_subject(
         session, subject, user_id=user_id, limit=limit, offset=offset
     )
@@ -35,7 +35,7 @@ async def get_report(
     user_id: str = "local",
 ) -> dict:
     """
-    生成学习进度报告。
+    生成学习进度报告�?
 
     Returns:
         {
@@ -54,7 +54,7 @@ async def get_mistakes(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
-    """分页查询学科下的错题列表。"""
+    """分页查询学科下的错题列表�?""
     return exam_repo.list_mistakes_by_subject(
         session, subject, limit=limit, offset=offset
     )

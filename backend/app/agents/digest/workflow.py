@@ -1,13 +1,13 @@
 """
-LangGraph 状态机 — Digest 引擎工作流
+LangGraph 状态机 �?Digest 引擎工作�?
 
-连接节点：clean → outline → store_knowledge → chunk → embed
-错误时条件路由到 error 节点。
-支持断点恢复：根据当前 pipeline_stage 确定入口节点。
+连接节点：clean �?outline �?store_knowledge �?chunk �?embed
+错误时条件路由到 error 节点�?
+支持断点恢复：根据当�?pipeline_stage 确定入口节点�?
 
-workflow 节点不自行重试 LLM，仅处理 success/fail；
-LLM 重试统一由 core/llm.py 负责。
-重试耗尽后设置 pipeline_stage 为 failed。
+workflow 节点不自行重�?LLM，仅处理 success/fail�?
+LLM 重试统一�?core/llm.py 负责�?
+重试耗尽后设�?pipeline_stage �?failed�?
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from app.repositories.models import PipelineStage
 logger = structlog.get_logger()
 
 
-# ─── 状态定义 ───
+# ─── 状态定�?───
 
 
 class DigestState(TypedDict):
@@ -38,7 +38,7 @@ class DigestState(TypedDict):
     error_stage: str | None
 
 
-# ─── 阶段顺序与入口映射 ───
+# ─── 阶段顺序与入口映�?───
 
 STAGE_ORDER = [
     PipelineStage.PENDING,
@@ -60,7 +60,7 @@ _STAGE_TO_NODE: dict[str, str] = {
 
 
 def determine_entry_point(current_stage: str) -> str:
-    """根据当前 pipeline_stage 确定恢复入口节点名。"""
+    """根据当前 pipeline_stage 确定恢复入口节点名�?""
     return _STAGE_TO_NODE.get(current_stage, "clean")
 
 
@@ -68,8 +68,8 @@ def determine_entry_point(current_stage: str) -> str:
 
 
 async def clean_node(state: DigestState) -> DigestState:
-    """清洗 Markdown，更新 pipeline_stage=cleaned。"""
-    from app.ai.digest.cleaner import clean_markdown
+    """清洗 Markdown，更�?pipeline_stage=cleaned�?""
+    from app.agents.digest.cleaner import clean_markdown
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_pipeline_stage
 
@@ -90,8 +90,8 @@ async def clean_node(state: DigestState) -> DigestState:
 
 
 async def outline_node(state: DigestState) -> DigestState:
-    """LLM 提取大纲，写入 KnowledgeGraphNode，更新 pipeline_stage=outlined。"""
-    from app.ai.digest.outliner import extract_outline, bulk_insert_outline
+    """LLM 提取大纲，写�?KnowledgeGraphNode，更�?pipeline_stage=outlined�?""
+    from app.agents.digest.outliner import extract_outline, bulk_insert_outline
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_pipeline_stage
 
@@ -116,7 +116,7 @@ async def outline_node(state: DigestState) -> DigestState:
 
 
 async def store_knowledge_node(state: DigestState) -> DigestState:
-    """填充 Knowledge.markdown_content，更新 pipeline_stage=stored。"""
+    """填充 Knowledge.markdown_content，更�?pipeline_stage=stored�?""
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_knowledge_content, update_pipeline_stage
 
@@ -135,8 +135,8 @@ async def store_knowledge_node(state: DigestState) -> DigestState:
 
 
 async def chunk_node(state: DigestState) -> DigestState:
-    """按标题层级切块，更新 pipeline_stage=chunked。"""
-    from app.ai.digest.chunker import chunk_markdown
+    """按标题层级切块，更新 pipeline_stage=chunked�?""
+    from app.agents.digest.chunker import chunk_markdown
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_pipeline_stage
 
@@ -166,14 +166,14 @@ async def chunk_node(state: DigestState) -> DigestState:
 
 
 async def embed_node(state: DigestState) -> DigestState:
-    """批量计算 embedding，写入 Chunk 表和 chunk_embeddings 虚表，更新 pipeline_stage=embedded。"""
-    from app.ai.digest.chunker import ChunkData
-    from app.ai.digest.embedder import embed_chunks, save_chunks_and_embeddings
+    """批量计算 embedding，写�?Chunk 表和 chunk_embeddings 虚表，更�?pipeline_stage=embedded�?""
+    from app.agents.digest.chunker import ChunkData
+    from app.agents.digest.embedder import embed_chunks, save_chunks_and_embeddings
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_pipeline_stage
 
     try:
-        # 从 state 重建 ChunkData
+        # �?state 重建 ChunkData
         chunk_data_list = [
             ChunkData(
                 title=c["title"],
@@ -202,7 +202,7 @@ async def embed_node(state: DigestState) -> DigestState:
 
 
 async def error_node(state: DigestState) -> DigestState:
-    """错误处理节点：记录错误日志，将 pipeline_stage 更新为 failed。"""
+    """错误处理节点：记录错误日志，�?pipeline_stage 更新�?failed�?""
     from app.core.database import get_session
     from app.repositories.knowledge_repo import update_pipeline_stage
 
@@ -226,17 +226,17 @@ async def error_node(state: DigestState) -> DigestState:
 
 
 def _check_error(state: DigestState) -> Literal["error", "continue"]:
-    """条件路由：检查 state 中是否有 error。"""
+    """条件路由：检�?state 中是否有 error�?""
     if state.get("error"):
         return "error"
     return "continue"
 
 
-# ─── 工作流构建 ───
+# ─── 工作流构�?───
 
 
 def build_digest_workflow() -> StateGraph:
-    """构建 Digest 引擎的 LangGraph 状态机工作流。"""
+    """构建 Digest 引擎�?LangGraph 状态机工作流�?""
     workflow = StateGraph(DigestState)
 
     workflow.add_node("clean", clean_node)
@@ -264,16 +264,16 @@ async def run_digest_workflow(
     raw_markdown: str,
     current_stage: str = PipelineStage.PENDING,
 ) -> DigestState:
-    """运行 Digest 工作流，支持断点恢复。
+    """运行 Digest 工作流，支持断点恢复�?
 
     Args:
-        knowledge_id: Knowledge 记录 ID。
-        subject: 学科标识。
-        raw_markdown: 原始 Markdown 文本（或已清洗的，取决于恢复阶段）。
-        current_stage: 当前 pipeline_stage，用于断点恢复。
+        knowledge_id: Knowledge 记录 ID�?
+        subject: 学科标识�?
+        raw_markdown: 原始 Markdown 文本（或已清洗的，取决于恢复阶段）�?
+        current_stage: 当前 pipeline_stage，用于断点恢复�?
 
     Returns:
-        最终的 DigestState。
+        最终的 DigestState�?
     """
     entry = determine_entry_point(current_stage)
     logger.info(
@@ -298,13 +298,13 @@ async def run_digest_workflow(
     }
 
     # 构建工作流并执行
-    # 对于断点恢复，我们需要跳过已完成的节点
-    # LangGraph 的 entry_point 是固定的，所以通过节点内部检查 current_stage 来跳过
-    # 更简单的方式：根据 entry 构建不同的子图
+    # 对于断点恢复，我们需要跳过已完成的节�?
+    # LangGraph �?entry_point 是固定的，所以通过节点内部检�?current_stage 来跳�?
+    # 更简单的方式：根�?entry 构建不同的子�?
     if entry == "clean":
         graph = build_digest_workflow()
     else:
-        # 构建从 entry 开始的子工作流
+        # 构建�?entry 开始的子工作流
         graph = _build_partial_workflow(entry)
 
     result = await graph.ainvoke(initial_state)
@@ -323,7 +323,7 @@ async def run_digest_workflow(
 
 
 def _build_partial_workflow(entry: str) -> StateGraph:
-    """构建从指定节点开始的部分工作流（用于断点恢复）。"""
+    """构建从指定节点开始的部分工作流（用于断点恢复）�?""
     node_sequence = ["clean", "outline", "store_knowledge", "chunk", "embed"]
     start_idx = node_sequence.index(entry) if entry in node_sequence else 0
 

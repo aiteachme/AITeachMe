@@ -1,9 +1,9 @@
 """
-上传与文件状态端点
+上传与文件状态端�?
 
-POST /api/v1/upload — 上传文件
-GET  /api/v1/upload/{task_id}/status — 流水线聚合状态
-GET  /api/v1/files/{subject} — 分页列表文件
+POST /api/v1/upload �?上传文件
+GET  /api/v1/upload/{task_id}/status �?流水线聚合状�?
+GET  /api/v1/files/{subject} �?分页列表文件
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ router = APIRouter(prefix="/api/v1", tags=["upload"])
 
 
 async def _run_digest_background(knowledge_id: int, subject: str, markdown: str) -> None:
-    """后台任务：运行 Digest 工作流。"""
-    from app.ai.digest.workflow import run_digest_workflow
+    """后台任务：运�?Digest 工作流�?""
+    from app.agents.digest.workflow import run_digest_workflow
 
     try:
         await run_digest_workflow(
@@ -53,7 +53,7 @@ async def upload_file(
     subject: str = Form(...),
     session: Session = Depends(get_db),
 ) -> UploadResponse:
-    """上传文件，返回 task_id。Digest 引擎通过 BackgroundTasks 异步执行。"""
+    """上传文件，返�?task_id。Digest 引擎通过 BackgroundTasks 异步执行�?""
     raw_file = await handle_upload(session, file, subject)
 
     # 同步解析 + 异步触发 Digest
@@ -89,7 +89,7 @@ async def get_pipeline_status(
     task_id: int = Path(...),
     session: Session = Depends(get_db),
 ) -> PipelineStatusResponse:
-    """查询整个上传处理流水线的聚合状态。"""
+    """查询整个上传处理流水线的聚合状态�?""
     raw_file = get_raw_file_by_id(session, task_id)
     if raw_file is None:
         raise TaskNotFoundError(task_id)
@@ -105,7 +105,7 @@ async def list_files(
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
 ) -> FileListResponse:
-    """分页列表该学科所有已上传文件及其状态。"""
+    """分页列表该学科所有已上传文件及其状态�?""
     items, total = list_raw_files_by_subject(
         session, subject, limit=body.limit, offset=body.offset
     )
