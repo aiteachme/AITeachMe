@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-15T06:51:29.368713",
-  "total_commits_analyzed": 38,
+  "generated_at": "2026-03-15T09:05:55.421370",
+  "total_commits_analyzed": 47,
   "stats": [
     {
       "date": "2026-03-11",
@@ -305,6 +305,78 @@
       "code_lines": 7673,
       "other_lines": 3086,
       "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "4e6c984",
+      "total_lines": 10759,
+      "code_lines": 7673,
+      "other_lines": 3086,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "05f0b27",
+      "total_lines": 7390,
+      "code_lines": 5233,
+      "other_lines": 2157,
+      "message": "refactor(backend): 移除后端测试目录与测试配置"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "8e2ca1b",
+      "total_lines": 7390,
+      "code_lines": 5233,
+      "other_lines": 2157,
+      "message": "refactor(backend): 将 app/ai 重命名为 app/agents"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "a9baaf8",
+      "total_lines": 7901,
+      "code_lines": 5539,
+      "other_lines": 2362,
+      "message": "fix: 修复编码问题"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "a58c13e",
+      "total_lines": 7952,
+      "code_lines": 5577,
+      "other_lines": 2375,
+      "message": "chore(backend): 添加文档导出工具"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "bea5e64",
+      "total_lines": 8549,
+      "code_lines": 6066,
+      "other_lines": 2483,
+      "message": "refator(backend): 优化结构，添加注释"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "a811d37",
+      "total_lines": 8696,
+      "code_lines": 6166,
+      "other_lines": 2530,
+      "message": "chore: 补充环境变量初始化脚本和配置引导文档"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "692da95",
+      "total_lines": 8697,
+      "code_lines": 6167,
+      "other_lines": 2530,
+      "message": "chore: 更改readme"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "26866c7",
+      "total_lines": 8701,
+      "code_lines": 6171,
+      "other_lines": 2530,
+      "message": "fix: code_stats冲突"
     }
   ]
 }
