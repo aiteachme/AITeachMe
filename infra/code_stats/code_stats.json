@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-15T09:05:55.421370",
-  "total_commits_analyzed": 47,
+  "generated_at": "2026-03-15T09:57:38.916731",
+  "total_commits_analyzed": 51,
   "stats": [
     {
       "date": "2026-03-11",
@@ -377,6 +377,38 @@
       "code_lines": 6171,
       "other_lines": 2530,
       "message": "fix: code_stats冲突"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "3e17995",
+      "total_lines": 8701,
+      "code_lines": 6171,
+      "other_lines": 2530,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "23ecdec",
+      "total_lines": 8833,
+      "code_lines": 6266,
+      "other_lines": 2567,
+      "message": "fix: 解决服务器SQLite动态加载"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "9b53c35",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "4bd43bb",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
