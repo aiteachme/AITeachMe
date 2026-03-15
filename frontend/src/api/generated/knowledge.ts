@@ -27,73 +27,38 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 返回指定学科下每篇知识文档对应的树形大纲结构。
  * @summary 获取知识大纲
  */
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse200 = {
-  data: OutlineResponse[]
-  status: 200
-}
-
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponseSuccess = (getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse200) & {
-  headers: Headers;
-};
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponseError = (getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse400 | getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse422 | getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse500) & {
-  headers: Headers;
-};
-
-export type getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse = (getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponseSuccess | getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponseError)
-
-export const getGetKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostUrl = (subject: string,) => {
-
-
+export const getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost = (
+    subject: string,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<OutlineResponse[]>(
+      {url: `/api/v1/knowledge/${subject}/outline`, method: 'POST', signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/knowledge/${subject}/outline`
-}
-
-export const getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost = async (subject: string, options?: RequestInit): Promise<getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse> => {
-  
-  return apiClient<getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostResponse>(getGetKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostUrl(subject),
-  {      
-    ...options,
-    method: 'POST'
-    
-    
-  }
-);}
-  
-
 
 
 export const getGetKnowledgeOutlineApiV1KnowledgeSubjectOutlinePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, TError,{subject: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, TError,{subject: string}, TContext> => {
 
 const mutationKey = ['getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -101,7 +66,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, {subject: string}> = (props) => {
           const {subject} = props ?? {};
 
-          return  getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost(subject,)
+          return  getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost(subject,requestOptions)
         }
 
 
@@ -119,7 +84,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取知识大纲
  */
 export const useGetKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, TError,{subject: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost>>,
         TError,
@@ -132,69 +97,33 @@ export const useGetKnowledgeOutlineApiV1KnowledgeSubjectOutlinePost = <TError = 
  * 分页返回指定学科下已存储的 Markdown 知识文档及其 Digest 阶段。
  * @summary 列出知识文档
  */
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse200 = {
-  data: DocumentListResponse
-  status: 200
-}
-
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponseSuccess = (listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse200) & {
-  headers: Headers;
-};
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponseError = (listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse400 | listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse422 | listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse500) & {
-  headers: Headers;
-};
-
-export type listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse = (listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponseSuccess | listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponseError)
-
-export const getListKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostUrl = (subject: string,) => {
-
-
+export const listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<DocumentListResponse>(
+      {url: `/api/v1/knowledge/${subject}/document`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/knowledge/${subject}/document`
-}
-
-export const listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse> => {
-  
-  return apiClient<listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostResponse>(getListKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getListKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -202,7 +131,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost(subject,data,)
+          return  listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost(subject,data,requestOptions)
         }
 
 
@@ -220,7 +149,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 列出知识文档
  */
 export const useListKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof listKnowledgeDocumentsApiV1KnowledgeSubjectDocumentPost>>,
         TError,

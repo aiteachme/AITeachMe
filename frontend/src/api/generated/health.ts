@@ -29,51 +29,26 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 返回后端服务的基础健康状态，用于前端或部署平台探活。
  * @summary 健康检查
  */
-export type healthCheckApiHealthGetResponse200 = {
-  data: HealthResponse
-  status: 200
-}
-
-export type healthCheckApiHealthGetResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type healthCheckApiHealthGetResponseSuccess = (healthCheckApiHealthGetResponse200) & {
-  headers: Headers;
-};
-export type healthCheckApiHealthGetResponseError = (healthCheckApiHealthGetResponse500) & {
-  headers: Headers;
-};
-
-export type healthCheckApiHealthGetResponse = (healthCheckApiHealthGetResponseSuccess | healthCheckApiHealthGetResponseError)
-
-export const getHealthCheckApiHealthGetUrl = () => {
-
-
-  
-
-  return `/api/health`
-}
-
-export const healthCheckApiHealthGet = async ( options?: RequestInit): Promise<healthCheckApiHealthGetResponse> => {
-  
-  return apiClient<healthCheckApiHealthGetResponse>(getHealthCheckApiHealthGetUrl(),
-  {      
-    ...options,
-    method: 'GET'
+export const healthCheckApiHealthGet = (
     
-    
-  }
-);}
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<HealthResponse>(
+      {url: `/api/health`, method: 'GET', signal
+    },
+      options);
+    }
   
-
 
 
 
@@ -84,16 +59,16 @@ export const getHealthCheckApiHealthGetQueryKey = () => {
     }
 
     
-export const getHealthCheckApiHealthGetQueryOptions = <TData = Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, }
+export const getHealthCheckApiHealthGetQueryOptions = <TData = Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
 ) => {
 
-const {query: queryOptions} = options ?? {};
+const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getHealthCheckApiHealthGetQueryKey();
 
   
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheckApiHealthGet>>> = ({ signal }) => healthCheckApiHealthGet({ signal });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheckApiHealthGet>>> = ({ signal }) => healthCheckApiHealthGet(requestOptions, signal);
 
       
 
@@ -113,7 +88,7 @@ export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof hea
           TError,
           Awaited<ReturnType<typeof healthCheckApiHealthGet>>
         > , 'initialData'
-      >, }
+      >, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError = ErrorResponse>(
@@ -123,11 +98,11 @@ export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof hea
           TError,
           Awaited<ReturnType<typeof healthCheckApiHealthGet>>
         > , 'initialData'
-      >, }
+      >, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, }
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -135,7 +110,7 @@ export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof hea
  */
 
 export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError = ErrorResponse>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, }
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheckApiHealthGet>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 

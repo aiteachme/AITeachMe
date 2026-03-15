@@ -247,7 +247,7 @@ export function ChatPage() {
                     /* Messages view */
                     <div className="flex-1 overflow-y-auto">
                         <div className="max-w-3xl mx-auto px-4 py-8">
-                            {messages.map((message, index) => (
+                            {messages.map((message) => (
                                 <div
                                     key={message.id}
                                     className={cn(

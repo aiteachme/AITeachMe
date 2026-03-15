@@ -29,82 +29,42 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 接收一个文件并同步完成落盘与解析，然后通过后台任务触发 Digest 消化索引流程。
  * @summary 上传学习资料
  */
-export type uploadFileApiV1UploadPostResponse200 = {
-  data: UploadResponse
-  status: 200
-}
-
-export type uploadFileApiV1UploadPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type uploadFileApiV1UploadPostResponse413 = {
-  data: ErrorResponse
-  status: 413
-}
-
-export type uploadFileApiV1UploadPostResponse422 = {
-  data: ErrorResponse
-  status: 422
-}
-
-export type uploadFileApiV1UploadPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type uploadFileApiV1UploadPostResponseSuccess = (uploadFileApiV1UploadPostResponse200) & {
-  headers: Headers;
-};
-export type uploadFileApiV1UploadPostResponseError = (uploadFileApiV1UploadPostResponse400 | uploadFileApiV1UploadPostResponse413 | uploadFileApiV1UploadPostResponse422 | uploadFileApiV1UploadPostResponse500) & {
-  headers: Headers;
-};
-
-export type uploadFileApiV1UploadPostResponse = (uploadFileApiV1UploadPostResponseSuccess | uploadFileApiV1UploadPostResponseError)
-
-export const getUploadFileApiV1UploadPostUrl = () => {
-
-
-  
-
-  return `/api/v1/upload`
-}
-
-export const uploadFileApiV1UploadPost = async (bodyUploadFileApiV1UploadPost: BodyUploadFileApiV1UploadPost, options?: RequestInit): Promise<uploadFileApiV1UploadPostResponse> => {
-    const formData = new FormData();
+export const uploadFileApiV1UploadPost = (
+    bodyUploadFileApiV1UploadPost: BodyUploadFileApiV1UploadPost,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      const formData = new FormData();
 formData.append(`file`, bodyUploadFileApiV1UploadPost.file);
 formData.append(`subject`, bodyUploadFileApiV1UploadPost.subject);
 
-  return apiClient<uploadFileApiV1UploadPostResponse>(getUploadFileApiV1UploadPostUrl(),
-  {      
-    ...options,
-    method: 'POST'
-    ,
-    body: 
-      formData,
-  }
-);}
+      return apiClient<UploadResponse>(
+      {url: `/api/v1/upload`, method: 'POST',
+       data: formData, signal
+    },
+      options);
+    }
   
 
 
-
 export const getUploadFileApiV1UploadPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, TError,{data: BodyUploadFileApiV1UploadPost}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, TError,{data: BodyUploadFileApiV1UploadPost}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, TError,{data: BodyUploadFileApiV1UploadPost}, TContext> => {
 
 const mutationKey = ['uploadFileApiV1UploadPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -112,7 +72,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, {data: BodyUploadFileApiV1UploadPost}> = (props) => {
           const {data} = props ?? {};
 
-          return  uploadFileApiV1UploadPost(data,)
+          return  uploadFileApiV1UploadPost(data,requestOptions)
         }
 
 
@@ -130,7 +90,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 上传学习资料
  */
 export const useUploadFileApiV1UploadPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, TError,{data: BodyUploadFileApiV1UploadPost}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>, TError,{data: BodyUploadFileApiV1UploadPost}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof uploadFileApiV1UploadPost>>,
         TError,
@@ -143,67 +103,30 @@ export const useUploadFileApiV1UploadPost = <TError = ErrorResponse,
  * 返回上传、解析与 Digest 三段流程聚合后的当前进度，适合前端轮询展示。
  * @summary 查询上传任务状态
  */
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponse200 = {
-  data: PipelineStatusResponse
-  status: 200
-}
-
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponseSuccess = (getPipelineStatusApiV1UploadTaskIdStatusPostResponse200) & {
-  headers: Headers;
-};
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponseError = (getPipelineStatusApiV1UploadTaskIdStatusPostResponse404 | getPipelineStatusApiV1UploadTaskIdStatusPostResponse422 | getPipelineStatusApiV1UploadTaskIdStatusPostResponse500) & {
-  headers: Headers;
-};
-
-export type getPipelineStatusApiV1UploadTaskIdStatusPostResponse = (getPipelineStatusApiV1UploadTaskIdStatusPostResponseSuccess | getPipelineStatusApiV1UploadTaskIdStatusPostResponseError)
-
-export const getGetPipelineStatusApiV1UploadTaskIdStatusPostUrl = (taskId: number,) => {
-
-
+export const getPipelineStatusApiV1UploadTaskIdStatusPost = (
+    taskId: number,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<PipelineStatusResponse>(
+      {url: `/api/v1/upload/${taskId}/status`, method: 'POST', signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/upload/${taskId}/status`
-}
-
-export const getPipelineStatusApiV1UploadTaskIdStatusPost = async (taskId: number, options?: RequestInit): Promise<getPipelineStatusApiV1UploadTaskIdStatusPostResponse> => {
-  
-  return apiClient<getPipelineStatusApiV1UploadTaskIdStatusPostResponse>(getGetPipelineStatusApiV1UploadTaskIdStatusPostUrl(taskId),
-  {      
-    ...options,
-    method: 'POST'
-    
-    
-  }
-);}
-  
-
 
 
 export const getGetPipelineStatusApiV1UploadTaskIdStatusPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, TError,{taskId: number}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, TError,{taskId: number}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, TError,{taskId: number}, TContext> => {
 
 const mutationKey = ['getPipelineStatusApiV1UploadTaskIdStatusPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -211,7 +134,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, {taskId: number}> = (props) => {
           const {taskId} = props ?? {};
 
-          return  getPipelineStatusApiV1UploadTaskIdStatusPost(taskId,)
+          return  getPipelineStatusApiV1UploadTaskIdStatusPost(taskId,requestOptions)
         }
 
 
@@ -229,7 +152,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 查询上传任务状态
  */
 export const useGetPipelineStatusApiV1UploadTaskIdStatusPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, TError,{taskId: number}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>, TError,{taskId: number}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getPipelineStatusApiV1UploadTaskIdStatusPost>>,
         TError,
@@ -242,69 +165,33 @@ export const useGetPipelineStatusApiV1UploadTaskIdStatusPost = <TError = ErrorRe
  * 分页返回指定学科下的全部上传文件及其解析状态。
  * @summary 列出学科文件
  */
-export type listFilesApiV1FilesSubjectPostResponse200 = {
-  data: FileListResponse
-  status: 200
-}
-
-export type listFilesApiV1FilesSubjectPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type listFilesApiV1FilesSubjectPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type listFilesApiV1FilesSubjectPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type listFilesApiV1FilesSubjectPostResponseSuccess = (listFilesApiV1FilesSubjectPostResponse200) & {
-  headers: Headers;
-};
-export type listFilesApiV1FilesSubjectPostResponseError = (listFilesApiV1FilesSubjectPostResponse400 | listFilesApiV1FilesSubjectPostResponse422 | listFilesApiV1FilesSubjectPostResponse500) & {
-  headers: Headers;
-};
-
-export type listFilesApiV1FilesSubjectPostResponse = (listFilesApiV1FilesSubjectPostResponseSuccess | listFilesApiV1FilesSubjectPostResponseError)
-
-export const getListFilesApiV1FilesSubjectPostUrl = (subject: string,) => {
-
-
+export const listFilesApiV1FilesSubjectPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<FileListResponse>(
+      {url: `/api/v1/files/${subject}`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/files/${subject}`
-}
-
-export const listFilesApiV1FilesSubjectPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<listFilesApiV1FilesSubjectPostResponse> => {
-  
-  return apiClient<listFilesApiV1FilesSubjectPostResponse>(getListFilesApiV1FilesSubjectPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getListFilesApiV1FilesSubjectPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['listFilesApiV1FilesSubjectPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -312,7 +199,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  listFilesApiV1FilesSubjectPost(subject,data,)
+          return  listFilesApiV1FilesSubjectPost(subject,data,requestOptions)
         }
 
 
@@ -330,7 +217,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 列出学科文件
  */
 export const useListFilesApiV1FilesSubjectPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof listFilesApiV1FilesSubjectPost>>,
         TError,

@@ -28,75 +28,41 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 分页返回指定学科下的知识点掌握度记录。
  * @summary 获取学习画像
  */
-export type listProfilesApiV1ProfileSubjectPostResponse200 = {
-  data: ProfileResponse
-  status: 200
-}
-
-export type listProfilesApiV1ProfileSubjectPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type listProfilesApiV1ProfileSubjectPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type listProfilesApiV1ProfileSubjectPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type listProfilesApiV1ProfileSubjectPostResponseSuccess = (listProfilesApiV1ProfileSubjectPostResponse200) & {
-  headers: Headers;
-};
-export type listProfilesApiV1ProfileSubjectPostResponseError = (listProfilesApiV1ProfileSubjectPostResponse400 | listProfilesApiV1ProfileSubjectPostResponse422 | listProfilesApiV1ProfileSubjectPostResponse500) & {
-  headers: Headers;
-};
-
-export type listProfilesApiV1ProfileSubjectPostResponse = (listProfilesApiV1ProfileSubjectPostResponseSuccess | listProfilesApiV1ProfileSubjectPostResponseError)
-
-export const getListProfilesApiV1ProfileSubjectPostUrl = (subject: string,) => {
-
-
+export const listProfilesApiV1ProfileSubjectPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<ProfileResponse>(
+      {url: `/api/v1/profile/${subject}`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/profile/${subject}`
-}
-
-export const listProfilesApiV1ProfileSubjectPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<listProfilesApiV1ProfileSubjectPostResponse> => {
-  
-  return apiClient<listProfilesApiV1ProfileSubjectPostResponse>(getListProfilesApiV1ProfileSubjectPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getListProfilesApiV1ProfileSubjectPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['listProfilesApiV1ProfileSubjectPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -104,7 +70,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  listProfilesApiV1ProfileSubjectPost(subject,data,)
+          return  listProfilesApiV1ProfileSubjectPost(subject,data,requestOptions)
         }
 
 
@@ -122,7 +88,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取学习画像
  */
 export const useListProfilesApiV1ProfileSubjectPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof listProfilesApiV1ProfileSubjectPost>>,
         TError,
@@ -135,77 +101,30 @@ export const useListProfilesApiV1ProfileSubjectPost = <TError = ErrorResponse | 
  * 汇总总体掌握度、薄弱点 Top 5 与个性化复习建议。
  * @summary 获取学习报告
  */
-export type getLearningReportApiV1ProfileSubjectReportPostResponse200 = {
-  data: ReportResponse
-  status: 200
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse502 = {
-  data: ErrorResponse
-  status: 502
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse503 = {
-  data: ErrorResponse
-  status: 503
-}
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponseSuccess = (getLearningReportApiV1ProfileSubjectReportPostResponse200) & {
-  headers: Headers;
-};
-export type getLearningReportApiV1ProfileSubjectReportPostResponseError = (getLearningReportApiV1ProfileSubjectReportPostResponse400 | getLearningReportApiV1ProfileSubjectReportPostResponse422 | getLearningReportApiV1ProfileSubjectReportPostResponse500 | getLearningReportApiV1ProfileSubjectReportPostResponse502 | getLearningReportApiV1ProfileSubjectReportPostResponse503) & {
-  headers: Headers;
-};
-
-export type getLearningReportApiV1ProfileSubjectReportPostResponse = (getLearningReportApiV1ProfileSubjectReportPostResponseSuccess | getLearningReportApiV1ProfileSubjectReportPostResponseError)
-
-export const getGetLearningReportApiV1ProfileSubjectReportPostUrl = (subject: string,) => {
-
-
+export const getLearningReportApiV1ProfileSubjectReportPost = (
+    subject: string,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<ReportResponse>(
+      {url: `/api/v1/profile/${subject}/report`, method: 'POST', signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/profile/${subject}/report`
-}
-
-export const getLearningReportApiV1ProfileSubjectReportPost = async (subject: string, options?: RequestInit): Promise<getLearningReportApiV1ProfileSubjectReportPostResponse> => {
-  
-  return apiClient<getLearningReportApiV1ProfileSubjectReportPostResponse>(getGetLearningReportApiV1ProfileSubjectReportPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST'
-    
-    
-  }
-);}
-  
-
 
 
 export const getGetLearningReportApiV1ProfileSubjectReportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, TError,{subject: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, TError,{subject: string}, TContext> => {
 
 const mutationKey = ['getLearningReportApiV1ProfileSubjectReportPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -213,7 +132,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, {subject: string}> = (props) => {
           const {subject} = props ?? {};
 
-          return  getLearningReportApiV1ProfileSubjectReportPost(subject,)
+          return  getLearningReportApiV1ProfileSubjectReportPost(subject,requestOptions)
         }
 
 
@@ -231,7 +150,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取学习报告
  */
 export const useGetLearningReportApiV1ProfileSubjectReportPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, TError,{subject: string}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getLearningReportApiV1ProfileSubjectReportPost>>,
         TError,
@@ -244,69 +163,33 @@ export const useGetLearningReportApiV1ProfileSubjectReportPost = <TError = Error
  * 分页返回指定学科下的错题列表及 AI 错因分析。
  * @summary 获取错题本
  */
-export type listMistakesApiV1MistakesSubjectPostResponse200 = {
-  data: MistakeListResponse
-  status: 200
-}
-
-export type listMistakesApiV1MistakesSubjectPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type listMistakesApiV1MistakesSubjectPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type listMistakesApiV1MistakesSubjectPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type listMistakesApiV1MistakesSubjectPostResponseSuccess = (listMistakesApiV1MistakesSubjectPostResponse200) & {
-  headers: Headers;
-};
-export type listMistakesApiV1MistakesSubjectPostResponseError = (listMistakesApiV1MistakesSubjectPostResponse400 | listMistakesApiV1MistakesSubjectPostResponse422 | listMistakesApiV1MistakesSubjectPostResponse500) & {
-  headers: Headers;
-};
-
-export type listMistakesApiV1MistakesSubjectPostResponse = (listMistakesApiV1MistakesSubjectPostResponseSuccess | listMistakesApiV1MistakesSubjectPostResponseError)
-
-export const getListMistakesApiV1MistakesSubjectPostUrl = (subject: string,) => {
-
-
+export const listMistakesApiV1MistakesSubjectPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<MistakeListResponse>(
+      {url: `/api/v1/mistakes/${subject}`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/mistakes/${subject}`
-}
-
-export const listMistakesApiV1MistakesSubjectPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<listMistakesApiV1MistakesSubjectPostResponse> => {
-  
-  return apiClient<listMistakesApiV1MistakesSubjectPostResponse>(getListMistakesApiV1MistakesSubjectPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getListMistakesApiV1MistakesSubjectPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['listMistakesApiV1MistakesSubjectPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -314,7 +197,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  listMistakesApiV1MistakesSubjectPost(subject,data,)
+          return  listMistakesApiV1MistakesSubjectPost(subject,data,requestOptions)
         }
 
 
@@ -332,7 +215,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取错题本
  */
 export const useListMistakesApiV1MistakesSubjectPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof listMistakesApiV1MistakesSubjectPost>>,
         TError,

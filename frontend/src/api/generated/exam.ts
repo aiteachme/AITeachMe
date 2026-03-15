@@ -30,85 +30,41 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 根据学科、知识点范围和难度分布要求生成一份新考卷。
  * @summary 生成测验
  */
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse200 = {
-  data: ExamResponse
-  status: 200
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse502 = {
-  data: ErrorResponse
-  status: 502
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse503 = {
-  data: ErrorResponse
-  status: 503
-}
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponseSuccess = (generateExamApiV1SubjectsSubjectExamGeneratePostResponse200) & {
-  headers: Headers;
-};
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponseError = (generateExamApiV1SubjectsSubjectExamGeneratePostResponse400 | generateExamApiV1SubjectsSubjectExamGeneratePostResponse422 | generateExamApiV1SubjectsSubjectExamGeneratePostResponse500 | generateExamApiV1SubjectsSubjectExamGeneratePostResponse502 | generateExamApiV1SubjectsSubjectExamGeneratePostResponse503) & {
-  headers: Headers;
-};
-
-export type generateExamApiV1SubjectsSubjectExamGeneratePostResponse = (generateExamApiV1SubjectsSubjectExamGeneratePostResponseSuccess | generateExamApiV1SubjectsSubjectExamGeneratePostResponseError)
-
-export const getGenerateExamApiV1SubjectsSubjectExamGeneratePostUrl = (subject: string,) => {
-
-
+export const generateExamApiV1SubjectsSubjectExamGeneratePost = (
+    subject: string,
+    examGenerateRequest: ExamGenerateRequest,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<ExamResponse>(
+      {url: `/api/v1/subjects/${subject}/exam/generate`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: examGenerateRequest, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/subjects/${subject}/exam/generate`
-}
-
-export const generateExamApiV1SubjectsSubjectExamGeneratePost = async (subject: string,
-    examGenerateRequest: ExamGenerateRequest, options?: RequestInit): Promise<generateExamApiV1SubjectsSubjectExamGeneratePostResponse> => {
-  
-  return apiClient<generateExamApiV1SubjectsSubjectExamGeneratePostResponse>(getGenerateExamApiV1SubjectsSubjectExamGeneratePostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      examGenerateRequest,)
-  }
-);}
-  
-
 
 
 export const getGenerateExamApiV1SubjectsSubjectExamGeneratePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext> => {
 
 const mutationKey = ['generateExamApiV1SubjectsSubjectExamGeneratePost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -116,7 +72,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, {subject: string;data: ExamGenerateRequest}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  generateExamApiV1SubjectsSubjectExamGeneratePost(subject,data,)
+          return  generateExamApiV1SubjectsSubjectExamGeneratePost(subject,data,requestOptions)
         }
 
 
@@ -134,7 +90,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 生成测验
  */
 export const useGenerateExamApiV1SubjectsSubjectExamGeneratePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>, TError,{subject: string;data: ExamGenerateRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamGeneratePost>>,
         TError,
@@ -147,79 +103,33 @@ export const useGenerateExamApiV1SubjectsSubjectExamGeneratePost = <TError = Err
  * 根据 exam_id 提交用户答案并返回总分、逐题判分结果及错因分析。
  * @summary 提交答卷
  */
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse200 = {
-  data: SubmitResponse
-  status: 200
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse502 = {
-  data: ErrorResponse
-  status: 502
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse503 = {
-  data: ErrorResponse
-  status: 503
-}
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponseSuccess = (submitAnswersApiV1ExamExamIdSubmitPostResponse200) & {
-  headers: Headers;
-};
-export type submitAnswersApiV1ExamExamIdSubmitPostResponseError = (submitAnswersApiV1ExamExamIdSubmitPostResponse404 | submitAnswersApiV1ExamExamIdSubmitPostResponse422 | submitAnswersApiV1ExamExamIdSubmitPostResponse500 | submitAnswersApiV1ExamExamIdSubmitPostResponse502 | submitAnswersApiV1ExamExamIdSubmitPostResponse503) & {
-  headers: Headers;
-};
-
-export type submitAnswersApiV1ExamExamIdSubmitPostResponse = (submitAnswersApiV1ExamExamIdSubmitPostResponseSuccess | submitAnswersApiV1ExamExamIdSubmitPostResponseError)
-
-export const getSubmitAnswersApiV1ExamExamIdSubmitPostUrl = (examId: number,) => {
-
-
+export const submitAnswersApiV1ExamExamIdSubmitPost = (
+    examId: number,
+    submitRequest: SubmitRequest,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<SubmitResponse>(
+      {url: `/api/v1/exam/${examId}/submit`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: submitRequest, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/exam/${examId}/submit`
-}
-
-export const submitAnswersApiV1ExamExamIdSubmitPost = async (examId: number,
-    submitRequest: SubmitRequest, options?: RequestInit): Promise<submitAnswersApiV1ExamExamIdSubmitPostResponse> => {
-  
-  return apiClient<submitAnswersApiV1ExamExamIdSubmitPostResponse>(getSubmitAnswersApiV1ExamExamIdSubmitPostUrl(examId),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      submitRequest,)
-  }
-);}
-  
-
 
 
 export const getSubmitAnswersApiV1ExamExamIdSubmitPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, TError,{examId: number;data: SubmitRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, TError,{examId: number;data: SubmitRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, TError,{examId: number;data: SubmitRequest}, TContext> => {
 
 const mutationKey = ['submitAnswersApiV1ExamExamIdSubmitPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -227,7 +137,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, {examId: number;data: SubmitRequest}> = (props) => {
           const {examId,data} = props ?? {};
 
-          return  submitAnswersApiV1ExamExamIdSubmitPost(examId,data,)
+          return  submitAnswersApiV1ExamExamIdSubmitPost(examId,data,requestOptions)
         }
 
 
@@ -245,7 +155,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 提交答卷
  */
 export const useSubmitAnswersApiV1ExamExamIdSubmitPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, TError,{examId: number;data: SubmitRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>, TError,{examId: number;data: SubmitRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof submitAnswersApiV1ExamExamIdSubmitPost>>,
         TError,
@@ -258,69 +168,33 @@ export const useSubmitAnswersApiV1ExamExamIdSubmitPost = <TError = ErrorResponse
  * 分页返回指定学科下的历史考卷与最近提交信息。
  * @summary 获取考试历史
  */
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse200 = {
-  data: ExamHistoryResponse
-  status: 200
-}
-
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponseSuccess = (getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse200) & {
-  headers: Headers;
-};
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponseError = (getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse400 | getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse422 | getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse500) & {
-  headers: Headers;
-};
-
-export type getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse = (getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponseSuccess | getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponseError)
-
-export const getGetExamHistoryApiV1SubjectsSubjectExamHistoryPostUrl = (subject: string,) => {
-
-
+export const getExamHistoryApiV1SubjectsSubjectExamHistoryPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<ExamHistoryResponse>(
+      {url: `/api/v1/subjects/${subject}/exam/history`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/subjects/${subject}/exam/history`
-}
-
-export const getExamHistoryApiV1SubjectsSubjectExamHistoryPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse> => {
-  
-  return apiClient<getExamHistoryApiV1SubjectsSubjectExamHistoryPostResponse>(getGetExamHistoryApiV1SubjectsSubjectExamHistoryPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getGetExamHistoryApiV1SubjectsSubjectExamHistoryPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['getExamHistoryApiV1SubjectsSubjectExamHistoryPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -328,7 +202,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  getExamHistoryApiV1SubjectsSubjectExamHistoryPost(subject,data,)
+          return  getExamHistoryApiV1SubjectsSubjectExamHistoryPost(subject,data,requestOptions)
         }
 
 
@@ -346,7 +220,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取考试历史
  */
 export const useGetExamHistoryApiV1SubjectsSubjectExamHistoryPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getExamHistoryApiV1SubjectsSubjectExamHistoryPost>>,
         TError,

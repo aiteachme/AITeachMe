@@ -27,85 +27,41 @@ import { apiClient } from '../client';
 
 
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 
 
 /**
  * 结合学科资料、检索结果、近期对话、错题和薄弱项生成 SSE 流式回答。响应会依次发送 `token`、`done` 或 `error` 事件。
  * @summary 发起流式对话
  */
-export type chatApiV1SubjectsSubjectChatPostResponse200 = {
-  data: unknown
-  status: 200
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponse502 = {
-  data: ErrorResponse
-  status: 502
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponse503 = {
-  data: ErrorResponse
-  status: 503
-}
-
-export type chatApiV1SubjectsSubjectChatPostResponseSuccess = (chatApiV1SubjectsSubjectChatPostResponse200) & {
-  headers: Headers;
-};
-export type chatApiV1SubjectsSubjectChatPostResponseError = (chatApiV1SubjectsSubjectChatPostResponse400 | chatApiV1SubjectsSubjectChatPostResponse422 | chatApiV1SubjectsSubjectChatPostResponse500 | chatApiV1SubjectsSubjectChatPostResponse502 | chatApiV1SubjectsSubjectChatPostResponse503) & {
-  headers: Headers;
-};
-
-export type chatApiV1SubjectsSubjectChatPostResponse = (chatApiV1SubjectsSubjectChatPostResponseSuccess | chatApiV1SubjectsSubjectChatPostResponseError)
-
-export const getChatApiV1SubjectsSubjectChatPostUrl = (subject: string,) => {
-
-
+export const chatApiV1SubjectsSubjectChatPost = (
+    subject: string,
+    chatRequest: ChatRequest,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<unknown>(
+      {url: `/api/v1/subjects/${subject}/chat`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: chatRequest, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/subjects/${subject}/chat`
-}
-
-export const chatApiV1SubjectsSubjectChatPost = async (subject: string,
-    chatRequest: ChatRequest, options?: RequestInit): Promise<chatApiV1SubjectsSubjectChatPostResponse> => {
-  
-  return apiClient<chatApiV1SubjectsSubjectChatPostResponse>(getChatApiV1SubjectsSubjectChatPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      chatRequest,)
-  }
-);}
-  
-
 
 
 export const getChatApiV1SubjectsSubjectChatPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, TError,{subject: string;data: ChatRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, TError,{subject: string;data: ChatRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, TError,{subject: string;data: ChatRequest}, TContext> => {
 
 const mutationKey = ['chatApiV1SubjectsSubjectChatPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -113,7 +69,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, {subject: string;data: ChatRequest}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  chatApiV1SubjectsSubjectChatPost(subject,data,)
+          return  chatApiV1SubjectsSubjectChatPost(subject,data,requestOptions)
         }
 
 
@@ -131,7 +87,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 发起流式对话
  */
 export const useChatApiV1SubjectsSubjectChatPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, TError,{subject: string;data: ChatRequest}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>, TError,{subject: string;data: ChatRequest}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof chatApiV1SubjectsSubjectChatPost>>,
         TError,
@@ -144,69 +100,33 @@ export const useChatApiV1SubjectsSubjectChatPost = <TError = ErrorResponse | HTT
  * 分页返回指定学科的历史聊天消息列表。
  * @summary 获取对话历史
  */
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse200 = {
-  data: ChatHistoryResponse
-  status: 200
-}
-
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponseSuccess = (getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse200) & {
-  headers: Headers;
-};
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponseError = (getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse400 | getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse422 | getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse500) & {
-  headers: Headers;
-};
-
-export type getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse = (getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponseSuccess | getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponseError)
-
-export const getGetChatHistoryApiV1SubjectsSubjectChatHistoryPostUrl = (subject: string,) => {
-
-
+export const getChatHistoryApiV1SubjectsSubjectChatHistoryPost = (
+    subject: string,
+    paginationParams: PaginationParams,
+ options?: SecondParameter<typeof apiClient>,signal?: AbortSignal
+) => {
+      
+      
+      return apiClient<ChatHistoryResponse>(
+      {url: `/api/v1/subjects/${subject}/chat/history`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: paginationParams, signal
+    },
+      options);
+    }
   
-
-  return `/api/v1/subjects/${subject}/chat/history`
-}
-
-export const getChatHistoryApiV1SubjectsSubjectChatHistoryPost = async (subject: string,
-    paginationParams: PaginationParams, options?: RequestInit): Promise<getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse> => {
-  
-  return apiClient<getChatHistoryApiV1SubjectsSubjectChatHistoryPostResponse>(getGetChatHistoryApiV1SubjectsSubjectChatHistoryPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      paginationParams,)
-  }
-);}
-  
-
 
 
 export const getGetChatHistoryApiV1SubjectsSubjectChatHistoryPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext> => {
 
 const mutationKey = ['getChatHistoryApiV1SubjectsSubjectChatHistoryPost'];
-const {mutation: mutationOptions} = options ?
+const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
       : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
+      : {mutation: { mutationKey, }, request: undefined};
 
       
 
@@ -214,7 +134,7 @@ const {mutation: mutationOptions} = options ?
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, {subject: string;data: PaginationParams}> = (props) => {
           const {subject,data} = props ?? {};
 
-          return  getChatHistoryApiV1SubjectsSubjectChatHistoryPost(subject,data,)
+          return  getChatHistoryApiV1SubjectsSubjectChatHistoryPost(subject,data,requestOptions)
         }
 
 
@@ -232,7 +152,7 @@ const {mutation: mutationOptions} = options ?
  * @summary 获取对话历史
  */
 export const useGetChatHistoryApiV1SubjectsSubjectChatHistoryPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, }
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>, TError,{subject: string;data: PaginationParams}, TContext>, request?: SecondParameter<typeof apiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getChatHistoryApiV1SubjectsSubjectChatHistoryPost>>,
         TError,
