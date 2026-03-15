@@ -1,14 +1,13 @@
 """
 共享依赖 — Subject 校验、DB Session、分页参数
-
-需求：5.1, 12.9
 """
 
 from __future__ import annotations
 
 from typing import Generator
 
-from fastapi import Depends, Path, Query
+from fastapi import Depends, Path
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from app.core.database import get_session
@@ -29,13 +28,8 @@ def get_db() -> Generator[Session, None, None]:
         session.close()
 
 
-class PaginationParams:
-    """查询依赖：limit 默认 100，offset 默认 0。"""
+class PaginationParams(BaseModel):
+    """请求体分页参数：limit 默认 100，offset 默认 0。"""
 
-    def __init__(
-        self,
-        limit: int = Query(100, ge=1, le=1000),
-        offset: int = Query(0, ge=0),
-    ) -> None:
-        self.limit = limit
-        self.offset = offset
+    limit: int = Field(default=100, ge=1, le=1000)
+    offset: int = Field(default=0, ge=0)

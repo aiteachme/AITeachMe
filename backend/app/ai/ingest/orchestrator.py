@@ -3,8 +3,6 @@
 
 根据文件扩展名路由到正确的解析器，未知格式抛出 UnsupportedFileTypeError。
 Pretty_Printer 对 Markdown 进行规范化（去除多余空行、统一换行）。
-
-需求：5.4, 6.2, 6.4
 """
 
 from __future__ import annotations

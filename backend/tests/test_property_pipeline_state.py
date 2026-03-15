@@ -3,8 +3,6 @@
 
 验证 parse_status 转换：pending→parsing→parsed 或 pending→parsing→parse_failed，终态不可回退
 验证 pipeline_stage 转换：pending→cleaned→outlined→stored→chunked→embedded，或 any→failed，支持恢复
-
-验证需求：5.10, 7.2, 7.4, 7.7, 7.9
 """
 
 import os

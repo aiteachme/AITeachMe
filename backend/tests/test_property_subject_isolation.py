@@ -3,8 +3,6 @@
 
 验证对学科 s1 的写入不影响学科 s2 的查询。
 覆盖 RawFile、Knowledge、ChatMessage、UserProfile、Exam 五个维度。
-
-验证需求：2.6
 """
 
 import os

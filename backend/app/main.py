@@ -1,7 +1,5 @@
 """
 FastAPI 应用工厂 — 路由注册、CORS、全局异常处理器、数据库初始化
-
-需求：12.1, 12.3, 12.5, 12.6, 12.7, 12.8, 12.10
 """
 
 from __future__ import annotations

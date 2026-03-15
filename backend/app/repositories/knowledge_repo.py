@@ -1,7 +1,5 @@
 """
 Knowledge + KnowledgeGraphNode + Chunk CRUD 及向量检索
-
-需求：7.3, 7.4, 7.5, 7.6, 7.10, 7.11, 8.1
 """
 
 from __future__ import annotations

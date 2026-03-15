@@ -6,8 +6,6 @@
 - 结果按相似度降序排列（results[i].score >= results[i+1].score）
 - 所有块属于查询的学科
 
-验证需求：8.1, 2.6
-
 策略：在内存 SQLite 中插入多学科的 Chunk + embedding 数据，
 直接调用 vector_search 验证返回结果的不变量。
 """

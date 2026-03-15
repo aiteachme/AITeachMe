@@ -3,8 +3,6 @@
 
 从每道已判分题目提取 knowledge_point，增量更新 UserProfile 的 attempts/correct。
 mastery = correct / attempts（attempts > 0），否则 mastery = None。
-
-需求：11.1, 11.2, 11.7
 """
 
 from __future__ import annotations

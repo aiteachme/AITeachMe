@@ -4,8 +4,6 @@
 GET /api/v1/profile/{subject} — 分页掌握度列表
 GET /api/v1/profile/{subject}/report — 学习进度报告
 GET /api/v1/mistakes/{subject} — 分页错题列表
-
-需求：11.4, 11.5, 11.6
 """
 
 from __future__ import annotations
@@ -26,15 +24,15 @@ from app.services.profile_service import get_profiles, get_report, get_mistakes
 router = APIRouter(prefix="/api/v1", tags=["profile"])
 
 
-@router.get("/profile/{subject}", response_model=ProfileResponse)
+@router.post("/profile/{subject}", response_model=ProfileResponse)
 async def list_profiles(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> ProfileResponse:
     """分页掌握度列表。"""
     items, total = await get_profiles(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return ProfileResponse(
         items=[
@@ -50,7 +48,7 @@ async def list_profiles(
     )
 
 
-@router.get("/profile/{subject}/report", response_model=ReportResponse)
+@router.post("/profile/{subject}/report", response_model=ReportResponse)
 async def get_learning_report(
     subject: str = Depends(validate_subject),
     session: Session = Depends(get_db),
@@ -72,15 +70,15 @@ async def get_learning_report(
     )
 
 
-@router.get("/mistakes/{subject}", response_model=MistakeListResponse)
+@router.post("/mistakes/{subject}", response_model=MistakeListResponse)
 async def list_mistakes(
+    body: PaginationParams,
     subject: str = Depends(validate_subject),
-    pagination: PaginationParams = Depends(),
     session: Session = Depends(get_db),
 ) -> MistakeListResponse:
     """分页错题列表。"""
     items, total = await get_mistakes(
-        session, subject, limit=pagination.limit, offset=pagination.offset
+        session, subject, limit=body.limit, offset=body.offset
     )
     return MistakeListResponse(
         items=[

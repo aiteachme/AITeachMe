@@ -5,8 +5,6 @@
 - mastery = correct / attempts（attempts > 0 时）
 - mastery = None（attempts == 0 时）
 - 0.0 <= mastery <= 1.0
-
-验证需求：11.1, 11.2, 11.7
 """
 
 import os

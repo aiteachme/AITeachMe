@@ -3,8 +3,6 @@ Markdown 清洗节点
 
 移除多余空行，修复 Markdown 格式错误，输出规范化 Markdown。
 更新 Knowledge.pipeline_stage 为 cleaned。
-
-需求：7.2
 """
 
 from __future__ import annotations

@@ -5,8 +5,6 @@
 无标题时生成根块（level=1）。
 记录每个块的 header_path 和 chunk_index。
 更新 Knowledge.pipeline_stage 为 chunked。
-
-需求：7.5
 """
 
 from __future__ import annotations

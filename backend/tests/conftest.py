@@ -1,7 +1,5 @@
 """
 共享测试夹具：内存 SQLite 引擎、db_session、FastAPI TestClient（含依赖覆盖）、Mock LLM
-
-需求：3.2, 3.4
 """
 
 import os

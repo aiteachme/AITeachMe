@@ -7,8 +7,6 @@
 - difficulty 枚举合法（easy / medium / hard）
 - single_choice 选项 >= 2 且 answer 在选项中
 - knowledge_point 非空
-
-验证需求：9.2, 9.4, 9.5
 """
 
 import os
