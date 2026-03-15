@@ -1,44 +1,106 @@
-# AiTeachMe Frontend
+# AI TEACHE ME
 
-Vite + Vanilla JS 前端。
+A modern SaaS-style learning platform powered by AI.
 
-## 本地开发
+## Tech Stack
+
+- React 18
+- TypeScript
+- Vite
+- TailwindCSS
+- React Router
+- Lucide Icons
+
+## Features
+
+- 📚 Subject Management - Create and manage multiple subjects
+- 📤 Upload Materials - Upload course materials and notes
+- 📝 Knowledge Summary - AI-generated summaries and mind maps
+- 💬 AI Chat - Interactive learning assistant
+- 📋 Exam Prediction - Practice with AI-generated questions
+- 📊 Learning Analytics - Track progress and performance
+
+## Getting Started
+
+### Prerequisites
+
+Make sure you have Node.js installed (v18 or higher recommended).
+
+### Installation
+
+1. Install dependencies:
 
 ```bash
-# 安装依赖
 npm install
+```
 
-# 启动开发服务器
+2. Start the development server:
+
+```bash
 npm run dev
 ```
 
-访问 http://localhost:5173 查看页面。
+3. Open your browser and navigate to `http://localhost:5173`
 
-### 环境变量
+### Build for Production
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `VITE_API_URL` | 后端 API 地址 | `http://localhost:8000` |
+```bash
+npm run build
+```
 
-本地开发时如果后端也在本地运行则无需配置。部署时需设置为 Render 后端的 URL。
+The built files will be in the `dist` directory.
 
-## 部署 (Vercel)
-
-前端通过 [Vercel](https://vercel.com) 部署，配置文件为 `vercel.json`。
-
-**自动部署**：连接 GitHub 仓库后，每次 push 到 `main` 分支会自动触发重新部署。
-
-### Vercel 项目设置
-
-| 配置项 | 值 |
-|--------|-----|
-| Framework Preset | Vite |
-| Root Directory | `frontend` |
-| Build Command | `npm run build` |
-| Output Directory | `dist` |
-
-### 环境变量（在 Vercel Dashboard 设置）
+## Project Structure
 
 ```
-VITE_API_URL=https://你的render后端域名
+src/
+├── components/
+│   ├── ui/              # Reusable UI components
+│   │   ├── Button.tsx
+│   │   └── Card.tsx
+│   ├── pages/           # Page components
+│   │   ├── HomePage.tsx
+│   │   ├── UploadPage.tsx
+│   │   ├── SummaryPage.tsx
+│   │   ├── ChatPage.tsx
+│   │   ├── ExamPage.tsx
+│   │   └── AnalysisPage.tsx
+│   ├── Layout.tsx       # Main layout wrapper
+│   └── Sidebar.tsx      # Navigation sidebar
+├── lib/
+│   └── utils.ts         # Utility functions
+├── App.tsx              # Main app with routing
+├── main.tsx             # Entry point
+└── index.css            # Global styles
 ```
+
+## Design Philosophy
+
+The UI follows modern SaaS design principles:
+
+- Clean, minimal layout with plenty of whitespace
+- Soft shadows and rounded corners
+- Responsive design (mobile-friendly)
+- Inspired by Linear, Notion, and ChatGPT
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_API_URL` | Backend API URL | `http://localhost:8000` |
+
+## Deployment
+
+### Vercel
+
+The frontend can be deployed to Vercel:
+
+1. Connect your GitHub repository
+2. Set the framework preset to Vite
+3. Configure environment variables in the Vercel dashboard
+4. Deploy
+
+## License
+
+Private project
+
