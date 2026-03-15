@@ -32,6 +32,7 @@ async def aembed_texts(texts: list[str]) -> list[list[float]]:
         return []
 
     settings = get_settings()
+    api_key = settings.require_llm_api_key()
     start = time.monotonic()
 
     try:
@@ -39,7 +40,7 @@ async def aembed_texts(texts: list[str]) -> list[list[float]]:
             model=f"openai/{settings.embedding_model}",
             input=texts,
             api_base=settings.llm_base_url,
-            api_key=settings.llm_api_key,
+            api_key=api_key,
         )
         elapsed = time.monotonic() - start
 

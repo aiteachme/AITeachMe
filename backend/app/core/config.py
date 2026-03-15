@@ -1,6 +1,8 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 
+from app.core.exceptions import MissingLLMApiKeyError
+
 
 # 内置模型 → 向量维度映射表
 _EMBEDDING_DIM_MAP: dict[str, int] = {
@@ -20,7 +22,7 @@ _DEFAULT_EMBEDDING_DIM = 1536
 
 class Settings(BaseSettings):
     # 必填项（缺失时启动报错）
-    llm_api_key: str
+    llm_api_key: str | None = None
 
     # 可选项（含默认值）
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -40,6 +42,13 @@ class Settings(BaseSettings):
     def embedding_dim(self) -> int:
         """由 embedding_model 自动推导向量维度，不暴露为用户配置项。"""
         return _EMBEDDING_DIM_MAP.get(self.embedding_model, _DEFAULT_EMBEDDING_DIM)
+
+
+    def require_llm_api_key(self) -> str:
+        """Return the configured LLM API key or raise a user-facing error."""
+        if not self.llm_api_key:
+            raise MissingLLMApiKeyError()
+        return self.llm_api_key
 
 
 @lru_cache
