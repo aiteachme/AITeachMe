@@ -24,6 +24,14 @@ pip install -r requirements.txt
 
 ### 2. 环境变量配置
 
+推荐先运行：
+
+```bash
+python scripts/init_env.py
+```
+
+如果你想手动创建 `.env`，再执行下面这步：
+
 ```bash
 cp .env.example .env
 ```
@@ -41,3 +49,9 @@ cp .env.example .env
 | `RAG_TOP_K` | | `5` | RAG 检索返回的 Top K 数量 |
 | `RAG_SIMILARITY_THRESHOLD` | | `0.3` | RAG 相似度阈值 |
 | `CHAT_HISTORY_TURNS` | | `10` | 对话历史保留轮数 |
+
+建议在启动前先验证一次配置：
+
+```bash
+python scripts/test_env.py
+```
