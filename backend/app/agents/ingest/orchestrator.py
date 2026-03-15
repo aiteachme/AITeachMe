@@ -13,7 +13,7 @@ from pathlib import Path
 import structlog
 
 from app.core.exceptions import UnsupportedFileTypeError
-from app.ai.ingest.parsers import parse_pdf, parse_pptx, parse_docx, parse_image
+from app.agents.ingest.parsers import parse_pdf, parse_pptx, parse_docx, parse_image
 
 logger = structlog.get_logger()
 

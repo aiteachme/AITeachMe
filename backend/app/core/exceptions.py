@@ -144,3 +144,16 @@ class DigestPipelineError(AITeachMeError):
         if reason:
             detail += f"：{reason}"
         super().__init__(detail=detail)
+
+
+class VectorExtensionUnavailableError(AITeachMeError):
+    """sqlite-vec 扩展不可用，无法执行向量化或检索。"""
+
+    error_code = "VECTOR_EXTENSION_UNAVAILABLE"
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+    def __init__(self, reason: str = "") -> None:
+        detail = "当前运行环境不支持 sqlite-vec，向量索引与 RAG 检索功能暂不可用"
+        if reason:
+            detail += f"：{reason}"
+        super().__init__(detail=detail)

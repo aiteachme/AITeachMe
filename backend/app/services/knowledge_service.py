@@ -7,29 +7,32 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from app.repositories.knowledge_repo import (
-    list_graph_nodes_by_subject,
-    list_knowledge_by_subject,
     get_graph_nodes_by_knowledge_id,
+    list_knowledge_by_subject,
 )
 from app.repositories.models import Knowledge, KnowledgeGraphNode
 from app.schemas.knowledge import OutlineNode, OutlineResponse
+from app.services.presenters import require_id, to_outline_response
 
 
 def _build_tree(nodes: list[KnowledgeGraphNode]) -> list[OutlineNode]:
-    """从扁平 KnowledgeGraphNode 列表构建树结构。"""
+    """Build a nested outline tree from a flat `KnowledgeGraphNode` list."""
+
     node_map: dict[int, OutlineNode] = {}
     roots: list[OutlineNode] = []
 
     for n in nodes:
-        node_map[n.id] = OutlineNode(  # type: ignore[arg-type]
-            id=n.id,  # type: ignore[arg-type]
+        node_id = require_id(n.id, "KnowledgeGraphNode.id")
+        node_map[node_id] = OutlineNode(
+            id=node_id,
             title=n.title,
             level=n.level,
             children=[],
         )
 
     for n in nodes:
-        outline_node = node_map[n.id]  # type: ignore[index]
+        node_id = require_id(n.id, "KnowledgeGraphNode.id")
+        outline_node = node_map[node_id]
         if n.parent_id is not None and n.parent_id in node_map:
             node_map[n.parent_id].children.append(outline_node)
         else:
@@ -39,26 +42,21 @@ def _build_tree(nodes: list[KnowledgeGraphNode]) -> list[OutlineNode]:
 
 
 def get_outlines(session: Session, subject: str) -> list[OutlineResponse]:
-    """返回该 subject 下所有文档的大纲树。"""
-    # 获取所有 knowledge
+    """Return one outline tree response per knowledge document in a subject."""
     knowledges, _ = list_knowledge_by_subject(session, subject, limit=10000, offset=0)
 
     results: list[OutlineResponse] = []
     for k in knowledges:
-        nodes = get_graph_nodes_by_knowledge_id(session, k.id)  # type: ignore[arg-type]
+        knowledge_id = require_id(k.id, "Knowledge.id")
+        nodes = get_graph_nodes_by_knowledge_id(session, knowledge_id)
         tree = _build_tree(nodes)
-        results.append(
-            OutlineResponse(
-                knowledge_id=k.id,  # type: ignore[arg-type]
-                title=k.title,
-                nodes=tree,
-            )
-        )
+        results.append(to_outline_response(k, tree))
     return results
 
 
 def get_documents(
     session: Session, subject: str, *, limit: int = 100, offset: int = 0
 ) -> tuple[list[Knowledge], int]:
-    """分页列表文档。"""
+    """Return a paginated list of knowledge documents for one subject."""
+
     return list_knowledge_by_subject(session, subject, limit=limit, offset=offset)

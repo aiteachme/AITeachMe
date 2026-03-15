@@ -10,9 +10,9 @@ import structlog
 from fastapi import Request
 from sqlmodel import Session
 
-from app.ai.interact.retriever import retrieve
-from app.ai.interact.context_builder import build_system_prompt
-from app.ai.interact.streamer import stream_chat_response
+from app.agents.interact.retriever import retrieve
+from app.agents.interact.context_builder import build_system_prompt
+from app.agents.interact.streamer import stream_chat_response
 from app.schemas.llm import ChatMessage, USER
 
 logger = structlog.get_logger()

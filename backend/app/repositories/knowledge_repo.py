@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlmodel import Session, select, func
 
+from app.core.database import require_vec_ready
 from app.repositories.models import (
     Knowledge,
     KnowledgeGraphNode,
@@ -149,6 +150,7 @@ def bulk_insert_embeddings(
     session: Session, chunk_ids: list[int], embeddings: list[list[float]]
 ) -> None:
     """批量插入 embedding 到 chunk_embeddings vec0 虚拟表。"""
+    require_vec_ready()
     conn = session.connection()
     for chunk_id, embedding in zip(chunk_ids, embeddings):
         conn.execute(
@@ -182,6 +184,7 @@ def vector_search(
     通过 JOIN chunk → knowledge 实现学科过滤。
     结果按相似度降序排列（distance 越小越相似）。
     """
+    require_vec_ready()
     conn = session.connection()
 
     # sqlite-vec 返回 distance（越小越相似），转换为 similarity score
