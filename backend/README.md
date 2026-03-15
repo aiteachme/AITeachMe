@@ -67,6 +67,27 @@ uvicorn app.main:app --reload --port 8000
 - OpenAPI：`http://localhost:8000/openapi.json`
 - Redoc：`http://localhost:8000/redoc`
 
+## Render / 云环境说明
+
+某些托管环境的 Python `sqlite3` 构建不支持 `enable_load_extension()`。
+
+本项目现在会：
+
+- 在 Linux 环境优先尝试使用 `pysqlite3-binary` 替代内置 `sqlite3`
+- 在可用时自动启用 `sqlite-vec`
+- 在不可用时仍然允许服务启动
+- 仅将向量索引 / RAG 检索相关能力标记为暂不可用
+
+如果你在 Render 上看到与 `sqlite-vec` 或 `enable_load_extension` 相关的告警，
+但应用已经成功启动，这属于预期的降级行为。
+
+如果你需要在 Render 上稳定启用向量能力，建议同时：
+
+- 使用 Linux 环境依赖中的 `pysqlite3-binary`
+- 将 Python 版本固定为 `3.11` 或 `3.12`
+
+因为某些较新的 Python 版本在托管平台上的 SQLite 生态兼容性会更弱。
+
 ## 导出 API 文档
 
 ```bash
