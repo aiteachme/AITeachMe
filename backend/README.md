@@ -12,9 +12,6 @@ cd backend
 # 安装依赖（从 pyproject.toml）
 pip install -e .
 
-# 安装测试依赖（可选）
-pip install -e ".[test]"
-
 # 启动开发服务器
 uvicorn app.main:app --reload --port 8000
 ```
