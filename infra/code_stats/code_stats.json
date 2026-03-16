@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T02:05:37.233965",
-  "total_commits_analyzed": 52,
+  "generated_at": "2026-03-16T03:10:55.028135",
+  "total_commits_analyzed": 60,
   "stats": [
     {
       "date": "2026-03-11",
@@ -417,6 +417,70 @@
       "code_lines": 6270,
       "other_lines": 2567,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "1055f33",
+      "total_lines": 10759,
+      "code_lines": 7673,
+      "other_lines": 3086,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "3f3116a",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "c8f6af5",
+      "total_lines": 10197,
+      "code_lines": 7470,
+      "other_lines": 2727,
+      "message": "refactor(backend): 重构后端路由架构（基于 Subject 作用域）"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "23186e1",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "231cde5",
+      "total_lines": 9837,
+      "code_lines": 7162,
+      "other_lines": 2675,
+      "message": "refactor(backend): 拆分模型并收口分层架构，统一响应与手动验证体系"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "a97b5f5",
+      "total_lines": 9844,
+      "code_lines": 7166,
+      "other_lines": 2678,
+      "message": "chore: 添加playground文件夹用做测试"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "91eaefb",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "ee62317",
+      "total_lines": 9848,
+      "code_lines": 7170,
+      "other_lines": 2678,
+      "message": "Merge branch 'develop'"
     }
   ]
 }
