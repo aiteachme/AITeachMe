@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-15T09:57:38.916731",
-  "total_commits_analyzed": 51,
+  "generated_at": "2026-03-16T05:20:19.684046",
+  "total_commits_analyzed": 69,
   "stats": [
     {
       "date": "2026-03-11",
@@ -409,6 +409,150 @@
       "code_lines": 6270,
       "other_lines": 2567,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "63cc066",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "1055f33",
+      "total_lines": 10759,
+      "code_lines": 7673,
+      "other_lines": 3086,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "3f3116a",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "c8f6af5",
+      "total_lines": 10197,
+      "code_lines": 7470,
+      "other_lines": 2727,
+      "message": "refactor(backend): 重构后端路由架构（基于 Subject 作用域）"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "23186e1",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "231cde5",
+      "total_lines": 9837,
+      "code_lines": 7162,
+      "other_lines": 2675,
+      "message": "refactor(backend): 拆分模型并收口分层架构，统一响应与手动验证体系"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "a97b5f5",
+      "total_lines": 9844,
+      "code_lines": 7166,
+      "other_lines": 2678,
+      "message": "chore: 添加playground文件夹用做测试"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "91eaefb",
+      "total_lines": 8837,
+      "code_lines": 6270,
+      "other_lines": 2567,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "ee62317",
+      "total_lines": 9848,
+      "code_lines": 7170,
+      "other_lines": 2678,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "ada3d54",
+      "total_lines": 9848,
+      "code_lines": 7170,
+      "other_lines": 2678,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "fbfc24e",
+      "total_lines": 10120,
+      "code_lines": 7375,
+      "other_lines": 2745,
+      "message": "chore: 修改提示词构建"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "f6e0b05",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "42797cf",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "7bd420d",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "9450f58",
+      "total_lines": 7370,
+      "code_lines": 5218,
+      "other_lines": 2152,
+      "message": "chore: remove test suite and generated artifacts"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "f925a10",
+      "total_lines": 10120,
+      "code_lines": 7375,
+      "other_lines": 2745,
+      "message": "Merge branch 'develop' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "0f771ce",
+      "total_lines": 10118,
+      "code_lines": 7373,
+      "other_lines": 2745,
+      "message": "chore: clean up project structure and gitignore ru"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "e8ebb07",
+      "total_lines": 10122,
+      "code_lines": 7377,
+      "other_lines": 2745,
+      "message": "Merge remote-tracking branch 'origin/develop'"
     }
   ]
 }

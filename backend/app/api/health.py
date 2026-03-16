@@ -1,22 +1,24 @@
-"""Health-check route."""
+"""健康检查接口。"""
+
+from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.docs import build_error_responses
-from app.schemas.common import HealthResponse
+from app.api.openapi import build_error_responses
+from app.schemas.common import ApiResponse, HealthData, ok_response
 
 router = APIRouter(prefix="/api", tags=["health"])
 
 
 @router.get(
     "/health",
-    response_model=HealthResponse,
+    response_model=ApiResponse[HealthData],
     summary="健康检查",
-    description="返回后端服务的基础健康状态，用于前端或部署平台探活。",
-    response_description="服务健康状态。",
+    description="返回后端服务的健康状态。",
+    response_description="统一健康检查响应。",
     responses=build_error_responses([500]),
 )
-async def health_check() -> HealthResponse:
-    """Return the current health status of the API service."""
+async def health_check() -> ApiResponse[HealthData]:
+    """返回服务健康状态。"""
 
-    return HealthResponse(status="ok")
+    return ok_response(HealthData(status="ok"))

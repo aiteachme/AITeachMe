@@ -1,13 +1,6 @@
-"""
-统一 LLM 调用封装
+"""统一的 LLM 调用封装。"""
 
-所有 LLM 调用通过此模块进行，提供：
-- acompletion()：异步补全，60s 超时，最多重试 3 次（递增退避）
-- acompletion_structured()：Instructor 结构化输出，重试由本层统一处理
-- acompletion_stream()：异步生成器，逐 token 产出
-
-上层调用方（workflow、generator 等）不再自行重试 LLM，仅处理 success/fail。
-"""
+from __future__ import annotations
 
 import asyncio
 import time
@@ -30,10 +23,11 @@ _TIMEOUT_S = 60
 
 
 async def acompletion(messages: list[ChatMessage], **kwargs) -> str:
-    """异步 LLM 补全，60s 超时，最多重试 3 次（递增退避）。"""
+    """异步文本补全。"""
+
     settings = get_settings()
     api_key = settings.require_llm_api_key()
-    last_exc: Exception | None = None
+    last_error: Exception | None = None
 
     for attempt in range(1, _MAX_RETRIES + 1):
         start = time.monotonic()
@@ -46,39 +40,20 @@ async def acompletion(messages: list[ChatMessage], **kwargs) -> str:
                 timeout=_TIMEOUT_S,
                 **kwargs,
             )
-            elapsed = time.monotonic() - start
-            usage = getattr(response, "usage", None)
-            logger.info(
-                "llm_call",
-                attempt=attempt,
-                elapsed_s=round(elapsed, 2),
-                usage=usage.model_dump() if usage else None,
-            )
+            logger.info("llm_completion_complete", attempt=attempt, elapsed_s=round(time.monotonic() - start, 2))
             return response.choices[0].message.content
-
         except asyncio.TimeoutError:
-            elapsed = time.monotonic() - start
-            logger.warning("llm_timeout", attempt=attempt, elapsed_s=round(elapsed, 2))
-            last_exc = LLMTimeoutError(timeout_s=_TIMEOUT_S)
-
+            last_error = LLMTimeoutError(timeout_s=_TIMEOUT_S)
         except Exception as exc:
-            elapsed = time.monotonic() - start
-            logger.warning(
-                "llm_call_failed",
-                attempt=attempt,
-                elapsed_s=round(elapsed, 2),
-                error=str(exc),
-            )
-            last_exc = exc
+            last_error = exc
+            logger.warning("llm_completion_failed", attempt=attempt, error=str(exc))
 
         if attempt < _MAX_RETRIES:
-            backoff = attempt * 2
-            logger.info("llm_retry_backoff", next_attempt=attempt + 1, backoff_s=backoff)
-            await asyncio.sleep(backoff)
+            await asyncio.sleep(attempt * 2)
 
-    if isinstance(last_exc, LLMTimeoutError):
-        raise last_exc
-    raise LLMCallError(reason=str(last_exc)) from last_exc
+    if isinstance(last_error, LLMTimeoutError):
+        raise last_error
+    raise LLMCallError(reason=str(last_error)) from last_error
 
 
 async def acompletion_structured(
@@ -86,11 +61,12 @@ async def acompletion_structured(
     messages: list[ChatMessage],
     **kwargs,
 ) -> T:
-    """异步结构化输出，使用 Instructor。重试由本层统一处理。"""
+    """异步结构化补全。"""
+
     settings = get_settings()
     api_key = settings.require_llm_api_key()
     client = instructor.from_litellm(litellm.acompletion)
-    last_exc: Exception | None = None
+    last_error: Exception | None = None
 
     for attempt in range(1, _MAX_RETRIES + 1):
         start = time.monotonic()
@@ -105,45 +81,34 @@ async def acompletion_structured(
                 max_retries=0,
                 **kwargs,
             )
-            elapsed = time.monotonic() - start
             logger.info(
-                "llm_structured_call",
+                "llm_structured_complete",
                 attempt=attempt,
-                elapsed_s=round(elapsed, 2),
-                model=response_model.__name__,
+                elapsed_s=round(time.monotonic() - start, 2),
+                response_model=response_model.__name__,
             )
             return result
-
         except asyncio.TimeoutError:
-            elapsed = time.monotonic() - start
-            logger.warning("llm_structured_timeout", attempt=attempt, elapsed_s=round(elapsed, 2))
-            last_exc = LLMTimeoutError(timeout_s=_TIMEOUT_S)
-
+            last_error = LLMTimeoutError(timeout_s=_TIMEOUT_S)
         except Exception as exc:
-            elapsed = time.monotonic() - start
-            logger.warning(
-                "llm_structured_failed",
-                attempt=attempt,
-                elapsed_s=round(elapsed, 2),
-                error=str(exc),
-            )
-            last_exc = exc
+            last_error = exc
+            logger.warning("llm_structured_failed", attempt=attempt, error=str(exc))
 
         if attempt < _MAX_RETRIES:
-            backoff = attempt * 2
-            logger.info("llm_structured_retry_backoff", next_attempt=attempt + 1, backoff_s=backoff)
-            await asyncio.sleep(backoff)
+            await asyncio.sleep(attempt * 2)
 
-    if isinstance(last_exc, LLMTimeoutError):
-        raise last_exc
-    raise LLMCallError(reason=str(last_exc)) from last_exc
+    if isinstance(last_error, LLMTimeoutError):
+        raise last_error
+    raise LLMCallError(reason=str(last_error)) from last_error
 
 
 async def acompletion_stream(messages: list[ChatMessage], **kwargs) -> AsyncGenerator[str, None]:
-    """异步流式补全，逐 token 产出内容字符串。不重试。"""
+    """异步流式补全。"""
+
     settings = get_settings()
     api_key = settings.require_llm_api_key()
     start = time.monotonic()
+
     try:
         response = await litellm.acompletion(
             model=f"openai/{settings.llm_model}",
@@ -158,16 +123,9 @@ async def acompletion_stream(messages: list[ChatMessage], **kwargs) -> AsyncGene
             delta = chunk.choices[0].delta
             if delta.content:
                 yield delta.content
-
-        elapsed = time.monotonic() - start
-        logger.info("llm_stream_complete", elapsed_s=round(elapsed, 2))
-
+        logger.info("llm_stream_complete", elapsed_s=round(time.monotonic() - start, 2))
     except asyncio.TimeoutError:
-        elapsed = time.monotonic() - start
-        logger.error("llm_stream_timeout", elapsed_s=round(elapsed, 2))
         raise LLMTimeoutError(timeout_s=_TIMEOUT_S)
-
     except Exception as exc:
-        elapsed = time.monotonic() - start
-        logger.error("llm_stream_error", elapsed_s=round(elapsed, 2), error=str(exc))
+        logger.error("llm_stream_failed", error=str(exc))
         raise LLMCallError(reason=str(exc)) from exc
