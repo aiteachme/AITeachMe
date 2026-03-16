@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import structlog
 
+from app.agents.profile.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 from app.core.llm import acompletion
-from app.core.prompt_loader import render_prompt
-from app.schemas.llm import ChatMessage, SYSTEM, USER
+from app.core.prompt_loader import populate_prompt
+from app.schemas.llm import SYSTEM, USER
 
 logger = structlog.get_logger()
 
@@ -22,8 +23,8 @@ async def generate_report_suggestions(
     if not weak_points:
         return ["当前没有明显薄弱项，建议保持练习频率并定期回顾重点章节。"]
 
-    prompt = render_prompt(
-        "profile/prompts/report_suggestions.j2",
+    prompt = populate_prompt(
+        SYSTEM_PROMPT_REPORT_SUGGESTIONS,
         subject=subject,
         overall_mastery=f"{overall_mastery:.0%}" if overall_mastery is not None else "暂无数据",
         weak_points="\n".join(
@@ -38,7 +39,7 @@ async def generate_report_suggestions(
                 {"role": USER, "content": prompt},
             ]
         )
-        lines = [line.lstrip("0123456789.、) ").strip() for line in result.splitlines() if line.strip()]
+        lines = [line.lstrip("0123456789.、 ").strip() for line in result.splitlines() if line.strip()]
         return lines or ["建议优先针对薄弱知识点安排专项复习。"]
     except Exception:
         logger.warning("generate_report_suggestions_fallback", subject=subject)

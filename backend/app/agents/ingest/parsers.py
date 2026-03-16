@@ -7,8 +7,9 @@ from pathlib import Path
 
 import structlog
 
+from app.agents.ingest.prompts import SYSTEM_PROMPT_IMAGE_PARSE
 from app.core.exceptions import FileParseError
-from app.core.prompt_loader import render_prompt
+from app.core.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 
 logger = structlog.get_logger()
@@ -112,7 +113,7 @@ async def parse_image(file_path: str | Path) -> str:
     }
     mime_type = mime_map.get(path.suffix.lower(), "image/png")
     encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
-    prompt = render_prompt("ingest/prompts/image_parse.j2")
+    prompt = populate_prompt(SYSTEM_PROMPT_IMAGE_PARSE)
     messages: list[ChatMessage] = [
         {
             "role": USER,

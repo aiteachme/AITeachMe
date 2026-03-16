@@ -5,8 +5,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 import structlog
 
+from app.agents.digest.prompts import SYSTEM_PROMPT_OUTLINE_EXTRACT
 from app.core.llm import acompletion_structured
-from app.core.prompt_loader import render_prompt
+from app.core.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 
 logger = structlog.get_logger()
@@ -30,7 +31,7 @@ async def extract_outline(markdown: str) -> list[OutlineItem]:
     """从 Markdown 中提取层级大纲。"""
 
     messages: list[ChatMessage] = [
-        {"role": SYSTEM, "content": render_prompt("digest/prompts/outline_extract.j2")},
+        {"role": SYSTEM, "content": populate_prompt(SYSTEM_PROMPT_OUTLINE_EXTRACT)},
         {"role": USER, "content": markdown},
     ]
     result = await acompletion_structured(response_model=OutlineResult, messages=messages)

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
 import structlog
+from pydantic import BaseModel, Field
 
+from app.agents.examine.prompts import (
+    SYSTEM_PROMPT_EXAM_GENERATE,
+    SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT,
+)
 from app.core.llm import acompletion_structured
-from app.core.prompt_loader import render_prompt
+from app.core.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionType
-from app.schemas.llm import ChatMessage, SYSTEM
+from app.schemas.llm import SYSTEM
 
 logger = structlog.get_logger()
 
@@ -43,8 +47,8 @@ async def generate_exam(
 ) -> list[GeneratedQuestion]:
     """根据知识点与画像信息生成试题。"""
 
-    prompt = render_prompt(
-        "examine/prompts/exam_generate.j2",
+    prompt = populate_prompt(
+        SYSTEM_PROMPT_EXAM_GENERATE,
         subject=subject,
         num_questions=num_questions,
         available_knowledge_points=", ".join(available_knowledge_points[:50]) or "暂无",
@@ -70,8 +74,8 @@ async def generate_exam_from_text(
 ) -> list[GeneratedQuestion]:
     """根据纯文本知识内容直接出题，供 playground 使用。"""
 
-    prompt = render_prompt(
-        "examine/prompts/exam_generate_from_text.j2",
+    prompt = populate_prompt(
+        SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT,
         subject=subject,
         num_questions=num_questions,
         knowledge_text=knowledge_text,

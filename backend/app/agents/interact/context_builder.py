@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from app.agents.interact.prompts import SYSTEM_PROMPT_TUTOR
 from app.agents.interact.retriever import RetrievalResult
-from app.core.prompt_loader import render_prompt
+from app.core.prompt_loader import populate_prompt
 from app.schemas.llm import ASSISTANT, ChatMessage, SYSTEM, USER
 
 
@@ -20,8 +21,8 @@ def build_chat_messages(
 ) -> list[ChatMessage]:
     """拼装聊天消息列表。"""
 
-    system_prompt = render_prompt(
-        "interact/prompts/system_prompt.j2",
+    system_prompt = populate_prompt(
+        SYSTEM_PROMPT_TUTOR,
         subject=subject,
         retrieval_context=_format_retrieval_context(retrieval_results),
         weak_points_context=_format_weak_points_context(weak_points),
