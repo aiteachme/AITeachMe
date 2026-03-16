@@ -1,43 +1,22 @@
-# Manual Testing
+# 手动联调
 
-This round focuses on direct local smoke testing instead of tracked unit tests.
+这轮以后端架构重构后的接口为准，重点验证统一响应、分页、重试和删除能力。
 
-## 1. Prepare the environment
-
-Install dependencies:
-
-```bash
-pip install -e .
-```
-
-Create or update `.env`:
-
-```env
-LLM_API_KEY=sk-your-api-key-here
-APP_MODE=local
-AUTH_ENABLED=false
-```
-
-Start the backend:
+## 1. 启动服务
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open docs:
+## 2. 基础检查
 
-- `http://localhost:8000/redoc`
-- `http://localhost:8000/openapi.json`
-
-## 2. First smoke checks
-
-### Health
+### 健康检查
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-### System init
+### 系统初始化
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/system/init ^
@@ -45,40 +24,27 @@ curl -X POST http://localhost:8000/api/v1/system/init ^
   -d "{}"
 ```
 
-PowerShell:
+## 3. 学科
 
-```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:8000/api/v1/system/init" `
-  -ContentType "application/json" `
-  -Body "{}"
-```
-
-## 3. Create a subject
+### 创建学科
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/subjects/add ^
   -H "Content-Type: application/json" ^
-  -d "{\"subject\":\"math\",\"name\":\"High School Math\",\"description\":\"manual test\"}"
+  -d "{\"subject\":\"math\",\"name\":\"高等数学\",\"description\":\"手动联调用\"}"
 ```
 
-List subjects:
+### 学科列表
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/subjects/list ^
   -H "Content-Type: application/json" ^
-  -d "{\"limit\":20,\"offset\":0}"
+  -d "{\"page\":1,\"size\":20}"
 ```
 
-## 4. Test the files pipeline
+## 4. 文件阶段
 
-Recommended file handling:
-
-- keep sample files outside the repo, or
-- place them under `manual-testing/`, which is ignored by git
-
-### Upload multiple files
+### 上传多个文件
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/upload" ^
@@ -86,21 +52,15 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/upload" ^
   -F "files=@C:\path\to\lesson2.pdf"
 ```
 
-Expected response:
-
-- `subject`
-- `file_ids`
-- `filenames`
-
-### List uploaded files
+### 查看文件列表
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/list" ^
   -H "Content-Type: application/json" ^
-  -d "{\"limit\":20,\"offset\":0}"
+  -d "{\"page\":1,\"size\":20}"
 ```
 
-### Parse selected files
+### 触发解析
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/parse" ^
@@ -108,7 +68,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/parse" ^
   -d "{\"file_ids\":[1,2]}"
 ```
 
-### Check one file status
+### 查询单文件状态
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/status" ^
@@ -116,7 +76,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/status" ^
   -d "{\"file_id\":1}"
 ```
 
-### Inspect one parsed result
+### 查看解析结果
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/get" ^
@@ -124,28 +84,40 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/files/get" ^
   -d "{\"file_id\":1}"
 ```
 
-Acceptance points for the files stage:
+### 重试失败文件
 
-1. `files/status` only returns state metadata.
-2. `files/get` returns markdown preview separately.
-3. You can inspect parse quality before building knowledge.
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/files/retry" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"file_id\":1}"
+```
 
-## 5. Test the knowledge pipeline
+### 删除文件
 
-### Build one knowledge set from multiple parsed files
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"file_ids\":[2]}"
+```
+
+验收点：
+
+1. `files/status` 只返回状态与错误信息，不返回全文。
+2. `files/get` 能单独查看 Markdown。
+3. `failed` 状态可以重试。
+4. 已被知识集合引用的文件删除会被拒绝。
+
+## 5. 知识集合阶段
+
+### 构建知识集合
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/build" ^
   -H "Content-Type: application/json" ^
-  -d "{\"file_ids\":[1,2],\"title\":\"Probability Review\",\"desc\":\"chapter 1-3 materials\"}"
+  -d "{\"file_ids\":[1,2],\"title\":\"概率论复习\",\"desc\":\"第一章到第三章\"}"
 ```
 
-Expected response:
-
-- `docset_id`
-- `build_job_id`
-
-### Poll knowledge build status
+### 查询构建状态
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/status" ^
@@ -153,15 +125,15 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/status" ^
   -d "{\"docset_id\":1}"
 ```
 
-### List knowledge sets
+### 知识集合列表
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/list" ^
   -H "Content-Type: application/json" ^
-  -d "{\"limit\":20,\"offset\":0}"
+  -d "{\"page\":1,\"size\":20}"
 ```
 
-### Get one knowledge set and its documents
+### 知识集合详情
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/get" ^
@@ -169,7 +141,7 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/get" ^
   -d "{\"docset_id\":1}"
 ```
 
-### Get outline trees
+### 知识树
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/tree" ^
@@ -177,24 +149,56 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/tree" ^
   -d "{\"docset_id\":1}"
 ```
 
-Acceptance points for the knowledge stage:
+### 重试知识构建
 
-1. One build can consume multiple parsed `file_id`s.
-2. The backend returns one `docset_id`.
-3. `knowledge/get` returns multiple documents under that set.
-4. `knowledge/tree` reflects digest output per document.
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/retry" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"docset_id\":1}"
+```
 
-## 6. Optional downstream checks
+### 删除知识集合
 
-### Chat
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/delete" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"docset_id\":1}"
+```
+
+验收点：
+
+1. 一次 build 能消费多个文件。
+2. 构建失败会进入 `failed`，并带 `error_message`。
+3. 只有失败任务允许重试。
+4. 删除知识集合后，关联的文档、切块和大纲会一起清理。
+
+## 6. 下游能力
+
+### 聊天
 
 ```bash
 curl -N -X POST "http://localhost:8000/api/v1/subjects/math/chat/send" ^
   -H "Content-Type: application/json" ^
-  -d "{\"question\":\"Explain conditional probability.\"}"
+  -d "{\"question\":\"解释一下条件概率\"}"
 ```
 
-### Exam generation
+### 聊天列表
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/chat/list" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"page\":1,\"size\":20}"
+```
+
+### 清空聊天
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/chat/clear" ^
+  -H "Content-Type: application/json" ^
+  -d "{}"
+```
+
+### 生成试卷
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/exam/make" ^
@@ -202,28 +206,18 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/exam/make" ^
   -d "{\"num\":5}"
 ```
 
-### Profile report
+### 删除试卷
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/subjects/math/exam/delete" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"exam_id\":1}"
+```
+
+### 学习报告
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/profile/report" ^
   -H "Content-Type: application/json" ^
   -d "{}"
 ```
-
-## 7. If you only want to test ingest-like behavior
-
-The shortest useful loop is:
-
-1. start backend
-2. create one subject
-3. upload files
-4. parse files
-5. call `files/status`
-6. call `files/get`
-
-That is enough to verify:
-
-- upload persistence
-- parser routing
-- markdown generation
-- preview separation from status

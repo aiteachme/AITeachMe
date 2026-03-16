@@ -1,60 +1,52 @@
 # AiTeachMe Backend
 
-FastAPI backend for subject-scoped AI learning workflows.
+本目录是 AITeachMe 的后端服务，基于 FastAPI + SQLModel，面向“本地优先”的 AI 助教场景。
 
-## Current API Shape
+## 当前接口形态
 
-`GET /api/health` stays unchanged.
+- `GET /api/health`
+- 其余业务接口全部使用 `POST`
+- JSON 接口统一返回：
 
-All other business APIs use `POST`:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {}
+}
+```
 
-- `POST /api/v1/system/init`
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/logout`
-- `POST /api/v1/auth/user`
-- `POST /api/v1/subjects/add`
-- `POST /api/v1/subjects/list`
-- `POST /api/v1/subjects/get`
-- `POST /api/v1/subjects/edit`
-- `POST /api/v1/subjects/delete`
-- `POST /api/v1/subjects/{subject}/files/upload`
-- `POST /api/v1/subjects/{subject}/files/parse`
-- `POST /api/v1/subjects/{subject}/files/status`
-- `POST /api/v1/subjects/{subject}/files/list`
-- `POST /api/v1/subjects/{subject}/files/get`
-- `POST /api/v1/subjects/{subject}/knowledge/build`
-- `POST /api/v1/subjects/{subject}/knowledge/status`
-- `POST /api/v1/subjects/{subject}/knowledge/list`
-- `POST /api/v1/subjects/{subject}/knowledge/get`
-- `POST /api/v1/subjects/{subject}/knowledge/tree`
-- `POST /api/v1/subjects/{subject}/chat/send`
-- `POST /api/v1/subjects/{subject}/chat/list`
-- `POST /api/v1/subjects/{subject}/exam/make`
-- `POST /api/v1/subjects/{subject}/exam/submit`
-- `POST /api/v1/subjects/{subject}/exam/list`
-- `POST /api/v1/subjects/{subject}/profile/list`
-- `POST /api/v1/subjects/{subject}/profile/report`
-- `POST /api/v1/subjects/{subject}/profile/mistakes`
+- `chat/send` 仍然保留原生 SSE，不包 `ApiResponse`
 
-Resource boundaries:
+## 主要资源
 
-- `subject` is the top-level workspace term
-- `files` owns raw uploads and parse previews
-- `knowledge` owns doc-set builds and digest results
-- `chat`, `exam`, and `profile` stay product-facing
+- `subjects`
+- `files`
+- `knowledge`
+- `chat`
+- `exam`
+- `profile`
 
-## Quick Start
+新增的动作接口：
 
-### 1. Install dependencies
+- `files/retry`
+- `files/delete`
+- `knowledge/retry`
+- `knowledge/delete`
+- `chat/clear`
+- `exam/delete`
+
+## 快速启动
+
+### 1. 安装依赖
 
 ```bash
 pip install -e .
 ```
 
-### 2. Configure `.env`
+### 2. 配置 `.env`
 
-Minimum:
+至少需要：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -62,34 +54,18 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-### 3. Start the server
+### 3. 启动服务
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Open docs
+## 手动验证
 
-- Health: `http://localhost:8000/api/health`
-- OpenAPI: `http://localhost:8000/openapi.json`
-- Redoc: `http://localhost:8000/redoc`
-
-## Manual Testing
-
-This round does not add tracked unit tests.
-
-Use:
+查看以下文档：
 
 - [docs/design.md](./docs/design.md)
 - [docs/local-dev.md](./docs/local-dev.md)
 - [docs/manual-testing.md](./docs/manual-testing.md)
 - [docs/implementation-log.md](./docs/implementation-log.md)
-
-## Runtime Notes
-
-- `APP_MODE=local` is the default
-- auth endpoints are scaffolding only
-- `files/get` is the parse preview endpoint
-- `knowledge/build` consumes multiple parsed files and creates one knowledge set
-- local runtime data under `data/` and scratch files under `manual-testing/` are ignored by git
-- when switching from an older local database, starting from a clean `data/` directory is still the safest option
+- [playground/README.md](./playground/README.md)

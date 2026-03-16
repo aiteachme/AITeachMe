@@ -1,12 +1,12 @@
-# Local Development
+# 本地开发
 
-## Environment
+## 环境
 
-Recommended Python version:
+推荐 Python 版本：
 
 - Python 3.10+
 
-Create and activate a virtual environment:
+创建并激活虚拟环境：
 
 ```bash
 python -m venv .venv
@@ -14,15 +14,15 @@ python -m venv .venv
 python -m pip install --upgrade pip setuptools wheel
 ```
 
-Install the project:
+安装项目：
 
 ```bash
 pip install -e .
 ```
 
-## Configuration
+## 配置
 
-Create `.env` with at least:
+创建 `.env`：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -30,7 +30,7 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-Optional settings:
+可选配置：
 
 - `LLM_BASE_URL`
 - `LLM_MODEL`
@@ -41,14 +41,15 @@ Optional settings:
 - `RAG_SIMILARITY_THRESHOLD`
 - `CHAT_HISTORY_TURNS`
 
-## Run
+## 启动
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Local data
+## 本地数据
 
-Runtime data is written under `data/` and ignored by git.
-
-Scratch files for manual testing can be stored under `manual-testing/`, which is also ignored.
+- 运行时数据默认写入 `data/`
+- 手动验证脚本放在 `playground/`
+- `playground/inputs/` 放输入文件
+- `playground/outputs/` 查看输出结果

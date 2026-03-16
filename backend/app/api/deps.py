@@ -1,4 +1,4 @@
-"""Shared FastAPI dependencies used by multiple route modules."""
+"""接口层公共依赖。"""
 
 from __future__ import annotations
 
@@ -9,25 +9,26 @@ from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.schemas.common import PaginationParams
 from app.utils.subject import validate_subject as _validate_subject
 
 
 @dataclass(frozen=True)
 class CurrentUserContext:
+    """当前运行时用户上下文。"""
+
     user_id: str
     email: str | None
     is_local: bool
 
 
 def normalize_subject_slug(subject: str) -> str:
-    """Normalize the top-level subject slug in one place for future terminology changes."""
+    """统一规范化学科标识。"""
 
     return _validate_subject(subject)
 
 
 def get_current_user_context() -> CurrentUserContext:
-    """Return the current runtime user context used by local-mode scaffolding."""
+    """返回当前运行时用户。"""
 
     settings = get_settings()
     if settings.is_local_mode:
@@ -36,7 +37,7 @@ def get_current_user_context() -> CurrentUserContext:
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Yield one SQLModel session per request and close it afterwards."""
+    """为每个请求提供一个数据库会话。"""
 
     session = get_session()
     try:

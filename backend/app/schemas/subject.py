@@ -1,4 +1,4 @@
-"""Schemas for top-level subject management APIs."""
+"""学科接口 schema。"""
 
 from __future__ import annotations
 
@@ -6,81 +6,58 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.common import PaginationParams
+from app.schemas.common import PageParams
 
 
 class SubjectCreateRequest(BaseModel):
+    """创建学科请求。"""
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "subject": "math",
-                "name": "High School Math",
-                "description": "Manual test subject for ingest and chat flows.",
+                "name": "高等数学",
+                "description": "用于手动联调的学科空间",
             }
         }
     )
 
-    subject: str = Field(description="Top-level subject slug.")
-    name: str = Field(description="Display name for the subject.")
-    description: str = Field(default="", description="Optional subject description.")
+    subject: str = Field(description="学科标识。")
+    name: str = Field(description="展示名称。")
+    description: str = Field(default="", description="学科描述。")
 
 
 class SubjectDetailRequest(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"example": {"subject": "math"}})
+    """学科详情请求。"""
 
-    subject: str = Field(description="Top-level subject slug.")
+    subject: str = Field(description="学科标识。")
 
 
 class SubjectUpdateRequest(SubjectCreateRequest):
-    pass
+    """更新学科请求。"""
 
 
 class SubjectDeleteRequest(SubjectDetailRequest):
-    pass
+    """删除学科请求。"""
 
 
-class SubjectListRequest(PaginationParams):
-    pass
+class SubjectListRequest(PageParams):
+    """学科分页列表请求。"""
 
 
 class SubjectItem(BaseModel):
-    id: int
-    subject: str = Field(description="Top-level subject slug.")
-    name: str
-    description: str
-    created_at: datetime
-    updated_at: datetime
+    """学科数据项。"""
+
+    id: int = Field(description="学科 ID。")
+    subject: str = Field(description="学科标识。")
+    name: str = Field(description="展示名称。")
+    description: str = Field(description="学科描述。")
+    created_at: datetime = Field(description="创建时间。")
+    updated_at: datetime = Field(description="更新时间。")
 
 
-class SubjectDetailResponse(SubjectItem):
-    pass
+class SubjectDeleteData(BaseModel):
+    """学科删除结果。"""
 
-
-class SubjectListResponse(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "items": [
-                    {
-                        "id": 1,
-                        "subject": "math",
-                        "name": "High School Math",
-                        "description": "Manual test subject for ingest and chat flows.",
-                        "created_at": "2026-03-15T08:00:00Z",
-                        "updated_at": "2026-03-15T08:00:00Z",
-                    }
-                ],
-                "total": 1,
-            }
-        }
-    )
-
-    items: list[SubjectItem]
-    total: int
-
-
-class SubjectDeleteResponse(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"example": {"deleted": True, "subject": "math"}})
-
-    deleted: bool
-    subject: str
+    deleted: bool = Field(description="是否删除成功。")
+    subject: str = Field(description="学科标识。")

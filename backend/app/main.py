@@ -1,4 +1,4 @@
-"""FastAPI application factory and top-level application wiring."""
+"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """应用生命周期。"""
+
     del app
     init_db()
     logger.info("app_started")
@@ -31,10 +33,7 @@ def _build_app_metadata() -> dict[str, object]:
     settings = get_settings()
     return {
         "title": "AITeachMe",
-        "description": (
-            "AI learning backend with subject-scoped files, knowledge, chat, exam, and profile modules. "
-            "Health stays on GET while all other business APIs use POST."
-        ),
+        "description": "本地优先的 AI 助教后端服务。",
         "version": settings.app_version,
         "lifespan": lifespan,
     }
@@ -60,7 +59,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         del request
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.detail, "error_code": exc.error_code},
+            content={"code": exc.status_code, "message": exc.detail, "data": None},
         )
 
     @app.exception_handler(Exception)
@@ -68,7 +67,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         logger.exception("unhandled_error", path=request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error.", "error_code": "INTERNAL_ERROR"},
+            content={"code": 500, "message": "服务内部异常。", "data": None},
         )
 
 
@@ -95,6 +94,8 @@ def _register_routers(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
+    """创建 FastAPI 应用。"""
+
     configure_logging()
     app = FastAPI(**_build_app_metadata())
     _register_middlewares(app)

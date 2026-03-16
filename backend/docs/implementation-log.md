@@ -1,64 +1,43 @@
-# Implementation Log
+# 实现记录
 
-This file records the actual scope of the current backend API rework.
+## 已完成
 
-## Completed
+- `app/repositories/models.py` 已拆分到 `app/models/`
+- 依赖方向收紧为：
+  - `api -> services -> repositories -> models`
+  - `services -> agents -> core`
+- `agents` 不再直接导入 `Session`、repo 或做数据库写入
+- JSON 接口统一为 `ApiResponse`
+- `chat/send` 保持原生 SSE
+- 列表接口统一切到 `page/size`
+- 新增：
+  - `files/retry`
+  - `files/delete`
+  - `knowledge/retry`
+  - `knowledge/delete`
+  - `chat/clear`
+  - `exam/delete`
+- parse/build 状态统一为：
+  - `pending`
+  - `processing`
+  - `completed`
+  - `failed`
+- 新增 `error_message`、`current_step`
+- 各 agent 增加了 `prompts/` 目录
+- 新增 `app/core/prompt_loader.py`，使用 Jinja2 + StrictUndefined
+- 新增根目录 `playground/`
 
-- kept `GET /api/health` unchanged
-- kept all other business APIs on `POST`
-- renamed runtime discovery to `POST /api/v1/system/init`
-- kept auth as scaffolding and renamed session lookup to `POST /api/v1/auth/user`
-- renamed subject CRUD to `add / list / get / edit / delete`
-- replaced old subject-scoped engine routes with product-facing resources:
-  - `files/*`
-  - `knowledge/*`
-  - `chat/*`
-  - `exam/*`
-  - `profile/*`
-- removed unused old route modules:
-  - `ingest.py`
-  - `digest.py`
-  - `interact.py`
-  - `examine.py`
-- introduced a two-stage content lifecycle:
-  - `RawFile` for uploads and parse results
-  - `DocSet` for one knowledge build
-  - `Document` for digest outputs under a doc set
-- added supporting persistence tables:
-  - `doc_set`
-  - `doc_build_job`
-  - `doc_set_source_file`
-  - `document`
-  - `document_outline_node`
-  - `document_chunk`
-- changed digest persistence from the old knowledge document model to the new document model
-- added `files/get` so parsed markdown preview is separate from file status
-- made `knowledge/build` consume multiple parsed files and produce one `docset_id`
-- added lightweight startup migration for new `raw_file` columns on older local databases
-- updated README and manual local testing docs
-- simplified `.gitignore` to ignore the full runtime `data/` tree and manual scratch files
+## 当前实现约定
 
-## Important Decisions
+- 顶层知识集合统一叫 `DocSet`
+- `DocSet` 下的单篇内容统一叫 `Document`
+- 文件侧统一叫 `RawFile`
+- 文件删除默认禁止删除已被知识集合引用的源文件
+- 知识构建重试只允许最近一次任务处于 `failed`
 
-- `subject` stays the public top-level workspace term
-- external API is resource-first, internal implementation still keeps the five-engine split
-- `files` owns upload and parse preview
-- `knowledge` owns digest build and its outputs
-- `chat`, `exam`, and `profile` remain subject-scoped product capabilities
-- old route paths are not kept as runtime aliases
-- this round favors manual smoke testing over tracked unit tests
+## 仍可继续增强
 
-## Current MVP Simplifications
-
-- one selected source file currently becomes one `Document` inside a `DocSet`
-- a future round can split one source file into multiple categorized documents without changing the public API
-- parsed assets are structurally supported, but current parsers may still produce empty asset lists depending on file type
-
-## Not Done Yet
-
-- real email registration and login
-- password hashing
-- token or session persistence
-- auth-protected multi-user isolation
-- richer digest job orchestration beyond the current background task model
-- production-grade database migrations for every historical local schema variant
+- 更细粒度的异步任务管理
+- 更完整的数据库迁移策略
+- 更多 playground 示例
+- 更丰富的向量检索与排序策略

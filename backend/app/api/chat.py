@@ -1,4 +1,4 @@
-"""Subject-scoped chat routes."""
+"""聊天接口。"""
 
 from __future__ import annotations
 
@@ -8,10 +8,9 @@ from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.repositories.chat_repo import list_messages_by_subject
-from app.schemas.chat import ChatHistoryResponse, ChatListRequest, ChatSendRequest
-from app.services.chat_service import chat_stream
-from app.services.presenters import to_chat_history_response
+from app.schemas.chat import ChatClearData, ChatClearRequest, ChatListRequest, ChatMessageItem, ChatSendRequest
+from app.schemas.common import ApiResponse, PaginatedData, ok_response
+from app.services.chat_service import chat_stream, clear_chat_history, list_chat_history
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chat", tags=["chat"])
@@ -19,51 +18,65 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/chat", tags=["chat"])
 
 @router.post(
     "/send",
-    summary="Send a chat message",
-    description="Run retrieval-augmented chat for a subject and stream the assistant response as SSE.",
-    response_description="SSE event stream.",
-    responses={200: {"description": "SSE event stream."}, **build_error_responses([400, 404, 500, 502, 503])},
+    summary="发送消息",
+    description="保留原生 SSE 返回。",
+    responses={200: {"description": "SSE 事件流。"}, **build_error_responses([400, 404, 500, 502, 503])},
 )
 async def send_chat(
     request: Request,
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+    subject: str = Path(...),
     body: ChatSendRequest = Body(...),
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-
-    generator = chat_stream(
-        request,
-        session,
-        subject=normalized_subject,
-        question=body.question,
-        selected_context=body.selected_context,
-        source_chunk_id=body.source_chunk_id,
+    return StreamingResponse(
+        chat_stream(
+            request,
+            session,
+            subject=normalized_subject,
+            question=body.question,
+            selected_context=body.selected_context,
+            source_chunk_id=body.source_chunk_id,
+        ),
+        media_type="text/event-stream",
     )
-    return StreamingResponse(generator, media_type="text/event-stream")
 
 
 @router.post(
     "/list",
-    response_model=ChatHistoryResponse,
-    summary="List chat history",
-    description="Return a paginated chat history list for one subject.",
-    response_description="Paginated chat history.",
+    response_model=ApiResponse[PaginatedData[ChatMessageItem]],
+    summary="聊天记录列表",
     responses=build_error_responses([400, 404, 500]),
 )
-async def list_chat(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+async def list_chat_api(
+    subject: str = Path(...),
     body: ChatListRequest = Body(default=ChatListRequest()),
     session: Session = Depends(get_db),
-) -> ChatHistoryResponse:
+) -> ApiResponse[PaginatedData[ChatMessageItem]]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-
-    items, total = list_messages_by_subject(
-        session,
-        normalized_subject,
-        limit=body.limit,
-        offset=body.offset,
+    return ok_response(
+        list_chat_history(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+        )
     )
-    return to_chat_history_response(items, total)
+
+
+@router.post(
+    "/clear",
+    response_model=ApiResponse[ChatClearData],
+    summary="清空聊天记录",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def clear_chat_api(
+    subject: str = Path(...),
+    _: ChatClearRequest = Body(default=ChatClearRequest()),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ChatClearData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(clear_chat_history(session, subject=normalized_subject))

@@ -1,4 +1,4 @@
-"""Shared OpenAPI helpers for API routes."""
+"""OpenAPI 辅助函数。"""
 
 from __future__ import annotations
 
@@ -6,29 +6,25 @@ from collections.abc import Iterable
 
 from app.schemas.common import ErrorResponse
 
-
 _DEFAULT_ERROR_DESCRIPTIONS: dict[int, str] = {
-    400: "Request parameters are invalid.",
-    404: "Requested resource was not found.",
-    409: "The requested operation conflicts with the current resource state.",
-    413: "Uploaded file exceeds the configured size limit.",
-    422: "Business validation failed even though the request body was well-formed.",
-    500: "The server hit an unexpected internal error.",
-    502: "The upstream LLM or external dependency call failed.",
-    503: "A required dependency or feature is currently unavailable.",
+    400: "请求参数不合法。",
+    404: "资源不存在。",
+    409: "当前资源状态不允许执行该操作。",
+    413: "上传文件超出大小限制。",
+    422: "业务校验未通过。",
+    500: "服务内部异常。",
+    502: "上游模型调用失败。",
+    503: "依赖服务当前不可用。",
 }
 
 
 def build_error_responses(status_codes: Iterable[int]) -> dict[int, dict[str, object]]:
-    """Build a standard OpenAPI error response mapping for route decorators."""
+    """构造统一错误响应描述。"""
 
     return {
         status_code: {
             "model": ErrorResponse,
-            "description": _DEFAULT_ERROR_DESCRIPTIONS.get(
-                status_code,
-                "This endpoint may return a business or infrastructure error.",
-            ),
+            "description": _DEFAULT_ERROR_DESCRIPTIONS.get(status_code, "接口可能返回业务错误。"),
         }
         for status_code in status_codes
     }

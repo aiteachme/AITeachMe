@@ -1,184 +1,107 @@
-"""
-自动判分与错题分析
-
-客观题（single_choice、fill_blank）：确定性字符串比较
-主观题（short_answer）：LLM 二元判分（0 或 1）
-为每道错题生成 AI 错因分析，写入 Mistake 表
-"""
+"""测验判卷 Agent。"""
 
 from __future__ import annotations
 
+from pydantic import BaseModel
 import structlog
-from sqlmodel import Session
 
 from app.core.llm import acompletion
-from app.agents.profile.tracker import update_profiles_from_grading
-from app.repositories import exam_repo
+from app.core.prompt_loader import render_prompt
+from app.models import Question, QuestionType
 from app.schemas.llm import ChatMessage, SYSTEM, USER
-from app.repositories.models import (
-    Question,
-    QuestionType,
-    ExamSubmission,
-    AnswerRecord,
-    Mistake,
-)
 
 logger = structlog.get_logger()
 
 
+class GradingResultItem(BaseModel):
+    """单题判分结果。"""
+
+    question_id: int
+    question_key: str
+    user_answer: str
+    is_correct: bool
+    analysis: str | None = None
+
+
+class GradingResult(BaseModel):
+    """整张试卷判分结果。"""
+
+    score: float
+    items: list[GradingResultItem]
+
+
 async def grade_exam(
-    session: Session,
     *,
-    exam_id: int,
-    subject: str,
     questions: list[Question],
     answers: dict[str, str],
-) -> tuple[ExamSubmission, list[AnswerRecord], list[Mistake]]:
-    """
-    Grade one submitted exam and persist grading side effects.
+) -> GradingResult:
+    """对整张试卷判分。"""
 
-    Args:
-        session: 数据库会话。
-        exam_id: 当前考卷 ID。
-        subject: 学科标识。
-        questions: 当前考卷题目列表。
-        answers: 以 `question_key -> 用户答案` 表示的答案映射。
+    items: list[GradingResultItem] = []
+    correct_count = 0
 
-    Returns:
-        `(submission, answer_records, mistakes)` 元组。
-
-    Raises:
-        LLMCallError: 简答题判分或错因分析失败时可能由底层抛出，但内部已尽量回退。
-    """
-    # 1. 逐题判分
-    grading_results: list[dict] = []
-    for q in questions:
-        user_answer = answers.get(q.question_key, "")
-        is_correct = await _grade_single(q, user_answer)
-        grading_results.append({
-            "question": q,
-            "user_answer": user_answer,
-            "is_correct": is_correct,
-        })
-
-    # 2. 计算总分
-    total = len(questions)
-    correct_count = sum(1 for r in grading_results if r["is_correct"])
-    score = (correct_count / total * 100) if total > 0 else 0.0
-
-    # 3. 创建 ExamSubmission + AnswerRecord
-    submission = ExamSubmission(exam_id=exam_id, score=score)
-    records = [
-        AnswerRecord(
-            submission_id=0,  # set by repo
-            question_id=r["question"].id,
-            user_answer=r["user_answer"],
-            is_correct=r["is_correct"],
+    for question in questions:
+        user_answer = answers.get(question.question_key, "")
+        is_correct = await grade_one_question(question=question, user_answer=user_answer)
+        analysis = None if is_correct else await generate_mistake_analysis(question, user_answer)
+        if is_correct:
+            correct_count += 1
+        items.append(
+            GradingResultItem(
+                question_id=question.id or 0,
+                question_key=question.question_key,
+                user_answer=user_answer,
+                is_correct=is_correct,
+                analysis=analysis,
+            )
         )
-        for r in grading_results
-    ]
-    submission, records = exam_repo.create_submission_with_records(
-        session, submission, records
-    )
 
-    # 4. 为错题生成 AI 错因分析
-    wrong_results = [
-        (r, rec)
-        for r, rec in zip(grading_results, records)
-        if not r["is_correct"]
-    ]
-    mistakes: list[Mistake] = []
-    for result, record in wrong_results:
-        analysis = await _generate_mistake_analysis(result["question"], result["user_answer"])
-        mistakes.append(Mistake(answer_record_id=record.id, analysis=analysis))
-
-    if mistakes:
-        mistakes = exam_repo.bulk_create_mistakes(session, mistakes)
-
-    # 5. 触发 Profile 更新
-    update_profiles_from_grading(
-        session, subject=subject, grading_results=grading_results
-    )
-
-    logger.info(
-        "exam_graded",
-        exam_id=exam_id,
-        total=total,
-        correct=correct_count,
-        score=round(score, 1),
-        mistakes=len(mistakes),
-    )
-
-    return submission, records, mistakes
+    score = correct_count / len(questions) * 100 if questions else 0.0
+    return GradingResult(score=score, items=items)
 
 
-async def _grade_single(question: Question, user_answer: str) -> bool:
-    """Grade one question using deterministic logic or LLM scoring as needed."""
-    q_type = question.type
+async def grade_one_question(*, question: Question, user_answer: str) -> bool:
+    """对单题判分。"""
 
-    if q_type in (QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value):
-        # 客观题：确定性字符串比较（忽略首尾空白、大小写）
+    if question.type in {QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value}:
         return user_answer.strip().lower() == question.answer.strip().lower()
 
-    if q_type == QuestionType.SHORT_ANSWER.value:
-        # 主观题：LLM 二元判分
-        return await _llm_grade_short_answer(question, user_answer)
-
-    # 未知题型，默认按字符串比较
-    return user_answer.strip().lower() == question.answer.strip().lower()
-
-
-async def _llm_grade_short_answer(question: Question, user_answer: str) -> bool:
-    """Use the LLM to decide whether a short answer is basically correct."""
-    messages = [
-        ChatMessage(
-            role=SYSTEM,
-            content=(
-                "你是一位严谨的阅卷老师。请判断学生的回答是否基本正确。\n"
-                "只需回复 1（基本正确）或 0（不正确），不要输出其他内容。"
-            ),
-        ),
-        ChatMessage(
-            role=USER,
-            content=(
-                f"题目：{question.stem}\n"
-                f"参考答案：{question.answer}\n"
-                f"学生回答：{user_answer}\n\n"
-                f"判分（1 或 0）："
-            ),
-        ),
-    ]
+    prompt = render_prompt(
+        "examine/prompts/short_answer_grade.j2",
+        stem=question.stem,
+        answer=question.answer,
+        user_answer=user_answer,
+    )
     try:
-        result = await acompletion(messages)
+        result = await acompletion(
+            messages=[
+                {"role": SYSTEM, "content": "你是一名严谨的阅卷老师。"},
+                {"role": USER, "content": prompt},
+            ]
+        )
         return result.strip().startswith("1")
     except Exception:
-        logger.warning("llm_grading_fallback", question_key=question.question_key)
-        # LLM 失败时回退到字符串比较
+        logger.warning("grade_short_answer_fallback", question_key=question.question_key)
         return user_answer.strip().lower() == question.answer.strip().lower()
 
 
-async def _generate_mistake_analysis(question: Question, user_answer: str) -> str:
-    """Generate a short AI explanation for why one answer was incorrect."""
-    messages = [
-        ChatMessage(
-            role=SYSTEM,
-            content="你是一位耐心的老师，请分析学生答错的原因并给出改进建议。简洁明了，100字以内。",
-        ),
-        ChatMessage(
-            role=USER,
-            content=(
-                f"题目：{question.stem}\n"
-                f"正确答案：{question.answer}\n"
-                f"学生回答：{user_answer}\n"
-                f"知识点：{question.knowledge_point}\n\n"
-                f"请分析错因："
-            ),
-        ),
-    ]
+async def generate_mistake_analysis(question: Question, user_answer: str) -> str:
+    """生成错因分析。"""
+
+    prompt = render_prompt(
+        "examine/prompts/mistake_analysis.j2",
+        stem=question.stem,
+        answer=question.answer,
+        user_answer=user_answer,
+        knowledge_point=question.knowledge_point,
+    )
     try:
-        return await acompletion(messages)
+        return await acompletion(
+            messages=[
+                {"role": SYSTEM, "content": "你是一名耐心的老师。"},
+                {"role": USER, "content": prompt},
+            ]
+        )
     except Exception:
         logger.warning("mistake_analysis_fallback", question_key=question.question_key)
-        return "错因分析生成失败，请参考正确答案自行复习。"
-
-
+        return "错因分析生成失败，请结合标准答案再次复习。"

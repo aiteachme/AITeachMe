@@ -1,4 +1,4 @@
-"""Top-level subject management routes."""
+"""学科接口。"""
 
 from __future__ import annotations
 
@@ -7,128 +7,101 @@ from sqlmodel import Session
 
 from app.api.deps import get_db
 from app.api.openapi import build_error_responses
-from app.repositories.models import Subject
+from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.subject import (
     SubjectCreateRequest,
+    SubjectDeleteData,
     SubjectDeleteRequest,
-    SubjectDeleteResponse,
     SubjectDetailRequest,
-    SubjectDetailResponse,
     SubjectItem,
     SubjectListRequest,
-    SubjectListResponse,
     SubjectUpdateRequest,
 )
-from app.services.presenters import require_id
 from app.services.subject_service import (
     create_subject_record,
     delete_subject_record,
-    get_subject_record,
+    get_subject_detail,
     list_subject_records,
-    normalize_subject_slug,
     update_subject_record,
 )
 
 router = APIRouter(prefix="/api/v1/subjects", tags=["subjects"])
 
 
-def _to_subject_item(subject: Subject) -> SubjectItem:
-    return SubjectItem(
-        id=require_id(subject.id, "Subject.id"),
-        subject=subject.slug,
-        name=subject.name,
-        description=subject.description,
-        created_at=subject.created_at,
-        updated_at=subject.updated_at,
-    )
-
-
 @router.post(
     "/add",
-    response_model=SubjectDetailResponse,
-    summary="Create subject",
-    description="Create a new top-level subject container used by files, knowledge, chat, exam, and profile modules.",
-    response_description="Newly created subject.",
+    response_model=ApiResponse[SubjectItem],
+    summary="创建学科",
     responses=build_error_responses([400, 409, 500]),
 )
 async def create_subject_api(
     body: SubjectCreateRequest = Body(...),
     session: Session = Depends(get_db),
-) -> SubjectDetailResponse:
-    subject = create_subject_record(
-        session,
-        slug=body.subject,
-        name=body.name,
-        description=body.description,
+) -> ApiResponse[SubjectItem]:
+    return ok_response(
+        create_subject_record(
+            session,
+            slug=body.subject,
+            name=body.name,
+            description=body.description,
+        )
     )
-    return SubjectDetailResponse(**_to_subject_item(subject).model_dump())
 
 
 @router.post(
     "/list",
-    response_model=SubjectListResponse,
-    summary="List subjects",
-    description="Return paginated top-level subjects.",
-    response_description="Paginated subject list.",
+    response_model=ApiResponse[PaginatedData[SubjectItem]],
+    summary="学科列表",
     responses=build_error_responses([500]),
 )
 async def list_subjects_api(
     body: SubjectListRequest = Body(default=SubjectListRequest()),
     session: Session = Depends(get_db),
-) -> SubjectListResponse:
-    items, total = list_subject_records(session, limit=body.limit, offset=body.offset)
-    return SubjectListResponse(items=[_to_subject_item(item) for item in items], total=total)
+) -> ApiResponse[PaginatedData[SubjectItem]]:
+    return ok_response(list_subject_records(session, page=body.page, size=body.size))
 
 
 @router.post(
     "/get",
-    response_model=SubjectDetailResponse,
-    summary="Get subject detail",
-    description="Return one subject by its slug.",
-    response_description="Subject detail.",
+    response_model=ApiResponse[SubjectItem],
+    summary="学科详情",
     responses=build_error_responses([400, 404, 500]),
 )
 async def get_subject_detail_api(
     body: SubjectDetailRequest = Body(...),
     session: Session = Depends(get_db),
-) -> SubjectDetailResponse:
-    subject = get_subject_record(session, body.subject)
-    return SubjectDetailResponse(**_to_subject_item(subject).model_dump())
+) -> ApiResponse[SubjectItem]:
+    return ok_response(get_subject_detail(session, body.subject))
 
 
 @router.post(
     "/edit",
-    response_model=SubjectDetailResponse,
-    summary="Update subject",
-    description="Update the subject display name and description.",
-    response_description="Updated subject detail.",
+    response_model=ApiResponse[SubjectItem],
+    summary="更新学科",
     responses=build_error_responses([400, 404, 500]),
 )
 async def update_subject_api(
     body: SubjectUpdateRequest = Body(...),
     session: Session = Depends(get_db),
-) -> SubjectDetailResponse:
-    subject = update_subject_record(
-        session,
-        slug=body.subject,
-        name=body.name,
-        description=body.description,
+) -> ApiResponse[SubjectItem]:
+    return ok_response(
+        update_subject_record(
+            session,
+            slug=body.subject,
+            name=body.name,
+            description=body.description,
+        )
     )
-    return SubjectDetailResponse(**_to_subject_item(subject).model_dump())
 
 
 @router.post(
     "/delete",
-    response_model=SubjectDeleteResponse,
-    summary="Delete subject",
-    description="Delete an empty subject. Subjects with related content cannot be deleted.",
-    response_description="Deletion result.",
+    response_model=ApiResponse[SubjectDeleteData],
+    summary="删除学科",
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def delete_subject_api(
     body: SubjectDeleteRequest = Body(...),
     session: Session = Depends(get_db),
-) -> SubjectDeleteResponse:
-    normalized_subject = normalize_subject_slug(body.subject)
-    delete_subject_record(session, slug=normalized_subject)
-    return SubjectDeleteResponse(deleted=True, subject=normalized_subject)
+) -> ApiResponse[SubjectDeleteData]:
+    return ok_response(delete_subject_record(session, slug=body.subject))

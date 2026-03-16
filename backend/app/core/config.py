@@ -1,4 +1,4 @@
-"""Application configuration and environment-backed settings."""
+"""应用配置。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ _DEFAULT_EMBEDDING_DIM = 1536
 
 
 class Settings(BaseSettings):
-    """Application-wide settings loaded from environment variables and `.env`."""
+    """从环境变量加载应用配置。"""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -43,21 +43,31 @@ class Settings(BaseSettings):
 
     @property
     def embedding_dim(self) -> int:
+        """根据 embedding 模型推导维度。"""
+
         return _EMBEDDING_DIM_MAP.get(self.embedding_model, _DEFAULT_EMBEDDING_DIM)
 
     @property
     def is_cloud_mode(self) -> bool:
+        """是否为云端模式。"""
+
         return self.app_mode.lower() == "cloud"
 
     @property
     def is_local_mode(self) -> bool:
+        """是否为本地模式。"""
+
         return not self.is_cloud_mode
 
     @property
     def auth_ready(self) -> bool:
+        """鉴权能力是否就绪。"""
+
         return False
 
     def require_llm_api_key(self) -> str:
+        """读取并校验 LLM API Key。"""
+
         if not self.llm_api_key:
             raise MissingLLMApiKeyError()
         return self.llm_api_key
@@ -65,4 +75,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """返回缓存后的配置对象。"""
+
     return Settings()

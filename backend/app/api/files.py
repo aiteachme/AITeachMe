@@ -1,32 +1,37 @@
-"""Subject-scoped raw file upload, parse, and preview routes."""
+"""文件接口。"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, File, Path, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Path, UploadFile
 from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.repositories.ingest_repo import list_raw_files_by_subject
+from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.upload import (
+    FileDeleteData,
+    FileDeleteRequest,
+    FileGetData,
     FileGetRequest,
-    FileGetResponse,
+    FileItem,
     FileListRequest,
-    FileListResponse,
+    FileRetryRequest,
+    FilesParseData,
     FilesParseRequest,
-    FilesParseResponse,
-    FilesUploadResponse,
+    FilesUploadData,
+    FileStatusData,
     FileStatusRequest,
-    FileStatusResponse,
 )
 from app.services.file_service import (
-    get_subject_file_or_raise,
-    list_asset_payload,
-    parse_files,
-    read_markdown_content,
+    delete_files,
+    get_file_result,
+    get_file_status,
+    list_files,
+    request_files_parse,
+    retry_file_parse,
+    run_parse_files_background,
     save_uploaded_files,
 )
-from app.services.presenters import require_id, to_file_get_response, to_file_list_response, to_file_status_response
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
@@ -34,114 +39,137 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
 
 @router.post(
     "/upload",
-    response_model=FilesUploadResponse,
-    summary="Upload raw files",
-    description="Accept one or more study files and persist them under the selected subject.",
-    response_description="Accepted raw file identifiers.",
+    response_model=ApiResponse[FilesUploadData],
+    summary="上传文件",
     responses=build_error_responses([400, 404, 413, 422, 500]),
 )
 async def upload_files(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
-    files: list[UploadFile] = File(..., description="One or more study files."),
+    subject: str = Path(...),
+    files: list[UploadFile] = File(...),
     session: Session = Depends(get_db),
-) -> FilesUploadResponse:
+) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-
-    saved = await save_uploaded_files(session, subject=normalized_subject, files=files)
-    return FilesUploadResponse(
-        subject=normalized_subject,
-        file_ids=[require_id(item.id, "RawFile.id") for item in saved],
-        filenames=[item.filename for item in saved],
-    )
+    return ok_response(await save_uploaded_files(session, subject=normalized_subject, files=files))
 
 
 @router.post(
     "/parse",
-    response_model=FilesParseResponse,
-    summary="Parse uploaded files",
-    description="Parse one or more uploaded raw files into markdown and assets.",
-    response_description="Parse results for this request.",
+    response_model=ApiResponse[FilesParseData],
+    summary="解析文件",
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def parse_uploaded_files(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+    background_tasks: BackgroundTasks,
+    subject: str = Path(...),
     body: FilesParseRequest = Body(...),
     session: Session = Depends(get_db),
-) -> FilesParseResponse:
+) -> ApiResponse[FilesParseData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-
-    parsed, failed = await parse_files(session, subject=normalized_subject, file_ids=body.file_ids)
-    return FilesParseResponse(
-        parsed_file_ids=[require_id(item.id, "RawFile.id") for item in parsed],
-        failed=failed,
+    data = request_files_parse(session, subject=normalized_subject, file_ids=body.file_ids)
+    background_tasks.add_task(
+        run_parse_files_background,
+        subject=normalized_subject,
+        file_ids=data.accepted_file_ids,
     )
+    return ok_response(data)
+
+
+@router.post(
+    "/retry",
+    response_model=ApiResponse[FilesParseData],
+    summary="重试解析",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def retry_uploaded_file(
+    background_tasks: BackgroundTasks,
+    subject: str = Path(...),
+    body: FileRetryRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[FilesParseData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    data = retry_file_parse(session, subject=normalized_subject, file_id=body.file_id)
+    background_tasks.add_task(
+        run_parse_files_background,
+        subject=normalized_subject,
+        file_ids=data.accepted_file_ids,
+    )
+    return ok_response(data)
 
 
 @router.post(
     "/status",
-    response_model=FileStatusResponse,
-    summary="Get one file status",
-    description="Return status metadata for one uploaded raw file without returning the full markdown text.",
-    response_description="Single file status.",
+    response_model=ApiResponse[FileStatusData],
+    summary="文件状态",
     responses=build_error_responses([400, 404, 500]),
 )
-async def get_file_status(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+async def get_file_status_api(
+    subject: str = Path(...),
     body: FileStatusRequest = Body(...),
     session: Session = Depends(get_db),
-) -> FileStatusResponse:
+) -> ApiResponse[FileStatusData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    raw_file = get_subject_file_or_raise(session, subject=normalized_subject, file_id=body.file_id)
-    return to_file_status_response(raw_file)
+    return ok_response(get_file_status(session, subject=normalized_subject, file_id=body.file_id))
 
 
 @router.post(
     "/list",
-    response_model=FileListResponse,
-    summary="List uploaded files",
-    description="Return a paginated raw file list for one subject.",
-    response_description="Paginated file list.",
+    response_model=ApiResponse[PaginatedData[FileItem]],
+    summary="文件列表",
     responses=build_error_responses([400, 404, 500]),
 )
-async def list_files(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+async def list_files_api(
+    subject: str = Path(...),
     body: FileListRequest = Body(default=FileListRequest()),
     session: Session = Depends(get_db),
-) -> FileListResponse:
+) -> ApiResponse[PaginatedData[FileItem]]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-
-    items, total = list_raw_files_by_subject(
-        session,
-        normalized_subject,
-        limit=body.limit,
-        offset=body.offset,
-        parse_status=body.parse_status,
+    return ok_response(
+        list_files(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+            status=body.status,
+        )
     )
-    return to_file_list_response(items, total)
 
 
 @router.post(
     "/get",
-    response_model=FileGetResponse,
-    summary="Get parsed file result",
-    description="Return the parsed markdown and extracted assets for one raw file.",
-    response_description="Parsed file content.",
+    response_model=ApiResponse[FileGetData],
+    summary="文件解析结果",
     responses=build_error_responses([400, 404, 500]),
 )
-async def get_file(
-    subject: str = Path(..., description="Top-level subject slug.", examples=["math"]),
+async def get_file_api(
+    subject: str = Path(...),
     body: FileGetRequest = Body(...),
     session: Session = Depends(get_db),
-) -> FileGetResponse:
+) -> ApiResponse[FileGetData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    raw_file = get_subject_file_or_raise(session, subject=normalized_subject, file_id=body.file_id)
-    return to_file_get_response(
-        raw_file,
-        markdown_content=read_markdown_content(raw_file),
-        assets=list_asset_payload(raw_file),
-    )
+    return ok_response(get_file_result(session, subject=normalized_subject, file_id=body.file_id))
+
+
+@router.post(
+    "/delete",
+    response_model=ApiResponse[FileDeleteData],
+    summary="删除文件",
+    responses=build_error_responses([400, 404, 409, 422, 500]),
+)
+async def delete_files_api(
+    subject: str = Path(...),
+    body: FileDeleteRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[FileDeleteData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    file_ids = [body.file_id] if body.file_id is not None else []
+    if body.file_ids:
+        file_ids.extend(body.file_ids)
+    unique_file_ids = list(dict.fromkeys(file_ids))
+    return ok_response(delete_files(session, subject=normalized_subject, file_ids=unique_file_ids))

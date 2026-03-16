@@ -1,4 +1,4 @@
-"""Application-level exceptions exposed through the API layer."""
+"""项目统一异常定义。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from http import HTTPStatus
 
 
 class AITeachMeError(Exception):
-    """Base class for user-facing business errors."""
+    """所有对外业务异常的基类。"""
 
     error_code: str = "AITEACHME_ERROR"
     status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -32,19 +32,8 @@ class InvalidSubjectError(AITeachMeError):
 
     def __init__(self, subject: str) -> None:
         super().__init__(
-            detail=(
-                f"Invalid subject slug '{subject}'. "
-                "Only letters, numbers, underscores, and hyphens are allowed."
-            )
+            detail=f"学科标识 `{subject}` 不合法，只允许字母、数字、下划线和中划线。"
         )
-
-
-class SubjectNotFoundError(AITeachMeError):
-    error_code = "SUBJECT_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject '{subject}' was not found.")
 
 
 class SubjectAlreadyExistsError(AITeachMeError):
@@ -52,7 +41,7 @@ class SubjectAlreadyExistsError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject '{subject}' already exists.")
+        super().__init__(detail=f"学科 `{subject}` 已存在。")
 
 
 class SubjectRegistryNotFoundError(AITeachMeError):
@@ -60,7 +49,7 @@ class SubjectRegistryNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject '{subject}' was not found.")
+        super().__init__(detail=f"学科 `{subject}` 不存在。")
 
 
 class SubjectInUseError(AITeachMeError):
@@ -68,7 +57,7 @@ class SubjectInUseError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject '{subject}' still has related content and cannot be deleted.")
+        super().__init__(detail=f"学科 `{subject}` 下仍有内容，不能删除。")
 
 
 class FileParseError(AITeachMeError):
@@ -76,18 +65,10 @@ class FileParseError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, filename: str, reason: str = "") -> None:
-        detail = f"Failed to parse file '{filename}'."
+        detail = f"文件 `{filename}` 解析失败。"
         if reason:
-            detail = f"{detail} {reason}"
+            detail = f"{detail}{reason}"
         super().__init__(detail=detail)
-
-
-class MissingLLMApiKeyError(AITeachMeError):
-    error_code = "LLM_API_KEY_MISSING"
-    status_code = HTTPStatus.SERVICE_UNAVAILABLE
-
-    def __init__(self) -> None:
-        super().__init__(detail="LLM_API_KEY is not configured.")
 
 
 class FileTooLargeError(AITeachMeError):
@@ -95,7 +76,7 @@ class FileTooLargeError(AITeachMeError):
     status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
     def __init__(self, max_size_mb: int) -> None:
-        super().__init__(detail=f"Uploaded file exceeds the limit of {max_size_mb} MB.")
+        super().__init__(detail=f"上传文件超过 {max_size_mb} MB 限制。")
 
 
 class UnsupportedFileTypeError(AITeachMeError):
@@ -103,42 +84,7 @@ class UnsupportedFileTypeError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, filetype: str) -> None:
-        super().__init__(detail=f"Unsupported file type '{filetype}'.")
-
-
-class LLMCallError(AITeachMeError):
-    error_code = "LLM_CALL_ERROR"
-    status_code = HTTPStatus.BAD_GATEWAY
-
-    def __init__(self, reason: str = "") -> None:
-        detail = "The upstream LLM call failed."
-        if reason:
-            detail = f"{detail} {reason}"
-        super().__init__(detail=detail)
-
-
-class LLMTimeoutError(AITeachMeError):
-    error_code = "LLM_TIMEOUT"
-    status_code = HTTPStatus.GATEWAY_TIMEOUT
-
-    def __init__(self, timeout_s: int = 60) -> None:
-        super().__init__(detail=f"The upstream LLM call timed out after {timeout_s} seconds.")
-
-
-class ExamNotFoundError(AITeachMeError):
-    error_code = "EXAM_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, exam_id: int) -> None:
-        super().__init__(detail=f"Exam {exam_id} was not found.")
-
-
-class TaskNotFoundError(AITeachMeError):
-    error_code = "TASK_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, task_id: int) -> None:
-        super().__init__(detail=f"Task {task_id} was not found.")
+        super().__init__(detail=f"暂不支持文件类型 `{filetype}`。")
 
 
 class RawFileNotFoundError(AITeachMeError):
@@ -146,15 +92,15 @@ class RawFileNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, file_id: int) -> None:
-        super().__init__(detail=f"Raw file {file_id} was not found.")
+        super().__init__(detail=f"文件 `{file_id}` 不存在。")
 
 
-class DocSetNotFoundError(AITeachMeError):
-    error_code = "DOC_SET_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
+class RawFileInUseError(AITeachMeError):
+    error_code = "RAW_FILE_IN_USE"
+    status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, docset_id: int) -> None:
-        super().__init__(detail=f"Document set {docset_id} was not found.")
+    def __init__(self, file_id: int) -> None:
+        super().__init__(detail=f"文件 `{file_id}` 已被知识集合引用，不能删除。")
 
 
 class InvalidRawFileStateError(AITeachMeError):
@@ -163,24 +109,59 @@ class InvalidRawFileStateError(AITeachMeError):
 
     def __init__(self, file_id: int, current_state: str, expected: str) -> None:
         super().__init__(
-            detail=(
-                f"Raw file {file_id} is in state '{current_state}' but expected "
-                f"'{expected}'."
-            )
+            detail=f"文件 `{file_id}` 当前状态为 `{current_state}`，期望状态为 `{expected}`。"
         )
 
 
-class DigestPipelineError(AITeachMeError):
-    error_code = "DIGEST_PIPELINE_ERROR"
-    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+class DocSetNotFoundError(AITeachMeError):
+    error_code = "DOC_SET_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, document_id: int, stage: str = "", reason: str = "") -> None:
-        detail = f"Digest pipeline failed for document {document_id}."
-        if stage:
-            detail = f"{detail} Stage: {stage}."
+    def __init__(self, docset_id: int) -> None:
+        super().__init__(detail=f"知识集合 `{docset_id}` 不存在。")
+
+
+class KnowledgeRetryNotAllowedError(AITeachMeError):
+    error_code = "KNOWLEDGE_RETRY_NOT_ALLOWED"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, docset_id: int, status: str) -> None:
+        super().__init__(detail=f"知识集合 `{docset_id}` 当前状态为 `{status}`，不能重试。")
+
+
+class ExamNotFoundError(AITeachMeError):
+    error_code = "EXAM_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, exam_id: int) -> None:
+        super().__init__(detail=f"试卷 `{exam_id}` 不存在。")
+
+
+class MissingLLMApiKeyError(AITeachMeError):
+    error_code = "LLM_API_KEY_MISSING"
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__(detail="未配置 LLM_API_KEY。")
+
+
+class LLMCallError(AITeachMeError):
+    error_code = "LLM_CALL_ERROR"
+    status_code = HTTPStatus.BAD_GATEWAY
+
+    def __init__(self, reason: str = "") -> None:
+        detail = "上游模型调用失败。"
         if reason:
-            detail = f"{detail} {reason}"
+            detail = f"{detail}{reason}"
         super().__init__(detail=detail)
+
+
+class LLMTimeoutError(AITeachMeError):
+    error_code = "LLM_TIMEOUT"
+    status_code = HTTPStatus.GATEWAY_TIMEOUT
+
+    def __init__(self, timeout_s: int = 60) -> None:
+        super().__init__(detail=f"上游模型调用超时，超过 {timeout_s} 秒。")
 
 
 class VectorExtensionUnavailableError(AITeachMeError):
@@ -188,9 +169,9 @@ class VectorExtensionUnavailableError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self, reason: str = "") -> None:
-        detail = "sqlite-vec is not available in the current environment."
+        detail = "当前环境不可用 sqlite-vec。"
         if reason:
-            detail = f"{detail} {reason}"
+            detail = f"{detail}{reason}"
         super().__init__(detail=detail)
 
 
@@ -199,7 +180,7 @@ class AuthDisabledError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="Authentication is disabled in local mode.")
+        super().__init__(detail="本地模式下未启用鉴权。")
 
 
 class AuthNotReadyError(AITeachMeError):
@@ -207,4 +188,4 @@ class AuthNotReadyError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="Cloud authentication scaffolding exists, but registration is not implemented yet.")
+        super().__init__(detail="鉴权脚手架已预留，但当前尚未实现。")
