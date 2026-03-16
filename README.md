@@ -12,10 +12,7 @@
   <p style="margin:0;">
     <img src="https://img.shields.io/badge/Python-3.10+-green" alt="Python" />
     <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript" />
-<<<<<<< HEAD
-=======
     <img src="https://img.shields.io/badge/代码行数-10.1k-blue" alt="Lines of Code" />
->>>>>>> 4e6c984641bfab7751c635c713433b88aa9a100d
     <img src="https://img.shields.io/badge/Status-MVP-orange" alt="Status" />
     <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
   </p>
