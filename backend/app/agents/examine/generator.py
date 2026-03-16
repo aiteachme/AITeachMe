@@ -1,191 +1,85 @@
-"""
-结构化考试生成 — Instructor 强制 JSON Schema 输出
-
-读取 KnowledgeGraphNode 获取知识范围，优先考查薄弱点（mastery < 0.6），
-检查 Mistake 表避免重复最近的错题。
-"""
+"""测验出题 Agent。"""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field as PydanticField
+from pydantic import BaseModel, Field
 import structlog
-from sqlmodel import Session
 
 from app.core.llm import acompletion_structured
-from app.repositories import knowledge_repo, exam_repo, profile_repo
+from app.core.prompt_loader import render_prompt
+from app.models import Difficulty, QuestionType
 from app.schemas.llm import ChatMessage, SYSTEM
-from app.repositories.models import (
-    Question,
-    QuestionType,
-    Difficulty,
-)
 
 logger = structlog.get_logger()
 
 
-# ─── Instructor 结构化输出模型 ───
-
-
 class GeneratedQuestion(BaseModel):
-    """LLM 生成的单道题目，Instructor 强制校验。"""
+    """生成后的题目。"""
 
     question_key: str
-    type: str  # single_choice / fill_blank / short_answer
+    type: str
     stem: str
     options: list[str] | None = None
     answer: str
     explanation: str
     knowledge_point: str
-    difficulty: str  # easy / medium / hard
+    difficulty: str
 
 
 class GeneratedExam(BaseModel):
-    """LLM 生成的完整考卷。"""
+    """生成后的试卷。"""
 
-    questions: list[GeneratedQuestion] = PydanticField(min_length=1)
-
-
-# ─── 生成逻辑 ───
+    questions: list[GeneratedQuestion] = Field(min_length=1)
 
 
 async def generate_exam(
-    session: Session,
-    *,
-    subject: str,
-    num_questions: int = 10,
-    difficulty_distribution: dict[str, float] | None = None,
-    knowledge_points: list[str] | None = None,
-) -> list[Question]:
-    """
-    Generate a structured exam based on knowledge coverage and learner state.
-
-    Args:
-        session: 数据库会话。
-        subject: 学科标识。
-        num_questions: 目标题目数量。
-        difficulty_distribution: 可选难度分布。
-        knowledge_points: 可选指定知识点范围。
-
-    Returns:
-        尚未持久化的 `Question` 模型列表，由 service 层统一保存。
-
-    Raises:
-        LLMCallError: 结构化出题失败时由 LLM 封装层抛出。
-    """
-    # 1. 获取知识范围
-    graph_nodes = knowledge_repo.list_graph_nodes_by_subject(session, subject)
-    all_kp = list({n.title for n in graph_nodes}) if graph_nodes else []
-
-    # 2. 获取薄弱点
-    weak_profiles = profile_repo.get_weak_points(session, subject)
-    weak_kps = [p.knowledge_point for p in weak_profiles]
-
-    # 3. 获取近期错题以避免重复
-    recent_mistakes, _ = exam_repo.list_mistakes_by_subject(
-        session, subject, limit=20, offset=0
-    )
-    recent_stems = [m["question_stem"] for m in recent_mistakes]
-
-    # 4. 构建 prompt
-    messages = _build_exam_generation_messages(
-        subject=subject,
-        num_questions=num_questions,
-        all_knowledge_points=all_kp,
-        weak_knowledge_points=weak_kps,
-        recent_mistake_stems=recent_stems,
-        difficulty_distribution=difficulty_distribution,
-        requested_knowledge_points=knowledge_points,
-    )
-
-    logger.info(
-        "exam_generation_start",
-        subject=subject,
-        num_questions=num_questions,
-        knowledge_points_count=len(all_kp),
-        weak_points_count=len(weak_kps),
-    )
-
-    # 5. 调用 LLM（重试由 core/llm 统一处理）
-    result: GeneratedExam = await acompletion_structured(
-        response_model=GeneratedExam,
-        messages=messages,
-    )
-
-    # 6. 转换为 Question 模型
-    questions = _to_question_models(result)
-
-    logger.info("exam_generation_done", subject=subject, generated=len(questions))
-    return questions
-
-
-def _build_exam_generation_messages(
     *,
     subject: str,
     num_questions: int,
-    all_knowledge_points: list[str],
+    available_knowledge_points: list[str],
     weak_knowledge_points: list[str],
     recent_mistake_stems: list[str],
-    difficulty_distribution: dict[str, float] | None,
-    requested_knowledge_points: list[str] | None,
-) -> list[ChatMessage]:
-    """Build the LLM message list used to generate one structured exam."""
-    kp_section = ""
-    if requested_knowledge_points:
-        kp_section = f"重点考查以下知识点：{', '.join(requested_knowledge_points)}\n"
-    elif all_knowledge_points:
-        kp_section = f"可用知识点范围：{', '.join(all_knowledge_points[:50])}\n"
+    requested_knowledge_points: list[str] | None = None,
+) -> list[GeneratedQuestion]:
+    """根据知识点与画像信息生成试题。"""
 
-    weak_section = ""
-    if weak_knowledge_points:
-        weak_section = (
-            f"以下是学生的薄弱知识点（mastery < 0.6），请优先出题考查：\n"
-            f"{', '.join(weak_knowledge_points[:10])}\n"
-        )
-
-    avoid_section = ""
-    if recent_mistake_stems:
-        stems_preview = "\n".join(f"- {s[:80]}" for s in recent_mistake_stems[:10])
-        avoid_section = f"请避免生成与以下近期错题完全相同的题目：\n{stems_preview}\n"
-
-    diff_section = ""
-    if difficulty_distribution:
-        parts = [f"{k}: {int(v * 100)}%" for k, v in difficulty_distribution.items()]
-        diff_section = f"难度分布要求：{', '.join(parts)}\n"
-
-    system_msg = (
-        f"你是一位专业的{subject}学科出题老师。请根据给定的知识范围生成一份结构化考卷。\n\n"
-        f"要求：\n"
-        f"- 生成 {num_questions} 道题目\n"
-        f"- 支持三种题型：single_choice（单选题）、fill_blank（填空题）、short_answer（简答题）\n"
-        f"- 每道题的 question_key 格式为 q1, q2, q3...\n"
-        f"- 单选题必须有至少 2 个选项，answer 必须是选项之一\n"
-        f"- difficulty 取值：easy / medium / hard\n"
-        f"- knowledge_point 必须非空\n"
-        f"- 每道题必须有 explanation（解析）\n"
-        f"{kp_section}{weak_section}{avoid_section}{diff_section}"
+    prompt = render_prompt(
+        "examine/prompts/exam_generate.j2",
+        subject=subject,
+        num_questions=num_questions,
+        available_knowledge_points=", ".join(available_knowledge_points[:50]) or "暂无",
+        weak_knowledge_points=", ".join(weak_knowledge_points[:20]) or "暂无",
+        requested_knowledge_points=", ".join(requested_knowledge_points or []) or "未指定",
+        recent_mistake_stems="\n".join(f"- {item}" for item in recent_mistake_stems[:10]) or "- 无",
+        question_types=", ".join(item.value for item in QuestionType),
+        difficulties=", ".join(item.value for item in Difficulty),
     )
+    result = await acompletion_structured(
+        response_model=GeneratedExam,
+        messages=[{"role": SYSTEM, "content": prompt}],
+    )
+    logger.info("generate_exam_complete", subject=subject, question_count=len(result.questions))
+    return result.questions
 
-    return [ChatMessage(role=SYSTEM, content=system_msg)]
 
+async def generate_exam_from_text(
+    *,
+    subject: str,
+    knowledge_text: str,
+    num_questions: int,
+) -> list[GeneratedQuestion]:
+    """根据纯文本知识内容直接出题，供 playground 使用。"""
 
-def _to_question_models(exam: GeneratedExam) -> list[Question]:
-    """Convert Instructor output into `Question` ORM objects ready for persistence."""
-    questions: list[Question] = []
-    for gq in exam.questions:
-        # 规范化枚举值
-        q_type = gq.type if gq.type in {e.value for e in QuestionType} else QuestionType.SHORT_ANSWER.value
-        diff = gq.difficulty if gq.difficulty in {e.value for e in Difficulty} else Difficulty.MEDIUM.value
-
-        q = Question(
-            exam_id=0,  # 由 service 层在保存时设置
-            question_key=gq.question_key,
-            type=q_type,
-            stem=gq.stem,
-            options=gq.options if q_type == QuestionType.SINGLE_CHOICE.value else None,
-            answer=gq.answer,
-            explanation=gq.explanation,
-            knowledge_point=gq.knowledge_point,
-            difficulty=diff,
-        )
-        questions.append(q)
-    return questions
+    prompt = render_prompt(
+        "examine/prompts/exam_generate_from_text.j2",
+        subject=subject,
+        num_questions=num_questions,
+        knowledge_text=knowledge_text,
+        question_types=", ".join(item.value for item in QuestionType),
+        difficulties=", ".join(item.value for item in Difficulty),
+    )
+    result = await acompletion_structured(
+        response_model=GeneratedExam,
+        messages=[{"role": SYSTEM, "content": prompt}],
+    )
+    return result.questions

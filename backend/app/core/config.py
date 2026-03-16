@@ -1,30 +1,34 @@
+"""应用配置。"""
+
+from __future__ import annotations
+
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.exceptions import MissingLLMApiKeyError
 
-
-# 内置模型 → 向量维度映射表
 _EMBEDDING_DIM_MAP: dict[str, int] = {
-    "text-embedding-v3": 1536,          # 阿里云百炼
-    "text-embedding-v2": 1536,          # 阿里云百炼
-    "text-embedding-ada-002": 1536,     # OpenAI
-    "text-embedding-3-small": 1536,     # OpenAI
-    "text-embedding-3-large": 3072,     # OpenAI
-    "BAAI/bge-large-zh-v1.5": 1024,    # 硅基流动
-    "BAAI/bge-m3": 1024,               # 硅基流动
-    "qwen3-embedding-8b": 4096,        # 阿里云百炼 / AIHubMix
-    "qwen3-embedding-0.6b": 1024,      # 阿里云百炼 / AIHubMix (轻量)
+    "text-embedding-v3": 1536,
+    "text-embedding-v2": 1536,
+    "text-embedding-ada-002": 1536,
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+    "BAAI/bge-large-zh-v1.5": 1024,
+    "BAAI/bge-m3": 1024,
+    "qwen3-embedding-8b": 4096,
+    "qwen3-embedding-0.6b": 1024,
 }
 
 _DEFAULT_EMBEDDING_DIM = 1536
 
 
 class Settings(BaseSettings):
-    # 必填项（缺失时启动报错）
-    llm_api_key: str | None = None
+    """从环境变量加载应用配置。"""
 
-    # 可选项（含默认值）
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    llm_api_key: str | None = None
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     llm_model: str = "qwen-plus"
     embedding_model: str = "text-embedding-v3"
@@ -33,19 +37,37 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3
     chat_history_turns: int = 10
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    app_mode: str = "local"
+    auth_enabled: bool = False
+    app_version: str = "0.2.0"
 
     @property
     def embedding_dim(self) -> int:
-        """由 embedding_model 自动推导向量维度，不暴露为用户配置项。"""
+        """根据 embedding 模型推导维度。"""
+
         return _EMBEDDING_DIM_MAP.get(self.embedding_model, _DEFAULT_EMBEDDING_DIM)
 
+    @property
+    def is_cloud_mode(self) -> bool:
+        """是否为云端模式。"""
+
+        return self.app_mode.lower() == "cloud"
+
+    @property
+    def is_local_mode(self) -> bool:
+        """是否为本地模式。"""
+
+        return not self.is_cloud_mode
+
+    @property
+    def auth_ready(self) -> bool:
+        """鉴权能力是否就绪。"""
+
+        return False
 
     def require_llm_api_key(self) -> str:
-        """Return the configured LLM API key or raise a user-facing error."""
+        """读取并校验 LLM API Key。"""
+
         if not self.llm_api_key:
             raise MissingLLMApiKeyError()
         return self.llm_api_key
@@ -53,4 +75,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """返回缓存后的配置对象。"""
+
     return Settings()

@@ -1,53 +1,44 @@
-"""
-Exam + Question + ExamSubmission + AnswerRecord + Mistake CRUD
-"""
+"""测验数据访问层。"""
 
 from __future__ import annotations
 
-from sqlmodel import Session, select, func
+from sqlmodel import Session, func, select
 
-from app.repositories.models import (
-    Exam,
-    Question,
-    ExamSubmission,
-    AnswerRecord,
-    Mistake,
-)
-
-
-# ─── Exam + Question ───
+from app.models import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 
 
 def create_exam_with_questions(
-    session: Session, exam: Exam, questions: list[Question]
+    session: Session,
+    exam: Exam,
+    questions: list[Question],
 ) -> tuple[Exam, list[Question]]:
-    """创建考试及其题目。"""
+    """创建试卷与题目。"""
+
     session.add(exam)
     session.commit()
     session.refresh(exam)
     if exam.id is None:
-        raise ValueError("Exam.id is unexpectedly None after persistence")
+        raise ValueError("Exam.id 持久化后不应为空。")
 
-    for q in questions:
-        q.exam_id = exam.id
-        session.add(q)
+    for question in questions:
+        question.exam_id = exam.id
+        session.add(question)
     session.commit()
-    for q in questions:
-        session.refresh(q)
-
+    for question in questions:
+        session.refresh(question)
     return exam, questions
 
 
 def get_exam_by_id(session: Session, exam_id: int) -> Exam | None:
+    """按 ID 查询试卷。"""
+
     return session.get(Exam, exam_id)
 
 
 def get_questions_by_exam_id(session: Session, exam_id: int) -> list[Question]:
-    stmt = select(Question).where(Question.exam_id == exam_id)
-    return list(session.exec(stmt).all())
+    """查询试卷题目。"""
 
-
-# ─── ExamSubmission + AnswerRecord ───
+    return list(session.exec(select(Question).where(Question.exam_id == exam_id)).all())
 
 
 def create_submission_with_records(
@@ -55,34 +46,45 @@ def create_submission_with_records(
     submission: ExamSubmission,
     records: list[AnswerRecord],
 ) -> tuple[ExamSubmission, list[AnswerRecord]]:
-    """创建提交记录及答题记录。"""
+    """创建交卷记录与作答记录。"""
+
     session.add(submission)
     session.commit()
     session.refresh(submission)
     if submission.id is None:
-        raise ValueError("ExamSubmission.id is unexpectedly None after persistence")
+        raise ValueError("ExamSubmission.id 持久化后不应为空。")
 
-    for r in records:
-        r.submission_id = submission.id
-        session.add(r)
+    for record in records:
+        record.submission_id = submission.id
+        session.add(record)
     session.commit()
-    for r in records:
-        session.refresh(r)
-
+    for record in records:
+        session.refresh(record)
     return submission, records
 
 
-def list_exam_history_by_subject(
-    session: Session, subject: str, *, limit: int = 100, offset: int = 0
-) -> tuple[list[dict], int]:
-    """
-    按学科分页列表考试历史。
-    返回 (items, total)，每个 item 包含 exam_id, submission_id, score, created_at。
-    """
-    count_stmt = select(func.count()).select_from(Exam).where(Exam.subject == subject)
-    total = session.exec(count_stmt).one()
+def bulk_create_mistakes(session: Session, mistakes: list[Mistake]) -> list[Mistake]:
+    """批量写入错题记录。"""
 
-    stmt = (
+    for mistake in mistakes:
+        session.add(mistake)
+    session.commit()
+    for mistake in mistakes:
+        session.refresh(mistake)
+    return mistakes
+
+
+def list_exam_history_by_subject(
+    session: Session,
+    subject: str,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict], int]:
+    """分页查询试卷历史。"""
+
+    total = session.exec(select(func.count()).select_from(Exam).where(Exam.subject == subject)).one()
+    rows = session.exec(
         select(
             Exam.id,
             Exam.created_at,
@@ -94,9 +96,7 @@ def list_exam_history_by_subject(
         .order_by(Exam.created_at.desc())  # type: ignore[union-attr]
         .offset(offset)
         .limit(limit)
-    )
-    rows = session.exec(stmt).all()
-
+    ).all()
     items = [
         {
             "exam_id": row[0],
@@ -109,45 +109,24 @@ def list_exam_history_by_subject(
     return items, total
 
 
-# ─── Mistake ───
-
-
-def create_mistake(session: Session, mistake: Mistake) -> Mistake:
-    session.add(mistake)
-    session.commit()
-    session.refresh(mistake)
-    return mistake
-
-
-def bulk_create_mistakes(session: Session, mistakes: list[Mistake]) -> list[Mistake]:
-    for m in mistakes:
-        session.add(m)
-    session.commit()
-    for m in mistakes:
-        session.refresh(m)
-    return mistakes
-
-
 def list_mistakes_by_subject(
-    session: Session, subject: str, *, limit: int = 100, offset: int = 0
+    session: Session,
+    subject: str,
+    *,
+    limit: int,
+    offset: int,
 ) -> tuple[list[dict], int]:
-    """
-    按学科分页列表错题（通过 answer_record → question → exam 进行 JOIN）。
-    返回 (items, total)。
-    """
-    # 计算总数
-    count_stmt = (
+    """分页查询错题本。"""
+
+    total = session.exec(
         select(func.count())
         .select_from(Mistake)
         .join(AnswerRecord, Mistake.answer_record_id == AnswerRecord.id)
         .join(Question, AnswerRecord.question_id == Question.id)
         .join(Exam, Question.exam_id == Exam.id)
         .where(Exam.subject == subject)
-    )
-    total = session.exec(count_stmt).one()
-
-    # 查询错题详情
-    stmt = (
+    ).one()
+    rows = session.exec(
         select(
             Mistake.id,
             Mistake.analysis,
@@ -165,9 +144,7 @@ def list_mistakes_by_subject(
         .order_by(Mistake.created_at.desc())  # type: ignore[union-attr]
         .offset(offset)
         .limit(limit)
-    )
-    rows = session.exec(stmt).all()
-
+    ).all()
     items = [
         {
             "id": row[0],
@@ -182,3 +159,40 @@ def list_mistakes_by_subject(
         for row in rows
     ]
     return items, total
+
+
+def delete_exam_cascade(session: Session, exam_id: int) -> bool:
+    """级联删除试卷及其关联数据。"""
+
+    exam = session.get(Exam, exam_id)
+    if exam is None:
+        return False
+
+    questions = get_questions_by_exam_id(session, exam_id)
+    submissions = list(
+        session.exec(select(ExamSubmission).where(ExamSubmission.exam_id == exam_id)).all()
+    )
+
+    for submission in submissions:
+        records = list(
+            session.exec(
+                select(AnswerRecord).where(AnswerRecord.submission_id == submission.id)
+            ).all()
+        )
+        for record in records:
+            mistakes = list(
+                session.exec(
+                    select(Mistake).where(Mistake.answer_record_id == record.id)
+                ).all()
+            )
+            for mistake in mistakes:
+                session.delete(mistake)
+            session.delete(record)
+        session.delete(submission)
+
+    for question in questions:
+        session.delete(question)
+
+    session.delete(exam)
+    session.commit()
+    return True

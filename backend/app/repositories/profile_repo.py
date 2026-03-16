@@ -1,14 +1,12 @@
-"""
-UserProfile CRUD — 掌握度画像数据访问
-"""
+"""学习画像数据访问层。"""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlmodel import Session, select, func
+from sqlmodel import Session, func, select
 
-from app.repositories.models import UserProfile
+from app.models import UserProfile
 
 
 def upsert_profile(
@@ -20,17 +18,14 @@ def upsert_profile(
     attempts: int,
     correct: int,
 ) -> UserProfile:
-    """
-    按 (user_id, subject, knowledge_point) 进行 upsert。
-    mastery = correct / attempts（attempts > 0），否则 None。
-    """
+    """更新或创建画像记录。"""
+
     stmt = select(UserProfile).where(
         UserProfile.user_id == user_id,
         UserProfile.subject == subject,
         UserProfile.knowledge_point == knowledge_point,
     )
     profile = session.exec(stmt).first()
-
     mastery = correct / attempts if attempts > 0 else None
 
     if profile is None:
@@ -44,9 +39,9 @@ def upsert_profile(
             updated_at=datetime.utcnow(),
         )
     else:
+        profile.mastery = mastery
         profile.attempts = attempts
         profile.correct = correct
-        profile.mastery = mastery
         profile.updated_at = datetime.utcnow()
 
     session.add(profile)
@@ -60,17 +55,16 @@ def list_profiles_by_subject(
     subject: str,
     *,
     user_id: str = "local",
-    limit: int = 100,
-    offset: int = 0,
+    limit: int,
+    offset: int,
 ) -> tuple[list[UserProfile], int]:
-    """按学科分页查询全部 UserProfile，返回 (items, total)。"""
-    count_stmt = (
+    """分页读取学科画像。"""
+
+    total = session.exec(
         select(func.count())
         .select_from(UserProfile)
         .where(UserProfile.subject == subject, UserProfile.user_id == user_id)
-    )
-    total = session.exec(count_stmt).one()
-
+    ).one()
     stmt = (
         select(UserProfile)
         .where(UserProfile.subject == subject, UserProfile.user_id == user_id)
@@ -78,8 +72,24 @@ def list_profiles_by_subject(
         .offset(offset)
         .limit(limit)
     )
-    items = list(session.exec(stmt).all())
-    return items, total
+    return list(session.exec(stmt).all()), total
+
+
+def get_profile_by_key(
+    session: Session,
+    *,
+    user_id: str,
+    subject: str,
+    knowledge_point: str,
+) -> UserProfile | None:
+    """按唯一键读取画像。"""
+
+    stmt = select(UserProfile).where(
+        UserProfile.user_id == user_id,
+        UserProfile.subject == subject,
+        UserProfile.knowledge_point == knowledge_point,
+    )
+    return session.exec(stmt).first()
 
 
 def get_weak_points(
@@ -88,8 +98,10 @@ def get_weak_points(
     *,
     user_id: str = "local",
     threshold: float = 0.6,
+    limit: int | None = None,
 ) -> list[UserProfile]:
-    """获取薄弱点（mastery < threshold），按 mastery 升序排列。"""
+    """查询薄弱知识点。"""
+
     stmt = (
         select(UserProfile)
         .where(
@@ -100,4 +112,6 @@ def get_weak_points(
         )
         .order_by(UserProfile.mastery.asc())  # type: ignore[union-attr]
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())

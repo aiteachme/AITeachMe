@@ -1,18 +1,9 @@
-"""
-SQLite 引擎初始化、sqlite-vec 扩展加载、会话工厂。
-
-单一引擎连接 data/aiteachme.db，所有学科数据通过 WHERE subject = ? 隔离。
-
-注意：
-- 某些托管环境（例如部分云平台的 Python 构建）不暴露
-  `sqlite3.Connection.enable_load_extension`
-- 在这些环境下，应用仍应能够启动
-- 如果 sqlite-vec 无法启用，则只禁用向量相关能力，而不是让整个服务启动失败
-"""
+"""数据库初始化、轻量迁移与会话管理。"""
 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 try:
     import pysqlite3 as sqlite3  # type: ignore[import-not-found]
@@ -24,10 +15,9 @@ except ImportError:
 
     _SQLITE_DRIVER = "stdlib-sqlite3"
 
-import sqlite_vec
 import sqlalchemy as sa
+import sqlite_vec
 import structlog
-from pathlib import Path
 from sqlmodel import SQLModel, Session, create_engine
 
 from app.core.config import get_settings
@@ -41,40 +31,42 @@ _vec_error: str | None = None
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
-    """Persist the current sqlite-vec availability for the running process."""
-
     global _vec_ready, _vec_error
     _vec_ready = ready
     _vec_error = error
 
 
 def is_vec_ready() -> bool:
-    """Return whether sqlite-vec is available in the current process."""
+    """返回向量扩展是否可用。"""
 
     return bool(_vec_ready)
 
 
 def require_vec_ready() -> None:
-    """Raise a user-facing error when sqlite-vec is unavailable."""
+    """要求 sqlite-vec 已可用。"""
 
     if not is_vec_ready():
         raise VectorExtensionUnavailableError(_vec_error or "")
 
 
 def get_vec_status() -> tuple[bool | None, str | None]:
-    """Return the current sqlite-vec status tuple `(ready, error)`."""
+    """返回向量扩展状态与错误信息。"""
 
     return _vec_ready, _vec_error
 
 
+def reset_runtime_state() -> None:
+    """重置全局单例，便于本地冒烟测试。"""
+
+    global _engine, _vec_ready, _vec_error
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _vec_ready = None
+    _vec_error = None
+
+
 def _load_vec_extension(dbapi_conn) -> None:
-    """Attempt to load sqlite-vec on a fresh DB-API connection.
-
-    Some environments expose `enable_load_extension`, while others do not.
-    We therefore try the safest available path and degrade gracefully when
-    the extension cannot be enabled.
-    """
-
     can_toggle_extensions = hasattr(dbapi_conn, "enable_load_extension")
 
     try:
@@ -105,7 +97,8 @@ def _load_vec_extension(dbapi_conn) -> None:
 
 
 def get_engine():
-    """获取或创建单一 SQLite engine（懒初始化，线程安全）。"""
+    """创建或返回数据库引擎。"""
+
     global _engine
     if _engine is not None:
         return _engine
@@ -129,21 +122,152 @@ def get_engine():
     return _engine
 
 
+def _get_table_columns(conn, table_name: str) -> set[str]:
+    rows = conn.execute(sa.text(f"PRAGMA table_info('{table_name}')")).fetchall()
+    return {row[1] for row in rows}
+
+
+def _ensure_column(conn, table_name: str, column_name: str, ddl: str) -> None:
+    if column_name in _get_table_columns(conn, table_name):
+        return
+    conn.execute(sa.text(f"ALTER TABLE {table_name} ADD COLUMN {ddl}"))
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.execute(
+        sa.text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = :table_name"
+        ),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
+def _apply_lightweight_migrations(engine) -> None:
+    """为旧数据库补齐新字段，并把旧状态同步到新字段。"""
+
+    with engine.connect() as conn:
+        if _table_exists(conn, "raw_file"):
+            raw_file_columns = _get_table_columns(conn, "raw_file")
+            _ensure_column(conn, "raw_file", "status", "status TEXT DEFAULT 'pending'")
+            _ensure_column(conn, "raw_file", "error_message", "error_message TEXT")
+            _ensure_column(conn, "raw_file", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            if "parse_status" in raw_file_columns:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE raw_file
+                        SET
+                            status = COALESCE(
+                                status,
+                                CASE parse_status
+                                    WHEN 'parsing' THEN 'processing'
+                                    WHEN 'parsed' THEN 'completed'
+                                    WHEN 'parse_failed' THEN 'failed'
+                                    ELSE 'pending'
+                                END
+                            )
+                        """
+                    )
+                )
+            if "parse_error" in raw_file_columns:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE raw_file
+                        SET error_message = COALESCE(error_message, parse_error)
+                        """
+                    )
+                )
+
+        if _table_exists(conn, "doc_build_job"):
+            doc_build_job_columns = _get_table_columns(conn, "doc_build_job")
+            _ensure_column(conn, "doc_build_job", "status", "status TEXT DEFAULT 'pending'")
+            _ensure_column(conn, "doc_build_job", "current_step", "current_step TEXT")
+            _ensure_column(conn, "doc_build_job", "error_message", "error_message TEXT")
+            _ensure_column(conn, "doc_build_job", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            if "stage" in doc_build_job_columns:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE doc_build_job
+                        SET
+                            status = COALESCE(
+                                status,
+                                CASE stage
+                                    WHEN 'failed' THEN 'failed'
+                                    WHEN 'embedded' THEN 'completed'
+                                    WHEN 'pending' THEN 'pending'
+                                    ELSE 'processing'
+                                END
+                            ),
+                            current_step = COALESCE(
+                                current_step,
+                                CASE stage
+                                    WHEN 'cleaned' THEN 'cleaned'
+                                    WHEN 'outlined' THEN 'outlined'
+                                    WHEN 'stored' THEN 'stored'
+                                    WHEN 'chunked' THEN 'chunked'
+                                    WHEN 'embedded' THEN 'embedded'
+                                    ELSE current_step
+                                END
+                            )
+                        """
+                    )
+                )
+            if "error" in doc_build_job_columns:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE doc_build_job
+                        SET error_message = COALESCE(error_message, error)
+                        """
+                    )
+                )
+
+        if _table_exists(conn, "document"):
+            document_columns = _get_table_columns(conn, "document")
+            _ensure_column(conn, "document", "current_step", "current_step TEXT")
+            _ensure_column(conn, "document", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            if "pipeline_stage" in document_columns:
+                conn.execute(
+                    sa.text(
+                        """
+                        UPDATE document
+                        SET current_step = COALESCE(
+                            current_step,
+                            CASE pipeline_stage
+                                WHEN 'cleaned' THEN 'cleaned'
+                                WHEN 'outlined' THEN 'outlined'
+                                WHEN 'stored' THEN 'stored'
+                                WHEN 'chunked' THEN 'chunked'
+                                WHEN 'embedded' THEN 'embedded'
+                                ELSE current_step
+                            END
+                        )
+                        """
+                    )
+                )
+
+        conn.commit()
+
+
 def init_db() -> None:
-    """创建所有 SQLModel 表，并在可用时初始化 sqlite-vec 虚表。"""
-    # 延迟导入，避免循环依赖（models 依赖 SQLModel，SQLModel 需要 engine 已存在）
-    from app.repositories import models as _  # noqa: F401
+    """初始化数据库与向量表。"""
+
+    from app import models as _  # noqa: F401
 
     engine = get_engine()
     settings = get_settings()
 
     SQLModel.metadata.create_all(engine)
+    _apply_lightweight_migrations(engine)
 
     if is_vec_ready():
         with engine.connect() as conn:
             conn.execute(
                 sa.text(
-                    f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings "
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings "
                     f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{settings.embedding_dim}])"
                 )
             )
@@ -165,5 +289,6 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    """创建并返回一个新的数据库 Session（调用方负责关闭）。"""
+    """返回一个新的数据库会话。"""
+
     return Session(get_engine())

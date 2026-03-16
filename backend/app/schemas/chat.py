@@ -1,117 +1,76 @@
-"""Schemas for chat requests, SSE payloads, and chat history responses."""
+"""聊天接口 schema。"""
 
 from __future__ import annotations
 
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PageParams
 from app.schemas.enums import ChatRoleValue
 
 
-class ChatRequest(BaseModel):
-    """Request body for the subject chat endpoint."""
+class ChatSendRequest(BaseModel):
+    """发送消息请求。"""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "question": "什么是条件概率？",
-                "selected_context": "条件概率是指在事件 B 已发生的条件下事件 A 发生的概率。",
+                "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
                 "source_chunk_id": 12,
             }
         }
     )
 
-    question: str = Field(description="用户当前提问内容。", examples=["什么是条件概率？"])
-    selected_context: str | None = Field(
-        default=None,
-        description="前端划词提问时附带的高优先级上下文片段。",
-    )
-    source_chunk_id: int | None = Field(
-        default=None,
-        description="selected_context 对应的知识切块 ID。",
-        examples=[12],
-    )
+    question: str = Field(description="当前问题。")
+    selected_context: str | None = Field(default=None, description="用户划词上下文。")
+    source_chunk_id: int | None = Field(default=None, description="划词来源块 ID。")
+
+
+class ChatListRequest(PageParams):
+    """聊天分页请求。"""
+
+
+class ChatClearRequest(BaseModel):
+    """清空聊天记录请求。"""
+
+    model_config = ConfigDict(json_schema_extra={"example": {}})
+
+
+class ChatClearData(BaseModel):
+    """清空聊天记录结果。"""
+
+    cleared: bool = Field(description="是否清空成功。")
+    deleted_count: int = Field(description="删除消息条数。", ge=0)
 
 
 class SSETokenEvent(BaseModel):
-    """Payload emitted by `event: token` SSE frames."""
+    """SSE token 事件。"""
 
-    model_config = ConfigDict(json_schema_extra={"example": {"content": "条件概率"}})
-
-    content: str = Field(description="当前增量生成的文本片段。")
+    content: str = Field(description="增量文本。")
 
 
 class SSEDoneEvent(BaseModel):
-    """Payload emitted by the final `event: done` SSE frame."""
+    """SSE done 事件。"""
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "turn_id": "5c4d8b2e-1453-4a5f-b7ad-b558e3a1df6d",
-                "contexts": [
-                    {
-                        "chunk_id": 12,
-                        "title": "条件概率",
-                        "header_path": "第一章 > 1.2 条件概率",
-                        "score": 0.9821,
-                    }
-                ],
-            }
-        }
-    )
-
-    turn_id: str = Field(description="本轮对话的 turn_id。")
-    contexts: list[dict] | None = Field(
-        default=None,
-        description="用于生成回答的检索上下文摘要列表。",
-    )
+    turn_id: str = Field(description="对话轮次 ID。")
+    contexts: list[dict] | None = Field(default=None, description="命中的上下文列表。")
 
 
 class SSEErrorEvent(BaseModel):
-    """Payload emitted by `event: error` SSE frames."""
+    """SSE error 事件。"""
 
-    model_config = ConfigDict(
-        json_schema_extra={"example": {"detail": "LLM 调用失败", "error_code": "STREAM_ERROR"}}
-    )
-
-    detail: str = Field(description="流式生成失败原因。")
-    error_code: str = Field(description="流式响应错误码。", examples=["STREAM_ERROR"])
+    detail: str = Field(description="错误原因。")
+    error_code: str = Field(description="错误码。")
 
 
 class ChatMessageItem(BaseModel):
-    """Single persisted chat message item returned by history endpoints."""
+    """聊天记录项。"""
 
-    id: int = Field(description="消息记录 ID。", examples=[1001])
-    turn_id: str = Field(description="同一轮用户问答共享的 turn_id。")
+    id: int = Field(description="消息 ID。")
+    turn_id: str = Field(description="轮次 ID。")
     role: ChatRoleValue = Field(description="消息角色。")
-    content: str = Field(description="消息正文内容。")
-    contexts: list[dict] | None = Field(
-        default=None,
-        description="仅助手消息可能携带的检索上下文摘要。",
-    )
-    created_at: datetime = Field(description="消息创建时间（UTC）。")
-
-
-class ChatHistoryResponse(BaseModel):
-    """Paginated response for historical chat messages."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "items": [
-                    {
-                        "id": 1001,
-                        "turn_id": "5c4d8b2e-1453-4a5f-b7ad-b558e3a1df6d",
-                        "role": "assistant",
-                        "content": "我们先从事件 A 和 B 的关系来想。",
-                        "contexts": None,
-                        "created_at": "2026-03-15T08:00:00Z",
-                    }
-                ],
-                "total": 1,
-            }
-        }
-    )
-
-    items: list[ChatMessageItem] = Field(description="当前分页内的消息列表。")
-    total: int = Field(description="历史消息总数。", ge=0)
+    content: str = Field(description="消息内容。")
+    contexts: list[dict] | None = Field(default=None, description="关联上下文。")
+    created_at: datetime = Field(description="创建时间。")

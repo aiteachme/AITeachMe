@@ -1,135 +1,71 @@
 # AiTeachMe Backend
 
-FastAPI 后端服务。
+本目录是 AITeachMe 的后端服务，基于 FastAPI + SQLModel，面向“本地优先”的 AI 助教场景。
 
-## 快速开始
+## 当前接口形态
+
+- `GET /api/health`
+- 其余业务接口全部使用 `POST`
+- JSON 接口统一返回：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {}
+}
+```
+
+- `chat/send` 仍然保留原生 SSE，不包 `ApiResponse`
+
+## 主要资源
+
+- `subjects`
+- `files`
+- `knowledge`
+- `chat`
+- `exam`
+- `profile`
+
+新增的动作接口：
+
+- `files/retry`
+- `files/delete`
+- `knowledge/retry`
+- `knowledge/delete`
+- `chat/clear`
+- `exam/delete`
+
+## 快速启动
 
 ### 1. 安装依赖
-
-所有依赖在 `pyproject.toml` 中声明，`requirements.txt` 用于锁定版本。
 
 ```bash
 pip install -e .
 ```
 
-### 2. 初始化环境变量
+### 2. 配置 `.env`
 
-项目会从仓库根目录读取 `.env`。首次启动前，至少需要配置 `LLM_API_KEY`。
-
-推荐直接运行初始化脚本：
-
-```bash
-python scripts/init_env.py
-```
-
-它会：
-
-- 从 `.env.example` 复制生成 `.env`
-- 如果 `.env` 已存在则不覆盖
-- 打印下一步需要填写和验证的内容
-
-如果你想手动处理，也可以：
-
-```bash
-cp .env.example .env
-```
-
-然后编辑 `.env`，至少填入：
+至少需要：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
+APP_MODE=local
+AUTH_ENABLED=false
 ```
 
-可选配置项和说明见：
-
-- [docs/local-dev.md](./docs/local-dev.md)
-- [.env.example](./.env.example)
-
-### 3. 验证环境变量
-
-在真正启动服务前，建议先跑一次：
-
-```bash
-python scripts/test_env.py
-```
-
-这能更快发现 API Key、模型名或 Base URL 配置问题。
-
-### 4. 启动服务
+### 3. 启动服务
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-启动后可访问以下地址检查：
+## 手动验证
 
-- 健康检查：`http://localhost:8000/api/health`
-- OpenAPI：`http://localhost:8000/openapi.json`
-- Redoc：`http://localhost:8000/redoc`
+查看以下文档：
 
-## Render / 云环境说明
-
-某些托管环境的 Python `sqlite3` 构建不支持 `enable_load_extension()`。
-
-本项目现在会：
-
-- 在 Linux 环境优先尝试使用 `pysqlite3-binary` 替代内置 `sqlite3`
-- 在可用时自动启用 `sqlite-vec`
-- 在不可用时仍然允许服务启动
-- 仅将向量索引 / RAG 检索相关能力标记为暂不可用
-
-如果你在 Render 上看到与 `sqlite-vec` 或 `enable_load_extension` 相关的告警，
-但应用已经成功启动，这属于预期的降级行为。
-
-如果你需要在 Render 上稳定启用向量能力，建议同时：
-
-- 使用 Linux 环境依赖中的 `pysqlite3-binary`
-- 将 Python 版本固定为 `3.11` 或 `3.12`
-
-因为某些较新的 Python 版本在托管平台上的 SQLite 生态兼容性会更弱。
-
-## 导出 API 文档
-
-```bash
-python scripts/export_api_docs.py
-```
-
-## 环境变量说明
-
-当前只要求一个必填项：
-
-| 变量 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `LLM_API_KEY` | 是 | — | 你的 LLM 服务 API Key |
-
-其他配置项都有默认值，通常不需要第一次就修改：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | LLM API 地址 |
-| `LLM_MODEL` | `qwen-plus` | 对话模型 |
-| `EMBEDDING_MODEL` | `text-embedding-v3` | 向量模型 |
-| `DATA_DIR` | `./data` | 数据目录 |
-| `MAX_UPLOAD_SIZE_MB` | `50` | 上传大小限制 |
-| `RAG_TOP_K` | `5` | RAG 检索数量 |
-| `RAG_SIMILARITY_THRESHOLD` | `0.3` | RAG 相似度阈值 |
-| `CHAT_HISTORY_TURNS` | `10` | 历史对话保留轮数 |
-
-
-
-## 部署 (Render)
-
-后端通过 [Render](https://render.com) 部署，配置文件为仓库根目录的 `render.yaml`。
-
-自动部署：连接 GitHub 仓库后，每次 push 到 `main` 分支会自动触发重新部署。
-
-### 手动创建 Web Service
-
-如果不使用 Blueprint (`render.yaml`)，也可以手动配置：
-
-| 配置项 | 值 |
-| --- | --- |
-| Runtime | Python |
-| Root Directory | `backend` |
-| Build Command | `pip install -e .` |
-| Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+- [docs/design.md](./docs/design.md)
+- [docs/local-dev.md](./docs/local-dev.md)
+- [docs/manual-testing.md](./docs/manual-testing.md)
+- [docs/implementation-log.md](./docs/implementation-log.md)
+- [playground/README.md](./playground/README.md)

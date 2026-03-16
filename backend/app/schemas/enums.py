@@ -1,50 +1,38 @@
-"""API-facing enums used to enrich generated OpenAPI/Redoc documentation."""
+"""接口文档使用的枚举。"""
 
 from __future__ import annotations
 
 from enum import Enum
 
 
-class PipelineStatusStage(str, Enum):
-    """High-level upload pipeline stages exposed to API callers."""
+class TaskStatusValue(str, Enum):
+    """任务状态。"""
 
-    UPLOAD = "upload"
-    PARSE = "parse"
-    DIGEST = "digest"
-    DONE = "done"
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
-class ParseStatusValue(str, Enum):
-    """Raw file parsing status values returned by upload-related endpoints."""
+class DigestStepValue(str, Enum):
+    """知识构建步骤。"""
 
-    PENDING = "pending"
-    PARSING = "parsing"
-    PARSED = "parsed"
-    PARSE_FAILED = "parse_failed"
-
-
-class PipelineStageValue(str, Enum):
-    """Digest pipeline stage values returned by knowledge-related endpoints."""
-
-    PENDING = "pending"
     CLEANED = "cleaned"
     OUTLINED = "outlined"
     STORED = "stored"
     CHUNKED = "chunked"
     EMBEDDED = "embedded"
-    FAILED = "failed"
 
 
 class ChatRoleValue(str, Enum):
-    """Chat role values persisted in history and surfaced via API responses."""
+    """聊天角色。"""
 
     USER = "user"
     ASSISTANT = "assistant"
 
 
 class QuestionTypeValue(str, Enum):
-    """Supported question type values exposed by exam endpoints."""
+    """题目类型。"""
 
     SINGLE_CHOICE = "single_choice"
     FILL_BLANK = "fill_blank"
@@ -52,7 +40,7 @@ class QuestionTypeValue(str, Enum):
 
 
 class DifficultyValue(str, Enum):
-    """Supported question difficulty values exposed by exam endpoints."""
+    """题目难度。"""
 
     EASY = "easy"
     MEDIUM = "medium"
