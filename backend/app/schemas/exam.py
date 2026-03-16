@@ -3,47 +3,38 @@
 from __future__ import annotations
 
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PaginationParams
 from app.schemas.enums import DifficultyValue, QuestionTypeValue
 
 
-class ExamGenerateRequest(BaseModel):
-    """Request body for generating a new exam."""
+class ExamMakeRequest(BaseModel):
+    """Request body for generating a new exam inside a subject."""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "num_questions": 10,
-                "difficulty_distribution": {"easy": 0.3, "medium": 0.5, "hard": 0.2},
-                "knowledge_points": ["条件概率", "贝叶斯公式"],
+                "num": 10,
+                "points": ["Conditional Probability", "Bayes' Theorem"],
             }
         }
     )
 
-    num_questions: int = Field(default=10, ge=1, le=50, description="期望生成的题目数量。")
-    difficulty_distribution: dict[str, float] | None = Field(
-        default=None,
-        description="可选的难度分布，键为 easy/medium/hard，值为比例。",
-    )
-    knowledge_points: list[str] | None = Field(
-        default=None,
-        description="可选的指定知识点范围；为空时由系统自动选取。",
-    )
+    num: int = Field(default=10, ge=1, le=50, description="Number of questions to generate.")
+    points: list[str] | None = Field(default=None, description="Optional explicit knowledge-point scope.")
 
 
 class QuestionItem(BaseModel):
     """Public exam question DTO that intentionally hides the correct answer."""
 
-    question_key: str = Field(description="题目稳定键，如 q1、q2。", examples=["q1"])
-    type: QuestionTypeValue = Field(description="题目类型。")
-    stem: str = Field(description="题干内容。")
-    options: list[str] | None = Field(
-        default=None,
-        description="单选题候选项；非单选题通常为空。",
-    )
-    knowledge_point: str = Field(description="题目对应的知识点。")
-    difficulty: DifficultyValue = Field(description="题目难度。")
+    question_key: str = Field(description="Stable question key such as q1.", examples=["q1"])
+    type: QuestionTypeValue = Field(description="Question type.")
+    stem: str = Field(description="Question stem.")
+    options: list[str] | None = Field(default=None, description="Multiple-choice options when applicable.")
+    knowledge_point: str = Field(description="Knowledge point associated with the question.")
+    difficulty: DifficultyValue = Field(description="Question difficulty.")
 
 
 class ExamResponse(BaseModel):
@@ -57,9 +48,9 @@ class ExamResponse(BaseModel):
                     {
                         "question_key": "q1",
                         "type": "single_choice",
-                        "stem": "下列哪个公式表示条件概率？",
+                        "stem": "Which formula defines conditional probability?",
                         "options": ["P(A|B)=P(AB)/P(B)", "P(A)+P(B)"],
-                        "knowledge_point": "条件概率",
+                        "knowledge_point": "Conditional Probability",
                         "difficulty": "easy",
                     }
                 ],
@@ -67,42 +58,38 @@ class ExamResponse(BaseModel):
         }
     )
 
-    exam_id: int = Field(description="新生成考卷的 ID。", examples=[5])
-    questions: list[QuestionItem] = Field(description="考卷题目列表。")
+    exam_id: int = Field(description="Generated exam identifier.", examples=[5])
+    questions: list[QuestionItem] = Field(description="Exam questions.")
 
 
 class AnswerItem(BaseModel):
-    """Single submitted answer item."""
-
-    question_key: str = Field(description="对应题目的 question_key。", examples=["q1"])
-    answer: str = Field(description="用户作答内容。", examples=["P(A|B)=P(AB)/P(B)"])
+    question_key: str = Field(description="Question key.", examples=["q1"])
+    answer: str = Field(description="Submitted answer.", examples=["P(A|B)=P(AB)/P(B)"])
 
 
-class SubmitRequest(BaseModel):
+class ExamSubmitRequest(BaseModel):
     """Request body for submitting answers to an existing exam."""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "answers": [
-                    {"question_key": "q1", "answer": "P(A|B)=P(AB)/P(B)"}
-                ]
+                "exam_id": 5,
+                "answers": [{"question_key": "q1", "answer": "P(A|B)=P(AB)/P(B)"}],
             }
         }
     )
 
-    answers: list[AnswerItem] = Field(description="按题目键提交的答案列表。")
+    exam_id: int = Field(description="Existing exam identifier.", examples=[5])
+    answers: list[AnswerItem] = Field(description="Answers keyed by question_key.")
 
 
 class AnswerResultItem(BaseModel):
-    """Per-question grading result returned after submission."""
-
-    question_key: str = Field(description="题目键。")
-    is_correct: bool = Field(description="该题是否判定为正确。")
-    user_answer: str = Field(description="用户提交的答案。")
-    correct_answer: str = Field(description="系统参考答案。")
-    explanation: str = Field(description="标准解析或评分说明。")
-    analysis: str | None = Field(default=None, description="错题分析；答对时通常为空。")
+    question_key: str = Field(description="Question key.")
+    is_correct: bool = Field(description="Whether the answer is correct.")
+    user_answer: str = Field(description="Submitted answer.")
+    correct_answer: str = Field(description="Reference answer.")
+    explanation: str = Field(description="Standard explanation or grading explanation.")
+    analysis: str | None = Field(default=None, description="Mistake analysis when the answer is wrong.")
 
 
 class SubmitResponse(BaseModel):
@@ -119,7 +106,7 @@ class SubmitResponse(BaseModel):
                         "is_correct": True,
                         "user_answer": "P(A|B)=P(AB)/P(B)",
                         "correct_answer": "P(A|B)=P(AB)/P(B)",
-                        "explanation": "由条件概率定义可得。",
+                        "explanation": "This follows from the definition of conditional probability.",
                         "analysis": None,
                     }
                 ],
@@ -127,18 +114,20 @@ class SubmitResponse(BaseModel):
         }
     )
 
-    submission_id: int = Field(description="答卷提交记录 ID。", examples=[9])
-    score: float = Field(description="百分制得分。", ge=0, le=100, examples=[80.0])
-    results: list[AnswerResultItem] = Field(description="逐题判分结果。")
+    submission_id: int = Field(description="Submission record identifier.", examples=[9])
+    score: float = Field(description="Score on a 0-100 scale.", ge=0, le=100, examples=[80.0])
+    results: list[AnswerResultItem] = Field(description="Per-question grading results.")
+
+
+class ExamListRequest(PaginationParams):
+    pass
 
 
 class ExamHistoryItem(BaseModel):
-    """Single exam history item."""
-
-    exam_id: int = Field(description="考卷 ID。")
-    submission_id: int | None = Field(default=None, description="最近一次提交记录 ID。")
-    score: float | None = Field(default=None, description="最近一次提交得分。")
-    created_at: datetime = Field(description="考卷创建时间（UTC）。")
+    exam_id: int = Field(description="Exam identifier.")
+    submission_id: int | None = Field(default=None, description="Latest submission identifier.")
+    score: float | None = Field(default=None, description="Latest submission score.")
+    created_at: datetime = Field(description="Exam creation timestamp in UTC.")
 
 
 class ExamHistoryResponse(BaseModel):
@@ -160,5 +149,5 @@ class ExamHistoryResponse(BaseModel):
         }
     )
 
-    items: list[ExamHistoryItem] = Field(description="当前分页内的考试记录列表。")
-    total: int = Field(description="历史考试记录总数。", ge=0)
+    items: list[ExamHistoryItem] = Field(description="Current page of historical exams.")
+    total: int = Field(description="Total number of historical exams.", ge=0)

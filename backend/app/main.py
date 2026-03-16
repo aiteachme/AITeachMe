@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.exceptions import AITeachMeError
 from app.core.logger import configure_logging
@@ -19,7 +20,7 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize shared infrastructure when the ASGI app starts."""
+    del app
     init_db()
     logger.info("app_started")
     yield
@@ -27,23 +28,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def _build_app_metadata() -> dict[str, object]:
-    """Return the metadata block used when instantiating FastAPI."""
-
+    settings = get_settings()
     return {
         "title": "AITeachMe",
         "description": (
-            "AI 驱动的个性化学习助手后端。"
-            "当前版本保持现有接口兼容，同时通过更完整的字段说明、示例和错误响应定义，"
-            "让 OpenAPI / Redoc 更易读。"
+            "AI learning backend with subject-scoped files, knowledge, chat, exam, and profile modules. "
+            "Health stays on GET while all other business APIs use POST."
         ),
-        "version": "0.1.0",
+        "version": settings.app_version,
         "lifespan": lifespan,
     }
 
 
 def _register_middlewares(app: FastAPI) -> None:
-    """Register all application middlewares in one place."""
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -58,12 +55,9 @@ def _register_middlewares(app: FastAPI) -> None:
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
-    """Register global exception handlers for business and unexpected errors."""
-
     @app.exception_handler(AITeachMeError)
     async def aiteachme_error_handler(request: Request, exc: AITeachMeError) -> JSONResponse:
-        """Convert a known business exception into the standard JSON error payload."""
-
+        del request
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.detail, "error_code": exc.error_code},
@@ -71,27 +65,29 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        """Catch unexpected exceptions, log them, and return a generic error payload."""
-
         logger.exception("unhandled_error", path=request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"detail": "内部服务器错误", "error_code": "INTERNAL_ERROR"},
+            content={"detail": "Internal server error.", "error_code": "INTERNAL_ERROR"},
         )
 
 
 def _register_routers(app: FastAPI) -> None:
-    """Include all public route modules on the application."""
-
-    from app.api.health import router as health_router
-    from app.api.upload import router as upload_router
-    from app.api.knowledge import router as knowledge_router
+    from app.api.auth import router as auth_router
     from app.api.chat import router as chat_router
     from app.api.exam import router as exam_router
+    from app.api.files import router as files_router
+    from app.api.health import router as health_router
+    from app.api.knowledge import router as knowledge_router
     from app.api.profile import router as profile_router
+    from app.api.subjects import router as subjects_router
+    from app.api.system import router as system_router
 
     app.include_router(health_router)
-    app.include_router(upload_router)
+    app.include_router(system_router)
+    app.include_router(auth_router)
+    app.include_router(subjects_router)
+    app.include_router(files_router)
     app.include_router(knowledge_router)
     app.include_router(chat_router)
     app.include_router(exam_router)
@@ -99,12 +95,8 @@ def _register_routers(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application instance."""
-
     configure_logging()
-    app = FastAPI(
-        **_build_app_metadata(),
-    )
+    app = FastAPI(**_build_app_metadata())
     _register_middlewares(app)
     _register_exception_handlers(app)
     _register_routers(app)

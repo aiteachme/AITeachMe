@@ -1,79 +1,157 @@
-"""Helpers for mapping repository/domain models into API response schemas."""
+"""Helpers for mapping persistence models into API response schemas."""
 
 from __future__ import annotations
 
 from typing import Any, Mapping
 
-from app.repositories.models import ChatMessage, Knowledge, RawFile, UserProfile
+from app.repositories.models import ChatMessage, DocSet, Document, RawFile, UserProfile
 from app.schemas.chat import ChatHistoryResponse, ChatMessageItem
-from app.schemas.exam import AnswerResultItem, ExamHistoryItem, ExamHistoryResponse, ExamResponse, QuestionItem, SubmitResponse
-from app.schemas.knowledge import DocumentItem, DocumentListResponse, OutlineNode, OutlineResponse
-from app.schemas.profile import MistakeItem, MistakeListResponse, ProfileItem, ProfileResponse, ReportResponse
-from app.schemas.upload import FileItem, FileListResponse
+from app.schemas.exam import (
+    AnswerResultItem,
+    ExamHistoryItem,
+    ExamHistoryResponse,
+    ExamResponse,
+    QuestionItem,
+    SubmitResponse,
+)
+from app.schemas.knowledge import (
+    DocumentItem,
+    DocumentTreeItem,
+    KnowledgeGetResponse,
+    KnowledgeListResponse,
+    KnowledgeTreeResponse,
+    DocSetListItem,
+    OutlineNode,
+)
+from app.schemas.profile import (
+    MistakeItem,
+    ProfileListResponse,
+    ProfileMistakesResponse,
+    ReportResponse,
+    ProfileItem,
+)
+from app.schemas.upload import FileGetResponse, FileItem, FileListResponse, FileStatusResponse
 
 
 def require_id(value: int | None, field_name: str) -> int:
-    """Return a persisted integer identifier or raise a descriptive error."""
-
     if value is None:
         raise ValueError(f"{field_name} is unexpectedly None for a persisted record")
     return value
 
 
 def to_file_item(raw_file: RawFile) -> FileItem:
-    """Convert a `RawFile` ORM object into an API file-list item."""
-
     return FileItem(
         id=require_id(raw_file.id, "RawFile.id"),
         filename=raw_file.filename,
         filetype=raw_file.filetype,
         parse_status=raw_file.parse_status,
+        markdown_ready=bool(raw_file.markdown_path),
+        latest_updated_at=raw_file.updated_at,
         created_at=raw_file.created_at,
     )
 
 
 def to_file_list_response(items: list[RawFile], total: int) -> FileListResponse:
-    """Build a paginated file list response."""
-
     return FileListResponse(items=[to_file_item(item) for item in items], total=total)
 
 
-def to_outline_node_tree(nodes: list[OutlineNode]) -> list[OutlineNode]:
-    """Identity helper used to keep outline response assembly explicit."""
+def to_file_status_response(raw_file: RawFile) -> FileStatusResponse:
+    return FileStatusResponse(
+        file_id=require_id(raw_file.id, "RawFile.id"),
+        upload_status="uploaded",
+        parse_status=raw_file.parse_status,
+        markdown_ready=bool(raw_file.markdown_path),
+        asset_ready=bool(raw_file.asset_dir),
+        error=raw_file.parse_error,
+        latest_updated_at=raw_file.updated_at,
+    )
 
+
+def to_file_get_response(
+    raw_file: RawFile,
+    *,
+    markdown_content: str,
+    assets: list[dict[str, str]],
+) -> FileGetResponse:
+    return FileGetResponse(
+        file_id=require_id(raw_file.id, "RawFile.id"),
+        filename=raw_file.filename,
+        parse_status=raw_file.parse_status,
+        markdown_content=markdown_content,
+        assets=assets,
+    )
+
+
+def to_outline_node_tree(nodes: list[OutlineNode]) -> list[OutlineNode]:
     return nodes
 
 
-def to_outline_response(knowledge: Knowledge, nodes: list[OutlineNode]) -> OutlineResponse:
-    """Build a knowledge outline response for one document."""
+def to_document_item(document: Document) -> DocumentItem:
+    return DocumentItem(
+        id=require_id(document.id, "Document.id"),
+        source_file_id=document.source_file_id,
+        title=document.title,
+        markdown_content=document.markdown_content,
+        pipeline_stage=document.pipeline_stage,
+    )
 
-    return OutlineResponse(
-        knowledge_id=require_id(knowledge.id, "Knowledge.id"),
-        title=knowledge.title,
+
+def to_doc_set_list_item(doc_set: DocSet, documents_count: int) -> DocSetListItem:
+    return DocSetListItem(
+        id=require_id(doc_set.id, "DocSet.id"),
+        title=doc_set.title,
+        description=doc_set.description,
+        build_status=doc_set.build_status,
+        documents_count=documents_count,
+        created_at=doc_set.created_at,
+        updated_at=doc_set.updated_at,
+    )
+
+
+def to_knowledge_list_response(
+    items: list[DocSet],
+    total: int,
+    documents_count_by_id: Mapping[int, int],
+) -> KnowledgeListResponse:
+    return KnowledgeListResponse(
+        items=[
+            to_doc_set_list_item(item, documents_count_by_id.get(require_id(item.id, "DocSet.id"), 0))
+            for item in items
+        ],
+        total=total,
+    )
+
+
+def to_knowledge_get_response(doc_set: DocSet, documents: list[Document]) -> KnowledgeGetResponse:
+    return KnowledgeGetResponse(
+        docset_id=require_id(doc_set.id, "DocSet.id"),
+        title=doc_set.title,
+        description=doc_set.description,
+        build_status=doc_set.build_status,
+        documents=[to_document_item(document) for document in documents],
+    )
+
+
+def to_document_tree_item(document: Document, nodes: list[OutlineNode]) -> DocumentTreeItem:
+    return DocumentTreeItem(
+        document_id=require_id(document.id, "Document.id"),
+        title=document.title,
         nodes=to_outline_node_tree(nodes),
     )
 
 
-def to_document_item(knowledge: Knowledge) -> DocumentItem:
-    """Convert a `Knowledge` ORM object into a document list item."""
-
-    return DocumentItem(
-        id=require_id(knowledge.id, "Knowledge.id"),
-        title=knowledge.title,
-        markdown_content=knowledge.markdown_content,
-        pipeline_stage=knowledge.pipeline_stage,
+def to_knowledge_tree_response(
+    doc_set: DocSet,
+    document_nodes: list[tuple[Document, list[OutlineNode]]],
+) -> KnowledgeTreeResponse:
+    return KnowledgeTreeResponse(
+        docset_id=require_id(doc_set.id, "DocSet.id"),
+        title=doc_set.title,
+        documents=[to_document_tree_item(document, nodes) for document, nodes in document_nodes],
     )
 
 
-def to_document_list_response(items: list[Knowledge], total: int) -> DocumentListResponse:
-    """Build a paginated knowledge document response."""
-
-    return DocumentListResponse(items=[to_document_item(item) for item in items], total=total)
-
-
 def to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
-    """Convert a `ChatMessage` ORM object into a chat history item."""
-
     return ChatMessageItem(
         id=require_id(message.id, "ChatMessage.id"),
         turn_id=message.turn_id,
@@ -85,14 +163,10 @@ def to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
 
 
 def to_chat_history_response(items: list[ChatMessage], total: int) -> ChatHistoryResponse:
-    """Build a paginated chat history response."""
-
     return ChatHistoryResponse(items=[to_chat_message_item(item) for item in items], total=total)
 
 
 def to_question_item(question: Any) -> QuestionItem:
-    """Convert an exam question ORM object into the public DTO."""
-
     return QuestionItem(
         question_key=question.question_key,
         type=question.type,
@@ -104,8 +178,6 @@ def to_question_item(question: Any) -> QuestionItem:
 
 
 def to_exam_response(exam_id: int | None, questions: list[Any]) -> ExamResponse:
-    """Build an exam generation response without exposing correct answers."""
-
     return ExamResponse(
         exam_id=require_id(exam_id, "Exam.id"),
         questions=[to_question_item(question) for question in questions],
@@ -121,8 +193,6 @@ def to_answer_result_item(
     explanation: str,
     analysis: str | None,
 ) -> AnswerResultItem:
-    """Create a single answer-result DTO."""
-
     return AnswerResultItem(
         question_key=question_key,
         is_correct=is_correct,
@@ -138,8 +208,6 @@ def to_submit_response(
     score: float,
     results: list[AnswerResultItem],
 ) -> SubmitResponse:
-    """Build the final submit response DTO."""
-
     return SubmitResponse(
         submission_id=require_id(submission_id, "ExamSubmission.id"),
         score=score,
@@ -148,8 +216,6 @@ def to_submit_response(
 
 
 def to_exam_history_item(item: Mapping[str, Any]) -> ExamHistoryItem:
-    """Convert a repository exam-history row mapping into its response DTO."""
-
     return ExamHistoryItem(
         exam_id=item["exam_id"],
         submission_id=item.get("submission_id"),
@@ -159,14 +225,10 @@ def to_exam_history_item(item: Mapping[str, Any]) -> ExamHistoryItem:
 
 
 def to_exam_history_response(items: list[Mapping[str, Any]], total: int) -> ExamHistoryResponse:
-    """Build a paginated exam history response."""
-
     return ExamHistoryResponse(items=[to_exam_history_item(item) for item in items], total=total)
 
 
 def to_profile_item(profile: UserProfile) -> ProfileItem:
-    """Convert a `UserProfile` ORM object into a profile response item."""
-
     return ProfileItem(
         knowledge_point=profile.knowledge_point,
         mastery=profile.mastery,
@@ -175,15 +237,11 @@ def to_profile_item(profile: UserProfile) -> ProfileItem:
     )
 
 
-def to_profile_response(items: list[UserProfile], total: int) -> ProfileResponse:
-    """Build a paginated profile response."""
-
-    return ProfileResponse(items=[to_profile_item(item) for item in items], total=total)
+def to_profile_response(items: list[UserProfile], total: int) -> ProfileListResponse:
+    return ProfileListResponse(items=[to_profile_item(item) for item in items], total=total)
 
 
 def to_report_response(report: Mapping[str, Any]) -> ReportResponse:
-    """Convert an aggregated report mapping into the public report schema."""
-
     return ReportResponse(
         overall_mastery=report["overall_mastery"],
         weak_points_top5=[to_profile_item(item) for item in report["weak_points_top5"]],
@@ -192,8 +250,6 @@ def to_report_response(report: Mapping[str, Any]) -> ReportResponse:
 
 
 def to_mistake_item(item: Mapping[str, Any]) -> MistakeItem:
-    """Convert a repository mistake row into its API DTO."""
-
     return MistakeItem(
         id=item["id"],
         question_stem=item["question_stem"],
@@ -206,7 +262,5 @@ def to_mistake_item(item: Mapping[str, Any]) -> MistakeItem:
     )
 
 
-def to_mistake_list_response(items: list[Mapping[str, Any]], total: int) -> MistakeListResponse:
-    """Build a paginated mistake-book response."""
-
-    return MistakeListResponse(items=[to_mistake_item(item) for item in items], total=total)
+def to_mistake_list_response(items: list[Mapping[str, Any]], total: int) -> ProfileMistakesResponse:
+    return ProfileMistakesResponse(items=[to_mistake_item(item) for item in items], total=total)

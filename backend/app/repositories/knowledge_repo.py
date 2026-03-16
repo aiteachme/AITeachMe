@@ -1,88 +1,227 @@
-"""
-Knowledge + KnowledgeGraphNode + Chunk CRUD 及向量检索
-"""
+"""Persistence helpers for doc sets, documents, outlines, chunks, and vector search."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import sqlalchemy as sa
-from sqlmodel import Session, select, func
+from sqlmodel import Session, func, select
 
 from app.core.database import require_vec_ready
 from app.repositories.models import (
-    Knowledge,
-    KnowledgeGraphNode,
-    Chunk,
+    DocBuildJob,
+    DocSet,
+    DocSetSourceFile,
+    Document,
+    DocumentChunk,
+    DocumentOutlineNode,
 )
 
 
-# ─── Knowledge CRUD ───
-
-
-def create_knowledge(session: Session, knowledge: Knowledge) -> Knowledge:
-    session.add(knowledge)
+def create_doc_set(session: Session, doc_set: DocSet) -> DocSet:
+    session.add(doc_set)
     session.commit()
-    session.refresh(knowledge)
-    return knowledge
+    session.refresh(doc_set)
+    return doc_set
 
 
-def get_knowledge_by_id(session: Session, knowledge_id: int) -> Knowledge | None:
-    return session.get(Knowledge, knowledge_id)
+def get_doc_set_by_id(session: Session, doc_set_id: int) -> DocSet | None:
+    return session.get(DocSet, doc_set_id)
 
 
-def get_knowledge_by_raw_file_id(session: Session, raw_file_id: int) -> Knowledge | None:
-    stmt = select(Knowledge).where(Knowledge.raw_file_id == raw_file_id)
-    return session.exec(stmt).first()
-
-
-def update_pipeline_stage(
-    session: Session, knowledge_id: int, stage: str
-) -> Knowledge | None:
-    knowledge = session.get(Knowledge, knowledge_id)
-    if knowledge is None:
+def update_doc_set_status(
+    session: Session,
+    doc_set_id: int,
+    *,
+    build_status: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+) -> DocSet | None:
+    doc_set = session.get(DocSet, doc_set_id)
+    if doc_set is None:
         return None
-    knowledge.pipeline_stage = stage
-    session.add(knowledge)
+    if build_status is not None:
+        doc_set.build_status = build_status
+    if title is not None:
+        doc_set.title = title
+    if description is not None:
+        doc_set.description = description
+    doc_set.updated_at = datetime.utcnow()
+    session.add(doc_set)
     session.commit()
-    session.refresh(knowledge)
-    return knowledge
+    session.refresh(doc_set)
+    return doc_set
 
 
-def update_knowledge_content(
-    session: Session, knowledge_id: int, markdown_content: str
-) -> Knowledge | None:
-    knowledge = session.get(Knowledge, knowledge_id)
-    if knowledge is None:
-        return None
-    knowledge.markdown_content = markdown_content
-    session.add(knowledge)
-    session.commit()
-    session.refresh(knowledge)
-    return knowledge
-
-
-def list_knowledge_by_subject(
-    session: Session, subject: str, *, limit: int = 100, offset: int = 0
-) -> tuple[list[Knowledge], int]:
-    count_stmt = select(func.count()).select_from(Knowledge).where(Knowledge.subject == subject)
+def list_doc_sets_by_subject(
+    session: Session,
+    subject: str,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[DocSet], int]:
+    count_stmt = select(func.count()).select_from(DocSet).where(DocSet.subject == subject)
     total = session.exec(count_stmt).one()
 
     stmt = (
-        select(Knowledge)
-        .where(Knowledge.subject == subject)
-        .order_by(Knowledge.created_at.desc())  # type: ignore[union-attr]
+        select(DocSet)
+        .where(DocSet.subject == subject)
+        .order_by(DocSet.updated_at.desc())  # type: ignore[union-attr]
         .offset(offset)
         .limit(limit)
     )
-    items = list(session.exec(stmt).all())
-    return items, total
+    return list(session.exec(stmt).all()), total
 
 
-# ─── KnowledgeGraphNode CRUD ───
+def create_doc_build_job(session: Session, job: DocBuildJob) -> DocBuildJob:
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
 
 
-def create_graph_node(session: Session, node: KnowledgeGraphNode) -> KnowledgeGraphNode:
+def get_doc_build_job_by_id(session: Session, job_id: int) -> DocBuildJob | None:
+    return session.get(DocBuildJob, job_id)
+
+
+def get_latest_doc_build_job(session: Session, doc_set_id: int) -> DocBuildJob | None:
+    stmt = (
+        select(DocBuildJob)
+        .where(DocBuildJob.doc_set_id == doc_set_id)
+        .order_by(DocBuildJob.created_at.desc())  # type: ignore[union-attr]
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
+def update_doc_build_job(
+    session: Session,
+    job_id: int,
+    *,
+    stage: str | None = None,
+    progress: int | None = None,
+    message: str | None = None,
+    error: str | None = None,
+) -> DocBuildJob | None:
+    job = session.get(DocBuildJob, job_id)
+    if job is None:
+        return None
+    if stage is not None:
+        job.stage = stage
+    if progress is not None:
+        job.progress = progress
+    if message is not None:
+        job.message = message
+    job.error = error
+    job.updated_at = datetime.utcnow()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
+
+
+def bulk_create_doc_set_sources(
+    session: Session,
+    links: list[DocSetSourceFile],
+) -> list[DocSetSourceFile]:
+    for link in links:
+        session.add(link)
+    session.commit()
+    for link in links:
+        session.refresh(link)
+    return links
+
+
+def list_doc_set_source_files(session: Session, doc_set_id: int) -> list[DocSetSourceFile]:
+    stmt = (
+        select(DocSetSourceFile)
+        .where(DocSetSourceFile.doc_set_id == doc_set_id)
+        .order_by(DocSetSourceFile.id.asc())
+    )
+    return list(session.exec(stmt).all())
+
+
+def create_document(session: Session, document: Document) -> Document:
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+def bulk_create_documents(session: Session, documents: list[Document]) -> list[Document]:
+    for document in documents:
+        session.add(document)
+    session.commit()
+    for document in documents:
+        session.refresh(document)
+    return documents
+
+
+def get_document_by_id(session: Session, document_id: int) -> Document | None:
+    return session.get(Document, document_id)
+
+
+def update_document_stage(
+    session: Session,
+    document_id: int,
+    stage: str,
+) -> Document | None:
+    document = session.get(Document, document_id)
+    if document is None:
+        return None
+    document.pipeline_stage = stage
+    document.updated_at = datetime.utcnow()
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+def update_document_content(
+    session: Session,
+    document_id: int,
+    markdown_content: str,
+) -> Document | None:
+    document = session.get(Document, document_id)
+    if document is None:
+        return None
+    document.markdown_content = markdown_content
+    document.updated_at = datetime.utcnow()
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+def list_documents_by_doc_set(
+    session: Session,
+    doc_set_id: int,
+) -> list[Document]:
+    stmt = (
+        select(Document)
+        .where(Document.doc_set_id == doc_set_id)
+        .order_by(Document.created_at.asc())  # type: ignore[union-attr]
+    )
+    return list(session.exec(stmt).all())
+
+
+def count_documents_by_doc_set(session: Session, doc_set_id: int) -> int:
+    stmt = select(func.count()).select_from(Document).where(Document.doc_set_id == doc_set_id)
+    return session.exec(stmt).one()
+
+
+def count_chunks_by_doc_set(session: Session, doc_set_id: int) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(DocumentChunk)
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .where(Document.doc_set_id == doc_set_id)
+    )
+    return session.exec(stmt).one()
+
+
+def create_graph_node(session: Session, node: DocumentOutlineNode) -> DocumentOutlineNode:
     session.add(node)
     session.commit()
     session.refresh(node)
@@ -90,8 +229,9 @@ def create_graph_node(session: Session, node: KnowledgeGraphNode) -> KnowledgeGr
 
 
 def bulk_create_graph_nodes(
-    session: Session, nodes: list[KnowledgeGraphNode]
-) -> list[KnowledgeGraphNode]:
+    session: Session,
+    nodes: list[DocumentOutlineNode],
+) -> list[DocumentOutlineNode]:
     for node in nodes:
         session.add(node)
     session.commit()
@@ -100,35 +240,35 @@ def bulk_create_graph_nodes(
     return nodes
 
 
-def get_graph_nodes_by_knowledge_id(
-    session: Session, knowledge_id: int
-) -> list[KnowledgeGraphNode]:
-    """按 knowledge_id 获取所有节点（扁平列表，调用方负责构建树）。"""
+def get_graph_nodes_by_document_id(
+    session: Session,
+    document_id: int,
+) -> list[DocumentOutlineNode]:
     stmt = (
-        select(KnowledgeGraphNode)
-        .where(KnowledgeGraphNode.knowledge_id == knowledge_id)
-        .order_by(KnowledgeGraphNode.order_index)
+        select(DocumentOutlineNode)
+        .where(DocumentOutlineNode.document_id == document_id)
+        .order_by(DocumentOutlineNode.order_index)
     )
     return list(session.exec(stmt).all())
 
 
 def list_graph_nodes_by_subject(
-    session: Session, subject: str
-) -> list[KnowledgeGraphNode]:
-    """按学科获取所有 KnowledgeGraphNode（通过 JOIN Knowledge 过滤）。"""
+    session: Session,
+    subject: str,
+) -> list[DocumentOutlineNode]:
     stmt = (
-        select(KnowledgeGraphNode)
-        .join(Knowledge, KnowledgeGraphNode.knowledge_id == Knowledge.id)
-        .where(Knowledge.subject == subject)
-        .order_by(KnowledgeGraphNode.knowledge_id, KnowledgeGraphNode.order_index)
+        select(DocumentOutlineNode)
+        .join(Document, DocumentOutlineNode.document_id == Document.id)
+        .where(Document.subject == subject)
+        .order_by(DocumentOutlineNode.document_id, DocumentOutlineNode.order_index)
     )
     return list(session.exec(stmt).all())
 
 
-# ─── Chunk CRUD ───
-
-
-def bulk_create_chunks(session: Session, chunks: list[Chunk]) -> list[Chunk]:
+def bulk_create_chunks(
+    session: Session,
+    chunks: list[DocumentChunk],
+) -> list[DocumentChunk]:
     for chunk in chunks:
         session.add(chunk)
     session.commit()
@@ -137,37 +277,36 @@ def bulk_create_chunks(session: Session, chunks: list[Chunk]) -> list[Chunk]:
     return chunks
 
 
-def get_chunks_by_knowledge_id(session: Session, knowledge_id: int) -> list[Chunk]:
+def get_chunks_by_document_id(session: Session, document_id: int) -> list[DocumentChunk]:
     stmt = (
-        select(Chunk)
-        .where(Chunk.knowledge_id == knowledge_id)
-        .order_by(Chunk.chunk_index)
+        select(DocumentChunk)
+        .where(DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.chunk_index)
     )
     return list(session.exec(stmt).all())
 
 
 def bulk_insert_embeddings(
-    session: Session, chunk_ids: list[int], embeddings: list[list[float]]
+    session: Session,
+    chunk_ids: list[int],
+    embeddings: list[list[float]],
 ) -> None:
-    """批量插入 embedding 到 chunk_embeddings vec0 虚拟表。"""
     require_vec_ready()
     conn = session.connection()
     for chunk_id, embedding in zip(chunk_ids, embeddings):
         conn.execute(
             sa.text(
-                "INSERT INTO chunk_embeddings(chunk_id, embedding) VALUES (:cid, :emb)"
+                "INSERT OR REPLACE INTO chunk_embeddings(chunk_id, embedding) "
+                "VALUES (:cid, :emb)"
             ),
             {"cid": chunk_id, "emb": str(embedding)},
         )
     session.commit()
 
 
-# ─── 向量相似度搜索 ───
-
-
 @dataclass
 class ChunkSearchResult:
-    chunk: Chunk
+    chunk: DocumentChunk
     score: float
 
 
@@ -178,28 +317,23 @@ def vector_search(
     *,
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
-    """
-    向量相似度搜索，支持学科过滤和 top_k，返回相似度分数。
-
-    通过 JOIN chunk → knowledge 实现学科过滤。
-    结果按相似度降序排列（distance 越小越相似）。
-    """
     require_vec_ready()
     conn = session.connection()
 
-    # sqlite-vec 返回 distance（越小越相似），转换为 similarity score
-    sql = sa.text("""
+    sql = sa.text(
+        """
         SELECT
             ce.chunk_id,
             ce.distance
         FROM chunk_embeddings ce
-        JOIN chunk c ON c.id = ce.chunk_id
-        JOIN knowledge k ON k.id = c.knowledge_id
-        WHERE k.subject = :subject
+        JOIN document_chunk c ON c.id = ce.chunk_id
+        JOIN document d ON d.id = c.document_id
+        WHERE d.subject = :subject
           AND ce.embedding MATCH :query_emb
         ORDER BY ce.distance
         LIMIT :top_k
-    """)
+        """
+    )
 
     rows = conn.execute(
         sql,
@@ -209,9 +343,8 @@ def vector_search(
     results: list[ChunkSearchResult] = []
     for row in rows:
         chunk_id, distance = row[0], row[1]
-        chunk = session.get(Chunk, chunk_id)
+        chunk = session.get(DocumentChunk, chunk_id)
         if chunk is not None:
-            # 将 distance 转换为 similarity score（1 - distance 或 1/(1+distance)）
             score = 1.0 / (1.0 + distance) if distance >= 0 else 0.0
             results.append(ChunkSearchResult(chunk=chunk, score=score))
 

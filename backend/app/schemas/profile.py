@@ -3,26 +3,35 @@
 from __future__ import annotations
 
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PaginationParams
 from app.schemas.enums import QuestionTypeValue
+
+
+class ProfileListRequest(PaginationParams):
+    pass
+
+
+class ProfileReportRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"example": {}})
+
+
+class ProfileMistakesRequest(PaginationParams):
+    pass
 
 
 class ProfileItem(BaseModel):
     """Single knowledge-point mastery record."""
 
-    knowledge_point: str = Field(description="知识点名称。", examples=["条件概率"])
-    mastery: float | None = Field(
-        default=None,
-        description="掌握度估计值，范围 0.0 到 1.0；无数据时为空。",
-        ge=0,
-        le=1,
-    )
-    attempts: int = Field(description="累计作答次数。", ge=0)
-    correct: int = Field(description="累计答对次数。", ge=0)
+    knowledge_point: str = Field(description="Knowledge point name.", examples=["Conditional Probability"])
+    mastery: float | None = Field(default=None, description="Estimated mastery score from 0.0 to 1.0.", ge=0, le=1)
+    attempts: int = Field(description="Accumulated answer attempts.", ge=0)
+    correct: int = Field(description="Accumulated correct answers.", ge=0)
 
 
-class ProfileResponse(BaseModel):
+class ProfileListResponse(BaseModel):
     """Paginated response for profile mastery items."""
 
     model_config = ConfigDict(
@@ -30,7 +39,7 @@ class ProfileResponse(BaseModel):
             "example": {
                 "items": [
                     {
-                        "knowledge_point": "条件概率",
+                        "knowledge_point": "Conditional Probability",
                         "mastery": 0.6,
                         "attempts": 5,
                         "correct": 3,
@@ -41,8 +50,8 @@ class ProfileResponse(BaseModel):
         }
     )
 
-    items: list[ProfileItem] = Field(description="当前分页内的掌握度记录。")
-    total: int = Field(description="掌握度记录总数。", ge=0)
+    items: list[ProfileItem] = Field(description="Current page of mastery records.")
+    total: int = Field(description="Total number of mastery records.", ge=0)
 
 
 class ReportResponse(BaseModel):
@@ -54,41 +63,36 @@ class ReportResponse(BaseModel):
                 "overall_mastery": 0.72,
                 "weak_points_top5": [
                     {
-                        "knowledge_point": "贝叶斯公式",
+                        "knowledge_point": "Bayes' Theorem",
                         "mastery": 0.4,
                         "attempts": 5,
                         "correct": 2,
                     }
                 ],
-                "suggestions": ["优先复习贝叶斯公式的应用题。"],
+                "suggestions": ["Review Bayes' theorem application problems first."],
             }
         }
     )
 
-    overall_mastery: float | None = Field(
-        default=None,
-        description="总体掌握度估计值，按已有做题记录加权计算。",
-        ge=0,
-        le=1,
-    )
-    weak_points_top5: list[ProfileItem] = Field(description="掌握度最低的前 5 个知识点。")
-    suggestions: list[str] = Field(description="结合画像生成的复习建议列表。")
+    overall_mastery: float | None = Field(default=None, description="Weighted overall mastery score.", ge=0, le=1)
+    weak_points_top5: list[ProfileItem] = Field(description="Five weakest knowledge points.")
+    suggestions: list[str] = Field(description="Revision suggestions generated from the learner profile.")
 
 
 class MistakeItem(BaseModel):
     """Single mistake-book item composed from exam and grading records."""
 
-    id: int = Field(description="错题记录 ID。")
-    question_stem: str = Field(description="题干内容。")
-    question_type: QuestionTypeValue = Field(description="题目类型。")
-    user_answer: str = Field(description="用户答案。")
-    correct_answer: str = Field(description="参考答案。")
-    analysis: str = Field(description="AI 生成的错因分析。")
-    knowledge_point: str = Field(description="关联知识点。")
-    created_at: datetime = Field(description="错题记录创建时间（UTC）。")
+    id: int = Field(description="Mistake identifier.")
+    question_stem: str = Field(description="Question stem.")
+    question_type: QuestionTypeValue = Field(description="Question type.")
+    user_answer: str = Field(description="Submitted answer.")
+    correct_answer: str = Field(description="Reference answer.")
+    analysis: str = Field(description="AI-generated mistake analysis.")
+    knowledge_point: str = Field(description="Associated knowledge point.")
+    created_at: datetime = Field(description="Mistake creation timestamp in UTC.")
 
 
-class MistakeListResponse(BaseModel):
+class ProfileMistakesResponse(BaseModel):
     """Paginated response for the subject mistake book."""
 
     model_config = ConfigDict(
@@ -97,12 +101,12 @@ class MistakeListResponse(BaseModel):
                 "items": [
                     {
                         "id": 3,
-                        "question_stem": "贝叶斯公式的表达式是什么？",
+                        "question_stem": "What is the formula of Bayes' theorem?",
                         "question_type": "short_answer",
-                        "user_answer": "忘记了",
+                        "user_answer": "I forgot",
                         "correct_answer": "P(A|B)=P(B|A)P(A)/P(B)",
-                        "analysis": "对公式中的条件与先验关系混淆。",
-                        "knowledge_point": "贝叶斯公式",
+                        "analysis": "The answer confuses priors and conditional probabilities.",
+                        "knowledge_point": "Bayes' Theorem",
                         "created_at": "2026-03-15T08:00:00Z",
                     }
                 ],
@@ -111,5 +115,5 @@ class MistakeListResponse(BaseModel):
         }
     )
 
-    items: list[MistakeItem] = Field(description="当前分页内的错题列表。")
-    total: int = Field(description="错题总数。", ge=0)
+    items: list[MistakeItem] = Field(description="Current page of mistake items.")
+    total: int = Field(description="Total number of mistakes.", ge=0)

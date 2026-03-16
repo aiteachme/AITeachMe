@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.docs import build_error_responses
+from app.api.openapi import build_error_responses
 from app.schemas.common import HealthResponse
 
 router = APIRouter(prefix="/api", tags=["health"])

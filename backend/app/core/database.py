@@ -1,18 +1,9 @@
-"""
-SQLite 引擎初始化、sqlite-vec 扩展加载、会话工厂。
-
-单一引擎连接 data/aiteachme.db，所有学科数据通过 WHERE subject = ? 隔离。
-
-注意：
-- 某些托管环境（例如部分云平台的 Python 构建）不暴露
-  `sqlite3.Connection.enable_load_extension`
-- 在这些环境下，应用仍应能够启动
-- 如果 sqlite-vec 无法启用，则只禁用向量相关能力，而不是让整个服务启动失败
-"""
+"""Database bootstrap helpers and SQLite engine lifecycle."""
 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 try:
     import pysqlite3 as sqlite3  # type: ignore[import-not-found]
@@ -24,10 +15,9 @@ except ImportError:
 
     _SQLITE_DRIVER = "stdlib-sqlite3"
 
-import sqlite_vec
 import sqlalchemy as sa
+import sqlite_vec
 import structlog
-from pathlib import Path
 from sqlmodel import SQLModel, Session, create_engine
 
 from app.core.config import get_settings
@@ -41,40 +31,36 @@ _vec_error: str | None = None
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
-    """Persist the current sqlite-vec availability for the running process."""
-
     global _vec_ready, _vec_error
     _vec_ready = ready
     _vec_error = error
 
 
 def is_vec_ready() -> bool:
-    """Return whether sqlite-vec is available in the current process."""
-
     return bool(_vec_ready)
 
 
 def require_vec_ready() -> None:
-    """Raise a user-facing error when sqlite-vec is unavailable."""
-
     if not is_vec_ready():
         raise VectorExtensionUnavailableError(_vec_error or "")
 
 
 def get_vec_status() -> tuple[bool | None, str | None]:
-    """Return the current sqlite-vec status tuple `(ready, error)`."""
-
     return _vec_ready, _vec_error
 
 
+def reset_runtime_state() -> None:
+    """Reset singleton engine state for local smoke tests or future automated tests."""
+
+    global _engine, _vec_ready, _vec_error
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _vec_ready = None
+    _vec_error = None
+
+
 def _load_vec_extension(dbapi_conn) -> None:
-    """Attempt to load sqlite-vec on a fresh DB-API connection.
-
-    Some environments expose `enable_load_extension`, while others do not.
-    We therefore try the safest available path and degrade gracefully when
-    the extension cannot be enabled.
-    """
-
     can_toggle_extensions = hasattr(dbapi_conn, "enable_load_extension")
 
     try:
@@ -105,7 +91,6 @@ def _load_vec_extension(dbapi_conn) -> None:
 
 
 def get_engine():
-    """获取或创建单一 SQLite engine（懒初始化，线程安全）。"""
     global _engine
     if _engine is not None:
         return _engine
@@ -129,21 +114,55 @@ def get_engine():
     return _engine
 
 
+def _get_table_columns(conn, table_name: str) -> set[str]:
+    rows = conn.execute(sa.text(f"PRAGMA table_info('{table_name}')")).fetchall()
+    return {row[1] for row in rows}
+
+
+def _ensure_column(conn, table_name: str, column_name: str, ddl: str) -> None:
+    existing_columns = _get_table_columns(conn, table_name)
+    if column_name in existing_columns:
+        return
+    conn.execute(sa.text(f"ALTER TABLE {table_name} ADD COLUMN {ddl}"))
+
+
+def _apply_lightweight_migrations(engine) -> None:
+    with engine.connect() as conn:
+        table_names = {
+            row[0]
+            for row in conn.execute(
+                sa.text("SELECT name FROM sqlite_master WHERE type='table'")
+            ).fetchall()
+        }
+
+        if "raw_file" in table_names:
+            _ensure_column(conn, "raw_file", "markdown_path", "markdown_path TEXT")
+            _ensure_column(conn, "raw_file", "asset_dir", "asset_dir TEXT")
+            _ensure_column(conn, "raw_file", "parse_error", "parse_error TEXT")
+            _ensure_column(
+                conn,
+                "raw_file",
+                "updated_at",
+                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            )
+
+        conn.commit()
+
+
 def init_db() -> None:
-    """创建所有 SQLModel 表，并在可用时初始化 sqlite-vec 虚表。"""
-    # 延迟导入，避免循环依赖（models 依赖 SQLModel，SQLModel 需要 engine 已存在）
     from app.repositories import models as _  # noqa: F401
 
     engine = get_engine()
     settings = get_settings()
 
     SQLModel.metadata.create_all(engine)
+    _apply_lightweight_migrations(engine)
 
     if is_vec_ready():
         with engine.connect() as conn:
             conn.execute(
                 sa.text(
-                    f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings "
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings "
                     f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{settings.embedding_dim}])"
                 )
             )
@@ -165,5 +184,4 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    """创建并返回一个新的数据库 Session（调用方负责关闭）。"""
     return Session(get_engine())
