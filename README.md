@@ -19,6 +19,10 @@
 </div>
 
 
+## 开发
+
+- 前端访问地址 (Cloudflare Pages): https://aiteachme.pages.dev
+- 后端 API 服务 (Render): https://aiteachme.onrender.com/api/health
 
 
 ## 项目简介

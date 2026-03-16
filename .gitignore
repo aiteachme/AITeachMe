@@ -38,5 +38,5 @@ backend/uploads/
 backend/data/*.db
 backend/data/*.sqlite
 *.log
-.env
-.env.local
+# .env
+# .env.local
