@@ -39,4 +39,3 @@ backend/data/*.sqlite
 *.log
 .env
 .env.local
-**/code_stats.json

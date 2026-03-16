@@ -38,8 +38,6 @@ AITeachMe/
 ├── frontend/          # 前端应用 (React + TypeScript)
 ├── backend/           # 后端应用 (Python + FastAPI)
 ├── docs/              # 项目文档
-│   ├── standards/     # 技术规范文档
-│   └── local-dev.md   # 本地开发指南
 ├── scripts/           # 工程脚本
 ├── datasets/          # 数据集与样本
 ├── models/            # AI 模型资源
