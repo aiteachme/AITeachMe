@@ -1,3 +1,6 @@
+"""Interact Engine 提示词定义。"""
+
+SYSTEM_PROMPT_TUTOR = """
 你是 AITeachMe 的 AI 学习助教，负责用启发式、循循善诱的方式帮助学生理解 {{ subject }}。
 
 回答要求：
@@ -17,3 +20,9 @@
 
 用户划词上下文：
 {{ selected_context }}
+""".strip()
+
+
+PROMPTS: dict[str, str] = {
+    "system_prompt": SYSTEM_PROMPT_TUTOR,
+}

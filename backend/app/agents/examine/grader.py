@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
 import structlog
+from pydantic import BaseModel
 
+from app.agents.examine.prompts import (
+    SYSTEM_PROMPT_MISTAKE_ANALYSIS,
+    SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
+)
 from app.core.llm import acompletion
-from app.core.prompt_loader import render_prompt
+from app.core.prompt_loader import populate_prompt
 from app.models import Question, QuestionType
-from app.schemas.llm import ChatMessage, SYSTEM, USER
+from app.schemas.llm import SYSTEM, USER
 
 logger = structlog.get_logger()
 
@@ -66,8 +70,8 @@ async def grade_one_question(*, question: Question, user_answer: str) -> bool:
     if question.type in {QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value}:
         return user_answer.strip().lower() == question.answer.strip().lower()
 
-    prompt = render_prompt(
-        "examine/prompts/short_answer_grade.j2",
+    prompt = populate_prompt(
+        SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
         stem=question.stem,
         answer=question.answer,
         user_answer=user_answer,
@@ -88,8 +92,8 @@ async def grade_one_question(*, question: Question, user_answer: str) -> bool:
 async def generate_mistake_analysis(question: Question, user_answer: str) -> str:
     """生成错因分析。"""
 
-    prompt = render_prompt(
-        "examine/prompts/mistake_analysis.j2",
+    prompt = populate_prompt(
+        SYSTEM_PROMPT_MISTAKE_ANALYSIS,
         stem=question.stem,
         answer=question.answer,
         user_answer=user_answer,
