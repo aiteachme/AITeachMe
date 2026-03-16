@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T03:43:58.606194",
-  "total_commits_analyzed": 64,
+  "generated_at": "2026-03-16T05:20:19.684046",
+  "total_commits_analyzed": 69,
   "stats": [
     {
       "date": "2026-03-11",
@@ -513,6 +513,46 @@
       "code_lines": 7379,
       "other_lines": 2745,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "7bd420d",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "9450f58",
+      "total_lines": 7370,
+      "code_lines": 5218,
+      "other_lines": 2152,
+      "message": "chore: remove test suite and generated artifacts"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "f925a10",
+      "total_lines": 10120,
+      "code_lines": 7375,
+      "other_lines": 2745,
+      "message": "Merge branch 'develop' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "0f771ce",
+      "total_lines": 10118,
+      "code_lines": 7373,
+      "other_lines": 2745,
+      "message": "chore: clean up project structure and gitignore ru"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "e8ebb07",
+      "total_lines": 10122,
+      "code_lines": 7377,
+      "other_lines": 2745,
+      "message": "Merge remote-tracking branch 'origin/develop'"
     }
   ]
 }
