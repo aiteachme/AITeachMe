@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Layout } from "./components/Layout";
-import { HomePage } from "./components/pages/HomePage";
-import { UploadPage } from "./components/pages/UploadPage";
-import { SummaryPage } from "./components/pages/SummaryPage";
-import { ChatPage } from "./components/pages/ChatPage";
-import { ExamPage } from "./components/pages/ExamPage";
-import { AnalysisPage } from "./components/pages/AnalysisPage";
+import { Layout } from "./components/layout/Layout";
+import { HomePage } from "./pages/HomePage";
+import { UploadPage } from "./pages/UploadPage";
+import { SummaryPage } from "./pages/SummaryPage";
+import { ChatPage } from "./pages/ChatPage";
+import { ExamPage } from "./pages/ExamPage";
+import { AnalysisPage } from "./pages/AnalysisPage";
 
 function App() {
   return (

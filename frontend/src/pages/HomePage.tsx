@@ -1,7 +1,7 @@
 import { BookOpen, MessageSquare, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/Card";
-import { Button } from "../ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
 
 export function HomePage() {
   return (

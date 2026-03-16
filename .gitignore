@@ -5,6 +5,7 @@
 *.swo
 *~
 .kiro/
+.claude/
 
 # OS
 .DS_Store

@@ -1,5 +1,5 @@
 import { BookOpen, ChevronRight } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/Card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 
 export function SummaryPage() {
   return (

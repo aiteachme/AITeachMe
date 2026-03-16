@@ -7,7 +7,7 @@ export default defineConfig({
         output: {
             mode: "tags",
 
-            target: "./src/api/generated/endpoints.ts",
+            target: "./src/api/generated",
 
             schemas: "./src/api/generated/model",
 

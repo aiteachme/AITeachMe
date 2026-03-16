@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Github, MessageCircle, User, Settings, CreditCard, LogOut, LogIn, ChevronDown, Menu } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn } from "../../lib/utils";
 
 interface TopBarProps {
   className?: string;

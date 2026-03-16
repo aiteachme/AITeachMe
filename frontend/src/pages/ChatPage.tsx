@@ -1,7 +1,7 @@
 import {useState, useRef, useEffect} from "react";
 import {Send, Plus, Image as ImageIcon, Paperclip, Trash2, Menu, X, MessageSquare} from "lucide-react";
-import {Button} from "../ui/Button";
-import {cn} from "../../lib/utils";
+import {Button} from "../components/ui/Button";
+import {cn} from "../lib/utils";
 
 interface Message {
     id: string;

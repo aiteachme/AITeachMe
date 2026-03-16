@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build output
 dist/
@@ -10,6 +9,8 @@ dist-ssr/
 # Editor directories
 .vscode/
 .idea/
+.claude/
+.kiro/
 
 # Environment variables
 .env

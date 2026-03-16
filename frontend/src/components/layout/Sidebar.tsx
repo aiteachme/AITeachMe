@@ -12,8 +12,8 @@ import {
   Menu,
   X
 } from "lucide-react";
-import { Button } from "./ui/Button";
-import { cn } from "../lib/utils";
+import { Button } from "../ui/Button";
+import { cn } from "../../lib/utils";
 
 interface Module {
   id: string;
