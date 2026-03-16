@@ -1,98 +1,77 @@
-"""
-画像端点
-
-GET /api/v1/profile/{subject} — 分页掌握度列表
-GET /api/v1/profile/{subject}/report — 学习进度报告
-GET /api/v1/mistakes/{subject} — 分页错题列表
-"""
+"""学习画像接口。"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, Path
 from sqlmodel import Session
 
-from app.api.deps import get_db, validate_subject, PaginationParams
-from app.schemas.profile import (
-    ProfileItem,
-    ProfileResponse,
-    ReportResponse,
-    MistakeItem,
-    MistakeListResponse,
+from app.api.deps import get_db, normalize_subject_slug
+from app.api.openapi import build_error_responses
+from app.schemas.common import ApiResponse, PaginatedData, ok_response
+from app.schemas.profile import MistakeItem, ProfileItem, ProfileListRequest, ProfileMistakesRequest, ProfileReportRequest, ReportData
+from app.services.profile_service import get_report, list_mistakes, list_profiles
+from app.services.subject_service import get_subject_record
+
+router = APIRouter(prefix="/api/v1/subjects/{subject}/profile", tags=["profile"])
+
+
+@router.post(
+    "/list",
+    response_model=ApiResponse[PaginatedData[ProfileItem]],
+    summary="掌握度列表",
+    responses=build_error_responses([400, 404, 500]),
 )
-from app.services.profile_service import get_profiles, get_report, get_mistakes
-
-router = APIRouter(prefix="/api/v1", tags=["profile"])
-
-
-@router.post("/profile/{subject}", response_model=ProfileResponse)
-async def list_profiles(
-    body: PaginationParams,
-    subject: str = Depends(validate_subject),
+async def list_profile_points(
+    subject: str = Path(...),
+    body: ProfileListRequest = Body(default=ProfileListRequest()),
     session: Session = Depends(get_db),
-) -> ProfileResponse:
-    """分页掌握度列表。"""
-    items, total = await get_profiles(
-        session, subject, limit=body.limit, offset=body.offset
-    )
-    return ProfileResponse(
-        items=[
-            ProfileItem(
-                knowledge_point=p.knowledge_point,
-                mastery=p.mastery,
-                attempts=p.attempts,
-                correct=p.correct,
-            )
-            for p in items
-        ],
-        total=total,
+) -> ApiResponse[PaginatedData[ProfileItem]]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(
+        list_profiles(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+        )
     )
 
 
-@router.post("/profile/{subject}/report", response_model=ReportResponse)
-async def get_learning_report(
-    subject: str = Depends(validate_subject),
+@router.post(
+    "/report",
+    response_model=ApiResponse[ReportData],
+    summary="学习报告",
+    responses=build_error_responses([400, 404, 500, 502, 503]),
+)
+async def get_profile_report(
+    subject: str = Path(...),
+    _: ProfileReportRequest = Body(default=ProfileReportRequest()),
     session: Session = Depends(get_db),
-) -> ReportResponse:
-    """学习进度报告。"""
-    report = await get_report(session, subject)
-    return ReportResponse(
-        overall_mastery=report["overall_mastery"],
-        weak_points_top5=[
-            ProfileItem(
-                knowledge_point=p.knowledge_point,
-                mastery=p.mastery,
-                attempts=p.attempts,
-                correct=p.correct,
-            )
-            for p in report["weak_points_top5"]
-        ],
-        suggestions=report["suggestions"],
-    )
+) -> ApiResponse[ReportData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(await get_report(session, subject=normalized_subject))
 
 
-@router.post("/mistakes/{subject}", response_model=MistakeListResponse)
-async def list_mistakes(
-    body: PaginationParams,
-    subject: str = Depends(validate_subject),
+@router.post(
+    "/mistakes",
+    response_model=ApiResponse[PaginatedData[MistakeItem]],
+    summary="错题本",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def list_profile_mistakes(
+    subject: str = Path(...),
+    body: ProfileMistakesRequest = Body(default=ProfileMistakesRequest()),
     session: Session = Depends(get_db),
-) -> MistakeListResponse:
-    """分页错题列表。"""
-    items, total = await get_mistakes(
-        session, subject, limit=body.limit, offset=body.offset
-    )
-    return MistakeListResponse(
-        items=[
-            MistakeItem(
-                id=item["id"],
-                question_stem=item["question_stem"],
-                question_type=item["question_type"],
-                user_answer=item["user_answer"],
-                correct_answer=item["correct_answer"],
-                analysis=item["analysis"],
-                knowledge_point=item["knowledge_point"],
-                created_at=item["created_at"],
-            )
-            for item in items
-        ],
-        total=total,
+) -> ApiResponse[PaginatedData[MistakeItem]]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(
+        list_mistakes(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+        )
     )

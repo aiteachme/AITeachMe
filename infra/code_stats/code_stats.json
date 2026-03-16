@@ -1,0 +1,286 @@
+{
+  "generated_at": "2026-03-15T05:48:27.143081",
+  "total_commits_analyzed": 35,
+  "stats": [
+    {
+      "date": "2026-03-11",
+      "commit": "291f90f",
+      "total_lines": 525,
+      "code_lines": 253,
+      "other_lines": 272,
+      "message": "chore(init): 初始化项目结构，添加 README、.gitignore 及前后端入口文件"
+    },
+    {
+      "date": "2026-03-11",
+      "commit": "3ea6a32",
+      "total_lines": 687,
+      "code_lines": 347,
+      "other_lines": 340,
+      "message": "feat(deployment): 添加完整的部署配置，包括 CI 脚本、Dockerfile 和 "
+    },
+    {
+      "date": "2026-03-11",
+      "commit": "59efb9d",
+      "total_lines": 2281,
+      "code_lines": 1376,
+      "other_lines": 905,
+      "message": "feat: 添加代码统计工具及相关脚本"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "1e5d8b6",
+      "total_lines": 2328,
+      "code_lines": 1402,
+      "other_lines": 926,
+      "message": "ci: 测试工作流"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "8c8e23b",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 构建工作流"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "ebf9920",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 配置deploy hook"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "68a65b7",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 测试deploy hook"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "c2063bf",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 修复workflow路径"
+    },
+    {
+      "date": "2026-03-11",
+      "commit": "a0742a3",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "5d6852d",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 添加render api监测"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "fc523dd",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "867d272",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "ci: 修复render api"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "54f20b1",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-12",
+      "commit": "8852106",
+      "total_lines": 2401,
+      "code_lines": 1446,
+      "other_lines": 955,
+      "message": "chore: 同步main进程"
+    },
+    {
+      "date": "2026-03-14",
+      "commit": "8bd8aaf",
+      "total_lines": 2730,
+      "code_lines": 1677,
+      "other_lines": 1053,
+      "message": "feat(backend): 搭建集成AI模块的核心应用架构"
+    },
+    {
+      "date": "2026-03-14",
+      "commit": "cc46ba6",
+      "total_lines": 4510,
+      "code_lines": 3049,
+      "other_lines": 1461,
+      "message": "feat(backend): 新增核心LLM/嵌入模块及仓储层"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "46d42af",
+      "total_lines": 8932,
+      "code_lines": 6294,
+      "other_lines": 2638,
+      "message": "feat(backend): 实现AI处理管道核心模块及服务层"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "5cd7acc",
+      "total_lines": 8932,
+      "code_lines": 6294,
+      "other_lines": 2638,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-14",
+      "commit": "44a0a2d",
+      "total_lines": 8932,
+      "code_lines": 6294,
+      "other_lines": 2638,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "b32b4ef",
+      "total_lines": 10547,
+      "code_lines": 7485,
+      "other_lines": 3062,
+      "message": "feat(backend): 实现API路由层、数据模式及知识服务"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "2fe2354",
+      "total_lines": 10547,
+      "code_lines": 7485,
+      "other_lines": 3062,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "108b214",
+      "total_lines": 10547,
+      "code_lines": 7485,
+      "other_lines": 3062,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "195f0ea",
+      "total_lines": 10547,
+      "code_lines": 7485,
+      "other_lines": 3062,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "acbf2e6",
+      "total_lines": 10801,
+      "code_lines": 7687,
+      "other_lines": 3114,
+      "message": "feat(backend): 完善LLM集成、环境配置及文档更新"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "60f9d91",
+      "total_lines": 10801,
+      "code_lines": 7687,
+      "other_lines": 3114,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "87533bd",
+      "total_lines": 10801,
+      "code_lines": 7687,
+      "other_lines": 3114,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "9661d6b",
+      "total_lines": 10801,
+      "code_lines": 7687,
+      "other_lines": 3114,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "ed317e0",
+      "total_lines": 10812,
+      "code_lines": 7692,
+      "other_lines": 3120,
+      "message": "docs(backend): 更新依赖管理文档及代码统计脚本配置"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "b3d2e18",
+      "total_lines": 10812,
+      "code_lines": 7692,
+      "other_lines": 3120,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "49d957d",
+      "total_lines": 10812,
+      "code_lines": 7692,
+      "other_lines": 3120,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "5591e57",
+      "total_lines": 10723,
+      "code_lines": 7646,
+      "other_lines": 3077,
+      "message": "refactor(backend): 移除模块文档中的需求编号注释"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "149bfba",
+      "total_lines": 10723,
+      "code_lines": 7646,
+      "other_lines": 3077,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "66f7da7",
+      "total_lines": 10723,
+      "code_lines": 7646,
+      "other_lines": 3077,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "7cc0169",
+      "total_lines": 10723,
+      "code_lines": 7646,
+      "other_lines": 3077,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "1720bb0",
+      "total_lines": 10723,
+      "code_lines": 7646,
+      "other_lines": 3077,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    }
+  ]
+}

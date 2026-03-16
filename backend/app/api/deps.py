@@ -1,35 +1,46 @@
-"""
-共享依赖 — Subject 校验、DB Session、分页参数
-"""
+"""接口层公共依赖。"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Generator
 
-from fastapi import Depends, Path
-from pydantic import BaseModel, Field
 from sqlmodel import Session
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.utils.subject import validate_subject as _validate_subject
 
 
-def validate_subject(subject: str = Path(...)) -> str:
-    """路径依赖：校验 subject 命名并转小写。"""
+@dataclass(frozen=True)
+class CurrentUserContext:
+    """当前运行时用户上下文。"""
+
+    user_id: str
+    email: str | None
+    is_local: bool
+
+
+def normalize_subject_slug(subject: str) -> str:
+    """统一规范化学科标识。"""
+
     return _validate_subject(subject)
 
 
+def get_current_user_context() -> CurrentUserContext:
+    """返回当前运行时用户。"""
+
+    settings = get_settings()
+    if settings.is_local_mode:
+        return CurrentUserContext(user_id="local", email=None, is_local=True)
+    return CurrentUserContext(user_id="anonymous", email=None, is_local=False)
+
+
 def get_db() -> Generator[Session, None, None]:
-    """会话依赖：每请求创建 Session，请求结束后关闭。"""
+    """为每个请求提供一个数据库会话。"""
+
     session = get_session()
     try:
         yield session
     finally:
         session.close()
-
-
-class PaginationParams(BaseModel):
-    """请求体分页参数：limit 默认 100，offset 默认 0。"""
-
-    limit: int = Field(default=100, ge=1, le=1000)
-    offset: int = Field(default=0, ge=0)

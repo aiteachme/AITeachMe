@@ -1,8 +1,9 @@
-"""LLM 消息类型定义 — 替代裸 dict，提供类型安全提示。"""
+"""内部 LLM 消息结构。"""
 
-from typing import Literal, TypedDict, Union
+from __future__ import annotations
 
-# 角色常量，方便调用方引用
+from typing import Literal, TypedDict
+
 SYSTEM: Literal["system"] = "system"
 USER: Literal["user"] = "user"
 ASSISTANT: Literal["assistant"] = "assistant"
@@ -11,6 +12,7 @@ Role = Literal["system", "user", "assistant"]
 
 
 class ChatMessage(TypedDict, total=False):
-    """LLM 消息，本身就是 dict，litellm 直接接受。"""
+    """LiteLLM 可直接消费的消息结构。"""
+
     role: Role
-    content: Union[str, list[dict]]
+    content: str | list[dict]

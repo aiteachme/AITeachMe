@@ -1,6 +1,4 @@
-"""
-FastAPI 应用工厂 — 路由注册、CORS、全局异常处理器、数据库初始化
-"""
+"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -12,30 +10,36 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.exceptions import AITeachMeError
+from app.core.logger import configure_logging
 
 logger = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """启动时初始化数据库。"""
+    """应用生命周期。"""
+
+    del app
     init_db()
     logger.info("app_started")
     yield
     logger.info("app_shutdown")
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(
-        title="AITeachMe",
-        description="AI 驱动的个性化学习助手后端",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
+def _build_app_metadata() -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "title": "AITeachMe",
+        "description": "本地优先的 AI 助教后端服务。",
+        "version": settings.app_version,
+        "lifespan": lifespan,
+    }
 
-    # ── CORS ──
+
+def _register_middlewares(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -48,12 +52,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── 全局异常处理器 ──
+
+def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AITeachMeError)
     async def aiteachme_error_handler(request: Request, exc: AITeachMeError) -> JSONResponse:
+        del request
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.detail, "error_code": exc.error_code},
+            content={"code": exc.status_code, "message": exc.detail, "data": None},
         )
 
     @app.exception_handler(Exception)
@@ -61,24 +67,40 @@ def create_app() -> FastAPI:
         logger.exception("unhandled_error", path=request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"detail": "内部服务器错误", "error_code": "INTERNAL_ERROR"},
+            content={"code": 500, "message": "服务内部异常。", "data": None},
         )
 
-    # ── 注册路由 ──
-    from app.api.health import router as health_router
-    from app.api.upload import router as upload_router
-    from app.api.knowledge import router as knowledge_router
+
+def _register_routers(app: FastAPI) -> None:
+    from app.api.auth import router as auth_router
     from app.api.chat import router as chat_router
     from app.api.exam import router as exam_router
+    from app.api.files import router as files_router
+    from app.api.health import router as health_router
+    from app.api.knowledge import router as knowledge_router
     from app.api.profile import router as profile_router
+    from app.api.subjects import router as subjects_router
+    from app.api.system import router as system_router
 
     app.include_router(health_router)
-    app.include_router(upload_router)
+    app.include_router(system_router)
+    app.include_router(auth_router)
+    app.include_router(subjects_router)
+    app.include_router(files_router)
     app.include_router(knowledge_router)
     app.include_router(chat_router)
     app.include_router(exam_router)
     app.include_router(profile_router)
 
+
+def create_app() -> FastAPI:
+    """创建 FastAPI 应用。"""
+
+    configure_logging()
+    app = FastAPI(**_build_app_metadata())
+    _register_middlewares(app)
+    _register_exception_handlers(app)
+    _register_routers(app)
     return app
 
 
