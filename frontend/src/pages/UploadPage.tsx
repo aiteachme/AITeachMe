@@ -1,9 +1,11 @@
-import { useRef, useCallback } from "react";
-import { Upload as UploadIcon, FileText, Loader2, CheckCircle, XCircle, Clock, RefreshCw } from "lucide-react";
+import { useRef, useCallback, useState } from "react";
+import { Upload as UploadIcon, FileText, Loader2, CheckCircle, XCircle, Clock, RefreshCw, Eye } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Modal } from "../components/ui/Modal";
+import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { apiClient } from "../api/client";
 
 interface FileItem {
@@ -18,6 +20,14 @@ interface FileItem {
 
 interface ApiResponse<T> { code: number; data: T; }
 interface PaginatedData<T> { items: T[]; total: number; }
+
+interface FileGetData {
+  file_id: number;
+  filename: string;
+  status: string;
+  markdown_content: string;
+  assets: { path: string }[];
+}
 
 async function fetchFiles(subject: string): Promise<FileItem[]> {
   const res = await apiClient<ApiResponse<PaginatedData<FileItem>>>({
@@ -55,17 +65,30 @@ async function deleteFile(subject: string, fileId: number): Promise<void> {
   });
 }
 
+async function fetchFileResult(subject: string, fileId: number): Promise<FileGetData> {
+  const res = await apiClient<ApiResponse<FileGetData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/get`,
+    data: { file_id: fileId },
+  });
+  return res.data;
+}
+
 const STATUS_ICON: Record<string, React.ReactNode> = {
   done: <CheckCircle className="w-4 h-4 text-green-500" />,
+  completed: <CheckCircle className="w-4 h-4 text-green-500" />,
   pending: <Clock className="w-4 h-4 text-yellow-500" />,
   running: <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />,
+  processing: <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />,
   failed: <XCircle className="w-4 h-4 text-red-500" />,
 };
 
 const STATUS_LABEL: Record<string, string> = {
   done: "已解析",
+  completed: "已解析",
   pending: "等待中",
   running: "解析中",
+  processing: "解析中",
   failed: "解析失败",
 };
 
@@ -73,6 +96,8 @@ export function UploadPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<FileGetData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const { data: files = [], isLoading, isError } = useQuery({
     queryKey: ["files", subjectId],
@@ -118,6 +143,18 @@ export function UploadPage() {
   }, [handleUpload]);
 
   const pendingFiles = files.filter((f) => f.status === "pending");
+
+  const handlePreview = useCallback(async (fileId: number) => {
+    setPreviewLoading(true);
+    try {
+      const data = await fetchFileResult(subjectId, fileId);
+      setPreviewFile(data);
+    } catch {
+      // 静默处理，用户可重试
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [subjectId]);
 
   return (
     <div className="space-y-6">
@@ -189,38 +226,68 @@ export function UploadPage() {
             <p className="text-center py-8 text-slate-400 text-sm">暂无文件，请上传学习资料</p>
           )}
           <div className="space-y-3">
-            {files.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-slate-400" />
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{file.filename}</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(file.created_at).toLocaleDateString("zh-CN")}
-                    </p>
+            {files.map((file) => {
+              const isDone = file.status === "done" || file.status === "completed";
+              return (
+                <div
+                  key={file.id}
+                  className={`flex items-center justify-between p-4 border border-slate-200 rounded-lg transition-colors ${
+                    isDone ? "hover:bg-blue-50 cursor-pointer" : "hover:bg-slate-50"
+                  }`}
+                  onClick={() => isDone && handlePreview(file.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-slate-400" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">
+                        {file.filename}
+                        {isDone && (
+                          <Eye className="w-3.5 h-3.5 text-slate-400 inline ml-2" />
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {new Date(file.created_at).toLocaleDateString("zh-CN")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      {STATUS_ICON[file.status] ?? <Clock className="w-4 h-4 text-slate-400" />}
+                      <span className="text-xs text-slate-500">{STATUS_LABEL[file.status] ?? file.status}</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id); }}
+                      disabled={deleteMutation.isPending}
+                      className="text-slate-300 hover:text-red-400 transition-colors text-xs"
+                    >
+                      删除
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    {STATUS_ICON[file.status] ?? <Clock className="w-4 h-4 text-slate-400" />}
-                    <span className="text-xs text-slate-500">{STATUS_LABEL[file.status] ?? file.status}</span>
-                  </div>
-                  <button
-                    onClick={() => deleteMutation.mutate(file.id)}
-                    disabled={deleteMutation.isPending}
-                    className="text-slate-300 hover:text-red-400 transition-colors text-xs"
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
+
+      {previewLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+          <div className="bg-white rounded-xl p-6 shadow-xl flex items-center gap-3">
+            <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+            <span className="text-sm text-slate-600">加载解析结果...</span>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        open={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        title={previewFile?.filename ?? "解析结果"}
+      >
+        <article className="prose prose-slate prose-sm max-w-none">
+          <MarkdownViewer content={previewFile?.markdown_content ?? ""} />
+        </article>
+      </Modal>
     </div>
   );
 }
