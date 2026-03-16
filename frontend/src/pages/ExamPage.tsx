@@ -4,49 +4,102 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileQuestion, Clock, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import {
-  generateExamApiV1SubjectsSubjectExamGeneratePost,
-  getExamHistoryApiV1SubjectsSubjectExamHistoryPost,
-  submitAnswersApiV1ExamExamIdSubmitPost,
-} from "../api/generated/exam";
-import type { ExamResponse, SubmitResponse } from "../api/generated/model";
+import { apiClient } from "../api/client";
+
+interface QuestionItem {
+  question_key: string;
+  type: string;
+  stem: string;
+  options: string[] | null;
+  knowledge_point: string;
+  difficulty: string;
+}
+
+interface ExamData {
+  exam_id: number;
+  questions: QuestionItem[];
+}
+
+interface AnswerResultItem {
+  question_key: string;
+  is_correct: boolean;
+  user_answer: string;
+  correct_answer: string;
+  explanation: string;
+  analysis: string | null;
+}
+
+interface SubmitData {
+  submission_id: number;
+  score: number;
+  results: AnswerResultItem[];
+}
+
+interface ExamHistoryItem {
+  exam_id: number;
+  submission_id: number | null;
+  score: number | null;
+  created_at: string;
+}
+
+interface ApiResponse<T> { code: number; data: T; }
+interface PaginatedData<T> { items: T[]; total: number; }
+
+async function makeExam(subject: string): Promise<ExamData> {
+  const res = await apiClient<ApiResponse<ExamData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/exam/make`,
+    data: { num: 5, points: null },
+  });
+  return res.data;
+}
+
+async function submitExam(subject: string, exam_id: number, answers: Record<string, string>): Promise<SubmitData> {
+  const res = await apiClient<ApiResponse<SubmitData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/exam/submit`,
+    data: {
+      exam_id,
+      answers: Object.entries(answers).map(([question_key, answer]) => ({ question_key, answer })),
+    },
+  });
+  return res.data;
+}
+
+async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
+  const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/exam/list`,
+    data: { page: 1, size: 20 },
+  });
+  return res.data.items;
+}
 
 export function ExamPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [activeExam, setActiveExam] = useState<ExamResponse | null>(null);
+  const [activeExam, setActiveExam] = useState<ExamData | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<SubmitResponse | null>(null);
+  const [result, setResult] = useState<SubmitData | null>(null);
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const { data: history = [], isLoading: historyLoading } = useQuery({
     queryKey: ["exam-history", subjectId],
-    queryFn: () => getExamHistoryApiV1SubjectsSubjectExamHistoryPost(subjectId, { limit: 10, offset: 0 }),
+    queryFn: () => fetchHistory(subjectId),
     enabled: !!subjectId,
   });
 
   const generateMutation = useMutation({
-    mutationFn: () => generateExamApiV1SubjectsSubjectExamGeneratePost(subjectId, {
-      knowledge_points: [],
-      num_questions: 5,
-    }),
-    onSuccess: (data) => {
-      setActiveExam(data);
-      setAnswers({});
-      setResult(null);
-    },
+    mutationFn: () => makeExam(subjectId),
+    onSuccess: (data) => { setActiveExam(data); setAnswers({}); setResult(null); },
   });
 
   const submitMutation = useMutation({
-    mutationFn: (examId: number) => submitAnswersApiV1ExamExamIdSubmitPost(examId, {
-      answers: Object.entries(answers).map(([question_key, answer]) => ({ question_key, answer })),
-    }),
+    mutationFn: () => submitExam(subjectId, activeExam!.exam_id, answers),
     onSuccess: (data) => {
       setResult(data);
       queryClient.invalidateQueries({ queryKey: ["exam-history", subjectId] });
     },
   });
-
-  const history = historyData?.items ?? [];
 
   if (activeExam && !result) {
     return (
@@ -59,9 +112,7 @@ export function ExamPage() {
           {activeExam.questions.map((q, i) => (
             <Card key={q.question_key}>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {i + 1}. {q.stem}
-                </CardTitle>
+                <CardTitle className="text-base">{i + 1}. {q.stem}</CardTitle>
                 <CardDescription>{q.knowledge_point} · {q.difficulty}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -93,11 +144,7 @@ export function ExamPage() {
             </Card>
           ))}
         </div>
-        <Button
-          className="w-full"
-          onClick={() => submitMutation.mutate(activeExam.exam_id)}
-          disabled={submitMutation.isPending}
-        >
+        <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
           {submitMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />提交中...</> : "提交答卷"}
         </Button>
       </div>
@@ -124,6 +171,7 @@ export function ExamPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-800">正确答案：{r.correct_answer}</p>
                   <p className="text-xs text-slate-500 mt-1">{r.explanation}</p>
+                  {r.analysis && <p className="text-xs text-orange-500 mt-1">错因：{r.analysis}</p>}
                 </div>
               </div>
             ))}
@@ -140,14 +188,8 @@ export function ExamPage() {
         <p className="text-slate-500 mt-2">基于学习内容生成的模拟试题</p>
       </div>
 
-      <Button
-        onClick={() => generateMutation.mutate()}
-        disabled={generateMutation.isPending}
-        className="w-full sm:w-auto"
-      >
-        {generateMutation.isPending
-          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />生成中...</>
-          : "生成新试卷"}
+      <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="w-full sm:w-auto">
+        {generateMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />生成中...</> : "生成新试卷"}
       </Button>
 
       <Card>

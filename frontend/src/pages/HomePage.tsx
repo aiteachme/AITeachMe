@@ -1,16 +1,48 @@
-import { BookOpen, MessageSquare, TrendingUp } from "lucide-react";
+import { BookOpen, MessageSquare, TrendingUp, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { apiClient } from "../api/client";
+
+interface SubjectItem {
+  id: number;
+  subject: string;
+  name: string;
+}
+
+interface ApiResponse<T> {
+  code: number;
+  data: T;
+}
+
+interface PaginatedData<T> {
+  items: T[];
+  total: number;
+}
+
+async function fetchSubjects(): Promise<SubjectItem[]> {
+  const res = await apiClient<ApiResponse<PaginatedData<SubjectItem>>>({
+    method: "POST",
+    url: "/api/v1/subjects/list",
+    data: { page: 1, size: 100 },
+  });
+  return res.data.items;
+}
 
 export function HomePage() {
+  const { data: subjects = [], isLoading } = useQuery({
+    queryKey: ["subjects"],
+    queryFn: fetchSubjects,
+  });
+
+  const firstSubject = subjects[0]?.subject ?? "";
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-slate-900">欢迎使用 AI TEACHE ME</h1>
-        <p className="text-lg text-slate-500 mt-3">
-          智能学习助手，让学习更高效
-        </p>
+        <h1 className="text-4xl font-bold text-slate-900">欢迎使用 AI TEACH ME</h1>
+        <p className="text-lg text-slate-500 mt-3">智能学习助手，让学习更高效</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -21,8 +53,8 @@ export function HomePage() {
             <CardDescription>AI 自动生成知识点总结</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link to="/subject/1/summary">
-              <Button variant="outline" className="w-full">
+            <Link to={firstSubject ? `/subject/${firstSubject}/summary` : "#"}>
+              <Button variant="outline" className="w-full" disabled={!firstSubject}>
                 开始学习
               </Button>
             </Link>
@@ -36,8 +68,8 @@ export function HomePage() {
             <CardDescription>随时提问，即时解答</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link to="/subject/1/chat">
-              <Button variant="outline" className="w-full">
+            <Link to={firstSubject ? `/subject/${firstSubject}/chat` : "#"}>
+              <Button variant="outline" className="w-full" disabled={!firstSubject}>
                 开始对话
               </Button>
             </Link>
@@ -51,8 +83,8 @@ export function HomePage() {
             <CardDescription>追踪学习进度和表现</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link to="/subject/1/analysis">
-              <Button variant="outline" className="w-full">
+            <Link to={firstSubject ? `/subject/${firstSubject}/analysis` : "#"}>
+              <Button variant="outline" className="w-full" disabled={!firstSubject}>
                 查看分析
               </Button>
             </Link>
@@ -62,39 +94,38 @@ export function HomePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>最近学习</CardTitle>
-          <CardDescription>继续您的学习进度</CardDescription>
+          <CardTitle>我的学科</CardTitle>
+          <CardDescription>选择一个学科开始学习</CardDescription>
         </CardHeader>
         <CardContent>
+          {isLoading && (
+            <div className="flex items-center justify-center py-8 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              加载中...
+            </div>
+          )}
+          {!isLoading && subjects.length === 0 && (
+            <p className="text-center py-8 text-slate-400 text-sm">
+              还没有学科，在左侧点击「新建学科」开始吧
+            </p>
+          )}
           <div className="space-y-3">
-            {[
-              { subject: "高数", module: "导数与微分", progress: 75, time: "2 小时前" },
-              { subject: "高数", module: "积分", progress: 40, time: "昨天" },
-              { subject: "高数", module: "函数与极限", progress: 100, time: "3 天前" },
-            ].map((item, i) => (
+            {subjects.map((subject) => (
               <div
-                key={i}
-                className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                key={subject.subject}
+                className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
               >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-900">
-                    {item.subject} - {item.module}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">{item.time}</p>
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{subject.name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{subject.subject}</p>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-slate-700">{item.progress}%</p>
-                    <div className="w-24 bg-slate-100 rounded-full h-1.5 mt-1">
-                      <div
-                        className="bg-slate-900 h-1.5 rounded-full"
-                        style={{ width: `${item.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    继续
-                  </Button>
+                <div className="flex gap-2">
+                  <Link to={`/subject/${subject.subject}/chat`}>
+                    <Button variant="ghost" size="sm">对话</Button>
+                  </Link>
+                  <Link to={`/subject/${subject.subject}/upload`}>
+                    <Button variant="outline" size="sm">上传资料</Button>
+                  </Link>
                 </div>
               </div>
             ))}

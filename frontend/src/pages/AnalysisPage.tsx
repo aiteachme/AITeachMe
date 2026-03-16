@@ -2,31 +2,59 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Target, Award, Loader2, BookOpen } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import {
-  getLearningReportApiV1ProfileSubjectReportPost,
-  listProfilesApiV1ProfileSubjectPost,
-} from "../api/generated/profile";
+import { apiClient } from "../api/client";
+
+interface ProfileItem {
+  knowledge_point: string;
+  mastery: number | null;
+  attempts: number;
+  correct: number;
+}
+
+interface ReportData {
+  overall_mastery: number | null;
+  weak_points_top5: ProfileItem[];
+  suggestions: string[];
+}
+
+interface ApiResponse<T> { code: number; data: T; }
+interface PaginatedData<T> { items: T[]; total: number; }
+
+async function fetchProfiles(subject: string): Promise<ProfileItem[]> {
+  const res = await apiClient<ApiResponse<PaginatedData<ProfileItem>>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/profile/list`,
+    data: { page: 1, size: 50 },
+  });
+  return res.data.items;
+}
+
+async function fetchReport(subject: string): Promise<ReportData> {
+  const res = await apiClient<ApiResponse<ReportData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/profile/report`,
+    data: {},
+  });
+  return res.data;
+}
 
 export function AnalysisPage() {
   const { subjectId = "" } = useParams();
 
+  const { data: profiles = [], isLoading: profileLoading } = useQuery({
+    queryKey: ["profile", subjectId],
+    queryFn: () => fetchProfiles(subjectId),
+    enabled: !!subjectId,
+  });
+
   const { data: report, isLoading: reportLoading } = useQuery({
     queryKey: ["report", subjectId],
-    queryFn: () => getLearningReportApiV1ProfileSubjectReportPost(subjectId),
+    queryFn: () => fetchReport(subjectId),
     enabled: !!subjectId,
   });
 
-  const { data: profileData, isLoading: profileLoading } = useQuery({
-    queryKey: ["profile", subjectId],
-    queryFn: () => listProfilesApiV1ProfileSubjectPost(subjectId, { limit: 20, offset: 0 }),
-    enabled: !!subjectId,
-  });
-
-  const isLoading = reportLoading || profileLoading;
-  const profiles = profileData?.items ?? [];
-  const overallPct = report?.overall_mastery != null
-    ? Math.round(report.overall_mastery * 100)
-    : null;
+  const isLoading = profileLoading || reportLoading;
+  const overallPct = report?.overall_mastery != null ? Math.round(report.overall_mastery * 100) : null;
 
   if (isLoading) {
     return (
@@ -50,11 +78,7 @@ export function AnalysisPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-3xl font-bold text-slate-900">
-                  {overallPct != null ? `${overallPct}%` : "—"}
-                </p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">{overallPct != null ? `${overallPct}%` : "—"}</p>
               <TrendingUp className="w-8 h-8 text-slate-400" />
             </div>
           </CardContent>
@@ -82,9 +106,7 @@ export function AnalysisPage() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-3xl font-bold text-orange-500">
-                  {report?.weak_points_top5.length ?? 0}
-                </p>
+                <p className="text-3xl font-bold text-orange-500">{report?.weak_points_top5.length ?? 0}</p>
                 <p className="text-xs text-slate-500 mt-1">需加强</p>
               </div>
               <Award className="w-8 h-8 text-slate-400" />
@@ -100,9 +122,7 @@ export function AnalysisPage() {
             <CardDescription>各知识点学习情况</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profiles.length === 0 && (
-              <p className="text-center py-4 text-slate-400 text-sm">暂无数据</p>
-            )}
+            {profiles.length === 0 && <p className="text-center py-4 text-slate-400 text-sm">暂无数据</p>}
             {profiles.map((item) => {
               const pct = item.mastery != null ? Math.round(item.mastery * 100) : 0;
               return (
@@ -112,10 +132,7 @@ export function AnalysisPage() {
                     <span className="text-sm text-slate-500">{pct}%</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div
-                      className="bg-slate-900 h-2 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className="bg-slate-900 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );

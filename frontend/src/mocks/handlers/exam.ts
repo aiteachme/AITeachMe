@@ -1,7 +1,6 @@
 import { http, HttpResponse } from "msw";
-import type { ExamResponse, ExamHistoryResponse } from "../../api/generated/model";
 
-const mockExam: ExamResponse = {
+const mockExam = {
   exam_id: 1,
   questions: [
     {
@@ -24,41 +23,45 @@ const mockExam: ExamResponse = {
       question_key: "q3",
       type: "short_answer",
       stem: "求函数 f(x) = x³ - 3x + 2 的极值点。",
+      options: null,
       knowledge_point: "极值与最值",
       difficulty: "hard",
     },
   ],
 };
 
-const mockHistory: ExamHistoryResponse = {
-  items: [
-    { exam_id: 1, submission_id: 1, score: 85, created_at: "2026-03-14T10:00:00Z" },
-    { exam_id: 2, submission_id: 2, score: 92, created_at: "2026-03-10T10:00:00Z" },
-    { exam_id: 3, submission_id: 3, score: 78, created_at: "2026-03-07T10:00:00Z" },
-  ],
-  total: 3,
-};
+const mockHistory = [
+  { exam_id: 1, submission_id: 1, score: 85, created_at: "2026-03-14T10:00:00Z" },
+  { exam_id: 2, submission_id: 2, score: 92, created_at: "2026-03-10T10:00:00Z" },
+  { exam_id: 3, submission_id: null, score: null, created_at: "2026-03-07T10:00:00Z" },
+];
 
 export const examHandlers = [
-  http.post("/api/v1/subjects/:subject/exam/generate", async () => {
-    await new Promise((r) => setTimeout(r, 1200));
-    return HttpResponse.json(mockExam);
+  http.post("/api/v1/subjects/:subject/exam/make", async () => {
+    await new Promise((r) => setTimeout(r, 800));
+    return HttpResponse.json({ code: 0, data: mockExam });
   }),
 
-  http.post("/api/v1/exam/:examId/submit", async () => {
-    await new Promise((r) => setTimeout(r, 800));
+  http.post("/api/v1/subjects/:subject/exam/submit", async () => {
+    await new Promise((r) => setTimeout(r, 600));
     return HttpResponse.json({
-      exam_id: 1,
-      score: 85,
-      results: [
-        { question_key: "q1", is_correct: true, correct_answer: "4", explanation: "f'(x)=2x，代入x=2得4" },
-        { question_key: "q2", is_correct: true, correct_answer: "f(x)=|x|", explanation: "|x|在x=0处左右导数不相等" },
-        { question_key: "q3", is_correct: false, correct_answer: "x=1和x=-1", explanation: "令f'(x)=3x²-3=0，解得x=±1" },
-      ],
+      code: 0,
+      data: {
+        submission_id: 10,
+        score: 85,
+        results: [
+          { question_key: "q1", is_correct: true, user_answer: "4", correct_answer: "4", explanation: "f'(x)=2x，代入x=2得4", analysis: null },
+          { question_key: "q2", is_correct: true, user_answer: "f(x)=|x|", correct_answer: "f(x)=|x|", explanation: "|x|在x=0处左右导数不相等", analysis: null },
+          { question_key: "q3", is_correct: false, user_answer: "x=1", correct_answer: "x=1和x=-1", explanation: "令f'(x)=3x²-3=0，解得x=±1", analysis: "漏掉了x=-1" },
+        ],
+      },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/exam/history", () => {
-    return HttpResponse.json(mockHistory);
+  http.post("/api/v1/subjects/:subject/exam/list", () => {
+    return HttpResponse.json({
+      code: 0,
+      data: { items: mockHistory, total: mockHistory.length },
+    });
   }),
 ];

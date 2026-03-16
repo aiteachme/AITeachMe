@@ -1,34 +1,52 @@
 import { http, HttpResponse } from "msw";
 
 export interface SubjectItem {
-  id: string;
+  id: number;
+  subject: string;
   name: string;
+  description: string;
   created_at: string;
+  updated_at: string;
 }
 
-const mockSubjects: SubjectItem[] = [
-  { id: "gaoshu", name: "高数", created_at: "2026-03-01T00:00:00Z" },
+let mockSubjects: SubjectItem[] = [
+  {
+    id: 1,
+    subject: "gaoshu",
+    name: "高数",
+    description: "高等数学",
+    created_at: "2026-03-01T00:00:00Z",
+    updated_at: "2026-03-01T00:00:00Z",
+  },
 ];
+let nextId = 2;
 
 export const subjectHandlers = [
-  http.get("/api/v1/subjects", () => {
-    return HttpResponse.json({ items: mockSubjects, total: mockSubjects.length });
+  http.post("/api/v1/subjects/list", () => {
+    return HttpResponse.json({
+      code: 0,
+      data: { items: mockSubjects, total: mockSubjects.length, page: 1, size: 20 },
+    });
   }),
 
-  http.post("/api/v1/subjects", async ({ request }) => {
-    const body = await request.json() as { name: string };
+  http.post("/api/v1/subjects/add", async ({ request }) => {
+    const body = (await request.json()) as { subject: string; name: string; description?: string };
+    const now = new Date().toISOString();
     const newSubject: SubjectItem = {
-      id: body.name.toLowerCase().replace(/\s+/g, "-"),
+      id: nextId++,
+      subject: body.subject,
       name: body.name,
-      created_at: new Date().toISOString(),
+      description: body.description ?? "",
+      created_at: now,
+      updated_at: now,
     };
     mockSubjects.push(newSubject);
-    return HttpResponse.json(newSubject, { status: 201 });
+    return HttpResponse.json({ code: 0, data: newSubject }, { status: 201 });
   }),
 
-  http.delete("/api/v1/subjects/:subjectId", ({ params }) => {
-    const idx = mockSubjects.findIndex((s) => s.id === params.subjectId);
-    if (idx !== -1) mockSubjects.splice(idx, 1);
-    return HttpResponse.json({ success: true });
+  http.post("/api/v1/subjects/delete", async ({ request }) => {
+    const body = (await request.json()) as { subject: string };
+    mockSubjects = mockSubjects.filter((s) => s.subject !== body.subject);
+    return HttpResponse.json({ code: 0, data: { deleted: true, subject: body.subject } });
   }),
 ];

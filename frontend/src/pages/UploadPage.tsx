@@ -1,23 +1,72 @@
 import { useRef, useCallback } from "react";
-import { Upload as UploadIcon, FileText, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Upload as UploadIcon, FileText, Loader2, CheckCircle, XCircle, Clock, RefreshCw } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import { uploadFileApiV1UploadPost, listFilesApiV1FilesSubjectPost } from "../api/generated/upload";
-import type { FileItem } from "../api/generated/model";
+import { Button } from "../components/ui/Button";
+import { apiClient } from "../api/client";
+
+interface FileItem {
+  id: number;
+  filename: string;
+  filetype: string;
+  status: string;
+  markdown_ready: boolean;
+  latest_updated_at: string;
+  created_at: string;
+}
+
+interface ApiResponse<T> { code: number; data: T; }
+interface PaginatedData<T> { items: T[]; total: number; }
+
+async function fetchFiles(subject: string): Promise<FileItem[]> {
+  const res = await apiClient<ApiResponse<PaginatedData<FileItem>>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/list`,
+    data: { page: 1, size: 50 },
+  });
+  return res.data.items;
+}
+
+async function uploadFiles(subject: string, files: File[]): Promise<void> {
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f));
+  await apiClient({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/upload`,
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+}
+
+async function parseFiles(subject: string, fileIds: number[]): Promise<void> {
+  await apiClient({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/parse`,
+    data: { file_ids: fileIds },
+  });
+}
+
+async function deleteFile(subject: string, fileId: number): Promise<void> {
+  await apiClient({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/delete`,
+    data: { file_id: fileId },
+  });
+}
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  parsed: <CheckCircle className="w-4 h-4 text-green-500" />,
+  done: <CheckCircle className="w-4 h-4 text-green-500" />,
   pending: <Clock className="w-4 h-4 text-yellow-500" />,
-  parsing: <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />,
-  parse_failed: <XCircle className="w-4 h-4 text-red-500" />,
+  running: <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />,
+  failed: <XCircle className="w-4 h-4 text-red-500" />,
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  parsed: "已解析",
+  done: "已解析",
   pending: "等待中",
-  parsing: "解析中",
-  parse_failed: "解析失败",
+  running: "解析中",
+  failed: "解析失败",
 };
 
 export function UploadPage() {
@@ -25,29 +74,50 @@ export function UploadPage() {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data: files = [], isLoading, isError } = useQuery({
     queryKey: ["files", subjectId],
-    queryFn: () => listFilesApiV1FilesSubjectPost(subjectId, { limit: 50, offset: 0 }),
+    queryFn: () => fetchFiles(subjectId),
     enabled: !!subjectId,
+    refetchInterval: (query) => {
+      const items = query.state.data ?? [];
+      return items.some((f) => f.status === "running" || f.status === "pending") ? 3000 : false;
+    },
   });
 
-  const handleUpload = useCallback(async (file: File) => {
-    await uploadFileApiV1UploadPost({ file, subject: subjectId });
-    queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
-  }, [subjectId, queryClient]);
+  const uploadMutation = useMutation({
+    mutationFn: (selectedFiles: File[]) => uploadFiles(subjectId, selectedFiles),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
+  });
+
+  const parseMutation = useMutation({
+    mutationFn: (fileIds: number[]) => parseFiles(subjectId, fileIds),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (fileId: number) => deleteFile(subjectId, fileId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
+  });
+
+  const handleUpload = useCallback(async (selectedFiles: File[]) => {
+    if (!selectedFiles.length) return;
+    await uploadMutation.mutateAsync(selectedFiles);
+    // 上传后自动触发解析（需要先拿到新文件 id，这里刷新列表后手动触发）
+  }, [uploadMutation]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleUpload(file);
+    const dropped = Array.from(e.dataTransfer.files);
+    if (dropped.length) handleUpload(dropped);
   }, [handleUpload]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleUpload(file);
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length) handleUpload(selected);
+    e.target.value = "";
   }, [handleUpload]);
 
-  const files: FileItem[] = data?.items ?? [];
+  const pendingFiles = files.filter((f) => f.status === "pending");
 
   return (
     <div className="space-y-6">
@@ -59,7 +129,7 @@ export function UploadPage() {
       <Card>
         <CardHeader>
           <CardTitle>上传文件</CardTitle>
-          <CardDescription>支持 PDF、Word、图片等格式</CardDescription>
+          <CardDescription>支持 PDF、Word、图片等格式，可多选</CardDescription>
         </CardHeader>
         <CardContent>
           <div
@@ -68,14 +138,19 @@ export function UploadPage() {
             onDragOver={(e) => e.preventDefault()}
             onClick={() => inputRef.current?.click()}
           >
-            <UploadIcon className="w-12 h-12 mx-auto text-slate-400 mb-4" />
-            <p className="text-sm text-slate-600 mb-2">点击或拖拽文件到此处上传</p>
+            {uploadMutation.isPending
+              ? <Loader2 className="w-12 h-12 mx-auto text-slate-400 mb-4 animate-spin" />
+              : <UploadIcon className="w-12 h-12 mx-auto text-slate-400 mb-4" />}
+            <p className="text-sm text-slate-600 mb-2">
+              {uploadMutation.isPending ? "上传中..." : "点击或拖拽文件到此处上传"}
+            </p>
             <p className="text-xs text-slate-400">支持 PDF, DOCX, PNG, JPG 格式</p>
             <input
               ref={inputRef}
               type="file"
               className="hidden"
               accept=".pdf,.docx,.doc,.png,.jpg,.jpeg"
+              multiple
               onChange={handleFileChange}
             />
           </div>
@@ -84,19 +159,32 @@ export function UploadPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>已上传文件</CardTitle>
-          <CardDescription>管理您的学习资料</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>已上传文件</CardTitle>
+              <CardDescription>管理您的学习资料</CardDescription>
+            </div>
+            {pendingFiles.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => parseMutation.mutate(pendingFiles.map((f) => f.id))}
+                disabled={parseMutation.isPending}
+              >
+                {parseMutation.isPending
+                  ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />解析中</>
+                  : <><RefreshCw className="w-3 h-3 mr-1" />解析 {pendingFiles.length} 个文件</>}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading && (
             <div className="flex items-center justify-center py-8 text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              加载中...
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
             </div>
           )}
-          {isError && (
-            <p className="text-center py-8 text-red-500 text-sm">加载失败，请刷新重试</p>
-          )}
+          {isError && <p className="text-center py-8 text-red-500 text-sm">加载失败，请刷新重试</p>}
           {!isLoading && !isError && files.length === 0 && (
             <p className="text-center py-8 text-slate-400 text-sm">暂无文件，请上传学习资料</p>
           )}
@@ -115,9 +203,18 @@ export function UploadPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {STATUS_ICON[file.parse_status]}
-                  <span className="text-xs text-slate-500">{STATUS_LABEL[file.parse_status]}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    {STATUS_ICON[file.status] ?? <Clock className="w-4 h-4 text-slate-400" />}
+                    <span className="text-xs text-slate-500">{STATUS_LABEL[file.status] ?? file.status}</span>
+                  </div>
+                  <button
+                    onClick={() => deleteMutation.mutate(file.id)}
+                    disabled={deleteMutation.isPending}
+                    className="text-slate-300 hover:text-red-400 transition-colors text-xs"
+                  >
+                    删除
+                  </button>
                 </div>
               </div>
             ))}
