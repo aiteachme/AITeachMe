@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import structlog
+
+logger = structlog.get_logger()
 
 from app.agents.ingest.orchestrator import parse_file
 
 
+
 async def main() -> None:
-    input_dir = Path("playground/inputs")
-    output_dir = Path("playground/outputs")
+    input_dir = Path("../playground/inputs")
+    output_dir = Path("../playground/outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    ls_files = sorted(input_dir.glob("*"))
+    logger.info("files_in_input_dir", files=[f.name for f in ls_files])
 
     pdf_files = sorted(input_dir.glob("*.pdf"))
     if not pdf_files:

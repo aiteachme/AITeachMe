@@ -4,4 +4,5 @@ __pycache__/
 
 data/
 
-manual-testing/
+/playground/inputs/
+/playground/outputs/
