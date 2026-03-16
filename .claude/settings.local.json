@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(pwd:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npm create:*)",
+      "Bash(npx:*)",
+
+      "Bash(node:*)",
+
+      "Bash(git init:*)",
+      "Bash(git clone:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+
+      "Bash(vite:*)",
+      "Bash(pnpm:*)",
+      "Bash(yarn:*)",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__emulate",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__fill"
+    ]
+  }
+}

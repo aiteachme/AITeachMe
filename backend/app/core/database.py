@@ -149,6 +149,8 @@ def _apply_lightweight_migrations(engine) -> None:
     with engine.connect() as conn:
         if _table_exists(conn, "raw_file"):
             raw_file_columns = _get_table_columns(conn, "raw_file")
+            _ensure_column(conn, "raw_file", "markdown_path", "markdown_path TEXT")
+            _ensure_column(conn, "raw_file", "asset_dir", "asset_dir TEXT")
             _ensure_column(conn, "raw_file", "status", "status TEXT DEFAULT 'pending'")
             _ensure_column(conn, "raw_file", "error_message", "error_message TEXT")
             _ensure_column(conn, "raw_file", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
@@ -170,7 +172,54 @@ def _apply_lightweight_migrations(engine) -> None:
                         """
                     )
                 )
-            if "parse_error" in raw_file_columns:
+                # 给旧的 NOT NULL 列加默认值，避免新插入时违反约束
+                conn.execute(
+                    sa.text(
+                        """
+                        CREATE TABLE IF NOT EXISTS _raw_file_backup AS SELECT * FROM raw_file
+                        """
+                    )
+                )
+                conn.execute(sa.text("DROP TABLE raw_file"))
+                # 用新 schema 重建（不含旧列 parse_status / parse_error）
+                conn.execute(
+                    sa.text(
+                        """
+                        CREATE TABLE raw_file (
+                            id INTEGER PRIMARY KEY,
+                            subject TEXT NOT NULL,
+                            filename TEXT NOT NULL,
+                            filetype TEXT NOT NULL,
+                            file_path TEXT NOT NULL,
+                            markdown_path TEXT,
+                            asset_dir TEXT,
+                            status TEXT DEFAULT 'pending',
+                            error_message TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                        """
+                    )
+                )
+                conn.execute(
+                    sa.text(
+                        """
+                        INSERT INTO raw_file
+                            (id, subject, filename, filetype, file_path,
+                             markdown_path, asset_dir, status, error_message,
+                             created_at, updated_at)
+                        SELECT
+                            id, subject, filename, filetype, file_path,
+                            markdown_path, asset_dir, status, error_message,
+                            created_at, updated_at
+                        FROM _raw_file_backup
+                        """
+                    )
+                )
+                conn.execute(sa.text("DROP TABLE _raw_file_backup"))
+                conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_raw_file_subject ON raw_file (subject)"))
+                conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_raw_file_status ON raw_file (status)"))
+            elif "parse_error" in raw_file_columns:
                 conn.execute(
                     sa.text(
                         """

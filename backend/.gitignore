@@ -6,3 +6,6 @@ data/
 
 /playground/inputs/
 /playground/outputs/
+
+
+.env
