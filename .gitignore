@@ -5,6 +5,7 @@
 *.swo
 *~
 .kiro/
+.claude/
 
 # OS
 .DS_Store
@@ -37,5 +38,5 @@ backend/uploads/
 backend/data/*.db
 backend/data/*.sqlite
 *.log
-.env
-.env.local
+# .env
+# .env.local

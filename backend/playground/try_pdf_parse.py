@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import structlog
-
 logger = structlog.get_logger()
 
 from app.agents.ingest.orchestrator import parse_file
