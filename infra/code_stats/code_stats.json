@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T15:07:48.146931",
-  "total_commits_analyzed": 86,
+  "generated_at": "2026-03-17T12:36:06.656565",
+  "total_commits_analyzed": 89,
   "stats": [
     {
       "date": "2026-03-11",
@@ -689,6 +689,30 @@
       "code_lines": 11038,
       "other_lines": 4228,
       "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "e6fcac3",
+      "total_lines": 15266,
+      "code_lines": 11038,
+      "other_lines": 4228,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "698e146",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "fix: 解决云服务构建失败"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "c13fb4d",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "ci: 测试构建"
     }
   ]
 }
