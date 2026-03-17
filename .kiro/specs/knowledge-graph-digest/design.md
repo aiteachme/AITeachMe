@@ -547,6 +547,8 @@ class KGDigestState(TypedDict):
     chunk_ids: list[int]
     candidates: list[ChunkExtractionResult]
     clustered_candidates: list[ClusteredCandidate]
+    candidate_name_to_cluster_id: dict[str, int]           # 候选名称 → 聚类代表 ID
+    candidate_name_to_resolved_node_id: dict[str, int]     # 候选名称 → 已对齐 KnowledgeNode ID
     new_node_ids: list[int]
     updated_node_ids: list[int]
     merged_node_ids: list[int]
@@ -593,7 +595,8 @@ async def fail_curriculum_node(state: CurriculumDeriveState) -> CurriculumDerive
 def trigger_digest_build(session: Session, *, subject: str, file_ids: list[int]) -> GraphDigestJob
 async def run_graph_digest_background(*, subject: str, job_id: int) -> None
 async def run_curriculum_derive_background(*, subject: str, graph_job_id: int, curriculum_job_id: int) -> None
-def get_digest_job_status(session: Session, *, subject: str, job_id: int) -> GraphDigestJob
+def get_digest_status(session: Session, *, subject: str, job_id: int) -> DigestStatusResponse
+    """聚合查询：返回 GraphDigestJob + 关联 CurriculumDeriveJob + 当前快照 ID。"""
 def get_graph_nodes(session: Session, *, subject: str, node_type: str | None, page: int, size: int) -> PaginatedData
 def get_graph_node_detail(session: Session, *, subject: str, node_id: int) -> dict
 def get_teaching_units(session: Session, *, subject: str, page: int, size: int) -> PaginatedData
@@ -608,11 +611,11 @@ def manage_taxonomy_anchors(session: Session, *, subject: str, action: str, **kw
 
 ```python
 POST /api/v1/subjects/{subject}/digest/build            # 触发增量构建
-POST /api/v1/subjects/{subject}/digest/status            # 查询 GraphDigestJob + CurriculumDeriveJob 状态
-POST /api/v1/subjects/{subject}/graph/nodes              # 分页查询节点
-POST /api/v1/subjects/{subject}/graph/node               # 节点详情（含所属 teaching unit）
-POST /api/v1/subjects/{subject}/units                    # 分页查询教学单元
-POST /api/v1/subjects/{subject}/units/{unit_id}          # 教学单元详情
+POST /api/v1/subjects/{subject}/digest/status            # 查询聚合状态（GraphDigestJob + CurriculumDeriveJob + 当前快照）
+POST /api/v1/subjects/{subject}/graph/nodes/query        # 分页查询节点
+POST /api/v1/subjects/{subject}/graph/nodes/detail       # 节点详情（含所属 teaching unit）
+POST /api/v1/subjects/{subject}/units/query              # 分页查询教学单元
+POST /api/v1/subjects/{subject}/units/detail             # 教学单元详情
 POST /api/v1/subjects/{subject}/theme-tree/current       # 当前主题树
 POST /api/v1/subjects/{subject}/prereq-dag/current       # 当前先修 DAG
 POST /api/v1/subjects/{subject}/curriculum/current       # 当前课程快照（tree + dag 组合版本）
@@ -775,6 +778,7 @@ class KnowledgeNode(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     current_revision_id: int | None = Field(default=None)
     merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id")
+    created_by_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 ```
@@ -798,6 +802,7 @@ class KnowledgeAlias(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     is_primary: bool = Field(default=False)
     status: str = Field(default="active")
+    created_by_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -820,6 +825,7 @@ class KnowledgeEdge(SQLModel, table=True):
     confidence: float = Field(default=0.5)
     status: str = Field(default="pending")
     current_revision_id: int | None = Field(default=None)
+    created_by_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 ```
@@ -829,6 +835,9 @@ class KnowledgeEdge(SQLModel, table=True):
 ```python
 class KnowledgeRevision(SQLModel, table=True):
     __tablename__ = "knowledge_revision"
+    __table_args__ = (
+        UniqueConstraint("node_id", "revision_no", name="uq_node_revision_no"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     node_id: int = Field(foreign_key="knowledge_node.id", index=True)
@@ -847,6 +856,9 @@ class KnowledgeRevision(SQLModel, table=True):
 ```python
 class EdgeRevision(SQLModel, table=True):
     __tablename__ = "edge_revision"
+    __table_args__ = (
+        UniqueConstraint("edge_id", "revision_no", name="uq_edge_revision_no"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     edge_id: int = Field(foreign_key="knowledge_edge.id", index=True)
@@ -864,6 +876,8 @@ class EdgeRevision(SQLModel, table=True):
 
 ```python
 class EvidenceLink(SQLModel, table=True):
+    """证据链接。采用 polymorphic association（entity_type + entity_id），
+    DB 层不做外键强约束到 node/edge；完整性由服务层保证。"""
     __tablename__ = "evidence_link"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -881,6 +895,7 @@ class EvidenceLink(SQLModel, table=True):
     field_scope: str = Field(default="summary")
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
+    created_by_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -905,6 +920,7 @@ class TeachingUnit(SQLModel, table=True):
     status: str = Field(default="pending")           # UnitStatus
     confidence: float = Field(default=1.0)
     current_revision_id: int | None = Field(default=None)
+    created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 ```
@@ -914,6 +930,9 @@ class TeachingUnit(SQLModel, table=True):
 ```python
 class TeachingUnitRevision(SQLModel, table=True):
     __tablename__ = "teaching_unit_revision"
+    __table_args__ = (
+        UniqueConstraint("unit_id", "revision_no", name="uq_unit_revision_no"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
@@ -933,12 +952,17 @@ class TeachingUnitRevision(SQLModel, table=True):
 class TeachingUnitMembership(SQLModel, table=True):
     """知识节点在教学单元中的归属。"""
     __tablename__ = "teaching_unit_membership"
+    __table_args__ = (
+        UniqueConstraint("unit_id", "knowledge_node_id", "role",
+                         name="uq_unit_node_role"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     role: str                                        # UnitMemberRole
     score: float = Field(default=0.0)
+    created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -968,6 +992,9 @@ class TaxonomyAnchor(SQLModel, table=True):
 ```python
 class ThemeTreeVersion(SQLModel, table=True):
     __tablename__ = "theme_tree_version"
+    __table_args__ = (
+        UniqueConstraint("subject", "version_no", name="uq_theme_tree_subject_version"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
@@ -991,6 +1018,7 @@ class ThemeTreeNode(SQLModel, table=True):
     node_type: str                                   # ThemeTreeNodeType
     order_index: int = Field(default=0)
     summary: str = ""
+    created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -1000,6 +1028,10 @@ class ThemeTreeNode(SQLModel, table=True):
 class UnitTreeMembership(SQLModel, table=True):
     """教学单元在主题树中的归属。挂载 TeachingUnit 而非 KnowledgeNode。"""
     __tablename__ = "unit_tree_membership"
+    __table_args__ = (
+        UniqueConstraint("tree_version_id", "tree_node_id", "teaching_unit_id", "membership_role",
+                         name="uq_tree_unit_role"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     tree_version_id: int = Field(foreign_key="theme_tree_version.id", index=True)
@@ -1008,6 +1040,7 @@ class UnitTreeMembership(SQLModel, table=True):
     membership_role: str                             # UnitTreeMembershipRole
     membership_source: str = Field(default="auto")   # MembershipSource
     score: float = Field(default=0.0)
+    created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -1016,6 +1049,9 @@ class UnitTreeMembership(SQLModel, table=True):
 ```python
 class PrereqDagVersion(SQLModel, table=True):
     __tablename__ = "prereq_dag_version"
+    __table_args__ = (
+        UniqueConstraint("subject", "version_no", name="uq_prereq_dag_subject_version"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
@@ -1044,6 +1080,7 @@ class UnitDependency(SQLModel, table=True):
     confidence: float = Field(default=0.5)
     supporting_edge_count: int = Field(default=0)
     derivation_metadata_json: str = Field(default="{}")  # 派生元数据：supporting edge ids、cycle resolution 记录、confidence 聚合详情
+    created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -1069,6 +1106,8 @@ class GraphDigestJob(SQLModel, table=True):
     nodes_merged: int = Field(default=0)
     edges_added: int = Field(default=0)
     edges_updated: int = Field(default=0)
+    curriculum_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id")
+    # CurriculumDeriveJob 在 finalize_graph_node 成功后创建，此字段回填关联
     retry_of_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id")
     error_message: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -1117,6 +1156,9 @@ class CurriculumSnapshot(SQLModel, table=True):
     """课程视图一致性快照：明确记录当前课程结构 = 哪个 tree version + 哪个 dag version 的组合。
     解决 CurriculumDeriveJob 部分成功时 tree/dag 版本不一致的问题。"""
     __tablename__ = "curriculum_snapshot"
+    __table_args__ = (
+        UniqueConstraint("subject", "version_no", name="uq_curriculum_snapshot_subject_version"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
@@ -1177,6 +1219,74 @@ erDiagram
     CurriculumSnapshot ||--o| ThemeTreeVersion : references_tree
     CurriculumSnapshot ||--o| PrereqDagVersion : references_dag
 ```
+
+### 关键设计约束与边界规则
+
+#### 版本发布责任边界（硬规则）
+
+- `theme_tree_builder.py`：只能创建 draft version + ThemeTreeNode + UnitTreeMembership
+- `prereq_dag_builder.py`：只能创建 draft version + UnitDependency
+- `unit_builder.py`：只能创建 pending TeachingUnit + TeachingUnitRevision + TeachingUnitMembership
+- `finalize_curriculum_node`：唯一允许调用 publish/archive 的地方
+- **禁止 builder 内部调用任何 publish/archive helper；相关 helper 仅供 finalize_curriculum_node 使用**
+
+#### CurriculumDeriveJob 触发时序
+
+CurriculumDeriveJob 在 `finalize_graph_node` 成功后创建（不是在 GraphDigestJob 创建时预创建）。流程：
+1. `finalize_graph_node` 批量激活 pending → active，释放构建锁
+2. 创建 CurriculumDeriveJob 记录
+3. 将 `curriculum_job_id` 回填到 GraphDigestJob
+4. 异步调度 `run_curriculum_derive_background`
+
+#### DigestStatusResponse 聚合查询
+
+`digest/status` 接口返回聚合响应，而非单独的 GraphDigestJob：
+
+```python
+class DigestStatusResponse(BaseModel):
+    graph_job: GraphDigestJobResponse
+    curriculum_job: CurriculumJobResponse | None
+    current_curriculum_snapshot_id: int | None
+```
+
+#### 幂等键与构建锁的三层检查
+
+API 层和工作流层各有职责，检查顺序如下：
+
+1. **幂等命中**：同一个 `idempotency_key` → 直接返回已有 job → 不视为冲突
+2. **运行中冲突**：存在同 subject 运行中的非同幂等 job → 返回 409 Conflict
+3. **工作流抢锁**：创建新 job 后，真正执行时再抢 `SubjectBuildLock` → 最终一致性保障，防竞态
+
+> API 层检查 = 减少明显冲突请求；工作流抢锁 = 最终一致性保障
+
+#### defined_by 跨 unit 依赖 MVP 范围
+
+**MVP：defined_by 不参与跨 unit dependency 生成。** 相关保守策略（高置信度 + 无聚类并入证据 + 额外支持信号）仅作为后续增强预留（MVP+1 22.4），不进入当前实现范围。
+
+#### cleanup_pending_by_job 的精确清理
+
+所有可被 cleanup 的表均包含 `created_by_job_id` 字段，清理时按此字段精确定位：
+- `job_type="graph"`：清理 `created_by_job_id = job_id` 的 pending nodes/edges/revisions/aliases/evidence_links
+- `job_type="curriculum"`：清理 `created_by_job_id = job_id` 的 pending units/memberships/draft tree versions/draft dag versions/tree nodes/unit tree memberships/unit dependencies
+
+#### 候选聚类到边解析的名称映射（Issue 17）
+
+`cluster_node` 或 `resolve_nodes_node` 阶段需生成以下映射供后续边解析使用：
+- `candidate_name_to_cluster_id: dict[str, int]` — 候选名称 → 聚类代表 ID
+- `candidate_name_to_resolved_node_id: dict[str, int]` — 候选名称 → 已对齐的 KnowledgeNode ID
+
+边解析优先级：
+1. 通过 `candidate_name_to_resolved_node_id` 查找（batch 内已对齐的节点）
+2. 通过 `candidate_name_to_cluster_id` 查找聚类代表对应的 resolved node id
+3. Fallback：通过 `find_node_by_normalized_name` 在已有图谱中查找
+
+#### 推荐分阶段交付
+
+虽然当前设计覆盖完整 MVP-1 范围，建议实际交付按以下阶段推进：
+- **Phase 1**：GraphDigestJob + KnowledgeNode/Edge/Revision/Evidence + 图谱查询 API
+- **Phase 2**：TeachingUnit + 单元查询 API
+- **Phase 3**：ThemeTree + 主题树查询 API
+- **Phase 4**：PrereqDAG + CurriculumSnapshot + 完整课程 e2e
 
 ### 关键算法设计
 
@@ -1276,14 +1386,14 @@ def derive_prereq_dag(session, subject, impact_set, prev_dag_version):
     # Step 2: 聚合为单元级依赖
     unit_deps = aggregate_unit_dependencies(session, subject, unit_node_map)
 
-    # Step 3: 传递约简
-    reduced = transitive_reduction(unit_deps)
+    # Step 3: 去环（必须先于传递约简，因为 transitive reduction 定义基于 DAG，对含环图行为未定义）
+    acyclic_edges, broken_edges = break_cycles(unit_deps)
 
-    # Step 4: 去环
-    dag_edges, broken_edges = break_cycles(reduced)
+    # Step 4: 传递约简
+    reduced_edges = transitive_reduction(acyclic_edges)
 
     # Step 5: 创建版本
-    return create_prereq_dag_version(session, subject, dag_edges)
+    return create_prereq_dag_version(session, subject, reduced_edges)
 ```
 
 #### 6. 中间态一致性：staging/active 两层状态
@@ -1354,6 +1464,14 @@ stateDiagram-v2
 ```
 
 ## 正确性属性（Correctness Properties）
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+### 属性测试优先级分层
+
+- **P0 必做**：normalize_name 幂等 (Property 5)、progress 单调 (Property 10)、DAG 无环 (Property 12)、教学单元核心唯一 (Property 2)、主题树归属唯一 (Property 3)
+- **P1 再做**：实体对齐可达性 (Property 6)、对齐必产证据 (Property 7)、文件范围限定 (Property 11)、证据完整性 (Property 9)
+- **P2 后续**：锚点稳定性 (Property 14)、归属稳定性 (Property 15)、向量 round-trip (Property 17)、版本归档不变式 (Property 16)
 
 ### Property 1: 修订唯一当前版本不变式（Revision Singleton Invariant）
 
@@ -1505,6 +1623,10 @@ class NoPublishedTreeError(AITeachMeError):
 
 class NoPublishedDagError(AITeachMeError):
     error_code = "NO_PUBLISHED_DAG"
+    status_code = HTTPStatus.NOT_FOUND
+
+class NoPublishedCurriculumSnapshotError(AITeachMeError):
+    error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
     status_code = HTTPStatus.NOT_FOUND
 
 class SubjectBuildLockConflictError(AITeachMeError):
