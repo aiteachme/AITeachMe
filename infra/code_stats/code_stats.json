@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-17T12:36:06.656565",
-  "total_commits_analyzed": 89,
+  "generated_at": "2026-03-17T12:51:10.583458",
+  "total_commits_analyzed": 92,
   "stats": [
     {
       "date": "2026-03-11",
@@ -713,6 +713,30 @@
       "code_lines": 11038,
       "other_lines": 4227,
       "message": "ci: 测试构建"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "3bea351",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "a3e6144",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "fix: 补回依赖"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "23f65c9",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
