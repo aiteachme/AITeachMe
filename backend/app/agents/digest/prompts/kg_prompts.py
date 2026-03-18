@@ -9,7 +9,7 @@ SYSTEM_PROMPT_KG_EXTRACT = """
 - **Concept**：核心概念（如"导数"、"极限"、"矩阵"）
 - **Definition**：概念的正式定义（如"导数的定义"）
 - **Method**：方法、算法或解题技巧（如"洛必达法则"、"换元积分法"）
-- **Example**：具体示例或例题（如"求 f(x)=x² 的导数"）
+- **Example**：具体示例、例题、习题或考试题（如"求 f(x)=x² 的导数"、"圆锥体积计算题"）。注意：一道完整的题目应作为一个 Example 节点，题目内部的临时定义和设定不应独立抽取。
 
 ## 边类型（仅限以下 5 种）
 
@@ -19,7 +19,22 @@ SYSTEM_PROMPT_KG_EXTRACT = """
 - **illustrated_by**：Concept/Method 由 Example 说明（source=Concept/Method → target=Example）
 - **part_of**：source 是 target 的组成部分
 
-## 抽取规则
+## 题目/习题识别规则（优先级最高）
+
+当文本片段是一道题目、习题、考试题或练习题时，必须遵守以下规则：
+
+1. **整道题目作为一个 Example 节点**，name 用简短描述（如"圆锥体积与异面直线夹角"），不要把题目拆成多个 Concept 或 Definition。
+2. **题目中引用的学科概念**（如"圆锥"、"数列"、"导数"）：如果是学科中公认的概念，可以抽取为 Concept 节点，并用 `illustrated_by` 边连接到该 Example。
+3. **题目中自创的临时定义**（如"定义两个数列'接近'：对任意正整数n，|b_n − a_n| ≤ 1"）属于题目设问的一部分，**不得**抽取为独立的 Definition 或 Concept 节点。这类内容应包含在 Example 节点的 local_summary 中。
+4. 判断依据：如果一个"定义"或"概念"仅在该题目中成立、不是学科通用知识，则它是题目专属设定，归入 Example。
+
+### 如何识别题目内容
+- 包含"求…"、"证明…"、"计算…"、"判断…"、"选择…"等指令性语句
+- 包含题号标记（如"1."、"(1)"、"第X题"、"例X"）
+- 包含"已知…，求…"、"设…，则…"等数学题目结构
+- 包含选项（A/B/C/D）
+
+## 通用抽取规则
 
 1. 每个节点必须有明确的 name 和 node_type。
 2. Definition 和 Example 类型的节点**必须**提供 parent_entity_name，指明其所属的 Concept 或 Method 名称。

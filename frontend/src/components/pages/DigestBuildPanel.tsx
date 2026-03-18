@@ -203,7 +203,25 @@ function BuildProgress({
             <div className="flex-1">
               <div className="flex items-center justify-between text-sm mb-1">
                 <span className="text-slate-700">{stepLabel}</span>
-                <span className="text-slate-400">{totalProgress}%</span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    graph_job.status === "completed" ? "bg-green-50 text-green-600" :
+                    graph_job.status === "failed" ? "bg-red-50 text-red-600" :
+                    "bg-blue-50 text-blue-600"
+                  }`}>
+                    图谱: {graph_job.status === "completed" ? "完成" : graph_job.status === "failed" ? "失败" : "构建中"}
+                  </span>
+                  {curriculum_job && (
+                    <span className={`px-2 py-0.5 rounded text-xs ${
+                      curriculum_job.status === "completed" ? "bg-green-50 text-green-600" :
+                      curriculum_job.status === "failed" ? "bg-red-50 text-red-600" :
+                      "bg-blue-50 text-blue-600"
+                    }`}>
+                      课程: {curriculum_job.status === "completed" ? "完成" : curriculum_job.status === "failed" ? "失败" : "派生中"}
+                    </span>
+                  )}
+                  <span className="text-slate-400">{totalProgress}%</span>
+                </div>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2">
                 <div
@@ -221,25 +239,6 @@ function BuildProgress({
             <span>边 +{graph_job.edges_added} / 更新 {graph_job.edges_updated}</span>
             {curriculum_job && (
               <span>教学单元 +{curriculum_job.units_added} / 更新 {curriculum_job.units_updated}</span>
-            )}
-          </div>
-
-          <div className="flex gap-3 text-xs">
-            <span className={`px-2 py-0.5 rounded ${
-              graph_job.status === "completed" ? "bg-green-50 text-green-600" :
-              graph_job.status === "failed" ? "bg-red-50 text-red-600" :
-              "bg-blue-50 text-blue-600"
-            }`}>
-              图谱: {graph_job.status === "completed" ? "完成" : graph_job.status === "failed" ? "失败" : "构建中"}
-            </span>
-            {curriculum_job && (
-              <span className={`px-2 py-0.5 rounded ${
-                curriculum_job.status === "completed" ? "bg-green-50 text-green-600" :
-                curriculum_job.status === "failed" ? "bg-red-50 text-red-600" :
-                "bg-blue-50 text-blue-600"
-              }`}>
-                课程: {curriculum_job.status === "completed" ? "完成" : curriculum_job.status === "failed" ? "失败" : "派生中"}
-              </span>
             )}
           </div>
 
