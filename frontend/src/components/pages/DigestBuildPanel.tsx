@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -57,7 +57,86 @@ const STEP_LABELS: Record<string, string> = {
   finalize_curriculum: "完成课程结构",
 };
 
-/* ---------- 构建进度条 ---------- */
+/* ---------- Context：共享 job 状态 ---------- */
+
+interface DigestJobContext {
+  activeJobId: number | null;
+  setAndPersistJobId: (jobId: number | null) => void;
+  subject: string;
+}
+
+const DigestCtx = createContext<DigestJobContext | null>(null);
+
+/**
+ * Provider：管理当前学科的构建任务状态，包裹 Button 和 Progress 两个子组件。
+ */
+export function DigestBuildProvider({
+  subject,
+  children,
+}: {
+  subject: string;
+  children: React.ReactNode;
+}) {
+  const storageKey = `digest-job-${subject}`;
+  const [activeJobId, setActiveJobId] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? Number(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setAndPersistJobId = useCallback(
+    (jobId: number | null) => {
+      setActiveJobId(jobId);
+      try {
+        if (jobId !== null) {
+          localStorage.setItem(storageKey, String(jobId));
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [storageKey],
+  );
+
+  return (
+    <DigestCtx.Provider value={{ activeJobId, setAndPersistJobId, subject }}>
+      {children}
+    </DigestCtx.Provider>
+  );
+}
+
+function useDigestJob() {
+  const ctx = useContext(DigestCtx);
+  if (!ctx) throw new Error("useDigestJob must be used inside DigestBuildProvider");
+  return ctx;
+}
+
+/* ---------- 构建进度条（独立组件，可放在页面任意位置） ---------- */
+
+export function DigestBuildProgress() {
+  const { activeJobId, setAndPersistJobId, subject } = useDigestJob();
+  const queryClient = useQueryClient();
+
+  const handleComplete = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["theme-tree", subject] });
+    queryClient.invalidateQueries({ queryKey: ["prereq-dag", subject] });
+    queryClient.invalidateQueries({ queryKey: ["graph-nodes", subject] });
+    setAndPersistJobId(null);
+  }, [queryClient, subject, setAndPersistJobId]);
+
+  if (!activeJobId) return null;
+
+  return (
+    <BuildProgress subject={subject} jobId={activeJobId} onComplete={handleComplete} />
+  );
+}
+
+/* ---------- 内部进度条渲染 ---------- */
 
 function BuildProgress({
   subject,
@@ -81,7 +160,6 @@ function BuildProgress({
     },
   });
 
-  // 当全部完成时通知父组件
   useEffect(() => {
     if (!data) return;
     const graphDone = data.graph_job.status === "completed";
@@ -103,12 +181,10 @@ function BuildProgress({
   const isFailed = graph_job.status === "failed" || curriculum_job?.status === "failed";
   const errorMsg = graph_job.error_message || curriculum_job?.error_message;
 
-  // 计算总进度：graph 占 50%，curriculum 占 50%
   const graphProgress = graph_job.progress;
   const currProgress = curriculum_job?.progress ?? 0;
   const totalProgress = Math.round(graphProgress * 0.5 + currProgress * 0.5);
 
-  // 当前步骤
   const currentStep = curriculum_job?.current_step || graph_job.current_step;
   const stepLabel = currentStep ? (STEP_LABELS[currentStep] ?? currentStep) : "准备中";
 
@@ -116,7 +192,6 @@ function BuildProgress({
     <Card>
       <CardContent className="pt-4 pb-4">
         <div className="space-y-3">
-          {/* 进度条 */}
           <div className="flex items-center gap-3">
             {isFailed ? (
               <XCircle className="w-5 h-5 text-red-500 shrink-0" />
@@ -141,7 +216,6 @@ function BuildProgress({
             </div>
           </div>
 
-          {/* 统计 */}
           <div className="flex gap-4 text-xs text-slate-500">
             <span>节点 +{graph_job.nodes_added} / 更新 {graph_job.nodes_updated} / 合并 {graph_job.nodes_merged}</span>
             <span>边 +{graph_job.edges_added} / 更新 {graph_job.edges_updated}</span>
@@ -150,7 +224,6 @@ function BuildProgress({
             )}
           </div>
 
-          {/* 两阶段状态 */}
           <div className="flex gap-3 text-xs">
             <span className={`px-2 py-0.5 rounded ${
               graph_job.status === "completed" ? "bg-green-50 text-green-600" :
@@ -170,7 +243,6 @@ function BuildProgress({
             )}
           </div>
 
-          {/* 错误信息 */}
           {isFailed && errorMsg && (
             <div className="text-xs text-red-500 bg-red-50 rounded p-2 mt-2">
               {errorMsg}
@@ -182,34 +254,12 @@ function BuildProgress({
   );
 }
 
-/* ---------- 主组件 ---------- */
+/* ---------- 触发按钮 + 文件选择弹窗 ---------- */
 
-export function DigestBuildPanel({ subject }: { subject: string }) {
-  const queryClient = useQueryClient();
+export function DigestBuildButton() {
+  const { setAndPersistJobId, subject } = useDigestJob();
   const [showFileSelect, setShowFileSelect] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
-
-  // 持久化 activeJobId 到 localStorage，切换页面后回来仍能看到进度
-  const storageKey = `digest-job-${subject}`;
-  const [activeJobId, setActiveJobId] = useState<number | null>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      return saved ? Number(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const setAndPersistJobId = (jobId: number | null) => {
-    setActiveJobId(jobId);
-    try {
-      if (jobId !== null) {
-        localStorage.setItem(storageKey, String(jobId));
-      } else {
-        localStorage.removeItem(storageKey);
-      }
-    } catch { /* ignore */ }
-  };
 
   const { data: files = [], isLoading: filesLoading } = useQuery({
     queryKey: ["completed-files-digest", subject],
@@ -226,13 +276,6 @@ export function DigestBuildPanel({ subject }: { subject: string }) {
     },
   });
 
-  const handleComplete = () => {
-    queryClient.invalidateQueries({ queryKey: ["theme-tree", subject] });
-    queryClient.invalidateQueries({ queryKey: ["prereq-dag", subject] });
-    queryClient.invalidateQueries({ queryKey: ["graph-nodes", subject] });
-    setAndPersistJobId(null);
-  };
-
   const toggleFile = (id: number) => {
     setSelectedFileIds((prev) => {
       const next = new Set(prev);
@@ -243,23 +286,10 @@ export function DigestBuildPanel({ subject }: { subject: string }) {
 
   return (
     <>
-      {/* 触发按钮（inline，适合放在按钮行中） */}
       <Button onClick={() => setShowFileSelect(true)} variant="outline" size="sm">
         <Zap className="w-4 h-4 mr-1" />构建知识图谱
       </Button>
 
-      {/* 构建进度（浮动在页面顶部下方） */}
-      {activeJobId && (
-        <div className="fixed top-4 right-4 z-50 w-96">
-          <BuildProgress
-            subject={subject}
-            jobId={activeJobId}
-            onComplete={handleComplete}
-          />
-        </div>
-      )}
-
-      {/* 文件选择弹窗 */}
       <Modal
         open={showFileSelect}
         onClose={() => setShowFileSelect(false)}

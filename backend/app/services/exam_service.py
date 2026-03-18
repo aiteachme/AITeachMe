@@ -18,7 +18,7 @@ from app.repositories.exam_repo import (
     list_exam_history_by_subject,
     list_mistakes_by_subject,
 )
-from app.repositories.knowledge_repo import list_graph_nodes_by_subject
+from app.repositories.kg_repo import list_nodes_by_subject
 from app.repositories.profile_repo import get_profile_by_key, get_weak_points, upsert_profile
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.exam import (
@@ -41,7 +41,8 @@ async def create_exam(
 ) -> ExamData:
     """生成并保存试卷。"""
 
-    available_knowledge_points = list({node.title for node in list_graph_nodes_by_subject(session, subject)})
+    nodes, _ = list_nodes_by_subject(session, subject, limit=500, offset=0)
+    available_knowledge_points = list({node.canonical_name for node in nodes})
     weak_knowledge_points = [item.knowledge_point for item in get_weak_points(session, subject, limit=20)]
     recent_mistakes, _ = list_mistakes_by_subject(session, subject, limit=20, offset=0)
     generated_questions = await generate_exam(

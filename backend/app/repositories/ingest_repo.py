@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlmodel import Session, func, select
 
-from app.models import DocSetSourceFile, RawFile
+from app.models import RawFile
 
 _UNSET = object()
 
@@ -96,15 +96,6 @@ def update_raw_file(
     session.commit()
     session.refresh(raw_file)
     return raw_file
-
-
-def count_docset_links_for_file(session: Session, raw_file_id: int) -> int:
-    """统计文件被知识集合引用的次数。"""
-
-    stmt = select(func.count()).select_from(DocSetSourceFile).where(
-        DocSetSourceFile.raw_file_id == raw_file_id
-    )
-    return session.exec(stmt).one()
 
 
 def delete_raw_file(session: Session, raw_file: RawFile) -> None:

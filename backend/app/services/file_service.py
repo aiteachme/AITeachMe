@@ -18,11 +18,9 @@ from app.core.exceptions import (
     FileTooLargeError,
     InvalidRawFileStateError,
     RawFileNotFoundError,
-    RawFileInUseError,
 )
 from app.models import RawFile, TaskStatus
 from app.repositories.ingest_repo import (
-    count_docset_links_for_file,
     create_raw_file,
     delete_raw_file,
     get_raw_file_by_id,
@@ -324,8 +322,6 @@ def delete_files(
     deleted_ids: list[int] = []
     for raw_file in raw_files:
         raw_file_id = require_id(raw_file.id, "RawFile.id")
-        if count_docset_links_for_file(session, raw_file_id) > 0:
-            raise RawFileInUseError(raw_file_id)
 
         for path_value in [raw_file.file_path, raw_file.markdown_path]:
             if path_value:

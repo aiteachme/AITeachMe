@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlmodel import Session, func, select
 
-from app.models import ChatMessage, DocSet, Document, Exam, RawFile, Subject, UserProfile
+from app.models import ChatMessage, Document, Exam, RawFile, Subject, UserProfile
 
 
 def create_subject(session: Session, subject: Subject) -> Subject:
@@ -67,7 +67,6 @@ def subject_has_content(session: Session, slug: str) -> bool:
 
     statements = [
         select(func.count()).select_from(RawFile).where(RawFile.subject == slug),
-        select(func.count()).select_from(DocSet).where(DocSet.subject == slug),
         select(func.count()).select_from(Document).where(Document.subject == slug),
         select(func.count()).select_from(Exam).where(Exam.subject == slug),
         select(func.count()).select_from(ChatMessage).where(ChatMessage.subject == slug),

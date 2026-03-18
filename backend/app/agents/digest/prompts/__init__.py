@@ -3,7 +3,7 @@
 集中导出系统提示词与模板映射，其他模块可直接 from prompts import。
 """
 
-from .prompts import PROMPTS, SYSTEM_PROMPT_OUTLINE_EXTRACT
+from .prompts import PROMPTS
 from .kg_prompts import (
     KG_PROMPTS,
     SYSTEM_PROMPT_KG_EXTRACT,
@@ -17,7 +17,6 @@ from .kg_prompts import (
 )
 
 __all__ = [
-    "SYSTEM_PROMPT_OUTLINE_EXTRACT",
     "PROMPTS",
     "KG_PROMPTS",
     "SYSTEM_PROMPT_KG_EXTRACT",

@@ -30,10 +30,14 @@ agents/
 | 文件 | 职责 |
 |------|------|
 | `cleaner.py` | Markdown 清洗与格式规范化 |
-| `outliner.py` | 提取文档大纲 / 知识结构 |
 | `chunker.py` | 文本分块（用于向量化） |
 | `embedder.py` | 调用 Embedding 模型生成向量 |
-| `workflow.py` | LangGraph 状态机，编排 clean → outline → chunk → embed 流程 |
+| `kg_extractor.py` | 知识图谱三元组抽取 |
+| `kg_resolver.py` | 实体消歧与合并 |
+| `kg_clusterer.py` | 知识节点聚类 |
+| `kg_impact_analyzer.py` | 增量影响分析 |
+| `kg_workflow.py` | 知识图谱增量构建工作流 |
+| `curriculum_workflow.py` | 课程结构派生工作流 |
 | `prompts/` | 各步骤的 LLM 提示词 |
 
 ## interact — 交互辅导

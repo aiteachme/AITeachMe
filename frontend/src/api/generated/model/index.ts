@@ -29,8 +29,6 @@ export * from './healthResponse';
 export * from './hTTPValidationError';
 export * from './mistakeItem';
 export * from './mistakeListResponse';
-export * from './outlineNode';
-export * from './outlineResponse';
 export * from './paginationParams';
 export * from './parseStatusValue';
 export * from './pipelineStageValue';

@@ -95,14 +95,6 @@ class RawFileNotFoundError(AITeachMeError):
         super().__init__(detail=f"文件 `{file_id}` 不存在。")
 
 
-class RawFileInUseError(AITeachMeError):
-    error_code = "RAW_FILE_IN_USE"
-    status_code = HTTPStatus.CONFLICT
-
-    def __init__(self, file_id: int) -> None:
-        super().__init__(detail=f"文件 `{file_id}` 已被知识集合引用，不能删除。")
-
-
 class InvalidRawFileStateError(AITeachMeError):
     error_code = "INVALID_RAW_FILE_STATE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -111,22 +103,6 @@ class InvalidRawFileStateError(AITeachMeError):
         super().__init__(
             detail=f"文件 `{file_id}` 当前状态为 `{current_state}`，期望状态为 `{expected}`。"
         )
-
-
-class DocSetNotFoundError(AITeachMeError):
-    error_code = "DOC_SET_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
-
-    def __init__(self, docset_id: int) -> None:
-        super().__init__(detail=f"知识集合 `{docset_id}` 不存在。")
-
-
-class KnowledgeRetryNotAllowedError(AITeachMeError):
-    error_code = "KNOWLEDGE_RETRY_NOT_ALLOWED"
-    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def __init__(self, docset_id: int, status: str) -> None:
-        super().__init__(detail=f"知识集合 `{docset_id}` 当前状态为 `{status}`，不能重试。")
 
 
 class ExamNotFoundError(AITeachMeError):

@@ -1,17 +1,3 @@
 """Digest Engine 提示词定义。"""
 
-SYSTEM_PROMPT_OUTLINE_EXTRACT = """
-你是一名课程资料整理助手，请从输入的 Markdown 中抽取简洁的大纲树。
-
-要求：
-1. 保持与原文顺序一致。
-2. 只保留核心知识结构。
-3. 层级深度尽量控制在 1 到 3 层。
-4. 标题简洁，不要杜撰原文没有的知识点。
-5. 输出必须符合结构化 schema。
-""".strip()
-
-
-PROMPTS: dict[str, str] = {
-    "outline_extract": SYSTEM_PROMPT_OUTLINE_EXTRACT,
-}
+PROMPTS: dict[str, str] = {}

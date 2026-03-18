@@ -17,12 +17,8 @@ from app.models.curriculum import (
 from app.models.enums import Difficulty, DigestStep, QuestionType, TaskStatus
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
-    DocBuildJob,
-    DocSet,
-    DocSetSourceFile,
     Document,
     DocumentChunk,
-    DocumentOutlineNode,
 )
 from app.models.knowledge_graph import (
     EdgeRevision,
@@ -45,12 +41,8 @@ __all__ = [
     "CurriculumSnapshot",
     "Difficulty",
     "DigestStep",
-    "DocBuildJob",
-    "DocSet",
-    "DocSetSourceFile",
     "Document",
     "DocumentChunk",
-    "DocumentOutlineNode",
     "EdgeRevision",
     "EvidenceLink",
     "Exam",
