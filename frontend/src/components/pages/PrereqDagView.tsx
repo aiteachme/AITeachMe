@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { fetchPrereqDag, fetchTeachingUnits, type UnitDependencyItem } from "../../api/graphApi";
 import { Card, CardContent } from "../ui/Card";
+import { MarkdownViewer } from "../ui/MarkdownViewer";
 
 /* ---------- 辅助：构建拓扑层级 ---------- */
 
@@ -126,7 +127,7 @@ function NoDependenciesView({ subject, dagData }: { subject: string; dagData: Pr
                   className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 text-sm"
                 >
                   <BookOpen className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className="text-slate-700 flex-1">{unit.canonical_name}</span>
+                  <span className="text-slate-700 flex-1 [&_p]:mb-0 [&_p]:inline"><MarkdownViewer content={unit.canonical_name} /></span>
                   <span className="text-[10px] text-slate-400">
                     {Math.round(unit.confidence * 100)}%
                   </span>

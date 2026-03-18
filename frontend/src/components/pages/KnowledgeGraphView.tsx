@@ -86,7 +86,7 @@ function NodeDetailPanel({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-lg font-semibold text-slate-800">
-              {data.canonical_name}
+              <MarkdownViewer content={data.canonical_name} />
             </h3>
             <span className={`text-xs px-1.5 py-0.5 rounded ${typeStyle.color}`}>
               {typeStyle.label}
@@ -109,7 +109,7 @@ function NodeDetailPanel({
         <div className="space-y-2">
           {data.current_revision.summary && (
             <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-              {data.current_revision.summary}
+              <MarkdownViewer content={data.current_revision.summary} />
             </div>
           )}
           {data.current_revision.body && (
@@ -345,8 +345,8 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-800 truncate flex-1">
-                        {node.canonical_name}
+                      <span className="text-sm text-slate-800 truncate flex-1 [&_p]:mb-0 [&_p]:inline">
+                        <MarkdownViewer content={node.canonical_name} />
                       </span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
                         {typeStyle.label}

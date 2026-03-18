@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileQuestion, Clock, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { apiClient } from "../api/client";
 
 interface QuestionItem {
@@ -112,7 +113,7 @@ export function ExamPage() {
           {activeExam.questions.map((q, i) => (
             <Card key={q.question_key}>
               <CardHeader>
-                <CardTitle className="text-base">{i + 1}. {q.stem}</CardTitle>
+                <CardTitle className="text-base"><span className="mr-1">{i + 1}.</span><MarkdownViewer content={q.stem} /></CardTitle>
                 <CardDescription>{q.knowledge_point} · {q.difficulty}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -127,7 +128,7 @@ export function ExamPage() {
                           checked={answers[q.question_key] === opt}
                           onChange={() => setAnswers({ ...answers, [q.question_key]: opt })}
                         />
-                        <span className="text-sm text-slate-700">{opt}</span>
+                        <span className="text-sm text-slate-700"><MarkdownViewer content={opt} /></span>
                       </label>
                     ))}
                   </div>
@@ -169,9 +170,9 @@ export function ExamPage() {
                   ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                   : <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />}
                 <div>
-                  <p className="text-sm font-medium text-slate-800">正确答案：{r.correct_answer}</p>
-                  <p className="text-xs text-slate-500 mt-1">{r.explanation}</p>
-                  {r.analysis && <p className="text-xs text-orange-500 mt-1">错因：{r.analysis}</p>}
+                  <div className="text-sm font-medium text-slate-800">正确答案：<MarkdownViewer content={r.correct_answer} /></div>
+                  <div className="text-xs text-slate-500 mt-1"><MarkdownViewer content={r.explanation} /></div>
+                  {r.analysis && <div className="text-xs text-orange-500 mt-1">错因：<MarkdownViewer content={r.analysis} /></div>}
                 </div>
               </div>
             ))}

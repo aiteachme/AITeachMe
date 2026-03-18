@@ -14,6 +14,7 @@ SYSTEM_PROMPT_EXAM_GENERATE = """
 {{ recent_mistake_stems }}
 8. 每道题必须包含 question_key、type、stem、answer、explanation、knowledge_point、difficulty。
 9. 单选题 options 至少两个，answer 必须是选项之一。
+10. 题目中的数学公式必须使用 LaTeX 语法：行内公式用单美元符号包裹（如 $f(x)=x^2$），独立公式用双美元符号包裹。不要用纯文本表示数学符号。
 
 指定知识点：
 {{ requested_knowledge_points }}
@@ -34,13 +35,14 @@ SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT = """
 3. 题目必须基于给定知识文本，不要引入文本外知识。
 4. 每道题必须包含 question_key、type、stem、answer、explanation、knowledge_point、difficulty。
 5. 单选题 options 至少两个，answer 必须是选项之一。
+6. 题目中的数学公式必须使用 LaTeX 语法：行内公式用单美元符号包裹（如 $f(x)=x^2$），独立公式用双美元符号包裹。不要用纯文本表示数学符号。
 
 知识文本：
 {{ knowledge_text }}
 """.strip()
 
 SYSTEM_PROMPT_SHORT_ANSWER_GRADE = """
-请判断下面学生的简答题回答是否“基本正确”。
+请判断下面学生的简答题回答是否"基本正确"。
 
 要求：
 1. 只返回 `1` 或 `0`
@@ -64,6 +66,7 @@ SYSTEM_PROMPT_MISTAKE_ANALYSIS = """
 1. 控制在 100 字以内
 2. 语气像老师，简洁直接
 3. 不要重复题干
+4. 数学公式使用 LaTeX 语法：行内公式用单美元符号包裹，独立公式用双美元符号包裹。
 
 题目：
 {{ stem }}

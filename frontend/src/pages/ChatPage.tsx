@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Plus, Trash2, Menu, X, MessageSquare, Loader2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { Button } from "../components/ui/Button";
+import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { cn } from "../lib/utils";
 import { apiClient } from "../api/client";
 
@@ -223,12 +224,18 @@ export function ChatPage() {
                     {message.role === "user" ? "U" : "AI"}
                   </div>
                   <div className="flex-1 min-w-0 pt-1.5">
-                    <p className="text-[15px] leading-7 whitespace-pre-wrap text-slate-800">
-                      {message.content}
-                      {message.role === "assistant" && isStreaming && message.id === messages[messages.length - 1]?.id && (
-                        <span className="inline-block w-0.5 h-4 bg-slate-600 ml-0.5 animate-pulse" />
-                      )}
-                    </p>
+                    {message.role === "assistant" ? (
+                      <div className="text-[15px] leading-7 text-slate-800 [&_.katex-display]:my-2">
+                        <MarkdownViewer content={message.content} />
+                        {isStreaming && message.id === messages[messages.length - 1]?.id && (
+                          <span className="inline-block w-0.5 h-4 bg-slate-600 ml-0.5 animate-pulse" />
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[15px] leading-7 whitespace-pre-wrap text-slate-800">
+                        {message.content}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

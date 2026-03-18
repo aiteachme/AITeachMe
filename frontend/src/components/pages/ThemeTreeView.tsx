@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { fetchThemeTree, type ThemeTreeNodeResponse, type TreeUnitItem } from "../../api/graphApi";
 import { Card, CardContent } from "../ui/Card";
+import { MarkdownViewer } from "../ui/MarkdownViewer";
 
 /* ---------- 节点类型映射 ---------- */
 
@@ -37,7 +38,7 @@ function UnitCard({ unit }: { unit: TreeUnitItem }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50 transition-colors">
       <BookOpen className="w-4 h-4 text-emerald-500 shrink-0" />
-      <span className="text-sm text-slate-700 flex-1">{unit.canonical_name}</span>
+      <span className="text-sm text-slate-700 flex-1 [&_p]:mb-0 [&_p]:inline"><MarkdownViewer content={unit.canonical_name} /></span>
       <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 shrink-0">
         {ROLE_LABEL[unit.membership_role] ?? unit.membership_role}
       </span>
@@ -98,7 +99,7 @@ function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: nu
             )}
           </div>
           {node.summary && expanded && (
-            <p className="text-xs text-slate-500 mt-1 line-clamp-2">{node.summary}</p>
+            <div className="text-xs text-slate-500 mt-1 line-clamp-2"><MarkdownViewer content={node.summary} /></div>
           )}
         </div>
       </div>

@@ -1,4 +1,7 @@
 import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 interface MarkdownViewerProps {
   content: string;
@@ -7,6 +10,8 @@ interface MarkdownViewerProps {
 export function MarkdownViewer({ content }: MarkdownViewerProps) {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex]}
       components={{
         h1: ({ children }) => (
           <h1 className="text-2xl font-bold text-slate-900 mt-6 mb-3 pb-2 border-b border-slate-200">

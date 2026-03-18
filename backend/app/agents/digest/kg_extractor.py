@@ -21,11 +21,11 @@ logger = structlog.get_logger()
 class CandidateNode(BaseModel):
     """从 chunk 中抽取的候选知识节点。"""
 
-    name: str = Field(description="知识节点名称。")
+    name: str = Field(description="知识节点名称，其中数学公式用 LaTeX 语法 $...$ 包裹。")
     node_type: Literal["Topic", "Concept", "Definition", "Method", "Example"] = Field(
         description="节点类型，限定为 Topic/Concept/Definition/Method/Example。"
     )
-    local_summary: str = Field(description="该知识点在本段文本中的核心内容摘要，不超过 100 字。")
+    local_summary: str = Field(description="该知识点在本段文本中的核心内容摘要，内容较多时可分段（用换行分隔）。数学公式必须使用 LaTeX 语法，行内公式用 $...$ 包裹，独立公式用 $$...$$ 包裹。")
     taxonomy_hint: str = Field(
         default="",
         description="该节点最可能归属的上层主题名称，用于后续主题树对齐。",
@@ -48,7 +48,7 @@ class CandidateEdge(BaseModel):
         "illustrated_by",
         "part_of",
     ] = Field(description="边类型。")
-    description: str = Field(description="关系描述。")
+    description: str = Field(description="关系描述，其中数学公式用 LaTeX 语法 $...$ 包裹。")
 
 
 class ChunkExtractionResult(BaseModel):

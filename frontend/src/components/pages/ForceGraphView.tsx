@@ -123,7 +123,7 @@ function NodeDetailSidebar({
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-lg font-semibold text-slate-800">{data.canonical_name}</h3>
+            <h3 className="text-lg font-semibold text-slate-800"><MarkdownViewer content={data.canonical_name} /></h3>
             <span
               className="text-xs px-1.5 py-0.5 rounded"
               style={{ backgroundColor: color.bg, color: color.border }}
@@ -145,7 +145,7 @@ function NodeDetailSidebar({
         <div className="space-y-2">
           {data.current_revision.summary && (
             <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-              {data.current_revision.summary}
+              <MarkdownViewer content={data.current_revision.summary} />
             </div>
           )}
           {data.current_revision.body && (
