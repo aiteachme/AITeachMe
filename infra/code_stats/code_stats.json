@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T05:21:05.284292",
-  "total_commits_analyzed": 72,
+  "generated_at": "2026-03-17T12:51:10.583458",
+  "total_commits_analyzed": 92,
   "stats": [
     {
       "date": "2026-03-11",
@@ -576,6 +576,166 @@
       "total_lines": 10119,
       "code_lines": 7374,
       "other_lines": 2745,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "3b80b07",
+      "total_lines": 12407,
+      "code_lines": 9097,
+      "other_lines": 3310,
+      "message": "feat(frontend): 搭建前端基础架构，集成 React + TypeScript + T"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "2e4f201",
+      "total_lines": 12318,
+      "code_lines": 9051,
+      "other_lines": 3267,
+      "message": "Merge branch 'main' into feat_frontend_basic"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "f1c4c61",
+      "total_lines": 12354,
+      "code_lines": 9078,
+      "other_lines": 3276,
+      "message": "Merge branch 'refs/heads/main' into feat_frontend_"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "26792ae",
+      "total_lines": 10432,
+      "code_lines": 7675,
+      "other_lines": 2757,
+      "message": "Merge branch 'refs/heads/main' into feat_frontend_"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "67b15bc",
+      "total_lines": 13041,
+      "code_lines": 9048,
+      "other_lines": 3993,
+      "message": "temp"
+    },
+    {
+      "date": "2026-03-15",
+      "commit": "34190a3",
+      "total_lines": 12506,
+      "code_lines": 8676,
+      "other_lines": 3830,
+      "message": "temp"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "806f86c",
+      "total_lines": 10119,
+      "code_lines": 7374,
+      "other_lines": 2745,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "98fc8f6",
+      "total_lines": 10119,
+      "code_lines": 7374,
+      "other_lines": 2745,
+      "message": "chore: 增加一键启动脚本"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "2433002",
+      "total_lines": 13788,
+      "code_lines": 9780,
+      "other_lines": 4008,
+      "message": "Merge branch 'develop' into feat_frontend_basic"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "29b5596",
+      "total_lines": 13713,
+      "code_lines": 9734,
+      "other_lines": 3979,
+      "message": "refactor(frontend): 重构前端目录结构并整理文档"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "074a19d",
+      "total_lines": 14642,
+      "code_lines": 10481,
+      "other_lines": 4161,
+      "message": "feat(frontend): 集成 MSW 以支持开发环境下的 API Mock"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "94266c5",
+      "total_lines": 15008,
+      "code_lines": 10794,
+      "other_lines": 4214,
+      "message": "feat(frontend): 集成真实 API 并完善学科管理功能"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "4cd877e",
+      "total_lines": 15266,
+      "code_lines": 11038,
+      "other_lines": 4228,
+      "message": "feat(backend,frontend): Add markdown processing an"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "1243fbb",
+      "total_lines": 15266,
+      "code_lines": 11038,
+      "other_lines": 4228,
+      "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "e6fcac3",
+      "total_lines": 15266,
+      "code_lines": 11038,
+      "other_lines": 4228,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "698e146",
+      "total_lines": 10124,
+      "code_lines": 7379,
+      "other_lines": 2745,
+      "message": "fix: 解决云服务构建失败"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "c13fb4d",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "ci: 测试构建"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "3bea351",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "a3e6144",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "fix: 补回依赖"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "23f65c9",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
