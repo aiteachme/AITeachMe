@@ -189,3 +189,94 @@ class AuthNotReadyError(AITeachMeError):
 
     def __init__(self) -> None:
         super().__init__(detail="鉴权脚手架已预留，但当前尚未实现。")
+
+
+# ── 知识图谱增量构建 + 多视图课程结构派生 ──
+
+
+class DigestJobNotFoundError(AITeachMeError):
+    error_code = "DIGEST_JOB_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, job_id: int) -> None:
+        super().__init__(detail=f"增量构建任务 `{job_id}` 不存在。")
+
+
+class KnowledgeNodeNotFoundError(AITeachMeError):
+    error_code = "KNOWLEDGE_NODE_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, node_id: int) -> None:
+        super().__init__(detail=f"知识节点 `{node_id}` 不存在。")
+
+
+class TeachingUnitNotFoundError(AITeachMeError):
+    error_code = "TEACHING_UNIT_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, unit_id: int) -> None:
+        super().__init__(detail=f"教学单元 `{unit_id}` 不存在。")
+
+
+class ThemeTreeNodeNotFoundError(AITeachMeError):
+    error_code = "THEME_TREE_NODE_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, node_id: int) -> None:
+        super().__init__(detail=f"主题树节点 `{node_id}` 不存在。")
+
+
+class NoPublishedTreeError(AITeachMeError):
+    error_code = "NO_PUBLISHED_TREE"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的主题树。")
+
+
+class NoPublishedDagError(AITeachMeError):
+    error_code = "NO_PUBLISHED_DAG"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的先修 DAG。")
+
+
+class NoPublishedCurriculumSnapshotError(AITeachMeError):
+    error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照。")
+
+
+class SubjectBuildLockConflictError(AITeachMeError):
+    error_code = "SUBJECT_BUILD_LOCK_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 正在构建中，请稍后重试。")
+
+
+class TreeVersionConflictError(AITeachMeError):
+    error_code = "TREE_VERSION_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 树版本乐观锁冲突，请重试。")
+
+
+class DagVersionConflictError(AITeachMeError):
+    error_code = "DAG_VERSION_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` DAG 版本乐观锁冲突，请重试。")
+
+
+class EvidenceNotFoundError(AITeachMeError):
+    error_code = "EVIDENCE_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, evidence_id: int) -> None:
+        super().__init__(detail=f"证据 #{evidence_id} 不存在。")

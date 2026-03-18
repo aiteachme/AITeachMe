@@ -1,0 +1,417 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Loader2,
+  AlertCircle,
+  Network,
+  ChevronRight,
+  X,
+  Link2,
+  Tag,
+  FileText,
+  List,
+  Share2,
+  ExternalLink,
+} from "lucide-react";
+import {
+  fetchGraphNodes,
+  fetchGraphNodeDetail,
+  type KnowledgeNodeResponse,
+} from "../../api/graphApi";
+import { Card, CardContent } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { MarkdownViewer } from "../ui/MarkdownViewer";
+import { ForceGraphView } from "./ForceGraphView";
+import { EvidenceContextModal } from "./EvidenceContextModal";
+
+/* ---------- 节点类型配色 ---------- */
+
+const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
+  Topic: { label: "主题", color: "bg-blue-50 text-blue-600" },
+  topic: { label: "主题", color: "bg-blue-50 text-blue-600" },
+  Concept: { label: "概念", color: "bg-purple-50 text-purple-600" },
+  concept: { label: "概念", color: "bg-purple-50 text-purple-600" },
+  Method: { label: "方法", color: "bg-amber-50 text-amber-600" },
+  method: { label: "方法", color: "bg-amber-50 text-amber-600" },
+  Definition: { label: "定义", color: "bg-emerald-50 text-emerald-600" },
+  definition: { label: "定义", color: "bg-emerald-50 text-emerald-600" },
+  Example: { label: "示例", color: "bg-pink-50 text-pink-600" },
+  example: { label: "示例", color: "bg-pink-50 text-pink-600" },
+  Theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
+  theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
+  Formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
+  formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
+};
+
+/* ---------- 节点详情面板 ---------- */
+
+function NodeDetailPanel({
+  subject,
+  nodeId,
+  onClose,
+  onNavigate,
+  onEvidenceClick,
+}: {
+  subject: string;
+  nodeId: number;
+  onClose: () => void;
+  onNavigate: (id: number) => void;
+  onEvidenceClick: (evidenceId: number) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["graph-node-detail", subject, nodeId],
+    queryFn: () => fetchGraphNodeDetail(subject, nodeId),
+    enabled: !!nodeId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-slate-400">
+        <Loader2 className="w-4 h-4 animate-spin mr-2" />加载中...
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const typeStyle = NODE_TYPE_STYLE[data.node_type] ?? {
+    label: data.node_type,
+    color: "bg-slate-100 text-slate-600",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 头部 */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-lg font-semibold text-slate-800">
+              {data.canonical_name}
+            </h3>
+            <span className={`text-xs px-1.5 py-0.5 rounded ${typeStyle.color}`}>
+              {typeStyle.label}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">
+            置信度 {Math.round(data.confidence * 100)}%
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* 修订内容 */}
+      {data.current_revision && (
+        <div className="space-y-2">
+          {data.current_revision.summary && (
+            <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
+              {data.current_revision.summary}
+            </div>
+          )}
+          {data.current_revision.body && (
+            <div className="text-sm border border-slate-100 rounded-lg p-3 max-h-48 overflow-y-auto">
+              <MarkdownViewer content={data.current_revision.body} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 别名 */}
+      {data.aliases.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
+            <Tag className="w-3 h-3" />别名
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.aliases.map((a) => (
+              <span
+                key={a.id}
+                className={`text-xs px-2 py-0.5 rounded-full ${
+                  a.is_primary
+                    ? "bg-slate-800 text-white"
+                    : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {a.alias}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 关联边 */}
+      {data.incident_edges.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
+            <Link2 className="w-3 h-3" />关联知识 ({data.incident_edges.length})
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {data.incident_edges.map((edge) => (
+              <button
+                key={edge.id}
+                onClick={() => onNavigate(edge.other_node_id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-slate-50 transition-colors"
+              >
+                <span className="text-slate-400">
+                  {edge.direction === "outgoing" ? "→" : "←"}
+                </span>
+                <span className="text-slate-700 truncate flex-1">
+                  {edge.other_node_name}
+                </span>
+                <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
+                <ChevronRight className="w-3 h-3 text-slate-300" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 证据 */}
+      {data.evidence.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
+            <FileText className="w-3 h-3" />来源证据 ({data.evidence.length})
+          </div>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {data.evidence.map((ev) => (
+              <button
+                key={ev.id}
+                onClick={() => onEvidenceClick(ev.id)}
+                className="w-full text-left text-xs text-slate-600 bg-slate-50 rounded p-2 border-l-2 border-slate-300 hover:border-amber-400 hover:bg-amber-50/50 transition-colors cursor-pointer group"
+              >
+                <p className="line-clamp-3">{ev.quote_text}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-[10px] text-slate-400">
+                    {ev.evidence_role} · {Math.round(ev.confidence * 100)}%
+                  </p>
+                  <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-amber-500 transition-colors" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- 节点类型过滤 ---------- */
+
+const NODE_TYPES = [
+  { value: undefined, label: "全部" },
+  { value: "Topic", label: "主题" },
+  { value: "Concept", label: "概念" },
+  { value: "Method", label: "方法" },
+  { value: "Definition", label: "定义" },
+  { value: "Example", label: "示例" },
+];
+
+/* ---------- 主组件 ---------- */
+
+type ViewMode = "list" | "graph";
+
+export function KnowledgeGraphView({ subject }: { subject: string }) {
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [nodeType, setNodeType] = useState<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [evidenceModalId, setEvidenceModalId] = useState<number | null>(null);
+  const pageSize = 30;
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["graph-nodes", subject, nodeType, page],
+    queryFn: () => fetchGraphNodes(subject, nodeType, page, pageSize),
+    enabled: !!subject,
+    retry: false,
+  });
+
+  if (isLoading && !data) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-400">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" />加载知识节点...
+      </div>
+    );
+  }
+
+  if (isError) {
+    const msg = (error as any)?.response?.data?.detail ?? "暂无知识图谱数据";
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+        <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
+        <p className="text-sm">{msg}</p>
+        <p className="text-xs mt-1">请先上传资料并触发知识图谱构建</p>
+      </div>
+    );
+  }
+
+  const nodes = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / pageSize);
+
+  if (total === 0 && !nodeType) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+        <Network className="w-8 h-8 mb-2 text-slate-300" />
+        <p className="text-sm">暂无知识节点</p>
+        <p className="text-xs mt-1">构建完成后将自动提取知识节点</p>
+      </div>
+    );
+  }
+
+  const viewToggle = (
+    <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0">
+      <button
+        onClick={() => setViewMode("list")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+          viewMode === "list"
+            ? "bg-white text-slate-900 shadow-sm font-medium"
+            : "text-slate-500 hover:text-slate-700"
+        }`}
+      >
+        <List className="w-3.5 h-3.5" />列表视图
+      </button>
+      <button
+        onClick={() => setViewMode("graph")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+          viewMode === "graph"
+            ? "bg-white text-slate-900 shadow-sm font-medium"
+            : "text-slate-500 hover:text-slate-700"
+        }`}
+      >
+        <Share2 className="w-3.5 h-3.5" />力导向图
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* 力导向图模式 */}
+      {viewMode === "graph" && (
+        <ForceGraphView
+          subject={subject}
+          toolbar={viewToggle}
+          onEvidenceClick={(id) => setEvidenceModalId(id)}
+        />
+      )}
+
+      {/* 列表模式（原有） */}
+      {viewMode === "list" && (
+        <div className="flex gap-4">
+          {/* 左侧：节点列表 */}
+          <div className={`${selectedNodeId ? "w-1/2" : "w-full"} space-y-4 transition-all`}>
+            {/* 视图切换 + 类型过滤 */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {viewToggle}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {NODE_TYPES.map((t) => (
+                  <button
+                    key={t.label}
+                    onClick={() => { setNodeType(t.value); setPage(1); }}
+                    className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                      nodeType === t.value
+                        ? "bg-slate-800 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+                <span className="text-xs text-slate-400 ml-2">
+                  共 {total} 个节点
+                </span>
+              </div>
+            </div>
+
+            {/* 节点网格 */}
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+              {nodes.map((node: KnowledgeNodeResponse) => {
+                const typeStyle = NODE_TYPE_STYLE[node.node_type] ?? {
+                  label: node.node_type,
+                  color: "bg-slate-100 text-slate-600",
+                };
+                const isSelected = selectedNodeId === node.id;
+                return (
+                  <button
+                    key={node.id}
+                    onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+                    className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
+                      isSelected
+                        ? "border-slate-400 bg-slate-50 shadow-sm"
+                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-800 truncate flex-1">
+                        {node.canonical_name}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
+                        {typeStyle.label}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      置信度 {Math.round(node.confidence * 100)}%
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 分页 */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  上一页
+                </Button>
+                <span className="text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  下一页
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* 右侧：节点详情 */}
+          {selectedNodeId && (
+            <div className="w-1/2">
+              <Card>
+                <CardContent className="pt-6">
+                  <NodeDetailPanel
+                    subject={subject}
+                    nodeId={selectedNodeId}
+                    onClose={() => setSelectedNodeId(null)}
+                    onNavigate={(id) => setSelectedNodeId(id)}
+                    onEvidenceClick={(id) => setEvidenceModalId(id)}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 证据原文弹窗 */}
+      <EvidenceContextModal
+        open={!!evidenceModalId}
+        onClose={() => setEvidenceModalId(null)}
+        subject={subject}
+        evidenceId={evidenceModalId}
+      />
+    </div>
+  );
+}

@@ -326,6 +326,16 @@ def get_chunks_by_document_id(session: Session, document_id: int) -> list[Docume
     return list(session.exec(stmt).all())
 
 
+def get_chunk_by_id(session: Session, chunk_id: int) -> DocumentChunk | None:
+    """按 ID 获取单个切块。"""
+    return session.get(DocumentChunk, chunk_id)
+
+
+def get_document_by_id(session: Session, document_id: int) -> Document | None:
+    """按 ID 获取单个文档。"""
+    return session.get(Document, document_id)
+
+
 def count_chunks_by_doc_set(session: Session, doc_set_id: int) -> int:
     """统计知识集合切块数。"""
 

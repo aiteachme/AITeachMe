@@ -11,12 +11,21 @@ import {
   RefreshCw,
   FileText,
   CheckCircle,
+  FolderTree,
+  GitBranch,
+  Network,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { apiClient } from "../api/client";
+import { ThemeTreeView } from "../components/pages/ThemeTreeView";
+import { PrereqDagView } from "../components/pages/PrereqDagView";
+import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
+import { DigestBuildPanel } from "../components/pages/DigestBuildPanel";
+import { clearSubjectKnowledge } from "../api/graphApi";
 
 /* ---------- types ---------- */
 
@@ -338,6 +347,17 @@ function DocsetCard({
   );
 }
 
+/* ---------- 知识视图 Tab ---------- */
+
+type KnowledgeViewTab = "docsets" | "theme-tree" | "prereq-dag" | "knowledge-graph";
+
+const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: "docsets", label: "知识集合", icon: <BookOpen className="w-4 h-4" />, desc: "文档知识集合" },
+  { id: "theme-tree", label: "主题树", icon: <FolderTree className="w-4 h-4" />, desc: "层次化主题结构" },
+  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="w-4 h-4" />, desc: "学习路径依赖" },
+  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="w-4 h-4" />, desc: "底层知识节点" },
+];
+
 /* ---------- main page ---------- */
 
 export function SummaryPage() {
@@ -346,6 +366,8 @@ export function SummaryPage() {
   const [showBuild, setShowBuild] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
   const [buildTitle, setBuildTitle] = useState("");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("docsets");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const { data: docsets = [], isLoading, isError } = useQuery({
     queryKey: ["knowledge-list", subjectId],
@@ -370,6 +392,17 @@ export function SummaryPage() {
       setShowBuild(false);
       setSelectedFileIds(new Set());
       setBuildTitle("");
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: () => clearSubjectKnowledge(subjectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-list", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["theme-tree", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["prereq-dag", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-nodes", subjectId] });
+      setShowClearConfirm(false);
     },
   });
 
@@ -398,32 +431,75 @@ export function SummaryPage() {
           <h1 className="text-3xl font-bold text-slate-900">知识总结</h1>
           <p className="text-slate-500 mt-2">AI 生成的知识点总结和思维导图</p>
         </div>
-        <Button onClick={() => setShowBuild(true)}>
-          <Plus className="w-4 h-4 mr-1" />构建知识集合
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowBuild(true)}>
+            <Plus className="w-4 h-4 mr-1" />构建知识集合
+          </Button>
+          <DigestBuildPanel subject={subjectId} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowClearConfirm(true)}
+            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4 mr-1" />清空知识
+          </Button>
+        </div>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center py-16 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
-        </div>
-      )}
-      {isError && <p className="text-center py-16 text-red-500 text-sm">加载失败，请刷新重试</p>}
-      {!isLoading && !isError && docsets.length === 0 && (
-        <p className="text-center py-16 text-slate-400 text-sm">暂无知识集合，点击右上角「构建知识集合」开始</p>
-      )}
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {docsets.map((docset) => (
-          <DocsetCard
-            key={docset.id}
-            subject={subjectId}
-            docset={docset}
-            onDelete={() => deleteMutation.mutate(docset.id)}
-            onRetry={() => retryMutation.mutate(docset.id)}
-          />
+      {/* 视图切换 Tab */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+        {VIEW_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all flex-1 justify-center ${
+              activeTab === tab.id
+                ? "bg-white text-slate-900 shadow-sm font-medium"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </button>
         ))}
       </div>
+
+      {/* 知识集合视图（原有） */}
+      {activeTab === "docsets" && (
+        <>
+          {isLoading && (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
+            </div>
+          )}
+          {isError && <p className="text-center py-16 text-red-500 text-sm">加载失败，请刷新重试</p>}
+          {!isLoading && !isError && docsets.length === 0 && (
+            <p className="text-center py-16 text-slate-400 text-sm">暂无知识集合，点击右上角「构建知识集合」开始</p>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-2">
+            {docsets.map((docset) => (
+              <DocsetCard
+                key={docset.id}
+                subject={subjectId}
+                docset={docset}
+                onDelete={() => deleteMutation.mutate(docset.id)}
+                onRetry={() => retryMutation.mutate(docset.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* 主题树视图 */}
+      {activeTab === "theme-tree" && <ThemeTreeView subject={subjectId} />}
+
+      {/* 先修图视图 */}
+      {activeTab === "prereq-dag" && <PrereqDagView subject={subjectId} />}
+
+      {/* 知识图谱视图 */}
+      {activeTab === "knowledge-graph" && <KnowledgeGraphView subject={subjectId} />}
 
       {/* 构建知识集合弹窗 */}
       <Modal open={showBuild} onClose={() => setShowBuild(false)} title="构建知识集合">
@@ -483,6 +559,37 @@ export function SummaryPage() {
               {buildMutation.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />构建中...</>
                 : <>开始构建</>}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 清空知识确认弹窗 */}
+      <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
+            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-red-700">
+              <p>此操作将清空该学科的所有知识数据，包括：</p>
+              <ul className="list-disc list-inside mt-2 space-y-1 text-red-600">
+                <li>知识图谱（节点、边、证据）</li>
+                <li>教学单元及修订</li>
+                <li>主题树、先修图、课程快照</li>
+                <li>构建任务记录</li>
+              </ul>
+              <p className="mt-2 font-medium">此操作不可撤销，已上传的文件不受影响。</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)}>取消</Button>
+            <Button
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              {clearMutation.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />清空中...</>
+                : <><Trash2 className="w-4 h-4 mr-1" />确认清空</>}
             </Button>
           </div>
         </div>
