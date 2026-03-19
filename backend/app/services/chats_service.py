@@ -13,16 +13,16 @@ from app.agents.interact.retriever import retrieve
 from app.agents.interact.streamer import format_sse_event, stream_llm_events
 from app.core.config import get_settings
 from app.models import ChatMessage
-from app.repositories.chat_repo import (
+from app.repositories.chats_repo import (
     clear_messages_by_subject,
     create_message_pair,
     get_recent_turns,
     list_messages_by_subject,
 )
-from app.repositories.exam_repo import list_mistakes_by_subject
+from app.repositories.exams_repo import list_mistakes_by_subject
 from app.repositories.knowledge_repo import vector_search
 from app.repositories.profile_repo import get_weak_points
-from app.schemas.chat import ChatClearData, ChatMessageItem
+from app.schemas.chats import ChatClearData, ChatMessageItem
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.services.presenters import mastery_to_text, require_id
 

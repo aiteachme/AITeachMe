@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlmodel import Session, func, select, or_
+
+from app.utils.time import utcnow
 
 from app.models.knowledge_graph import (
     EdgeRevision,
@@ -36,7 +38,7 @@ def acquire_subject_build_lock(
     如果锁不存在则创建；如果已存在且未过期则返回 False；
     如果已过期则抢占。返回 True 表示获取成功。
     """
-    now = datetime.utcnow()
+    now = utcnow()
     lock = session.exec(
         select(SubjectBuildLock).where(SubjectBuildLock.subject == subject)
     ).first()
@@ -433,7 +435,7 @@ def update_digest_job(
         return None
     for key, value in kwargs.items():
         setattr(job, key, value)
-    job.updated_at = datetime.utcnow()
+    job.updated_at = utcnow()
     session.add(job)
     session.commit()
     session.refresh(job)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from app.agents.profile.reporter import generate_report_suggestions
-from app.repositories.exam_repo import list_mistakes_by_subject
+from app.repositories.exams_repo import list_mistakes_by_subject
 from app.repositories.profile_repo import get_weak_points, list_profiles_by_subject
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.profile import MistakeItem, ProfileItem, ReportData

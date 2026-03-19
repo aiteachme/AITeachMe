@@ -8,7 +8,7 @@ from sqlmodel import Session
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.schemas.upload import (
+from app.schemas.files import (
     FileDeleteData,
     FileDeleteRequest,
     FileGetData,

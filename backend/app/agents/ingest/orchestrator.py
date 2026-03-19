@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+import time
 
 import structlog
 
@@ -12,7 +13,7 @@ from app.core.exceptions import UnsupportedFileTypeError
 
 logger = structlog.get_logger()
 
-Parser = Callable[[str | Path], Awaitable[str]]
+Parser = Callable[[str | Path, Path], Awaitable[str]]
 
 _PARSER_MAP: dict[str, Parser] = {
     ".pdf": parse_pdf,
@@ -28,41 +29,43 @@ _PARSER_MAP: dict[str, Parser] = {
 SUPPORTED_EXTENSIONS = frozenset(_PARSER_MAP.keys())
 
 
-async def parse_file(file_path: str | Path) -> str:
-    """按扩展名选择解析器并返回规范化 Markdown。"""
+async def parse_file(file_path: str | Path, asset_dir: str | Path) -> str:
+    """按扩展名选择解析器并返回规范化 Markdown。
 
+    Args:
+        file_path: 原始文件路径。
+        asset_dir: 提取的图片等资源保存目录。
+    """
     path = Path(file_path)
+    assets = Path(asset_dir)
+    assets.mkdir(parents=True, exist_ok=True)
+
     parser = _PARSER_MAP.get(path.suffix.lower())
     if parser is None:
         raise UnsupportedFileTypeError(path.suffix.lower())
 
-    logger.info("parse_file_routing", filename=path.name, extension=path.suffix.lower())
-    markdown = await parser(path)
-    return pretty_print(markdown)
+    started_at = time.monotonic()
+    logger.info(
+        "parse_file_routing",
+        filename=path.name,
+        extension=path.suffix.lower(),
+        parser=parser.__name__,
+    )
+    markdown = await parser(path, assets)
+    from app.agents.ingest.canonicalizer import canonicalize_markdown
+    pretty_markdown = canonicalize_markdown(markdown)
+    elapsed = round(time.monotonic() - started_at, 2)
 
+    # 统计提取的图片数
+    image_count = len(list(assets.glob("*"))) if assets.exists() else 0
 
-def pretty_print(markdown: str) -> str:
-    """对 Markdown 做轻量格式规范化。"""
-
-    if not markdown:
-        return ""
-
-    lines = [line.rstrip() for line in markdown.splitlines()]
-    cleaned: list[str] = []
-    previous_blank = False
-    for line in lines:
-        is_blank = line == ""
-        if is_blank and previous_blank:
-            continue
-        cleaned.append(line)
-        previous_blank = is_blank
-
-    while cleaned and cleaned[0] == "":
-        cleaned.pop(0)
-    while cleaned and cleaned[-1] == "":
-        cleaned.pop()
-
-    text = "\n".join(cleaned)
-    if text and not text.endswith("\n"):
-        text += "\n"
-    return text
+    logger.info(
+        "parse_file_completed",
+        filename=path.name,
+        parser=parser.__name__,
+        raw_chars=len(markdown),
+        final_chars=len(pretty_markdown),
+        images_extracted=image_count,
+        elapsed_s=elapsed,
+    )
+    return pretty_markdown

@@ -220,3 +220,15 @@ class DigestJobStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class IngestStatus(str, Enum):
+    """Ingest 流水线状态。"""
+
+    PENDING = "pending"
+    CLASSIFYING = "classifying"
+    PARSING = "parsing"
+    VALIDATING = "validating"
+    READY_FOR_DIGEST = "ready_for_digest"
+    RETRY_PENDING = "retry_pending"
+    FAILED = "failed"

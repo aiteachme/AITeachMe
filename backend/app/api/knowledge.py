@@ -1,4 +1,4 @@
-"""知识图谱增量构建接口（Phase 1）。"""
+"""知识接口。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from sqlmodel import Session
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.schemas.knowledge_graph import (
+from app.schemas.knowledge import (
     ClearKnowledgeResponse,
     CurriculumSnapshotResponse,
     DigestBuildData,
@@ -31,25 +31,29 @@ from app.schemas.knowledge_graph import (
     UnitsQueryRequest,
     AnchorManageRequest,
 )
-from app.services.knowledge_graph_service import (
+from app.services.curriculum_service import (
     clear_subject_knowledge,
     get_current_curriculum_snapshot,
     get_current_prereq_dag,
     get_current_theme_tree,
+    get_teaching_unit_detail,
+    get_teaching_units,
+    manage_taxonomy_anchors,
+)
+from app.services.digest_service import (
     get_digest_status,
+    run_graph_digest_background,
+    trigger_digest_build,
+)
+from app.services.graph_query_service import (
     get_evidence_context,
     get_full_graph,
     get_graph_node_detail,
     get_graph_nodes,
-    get_teaching_unit_detail,
-    get_teaching_units,
-    manage_taxonomy_anchors,
-    run_graph_digest_background,
-    trigger_digest_build,
 )
 from app.services.subject_service import get_subject_record
 
-router = APIRouter(prefix="/api/v1/subjects/{subject}", tags=["graph"])
+router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowledge"])
 
 
 @router.post(

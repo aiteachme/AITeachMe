@@ -8,7 +8,7 @@ from app.agents.examine.generator import generate_exam
 from app.agents.examine.grader import grade_exam
 from app.core.exceptions import ExamNotFoundError
 from app.models import AnswerRecord, Exam, ExamSubmission, Mistake, Question
-from app.repositories.exam_repo import (
+from app.repositories.exams_repo import (
     bulk_create_mistakes,
     create_exam_with_questions,
     create_submission_with_records,
@@ -21,7 +21,7 @@ from app.repositories.exam_repo import (
 from app.repositories.kg_repo import list_nodes_by_subject
 from app.repositories.profile_repo import get_profile_by_key, get_weak_points, upsert_profile
 from app.schemas.common import PaginatedData, build_paginated_data
-from app.schemas.exam import (
+from app.schemas.exams import (
     AnswerResultItem,
     ExamData,
     ExamDeleteData,

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Generator
 
 try:
     import pysqlite3 as sqlite3  # type: ignore[import-not-found]
@@ -154,6 +156,16 @@ def _apply_lightweight_migrations(engine) -> None:
             _ensure_column(conn, "raw_file", "status", "status TEXT DEFAULT 'pending'")
             _ensure_column(conn, "raw_file", "error_message", "error_message TEXT")
             _ensure_column(conn, "raw_file", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            # ── Ingest 增强字段 ──
+            _ensure_column(conn, "raw_file", "content_hash", "content_hash TEXT")
+            _ensure_column(conn, "raw_file", "file_size_bytes", "file_size_bytes INTEGER")
+            _ensure_column(conn, "raw_file", "estimated_pages", "estimated_pages INTEGER")
+            _ensure_column(conn, "raw_file", "detected_language", "detected_language TEXT")
+            _ensure_column(conn, "raw_file", "classification_result", "classification_result TEXT")
+            _ensure_column(conn, "raw_file", "quality_score", "quality_score REAL")
+            _ensure_column(conn, "raw_file", "parse_metadata", "parse_metadata TEXT")
+            _ensure_column(conn, "raw_file", "image_count", "image_count INTEGER")
+            _ensure_column(conn, "raw_file", "ingest_status", "ingest_status TEXT DEFAULT 'pending'")
             if "parse_status" in raw_file_columns:
                 conn.execute(
                     sa.text(
@@ -338,6 +350,25 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    """返回一个新的数据库会话。"""
+    """返回一个新的数据库会话。
+
+    .. deprecated:: 0.3.0
+        优先使用 ``managed_session()`` 上下文管理器，它提供自动 commit/rollback/close。
+    """
 
     return Session(get_engine())
+
+
+@contextmanager
+def managed_session() -> Generator[Session, None, None]:
+    """安全的 session 上下文管理器：成功时 commit，异常时 rollback，最终 close。"""
+
+    session = Session(get_engine())
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
