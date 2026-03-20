@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, TrendingUp, Loader2 } from "lucide-react";
+import { BookOpen, Loader2, MessageSquare, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
@@ -7,7 +7,7 @@ import { apiClient } from "../api/client";
 
 interface SubjectItem {
   id: number;
-  subject: string;
+  subject_id: string;
   name: string;
 }
 
@@ -36,7 +36,7 @@ export function HomePage() {
     queryFn: fetchSubjects,
   });
 
-  const firstSubject = subjects[0]?.subject ?? "";
+  const firstSubject = subjects[0]?.subject_id ?? "";
 
   return (
     <div className="space-y-8">
@@ -112,18 +112,18 @@ export function HomePage() {
           <div className="space-y-3">
             {subjects.map((subject) => (
               <div
-                key={subject.subject}
+                key={subject.subject_id}
                 className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <div>
                   <p className="text-sm font-medium text-slate-900">{subject.name}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{subject.subject}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{subject.subject_id}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Link to={`/subject/${subject.subject}/chat`}>
+                  <Link to={`/subject/${subject.subject_id}/chat`}>
                     <Button variant="ghost" size="sm">对话</Button>
                   </Link>
-                  <Link to={`/subject/${subject.subject}/upload`}>
+                  <Link to={`/subject/${subject.subject_id}/upload`}>
                     <Button variant="outline" size="sm">上传资料</Button>
                   </Link>
                 </div>

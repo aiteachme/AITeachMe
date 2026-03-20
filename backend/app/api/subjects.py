@@ -1,5 +1,3 @@
-"""学科接口。"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends
@@ -41,7 +39,6 @@ async def create_subject_api(
     return ok_response(
         create_subject_record(
             session,
-            slug=body.subject,
             name=body.name,
             description=body.description,
         )
@@ -71,7 +68,7 @@ async def get_subject_detail_api(
     body: SubjectDetailRequest = Body(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
-    return ok_response(get_subject_detail(session, body.subject))
+    return ok_response(get_subject_detail(session, body.subject_id))
 
 
 @router.post(
@@ -87,7 +84,7 @@ async def update_subject_api(
     return ok_response(
         update_subject_record(
             session,
-            slug=body.subject,
+            subject_id=body.subject_id,
             name=body.name,
             description=body.description,
         )
@@ -104,4 +101,4 @@ async def delete_subject_api(
     body: SubjectDeleteRequest = Body(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectDeleteData]:
-    return ok_response(delete_subject_record(session, slug=body.subject))
+    return ok_response(delete_subject_record(session, subject_id=body.subject_id))
