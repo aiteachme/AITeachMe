@@ -14,7 +14,7 @@ from app.models.curriculum import (
     UnitDependency,
     UnitTreeMembership,
 )
-from app.models.enums import Difficulty, DigestStep, QuestionType, TaskStatus
+from app.models.enums import Difficulty, DigestStep, IngestStatus, QuestionType, TaskStatus
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
     Document,
@@ -48,6 +48,7 @@ __all__ = [
     "Exam",
     "ExamSubmission",
     "GraphDigestJob",
+    "IngestStatus",
     "KnowledgeAlias",
     "KnowledgeEdge",
     "KnowledgeNode",

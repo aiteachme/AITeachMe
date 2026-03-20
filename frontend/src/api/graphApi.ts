@@ -234,7 +234,7 @@ export async function triggerDigestBuild(
 ): Promise<DigestBuildData> {
   const res = await apiClient<ApiResponse<DigestBuildData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/digest/build`,
+    url: `/api/v1/subjects/${subject}/knowledge/digest/build`,
     data: { file_ids: fileIds, idempotency_key: idempotencyKey },
   });
   return res.data;
@@ -247,7 +247,7 @@ export async function fetchDigestStatus(
 ): Promise<DigestStatusResponse> {
   const res = await apiClient<ApiResponse<DigestStatusResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/digest/status`,
+    url: `/api/v1/subjects/${subject}/knowledge/digest/status`,
     data: { job_id: jobId },
   });
   return res.data;
@@ -262,7 +262,7 @@ export async function fetchGraphNodes(
 ): Promise<PaginatedData<KnowledgeNodeResponse>> {
   const res = await apiClient<ApiResponse<PaginatedData<KnowledgeNodeResponse>>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/graph/nodes/query`,
+    url: `/api/v1/subjects/${subject}/knowledge/graph/nodes/query`,
     data: { node_type: nodeType, page, size },
   });
   return res.data;
@@ -275,7 +275,7 @@ export async function fetchGraphNodeDetail(
 ): Promise<KnowledgeNodeDetailResponse> {
   const res = await apiClient<ApiResponse<KnowledgeNodeDetailResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/graph/nodes/detail`,
+    url: `/api/v1/subjects/${subject}/knowledge/graph/nodes/detail`,
     data: { node_id: nodeId },
   });
   return res.data;
@@ -290,7 +290,7 @@ export async function fetchTeachingUnits(
 ): Promise<PaginatedData<TeachingUnitResponse>> {
   const res = await apiClient<ApiResponse<PaginatedData<TeachingUnitResponse>>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/units/query`,
+    url: `/api/v1/subjects/${subject}/knowledge/units/query`,
     data: { status, page, size },
   });
   return res.data;
@@ -303,7 +303,7 @@ export async function fetchTeachingUnitDetail(
 ): Promise<TeachingUnitDetailResponse> {
   const res = await apiClient<ApiResponse<TeachingUnitDetailResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/units/detail`,
+    url: `/api/v1/subjects/${subject}/knowledge/units/detail`,
     data: { unit_id: unitId },
   });
   return res.data;
@@ -315,7 +315,7 @@ export async function fetchThemeTree(
 ): Promise<ThemeTreeResponse> {
   const res = await apiClient<ApiResponse<ThemeTreeResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/theme-tree/current`,
+    url: `/api/v1/subjects/${subject}/knowledge/theme-tree/current`,
   });
   return res.data;
 }
@@ -326,7 +326,7 @@ export async function fetchPrereqDag(
 ): Promise<PrereqDagResponse> {
   const res = await apiClient<ApiResponse<PrereqDagResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/prereq-dag/current`,
+    url: `/api/v1/subjects/${subject}/knowledge/prereq-dag/current`,
   });
   return res.data;
 }
@@ -337,7 +337,7 @@ export async function fetchCurriculumSnapshot(
 ): Promise<CurriculumSnapshotResponse> {
   const res = await apiClient<ApiResponse<CurriculumSnapshotResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/curriculum/current`,
+    url: `/api/v1/subjects/${subject}/knowledge/curriculum/current`,
   });
   return res.data;
 }
@@ -375,7 +375,7 @@ export async function fetchFullGraph(
 ): Promise<FullGraphResponse> {
   const res = await apiClient<ApiResponse<FullGraphResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/graph/full`,
+    url: `/api/v1/subjects/${subject}/knowledge/graph/full`,
   });
   return res.data;
 }
@@ -402,7 +402,7 @@ export async function fetchEvidenceContext(
 ): Promise<EvidenceContextResponse> {
   const res = await apiClient<ApiResponse<EvidenceContextResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/graph/evidence/context`,
+    url: `/api/v1/subjects/${subject}/knowledge/graph/evidence/context`,
     data: { evidence_id: evidenceId },
   });
   return res.data;

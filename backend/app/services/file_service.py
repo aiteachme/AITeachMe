@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import time
 import uuid
@@ -11,6 +13,7 @@ import structlog
 from fastapi import UploadFile
 from sqlmodel import Session
 
+from app.agents.ingest.classifier import classify_file
 from app.agents.ingest.orchestrator import parse_file
 from app.core.config import get_settings
 from app.core.database import managed_session
@@ -20,7 +23,7 @@ from app.core.exceptions import (
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
-from app.models import RawFile, TaskStatus
+from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
     create_raw_file,
     delete_raw_file,
@@ -66,6 +69,7 @@ async def save_uploaded_file(
 
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()
+    content_hash = hashlib.sha256(content).hexdigest()
     temp_dir = build_temp_dir(normalized_subject)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
@@ -79,6 +83,9 @@ async def save_uploaded_file(
             filetype=extension.lstrip("."),
             file_path=str(temp_path),
             status=TaskStatus.PENDING.value,
+            content_hash=content_hash,
+            file_size_bytes=len(content),
+            ingest_status=IngestStatus.PENDING.value,
         ),
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
@@ -172,6 +179,7 @@ def request_files_parse(
             raw_file,
             status=TaskStatus.PROCESSING.value,
             error_message=None,
+            ingest_status=IngestStatus.CLASSIFYING.value,
         )
         accepted_ids.append(raw_file_id)
     logger.info(
@@ -199,6 +207,7 @@ def retry_file_parse(
         raw_file,
         status=TaskStatus.PROCESSING.value,
         error_message=None,
+        ingest_status=IngestStatus.CLASSIFYING.value,
     )
     return FilesParseData(accepted_file_ids=[file_id])
 
@@ -231,10 +240,6 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
 async def _parse_one_file(session: Session, raw_file: RawFile) -> RawFile:
     """执行单文件解析任务（含分类 → 解析 → 统计）。"""
 
-    import hashlib
-    import json
-    from app.agents.ingest.classifier import classify_file
-
     raw_file_id = require_id(raw_file.id, "RawFile.id")
     file_logger = logger.bind(
         subject=raw_file.subject,
@@ -256,11 +261,20 @@ async def _parse_one_file(session: Session, raw_file: RawFile) -> RawFile:
 
         # ── 2. 轻量分类 ──
         classification = classify_file(raw_file.file_path, raw_file.filetype)
+        classification_payload = json.dumps(classification.to_dict(), ensure_ascii=False)
         file_logger.info(
             "file_classify_done",
             category=classification.file_category,
             estimated_pages=classification.estimated_pages,
             language=classification.detected_language,
+        )
+        update_raw_file(
+            session,
+            raw_file,
+            estimated_pages=classification.estimated_pages,
+            detected_language=classification.detected_language,
+            classification_result=classification_payload,
+            ingest_status=IngestStatus.PARSING.value,
         )
 
         # ── 3. 解析 ──
@@ -297,10 +311,10 @@ async def _parse_one_file(session: Session, raw_file: RawFile) -> RawFile:
             file_size_bytes=file_size_bytes,
             estimated_pages=classification.estimated_pages,
             detected_language=classification.detected_language,
-            classification_result=json.dumps(classification.to_dict(), ensure_ascii=False),
+            classification_result=classification_payload,
             parse_metadata=parse_meta,
             image_count=image_count,
-            ingest_status="ready_for_digest",
+            ingest_status=IngestStatus.READY_FOR_DIGEST.value,
         )
         file_logger.info(
             "file_parse_completed",
@@ -322,7 +336,7 @@ async def _parse_one_file(session: Session, raw_file: RawFile) -> RawFile:
             asset_dir=str(asset_dir),
             status=TaskStatus.FAILED.value,
             error_message=str(exc),
-            ingest_status="failed",
+            ingest_status=IngestStatus.FAILED.value,
         )
         file_logger.info(
             "file_parse_marked_failed",

@@ -316,7 +316,7 @@ async def curriculum_current(
 
 
 @router.post(
-    "/knowledge/clear",
+    "/clear",
     response_model=ApiResponse[ClearKnowledgeResponse],
     summary="清空学科所有知识数据",
     responses=build_error_responses([400, 404, 500]),
