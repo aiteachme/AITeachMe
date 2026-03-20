@@ -16,14 +16,17 @@ finalize_graph_node 完成后：
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import traceback
-from datetime import datetime
 from typing import TypedDict
 
 import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
+from app.agents.digest.chunker import chunk_markdown
+from app.agents.digest.cleaner import clean_markdown
+from app.agents.digest.embedder import embed_chunks
 from app.agents.digest.kg_clusterer import ClusteredCandidate, cluster_candidates
 from app.agents.digest.kg_extractor import (
     CandidateEdge,
@@ -37,8 +40,9 @@ from app.agents.digest.kg_resolver import (
     resolve_edge,
     resolve_node,
 )
-from app.core.database import get_session
+from app.core.database import managed_session
 from app.core.embedding import aembed_texts
+from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models.curriculum import CurriculumDeriveJob
 from app.models.knowledge import Document, DocumentChunk
 from app.models.knowledge_graph import (
@@ -50,15 +54,26 @@ from app.models.knowledge_graph import (
     KnowledgeNode,
     KnowledgeRevision,
 )
-from app.repositories import kg_repo
+from app.repositories import kg_repo, knowledge_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,
     cleanup_pending_by_job,
     update_job_progress,
 )
 from app.utils.kg_helpers import normalize_name
+from app.utils.time import utcnow
 
 logger = structlog.get_logger()
+
+
+def _workflow_logger(state: KGDigestState) -> structlog.stdlib.BoundLogger:
+    """为当前图谱构建流程绑定统一日志上下文。"""
+
+    return logger.bind(
+        subject=state["subject"],
+        job_id=state["job_id"],
+        file_ids=state.get("file_ids", []),
+    )
 
 
 # ── State 定义 ────────────────────────────────────────────────
@@ -85,22 +100,156 @@ class KGDigestState(TypedDict, total=False):
     error: str | None
 
 
+def _get_document_by_source_file(
+    session: Session,
+    *,
+    subject: str,
+    raw_file_id: int,
+) -> Document | None:
+    return session.exec(
+        select(Document).where(
+            Document.subject == subject,
+            Document.source_file_id == raw_file_id,
+        )
+    ).first()
+
+
+def _load_clean_markdown(raw_file: RawFile) -> str:
+    if not raw_file.markdown_path:
+        return ""
+
+    markdown_path = Path(raw_file.markdown_path)
+    if not markdown_path.exists():
+        return ""
+
+    return clean_markdown(markdown_path.read_text(encoding="utf-8"))
+
+
+async def _ensure_document_chunks_for_file(
+    session: Session,
+    *,
+    raw_file: RawFile,
+) -> tuple[int, list[int]]:
+    raw_file_id = raw_file.id
+    if raw_file_id is None:
+        raise ValueError("RawFile.id 持久化后不应为空。")
+
+    markdown_content = _load_clean_markdown(raw_file)
+    document = _get_document_by_source_file(
+        session,
+        subject=raw_file.subject,
+        raw_file_id=raw_file_id,
+    )
+
+    if document is None:
+        document = knowledge_repo.bulk_create_documents(
+            session,
+            [
+                Document(
+                    subject=raw_file.subject,
+                    source_file_id=raw_file_id,
+                    title=raw_file.filename,
+                    markdown_content=markdown_content,
+                    current_step=DigestStep.STORED.value,
+                )
+            ],
+        )[0]
+    elif markdown_content and document.markdown_content != markdown_content:
+        updated_document = knowledge_repo.update_document_content(
+            session,
+            document.id,
+            markdown_content,
+        )
+        if updated_document is not None:
+            document = updated_document
+
+    document_id = document.id
+    if document_id is None:
+        raise ValueError("Document.id 持久化后不应为空。")
+
+    existing_chunks = knowledge_repo.get_chunks_by_document_id(session, document_id)
+    if existing_chunks:
+        return document_id, [chunk.id for chunk in existing_chunks if chunk.id is not None]
+
+    chunks = chunk_markdown(markdown_content)
+    db_chunks = knowledge_repo.bulk_create_chunks(
+        session,
+        [
+            DocumentChunk(
+                document_id=document_id,
+                title=chunk.title,
+                level=chunk.level,
+                header_path=chunk.header_path,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+            )
+            for chunk in chunks
+        ],
+    )
+    chunk_ids = [chunk.id for chunk in db_chunks if chunk.id is not None]
+    embeddings = await embed_chunks(chunks)
+    if embeddings:
+        knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
+    knowledge_repo.update_document_step(session, document_id, DigestStep.EMBEDDED.value)
+    return document_id, chunk_ids
+
+
+async def _prepare_chunk_ids_for_files(
+    session: Session,
+    *,
+    raw_files: list[RawFile],
+    workflow_logger: structlog.stdlib.BoundLogger,
+) -> tuple[list[int], list[int]]:
+    document_ids: list[int] = []
+    chunk_ids: list[int] = []
+
+    for raw_file in raw_files:
+        raw_file_id = raw_file.id
+        if raw_file_id is None:
+            continue
+
+        is_ready = (
+            raw_file.status == TaskStatus.COMPLETED.value
+            and raw_file.ingest_status == IngestStatus.READY_FOR_DIGEST.value
+        )
+        if not is_ready:
+            workflow_logger.warning(
+                "kg_prepare_skip_unready_file",
+                file_id=raw_file_id,
+                status=raw_file.status,
+                ingest_status=raw_file.ingest_status,
+                markdown_ready=bool(raw_file.markdown_path),
+                filename=raw_file.filename,
+            )
+            continue
+
+        document_id, file_chunk_ids = await _ensure_document_chunks_for_file(
+            session,
+            raw_file=raw_file,
+        )
+        document_ids.append(document_id)
+        chunk_ids.extend(file_chunk_ids)
+
+    unique_document_ids = list(dict.fromkeys(document_ids))
+    unique_chunk_ids = list(dict.fromkeys(chunk_ids))
+    return unique_document_ids, unique_chunk_ids
+
+
 
 # ── 工作流节点 ────────────────────────────────────────────────
 
 
 async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
     """获取 subject 级构建锁。失败时设置 error。"""
-    session = get_session()
-    try:
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        workflow_logger.info("kg_workflow_acquire_lock_started")
         acquired = kg_repo.acquire_subject_build_lock(
             session, state["subject"], state["job_id"],
         )
         if not acquired:
-            logger.warning(
+            workflow_logger.warning(
                 "kg_workflow_lock_conflict",
-                subject=state["subject"],
-                job_id=state["job_id"],
             )
             return {**state, "lock_acquired": False, "error": "lock_conflict"}
 
@@ -112,64 +261,70 @@ async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
             current_step="acquire_lock",
         )
         kg_repo.update_digest_job(session, state["job_id"], status="processing")
+        workflow_logger.info("kg_workflow_acquire_lock_completed")
         return {**state, "lock_acquired": True}
-    finally:
-        session.close()
 
 
 async def prepare_node(state: KGDigestState) -> KGDigestState:
     """加载待处理 chunks：仅处理 file_ids 对应的 DocumentChunk。"""
-    session = get_session()
-    try:
-        file_ids: list[int] = state["file_ids"]
-
-        # 查找 file_ids 对应的 Document → DocumentChunk
-        documents = session.exec(
-            select(Document).where(
-                Document.subject == state["subject"],
-                Document.source_file_id.in_(file_ids),  # type: ignore[union-attr]
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            file_ids: list[int] = state["file_ids"]
+            workflow_logger.info("kg_prepare_started")
+            raw_files = session.exec(
+                select(RawFile).where(
+                    RawFile.subject == state["subject"],
+                    RawFile.id.in_(file_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+            doc_ids, chunk_ids = await _prepare_chunk_ids_for_files(
+                session,
+                raw_files=list(raw_files),
+                workflow_logger=workflow_logger,
             )
-        ).all()
+            if not chunk_ids:
+                workflow_logger.warning(
+                    "kg_workflow_no_digest_inputs",
+                    raw_file_count=len(raw_files),
+                    raw_files=[
+                        {
+                            "file_id": rf.id,
+                            "status": rf.status,
+                            "ingest_status": rf.ingest_status,
+                            "markdown_ready": bool(rf.markdown_path),
+                            "filename": rf.filename,
+                        }
+                        for rf in raw_files
+                    ],
+                )
+                return {**state, "error": "no_ready_digest_inputs"}
 
-        doc_ids = [d.id for d in documents]
-        if not doc_ids:
-            logger.info("kg_workflow_no_documents", subject=state["subject"], file_ids=file_ids)
-            return {**state, "chunk_ids": []}
-
-        chunks = session.exec(
-            select(DocumentChunk).where(
-                DocumentChunk.document_id.in_(doc_ids),  # type: ignore[union-attr]
+            # 更新 job 的 input_chunk_count
+            kg_repo.update_digest_job(
+                session, state["job_id"],
+                input_chunk_count=len(chunk_ids),
             )
-        ).all()
 
-        chunk_ids = [c.id for c in chunks]
+            update_job_progress(
+                session,
+                job_id=state["job_id"],
+                job_type="graph",
+                progress=10,
+                current_step="prepare",
+            )
 
-        # 更新 job 的 input_chunk_count
-        kg_repo.update_digest_job(
-            session, state["job_id"],
-            input_chunk_count=len(chunk_ids),
-        )
-
-        update_job_progress(
-            session,
-            job_id=state["job_id"],
-            job_type="graph",
-            progress=10,
-            current_step="prepare",
-        )
-
-        logger.info(
-            "kg_workflow_prepare_complete",
-            subject=state["subject"],
-            document_count=len(doc_ids),
-            chunk_count=len(chunk_ids),
-        )
-        return {**state, "chunk_ids": chunk_ids}
-    except Exception as exc:
-        logger.error("kg_workflow_prepare_failed", error=str(exc))
-        return {**state, "error": f"prepare_failed: {exc}"}
-    finally:
-        session.close()
+            workflow_logger.info(
+                "kg_workflow_prepare_complete",
+                document_ids=doc_ids,
+                source_file_ids=[rf.id for rf in raw_files if rf.id is not None],
+                document_count=len(doc_ids),
+                chunk_count=len(chunk_ids),
+            )
+            return {**state, "chunk_ids": chunk_ids}
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_prepare_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"prepare_failed: {exc}"}
 
 
 async def extract_node(state: KGDigestState) -> KGDigestState:
@@ -177,362 +332,371 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
 
     单个 chunk 抽取失败时跳过，不影响其余 chunk（Property 18）。
     """
-    session = get_session()
-    try:
-        chunk_ids: list[int] = state.get("chunk_ids", [])
-        if not chunk_ids:
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            chunk_ids: list[int] = state.get("chunk_ids", [])
+            workflow_logger.info("kg_extract_started", chunk_count=len(chunk_ids))
+            if not chunk_ids:
+                update_job_progress(
+                    session, job_id=state["job_id"], job_type="graph",
+                    progress=40, current_step="extract",
+                )
+                return {
+                    **state,
+                    "candidates": [],
+                    "all_candidate_edges": [],
+                }
+
+            # 批量加载 chunks
+            chunks = session.exec(
+                select(DocumentChunk).where(
+                    DocumentChunk.id.in_(chunk_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+            chunk_map = {c.id: c for c in chunks}
+
+            all_results: list[ChunkExtractionResult] = []
+            all_candidate_edges: list[tuple[CandidateEdge, int]] = []
+            success_chunk_count = 0
+            failed_chunk_count = 0
+
+            for i, cid in enumerate(chunk_ids):
+                chunk = chunk_map.get(cid)
+                if chunk is None:
+                    failed_chunk_count += 1
+                    workflow_logger.warning("kg_extract_chunk_missing", chunk_id=cid)
+                    continue
+                try:
+                    result = await extract_candidates(
+                        chunk_content=chunk.content,
+                        chunk_title=chunk.title,
+                        header_path=chunk.header_path,
+                    )
+                    all_results.append(result)
+                    success_chunk_count += 1
+                    for edge in result.edges:
+                        all_candidate_edges.append((edge, cid))
+                except Exception as exc:
+                    # Property 18: 单 chunk 失败不影响其余
+                    failed_chunk_count += 1
+                    workflow_logger.warning(
+                        "kg_extract_chunk_failed",
+                        chunk_id=cid,
+                        error=str(exc),
+                    )
+                    continue
+
+                # 每处理 10 个 chunk 更新一次进度
+                if (i + 1) % 10 == 0:
+                    pct = 10 + int(30 * (i + 1) / len(chunk_ids))
+                    update_job_progress(
+                        session, job_id=state["job_id"], job_type="graph",
+                        progress=min(pct, 40), current_step="extract",
+                    )
+
             update_job_progress(
                 session, job_id=state["job_id"], job_type="graph",
                 progress=40, current_step="extract",
             )
+
+            workflow_logger.info(
+                "kg_workflow_extract_complete",
+                total_chunks=len(chunk_ids),
+                success_chunk_count=success_chunk_count,
+                failed_chunk_count=failed_chunk_count,
+                results_count=len(all_results),
+                total_nodes=sum(len(r.nodes) for r in all_results),
+                total_edges=len(all_candidate_edges),
+            )
             return {
                 **state,
-                "candidates": [],
-                "all_candidate_edges": [],
+                "candidates": all_results,
+                "all_candidate_edges": all_candidate_edges,
             }
-
-        # 批量加载 chunks
-        chunks = session.exec(
-            select(DocumentChunk).where(
-                DocumentChunk.id.in_(chunk_ids),  # type: ignore[union-attr]
-            )
-        ).all()
-        chunk_map = {c.id: c for c in chunks}
-
-        all_results: list[ChunkExtractionResult] = []
-        all_candidate_edges: list[tuple[CandidateEdge, int]] = []
-
-        for i, cid in enumerate(chunk_ids):
-            chunk = chunk_map.get(cid)
-            if chunk is None:
-                continue
-            try:
-                result = await extract_candidates(
-                    chunk_content=chunk.content,
-                    chunk_title=chunk.title,
-                    header_path=chunk.header_path,
-                )
-                all_results.append(result)
-                for edge in result.edges:
-                    all_candidate_edges.append((edge, cid))
-            except Exception as exc:
-                # Property 18: 单 chunk 失败不影响其余
-                logger.warning(
-                    "kg_extract_chunk_failed",
-                    chunk_id=cid,
-                    error=str(exc),
-                )
-                continue
-
-            # 每处理 10 个 chunk 更新一次进度
-            if (i + 1) % 10 == 0:
-                pct = 10 + int(30 * (i + 1) / len(chunk_ids))
-                update_job_progress(
-                    session, job_id=state["job_id"], job_type="graph",
-                    progress=min(pct, 40), current_step="extract",
-                )
-
-        update_job_progress(
-            session, job_id=state["job_id"], job_type="graph",
-            progress=40, current_step="extract",
-        )
-
-        logger.info(
-            "kg_workflow_extract_complete",
-            total_chunks=len(chunk_ids),
-            results_count=len(all_results),
-            total_nodes=sum(len(r.nodes) for r in all_results),
-            total_edges=len(all_candidate_edges),
-        )
-        return {
-            **state,
-            "candidates": all_results,
-            "all_candidate_edges": all_candidate_edges,
-        }
-    except Exception as exc:
-        logger.error("kg_workflow_extract_failed", error=str(exc))
-        return {**state, "error": f"extract_failed: {exc}"}
-    finally:
-        session.close()
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_extract_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"extract_failed: {exc}"}
 
 
 async def cluster_node(state: KGDigestState) -> KGDigestState:
     """批内候选聚类去重，生成 candidate_name_to_cluster_id 映射。"""
-    session = get_session()
-    try:
-        results: list[ChunkExtractionResult] = state.get("candidates", [])
-        chunk_ids: list[int] = state.get("chunk_ids", [])
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            results: list[ChunkExtractionResult] = state.get("candidates", [])
+            chunk_ids: list[int] = state.get("chunk_ids", [])
+            workflow_logger.info(
+                "kg_cluster_started",
+                result_count=len(results),
+                chunk_count=len(chunk_ids),
+            )
 
-        # 收集所有 (CandidateNode, chunk_id) 对
-        all_pairs: list[tuple] = []
-        # 按 result 顺序分配 chunk_id（每个 result 对应一个 chunk）
-        result_idx = 0
-        for cid in chunk_ids:
-            if result_idx >= len(results):
-                break
-            r = results[result_idx]
-            for node in r.nodes:
-                all_pairs.append((node, cid))
-            result_idx += 1
+            # 收集所有 (CandidateNode, chunk_id) 对
+            all_pairs: list[tuple] = []
+            # 按 result 顺序分配 chunk_id（每个 result 对应一个 chunk）
+            result_idx = 0
+            for cid in chunk_ids:
+                if result_idx >= len(results):
+                    break
+                r = results[result_idx]
+                for node in r.nodes:
+                    all_pairs.append((node, cid))
+                result_idx += 1
 
-        if not all_pairs:
+            if not all_pairs:
+                update_job_progress(
+                    session, job_id=state["job_id"], job_type="graph",
+                    progress=50, current_step="cluster",
+                )
+                return {
+                    **state,
+                    "clustered_candidates": [],
+                    "candidate_name_to_cluster_id": {},
+                }
+
+            clustered, name_to_cluster = await cluster_candidates(all_pairs)
+
             update_job_progress(
                 session, job_id=state["job_id"], job_type="graph",
                 progress=50, current_step="cluster",
             )
+
+            workflow_logger.info(
+                "kg_workflow_cluster_complete",
+                input_candidates=len(all_pairs),
+                cluster_count=len(clustered),
+            )
             return {
                 **state,
-                "clustered_candidates": [],
-                "candidate_name_to_cluster_id": {},
+                "clustered_candidates": clustered,
+                "candidate_name_to_cluster_id": name_to_cluster,
             }
-
-        clustered, name_to_cluster = await cluster_candidates(all_pairs)
-
-        update_job_progress(
-            session, job_id=state["job_id"], job_type="graph",
-            progress=50, current_step="cluster",
-        )
-
-        logger.info(
-            "kg_workflow_cluster_complete",
-            input_candidates=len(all_pairs),
-            cluster_count=len(clustered),
-        )
-        return {
-            **state,
-            "clustered_candidates": clustered,
-            "candidate_name_to_cluster_id": name_to_cluster,
-        }
-    except Exception as exc:
-        logger.error("kg_workflow_cluster_failed", error=str(exc))
-        return {**state, "error": f"cluster_failed: {exc}"}
-    finally:
-        session.close()
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_cluster_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"cluster_failed: {exc}"}
 
 
 async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
     """节点对齐：将聚类候选与已有图谱节点匹配，生成 candidate_name_to_resolved_node_id。"""
-    session = get_session()
-    try:
-        clustered: list[ClusteredCandidate] = state.get("clustered_candidates", [])
-        subject = state["subject"]
-        job_id = state["job_id"]
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            clustered: list[ClusteredCandidate] = state.get("clustered_candidates", [])
+            subject = state["subject"]
+            job_id = state["job_id"]
 
-        candidate_name_to_resolved: dict[str, int] = {}
-        cluster_id_to_resolved: dict[int, int] = {}
-        new_node_ids: list[int] = []
-        updated_node_ids: list[int] = []
-        merged_node_ids: list[int] = []
+            candidate_name_to_resolved: dict[str, int] = {}
+            cluster_id_to_resolved: dict[int, int] = {}
+            new_node_ids: list[int] = []
+            updated_node_ids: list[int] = []
+            merged_node_ids: list[int] = []
 
-        for cluster_idx, cc in enumerate(clustered):
-            rep = cc.representative
-            # 生成 embedding
-            embed_text = f"{rep.name}：{cc.merged_summary}"
-            embeddings = await aembed_texts([embed_text])
-            candidate_embedding = embeddings[0] if embeddings else []
+            for cluster_idx, cc in enumerate(clustered):
+                rep = cc.representative
+                # 生成 embedding
+                embed_text = f"{rep.name}：{cc.merged_summary}"
+                embeddings = await aembed_texts([embed_text])
+                candidate_embedding = embeddings[0] if embeddings else []
 
-            result: ResolveResult = await resolve_node(
-                session, cc, subject, candidate_embedding,
-                candidate_name_to_resolved_node_id=candidate_name_to_resolved,
-            )
-
-            if result.decision in ("exact", "alias") and result.matched_node_id is not None:
-                node_id = result.matched_node_id
-                # 映射所有成员名称
-                for member in cc.members:
-                    candidate_name_to_resolved[member.name] = node_id
-                cluster_id_to_resolved[cluster_idx] = node_id
-
-                # 追加 evidence
-                for chunk_id in cc.source_chunk_ids:
-                    _create_node_evidence(
-                        session, subject, node_id, chunk_id, job_id,
-                    )
-
-                # 注册新别名
-                for alias_name in result.new_aliases:
-                    _create_alias_if_new(session, node_id, alias_name, job_id)
-
-                # 内容更新 → 新 revision
-                if result.is_content_update:
-                    _create_updated_revision(session, node_id, cc, job_id)
-                    updated_node_ids.append(node_id)
-
-            elif result.decision == "no_match":
-                # 创建新节点
-                node = _create_new_node(session, subject, cc, job_id)
-                node_id = node.id  # type: ignore[assignment]
-                for member in cc.members:
-                    candidate_name_to_resolved[member.name] = node_id
-                cluster_id_to_resolved[cluster_idx] = node_id
-
-                # 创建 evidence
-                for chunk_id in cc.source_chunk_ids:
-                    _create_node_evidence(
-                        session, subject, node_id, chunk_id, job_id,
-                    )
-                new_node_ids.append(node_id)
-
-            # 每 20 个候选更新一次进度
-            if (cluster_idx + 1) % 20 == 0:
-                pct = 50 + int(15 * (cluster_idx + 1) / len(clustered))
-                update_job_progress(
-                    session, job_id=job_id, job_type="graph",
-                    progress=min(pct, 65), current_step="resolve_nodes",
+                result: ResolveResult = await resolve_node(
+                    session, cc, subject, candidate_embedding,
+                    candidate_name_to_resolved_node_id=candidate_name_to_resolved,
                 )
 
-        update_job_progress(
-            session, job_id=job_id, job_type="graph",
-            progress=65, current_step="resolve_nodes",
-        )
+                if result.decision in ("exact", "alias") and result.matched_node_id is not None:
+                    node_id = result.matched_node_id
+                    # 映射所有成员名称
+                    for member in cc.members:
+                        candidate_name_to_resolved[member.name] = node_id
+                    cluster_id_to_resolved[cluster_idx] = node_id
 
-        # 更新 job 统计
-        kg_repo.update_digest_job(
-            session, job_id,
-            nodes_added=len(new_node_ids),
-            nodes_updated=len(updated_node_ids),
-            nodes_merged=len(merged_node_ids),
-        )
+                    # 追加 evidence
+                    for chunk_id in cc.source_chunk_ids:
+                        _create_node_evidence(
+                            session, subject, node_id, chunk_id, job_id,
+                        )
 
-        logger.info(
-            "kg_workflow_resolve_nodes_complete",
-            new_nodes=len(new_node_ids),
-            updated_nodes=len(updated_node_ids),
-            total_resolved=len(candidate_name_to_resolved),
-        )
-        return {
-            **state,
-            "candidate_name_to_resolved_node_id": candidate_name_to_resolved,
-            "cluster_id_to_resolved_node_id": cluster_id_to_resolved,
-            "new_node_ids": new_node_ids,
-            "updated_node_ids": updated_node_ids,
-            "merged_node_ids": merged_node_ids,
-        }
-    except Exception as exc:
-        logger.error("kg_workflow_resolve_nodes_failed", error=str(exc))
-        return {**state, "error": f"resolve_nodes_failed: {exc}"}
-    finally:
-        session.close()
+                    # 注册新别名
+                    for alias_name in result.new_aliases:
+                        _create_alias_if_new(session, node_id, alias_name, job_id)
+
+                    # 内容更新 → 新 revision
+                    if result.is_content_update:
+                        _create_updated_revision(session, node_id, cc, job_id)
+                        updated_node_ids.append(node_id)
+
+                elif result.decision == "no_match":
+                    # 创建新节点
+                    node = _create_new_node(session, subject, cc, job_id)
+                    node_id = node.id  # type: ignore[assignment]
+                    for member in cc.members:
+                        candidate_name_to_resolved[member.name] = node_id
+                    cluster_id_to_resolved[cluster_idx] = node_id
+
+                    # 创建 evidence
+                    for chunk_id in cc.source_chunk_ids:
+                        _create_node_evidence(
+                            session, subject, node_id, chunk_id, job_id,
+                        )
+                    new_node_ids.append(node_id)
+
+                # 每 20 个候选更新一次进度
+                if (cluster_idx + 1) % 20 == 0:
+                    pct = 50 + int(15 * (cluster_idx + 1) / len(clustered))
+                    update_job_progress(
+                        session, job_id=job_id, job_type="graph",
+                        progress=min(pct, 65), current_step="resolve_nodes",
+                    )
+
+            update_job_progress(
+                session, job_id=job_id, job_type="graph",
+                progress=65, current_step="resolve_nodes",
+            )
+
+            # 更新 job 统计
+            kg_repo.update_digest_job(
+                session, job_id,
+                nodes_added=len(new_node_ids),
+                nodes_updated=len(updated_node_ids),
+                nodes_merged=len(merged_node_ids),
+            )
+
+            workflow_logger.info(
+                "kg_workflow_resolve_nodes_complete",
+                new_nodes=len(new_node_ids),
+                updated_nodes=len(updated_node_ids),
+                total_resolved=len(candidate_name_to_resolved),
+            )
+            return {
+                **state,
+                "candidate_name_to_resolved_node_id": candidate_name_to_resolved,
+                "cluster_id_to_resolved_node_id": cluster_id_to_resolved,
+                "new_node_ids": new_node_ids,
+                "updated_node_ids": updated_node_ids,
+                "merged_node_ids": merged_node_ids,
+            }
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 
 async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
     """边对齐：使用名称映射解析边端点，创建/更新 KnowledgeEdge。"""
-    session = get_session()
-    try:
-        all_candidate_edges: list[tuple[CandidateEdge, int]] = state.get("all_candidate_edges", [])
-        subject = state["subject"]
-        job_id = state["job_id"]
-        name_to_resolved = state.get("candidate_name_to_resolved_node_id", {})
-        name_to_cluster = state.get("candidate_name_to_cluster_id", {})
-        cluster_to_resolved = state.get("cluster_id_to_resolved_node_id", {})
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            all_candidate_edges: list[tuple[CandidateEdge, int]] = state.get("all_candidate_edges", [])
+            subject = state["subject"]
+            job_id = state["job_id"]
+            name_to_resolved = state.get("candidate_name_to_resolved_node_id", {})
+            name_to_cluster = state.get("candidate_name_to_cluster_id", {})
+            cluster_to_resolved = state.get("cluster_id_to_resolved_node_id", {})
 
-        new_edge_ids: list[int] = []
-        updated_edge_ids: list[int] = []
+            new_edge_ids: list[int] = []
+            updated_edge_ids: list[int] = []
 
-        for edge_candidate, chunk_id in all_candidate_edges:
-            matched_edge, is_new, confidence = resolve_edge(
-                session, edge_candidate, subject,
-                name_to_resolved, name_to_cluster, cluster_to_resolved,
+            for edge_candidate, chunk_id in all_candidate_edges:
+                matched_edge, is_new, confidence = resolve_edge(
+                    session, edge_candidate, subject,
+                    name_to_resolved, name_to_cluster, cluster_to_resolved,
+                )
+
+                if matched_edge is None:
+                    continue
+
+                if is_new:
+                    # 新边：设置 created_by_job_id 并持久化
+                    matched_edge.created_by_job_id = job_id
+                    edge = kg_repo.create_knowledge_edge(session, matched_edge)
+                    edge_id = edge.id  # type: ignore[assignment]
+
+                    # 创建初始 EdgeRevision
+                    rev = EdgeRevision(
+                        edge_id=edge_id,
+                        revision_no=1,
+                        description=edge_candidate.description,
+                        weight=edge.weight,
+                        confidence=confidence,
+                        revision_reason="new_evidence",
+                        digest_job_id=job_id,
+                        is_current=True,
+                    )
+                    rev = kg_repo.create_edge_revision(session, rev)
+                    edge.current_revision_id = rev.id
+                    edge.confidence = confidence
+                    session.add(edge)
+                    session.commit()
+
+                    # 创建 evidence
+                    _create_edge_evidence(session, subject, edge_id, chunk_id, job_id)
+                    new_edge_ids.append(edge_id)
+                else:
+                    # 已有边：追加 evidence + 重算 confidence
+                    edge_id = matched_edge.id  # type: ignore[assignment]
+                    _create_edge_evidence(session, subject, edge_id, chunk_id, job_id)
+
+                    # 更新 confidence
+                    matched_edge.confidence = confidence
+                    matched_edge.updated_at = utcnow()
+                    session.add(matched_edge)
+                    session.commit()
+                    updated_edge_ids.append(edge_id)
+
+            update_job_progress(
+                session, job_id=job_id, job_type="graph",
+                progress=75, current_step="resolve_edges",
             )
 
-            if matched_edge is None:
-                continue
+            kg_repo.update_digest_job(
+                session, job_id,
+                edges_added=len(new_edge_ids),
+                edges_updated=len(updated_edge_ids),
+            )
 
-            if is_new:
-                # 新边：设置 created_by_job_id 并持久化
-                matched_edge.created_by_job_id = job_id
-                edge = kg_repo.create_knowledge_edge(session, matched_edge)
-                edge_id = edge.id  # type: ignore[assignment]
-
-                # 创建初始 EdgeRevision
-                rev = EdgeRevision(
-                    edge_id=edge_id,
-                    revision_no=1,
-                    description=edge_candidate.description,
-                    weight=edge.weight,
-                    confidence=confidence,
-                    revision_reason="new_evidence",
-                    digest_job_id=job_id,
-                    is_current=True,
-                )
-                rev = kg_repo.create_edge_revision(session, rev)
-                edge.current_revision_id = rev.id
-                edge.confidence = confidence
-                session.add(edge)
-                session.commit()
-
-                # 创建 evidence
-                _create_edge_evidence(session, subject, edge_id, chunk_id, job_id)
-                new_edge_ids.append(edge_id)
-            else:
-                # 已有边：追加 evidence + 重算 confidence
-                edge_id = matched_edge.id  # type: ignore[assignment]
-                _create_edge_evidence(session, subject, edge_id, chunk_id, job_id)
-
-                # 更新 confidence
-                matched_edge.confidence = confidence
-                matched_edge.updated_at = datetime.utcnow()
-                session.add(matched_edge)
-                session.commit()
-                updated_edge_ids.append(edge_id)
-
-        update_job_progress(
-            session, job_id=job_id, job_type="graph",
-            progress=75, current_step="resolve_edges",
-        )
-
-        kg_repo.update_digest_job(
-            session, job_id,
-            edges_added=len(new_edge_ids),
-            edges_updated=len(updated_edge_ids),
-        )
-
-        logger.info(
-            "kg_workflow_resolve_edges_complete",
-            new_edges=len(new_edge_ids),
-            updated_edges=len(updated_edge_ids),
-        )
-        return {
-            **state,
-            "new_edge_ids": new_edge_ids,
-            "updated_edge_ids": updated_edge_ids,
-        }
-    except Exception as exc:
-        logger.error("kg_workflow_resolve_edges_failed", error=str(exc))
-        return {**state, "error": f"resolve_edges_failed: {exc}"}
-    finally:
-        session.close()
+            workflow_logger.info(
+                "kg_workflow_resolve_edges_complete",
+                new_edges=len(new_edge_ids),
+                updated_edges=len(updated_edge_ids),
+            )
+            return {
+                **state,
+                "new_edge_ids": new_edge_ids,
+                "updated_edge_ids": updated_edge_ids,
+            }
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_resolve_edges_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"resolve_edges_failed: {exc}"}
 
 
 async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
     """影响集分析：基于本次变更计算四层闭包。"""
-    session = get_session()
-    try:
-        impact = analyze_impact(
-            session,
-            state["subject"],
-            new_node_ids=state.get("new_node_ids", []),
-            updated_node_ids=state.get("updated_node_ids", []),
-            merged_node_ids=state.get("merged_node_ids", []),
-            split_node_ids=[],  # MVP 暂不支持拆分
-        )
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            impact = analyze_impact(
+                session,
+                state["subject"],
+                new_node_ids=state.get("new_node_ids", []),
+                updated_node_ids=state.get("updated_node_ids", []),
+                merged_node_ids=state.get("merged_node_ids", []),
+                split_node_ids=[],  # MVP 暂不支持拆分
+            )
 
-        update_job_progress(
-            session, job_id=state["job_id"], job_type="graph",
-            progress=85, current_step="analyze_impact",
-        )
+            update_job_progress(
+                session, job_id=state["job_id"], job_type="graph",
+                progress=85, current_step="analyze_impact",
+            )
 
-        logger.info(
-            "kg_workflow_impact_complete",
-            changed_nodes=len(impact.changed_node_ids),
-            affected_units=len(impact.affected_unit_ids),
-        )
-        return {**state, "impact_set": impact}
-    except Exception as exc:
-        logger.error("kg_workflow_analyze_impact_failed", error=str(exc))
-        return {**state, "error": f"analyze_impact_failed: {exc}"}
-    finally:
-        session.close()
+            workflow_logger.info(
+                "kg_workflow_impact_complete",
+                changed_nodes=len(impact.changed_node_ids),
+                affected_units=len(impact.affected_unit_ids),
+            )
+            return {**state, "impact_set": impact}
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_analyze_impact_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 
 async def finalize_graph_node(state: KGDigestState) -> KGDigestState:
@@ -541,65 +705,72 @@ async def finalize_graph_node(state: KGDigestState) -> KGDigestState:
 
     from app.agents.digest.curriculum_workflow import run_curriculum_derive_workflow
 
-    session = get_session()
-    try:
-        job_id = state["job_id"]
-        subject = state["subject"]
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            job_id = state["job_id"]
+            subject = state["subject"]
 
-        # 1. 批量激活 pending → active
-        activated = activate_graph_entities_by_job(session, job_id=job_id)
-        logger.info("kg_workflow_activated", job_id=job_id, activated=activated)
+            # 1. 批量激活 pending → active
+            activated = activate_graph_entities_by_job(session, job_id=job_id)
+            workflow_logger.info(
+                "kg_workflow_activated",
+                activated=activated,
+                chunk_count=len(state.get("chunk_ids", [])),
+                candidate_result_count=len(state.get("candidates", [])),
+                impact_available=state.get("impact_set") is not None,
+            )
 
-        # 2. 释放构建锁
-        kg_repo.release_subject_build_lock(session, subject)
+            # 2. 释放构建锁
+            kg_repo.release_subject_build_lock(session, subject)
 
-        # 3. 创建 CurriculumDeriveJob
-        curriculum_job = CurriculumDeriveJob(
-            subject=subject,
-            graph_job_id=job_id,
-            status="pending",
-        )
-        session.add(curriculum_job)
-        session.commit()
-        session.refresh(curriculum_job)
-
-        curriculum_job_id: int = curriculum_job.id  # type: ignore[assignment]
-
-        # 4. 回填 curriculum_job_id 到 GraphDigestJob
-        kg_repo.update_digest_job(
-            session, job_id,
-            status="completed",
-            curriculum_job_id=curriculum_job_id,
-        )
-
-        update_job_progress(
-            session, job_id=job_id, job_type="graph",
-            progress=100, current_step="finalize_graph",
-        )
-
-        logger.info(
-            "kg_workflow_finalize_complete",
-            job_id=job_id,
-            curriculum_job_id=curriculum_job_id,
-        )
-
-        # 5. 异步启动 CurriculumDeriveJob 工作流（fire-and-forget）
-        impact_set = state.get("impact_set")
-        asyncio.create_task(
-            _run_curriculum_derive_safe(
+            # 3. 创建 CurriculumDeriveJob
+            curriculum_job = CurriculumDeriveJob(
                 subject=subject,
                 graph_job_id=job_id,
-                curriculum_job_id=curriculum_job_id,
-                impact_set=impact_set,
+                status="pending",
             )
-        )
+            session.add(curriculum_job)
+            session.commit()
+            session.refresh(curriculum_job)
 
-        return {**state, "error": None}
-    except Exception as exc:
-        logger.error("kg_workflow_finalize_failed", error=str(exc))
-        return {**state, "error": f"finalize_failed: {exc}"}
-    finally:
-        session.close()
+            curriculum_job_id: int = curriculum_job.id  # type: ignore[assignment]
+
+            # 4. 回填 curriculum_job_id 到 GraphDigestJob
+            kg_repo.update_digest_job(
+                session, job_id,
+                status="completed",
+                curriculum_job_id=curriculum_job_id,
+            )
+
+            update_job_progress(
+                session, job_id=job_id, job_type="graph",
+                progress=100, current_step="finalize_graph",
+            )
+
+            workflow_logger.info(
+                "kg_workflow_finalize_complete",
+                curriculum_job_id=curriculum_job_id,
+                chunk_count=len(state.get("chunk_ids", [])),
+                candidate_result_count=len(state.get("candidates", [])),
+                edge_candidate_count=len(state.get("all_candidate_edges", [])),
+            )
+
+            # 5. 异步启动 CurriculumDeriveJob 工作流（fire-and-forget）
+            impact_set = state.get("impact_set")
+            asyncio.create_task(
+                _run_curriculum_derive_safe(
+                    subject=subject,
+                    graph_job_id=job_id,
+                    curriculum_job_id=curriculum_job_id,
+                    impact_set=impact_set,
+                )
+            )
+
+            return {**state, "error": None}
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_finalize_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"finalize_failed: {exc}"}
 
 
 async def _run_curriculum_derive_safe(
@@ -626,50 +797,49 @@ async def _run_curriculum_derive_safe(
             curriculum_job_id=curriculum_job_id,
         )
         try:
-            session = get_session()
-            curriculum_repo.update_curriculum_job(
-                session,
-                curriculum_job_id,
-                status="failed",
-                error_message=traceback.format_exc()[-500:],
-            )
-            session.close()
+            with managed_session() as session:
+                curriculum_repo.update_curriculum_job(
+                    session,
+                    curriculum_job_id,
+                    status="failed",
+                    error_message=traceback.format_exc()[-500:],
+                )
         except Exception:
             logger.exception("failed_to_mark_curriculum_job_failed")
 
 
 async def fail_node(state: KGDigestState) -> KGDigestState:
     """失败处理：清理 pending 数据 + 释放锁 + 更新 job 状态。"""
-    session = get_session()
-    try:
-        job_id = state["job_id"]
-        error_msg = state.get("error", "unknown_error")
+    with managed_session() as session:
+        workflow_logger = _workflow_logger(state)
+        try:
+            job_id = state["job_id"]
+            error_msg = state.get("error", "unknown_error")
 
-        # 清理 pending 数据
-        cleanup_pending_by_job(session, job_id=job_id, job_type="graph")
+            # 清理 pending 数据
+            cleanup_pending_by_job(session, job_id=job_id, job_type="graph")
 
-        # 释放锁（如果已获取）
-        if state.get("lock_acquired", False):
-            kg_repo.release_subject_build_lock(session, state["subject"])
+            # 释放锁（如果已获取）
+            if state.get("lock_acquired", False):
+                kg_repo.release_subject_build_lock(session, state["subject"])
 
-        # 更新 job 状态
-        kg_repo.update_digest_job(
-            session, job_id,
-            status="failed",
-            error_message=error_msg,
-        )
+            # 更新 job 状态
+            kg_repo.update_digest_job(
+                session, job_id,
+                status="failed",
+                error_message=error_msg,
+            )
 
-        logger.error(
-            "kg_workflow_failed",
-            job_id=job_id,
-            error=error_msg,
-        )
-        return state
-    except Exception as exc:
-        logger.error("kg_workflow_fail_node_error", error=str(exc))
-        return state
-    finally:
-        session.close()
+            workflow_logger.error(
+                "kg_workflow_failed",
+                error=error_msg,
+                lock_acquired=state.get("lock_acquired", False),
+                chunk_count=len(state.get("chunk_ids", [])),
+            )
+            return state
+        except Exception as exc:
+            workflow_logger.error("kg_workflow_fail_node_error", error=str(exc), exc_info=True)
+            return state
 
 
 # ── 辅助函数：节点/边创建 ────────────────────────────────────
@@ -755,7 +925,7 @@ def _create_updated_revision(
     )
     rev = kg_repo.create_knowledge_revision(session, rev)
     node.current_revision_id = rev.id
-    node.updated_at = datetime.utcnow()
+    node.updated_at = utcnow()
     session.add(node)
     session.commit()
 

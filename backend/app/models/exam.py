@@ -8,6 +8,8 @@ from typing import Any
 import sqlalchemy as sa
 from sqlmodel import Column, Field, SQLModel
 
+from app.utils.time import utcnow
+
 
 class Exam(SQLModel, table=True):
     """试卷主表。"""
@@ -16,7 +18,7 @@ class Exam(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Question(SQLModel, table=True):
@@ -45,7 +47,7 @@ class ExamSubmission(SQLModel, table=True):
     exam_id: int = Field(foreign_key="exam.id", index=True)
     user_id: str = Field(default="local", index=True)
     score: float
-    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: datetime = Field(default_factory=utcnow)
 
 
 class AnswerRecord(SQLModel, table=True):
@@ -68,4 +70,4 @@ class Mistake(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     answer_record_id: int = Field(foreign_key="answer_record.id", index=True)
     analysis: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)

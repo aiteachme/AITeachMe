@@ -1,9 +1,11 @@
-"""数据库初始化、轻量迁移与会话管理。"""
+"""数据库初始化、schema 校验与会话管理。"""
 
 from __future__ import annotations
 
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Generator
 
 try:
     import pysqlite3 as sqlite3  # type: ignore[import-not-found]
@@ -28,6 +30,65 @@ logger = structlog.get_logger()
 _engine = None
 _vec_ready: bool | None = None
 _vec_error: str | None = None
+
+_SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
+    "raw_file": {
+        "id",
+        "subject",
+        "filename",
+        "filetype",
+        "file_path",
+        "markdown_path",
+        "asset_dir",
+        "status",
+        "error_message",
+        "created_at",
+        "updated_at",
+        "content_hash",
+        "file_size_bytes",
+        "estimated_pages",
+        "detected_language",
+        "classification_result",
+        "quality_score",
+        "parse_metadata",
+        "image_count",
+        "ingest_status",
+    },
+    "document": {
+        "id",
+        "subject",
+        "source_file_id",
+        "title",
+        "markdown_content",
+        "current_step",
+        "created_at",
+        "updated_at",
+    },
+    "graph_digest_job": {
+        "id",
+        "subject",
+        "idempotency_key",
+        "status",
+        "progress",
+        "current_step",
+        "input_file_ids_json",
+        "input_chunk_count",
+        "error_message",
+        "created_at",
+        "updated_at",
+    },
+    "curriculum_derive_job": {
+        "id",
+        "subject",
+        "graph_job_id",
+        "status",
+        "progress",
+        "current_step",
+        "error_message",
+        "created_at",
+        "updated_at",
+    },
+}
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
@@ -127,12 +188,6 @@ def _get_table_columns(conn, table_name: str) -> set[str]:
     return {row[1] for row in rows}
 
 
-def _ensure_column(conn, table_name: str, column_name: str, ddl: str) -> None:
-    if column_name in _get_table_columns(conn, table_name):
-        return
-    conn.execute(sa.text(f"ALTER TABLE {table_name} ADD COLUMN {ddl}"))
-
-
 def _table_exists(conn, table_name: str) -> bool:
     row = conn.execute(
         sa.text(
@@ -143,162 +198,28 @@ def _table_exists(conn, table_name: str) -> bool:
     return row is not None
 
 
-def _apply_lightweight_migrations(engine) -> None:
-    """为旧数据库补齐新字段，并把旧状态同步到新字段。"""
+def _validate_runtime_schema(engine) -> None:
+    """开发阶段直接校验 schema，不再兼容旧库自动迁移。"""
 
     with engine.connect() as conn:
-        if _table_exists(conn, "raw_file"):
-            raw_file_columns = _get_table_columns(conn, "raw_file")
-            _ensure_column(conn, "raw_file", "markdown_path", "markdown_path TEXT")
-            _ensure_column(conn, "raw_file", "asset_dir", "asset_dir TEXT")
-            _ensure_column(conn, "raw_file", "status", "status TEXT DEFAULT 'pending'")
-            _ensure_column(conn, "raw_file", "error_message", "error_message TEXT")
-            _ensure_column(conn, "raw_file", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-            if "parse_status" in raw_file_columns:
-                conn.execute(
-                    sa.text(
-                        """
-                        UPDATE raw_file
-                        SET
-                            status = COALESCE(
-                                status,
-                                CASE parse_status
-                                    WHEN 'parsing' THEN 'processing'
-                                    WHEN 'parsed' THEN 'completed'
-                                    WHEN 'parse_failed' THEN 'failed'
-                                    ELSE 'pending'
-                                END
-                            )
-                        """
-                    )
-                )
-                # 给旧的 NOT NULL 列加默认值，避免新插入时违反约束
-                conn.execute(
-                    sa.text(
-                        """
-                        CREATE TABLE IF NOT EXISTS _raw_file_backup AS SELECT * FROM raw_file
-                        """
-                    )
-                )
-                conn.execute(sa.text("DROP TABLE raw_file"))
-                # 用新 schema 重建（不含旧列 parse_status / parse_error）
-                conn.execute(
-                    sa.text(
-                        """
-                        CREATE TABLE raw_file (
-                            id INTEGER PRIMARY KEY,
-                            subject TEXT NOT NULL,
-                            filename TEXT NOT NULL,
-                            filetype TEXT NOT NULL,
-                            file_path TEXT NOT NULL,
-                            markdown_path TEXT,
-                            asset_dir TEXT,
-                            status TEXT DEFAULT 'pending',
-                            error_message TEXT,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                        """
-                    )
-                )
-                conn.execute(
-                    sa.text(
-                        """
-                        INSERT INTO raw_file
-                            (id, subject, filename, filetype, file_path,
-                             markdown_path, asset_dir, status, error_message,
-                             created_at, updated_at)
-                        SELECT
-                            id, subject, filename, filetype, file_path,
-                            markdown_path, asset_dir, status, error_message,
-                            created_at, updated_at
-                        FROM _raw_file_backup
-                        """
-                    )
-                )
-                conn.execute(sa.text("DROP TABLE _raw_file_backup"))
-                conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_raw_file_subject ON raw_file (subject)"))
-                conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_raw_file_status ON raw_file (status)"))
-            elif "parse_error" in raw_file_columns:
-                conn.execute(
-                    sa.text(
-                        """
-                        UPDATE raw_file
-                        SET error_message = COALESCE(error_message, parse_error)
-                        """
-                    )
-                )
-
-        if _table_exists(conn, "doc_build_job"):
-            doc_build_job_columns = _get_table_columns(conn, "doc_build_job")
-            _ensure_column(conn, "doc_build_job", "status", "status TEXT DEFAULT 'pending'")
-            _ensure_column(conn, "doc_build_job", "current_step", "current_step TEXT")
-            _ensure_column(conn, "doc_build_job", "error_message", "error_message TEXT")
-            _ensure_column(conn, "doc_build_job", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-            if "stage" in doc_build_job_columns:
-                conn.execute(
-                    sa.text(
-                        """
-                        UPDATE doc_build_job
-                        SET
-                            status = COALESCE(
-                                status,
-                                CASE stage
-                                    WHEN 'failed' THEN 'failed'
-                                    WHEN 'embedded' THEN 'completed'
-                                    WHEN 'pending' THEN 'pending'
-                                    ELSE 'processing'
-                                END
-                            ),
-                            current_step = COALESCE(
-                                current_step,
-                                CASE stage
-                                    WHEN 'cleaned' THEN 'cleaned'
-                                    WHEN 'outlined' THEN 'outlined'
-                                    WHEN 'stored' THEN 'stored'
-                                    WHEN 'chunked' THEN 'chunked'
-                                    WHEN 'embedded' THEN 'embedded'
-                                    ELSE current_step
-                                END
-                            )
-                        """
-                    )
-                )
-            if "error" in doc_build_job_columns:
-                conn.execute(
-                    sa.text(
-                        """
-                        UPDATE doc_build_job
-                        SET error_message = COALESCE(error_message, error)
-                        """
-                    )
-                )
-
-        if _table_exists(conn, "document"):
-            document_columns = _get_table_columns(conn, "document")
-            _ensure_column(conn, "document", "current_step", "current_step TEXT")
-            _ensure_column(conn, "document", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-            if "pipeline_stage" in document_columns:
-                conn.execute(
-                    sa.text(
-                        """
-                        UPDATE document
-                        SET current_step = COALESCE(
-                            current_step,
-                            CASE pipeline_stage
-                                WHEN 'cleaned' THEN 'cleaned'
-                                WHEN 'outlined' THEN 'outlined'
-                                WHEN 'stored' THEN 'stored'
-                                WHEN 'chunked' THEN 'chunked'
-                                WHEN 'embedded' THEN 'embedded'
-                                ELSE current_step
-                            END
-                        )
-                        """
-                    )
-                )
-
-        conn.commit()
+        for table_name, required_columns in _SCHEMA_REQUIREMENTS.items():
+            if not _table_exists(conn, table_name):
+                continue
+            existing_columns = _get_table_columns(conn, table_name)
+            missing_columns = sorted(required_columns - existing_columns)
+            if not missing_columns:
+                continue
+            logger.error(
+                "database_schema_outdated",
+                table_name=table_name,
+                missing_columns=missing_columns,
+                existing_columns=sorted(existing_columns),
+            )
+            raise RuntimeError(
+                "当前开发数据库 schema 已过期。"
+                f"表 `{table_name}` 缺少字段: {', '.join(missing_columns)}。"
+                "请删除 `backend/data/aiteachme.db` 或对应 data 目录下数据库后重启服务。"
+            )
 
 
 def init_db() -> None:
@@ -310,7 +231,7 @@ def init_db() -> None:
     settings = get_settings()
 
     SQLModel.metadata.create_all(engine)
-    _apply_lightweight_migrations(engine)
+    _validate_runtime_schema(engine)
 
     if is_vec_ready():
         with engine.connect() as conn:
@@ -338,6 +259,25 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    """返回一个新的数据库会话。"""
+    """返回一个新的数据库会话。
+
+    .. deprecated:: 0.3.0
+        优先使用 ``managed_session()`` 上下文管理器，它提供自动 commit/rollback/close。
+    """
 
     return Session(get_engine())
+
+
+@contextmanager
+def managed_session() -> Generator[Session, None, None]:
+    """安全的 session 上下文管理器：成功时 commit，异常时 rollback，最终 close。"""
+
+    session = Session(get_engine())
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

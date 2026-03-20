@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel
 
+from app.utils.time import utcnow
+
 
 class UserProfile(SQLModel, table=True):
     """知识点掌握度记录。"""
@@ -19,4 +21,4 @@ class UserProfile(SQLModel, table=True):
     mastery: float | None = None
     attempts: int = 0
     correct: int = 0
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

@@ -5,9 +5,9 @@ Phase 2 实现教学单元部分；Phase 3/4 追加锚点、主题树、先修 D
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlmodel import Session, func, select
+
+from app.utils.time import utcnow
 
 from app.core.exceptions import DagVersionConflictError, TreeVersionConflictError
 from app.models.curriculum import (
@@ -204,7 +204,7 @@ def update_curriculum_job(
         return None
     for key, value in kwargs.items():
         setattr(job, key, value)
-    job.updated_at = datetime.utcnow()
+    job.updated_at = utcnow()
     session.add(job)
     session.commit()
     session.refresh(job)
@@ -367,7 +367,7 @@ def update_taxonomy_anchor(
         return None
     for key, value in kwargs.items():
         setattr(anchor, key, value)
-    anchor.updated_at = datetime.utcnow()
+    anchor.updated_at = utcnow()
     session.add(anchor)
     session.commit()
     session.refresh(anchor)

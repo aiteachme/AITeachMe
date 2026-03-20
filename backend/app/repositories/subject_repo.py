@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlmodel import Session, func, select
 
 from app.models import ChatMessage, Document, Exam, RawFile, Subject, UserProfile
+from app.utils.time import utcnow
 
 
 def create_subject(session: Session, subject: Subject) -> Subject:
@@ -48,7 +47,7 @@ def update_subject(
 
     subject.name = name
     subject.description = description
-    subject.updated_at = datetime.utcnow()
+    subject.updated_at = utcnow()
     session.add(subject)
     session.commit()
     session.refresh(subject)

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlmodel import Session, func, select
 
 from app.models import RawFile
+from app.utils.time import utcnow
 
 _UNSET = object()
 
@@ -78,6 +77,15 @@ def update_raw_file(
     asset_dir: str | None | object = _UNSET,
     status: str | None = None,
     error_message: str | None | object = _UNSET,
+    content_hash: str | None | object = _UNSET,
+    file_size_bytes: int | None | object = _UNSET,
+    estimated_pages: int | None | object = _UNSET,
+    detected_language: str | None | object = _UNSET,
+    classification_result: str | None | object = _UNSET,
+    quality_score: float | None | object = _UNSET,
+    parse_metadata: str | None | object = _UNSET,
+    image_count: int | None | object = _UNSET,
+    ingest_status: str | None | object = _UNSET,
 ) -> RawFile:
     """更新原始文件记录。"""
 
@@ -91,7 +99,25 @@ def update_raw_file(
         raw_file.status = status
     if error_message is not _UNSET:
         raw_file.error_message = error_message
-    raw_file.updated_at = datetime.utcnow()
+    if content_hash is not _UNSET:
+        raw_file.content_hash = content_hash
+    if file_size_bytes is not _UNSET:
+        raw_file.file_size_bytes = file_size_bytes
+    if estimated_pages is not _UNSET:
+        raw_file.estimated_pages = estimated_pages
+    if detected_language is not _UNSET:
+        raw_file.detected_language = detected_language
+    if classification_result is not _UNSET:
+        raw_file.classification_result = classification_result
+    if quality_score is not _UNSET:
+        raw_file.quality_score = quality_score
+    if parse_metadata is not _UNSET:
+        raw_file.parse_metadata = parse_metadata
+    if image_count is not _UNSET:
+        raw_file.image_count = image_count
+    if ingest_status is not _UNSET:
+        raw_file.ingest_status = ingest_status
+    raw_file.updated_at = utcnow()
     session.add(raw_file)
     session.commit()
     session.refresh(raw_file)

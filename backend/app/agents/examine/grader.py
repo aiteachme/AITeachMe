@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from pydantic import BaseModel
 
@@ -39,28 +41,48 @@ async def grade_exam(
     questions: list[Question],
     answers: dict[str, str],
 ) -> GradingResult:
-    """对整张试卷判分。"""
+    """对整张试卷判分（并行化：先批量判分，再批量生成错因分析）。"""
 
+    if not questions:
+        return GradingResult(score=0.0, items=[])
+
+    # 第一轮：并行判分
+    grade_tasks = [
+        grade_one_question(question=q, user_answer=answers.get(q.question_key, ""))
+        for q in questions
+    ]
+    grade_results = await asyncio.gather(*grade_tasks)
+
+    # 第二轮：并行生成错因分析（仅错题）
+    incorrect_indices: list[int] = []
+    analysis_tasks: list = []
+    for i, (question, is_correct) in enumerate(zip(questions, grade_results)):
+        if not is_correct:
+            incorrect_indices.append(i)
+            analysis_tasks.append(
+                generate_mistake_analysis(question, answers.get(question.question_key, ""))
+            )
+
+    analysis_results = await asyncio.gather(*analysis_tasks) if analysis_tasks else []
+    analysis_map: dict[int, str] = dict(zip(incorrect_indices, analysis_results))
+
+    # 组装结果
     items: list[GradingResultItem] = []
     correct_count = 0
-
-    for question in questions:
-        user_answer = answers.get(question.question_key, "")
-        is_correct = await grade_one_question(question=question, user_answer=user_answer)
-        analysis = None if is_correct else await generate_mistake_analysis(question, user_answer)
+    for i, (question, is_correct) in enumerate(zip(questions, grade_results)):
         if is_correct:
             correct_count += 1
         items.append(
             GradingResultItem(
                 question_id=question.id or 0,
                 question_key=question.question_key,
-                user_answer=user_answer,
+                user_answer=answers.get(question.question_key, ""),
                 is_correct=is_correct,
-                analysis=analysis,
+                analysis=analysis_map.get(i),
             )
         )
 
-    score = correct_count / len(questions) * 100 if questions else 0.0
+    score = correct_count / len(questions) * 100
     return GradingResult(score=score, items=items)
 
 

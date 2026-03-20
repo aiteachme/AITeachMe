@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
+from app.utils.time import utcnow
+
 
 class Document(SQLModel, table=True):
     """知识集合中的单篇文档。"""
@@ -18,8 +20,8 @@ class Document(SQLModel, table=True):
     title: str
     markdown_content: str = ""
     current_step: str | None = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class DocumentChunk(SQLModel, table=True):

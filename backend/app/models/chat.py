@@ -8,6 +8,8 @@ from typing import Any
 import sqlalchemy as sa
 from sqlmodel import Column, Field, SQLModel
 
+from app.utils.time import utcnow
+
 
 class ChatMessage(SQLModel, table=True):
     """聊天消息。"""
@@ -21,4 +23,4 @@ class ChatMessage(SQLModel, table=True):
     role: str
     content: str
     contexts: Any | None = Field(default=None, sa_column=Column(sa.JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)

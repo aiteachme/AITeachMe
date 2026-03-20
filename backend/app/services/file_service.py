@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -10,17 +13,18 @@ import structlog
 from fastapi import UploadFile
 from sqlmodel import Session
 
+from app.agents.ingest.classifier import classify_file
 from app.agents.ingest.orchestrator import parse_file
 from app.core.config import get_settings
-from app.core.database import get_session
+from app.core.database import managed_session
 from app.core.exceptions import (
     FileParseError,
     FileTooLargeError,
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
-from app.models import RawFile, TaskStatus
-from app.repositories.ingest_repo import (
+from app.models import IngestStatus, RawFile, TaskStatus
+from app.repositories.files_repo import (
     create_raw_file,
     delete_raw_file,
     get_raw_file_by_id,
@@ -29,7 +33,7 @@ from app.repositories.ingest_repo import (
     update_raw_file,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
-from app.schemas.upload import (
+from app.schemas.files import (
     FileDeleteData,
     FileGetData,
     FileItem,
@@ -65,6 +69,7 @@ async def save_uploaded_file(
 
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()
+    content_hash = hashlib.sha256(content).hexdigest()
     temp_dir = build_temp_dir(normalized_subject)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
@@ -78,6 +83,9 @@ async def save_uploaded_file(
             filetype=extension.lstrip("."),
             file_path=str(temp_path),
             status=TaskStatus.PENDING.value,
+            content_hash=content_hash,
+            file_size_bytes=len(content),
+            ingest_status=IngestStatus.PENDING.value,
         ),
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
@@ -147,6 +155,20 @@ def request_files_parse(
     """受理批量解析请求。"""
 
     raw_files = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
+    logger.info(
+        "file_parse_requested",
+        subject=subject,
+        requested_file_ids=file_ids,
+        raw_file_states=[
+            {
+                "file_id": require_id(item.id, "RawFile.id"),
+                "status": item.status,
+                "markdown_ready": bool(item.markdown_path),
+                "filename": item.filename,
+            }
+            for item in raw_files
+        ],
+    )
     accepted_ids: list[int] = []
     for raw_file in raw_files:
         raw_file_id = require_id(raw_file.id, "RawFile.id")
@@ -157,8 +179,15 @@ def request_files_parse(
             raw_file,
             status=TaskStatus.PROCESSING.value,
             error_message=None,
+            ingest_status=IngestStatus.CLASSIFYING.value,
         )
         accepted_ids.append(raw_file_id)
+    logger.info(
+        "file_parse_accepted",
+        subject=subject,
+        accepted_file_ids=accepted_ids,
+        accepted_count=len(accepted_ids),
+    )
     return FilesParseData(accepted_file_ids=accepted_ids)
 
 
@@ -178,6 +207,7 @@ def retry_file_parse(
         raw_file,
         status=TaskStatus.PROCESSING.value,
         error_message=None,
+        ingest_status=IngestStatus.CLASSIFYING.value,
     )
     return FilesParseData(accepted_file_ids=[file_id])
 
@@ -185,43 +215,135 @@ def retry_file_parse(
 async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
     """后台执行批量解析。"""
 
-    with get_session() as session:
+    batch_logger = logger.bind(subject=subject, file_ids=file_ids)
+    batch_logger.info("file_parse_background_started", file_count=len(file_ids))
+    with managed_session() as session:
         for file_id in file_ids:
             raw_file = get_raw_file_by_id(session, file_id)
             if raw_file is None or raw_file.subject != subject:
+                batch_logger.warning(
+                    "file_parse_background_skipped",
+                    file_id=file_id,
+                    reason="raw_file_missing_or_subject_mismatch",
+                )
                 continue
+            batch_logger.info(
+                "file_parse_background_dispatch",
+                file_id=file_id,
+                status=raw_file.status,
+                markdown_ready=bool(raw_file.markdown_path),
+            )
             await _parse_one_file(session, raw_file)
+    batch_logger.info("file_parse_background_completed")
 
 
 async def _parse_one_file(session: Session, raw_file: RawFile) -> RawFile:
-    """执行单文件解析任务。"""
+    """执行单文件解析任务（含分类 → 解析 → 统计）。"""
 
     raw_file_id = require_id(raw_file.id, "RawFile.id")
+    file_logger = logger.bind(
+        subject=raw_file.subject,
+        file_id=raw_file_id,
+        filename=raw_file.filename,
+        file_path=raw_file.file_path,
+    )
+    started_at = time.monotonic()
     markdown_path = build_markdown_path(raw_file.subject, raw_file_id)
     asset_dir = build_asset_dir(raw_file.subject, raw_file_id)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     asset_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        markdown_text = await parse_file(raw_file.file_path)
+        # ── 1. 文件指纹 ──
+        file_bytes = Path(raw_file.file_path).read_bytes()
+        content_hash = hashlib.sha256(file_bytes).hexdigest()
+        file_size_bytes = len(file_bytes)
+
+        # ── 2. 轻量分类 ──
+        classification = classify_file(raw_file.file_path, raw_file.filetype)
+        classification_payload = json.dumps(classification.to_dict(), ensure_ascii=False)
+        file_logger.info(
+            "file_classify_done",
+            category=classification.file_category,
+            estimated_pages=classification.estimated_pages,
+            language=classification.detected_language,
+        )
+        update_raw_file(
+            session,
+            raw_file,
+            estimated_pages=classification.estimated_pages,
+            detected_language=classification.detected_language,
+            classification_result=classification_payload,
+            ingest_status=IngestStatus.PARSING.value,
+        )
+
+        # ── 3. 解析 ──
+        file_logger.info(
+            "file_parse_started",
+            markdown_path=str(markdown_path),
+            asset_dir=str(asset_dir),
+        )
+        markdown_text = await parse_file(raw_file.file_path, asset_dir)
         markdown_path.write_text(markdown_text, encoding="utf-8")
-        return update_raw_file(
+
+        # ── 4. 统计提取的图片数 ──
+        image_count = len(list(asset_dir.glob("*"))) if asset_dir.exists() else 0
+        elapsed = round(time.monotonic() - started_at, 2)
+
+        # ── 5. 构建解析元数据 ──
+        parse_meta = json.dumps({
+            "parser_chain": classification.recommended_parser,
+            "fallbacks": classification.fallback_parsers,
+            "elapsed_s": elapsed,
+            "markdown_chars": len(markdown_text),
+            "image_count": image_count,
+        }, ensure_ascii=False)
+
+        # ── 6. 更新记录 ──
+        updated = update_raw_file(
             session,
             raw_file,
             markdown_path=str(markdown_path),
             asset_dir=str(asset_dir),
             status=TaskStatus.COMPLETED.value,
             error_message=None,
+            content_hash=content_hash,
+            file_size_bytes=file_size_bytes,
+            estimated_pages=classification.estimated_pages,
+            detected_language=classification.detected_language,
+            classification_result=classification_payload,
+            parse_metadata=parse_meta,
+            image_count=image_count,
+            ingest_status=IngestStatus.READY_FOR_DIGEST.value,
         )
+        file_logger.info(
+            "file_parse_completed",
+            status=updated.status,
+            images=image_count,
+            elapsed_s=elapsed,
+        )
+        return updated
     except Exception as exc:
-        logger.error("parse_file_failed", file_id=raw_file_id, error=str(exc))
-        return update_raw_file(
+        file_logger.error(
+            "parse_file_failed",
+            error=str(exc),
+            elapsed_s=round(time.monotonic() - started_at, 2),
+            exc_info=True,
+        )
+        updated = update_raw_file(
             session,
             raw_file,
             asset_dir=str(asset_dir),
             status=TaskStatus.FAILED.value,
             error_message=str(exc),
+            ingest_status=IngestStatus.FAILED.value,
         )
+        file_logger.info(
+            "file_parse_marked_failed",
+            status=updated.status,
+            error_message=updated.error_message,
+        )
+        return updated
 
 
 def list_files(
