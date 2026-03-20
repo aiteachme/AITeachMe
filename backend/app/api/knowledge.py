@@ -31,7 +31,7 @@ from app.schemas.knowledge import (
     UnitsQueryRequest,
     AnchorManageRequest,
 )
-from app.services.curriculum_service import (
+from app.services.knowledge.curriculum_service import (
     clear_subject_knowledge,
     get_current_curriculum_snapshot,
     get_current_prereq_dag,
@@ -40,12 +40,12 @@ from app.services.curriculum_service import (
     get_teaching_units,
     manage_taxonomy_anchors,
 )
-from app.services.digest_service import (
+from app.services.knowledge.digest_service import (
     get_digest_status,
     run_graph_digest_background,
     trigger_digest_build,
 )
-from app.services.graph_query_service import (
+from app.services.knowledge.graph_query_service import (
     get_evidence_context,
     get_full_graph,
     get_graph_node_detail,

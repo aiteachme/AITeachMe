@@ -18,7 +18,7 @@ from app.repositories.exams_repo import (
     list_exam_history_by_subject,
     list_mistakes_by_subject,
 )
-from app.repositories.kg_repo import list_nodes_by_subject
+from app.repositories.knowledge.kg_repo import list_nodes_by_subject
 from app.repositories.profile_repo import get_profile_by_key, get_weak_points, upsert_profile
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.exams import (

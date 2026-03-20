@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import traceback
+import uuid
 
 import structlog
 from sqlmodel import Session, select
@@ -38,10 +38,10 @@ logger = structlog.get_logger()
 
 
 def _compute_idempotency_key(subject: str, file_ids: list[int]) -> str:
-    """基于 subject + 排序后 file_ids 计算幂等键。"""
-    sorted_ids = sorted(file_ids)
-    raw = f"{subject}:{json.dumps(sorted_ids)}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+    """开发阶段默认生成一次性幂等键，避免复用历史空任务。"""
+
+    del file_ids
+    return f"{subject}:{uuid.uuid4().hex}"
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ finalize_graph_node 完成后：
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import traceback
 from typing import TypedDict
 
@@ -23,6 +24,9 @@ import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
+from app.agents.digest.chunker import chunk_markdown
+from app.agents.digest.cleaner import clean_markdown
+from app.agents.digest.embedder import embed_chunks
 from app.agents.digest.kg_clusterer import ClusteredCandidate, cluster_candidates
 from app.agents.digest.kg_extractor import (
     CandidateEdge,
@@ -38,7 +42,7 @@ from app.agents.digest.kg_resolver import (
 )
 from app.core.database import managed_session
 from app.core.embedding import aembed_texts
-from app.models import RawFile
+from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models.curriculum import CurriculumDeriveJob
 from app.models.knowledge import Document, DocumentChunk
 from app.models.knowledge_graph import (
@@ -50,7 +54,7 @@ from app.models.knowledge_graph import (
     KnowledgeNode,
     KnowledgeRevision,
 )
-from app.repositories import kg_repo
+from app.repositories import kg_repo, knowledge_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,
     cleanup_pending_by_job,
@@ -96,6 +100,141 @@ class KGDigestState(TypedDict, total=False):
     error: str | None
 
 
+def _get_document_by_source_file(
+    session: Session,
+    *,
+    subject: str,
+    raw_file_id: int,
+) -> Document | None:
+    return session.exec(
+        select(Document).where(
+            Document.subject == subject,
+            Document.source_file_id == raw_file_id,
+        )
+    ).first()
+
+
+def _load_clean_markdown(raw_file: RawFile) -> str:
+    if not raw_file.markdown_path:
+        return ""
+
+    markdown_path = Path(raw_file.markdown_path)
+    if not markdown_path.exists():
+        return ""
+
+    return clean_markdown(markdown_path.read_text(encoding="utf-8"))
+
+
+async def _ensure_document_chunks_for_file(
+    session: Session,
+    *,
+    raw_file: RawFile,
+) -> tuple[int, list[int]]:
+    raw_file_id = raw_file.id
+    if raw_file_id is None:
+        raise ValueError("RawFile.id 持久化后不应为空。")
+
+    markdown_content = _load_clean_markdown(raw_file)
+    document = _get_document_by_source_file(
+        session,
+        subject=raw_file.subject,
+        raw_file_id=raw_file_id,
+    )
+
+    if document is None:
+        document = knowledge_repo.bulk_create_documents(
+            session,
+            [
+                Document(
+                    subject=raw_file.subject,
+                    source_file_id=raw_file_id,
+                    title=raw_file.filename,
+                    markdown_content=markdown_content,
+                    current_step=DigestStep.STORED.value,
+                )
+            ],
+        )[0]
+    elif markdown_content and document.markdown_content != markdown_content:
+        updated_document = knowledge_repo.update_document_content(
+            session,
+            document.id,
+            markdown_content,
+        )
+        if updated_document is not None:
+            document = updated_document
+
+    document_id = document.id
+    if document_id is None:
+        raise ValueError("Document.id 持久化后不应为空。")
+
+    existing_chunks = knowledge_repo.get_chunks_by_document_id(session, document_id)
+    if existing_chunks:
+        return document_id, [chunk.id for chunk in existing_chunks if chunk.id is not None]
+
+    chunks = chunk_markdown(markdown_content)
+    db_chunks = knowledge_repo.bulk_create_chunks(
+        session,
+        [
+            DocumentChunk(
+                document_id=document_id,
+                title=chunk.title,
+                level=chunk.level,
+                header_path=chunk.header_path,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+            )
+            for chunk in chunks
+        ],
+    )
+    chunk_ids = [chunk.id for chunk in db_chunks if chunk.id is not None]
+    embeddings = await embed_chunks(chunks)
+    if embeddings:
+        knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
+    knowledge_repo.update_document_step(session, document_id, DigestStep.EMBEDDED.value)
+    return document_id, chunk_ids
+
+
+async def _prepare_chunk_ids_for_files(
+    session: Session,
+    *,
+    raw_files: list[RawFile],
+    workflow_logger: structlog.stdlib.BoundLogger,
+) -> tuple[list[int], list[int]]:
+    document_ids: list[int] = []
+    chunk_ids: list[int] = []
+
+    for raw_file in raw_files:
+        raw_file_id = raw_file.id
+        if raw_file_id is None:
+            continue
+
+        is_ready = (
+            raw_file.status == TaskStatus.COMPLETED.value
+            and raw_file.ingest_status == IngestStatus.READY_FOR_DIGEST.value
+        )
+        if not is_ready:
+            workflow_logger.warning(
+                "kg_prepare_skip_unready_file",
+                file_id=raw_file_id,
+                status=raw_file.status,
+                ingest_status=raw_file.ingest_status,
+                markdown_ready=bool(raw_file.markdown_path),
+                filename=raw_file.filename,
+            )
+            continue
+
+        document_id, file_chunk_ids = await _ensure_document_chunks_for_file(
+            session,
+            raw_file=raw_file,
+        )
+        document_ids.append(document_id)
+        chunk_ids.extend(file_chunk_ids)
+
+    unique_document_ids = list(dict.fromkeys(document_ids))
+    unique_chunk_ids = list(dict.fromkeys(chunk_ids))
+    return unique_document_ids, unique_chunk_ids
+
+
 
 # ── 工作流节点 ────────────────────────────────────────────────
 
@@ -139,39 +278,27 @@ async def prepare_node(state: KGDigestState) -> KGDigestState:
                     RawFile.id.in_(file_ids),  # type: ignore[union-attr]
                 )
             ).all()
-
-            # 查找 file_ids 对应的 Document → DocumentChunk
-            documents = session.exec(
-                select(Document).where(
-                    Document.subject == state["subject"],
-                    Document.source_file_id.in_(file_ids),  # type: ignore[union-attr]
-                )
-            ).all()
-
-            doc_ids = [d.id for d in documents]
-            if not doc_ids:
+            doc_ids, chunk_ids = await _prepare_chunk_ids_for_files(
+                session,
+                raw_files=list(raw_files),
+                workflow_logger=workflow_logger,
+            )
+            if not chunk_ids:
                 workflow_logger.warning(
-                    "kg_workflow_no_documents",
+                    "kg_workflow_no_digest_inputs",
                     raw_file_count=len(raw_files),
                     raw_files=[
                         {
                             "file_id": rf.id,
                             "status": rf.status,
+                            "ingest_status": rf.ingest_status,
                             "markdown_ready": bool(rf.markdown_path),
                             "filename": rf.filename,
                         }
                         for rf in raw_files
                     ],
                 )
-                return {**state, "chunk_ids": []}
-
-            chunks = session.exec(
-                select(DocumentChunk).where(
-                    DocumentChunk.document_id.in_(doc_ids),  # type: ignore[union-attr]
-                )
-            ).all()
-
-            chunk_ids = [c.id for c in chunks]
+                return {**state, "error": "no_ready_digest_inputs"}
 
             # 更新 job 的 input_chunk_count
             kg_repo.update_digest_job(
@@ -190,7 +317,7 @@ async def prepare_node(state: KGDigestState) -> KGDigestState:
             workflow_logger.info(
                 "kg_workflow_prepare_complete",
                 document_ids=doc_ids,
-                source_file_ids=[d.source_file_id for d in documents],
+                source_file_ids=[rf.id for rf in raw_files if rf.id is not None],
                 document_count=len(doc_ids),
                 chunk_count=len(chunk_ids),
             )
