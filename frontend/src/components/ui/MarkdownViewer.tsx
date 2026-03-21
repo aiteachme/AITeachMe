@@ -1,7 +1,10 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { cn } from "../../lib/utils";
 
 interface MarkdownViewerProps {
   content: string;
@@ -10,8 +13,8 @@ interface MarkdownViewerProps {
 export function MarkdownViewer({ content }: MarkdownViewerProps) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex, rehypeHighlight]}
       components={{
         h1: ({ children }) => (
           <h1 className="text-2xl font-bold text-slate-900 mt-6 mb-3 pb-2 border-b border-slate-200">
@@ -49,21 +52,22 @@ export function MarkdownViewer({ content }: MarkdownViewerProps) {
           </blockquote>
         ),
         code: ({ className, children }) => {
-          const isBlock = className?.includes("language-");
+          const codeText = String(children);
+          const isBlock = Boolean(className) || codeText.includes("\n");
           if (isBlock) {
-            return (
-              <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto text-sm my-3">
-                <code>{children}</code>
-              </pre>
-            );
+            return <code className={cn("font-mono text-[13px]", className)}>{children}</code>;
           }
           return (
-            <code className="bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-sm font-mono">
+            <code className={cn("bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-sm font-mono", className)}>
               {children}
             </code>
           );
         },
-        pre: ({ children }) => <>{children}</>,
+        pre: ({ children }) => (
+          <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto text-sm my-3">
+            {children}
+          </pre>
+        ),
         table: ({ children }) => (
           <div className="overflow-x-auto my-3">
             <table className="min-w-full text-sm border border-slate-200 rounded-lg">
