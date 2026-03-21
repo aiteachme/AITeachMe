@@ -1,5 +1,18 @@
 """模型统一导出。"""
 
+from app.models.assessment import (
+    ExamGenerateJob,
+    ExamGradeJob,
+    ExamPaper,
+    ExamPaperGenerationContext,
+    ExamPaperItem,
+    QuestionBuildJob,
+    QuestionTemplate,
+    QuestionTemplateNodeLink,
+    ReviewTask,
+    UserAnswerAttempt,
+    UserKnowledgeState,
+)
 from app.models.chat import ChatMessage
 from app.models.curriculum import (
     CurriculumDeriveJob,
@@ -14,7 +27,24 @@ from app.models.curriculum import (
     UnitDependency,
     UnitTreeMembership,
 )
-from app.models.enums import Difficulty, DigestStep, IngestStatus, QuestionType, TaskStatus
+from app.models.enums import (
+    AsyncJobStatus,
+    Difficulty,
+    DigestStep,
+    ErrorCauseLabel,
+    ExamMode,
+    ExamPaperStatus,
+    IngestStatus,
+    MasteryGranularity,
+    QuestionTemplateStatus,
+    QuestionType,
+    ReviewTaskStatus,
+    ReviewTaskType,
+    TaskStatus,
+    TemplateNodeRole,
+    WeaknessReason,
+    validate_status_transition,
+)
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
     Document,
@@ -36,6 +66,7 @@ from app.models.subject import Subject
 
 __all__ = [
     "AnswerRecord",
+    "AsyncJobStatus",
     "ChatMessage",
     "CurriculumDeriveJob",
     "CurriculumSnapshot",
@@ -45,7 +76,15 @@ __all__ = [
     "DocumentChunk",
     "EdgeRevision",
     "EvidenceLink",
+    "ErrorCauseLabel",
     "Exam",
+    "ExamGenerateJob",
+    "ExamGradeJob",
+    "ExamMode",
+    "ExamPaper",
+    "ExamPaperGenerationContext",
+    "ExamPaperItem",
+    "ExamPaperStatus",
     "ExamSubmission",
     "GraphDigestJob",
     "IngestStatus",
@@ -53,21 +92,34 @@ __all__ = [
     "KnowledgeEdge",
     "KnowledgeNode",
     "KnowledgeRevision",
+    "MasteryGranularity",
     "Mistake",
     "PrereqDagVersion",
     "Question",
+    "QuestionBuildJob",
+    "QuestionTemplate",
+    "QuestionTemplateNodeLink",
+    "QuestionTemplateStatus",
     "QuestionType",
     "RawFile",
+    "ReviewTask",
+    "ReviewTaskStatus",
+    "ReviewTaskType",
     "Subject",
     "SubjectBuildLock",
     "TaskStatus",
     "TaxonomyAnchor",
     "TeachingUnit",
+    "TemplateNodeRole",
     "TeachingUnitMembership",
     "TeachingUnitRevision",
     "ThemeTreeNode",
     "ThemeTreeVersion",
     "UnitDependency",
     "UnitTreeMembership",
+    "UserAnswerAttempt",
+    "UserKnowledgeState",
     "UserProfile",
+    "WeaknessReason",
+    "validate_status_transition",
 ]
