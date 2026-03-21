@@ -62,6 +62,31 @@ export interface DigestStatusResponse {
   current_curriculum_snapshot_id: number | null;
 }
 
+export interface DocGenBuildData {
+  job_id: number;
+}
+
+export interface DocGenJobResponse {
+  id: number;
+  subject: string;
+  status: string;
+  progress: number;
+  current_step: string | null;
+  total_chapters: number;
+  completed_chapters: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocGenStatusResponse {
+  job: DocGenJobResponse;
+}
+
+export interface DocGenContentResponse {
+  markdown: string;
+}
+
 export interface KnowledgeNodeResponse {
   id: number;
   subject: string;
@@ -249,6 +274,43 @@ export async function fetchDigestStatus(
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/digest/status`,
     data: { job_id: jobId },
+  });
+  return res.data;
+}
+
+/** 触发文档生成 */
+export async function triggerDocGenBuild(
+  subject: string,
+  fileIds: number[],
+): Promise<DocGenBuildData> {
+  const res = await apiClient<ApiResponse<DocGenBuildData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
+    data: { file_ids: fileIds },
+  });
+  return res.data;
+}
+
+/** 查询文档生成状态 */
+export async function fetchDocGenStatus(
+  subject: string,
+  jobId: number,
+): Promise<DocGenStatusResponse> {
+  const res = await apiClient<ApiResponse<DocGenStatusResponse>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docgen/status`,
+    data: { job_id: jobId },
+  });
+  return res.data;
+}
+
+/** 获取最新文档内容 */
+export async function fetchDocGenContent(
+  subject: string,
+): Promise<DocGenContentResponse> {
+  const res = await apiClient<ApiResponse<DocGenContentResponse>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docgen/content`,
   });
   return res.data;
 }

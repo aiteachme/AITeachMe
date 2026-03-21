@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.curriculum.state import CurriculumDeriveState
+from app.workflows.digest.docs.state import DocGenState
 from app.workflows.digest.kg.state import KGDigestState
 
-__all__ = ["CurriculumDeriveState", "KGDigestState"]
+__all__ = ["CurriculumDeriveState", "DocGenState", "KGDigestState"]

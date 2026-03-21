@@ -2,34 +2,122 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
+import structlog
+
+logger = structlog.get_logger()
+
+
+def _auto_install_dependency(package_name: str) -> bool:
+    """依赖缺失时尝试自动安装。"""
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", package_name],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception as exc:
+        logger.error("dependency_auto_install_failed", package=package_name, error=str(exc))
+        return False
+
+    if result.returncode == 0:
+        logger.warning("dependency_auto_installed", package=package_name)
+        return True
+
+    logger.error(
+        "dependency_auto_install_failed",
+        package=package_name,
+        returncode=result.returncode,
+        output=(result.stdout or result.stderr or "").strip()[-500:],
+    )
+    return False
+
+
+def _bootstrap_sqlite_driver() -> str:
+    """确保 sqlite3 驱动可用。"""
+
+    try:
+        import pysqlite3 as sqlite3  # type: ignore[import-not-found]
+
+        sys.modules["sqlite3"] = sqlite3
+        return "pysqlite3-binary"
+    except ImportError:
+        pass
+
+    try:
+        import sqlite3 as _sqlite3  # noqa: F401
+
+        return "stdlib-sqlite3"
+    except Exception as exc:
+        if _auto_install_dependency("pysqlite3-binary"):
+            try:
+                import pysqlite3 as sqlite3  # type: ignore[import-not-found]
+
+                sys.modules["sqlite3"] = sqlite3
+                return "pysqlite3-binary(auto)"
+            except ImportError as retry_exc:
+                raise RuntimeError("自动安装 pysqlite3-binary 后仍无法导入 sqlite3 驱动。") from retry_exc
+        raise RuntimeError("当前 Python 环境缺少 sqlite3 驱动，且自动安装失败。") from exc
+
+
+def _bootstrap_sqlite_vec():
+    """确保 sqlite-vec 包可导入。"""
+
+    try:
+        import sqlite_vec as sqlite_vec_module
+
+        return sqlite_vec_module
+    except ImportError as exc:
+        if _auto_install_dependency("sqlite-vec"):
+            try:
+                import sqlite_vec as sqlite_vec_module
+
+                return sqlite_vec_module
+            except ImportError as retry_exc:
+                raise RuntimeError("自动安装 sqlite-vec 后仍无法导入。") from retry_exc
+        raise RuntimeError("当前环境缺少 sqlite-vec，且自动安装失败。") from exc
+
+
+_SQLITE_DRIVER = _bootstrap_sqlite_driver()
+sqlite_vec = _bootstrap_sqlite_vec()
+
 try:
-    import pysqlite3 as sqlite3  # type: ignore[import-not-found]
-
-    sys.modules["sqlite3"] = sqlite3
-    _SQLITE_DRIVER = "pysqlite3-binary"
-except ImportError:
-    import sqlite3  # noqa: F401
-
-    _SQLITE_DRIVER = "stdlib-sqlite3"
+    import sqlite3 as _sqlite3  # noqa: F401
+except Exception:
+    # sqlite3 由 _bootstrap_sqlite_driver 保证，不应走到这里。
+    pass
 
 import sqlalchemy as sa
-import sqlite_vec
-import structlog
 from sqlmodel import SQLModel, Session, create_engine
 
 from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
 
-logger = structlog.get_logger()
-
 _engine = None
 _vec_ready: bool | None = None
 _vec_error: str | None = None
+
+
+class OutdatedSchemaError(RuntimeError):
+    """数据库 schema 过期异常。"""
+
+    def __init__(self, *, table_name: str, missing_columns: list[str], existing_columns: list[str]) -> None:
+        self.table_name = table_name
+        self.missing_columns = missing_columns
+        self.existing_columns = existing_columns
+        super().__init__(
+            "当前开发数据库 schema 已过期。"
+            f"表 `{table_name}` 缺少字段: {', '.join(missing_columns)}。"
+        )
+
 
 _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
     "raw_file": {
@@ -281,11 +369,27 @@ def _ensure_assessment_schema_integrity(engine) -> None:
 def init_db() -> None:
     """初始化数据库与向量表。"""
 
-    from app import models as _  # noqa: F401
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_path = db_path.with_name(f"{db_path.stem}.schema_outdated.{timestamp}{db_path.suffix}")
+    index = 1
+    while backup_path.exists():
+        backup_path = db_path.with_name(
+            f"{db_path.stem}.schema_outdated.{timestamp}.{index}{db_path.suffix}"
+        )
+        index += 1
 
-    engine = get_engine()
-    settings = get_settings()
+    db_path.rename(backup_path)
+    for sidecar_suffix in ("-wal", "-shm", "-journal"):
+        old_sidecar = Path(f"{db_path}{sidecar_suffix}")
+        if not old_sidecar.exists():
+            continue
+        new_sidecar = Path(f"{backup_path}{sidecar_suffix}")
+        old_sidecar.rename(new_sidecar)
 
+    return backup_path
+
+
+def _init_db_once(engine, settings) -> None:
     SQLModel.metadata.create_all(engine)
     _validate_runtime_schema(engine)
     _ensure_assessment_schema_integrity(engine)
@@ -313,6 +417,46 @@ def init_db() -> None:
         sqlite_driver=_SQLITE_DRIVER,
         vec_ready=is_vec_ready(),
     )
+
+
+def init_db() -> None:
+    """初始化数据库与向量表。"""
+
+    from app import models as _  # noqa: F401
+
+    settings = get_settings()
+    db_path = Path(settings.data_dir) / "aiteachme.db"
+    engine = get_engine()
+
+    try:
+        _init_db_once(engine, settings)
+    except OutdatedSchemaError as exc:
+        logger.warning(
+            "database_schema_outdated_auto_rebuild_start",
+            table_name=exc.table_name,
+            missing_columns=exc.missing_columns,
+            existing_columns=exc.existing_columns,
+        )
+
+        reset_runtime_state()
+
+        if not db_path.exists():
+            raise RuntimeError("检测到 schema 过期，但未找到数据库文件，无法自动备份重建。") from exc
+
+        backup_path = _backup_outdated_db(db_path)
+        logger.warning(
+            "database_schema_outdated_auto_backup_created",
+            db_path=str(db_path),
+            backup_path=str(backup_path),
+        )
+
+        engine = get_engine()
+        _init_db_once(engine, settings)
+        logger.warning(
+            "database_schema_outdated_auto_rebuild_done",
+            db_path=str(db_path),
+            backup_path=str(backup_path),
+        )
 
 
 def get_session() -> Session:

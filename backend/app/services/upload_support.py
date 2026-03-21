@@ -60,3 +60,32 @@ def build_asset_dir(subject: str, raw_file_id: int) -> Path:
     """根据文件 ID 生成资源目录路径。"""
 
     return build_assets_dir(subject) / str(raw_file_id)
+
+
+# ── DocGen 知识文档路径 ──
+
+
+def build_knowledge_docs_dir(subject: str) -> Path:
+    """返回知识文档产出目录。"""
+
+    return build_subject_dir(subject) / "knowledge_docs"
+
+
+def build_knowledge_doc_path(subject: str, chapter_index: int, title: str) -> Path:
+    """根据章节序号和标题生成知识文档 Markdown 路径。"""
+
+    safe_title = title.replace("/", "_").replace("\\", "_").replace(" ", "_")[:50]
+    filename = f"chapter_{chapter_index:02d}_{safe_title}.md"
+    return build_knowledge_docs_dir(subject) / filename
+
+
+def build_merged_knowledge_base_path(subject: str) -> Path:
+    """返回合并后的完整知识库文件路径。"""
+
+    return build_knowledge_docs_dir(subject) / "merged_knowledge_base.md"
+
+
+def build_docgen_intermediate_dir(subject: str) -> Path:
+    """返回 DocGen 中间产物目录（清洗/大纲等过程文件）。"""
+
+    return build_subject_dir(subject) / "docgen_intermediate"
