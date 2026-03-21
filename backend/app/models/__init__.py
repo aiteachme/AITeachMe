@@ -27,7 +27,26 @@ from app.models.curriculum import (
     UnitDependency,
     UnitTreeMembership,
 )
-from app.models.enums import Difficulty, DigestStep, IngestStatus, QuestionType, TaskStatus
+from app.models.enums import (
+    AsyncJobStatus,
+    Difficulty,
+    DigestStep,
+    DocGenStep,
+    ErrorCauseLabel,
+    ExamMode,
+    ExamPaperStatus,
+    IngestStatus,
+    KnowledgeDocStatus,
+    MasteryGranularity,
+    QuestionTemplateStatus,
+    QuestionType,
+    ReviewTaskStatus,
+    ReviewTaskType,
+    TaskStatus,
+    TemplateNodeRole,
+    WeaknessReason,
+    validate_status_transition,
+)
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
     Document,
