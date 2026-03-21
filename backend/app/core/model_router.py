@@ -23,6 +23,8 @@ class TaskType(str, Enum):
     CLASSIFY = "classify"        # Ingest 分类
     VISION = "vision"            # Ingest 视觉解析
     REASONING = "reasoning"      # 深度推理任务
+    DOCGEN = "docgen"            # DocGen 章节撰写与目录规划
+    DOCGEN_LIGHT = "docgen_light"  # DocGen 清洗、标签提取等轻量任务
     DEFAULT = "default"          # 兜底
 
 
@@ -48,6 +50,8 @@ _DEFAULT_PROFILES: dict[TaskType, TaskProfile] = {
     TaskType.CLASSIFY: TaskProfile(model="", temperature=0.1, timeout_s=30),
     TaskType.VISION: TaskProfile(model="", temperature=0.3, timeout_s=120),
     TaskType.REASONING: TaskProfile(model="", temperature=0.2, timeout_s=120, max_retries=2),
+    TaskType.DOCGEN: TaskProfile(model="", temperature=0.5, timeout_s=120),
+    TaskType.DOCGEN_LIGHT: TaskProfile(model="", temperature=0.1, timeout_s=30),
     TaskType.DEFAULT: TaskProfile(model=""),
 }
 

@@ -222,6 +222,23 @@ class DigestJobStatus(str, Enum):
     FAILED = "failed"
 
 
+class DocGenStep(str, Enum):
+    """DocGen 流水线阶段。"""
+
+    CLEANSING = "cleansing"
+    OUTLINING = "outlining"
+    DRAFTING = "drafting"
+    FINALIZING = "finalizing"
+
+
+class KnowledgeDocStatus(str, Enum):
+    """知识文档状态。"""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
 class IngestStatus(str, Enum):
     """Ingest 流水线状态。"""
 

@@ -163,7 +163,7 @@ export function ChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-gradient-to-b from-white to-slate-50/30 -m-6 lg:-m-8 relative">
+    <div className="flex h-screen bg-gradient-to-b from-white to-slate-50/30 -m-6 lg:-m-8 relative">
       {/* Mobile Header */}
       <div className="lg:hidden absolute top-0 left-0 right-0 h-14 bg-white/80 backdrop-blur-md border-b border-slate-200/60 flex items-center px-4 z-10">
         <button onClick={() => setIsMobileSidebarOpen(true)} className="p-2 hover:bg-slate-100 rounded-lg -ml-2">

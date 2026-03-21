@@ -12,6 +12,9 @@ from app.workflows.digest.events import (
     DigestBuildRequestedEvent,
     DigestGraphCompletedEvent,
     DigestGraphFailedEvent,
+    DocGenCompletedEvent,
+    DocGenFailedEvent,
+    DocGenRequestedEvent,
 )
 from app.workflows.digest.graph import (
     build_curriculum_derive_graph,
@@ -21,7 +24,7 @@ from app.workflows.digest.graph import (
 )
 from app.workflows.digest.kg.finalize_nodes import trigger_curriculum_derive_safe
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
-from app.workflows.digest.state import CurriculumDeriveState, KGDigestState
+from app.workflows.digest.state import CurriculumDeriveState, DocGenState, KGDigestState
 
 
 async def run_graph_digest_workflow(
@@ -173,9 +176,76 @@ async def run_curriculum_derive_workflow(
     return result
 
 
+async def run_docgen_workflow(
+    *,
+    subject: str,
+    job_id: int,
+    file_ids: list[int],
+    event_bus: InProcessEventBus | None = None,
+) -> WorkflowResult[DocGenState]:
+    """运行 DocGen 知识文档生成工作流。"""
+
+    from app.workflows.digest.docs.graph import (
+        build_docgen_graph,
+        create_docgen_initial_state,
+    )
+
+    bus = event_bus or InProcessEventBus()
+    await bus.publish(DocGenRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
+
+    context = WorkflowContext(
+        workflow_name="digest.docgen",
+        subject=subject,
+        event_bus=bus,
+        metadata={"job_id": job_id},
+    )
+    result = await run_state_graph(
+        workflow_name="digest.docgen",
+        graph_builder=lambda: build_docgen_graph(context=context),
+        initial_state=create_docgen_initial_state(subject=subject, job_id=job_id, file_ids=file_ids),
+        context=context,
+    )
+    if result.failed:
+        await bus.publish(
+            DocGenFailedEvent(
+                subject=subject,
+                job_id=job_id,
+                error_message=result.error.detail,
+            )
+        )
+        return result
+
+    final_state = result.require_value()
+    error_message = final_state.get("error")
+    if error_message:
+        await bus.publish(
+            DocGenFailedEvent(
+                subject=subject,
+                job_id=job_id,
+                error_message=error_message,
+            )
+        )
+        return err_result(
+            "digest_docgen_failed",
+            error_message,
+            metadata={"job_id": job_id, "subject": subject},
+        )
+
+    await bus.publish(
+        DocGenCompletedEvent(
+            subject=subject,
+            job_id=job_id,
+            doc_count=len(final_state.get("doc_ids", [])),
+        )
+    )
+    return result
+
+
 __all__ = [
     "create_curriculum_derive_initial_state",
+    "create_docgen_initial_state",
     "create_graph_digest_initial_state",
     "run_curriculum_derive_workflow",
+    "run_docgen_workflow",
     "run_graph_digest_workflow",
 ]

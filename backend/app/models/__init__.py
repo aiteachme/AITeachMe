@@ -14,11 +14,23 @@ from app.models.curriculum import (
     UnitDependency,
     UnitTreeMembership,
 )
-from app.models.enums import Difficulty, DigestStep, IngestStatus, QuestionType, TaskStatus
+from app.models.enums import (
+    Difficulty,
+    DigestStep,
+    DocGenStep,
+    IngestStatus,
+    KnowledgeDocStatus,
+    QuestionType,
+    TaskStatus,
+)
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
     Document,
     DocumentChunk,
+)
+from app.models.knowledge_doc import (
+    DocGenJob,
+    KnowledgeDoc,
 )
 from app.models.knowledge_graph import (
     EdgeRevision,
@@ -41,6 +53,8 @@ __all__ = [
     "CurriculumSnapshot",
     "Difficulty",
     "DigestStep",
+    "DocGenJob",
+    "DocGenStep",
     "Document",
     "DocumentChunk",
     "EdgeRevision",
@@ -50,6 +64,8 @@ __all__ = [
     "GraphDigestJob",
     "IngestStatus",
     "KnowledgeAlias",
+    "KnowledgeDoc",
+    "KnowledgeDocStatus",
     "KnowledgeEdge",
     "KnowledgeNode",
     "KnowledgeRevision",

@@ -6,6 +6,13 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+<<<<<<< HEAD
+=======
+  BarChart3,
+  FileEdit,
+  Menu,
+  X,
+>>>>>>> origin/develop
   Loader2,
   Menu,
   MessageSquare,
@@ -30,11 +37,20 @@ import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
 
 const MODULES = [
+<<<<<<< HEAD
   { id: "chat", name: "对话", icon: <MessageSquare className="h-4 w-4" /> },
   { id: "upload", name: "上传资料", icon: <Upload className="h-4 w-4" /> },
   { id: "summary", name: "知识总结", icon: <BookOpen className="h-4 w-4" /> },
   { id: "exam", name: "考试练习", icon: <FileText className="h-4 w-4" /> },
   { id: "analysis", name: "学习分析", icon: <BarChart3 className="h-4 w-4" /> },
+=======
+  { id: "chat", name: "对话", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "upload", name: "上传资料", icon: <Upload className="w-4 h-4" /> },
+  { id: "summary", name: "知识总结", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "exam", name: "考题预测", icon: <FileText className="w-4 h-4" /> },
+  { id: "analysis", name: "学习分析", icon: <BarChart3 className="w-4 h-4" /> },
+  { id: "doc", name: "文档", icon: <FileEdit className="w-4 h-4" /> },
+>>>>>>> origin/develop
 ];
 
 const NewSubjectForm = memo(function NewSubjectForm({

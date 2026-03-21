@@ -297,3 +297,81 @@ def get_digest_status(
         curriculum_job=curriculum_resp,
         current_curriculum_snapshot_id=snapshot_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# DocGen 知识文档生成
+# ---------------------------------------------------------------------------
+
+
+def trigger_docgen_build(
+    session: Session,
+    *,
+    subject: str,
+    file_ids: list[int],
+) -> int:
+    """创建 DocGen 任务并返回 job_id。"""
+
+    from app.models.knowledge_doc import DocGenJob
+    from app.repositories.knowledge import docgen_repo
+
+    job = docgen_repo.create_docgen_job(
+        session,
+        DocGenJob(
+            subject=subject,
+            status="pending",
+            input_file_ids_json=json.dumps(sorted(file_ids)),
+        ),
+    )
+    logger.info("docgen_build_triggered", subject=subject, job_id=job.id, file_ids=file_ids)
+    return job.id  # type: ignore[return-value]
+
+
+async def run_docgen_background(*, subject: str, job_id: int) -> None:
+    """后台异步执行 DocGen 工作流。"""
+
+    from app.models.knowledge_doc import DocGenJob
+    from app.repositories.knowledge import docgen_repo
+    from app.workflows.digest import run_docgen_workflow
+
+    with managed_session() as session:
+        try:
+            job = session.get(DocGenJob, job_id)
+            if job is None:
+                logger.error("docgen_job_not_found", job_id=job_id)
+                return
+
+            file_ids: list[int] = json.loads(job.input_file_ids_json or "[]")
+            docgen_logger = logger.bind(subject=subject, job_id=job_id, file_ids=file_ids)
+            docgen_logger.info("docgen_background_started")
+
+            # 标记为 processing
+            docgen_repo.update_docgen_job(session, job_id, status="processing")
+
+            result = await run_docgen_workflow(
+                subject=subject,
+                job_id=job_id,
+                file_ids=file_ids,
+            )
+            if result.failed:
+                docgen_repo.update_docgen_job(
+                    session, job_id,
+                    status="failed",
+                    error_message=result.error.detail[-500:],
+                )
+            docgen_logger.info(
+                "docgen_background_completed",
+                success=result.ok,
+            )
+
+        except Exception:
+            logger.exception("docgen_background_error", subject=subject, job_id=job_id)
+            try:
+                docgen_repo.update_docgen_job(
+                    session, job_id,
+                    status="failed",
+                    error_message=traceback.format_exc()[-500:],
+                )
+            except Exception:
+                logger.exception("failed_to_mark_docgen_job_failed", job_id=job_id)
+

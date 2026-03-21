@@ -47,9 +47,13 @@ AUTH_ENABLED=false
 uvicorn app.main:app --reload --port 8000
 ```
 
+首次启动时若缺少 SQLite 相关 Python 依赖，服务会自动尝试安装并继续启动。
+如果检测到 `data/aiteachme.db` schema 过期，服务会自动备份旧库并重建新库。
+
 ## 本地数据
 
 - 运行时数据默认写入 `data/`
+- 数据库文件默认创建为 `data/aiteachme.db`
 - 手动验证脚本放在 `playground/`
 - `playground/inputs/` 放输入文件
 - `playground/outputs/` 查看输出结果

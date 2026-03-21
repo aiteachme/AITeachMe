@@ -7,6 +7,7 @@ import { SummaryPage } from "./pages/SummaryPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ExamPage } from "./pages/ExamPage";
 import { AnalysisPage } from "./pages/AnalysisPage";
+import { DocPage } from "./pages/DocPage";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ function App() {
             <Route path="subject/:subjectId/chat" element={<ChatPage />} />
             <Route path="subject/:subjectId/exam" element={<ExamPage />} />
             <Route path="subject/:subjectId/analysis" element={<AnalysisPage />} />
+            <Route path="subject/:subjectId/doc" element={<DocPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

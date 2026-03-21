@@ -71,3 +71,43 @@ class CurriculumDeriveFailedEvent:
     error_message: str
     occurred_at: datetime = field(default_factory=utcnow)
 
+
+# ── DocGen 知识文档生成事件 ──
+
+
+@dataclass(slots=True)
+class DocGenRequestedEvent:
+    """知识文档生成请求已开始执行。"""
+
+    event_name: ClassVar[str] = "digest.docgen.requested"
+
+    subject: str
+    job_id: int
+    file_ids: list[int]
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class DocGenCompletedEvent:
+    """知识文档生成完成。"""
+
+    event_name: ClassVar[str] = "digest.docgen.completed"
+
+    subject: str
+    job_id: int
+    doc_count: int
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class DocGenFailedEvent:
+    """知识文档生成失败。"""
+
+    event_name: ClassVar[str] = "digest.docgen.failed"
+
+    subject: str
+    job_id: int
+    error_message: str
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
