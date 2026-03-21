@@ -20,12 +20,12 @@ _ATTR_TO_MODULE = {
     "CurriculumDeriveState": "app.workflows.digest.state",
     "KGDigestState": "app.workflows.digest.state",
     "WORKFLOW_EXPORTS": "app.workflows.digest.exports",
-    "build_curriculum_derive_graph": "app.workflows.digest.curriculum.graph",
-    "build_kg_digest_graph": "app.workflows.digest.kg.graph",
-    "create_curriculum_derive_initial_state": "app.workflows.digest.graph",
-    "create_graph_digest_initial_state": "app.workflows.digest.graph",
-    "run_curriculum_derive_workflow": "app.workflows.digest.graph",
-    "run_graph_digest_workflow": "app.workflows.digest.graph",
+    "build_curriculum_derive_graph": "app.workflows.digest.graph",
+    "build_kg_digest_graph": "app.workflows.digest.graph",
+    "create_curriculum_derive_initial_state": "app.workflows.digest.runtime",
+    "create_graph_digest_initial_state": "app.workflows.digest.runtime",
+    "run_curriculum_derive_workflow": "app.workflows.digest.runtime",
+    "run_graph_digest_workflow": "app.workflows.digest.runtime",
 }
 
 

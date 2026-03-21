@@ -12,12 +12,21 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.workflows.common.graph_export import WorkflowGraphExport
 from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
+from app.workflows.examine.exports import WORKFLOW_EXPORTS as EXAMINE_WORKFLOW_EXPORTS
 from app.workflows.ingest.exports import WORKFLOW_EXPORTS as INGEST_WORKFLOW_EXPORTS
+from app.workflows.interact.exports import WORKFLOW_EXPORTS as INTERACT_WORKFLOW_EXPORTS
+from app.workflows.profile.exports import WORKFLOW_EXPORTS as PROFILE_WORKFLOW_EXPORTS
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / ".generated_workflow_diagrams"
 WORKFLOW_REGISTRY = {
     export.key: export
-    for export in (*INGEST_WORKFLOW_EXPORTS, *DIGEST_WORKFLOW_EXPORTS)
+    for export in (
+        *INGEST_WORKFLOW_EXPORTS,
+        *DIGEST_WORKFLOW_EXPORTS,
+        *EXAMINE_WORKFLOW_EXPORTS,
+        *INTERACT_WORKFLOW_EXPORTS,
+        *PROFILE_WORKFLOW_EXPORTS,
+    )
 }
 
 

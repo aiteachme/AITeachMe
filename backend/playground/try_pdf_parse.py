@@ -7,8 +7,8 @@ from pathlib import Path
 
 import structlog
 
-from app.workflows.ingest.classifier import classify_file
-from app.workflows.ingest.orchestrator import parse_file
+from app.workflows.ingest.parsing.classifier import classify_file
+from app.workflows.ingest.parsing.orchestrator import parse_file
 
 
 logger = structlog.get_logger()

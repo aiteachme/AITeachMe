@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.common.graph_export import WorkflowGraphExport
-from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
-from app.workflows.digest.kg.graph import build_kg_digest_graph
+from app.workflows.digest.graph import build_curriculum_derive_graph, build_kg_digest_graph
 
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(

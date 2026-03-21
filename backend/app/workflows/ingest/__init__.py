@@ -16,8 +16,8 @@ _ATTR_TO_MODULE = {
     "IngestParseState": "app.workflows.ingest.state",
     "WORKFLOW_EXPORTS": "app.workflows.ingest.exports",
     "build_parse_file_graph": "app.workflows.ingest.graph",
-    "create_parse_file_initial_state": "app.workflows.ingest.graph",
-    "run_parse_file_workflow": "app.workflows.ingest.graph",
+    "create_parse_file_initial_state": "app.workflows.ingest.runtime",
+    "run_parse_file_workflow": "app.workflows.ingest.runtime",
 }
 
 

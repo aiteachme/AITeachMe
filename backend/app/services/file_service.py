@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import shutil
 import uuid
@@ -206,20 +207,38 @@ def retry_file_parse(
 async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
     """Run the ingest workflow in background for a batch of files."""
 
+    settings = get_settings()
+    concurrency = max(settings.ingest_parse_concurrency, 1)
     batch_logger = logger.bind(subject=subject, file_ids=file_ids)
-    batch_logger.info("file_parse_background_started", file_count=len(file_ids))
-    for file_id in file_ids:
-        batch_logger.info(
-            "file_parse_background_dispatch",
-            file_id=file_id,
-        )
-        result = await run_parse_file_workflow(subject=subject, file_id=file_id)
-        if result.failed:
-            batch_logger.warning(
-                "file_parse_background_failed",
-                file_id=file_id,
-                error=result.error.detail,
-            )
+    batch_logger.info(
+        "file_parse_background_started",
+        file_count=len(file_ids),
+        concurrency=concurrency,
+    )
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _run_one(file_id: int) -> None:
+        async with semaphore:
+            batch_logger.info("file_parse_background_dispatch", file_id=file_id)
+            try:
+                result = await run_parse_file_workflow(subject=subject, file_id=file_id)
+            except Exception as exc:
+                batch_logger.exception(
+                    "file_parse_background_crashed",
+                    file_id=file_id,
+                    error=str(exc),
+                )
+                return
+
+            if result.failed:
+                batch_logger.warning(
+                    "file_parse_background_failed",
+                    file_id=file_id,
+                    error=result.error.detail,
+                )
+
+    await asyncio.gather(*[asyncio.create_task(_run_one(file_id)) for file_id in file_ids])
     batch_logger.info("file_parse_background_completed")
 
 
