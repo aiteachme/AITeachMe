@@ -1,184 +1,190 @@
-"""Runtime helpers for the interact workflow."""
+"""Runtime entrypoints for the interact workflow."""
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncGenerator, Callable
+import asyncio
+from collections.abc import AsyncGenerator
 
 from fastapi import Request
-from pydantic import BaseModel
+from sqlmodel import Session
 
-from app.core.embedding import aembed_texts
-from app.core.llm import acompletion_stream
-from app.core.prompt_loader import populate_prompt
-from app.schemas.llm import ASSISTANT, ChatMessage, SYSTEM, USER
-from app.workflows.interact.prompts import SYSTEM_PROMPT_TUTOR
-
-
-class RetrievedChunkPayload(BaseModel):
-    """A raw retrieval payload returned by the repository layer."""
-
-    chunk_id: int
-    document_id: int
-    title: str
-    header_path: str
-    content: str
-    score: float
+from app.workflows.common.context import WorkflowContext
+from app.workflows.common.events import InProcessEventBus
+from app.workflows.common.result import WorkflowResult, err_result
+from app.workflows.common.runtime import run_state_graph
+from app.workflows.interact.events import (
+    InteractCompletedEvent,
+    InteractFailedEvent,
+    InteractRequestedEvent,
+)
+from app.workflows.interact.graph import build_interact_workflow_graph
+from app.workflows.interact.state import InteractWorkflowState
+from app.workflows.interact.support.streaming import SSEEventEmitter
 
 
-class RetrievalResult(BaseModel):
-    """A retrieval result formatted for chat prompting."""
-
-    chunk_id: int
-    document_id: int
-    title: str
-    header_path: str
-    content: str
-    score: float
-    low_relevance: bool
-
-
-SearchFunc = Callable[[list[float], str, int], list[dict]]
-
-
-def build_chat_messages(
+def create_interact_initial_state(
     *,
     subject: str,
-    retrieval_results: list[RetrievalResult],
-    recent_messages: list[dict],
-    weak_points: list[dict],
-    recent_mistakes: list[dict],
     question: str,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
-) -> list[ChatMessage]:
-    """Build the full chat message list sent to the LLM."""
+) -> InteractWorkflowState:
+    """Create the initial state for one interact workflow run."""
 
-    system_prompt = populate_prompt(
-        SYSTEM_PROMPT_TUTOR,
-        subject=subject,
-        retrieval_context=_format_retrieval_context(retrieval_results),
-        weak_points_context=_format_weak_points_context(weak_points),
-        mistakes_context=_format_mistakes_context(recent_mistakes),
-        selected_context=_format_selected_context(selected_context, source_chunk_id),
-    )
-    messages: list[ChatMessage] = [{"role": SYSTEM, "content": system_prompt}]
-
-    for item in recent_messages:
-        role = ASSISTANT if item["role"] == "assistant" else USER
-        messages.append({"role": role, "content": item["content"]})
-
-    messages.append({"role": USER, "content": question})
-    return messages
+    return {
+        "subject": subject,
+        "question": question,
+        "selected_context": selected_context,
+        "source_chunk_id": source_chunk_id,
+        "stream_interrupted": False,
+        "error": None,
+    }
 
 
-def build_retrieval_results(
+async def run_interact_workflow(
     *,
-    items: list[dict],
-    similarity_threshold: float,
-) -> list[RetrievalResult]:
-    """Convert repository search results into prompt-ready records."""
-
-    payloads = [RetrievedChunkPayload.model_validate(item) for item in items]
-    return [
-        RetrievalResult(
-            chunk_id=payload.chunk_id,
-            document_id=payload.document_id,
-            title=payload.title,
-            header_path=payload.header_path,
-            content=payload.content,
-            score=payload.score,
-            low_relevance=payload.score < similarity_threshold,
-        )
-        for payload in payloads
-    ]
-
-
-async def build_query_embedding(query: str) -> list[float]:
-    """Build the embedding used for vector retrieval."""
-
-    return (await aembed_texts([query]))[0]
-
-
-async def retrieve(
-    *,
-    query: str,
     subject: str,
-    top_k: int,
-    similarity_threshold: float,
-    search_func: SearchFunc,
-) -> list[RetrievalResult]:
-    """Run the retrieval flow for one chat request."""
-
-    query_embedding = await build_query_embedding(query)
-    items = search_func(query_embedding, subject, top_k)
-    return build_retrieval_results(items=items, similarity_threshold=similarity_threshold)
-
-
-def format_sse_event(event: str, data: dict) -> str:
-    """Format one SSE event payload."""
-
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-async def stream_llm_events(
+    question: str,
+    session: Session,
     request: Request,
-    messages: list[ChatMessage],
-    collected_tokens: list[str],
+    emitter: SSEEventEmitter,
+    selected_context: str | None = None,
+    source_chunk_id: int | None = None,
+    event_bus: InProcessEventBus | None = None,
+) -> WorkflowResult[InteractWorkflowState]:
+    """Run the interact workflow once."""
+
+    bus = event_bus or InProcessEventBus()
+    await bus.publish(InteractRequestedEvent(subject=subject))
+    context = WorkflowContext(
+        workflow_name="interact.chat",
+        subject=subject,
+        event_bus=bus,
+    )
+    result = await run_state_graph(
+        workflow_name="interact.chat",
+        graph_builder=lambda: build_interact_workflow_graph(
+            context=context,
+            session=session,
+            request=request,
+            emitter=emitter,
+        ),
+        initial_state=create_interact_initial_state(
+            subject=subject,
+            question=question,
+            selected_context=selected_context,
+            source_chunk_id=source_chunk_id,
+        ),
+        context=context,
+    )
+    if result.failed:
+        await bus.publish(
+            InteractFailedEvent(
+                subject=subject,
+                error_message=result.error.detail,
+            )
+        )
+        return result
+
+    final_state = result.require_value()
+    error_message = final_state.get("error")
+    if error_message:
+        await bus.publish(
+            InteractFailedEvent(
+                subject=subject,
+                error_message=error_message,
+            )
+        )
+        return err_result(
+            "interact_workflow_failed",
+            error_message,
+            metadata={"subject": subject},
+        )
+
+    if not final_state.get("stream_interrupted"):
+        await bus.publish(InteractCompletedEvent(subject=subject))
+    return result
+
+
+async def stream_chat_workflow(
+    *,
+    request: Request,
+    session: Session,
+    subject: str,
+    question: str,
+    selected_context: str | None = None,
+    source_chunk_id: int | None = None,
+    event_bus: InProcessEventBus | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Yield streamed LLM tokens as SSE events."""
+    """Stream one interact workflow run as SSE."""
 
-    stream = acompletion_stream(messages)
-    async for token in stream:
-        if await request.is_disconnected():
-            await stream.aclose()
+    emitter = SSEEventEmitter()
+    workflow_task = asyncio.create_task(
+        _execute_interact_workflow(
+            emitter=emitter,
+            event_bus=event_bus,
+            question=question,
+            request=request,
+            selected_context=selected_context,
+            session=session,
+            source_chunk_id=source_chunk_id,
+            subject=subject,
+        )
+    )
+    async for payload in emitter.stream(request=request, workflow_task=workflow_task):
+        yield payload
+
+
+async def _execute_interact_workflow(
+    *,
+    emitter: SSEEventEmitter,
+    event_bus: InProcessEventBus | None,
+    question: str,
+    request: Request,
+    selected_context: str | None,
+    session: Session,
+    source_chunk_id: int | None,
+    subject: str,
+) -> None:
+    try:
+        result = await run_interact_workflow(
+            subject=subject,
+            question=question,
+            session=session,
+            request=request,
+            emitter=emitter,
+            selected_context=selected_context,
+            source_chunk_id=source_chunk_id,
+            event_bus=event_bus,
+        )
+        if result.failed:
+            await emitter.emit_error(
+                detail=result.error.detail,
+                error_code=result.error.code,
+            )
             return
-        collected_tokens.append(token)
-        yield format_sse_event("token", {"content": token})
 
+        final_state = result.require_value()
+        if final_state.get("stream_interrupted"):
+            return
 
-def _format_retrieval_context(results: list[RetrievalResult]) -> str:
-    if not results:
-        return "暂无命中资料。"
-
-    return "\n\n".join(
-        (
-            f"[资料 {index}] 相关度：{'低相关' if result.low_relevance else '高相关'}，分数：{result.score:.4f}\n"
-            f"路径：{result.header_path}\n"
-            f"内容：{result.content}"
+        await emitter.emit_done(
+            turn_id=final_state["turn_id"],
+            contexts=final_state.get("contexts"),
         )
-        for index, result in enumerate(results, start=1)
-    )
-
-
-def _format_weak_points_context(weak_points: list[dict]) -> str:
-    if not weak_points:
-        return "暂无薄弱项数据。"
-
-    return "\n".join(
-        f"- {item['knowledge_point']}（掌握度：{item['mastery_text']}）"
-        for item in weak_points
-    )
-
-
-def _format_mistakes_context(mistakes: list[dict]) -> str:
-    if not mistakes:
-        return "暂无近期错题。"
-
-    return "\n\n".join(
-        (
-            f"题干：{item['question_stem']}\n"
-            f"用户答案：{item['user_answer']}\n"
-            f"正确答案：{item['correct_answer']}\n"
-            f"错因：{item['analysis']}"
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await emitter.emit_error(
+            detail=str(exc),
+            error_code="interact_runtime_failed",
         )
-        for item in mistakes
-    )
+    finally:
+        await emitter.close()
 
 
-def _format_selected_context(selected_context: str | None, source_chunk_id: int | None) -> str:
-    if not selected_context:
-        return "无。"
-    if source_chunk_id is None:
-        return selected_context
-    return f"[chunk_id={source_chunk_id}]\n{selected_context}"
+__all__ = [
+    "create_interact_initial_state",
+    "run_interact_workflow",
+    "stream_chat_workflow",
+]

@@ -144,6 +144,23 @@ class EvidenceContextResponse(BaseModel):
     highlight_end: int | None = None
 
 
+class ChunkContextRequest(BaseModel):
+    """Chat chunk context request."""
+
+    chunk_id: int = Field(description="Document chunk ID.")
+
+
+class ChunkContextResponse(BaseModel):
+    """Chat chunk context response."""
+
+    chunk_id: int
+    document_id: int
+    document_title: str
+    chunk_title: str
+    chunk_header_path: str
+    chunk_content: str
+
+
 class AliasItem(BaseModel):
     """别名项。"""
 

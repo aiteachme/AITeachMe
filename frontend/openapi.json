@@ -565,6 +565,77 @@
         }
       }
     },
+    "/api/v1/subjects/delete/preview": {
+      "post": {
+        "tags": [
+          "subjects"
+        ],
+        "summary": "删除学科预览",
+        "operationId": "preview_delete_subject_api_api_v1_subjects_delete_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectDeletePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SubjectDeletePreviewData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/delete": {
       "post": {
         "tags": [
@@ -1243,13 +1314,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/build": {
+    "/api/v1/subjects/{subject}/knowledge/digest/build": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "触发增量构建",
-        "operationId": "digest_build_api_v1_subjects__subject__digest_build_post",
+        "operationId": "digest_build_api_v1_subjects__subject__knowledge_digest_build_post",
         "parameters": [
           {
             "name": "subject",
@@ -1335,13 +1406,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/status": {
+    "/api/v1/subjects/{subject}/knowledge/digest/status": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "查询增量构建聚合状态",
-        "operationId": "digest_status_api_v1_subjects__subject__digest_status_post",
+        "operationId": "digest_status_api_v1_subjects__subject__knowledge_digest_status_post",
         "parameters": [
           {
             "name": "subject",
@@ -1417,13 +1488,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/query": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/query": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "分页查询知识节点",
-        "operationId": "graph_nodes_query_api_v1_subjects__subject__graph_nodes_query_post",
+        "operationId": "graph_nodes_query_api_v1_subjects__subject__knowledge_graph_nodes_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1502,13 +1573,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/detail": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "知识节点详情",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__graph_nodes_detail_post",
+        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1584,13 +1655,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/full": {
+    "/api/v1/subjects/{subject}/knowledge/graph/full": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取完整知识图谱（节点+边）",
-        "operationId": "graph_full_api_v1_subjects__subject__graph_full_post",
+        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
         "parameters": [
           {
             "name": "subject",
@@ -1656,13 +1727,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/evidence/context": {
+    "/api/v1/subjects/{subject}/knowledge/graph/evidence/context": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取证据原文上下文",
-        "operationId": "evidence_context_api_v1_subjects__subject__graph_evidence_context_post",
+        "operationId": "evidence_context_api_v1_subjects__subject__knowledge_graph_evidence_context_post",
         "parameters": [
           {
             "name": "subject",
@@ -1738,13 +1809,95 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/query": {
+    "/api/v1/subjects/{subject}/knowledge/chunks/context": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
+        ],
+        "summary": "获取聊天引用原文上下文",
+        "operationId": "chunk_context_api_v1_subjects__subject__knowledge_chunks_context_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkContextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChunkContextResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/units/query": {
+      "post": {
+        "tags": [
+          "knowledge"
         ],
         "summary": "分页查询教学单元",
-        "operationId": "units_query_api_v1_subjects__subject__units_query_post",
+        "operationId": "units_query_api_v1_subjects__subject__knowledge_units_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1823,13 +1976,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/detail": {
+    "/api/v1/subjects/{subject}/knowledge/units/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "教学单元详情",
-        "operationId": "unit_detail_api_v1_subjects__subject__units_detail_post",
+        "operationId": "unit_detail_api_v1_subjects__subject__knowledge_units_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1905,13 +2058,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/theme-tree/current": {
+    "/api/v1/subjects/{subject}/knowledge/theme-tree/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前主题树",
-        "operationId": "theme_tree_current_api_v1_subjects__subject__theme_tree_current_post",
+        "operationId": "theme_tree_current_api_v1_subjects__subject__knowledge_theme_tree_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -1977,13 +2130,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/taxonomy/anchors": {
+    "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "锚点管理",
-        "operationId": "taxonomy_anchors_api_v1_subjects__subject__taxonomy_anchors_post",
+        "operationId": "taxonomy_anchors_api_v1_subjects__subject__knowledge_taxonomy_anchors_post",
         "parameters": [
           {
             "name": "subject",
@@ -2059,13 +2212,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/prereq-dag/current": {
+    "/api/v1/subjects/{subject}/knowledge/prereq-dag/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前先修 DAG",
-        "operationId": "prereq_dag_current_api_v1_subjects__subject__prereq_dag_current_post",
+        "operationId": "prereq_dag_current_api_v1_subjects__subject__knowledge_prereq_dag_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2131,13 +2284,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/curriculum/current": {
+    "/api/v1/subjects/{subject}/knowledge/curriculum/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前课程快照",
-        "operationId": "curriculum_current_api_v1_subjects__subject__curriculum_current_post",
+        "operationId": "curriculum_current_api_v1_subjects__subject__knowledge_curriculum_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2206,7 +2359,7 @@
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "清空学科所有知识数据",
         "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
@@ -2275,14 +2428,14 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/send": {
+    "/api/v1/subjects/{subject}/chats/send": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "发送消息",
         "description": "保留原生 SSE 返回。",
-        "operationId": "send_chat_api_v1_subjects__subject__chat_send_post",
+        "operationId": "send_chat_api_v1_subjects__subject__chats_send_post",
         "parameters": [
           {
             "name": "subject",
@@ -2376,13 +2529,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/list": {
+    "/api/v1/subjects/{subject}/chats/list": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "聊天记录列表",
-        "operationId": "list_chat_api_api_v1_subjects__subject__chat_list_post",
+        "operationId": "list_chat_api_api_v1_subjects__subject__chats_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2461,13 +2614,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/clear": {
+    "/api/v1/subjects/{subject}/chats/clear": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "清空聊天记录",
-        "operationId": "clear_chat_api_api_v1_subjects__subject__chat_clear_post",
+        "operationId": "clear_chat_api_api_v1_subjects__subject__chats_clear_post",
         "parameters": [
           {
             "name": "subject",
@@ -2543,13 +2696,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/make": {
+    "/api/v1/subjects/{subject}/exams/make": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "生成试卷",
-        "operationId": "make_exam_api_v1_subjects__subject__exam_make_post",
+        "operationId": "make_exam_api_v1_subjects__subject__exams_make_post",
         "parameters": [
           {
             "name": "subject",
@@ -2645,13 +2798,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/submit": {
+    "/api/v1/subjects/{subject}/exams/submit": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "提交试卷",
-        "operationId": "submit_exam_answers_api_v1_subjects__subject__exam_submit_post",
+        "operationId": "submit_exam_answers_api_v1_subjects__subject__exams_submit_post",
         "parameters": [
           {
             "name": "subject",
@@ -2747,13 +2900,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/list": {
+    "/api/v1/subjects/{subject}/exams/list": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "试卷历史",
-        "operationId": "list_exams_api_api_v1_subjects__subject__exam_list_post",
+        "operationId": "list_exams_api_api_v1_subjects__subject__exams_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2832,13 +2985,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/delete": {
+    "/api/v1/subjects/{subject}/exams/delete": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "删除试卷",
-        "operationId": "delete_exam_api_api_v1_subjects__subject__exam_delete_post",
+        "operationId": "delete_exam_api_api_v1_subjects__subject__exams_delete_post",
         "parameters": [
           {
             "name": "subject",
@@ -3437,6 +3590,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ChatClearData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ChunkContextResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkContextResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ChunkContextResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -4361,6 +4548,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_SubjectDeletePreviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectDeletePreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[SubjectDeletePreviewData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_SubjectItem_": {
         "properties": {
           "code": {
@@ -4607,13 +4828,13 @@
           "cleared": {
             "type": "boolean",
             "title": "Cleared",
-            "description": "是否清空成功。"
+            "description": "Whether the history was cleared."
           },
           "deleted_count": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Deleted Count",
-            "description": "删除消息条数。"
+            "description": "Deleted message count."
           }
         },
         "type": "object",
@@ -4622,14 +4843,53 @@
           "deleted_count"
         ],
         "title": "ChatClearData",
-        "description": "清空聊天记录结果。"
+        "description": "Result payload for clearing chat history."
       },
       "ChatClearRequest": {
         "properties": {},
         "type": "object",
         "title": "ChatClearRequest",
-        "description": "清空聊天记录请求。",
+        "description": "Request body for clearing chat history.",
         "example": {}
+      },
+      "ChatContextItem": {
+        "properties": {
+          "chunk_id": {
+            "type": "integer",
+            "title": "Chunk Id",
+            "description": "Knowledge chunk ID."
+          },
+          "document_id": {
+            "type": "integer",
+            "title": "Document Id",
+            "description": "Document ID."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Chunk title."
+          },
+          "header_path": {
+            "type": "string",
+            "title": "Header Path",
+            "description": "Chunk header path."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Retrieval score."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "title",
+          "header_path",
+          "score"
+        ],
+        "title": "ChatContextItem",
+        "description": "One retrieval citation attached to an assistant message."
       },
       "ChatListRequest": {
         "properties": {
@@ -4651,7 +4911,7 @@
         },
         "type": "object",
         "title": "ChatListRequest",
-        "description": "聊天分页请求。",
+        "description": "Pagination request for chat history.",
         "example": {
           "page": 1,
           "size": 20
@@ -4662,28 +4922,27 @@
           "id": {
             "type": "integer",
             "title": "Id",
-            "description": "消息 ID。"
+            "description": "Message ID."
           },
           "turn_id": {
             "type": "string",
             "title": "Turn Id",
-            "description": "轮次 ID。"
+            "description": "Conversation turn ID."
           },
           "role": {
             "$ref": "#/components/schemas/ChatRoleValue",
-            "description": "消息角色。"
+            "description": "Message role."
           },
           "content": {
             "type": "string",
             "title": "Content",
-            "description": "消息内容。"
+            "description": "Message content."
           },
           "contexts": {
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/ChatContextItem"
                 },
                 "type": "array"
               },
@@ -4692,13 +4951,13 @@
               }
             ],
             "title": "Contexts",
-            "description": "关联上下文。"
+            "description": "Assistant citation list."
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "创建时间。"
+            "description": "Created time."
           }
         },
         "type": "object",
@@ -4710,7 +4969,7 @@
           "created_at"
         ],
         "title": "ChatMessageItem",
-        "description": "聊天记录项。"
+        "description": "One persisted chat message."
       },
       "ChatRoleValue": {
         "type": "string",
@@ -4726,7 +4985,7 @@
           "question": {
             "type": "string",
             "title": "Question",
-            "description": "当前问题。"
+            "description": "Current user question."
           },
           "selected_context": {
             "anyOf": [
@@ -4738,7 +4997,7 @@
               }
             ],
             "title": "Selected Context",
-            "description": "用户划词上下文。"
+            "description": "Optional highlighted context."
           },
           "source_chunk_id": {
             "anyOf": [
@@ -4750,7 +5009,7 @@
               }
             ],
             "title": "Source Chunk Id",
-            "description": "划词来源块 ID。"
+            "description": "Optional source chunk ID for the highlighted context."
           }
         },
         "type": "object",
@@ -4758,12 +5017,66 @@
           "question"
         ],
         "title": "ChatSendRequest",
-        "description": "发送消息请求。",
+        "description": "Request body for sending one chat message.",
         "example": {
           "question": "什么是条件概率？",
           "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
           "source_chunk_id": 12
         }
+      },
+      "ChunkContextRequest": {
+        "properties": {
+          "chunk_id": {
+            "type": "integer",
+            "title": "Chunk Id",
+            "description": "Document chunk ID."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id"
+        ],
+        "title": "ChunkContextRequest",
+        "description": "Chat chunk context request."
+      },
+      "ChunkContextResponse": {
+        "properties": {
+          "chunk_id": {
+            "type": "integer",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "integer",
+            "title": "Document Id"
+          },
+          "document_title": {
+            "type": "string",
+            "title": "Document Title"
+          },
+          "chunk_title": {
+            "type": "string",
+            "title": "Chunk Title"
+          },
+          "chunk_header_path": {
+            "type": "string",
+            "title": "Chunk Header Path"
+          },
+          "chunk_content": {
+            "type": "string",
+            "title": "Chunk Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "document_title",
+          "chunk_title",
+          "chunk_header_path",
+          "chunk_content"
+        ],
+        "title": "ChunkContextResponse",
+        "description": "Chat chunk context response."
       },
       "ClearKnowledgeResponse": {
         "properties": {
@@ -7032,13 +7345,9 @@
       },
       "SubjectCreateRequest": {
         "properties": {
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
-          },
           "name": {
             "type": "string",
+            "minLength": 1,
             "title": "Name",
             "description": "展示名称。"
           },
@@ -7051,15 +7360,12 @@
         },
         "type": "object",
         "required": [
-          "subject",
           "name"
         ],
         "title": "SubjectCreateRequest",
-        "description": "创建学科请求。",
         "example": {
-          "description": "用于手动联调的学科空间",
-          "name": "高等数学",
-          "subject": "math"
+          "description": "用于手动联调的学科空间。",
+          "name": "高等数学"
         }
       },
       "SubjectDeleteData": {
@@ -7069,49 +7375,156 @@
             "title": "Deleted",
             "description": "是否删除成功。"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
+            "title": "Subject Id",
+            "description": "学科外部标识。"
+          },
+          "deleted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Deleted Counts",
+            "description": "本次删除涉及的记录统计。"
           }
         },
         "type": "object",
         "required": [
           "deleted",
-          "subject"
+          "subject_id"
         ],
-        "title": "SubjectDeleteData",
-        "description": "学科删除结果。"
+        "title": "SubjectDeleteData"
+      },
+      "SubjectDeleteImpactItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "影响项唯一标识。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "影响项展示名称。"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Count",
+            "description": "影响数量。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "影响项说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count",
+          "description"
+        ],
+        "title": "SubjectDeleteImpactItem"
+      },
+      "SubjectDeletePreviewData": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id",
+            "description": "学科外部标识。"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name",
+            "description": "学科名称。"
+          },
+          "has_content": {
+            "type": "boolean",
+            "title": "Has Content",
+            "description": "学科下是否仍有关联内容。"
+          },
+          "total_related_records": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Related Records",
+            "description": "关联记录总数。"
+          },
+          "impact_items": {
+            "items": {
+              "$ref": "#/components/schemas/SubjectDeleteImpactItem"
+            },
+            "type": "array",
+            "title": "Impact Items",
+            "description": "用户可读的删除影响列表。"
+          },
+          "detail_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Detail Counts",
+            "description": "内部明细统计。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "subject_name",
+          "has_content",
+          "total_related_records"
+        ],
+        "title": "SubjectDeletePreviewData"
+      },
+      "SubjectDeletePreviewRequest": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id",
+            "description": "学科外部标识。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id"
+        ],
+        "title": "SubjectDeletePreviewRequest"
       },
       "SubjectDeleteRequest": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
+            "title": "Subject Id",
+            "description": "学科外部标识。"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "是否确认级联删除学科下的全部内容。",
+            "default": false
           }
         },
         "type": "object",
         "required": [
-          "subject"
+          "subject_id"
         ],
-        "title": "SubjectDeleteRequest",
-        "description": "删除学科请求。"
+        "title": "SubjectDeleteRequest"
       },
       "SubjectDetailRequest": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
+            "title": "Subject Id",
+            "description": "学科外部标识。"
           }
         },
         "type": "object",
         "required": [
-          "subject"
+          "subject_id"
         ],
-        "title": "SubjectDetailRequest",
-        "description": "学科详情请求。"
+        "title": "SubjectDetailRequest"
       },
       "SubjectItem": {
         "properties": {
@@ -7120,10 +7533,10 @@
             "title": "Id",
             "description": "学科 ID。"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
+            "title": "Subject Id",
+            "description": "学科外部标识。"
           },
           "name": {
             "type": "string",
@@ -7151,14 +7564,13 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "name",
           "description",
           "created_at",
           "updated_at"
         ],
-        "title": "SubjectItem",
-        "description": "学科数据项。"
+        "title": "SubjectItem"
       },
       "SubjectListRequest": {
         "properties": {
@@ -7180,7 +7592,6 @@
         },
         "type": "object",
         "title": "SubjectListRequest",
-        "description": "学科分页列表请求。",
         "example": {
           "page": 1,
           "size": 20
@@ -7188,13 +7599,14 @@
       },
       "SubjectUpdateRequest": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "学科标识。"
+            "title": "Subject Id",
+            "description": "学科外部标识。"
           },
           "name": {
             "type": "string",
+            "minLength": 1,
             "title": "Name",
             "description": "展示名称。"
           },
@@ -7207,16 +7619,10 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "name"
         ],
-        "title": "SubjectUpdateRequest",
-        "description": "更新学科请求。",
-        "example": {
-          "description": "用于手动联调的学科空间",
-          "name": "高等数学",
-          "subject": "math"
-        }
+        "title": "SubjectUpdateRequest"
       },
       "SubmitData": {
         "properties": {

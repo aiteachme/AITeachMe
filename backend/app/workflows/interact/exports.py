@@ -9,7 +9,7 @@ WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="interact_flow",
         title="Interact Workflow",
-        description="Minimal retrieval and response workflow.",
+        description="Teaching chat workflow with history loading, retrieval, strategy selection, prompt assembly, streaming, and persistence.",
         build_graph=build_interact_workflow_graph,
     ),
 )

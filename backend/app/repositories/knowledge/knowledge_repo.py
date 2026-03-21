@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import sqlalchemy as sa
+import structlog
 from sqlmodel import Session, func, select
 
 from app.core.database import require_vec_ready
@@ -13,6 +14,8 @@ from app.models import (
     DocumentChunk,
 )
 from app.utils.time import utcnow
+
+logger = structlog.get_logger()
 
 
 def bulk_create_documents(session: Session, documents: list[Document]) -> list[Document]:
@@ -154,28 +157,43 @@ def vector_search(
     """执行 sqlite-vec 检索。"""
 
     require_vec_ready()
+    if top_k <= 0:
+        return []
+
     conn = session.connection()
-    rows = conn.execute(
-        sa.text(
-            """
-            SELECT
-                ce.chunk_id,
-                ce.distance
-            FROM chunk_embeddings ce
-            JOIN document_chunk c ON c.id = ce.chunk_id
-            JOIN document d ON d.id = c.document_id
-            WHERE d.subject = :subject
-              AND ce.embedding MATCH :query_embedding
-            ORDER BY ce.distance
-            LIMIT :top_k
-            """
-        ),
-        {
-            "subject": subject,
-            "query_embedding": str(query_embedding),
-            "top_k": top_k,
-        },
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            sa.text(
+                """
+                SELECT
+                    ce.chunk_id,
+                    ce.distance
+                FROM chunk_embeddings ce
+                WHERE ce.chunk_id IN (
+                    SELECT c.id
+                    FROM document_chunk c
+                    JOIN document d ON d.id = c.document_id
+                    WHERE d.subject = :subject
+                )
+                  AND ce.embedding MATCH :query_embedding
+                  AND k = :top_k
+                ORDER BY ce.distance
+                """
+            ),
+            {
+                "subject": subject,
+                "query_embedding": str(query_embedding),
+                "top_k": top_k,
+            },
+        ).fetchall()
+    except Exception:
+        logger.exception(
+            "vector_search_failed",
+            subject=subject,
+            top_k=top_k,
+            embedding_dim=len(query_embedding),
+        )
+        raise
 
     results: list[ChunkSearchResult] = []
     for row in rows:

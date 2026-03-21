@@ -26,10 +26,14 @@ async def run_state_graph(
         workflow_logger.info("workflow_completed", workflow_name=workflow_name)
         return ok_result(final_state)
     except Exception as exc:
-        workflow_logger.exception("workflow_failed", workflow_name=workflow_name)
+        workflow_logger.exception(
+            "workflow_failed",
+            workflow_name=workflow_name,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return err_result(
             "workflow_execution_failed",
             str(exc),
             metadata={"workflow_name": workflow_name},
         )
-

@@ -9,6 +9,8 @@ from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.knowledge import (
+    ChunkContextRequest,
+    ChunkContextResponse,
     ClearKnowledgeResponse,
     CurriculumSnapshotResponse,
     DigestBuildData,
@@ -50,6 +52,7 @@ from app.services.knowledge.graph_query_service import (
     get_full_graph,
     get_graph_node_detail,
     get_graph_nodes,
+    get_chunk_context,
 )
 from app.services.subject_service import get_subject_record
 
@@ -177,6 +180,24 @@ async def evidence_context(
     get_subject_record(session, normalized)
     return ok_response(
         get_evidence_context(session, subject=normalized, evidence_id=body.evidence_id)
+    )
+
+
+@router.post(
+    "/chunks/context",
+    response_model=ApiResponse[ChunkContextResponse],
+    summary="获取聊天引用原文上下文",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def chunk_context(
+    subject: str = Path(...),
+    body: ChunkContextRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ChunkContextResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized)
+    return ok_response(
+        get_chunk_context(session, subject=normalized, chunk_id=body.chunk_id)
     )
 
 

@@ -26,6 +26,14 @@ class AITeachMeError(Exception):
             self.status_code = status_code
 
 
+class KnowledgeChunkNotFoundError(AITeachMeError):
+    error_code = "KNOWLEDGE_CHUNK_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, chunk_id: int) -> None:
+        super().__init__(detail=f"知识切块 `{chunk_id}` 不存在。")
+
+
 class InvalidSubjectError(AITeachMeError):
     error_code = "INVALID_SUBJECT"
     status_code = HTTPStatus.BAD_REQUEST
