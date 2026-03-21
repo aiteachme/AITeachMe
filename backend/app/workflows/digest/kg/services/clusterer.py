@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from app.agents.digest.kg_extractor import CandidateNode
+from app.workflows.digest.kg.services.extractor import CandidateNode
 from app.core.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 

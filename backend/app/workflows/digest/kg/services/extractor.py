@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 import structlog
 
-from app.agents.digest.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
+from app.workflows.digest.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
 from app.core.llm import acompletion_structured
 from app.core.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER

@@ -5,18 +5,16 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
-    "INGEST_PARSE_DIAGRAM",
     "IngestParseState",
-    "WORKFLOW_DIAGRAMS",
+    "WORKFLOW_EXPORTS",
     "build_parse_file_graph",
     "create_parse_file_initial_state",
     "run_parse_file_workflow",
 ]
 
 _ATTR_TO_MODULE = {
-    "INGEST_PARSE_DIAGRAM": "app.workflows.ingest.diagrams",
     "IngestParseState": "app.workflows.ingest.state",
-    "WORKFLOW_DIAGRAMS": "app.workflows.ingest.diagrams",
+    "WORKFLOW_EXPORTS": "app.workflows.ingest.exports",
     "build_parse_file_graph": "app.workflows.ingest.graph",
     "create_parse_file_initial_state": "app.workflows.ingest.graph",
     "run_parse_file_workflow": "app.workflows.ingest.graph",

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 import structlog
 from sqlmodel import Session, select
 
-from app.agents.digest.kg_impact_analyzer import ImpactSet
+from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
 from app.models.curriculum import (
     PrereqDagVersion,
     TeachingUnit,

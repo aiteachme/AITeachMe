@@ -19,9 +19,9 @@ from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, select
 import structlog
 
-from app.agents.digest.kg_clusterer import ClusteredCandidate
-from app.agents.digest.kg_extractor import CandidateEdge
-from app.agents.digest.prompts import (
+from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
+from app.workflows.digest.kg.services.extractor import CandidateEdge
+from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_ENTITY_MATCH,
     USER_PROMPT_KG_ENTITY_MATCH,
 )

@@ -22,8 +22,8 @@ import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, select
 
-from app.agents.digest.kg_impact_analyzer import ImpactSet
-from app.agents.digest.prompts import (
+from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_THEME_TREE,
     USER_PROMPT_KG_THEME_TREE,
 )
