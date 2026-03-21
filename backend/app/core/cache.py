@@ -37,11 +37,11 @@ class SemanticCache:
         self,
         *,
         ttl_s: int | None = None,
-        max_entries: int = 1000,
+        max_entries: int | None = None,
     ) -> None:
         settings = get_settings()
         self._ttl_s = ttl_s or settings.llm_cache_ttl_s
-        self._max_entries = max_entries
+        self._max_entries = max_entries or settings.llm_cache_max_entries
         self._cache: dict[str, CacheEntry] = {}
         self._hits = 0
         self._misses = 0

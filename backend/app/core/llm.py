@@ -2,7 +2,7 @@
 
 支持：
 - 按任务类型选择模型（model_router）
-- 调用追踪与统计（callbacks）
+- 调用追踪与统计（tracing）
 - 文本补全 / 结构化补全 / 流式补全
 """
 
@@ -16,8 +16,7 @@ import instructor
 import litellm
 import structlog
 
-from app.core.callbacks.records import LLMCallRecord
-from app.core.callbacks.tracker import get_tracker
+from app.core.tracing import LLMCallRecord, get_tracker
 from app.core.config import get_settings
 from app.core.exceptions import LLMCallError, LLMTimeoutError
 from app.core.model_router import TaskType, get_task_profile
@@ -30,6 +29,17 @@ T = TypeVar("T")
 # 保留原始常量作为兜底
 _MAX_RETRIES = 3
 _TIMEOUT_S = 60
+
+# 全局并发限制：防止 workflows 用 asyncio.gather 同时发太多 LLM 请求
+# 通过环境变量 LLM_CONCURRENCY_LIMIT 调整，默认 10
+_LLM_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _LLM_SEMAPHORE
+    if _LLM_SEMAPHORE is None:
+        _LLM_SEMAPHORE = asyncio.Semaphore(get_settings().llm_concurrency_limit)
+    return _LLM_SEMAPHORE
 
 
 def _extract_usage(response) -> tuple[int, int, int]:
@@ -96,44 +106,45 @@ async def acompletion(
     model_name = f"openai/{profile.model}"
     last_error: Exception | None = None
 
-    for attempt in range(1, profile.max_retries + 1):
-        start = time.monotonic()
-        try:
-            response = await litellm.acompletion(
-                model=model_name,
-                messages=messages,
-                api_base=settings.llm_base_url,
-                api_key=api_key,
-                timeout=profile.timeout_s,
-                temperature=kwargs.pop("temperature", profile.temperature),
-                **kwargs,
-            )
-            prompt_t, completion_t, total_t = _extract_usage(response)
-            logger.info(
-                "llm_completion_complete",
-                attempt=attempt,
-                elapsed_s=round(time.monotonic() - start, 2),
-                model=profile.model,
-                task_type=task_type.value,
-            )
-            _track_call(
-                task_type=task_type.value,
-                model=profile.model,
-                start=start,
-                success=True,
-                prompt_tokens=prompt_t,
-                completion_tokens=completion_t,
-                total_tokens=total_t,
-            )
-            return response.choices[0].message.content
-        except asyncio.TimeoutError:
-            last_error = LLMTimeoutError(timeout_s=profile.timeout_s)
-        except Exception as exc:
-            last_error = exc
-            logger.warning("llm_completion_failed", attempt=attempt, error=str(exc))
+    async with _get_semaphore():
+        for attempt in range(1, profile.max_retries + 1):
+            start = time.monotonic()
+            try:
+                response = await litellm.acompletion(
+                    model=model_name,
+                    messages=messages,
+                    api_base=settings.llm_base_url,
+                    api_key=api_key,
+                    timeout=profile.timeout_s,
+                    temperature=kwargs.pop("temperature", profile.temperature),
+                    **kwargs,
+                )
+                prompt_t, completion_t, total_t = _extract_usage(response)
+                logger.info(
+                    "llm_completion_complete",
+                    attempt=attempt,
+                    elapsed_s=round(time.monotonic() - start, 2),
+                    model=profile.model,
+                    task_type=task_type.value,
+                )
+                _track_call(
+                    task_type=task_type.value,
+                    model=profile.model,
+                    start=start,
+                    success=True,
+                    prompt_tokens=prompt_t,
+                    completion_tokens=completion_t,
+                    total_tokens=total_t,
+                )
+                return response.choices[0].message.content
+            except asyncio.TimeoutError:
+                last_error = LLMTimeoutError(timeout_s=profile.timeout_s)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("llm_completion_failed", attempt=attempt, error=str(exc))
 
-        if attempt < profile.max_retries:
-            await asyncio.sleep(attempt * 2)
+            if attempt < profile.max_retries:
+                await asyncio.sleep(attempt * 2)
 
     _track_call(
         task_type=task_type.value,

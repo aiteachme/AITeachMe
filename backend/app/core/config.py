@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     guardrails_enabled: bool = True
     llm_cache_enabled: bool = False
     llm_cache_ttl_s: int = 3600
+    llm_cache_max_entries: int = 1000
+    llm_concurrency_limit: int = 10
+    embedding_batch_size: int = 20
+    embedding_batch_delay_s: float = 0.1
     default_token_budget: int = 4000
 
     @property

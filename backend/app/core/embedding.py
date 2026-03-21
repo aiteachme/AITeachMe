@@ -19,20 +19,17 @@ from app.core.exceptions import LLMCallError
 
 logger = structlog.get_logger()
 
-_BATCH_SIZE = 20
-_BATCH_DELAY_S = 0.1
-
 
 async def aembed_texts(
     texts: list[str],
     *,
-    batch_size: int = _BATCH_SIZE,
+    batch_size: int | None = None,
 ) -> list[list[float]]:
     """批量生成文本向量，自动分批处理。
 
     Args:
         texts: 待向量化的文本列表。
-        batch_size: 每批大小（默认 20）。
+        batch_size: 每批大小（默认从 config 读取，环境变量 EMBEDDING_BATCH_SIZE）。
     """
 
     if not texts:
@@ -40,6 +37,7 @@ async def aembed_texts(
 
     settings = get_settings()
     api_key = settings.require_llm_api_key()
+    batch_size = batch_size or settings.embedding_batch_size
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []
@@ -70,7 +68,7 @@ async def aembed_texts(
 
         # 批次间限流
         if batch_idx < total_batches - 1:
-            await asyncio.sleep(_BATCH_DELAY_S)
+            await asyncio.sleep(settings.embedding_batch_delay_s)
 
     logger.info(
         "embedding_call_complete",
