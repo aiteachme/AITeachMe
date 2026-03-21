@@ -11,9 +11,19 @@ import {
   MoreHorizontal,
   Trash2,
   Clock,
+  FileEdit,
 } from "lucide-react";
+import { useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
+import { fetchDocGenContent } from "../api/graphApi";
+import {
+  DocGenBuildProvider,
+  DocGenBuildButton,
+  DocGenBuildProgress,
+} from "../components/pages/DocGenBuildPanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -396,7 +406,19 @@ function CommentBubbles({
 /* ------------------------------------------------------------------ */
 
 export function DocPage() {
-  const [markdown] = useState(DEMO_MARKDOWN);
+  const { subjectId = "" } = useParams();
+
+  // 获取真实的 markdown
+  const { data: contentData } = useQuery({
+    queryKey: ["docgen-content", subjectId],
+    queryFn: () => fetchDocGenContent(subjectId),
+    enabled: !!subjectId,
+  });
+
+  const markdown = contentData?.markdown || "";
+  const isDemo = !markdown;
+  const displayMarkdown = markdown || DEMO_MARKDOWN;
+
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -411,29 +433,45 @@ export function DocPage() {
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
 
-  const toc = useMemo(() => extractToc(markdown), [markdown]);
+  const toc = useMemo(() => extractToc(displayMarkdown), [displayMarkdown]);
 
   // Track active heading on scroll — uses the single scroll container
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let localActive = "";
+
     const handleScroll = () => {
-      const headings = container.querySelectorAll("[data-heading-id]");
-      let current = "";
-      for (const el of headings) {
-        const rect = el.getBoundingClientRect();
-        if (rect.top <= 120) {
-          current = el.getAttribute("data-heading-id") ?? "";
+      if (timeout) return;
+      timeout = setTimeout(() => {
+        timeout = null;
+        const headings = container.querySelectorAll("[data-heading-id]");
+        let current = "";
+        for (const el of headings) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 120) {
+            current = el.getAttribute("data-heading-id") ?? "";
+          } else {
+            // Because they appear in DOM order, once we see one below our threshold, we can stop
+            break;
+          }
         }
-      }
-      setActiveHeading(current);
+        if (current !== localActive) {
+          localActive = current;
+          setActiveHeading(current);
+        }
+      }, 60);
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [markdown]);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [displayMarkdown]);
 
   const scrollToHeading = useCallback((id: string) => {
     const container = scrollRef.current;
@@ -555,6 +593,7 @@ export function DocPage() {
   );
 
   return (
+    <DocGenBuildProvider subject={subjectId}>
     <div className="relative h-screen overflow-hidden bg-slate-100/60">
       <div className="absolute top-3 right-4 z-40">
         <TopBar />
@@ -624,6 +663,15 @@ export function DocPage() {
         )}
       </div>
 
+      <div className="hidden lg:flex absolute right-4 top-16 z-30 flex-col gap-2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <DocGenBuildButton />
+        </div>
+        <div className="pointer-events-auto w-[280px]">
+          <DocGenBuildProgress />
+        </div>
+      </div>
+
       <div className="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 z-30">
         <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm p-1.5 flex flex-col gap-1">
           <button
@@ -672,11 +720,16 @@ export function DocPage() {
             >
               <article
                 className={cn(
-                  "min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white shadow-sm px-8 py-8 md:px-12 md:py-10 transition-[max-width] duration-300",
+                  "min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white shadow-sm px-8 py-8 md:px-12 md:py-10 transition-[max-width] duration-300 relative",
                   pageWidth === "wide" ? "max-w-[980px]" : "max-w-[760px]"
                 )}
               >
-                <DocMarkdown content={markdown} />
+                {isDemo && (
+                  <div className="absolute top-4 right-4 bg-amber-50 text-amber-600 text-xs px-2 py-1 rounded border border-amber-200">
+                    此为示例数据，请点击右上角「构建知识文档」生成真实数据
+                  </div>
+                )}
+                <DocMarkdown content={displayMarkdown} />
               </article>
 
               <div
@@ -760,5 +813,6 @@ export function DocPage() {
         </div>
       </div>
     </div>
+    </DocGenBuildProvider>
   );
 }

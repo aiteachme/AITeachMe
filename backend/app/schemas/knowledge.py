@@ -115,6 +115,8 @@ class DocGenBuildData(BaseModel):
 class DocGenJobResponse(BaseModel):
     """DocGenJob 状态。"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     subject: str
     status: str
@@ -131,6 +133,12 @@ class DocGenStatusResponse(BaseModel):
     """知识文档生成状态响应。"""
 
     job: DocGenJobResponse
+
+
+class DocGenContentResponse(BaseModel):
+    """知识文档生成产物响应。"""
+
+    markdown: str = Field(description="合并后的最终 Markdown 内容。")
 
 
 class DigestStatusResponse(BaseModel):
