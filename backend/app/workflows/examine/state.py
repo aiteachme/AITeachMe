@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
-if TYPE_CHECKING:
-    from app.workflows.examine.answer_grader import GradeResult
-    from app.workflows.profile.mastery_updater import MasteryUpdateResult
+from app.workflows.examine.answer_grader import GradeResult
+from app.workflows.profile.mastery_updater import MasteryUpdateResult
 
 
 class ExamineWorkflowState(TypedDict, total=False):
