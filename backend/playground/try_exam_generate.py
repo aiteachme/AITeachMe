@@ -1,4 +1,4 @@
-"""手动验证从知识文本直接出题。"""
+"""Manual playground script for generating an exam from markdown text."""
 
 from __future__ import annotations
 
@@ -6,17 +6,18 @@ import asyncio
 import json
 from pathlib import Path
 
-from app.agents.examine.generator import generate_exam_from_text
+from app.workflows.examine import generate_exam_from_text
 
 
 async def main() -> None:
-    input_dir = Path("playground/inputs")
-    output_dir = Path("playground/outputs")
+    playground_dir = Path(__file__).resolve().parent
+    input_dir = playground_dir / "inputs"
+    output_dir = playground_dir / "outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     text_files = sorted(input_dir.glob("*.md"))
     if not text_files:
-        print("playground/inputs/ 下没有 Markdown 文件。")
+        print("No Markdown files found under backend/playground/inputs.")
         return
 
     source = text_files[0]
@@ -30,7 +31,7 @@ async def main() -> None:
         json.dumps([question.model_dump() for question in questions], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"已输出到: {target}")
+    print(f"Wrote exam JSON to: {target}")
 
 
 if __name__ == "__main__":

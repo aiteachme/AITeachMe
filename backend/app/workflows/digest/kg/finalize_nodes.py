@@ -1,0 +1,173 @@
+"""Finalize and failure nodes for the digest graph workflow."""
+
+from __future__ import annotations
+
+import asyncio
+import traceback
+from collections.abc import Awaitable, Callable
+
+from app.core.database import managed_session
+from app.models.curriculum import CurriculumDeriveJob
+from app.repositories import curriculum_repo, kg_repo
+from app.utils.job_helpers import (
+    activate_graph_entities_by_job,
+    cleanup_pending_by_job,
+    update_job_progress,
+)
+from app.workflows.common.result import WorkflowResult
+from app.workflows.digest.kg.state import KGDigestState
+from app.workflows.digest.kg.support import workflow_logger
+
+
+def build_finalize_graph_node(
+    *,
+    trigger_curriculum_derive: Callable[..., Awaitable[None]],
+):
+    """Build the finalize node with an injected curriculum trigger."""
+
+    async def finalize_graph_node(state: KGDigestState) -> KGDigestState:
+        with managed_session() as session:
+            digest_logger = workflow_logger(state)
+            try:
+                job_id = state["job_id"]
+                subject = state["subject"]
+
+                activated = activate_graph_entities_by_job(session, job_id=job_id)
+                digest_logger.info(
+                    "kg_workflow_activated",
+                    activated=activated,
+                    chunk_count=len(state.get("chunk_ids", [])),
+                    candidate_result_count=len(state.get("candidates", [])),
+                    impact_available=state.get("impact_set") is not None,
+                )
+
+                kg_repo.release_subject_build_lock(session, subject)
+
+                curriculum_job = CurriculumDeriveJob(
+                    subject=subject,
+                    graph_job_id=job_id,
+                    status="pending",
+                )
+                session.add(curriculum_job)
+                session.commit()
+                session.refresh(curriculum_job)
+                curriculum_job_id: int = curriculum_job.id  # type: ignore[assignment]
+
+                kg_repo.update_digest_job(
+                    session,
+                    job_id,
+                    status="completed",
+                    curriculum_job_id=curriculum_job_id,
+                )
+                update_job_progress(
+                    session,
+                    job_id=job_id,
+                    job_type="graph",
+                    progress=100,
+                    current_step="finalize_graph",
+                )
+
+                digest_logger.info(
+                    "kg_workflow_finalize_complete",
+                    curriculum_job_id=curriculum_job_id,
+                    chunk_count=len(state.get("chunk_ids", [])),
+                    candidate_result_count=len(state.get("candidates", [])),
+                    edge_candidate_count=len(state.get("all_candidate_edges", [])),
+                )
+
+                asyncio.create_task(
+                    trigger_curriculum_derive(
+                        subject=subject,
+                        graph_job_id=job_id,
+                        curriculum_job_id=curriculum_job_id,
+                        impact_set=state.get("impact_set"),
+                    )
+                )
+                return {**state, "error": None}
+            except Exception as exc:
+                digest_logger.error("kg_workflow_finalize_failed", error=str(exc), exc_info=True)
+                return {**state, "error": f"finalize_failed: {exc}"}
+
+    return finalize_graph_node
+
+
+async def fail_node(state: KGDigestState) -> KGDigestState:
+    """Clean up pending graph data and mark the job as failed."""
+
+    with managed_session() as session:
+        digest_logger = workflow_logger(state)
+        try:
+            job_id = state["job_id"]
+            error_message = state.get("error", "unknown_error")
+
+            cleanup_pending_by_job(session, job_id=job_id, job_type="graph")
+            if state.get("lock_acquired", False):
+                kg_repo.release_subject_build_lock(session, state["subject"])
+
+            kg_repo.update_digest_job(
+                session,
+                job_id,
+                status="failed",
+                error_message=error_message,
+            )
+            digest_logger.error(
+                "kg_workflow_failed",
+                error=error_message,
+                lock_acquired=state.get("lock_acquired", False),
+                chunk_count=len(state.get("chunk_ids", [])),
+            )
+            return state
+        except Exception as exc:
+            digest_logger.error("kg_workflow_fail_node_error", error=str(exc), exc_info=True)
+            return state
+
+
+async def trigger_curriculum_derive_safe(
+    *,
+    subject: str,
+    graph_job_id: int,
+    curriculum_job_id: int,
+    impact_set: object | None,
+    run_curriculum_derive_workflow: Callable[..., Awaitable[WorkflowResult[object]]],
+) -> None:
+    """Run curriculum derive in the background and mark failure on exception."""
+
+    try:
+        result = await run_curriculum_derive_workflow(
+            subject=subject,
+            graph_job_id=graph_job_id,
+            curriculum_job_id=curriculum_job_id,
+            impact_set=impact_set,
+        )
+        if result.failed:
+            with managed_session() as session:
+                curriculum_repo.update_curriculum_job(
+                    session,
+                    curriculum_job_id,
+                    status="failed",
+                    error_message=result.error.detail[-500:],
+                )
+    except Exception:
+        workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).exception(
+            "curriculum_derive_auto_trigger_failed",
+            curriculum_job_id=curriculum_job_id,
+        )
+        try:
+            with managed_session() as session:
+                curriculum_repo.update_curriculum_job(
+                    session,
+                    curriculum_job_id,
+                    status="failed",
+                    error_message=traceback.format_exc()[-500:],
+                )
+        except Exception:
+            workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).exception(
+                "failed_to_mark_curriculum_job_failed"
+            )
+
+
+__all__ = [
+    "build_finalize_graph_node",
+    "fail_node",
+    "trigger_curriculum_derive_safe",
+]

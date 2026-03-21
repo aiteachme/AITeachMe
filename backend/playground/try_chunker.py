@@ -1,11 +1,11 @@
-"""手动验证 Markdown 切块效果。"""
+"""Manual playground for checking markdown chunk output."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from app.agents.digest.chunker import chunk_markdown
+from app.workflows.digest.kg.services.chunker import chunk_markdown
 
 
 def main() -> None:
@@ -15,7 +15,7 @@ def main() -> None:
 
     markdown_files = sorted(input_dir.glob("*.md"))
     if not markdown_files:
-        print("playground/inputs/ 下没有 Markdown 文件。")
+        print("No Markdown files found under playground/inputs/.")
         return
 
     source = markdown_files[0]
@@ -25,7 +25,7 @@ def main() -> None:
         json.dumps([chunk.to_dict() for chunk in chunks], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"已输出到: {target}")
+    print(f"Wrote chunk output to: {target}")
 
 
 if __name__ == "__main__":

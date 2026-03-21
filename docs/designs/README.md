@@ -55,10 +55,11 @@
 | 文档 | 作用 |
 | --- | --- |
 | `01_system_architecture.md` | 系统总览、前后端分层、五大引擎在整体架构中的位置 |
+| `10_repo_structure_and_runtime_files.md` | 仓库结构、前后端目录职责、生成物边界、运行时文件布局 |
 | `02_domain_model_and_state.md` | 领域模型、关键状态、对象关系、存储边界 |
 | `03_api_contracts_and_dev_workflow.md` | 接口设计规范、统一响应规范、长流程规范、联调流程 |
 | `04_ingest_engine.md` | Ingest 引擎设计：多格式资料接入、解析、规范化、材料化 |
-| `05_digest_engine.md` | Digest 引擎设计：知识图谱、Teaching Unit、课程视图、证据链 |
+| `05_digest_engine.md` | Digest 引擎设计：知识文档生成、知识图谱、Teaching Unit、课程视图、证据链 |
 | `06_interact_engine.md` | Interact 引擎设计：教学对话、RAG、上下文装配、流式输出 |
 | `07_examine_engine.md` | Examine 引擎设计：出题、判卷、诊断、错题回流 |
 | `08_profile_engine.md` | Profile 引擎设计：掌握度、报告、错题本、学习状态层 |
@@ -71,25 +72,28 @@
 ### 4.1 新加入项目的开发者
 
 1. `01_system_architecture.md`
-2. `02_domain_model_and_state.md`
-3. `03_api_contracts_and_dev_workflow.md`
-4. 再按职责进入对应引擎文档
+2. `10_repo_structure_and_runtime_files.md`
+3. `02_domain_model_and_state.md`
+4. `03_api_contracts_and_dev_workflow.md`
+5. 再按职责进入对应引擎文档
 
 ### 4.2 后端开发
 
 1. `01_system_architecture.md`
-2. `02_domain_model_and_state.md`
-3. `03_api_contracts_and_dev_workflow.md`
-4. `04` 到 `09`
+2. `10_repo_structure_and_runtime_files.md`
+3. `02_domain_model_and_state.md`
+4. `03_api_contracts_and_dev_workflow.md`
+5. `04` 到 `09`
 
 ### 4.3 前端开发
 
 1. `01_system_architecture.md`
-2. `03_api_contracts_and_dev_workflow.md`
-3. `05_digest_engine.md`
-4. `06_interact_engine.md`
-5. `07_examine_engine.md`
-6. `08_profile_engine.md`
+2. `10_repo_structure_and_runtime_files.md`
+3. `03_api_contracts_and_dev_workflow.md`
+4. `05_digest_engine.md`
+5. `06_interact_engine.md`
+6. `07_examine_engine.md`
+7. `08_profile_engine.md`
 
 ---
 
@@ -98,14 +102,17 @@
 | 前端页面 | 主要引擎 | 后端资源组 | 主要服务与 Agent |
 | --- | --- | --- | --- |
 | `UploadPage` | Ingest | `files` | `file_service` + `agents/ingest/*` |
-| `SummaryPage` | Digest | `knowledge` | `digest_service` / `curriculum_service` / `graph_query_service` + `agents/digest/*` |
+| `KnowledgeDocsPage` | Digest | `knowledge` | `knowledge/digest_service` + `agents/digest/doc_builder` |
+| `SummaryPage` | Digest | `knowledge` | `knowledge/curriculum_service` / `knowledge/graph_query_service` + `agents/digest/*` |
 | `ChatPage` | Interact | `chats` | `chats_service` + `agents/interact/*` |
 | `ExamPage` | Examine | `exams` | `exams_service` + `agents/examine/*` |
 | `AnalysisPage` | Profile | `profile` | `profile_service` + `agents/profile/*` |
 
-这五个页面不是松散功能点，而是围绕同一条学习闭环展开：
+这六个页面不是松散功能点，而是围绕同一条学习闭环展开：
 
-`资料接入 -> 知识组织 -> 教学互动 -> 诊断测评 -> 学习画像`
+`资料接入 -> 知识整理 -> 知识浏览与对话 -> 诊断测评 -> 学习画像`
+
+其中 `KnowledgeDocsPage` 是用户日常学习的主阵地——AI 自动把零散资料整理成分章节的精美知识文档，用户在文档上阅读、划线提问、标记重点，形成"边读边学"的沉浸体验。
 
 ---
 

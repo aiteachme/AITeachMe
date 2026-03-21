@@ -8,9 +8,12 @@ import structlog
 from fastapi import Request
 from sqlmodel import Session
 
-from app.agents.interact.context_builder import build_chat_messages
-from app.agents.interact.retriever import retrieve
-from app.agents.interact.streamer import format_sse_event, stream_llm_events
+from app.workflows.interact import (
+    build_chat_messages,
+    format_sse_event,
+    retrieve,
+    stream_llm_events,
+)
 from app.core.config import get_settings
 from app.models import ChatMessage
 from app.repositories.chats_repo import (

@@ -1,27 +1,27 @@
-import { useState, useRef, useEffect, memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  BarChart3,
+  BookOpen,
   ChevronDown,
   ChevronRight,
-  Plus,
-  Upload,
-  BookOpen,
-  MessageSquare,
   FileText,
-  BarChart3,
-  Menu,
-  X,
   Loader2,
+  Menu,
+  MessageSquare,
+  Plus,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
 import { apiClient } from "../../api/client";
 
 interface SubjectItem {
   id: number;
-  subject: string;
+  subject_id: string;
   name: string;
   description: string;
   created_at: string;
@@ -56,7 +56,6 @@ async function fetchSubjects(): Promise<SubjectItem[]> {
 }
 
 async function createSubject(payload: {
-  subject: string;
   name: string;
   description: string;
 }): Promise<SubjectItem> {
@@ -68,24 +67,27 @@ async function createSubject(payload: {
   return res.data;
 }
 
-async function deleteSubject(subject: string): Promise<void> {
-  await apiClient({ method: "POST", url: "/api/v1/subjects/delete", data: { subject } });
+async function deleteSubject(subjectId: string): Promise<void> {
+  await apiClient({
+    method: "POST",
+    url: "/api/v1/subjects/delete",
+    data: { subject_id: subjectId },
+  });
 }
 
-// Extracted as a stable component to prevent unmount/remount on parent re-render
 const NewSubjectForm = memo(function NewSubjectForm({
   onSubmit,
   onCancel,
   isPending,
   error,
 }: {
-  onSubmit: (name: string, slug: string) => void;
+  onSubmit: (name: string, description: string) => void;
   onCancel: () => void;
   isPending: boolean;
   error?: string;
 }) {
   const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -93,35 +95,29 @@ const NewSubjectForm = memo(function NewSubjectForm({
   }, []);
 
   const handleSubmit = () => {
-    if (!name.trim() || !slug.trim()) return;
-    onSubmit(name.trim(), slug.trim());
+    if (!name.trim()) return;
+    onSubmit(name.trim(), description.trim());
   };
 
   return (
-    <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-2">
+    <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3">
       <input
         ref={nameInputRef}
-        className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white"
+        className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white"
         placeholder="学科名称，如：高等数学"
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <input
-        className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white"
-        placeholder="标识（英文），如：gaoshu"
-        value={slug}
-        onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
-        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+      <textarea
+        className="min-h-20 w-full resize-y border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white"
+        placeholder="学科描述，可选"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
       />
-      {error && (
-        <p className="text-xs text-red-500 px-0.5">{error}</p>
-      )}
+      <p className="text-xs text-slate-500">系统会自动生成学科标识，无需手动输入。</p>
+      {error && <p className="text-xs text-red-500 px-0.5">{error}</p>}
       <div className="flex gap-2">
-        <Button
-          className="flex-1"
-          onClick={handleSubmit}
-          disabled={!name.trim() || !slug.trim() || isPending}
-        >
+        <Button className="flex-1" onClick={handleSubmit} disabled={!name.trim() || isPending}>
           {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "创建"}
         </Button>
         <Button variant="outline" className="flex-1" onClick={onCancel}>
@@ -147,14 +143,20 @@ export function Sidebar() {
     queryFn: fetchSubjects,
   });
 
+  useEffect(() => {
+    const match = location.pathname.match(/^\/subject\/([^/]+)/);
+    if (!match?.[1]) return;
+    setExpandedSubjects((prev) => new Set([...prev, match[1]]));
+  }, [location.pathname]);
+
   const createMutation = useMutation({
     mutationFn: createSubject,
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      setExpandedSubjects((prev) => new Set([...prev, created.subject]));
+      setExpandedSubjects((prev) => new Set([...prev, created.subject_id]));
       setShowNewForm(false);
       setCreateError(undefined);
-      navigate(`/subject/${created.subject}/chat`);
+      navigate(`/subject/${created.subject_id}/chat`);
     },
     onError: (err: unknown) => {
       const detail =
@@ -167,23 +169,25 @@ export function Sidebar() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteSubject,
-    onSuccess: () => {
+    onSuccess: (_, subjectId) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      navigate("/");
+      if (location.pathname.startsWith(`/subject/${subjectId}/`)) {
+        navigate("/");
+      }
     },
   });
 
-  const toggleSubject = (slug: string) => {
+  const toggleSubject = (subjectId: string) => {
     setExpandedSubjects((prev) => {
       const next = new Set(prev);
-      next.has(slug) ? next.delete(slug) : next.add(slug);
+      next.has(subjectId) ? next.delete(subjectId) : next.add(subjectId);
       return next;
     });
   };
 
-  const handleCreate = (name: string, slug: string) => {
+  const handleCreate = (name: string, description: string) => {
     setCreateError(undefined);
-    createMutation.mutate({ subject: slug, name, description: "" });
+    createMutation.mutate({ name, description });
   };
 
   return (
@@ -205,7 +209,7 @@ export function Sidebar() {
       <aside
         className={cn(
           "fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200",
-          isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         <div className="p-4 border-b border-slate-200">
@@ -225,7 +229,10 @@ export function Sidebar() {
           {showNewForm && (
             <NewSubjectForm
               onSubmit={handleCreate}
-              onCancel={() => { setShowNewForm(false); setCreateError(undefined); }}
+              onCancel={() => {
+                setShowNewForm(false);
+                setCreateError(undefined);
+              }}
               isPending={createMutation.isPending}
               error={createError}
             />
@@ -241,13 +248,13 @@ export function Sidebar() {
           )}
 
           {subjects.map((subject) => (
-            <div key={subject.subject} className="mb-2">
+            <div key={subject.subject_id} className="mb-2">
               <div className="flex items-center group">
                 <button
-                  onClick={() => toggleSubject(subject.subject)}
+                  onClick={() => toggleSubject(subject.subject_id)}
                   className="flex items-center flex-1 px-3 py-2 text-sm font-medium text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
                 >
-                  {expandedSubjects.has(subject.subject) ? (
+                  {expandedSubjects.has(subject.subject_id) ? (
                     <ChevronDown className="w-4 h-4 mr-2 shrink-0" />
                   ) : (
                     <ChevronRight className="w-4 h-4 mr-2 shrink-0" />
@@ -255,7 +262,7 @@ export function Sidebar() {
                   <span className="truncate">{subject.name}</span>
                 </button>
                 <button
-                  onClick={() => deleteMutation.mutate(subject.subject)}
+                  onClick={() => deleteMutation.mutate(subject.subject_id)}
                   className="opacity-0 group-hover:opacity-100 p-1 mr-1 text-slate-400 hover:text-red-500 transition-all rounded"
                   title="删除学科"
                 >
@@ -263,10 +270,10 @@ export function Sidebar() {
                 </button>
               </div>
 
-              {expandedSubjects.has(subject.subject) && (
+              {expandedSubjects.has(subject.subject_id) && (
                 <div className="ml-6 mt-1 space-y-1">
                   {MODULES.map((mod) => {
-                    const path = `/subject/${subject.subject}/${mod.id}`;
+                    const path = `/subject/${subject.subject_id}/${mod.id}`;
                     return (
                       <Link
                         key={mod.id}
@@ -276,7 +283,7 @@ export function Sidebar() {
                           "flex items-center px-3 py-2 text-sm rounded-lg transition-colors",
                           location.pathname === path
                             ? "bg-slate-100 text-slate-900 font-medium"
-                            : "text-slate-600 hover:bg-slate-50"
+                            : "text-slate-600 hover:bg-slate-50",
                         )}
                       >
                         {mod.icon}
