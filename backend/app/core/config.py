@@ -43,6 +43,19 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     app_version: str = "0.2.0"
 
+    # ── AI 基础设施配置 ──
+    model_overrides: dict[str, str] = {}
+    llm_observability_enabled: bool = True
+    tracing_enabled: bool = True
+    guardrails_enabled: bool = True
+    llm_cache_enabled: bool = False
+    llm_cache_ttl_s: int = 3600
+    llm_cache_max_entries: int = 1000
+    llm_concurrency_limit: int = 10
+    embedding_batch_size: int = 20
+    embedding_batch_delay_s: float = 0.1
+    default_token_budget: int = 4000
+
     @property
     def embedding_dim(self) -> int:
         """根据 embedding 模型推导维度。"""

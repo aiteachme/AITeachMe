@@ -41,3 +41,8 @@ backend/data/*.sqlite
 *.log
 # .env
 # .env.local
+
+
+
+
+.history
