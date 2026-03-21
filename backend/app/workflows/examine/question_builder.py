@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import structlog
@@ -14,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from app.core.llm import acompletion_structured
+from app.core.model_router import TaskType
 from app.core.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionTemplate, QuestionTemplateNodeLink, QuestionType
 from app.models.curriculum import TeachingUnitMembership
@@ -176,26 +175,7 @@ def _build_deterministic_templates(
     return questions
 
 
-def _run_llm_call_in_any_context(prompt: str) -> _GeneratedTemplatePayload:
-    async def _call_llm() -> _GeneratedTemplatePayload:
-        return await acompletion_structured(
-            response_model=_GeneratedTemplatePayload,
-            messages=[{"role": SYSTEM, "content": prompt}],
-        )
-
-    try:
-        # No running loop in current thread.
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(_call_llm())
-
-    # We are in an async context. Run LLM call in a dedicated thread.
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(lambda: asyncio.run(_call_llm()))
-        return future.result(timeout=120)
-
-
-def _try_llm_generate_templates(
+async def _try_llm_generate_templates(
     *,
     subject: str,
     node_contexts: list[_NodeContext],
@@ -218,7 +198,11 @@ def _try_llm_generate_templates(
     )
 
     try:
-        payload = _run_llm_call_in_any_context(prompt)
+        payload = await acompletion_structured(
+            response_model=_GeneratedTemplatePayload,
+            messages=[{"role": SYSTEM, "content": prompt}],
+            task_type=TaskType.GENERATE,
+        )
         return payload.questions
     except Exception as exc:  # noqa: BLE001
         logger.warning("question_builder_llm_failed", error=str(exc))
@@ -244,7 +228,7 @@ def _load_unit_node_contexts(session: Session, unit_id: int) -> list[_NodeContex
     return contexts
 
 
-def build_question_templates(
+async def build_question_templates(
     session: Session,
     *,
     subject: str,
@@ -264,7 +248,7 @@ def build_question_templates(
             logger.warning("question_builder_skip_unit_without_context", unit_id=unit_id, subject=subject)
             continue
 
-        generated = _try_llm_generate_templates(
+        generated = await _try_llm_generate_templates(
             subject=subject,
             node_contexts=node_contexts,
             questions_per_unit=questions_per_unit,

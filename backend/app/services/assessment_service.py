@@ -4,12 +4,15 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 
+import structlog
 from sqlmodel import Session, select
 
+from app.core.database import managed_session
 from app.core.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
 from app.models import (
     ExamGenerateJob,
@@ -31,6 +34,8 @@ from app.utils.time import utcnow
 from app.workflows.examine.exam_grade_workflow import ExamGradeWorkflow
 from app.workflows.examine.paper_assembler import assemble_paper
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow
+
+logger = structlog.get_logger()
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,7 @@ class QuestionBankItem:
 
 _exam_generate_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _exam_generate_locks_guard = asyncio.Lock()
+_background_tasks: set[asyncio.Task[None]] = set()
 
 
 async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.Lock:
@@ -81,6 +87,16 @@ async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.
         )
     await lock.acquire()
     return lock
+
+
+def _track_background_task(task: asyncio.Task[None]) -> None:
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _schedule_background_task(coro: Coroutine[object, object, None]) -> None:
+    task = asyncio.create_task(coro)
+    _track_background_task(task)
 
 
 def _raise_not_found(detail: str, *, error_code: str = "NOT_FOUND") -> None:
@@ -237,6 +253,98 @@ async def trigger_question_build(
     return job
 
 
+async def _run_exam_generate_job(
+    *,
+    job_id: int,
+    subject: str,
+    user_id: str,
+    mode: str,
+    resolved_num_questions: int,
+    questions_per_unit: int,
+    user_prompt: str | None,
+    theme_tree_node_id: int | None,
+    build_unit_ids: list[int],
+    requested_teaching_unit_ids: list[int] | None,
+    preferred_question_types: list[str],
+) -> None:
+    with managed_session() as session:
+        job = assessment_repo.get_exam_generate_job(session, job_id)
+        if job is None:
+            logger.warning("exam_generate_job_missing", job_id=job_id, subject=subject, user_id=user_id)
+            return
+
+        try:
+            job.status = "running"
+            job.error_message = None
+            job.updated_at = utcnow()
+            session.add(job)
+            session.commit()
+
+            build_job = await trigger_question_build(
+                session,
+                subject=subject,
+                unit_ids=build_unit_ids,
+                questions_per_unit=questions_per_unit,
+            )
+            template_count = assessment_repo.count_active_question_templates(
+                session,
+                subject=subject,
+                question_types=set(preferred_question_types) if preferred_question_types else None,
+            )
+            if template_count <= 0 and build_job.status == "failed":
+                raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
+            if template_count <= 0:
+                raise ValueError("自动构题后仍没有可用题模板。")
+
+            paper = assemble_paper(
+                session,
+                subject=subject,
+                user_id=user_id,
+                exam_mode=mode,
+                num_questions=max(1, int(resolved_num_questions)),
+                theme_tree_node_id=theme_tree_node_id,
+                teaching_unit_ids=(
+                    build_unit_ids if mode == ExamMode.PRACTICE.value else requested_teaching_unit_ids
+                ),
+                preferred_question_types=preferred_question_types,
+            )
+
+            job.exam_paper_id = paper.id
+            job.status = "completed"
+            job.error_message = None
+            job.updated_at = utcnow()
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+
+            logger.info(
+                "exam_generate_job_completed",
+                job_id=job_id,
+                subject=subject,
+                user_id=user_id,
+                exam_paper_id=paper.id,
+                exam_mode=mode,
+                num_questions=resolved_num_questions,
+                teaching_unit_count=len(build_unit_ids),
+                user_prompt_present=bool((user_prompt or "").strip()),
+            )
+        except Exception as exc:  # noqa: BLE001
+            job.status = "failed"
+            job.error_message = str(exc)
+            job.updated_at = utcnow()
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+            logger.error(
+                "exam_generate_job_failed",
+                job_id=job_id,
+                subject=subject,
+                user_id=user_id,
+                error=str(exc),
+                exc_info=True,
+            )
+
+
 async def get_question_build_job_status(
     session: Session,
     *,
@@ -370,53 +478,21 @@ async def trigger_exam_generate(
             session.refresh(job)
             return job
 
-        try:
-            job.status = "running"
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-
-            build_job = await trigger_question_build(
-                session,
-                subject=subject,
-                unit_ids=build_unit_ids,
-                questions_per_unit=questions_per_unit,
-            )
-            template_count = assessment_repo.count_active_question_templates(
-                session,
-                subject=subject,
-                question_types=set(preferred_question_types) if preferred_question_types else None,
-            )
-            if template_count <= 0 and build_job.status == "failed":
-                raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
-            if template_count <= 0:
-                raise ValueError("自动构题后仍没有可用题模板。")
-
-            paper = assemble_paper(
-                session,
+        _schedule_background_task(
+            _run_exam_generate_job(
+                job_id=job.id or 0,
                 subject=subject,
                 user_id=user_id,
-                exam_mode=mode,
-                num_questions=max(1, int(resolved_num_questions)),
+                mode=mode,
+                resolved_num_questions=max(1, int(resolved_num_questions)),
+                questions_per_unit=questions_per_unit,
+                user_prompt=user_prompt,
                 theme_tree_node_id=theme_tree_node_id,
-                teaching_unit_ids=(build_unit_ids if mode == ExamMode.PRACTICE.value else teaching_unit_ids),
+                build_unit_ids=build_unit_ids,
+                requested_teaching_unit_ids=teaching_unit_ids,
                 preferred_question_types=preferred_question_types,
             )
-            job.exam_paper_id = paper.id
-            job.status = "completed"
-            job.error_message = None
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-            session.refresh(job)
-        except Exception as exc:  # noqa: BLE001
-            job.status = "failed"
-            job.error_message = str(exc)
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-            session.refresh(job)
-
+        )
         return job
     finally:
         lock.release()
@@ -572,21 +648,34 @@ async def trigger_exam_grade(
         ),
     )
 
-    try:
-        await ExamGradeWorkflow.run(
-            exam_paper_id=exam_paper_id,
-            job_id=job.id or 0,
-            session=session,
-        )
-    except Exception as exc:  # noqa: BLE001
-        job.status = "failed"
-        job.error_message = str(exc)
-        job.updated_at = utcnow()
-        session.add(job)
-        session.commit()
-        session.refresh(job)
-
+    _schedule_background_task(_run_exam_grade_job(job_id=job.id or 0, exam_paper_id=exam_paper_id))
     return job
+
+
+async def _run_exam_grade_job(*, job_id: int, exam_paper_id: int) -> None:
+    with managed_session() as session:
+        try:
+            await ExamGradeWorkflow.run(
+                exam_paper_id=exam_paper_id,
+                job_id=job_id,
+                session=session,
+            )
+            logger.info("exam_grade_job_completed", job_id=job_id, exam_paper_id=exam_paper_id)
+        except Exception as exc:  # noqa: BLE001
+            job = assessment_repo.get_exam_grade_job(session, job_id)
+            if job is not None:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.updated_at = utcnow()
+                session.add(job)
+                session.commit()
+            logger.error(
+                "exam_grade_job_failed",
+                job_id=job_id,
+                exam_paper_id=exam_paper_id,
+                error=str(exc),
+                exc_info=True,
+            )
 
 
 async def get_exam_grade_job_status(
@@ -786,5 +875,3 @@ async def complete_review_task(
     if task is None:
         _raise_not_found(f"复习任务 `{task_id}` 不存在。", error_code="REVIEW_TASK_NOT_FOUND")
     return task
-
-

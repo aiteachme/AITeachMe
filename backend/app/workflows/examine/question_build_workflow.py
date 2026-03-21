@@ -137,7 +137,7 @@ async def generate_templates_node(
             total_units = max(1, len(unit_ids))
             for idx, unit_id in enumerate(unit_ids, start=1):
                 try:
-                    templates = build_question_templates(
+                    templates = await build_question_templates(
                         session,
                         subject=state["subject"],
                         unit_ids=[unit_id],

@@ -92,6 +92,10 @@ interface QuestionBankItem {
 
 type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
 
+const EXAM_REQUEST_TIMEOUT_MS = 120000;
+const EXAM_JOB_POLL_INTERVAL_MS = 1000;
+const EXAM_JOB_MAX_POLLS = 180;
+
 const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string }> = [
   { value: "diagnostic", label: "诊断模式" },
   { value: "practice", label: "练习模式" },
@@ -151,6 +155,8 @@ async function fetchExamDetail(subject: string, examPaperId: number): Promise<Ex
   const res = await apiClient<ApiResponse<ExamPaperDetail>>({
     method: "GET",
     url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
   return res.data;
 }
@@ -160,10 +166,12 @@ async function waitGenerateJobDone(
   jobId: number,
   onStatus?: (status: string) => void,
 ): Promise<ExamGenerateJob> {
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < EXAM_JOB_MAX_POLLS; i += 1) {
     const res = await apiClient<ApiResponse<ExamGenerateJob>>({
       method: "GET",
       url: `/api/v1/subjects/${subject}/exam/generate-jobs/${jobId}`,
+    }, {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
     });
     const job = res.data;
     onStatus?.(job.status);
@@ -171,7 +179,7 @@ async function waitGenerateJobDone(
     if (job.status === "failed") {
       throw new Error(job.error_message ?? "试卷生成失败");
     }
-    await sleep(500);
+    await sleep(EXAM_JOB_POLL_INTERVAL_MS);
   }
   throw new Error("试卷生成超时，请稍后重试");
 }
@@ -193,6 +201,8 @@ async function generateExamPaper(
     method: "POST",
     url: `/api/v1/subjects/${subject}/exam/generate`,
     data: body,
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
 
   let job = res.data;
@@ -208,15 +218,17 @@ async function generateExamPaper(
 }
 
 async function waitGradeJobDone(subject: string, jobId: number): Promise<ExamGradeJob> {
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < EXAM_JOB_MAX_POLLS; i += 1) {
     const res = await apiClient<ApiResponse<ExamGradeJob>>({
       method: "GET",
       url: `/api/v1/subjects/${subject}/exam/grade-jobs/${jobId}`,
+    }, {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
     });
     const job = res.data;
     if (job.status === "completed") return job;
     if (job.status === "failed") throw new Error(job.error_message ?? "判分失败");
-    await sleep(500);
+    await sleep(EXAM_JOB_POLL_INTERVAL_MS);
   }
   throw new Error("判分超时，请稍后重试");
 }
@@ -235,12 +247,16 @@ async function submitAndGradeExam(
         answer,
       })),
     },
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
 
   const gradeRes = await apiClient<ApiResponse<ExamGradeJob>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/exam/${examPaperId}/grade`,
     params: { regrade: false },
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
 
   let gradeJob = gradeRes.data;
@@ -258,6 +274,8 @@ async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
     method: "GET",
     url: `/api/v1/subjects/${subject}/exam/history`,
     params: { page: 1, size: 50 },
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
   return res.data.items;
 }
@@ -266,6 +284,8 @@ async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
   const res = await apiClient<ApiResponse<QuestionBankItem[]>>({
     method: "GET",
     url: `/api/v1/subjects/${subject}/exam/question-bank`,
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
   return res.data;
 }
@@ -274,6 +294,8 @@ async function deleteExamPaper(subject: string, examPaperId: number): Promise<De
   const res = await apiClient<ApiResponse<DeleteExamResult>>({
     method: "DELETE",
     url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+  }, {
+    timeout: EXAM_REQUEST_TIMEOUT_MS,
   });
   return res.data;
 }
