@@ -220,3 +220,110 @@ class DigestJobStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+# ── Assessment & Mastery Layer ──
+
+
+class ExamMode(str, Enum):
+    """考试模式。"""
+
+    DIAGNOSTIC = "diagnostic"
+    PRACTICE = "practice"
+    WEAKPOINT_BOOST = "weakpoint_boost"
+    REVIEW = "review"
+    MOCK_FINAL = "mock_final"
+
+
+class ExamPaperStatus(str, Enum):
+    """试卷状态。"""
+
+    DRAFT = "draft"
+    READY = "ready"
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+    GRADING = "grading"
+    GRADED = "graded"
+    ARCHIVED = "archived"
+
+
+EXAM_PAPER_STATUS_TRANSITIONS: dict[ExamPaperStatus, list[ExamPaperStatus]] = {
+    ExamPaperStatus.DRAFT: [ExamPaperStatus.READY],
+    ExamPaperStatus.READY: [ExamPaperStatus.IN_PROGRESS],
+    ExamPaperStatus.IN_PROGRESS: [ExamPaperStatus.SUBMITTED],
+    ExamPaperStatus.SUBMITTED: [ExamPaperStatus.GRADING],
+    ExamPaperStatus.GRADING: [ExamPaperStatus.GRADED],
+    ExamPaperStatus.GRADED: [ExamPaperStatus.ARCHIVED],
+    ExamPaperStatus.ARCHIVED: [],
+}
+
+
+class QuestionTemplateStatus(str, Enum):
+    """题目模板状态。"""
+
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+
+class MasteryGranularity(str, Enum):
+    """掌握度粒度。"""
+
+    UNIT = "unit"
+    NODE = "node"
+
+
+class ReviewTaskType(str, Enum):
+    """复习任务类型。"""
+
+    REVIEW_UNIT = "review_unit"
+    REVIEW_NODE = "review_node"
+    REVIEW_EXAM = "review_exam"
+    PREREQ_PATCH = "prereq_patch"
+
+
+class ReviewTaskStatus(str, Enum):
+    """复习任务状态。"""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    EXPIRED = "expired"
+
+
+class ErrorCauseLabel(str, Enum):
+    """错因标签。"""
+
+    CONCEPT_CONFUSION = "concept_confusion"
+    CALCULATION_ERROR = "calculation_error"
+    PREREQUISITE_GAP = "prerequisite_gap"
+    CARELESS_MISTAKE = "careless_mistake"
+    INCOMPLETE_UNDERSTANDING = "incomplete_understanding"
+    METHOD_MISAPPLICATION = "method_misapplication"
+    UNKNOWN = "unknown"
+
+
+class WeaknessReason(str, Enum):
+    """薄弱原因标签。"""
+
+    FORGETTING_DUE = "forgetting_due"
+    REPEATED_WRONG = "repeated_wrong"
+    PREREQ_GAP = "prereq_gap"
+    NEWLY_LEARNED = "newly_learned"
+
+
+class TemplateNodeRole(str, Enum):
+    """题目模板与知识节点关联角色。"""
+
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
+    PREREQUISITE = "prerequisite"
+    TRANSFER = "transfer"
+
+
+class AsyncJobStatus(str, Enum):
+    """异步任务状态。"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
