@@ -109,16 +109,45 @@ def bulk_insert_embeddings(
     """批量写入向量表。"""
 
     require_vec_ready()
-    conn = session.connection()
-    for chunk_id, embedding in zip(chunk_ids, embeddings):
-        conn.execute(
-            sa.text(
-                "INSERT OR REPLACE INTO chunk_embeddings(chunk_id, embedding) "
-                "VALUES (:chunk_id, :embedding)"
-            ),
-            {"chunk_id": chunk_id, "embedding": str(embedding)},
+    if not chunk_ids or not embeddings:
+        return
+    if len(chunk_ids) != len(embeddings):
+        raise ValueError(
+            "chunk_ids and embeddings must have the same length. "
+            f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
-    session.commit()
+
+    conn = session.connection()
+    try:
+        params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
+        placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
+        conn.execute(
+            sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
+            params,
+        )
+        for chunk_id, embedding in zip(chunk_ids, embeddings):
+            conn.execute(
+                sa.text(
+                    "INSERT INTO chunk_embeddings(chunk_id, embedding) "
+                    "VALUES (:chunk_id, :embedding)"
+                ),
+                {"chunk_id": chunk_id, "embedding": str(embedding)},
+            )
+        session.commit()
+        logger.info(
+            "bulk_insert_embeddings_completed",
+            chunk_count=len(chunk_ids),
+            embedding_dim=len(embeddings[0]) if embeddings else 0,
+        )
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "bulk_insert_embeddings_failed",
+            chunk_count=len(chunk_ids),
+            embedding_dim=len(embeddings[0]) if embeddings else 0,
+            chunk_ids_preview=chunk_ids[:5],
+        )
+        raise
 
 
 def delete_embeddings_by_chunk_ids(session: Session, chunk_ids: list[int]) -> None:

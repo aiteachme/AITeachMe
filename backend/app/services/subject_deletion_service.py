@@ -44,6 +44,7 @@ from app.schemas.subject import (
     SubjectDeletePreviewData,
 )
 from app.services.knowledge.curriculum_service import clear_subject_knowledge
+from app.repositories.knowledge import knowledge_repo
 from app.services.upload_support import build_subject_dir
 
 logger = structlog.get_logger()
@@ -369,6 +370,9 @@ def _delete_documents(session: Session, *, subject: str) -> None:
                 select(DocumentChunk).where(DocumentChunk.document_id.in_(document_ids))
             ).all()
         )
+        chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
+        if chunk_ids:
+            knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
         for chunk in chunks:
             session.delete(chunk)
         session.commit()

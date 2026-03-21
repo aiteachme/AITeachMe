@@ -119,7 +119,18 @@ async def ensure_document_chunks_for_file(
     chunk_ids = [chunk.id for chunk in db_chunks if chunk.id is not None]
     embeddings = await embed_chunks(chunks)
     if embeddings:
-        knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
+        try:
+            knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
+        except Exception:
+            logger.exception(
+                "ensure_document_chunks_embedding_failed",
+                subject=raw_file.subject,
+                raw_file_id=raw_file_id,
+                filename=raw_file.filename,
+                document_id=document_id,
+                chunk_count=len(chunk_ids),
+            )
+            raise
     knowledge_repo.update_document_step(session, document_id, DigestStep.EMBEDDED.value)
     return document_id, chunk_ids
 

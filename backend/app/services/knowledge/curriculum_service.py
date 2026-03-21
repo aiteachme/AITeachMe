@@ -26,6 +26,7 @@ from app.models.curriculum import (
     UnitDependency,
     UnitTreeMembership,
 )
+from app.models.knowledge import Document, DocumentChunk
 from app.models.knowledge_graph import (
     EdgeRevision,
     EvidenceLink,
@@ -36,7 +37,7 @@ from app.models.knowledge_graph import (
     KnowledgeRevision,
     SubjectBuildLock,
 )
-from app.repositories import curriculum_repo
+from app.repositories import curriculum_repo, knowledge_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     CurriculumSnapshotResponse,
@@ -545,6 +546,35 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     _delete_all(GraphDigestJob, "graph_digest_job")
     _delete_all(SubjectBuildLock, "subject_build_lock")
     session.commit()
+
+    # ── 文档与向量切块 ──
+    document_ids = [
+        d.id for d in session.exec(
+            select(Document).where(Document.subject == subject)
+        ).all()
+    ]
+    if document_ids:
+        chunk_rows = list(session.exec(
+            select(DocumentChunk).where(
+                DocumentChunk.document_id.in_(document_ids)  # type: ignore[union-attr]
+            )
+        ).all())
+        chunk_ids = [chunk.id for chunk in chunk_rows if chunk.id is not None]
+        if chunk_ids:
+            knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
+            counts["chunk_embeddings"] = len(chunk_ids)
+        for chunk in chunk_rows:
+            session.delete(chunk)
+        counts["document_chunk"] = len(chunk_rows)
+        session.commit()
+
+        document_rows = list(session.exec(
+            select(Document).where(Document.id.in_(document_ids))  # type: ignore[union-attr]
+        ).all())
+        for document in document_rows:
+            session.delete(document)
+        counts["document"] = len(document_rows)
+        session.commit()
 
     logger.info(
         "subject_knowledge_cleared",

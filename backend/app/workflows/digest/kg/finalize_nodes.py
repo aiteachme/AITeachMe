@@ -109,6 +109,7 @@ async def fail_node(state: KGDigestState) -> KGDigestState:
                 job_id,
                 status="failed",
                 error_message=error_message,
+                current_step=_resolve_failure_step(error_message),
             )
             digest_logger.error(
                 "kg_workflow_failed",
@@ -120,6 +121,28 @@ async def fail_node(state: KGDigestState) -> KGDigestState:
         except Exception as exc:
             digest_logger.error("kg_workflow_fail_node_error", error=str(exc), exc_info=True)
             return state
+
+
+def _resolve_failure_step(error_message: str) -> str:
+    if error_message.startswith("prepare_failed:"):
+        return "prepare_failed"
+    if error_message.startswith("extract_failed:"):
+        return "extract_failed"
+    if error_message.startswith("cluster_failed:"):
+        return "cluster_failed"
+    if error_message.startswith("resolve_nodes_failed:"):
+        return "resolve_nodes_failed"
+    if error_message.startswith("resolve_edges_failed:"):
+        return "resolve_edges_failed"
+    if error_message.startswith("analyze_impact_failed:"):
+        return "analyze_impact_failed"
+    if error_message.startswith("finalize_failed:"):
+        return "finalize_failed"
+    if error_message == "lock_conflict":
+        return "acquire_lock_failed"
+    if error_message == "no_ready_digest_inputs":
+        return "prepare_failed"
+    return "failed"
 
 
 async def trigger_curriculum_derive_safe(
