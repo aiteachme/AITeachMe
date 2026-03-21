@@ -18,6 +18,8 @@ _MEDIUM_DOC_PAGES = 40
 _LARGE_SLIDE_COUNT = 80
 _LARGE_DOCX_PAGE_COUNT = 60
 _VISION_MAX_MB = 8
+_TEXT_EXTENSIONS = frozenset({".md", ".markdown", ".txt"})
+_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"})
 
 
 class ParsePlan(BaseModel):
@@ -43,7 +45,7 @@ def build_parse_plan(
     allow_llm_vision = bool(settings.llm_api_key)
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
     if not available_parsers:
-        if extension in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}:
+        if extension in _IMAGE_EXTENSIONS:
             raise MissingLLMApiKeyError()
         raise UnsupportedFileTypeError(extension)
 
@@ -87,10 +89,13 @@ def _preferred_parser_order(
     classification: ClassificationResult | None,
     llm_enabled: bool,
 ) -> list[str]:
-    if extension in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}:
+    if extension in _IMAGE_EXTENSIONS:
         if not llm_enabled:
             return []
         return ["llm_vision"]
+
+    if extension in _TEXT_EXTENSIONS:
+        return ["text_native"]
 
     if extension == ".pdf":
         if classification and classification.file_category == "scanned_pdf":
@@ -103,7 +108,7 @@ def _preferred_parser_order(
 
     if extension == ".docx":
         if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
-            return ["python_docx_native", "markitdown"]
+            return ["docx_native", "markitdown"]
         return _classification_first(classification, extension)
 
     if extension in {".ppt", ".pptx"}:
@@ -133,12 +138,16 @@ def _decide_mode_and_options(
     classification: ClassificationResult | None,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
-    if extension in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}:
+    if extension in _IMAGE_EXTENSIONS:
         if file_mb > _VISION_MAX_MB:
             options.timeout_s = max(options.timeout_s, 150)
             return "vision_large_image", "Image file routed to LLM vision with extended timeout."
         options.asset_image_limit = 1
         return "vision_image", "Image file routed directly to LLM vision."
+
+    if extension in _TEXT_EXTENSIONS:
+        options.asset_image_limit = 0
+        return "native_text", "Markdown or text file is normalized directly without document conversion."
 
     if extension == ".pdf":
         if classification and classification.file_category == "scanned_pdf":

@@ -13,13 +13,14 @@ graph TD;
 	load_raw_file(load_raw_file)
 	compute_fingerprint(compute_fingerprint)
 	classify_file(classify_file)
+	plan_parse(plan_parse)
 	parse_file(parse_file)
 	finalize_success(finalize_success)
 	finalize_failure(finalize_failure)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> load_raw_file;
 	classify_file -. &nbsp;fail&nbsp; .-> finalize_failure;
-	classify_file -. &nbsp;continue&nbsp; .-> parse_file;
+	classify_file -. &nbsp;continue&nbsp; .-> plan_parse;
 	compute_fingerprint -. &nbsp;continue&nbsp; .-> classify_file;
 	compute_fingerprint -. &nbsp;fail&nbsp; .-> finalize_failure;
 	finalize_success -. &nbsp;continue&nbsp; .-> __end__;
@@ -28,6 +29,8 @@ graph TD;
 	load_raw_file -. &nbsp;fail&nbsp; .-> finalize_failure;
 	parse_file -. &nbsp;fail&nbsp; .-> finalize_failure;
 	parse_file -. &nbsp;continue&nbsp; .-> finalize_success;
+	plan_parse -. &nbsp;fail&nbsp; .-> finalize_failure;
+	plan_parse -. &nbsp;continue&nbsp; .-> parse_file;
 	finalize_failure --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
 import structlog
+from pydantic import BaseModel, Field
+
+from app.workflows.ingest.parsing.docx_archive import summarize_docx_archive
+from app.workflows.ingest.parsing.text import read_text_file
 
 
 try:
@@ -31,12 +34,14 @@ logger = structlog.get_logger()
 _ZH_RE = re.compile(r"[\u4e00-\u9fff]")
 _EN_RE = re.compile(r"[a-zA-Z]")
 _HEADING_LIKE_RE = re.compile(
-    r"^(第[一二三四五六七八九十百千万\d]+[章节篇]|Chapter\s+\d+|Section\s+\d+|\d+[\.\s])",
+    r"^(第[\u4e00-\u9fff0-9]+[章节篇]|Chapter\s+\d+|Section\s+\d+|\d+[\.\s])",
     re.MULTILINE,
 )
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 _TABLE_LIKE_RE = re.compile(r"\|.*\|.*\||\+[-=]+\+", re.MULTILINE)
-_FORMULA_RE = re.compile(r"[≈≠≤≥∑∫∞√πΔλμσθ]|\\frac|\\sum|\\int")
+_FORMULA_RE = re.compile(r"(?:\\frac|\\sum|\\int|\\sqrt|∑|∫|≤|≥)")
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"})
+_TEXT_EXTENSIONS = frozenset({".md", ".markdown", ".txt"})
 
 
 class ClassificationResult(BaseModel):
@@ -70,6 +75,8 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
         return _classify_pptx(path)
     if extension == ".docx":
         return _classify_docx(path)
+    if extension in _TEXT_EXTENSIONS:
+        return _classify_text_file(path, extension)
     if extension in _IMAGE_EXTENSIONS:
         return ClassificationResult(
             file_category="image",
@@ -201,35 +208,78 @@ def _classify_pptx(path: Path) -> ClassificationResult:
 
 
 def _classify_docx(path: Path) -> ClassificationResult:
-    if Document is None:
-        return ClassificationResult(
-            file_category="docx",
-            recommended_parser="markitdown",
-            fallback_parsers=["python_docx_native"],
-        )
-
     try:
-        document = Document(str(path))
-        paragraph_count = len(document.paragraphs)
-        total_text = sum(len(paragraph.text.strip()) for paragraph in document.paragraphs)
-        heading_count = sum(
-            1
-            for paragraph in document.paragraphs
-            if paragraph.style and paragraph.style.name and paragraph.style.name.startswith("Heading")
-        )
-        avg_density = total_text / max(paragraph_count, 1)
+        paragraph_count, heading_count, avg_density, sample_text = _probe_docx_text(path)
     except Exception:
         paragraph_count = 0
         heading_count = 0
-        avg_density = 0
+        avg_density = 0.0
+        sample_text = ""
 
     return ClassificationResult(
         file_category="docx",
         text_density=round(avg_density, 1),
         heading_count=heading_count,
-        estimated_pages=max(paragraph_count // 30, 1),
+        estimated_pages=max(paragraph_count // 30, 1) if paragraph_count else 0,
+        detected_language=_detect_language(sample_text[:5000]) if sample_text else "unknown",
+        has_tables=bool(_TABLE_LIKE_RE.search(sample_text[:10000])),
+        has_formulas=bool(_FORMULA_RE.search(sample_text[:10000])),
         recommended_parser="markitdown",
-        fallback_parsers=["python_docx_native"],
+        fallback_parsers=["docx_native"],
+    )
+
+
+def _probe_docx_text(path: Path) -> tuple[int, int, float, str]:
+    if Document is not None:
+        try:
+            document = Document(str(path))
+            texts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+            heading_count = sum(
+                1
+                for paragraph in document.paragraphs
+                if paragraph.style and paragraph.style.name and paragraph.style.name.lower().startswith("heading")
+            )
+            paragraph_count = len(texts)
+            total_text = sum(len(item) for item in texts)
+            return (
+                paragraph_count,
+                heading_count,
+                total_text / max(paragraph_count, 1),
+                "\n".join(texts[:80])[:10000],
+            )
+        except Exception:
+            pass
+
+    summary = summarize_docx_archive(path)
+    return (
+        summary.paragraph_count,
+        summary.heading_count,
+        summary.total_text_chars / max(summary.paragraph_count, 1) if summary.paragraph_count else 0.0,
+        summary.sample_text,
+    )
+
+
+def _classify_text_file(path: Path, extension: str) -> ClassificationResult:
+    try:
+        text = read_text_file(path)
+    except Exception:
+        text = ""
+
+    stripped = text.strip()
+    non_empty_lines = [line for line in text.splitlines() if line.strip()]
+    line_count = len(non_empty_lines)
+    heading_count = len(_HEADING_LIKE_RE.findall(text[:10000])) + len(_MARKDOWN_HEADING_RE.findall(text[:10000]))
+    estimated_pages = max(line_count // 50, 1) if line_count else 0
+    file_category = "markdown" if extension in {".md", ".markdown"} else "text"
+    return ClassificationResult(
+        file_category=file_category,
+        text_density=round(len(stripped) / max(line_count, 1), 1) if stripped else 0.0,
+        heading_count=heading_count,
+        estimated_pages=estimated_pages,
+        detected_language=_detect_language(text[:5000]) if stripped else "unknown",
+        has_tables=bool(_TABLE_LIKE_RE.search(text[:10000])),
+        has_formulas=bool(_FORMULA_RE.search(text[:10000])),
+        recommended_parser="text_native",
     )
 
 

@@ -9,7 +9,7 @@ from app.workflows.ingest.parsing.docx import (
     DOCX_MARKITDOWN_AVAILABLE,
     DOCX_NATIVE_AVAILABLE,
     parse_docx_with_markitdown,
-    parse_docx_with_python_docx,
+    parse_docx_with_native,
 )
 from app.workflows.ingest.parsing.image import parse_image_with_llm_vision
 from app.workflows.ingest.parsing.pdf import (
@@ -26,6 +26,7 @@ from app.workflows.ingest.parsing.pptx import (
     parse_pptx_with_markitdown,
     parse_pptx_with_python_pptx,
 )
+from app.workflows.ingest.parsing.text import TEXT_NATIVE_AVAILABLE, parse_text_with_native
 from app.workflows.ingest.parsing.types import ParserRunOptions
 
 Parser = Callable[[str | Path, Path, ParserRunOptions], Awaitable[str]]
@@ -38,7 +39,7 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     },
     ".docx": {
         "markitdown": parse_docx_with_markitdown,
-        "python_docx_native": parse_docx_with_python_docx,
+        "docx_native": parse_docx_with_native,
     },
     ".ppt": {
         "markitdown": parse_pptx_with_markitdown,
@@ -72,13 +73,25 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".tiff": {
         "llm_vision": parse_image_with_llm_vision,
     },
+    ".md": {
+        "text_native": parse_text_with_native,
+    },
+    ".markdown": {
+        "text_native": parse_text_with_native,
+    },
+    ".txt": {
+        "text_native": parse_text_with_native,
+    },
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     ".pdf": ["pymupdf4llm", "markitdown", "pymupdf_native"],
-    ".docx": ["markitdown", "python_docx_native"],
+    ".docx": ["markitdown", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
+    ".md": ["text_native"],
+    ".markdown": ["text_native"],
+    ".txt": ["text_native"],
     ".png": ["llm_vision"],
     ".jpg": ["llm_vision"],
     ".jpeg": ["llm_vision"],
@@ -97,7 +110,7 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     },
     ".docx": {
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
-        "python_docx_native": DOCX_NATIVE_AVAILABLE,
+        "docx_native": DOCX_NATIVE_AVAILABLE,
     },
     ".ppt": {
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
@@ -106,6 +119,15 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     ".pptx": {
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
+    },
+    ".md": {
+        "text_native": TEXT_NATIVE_AVAILABLE,
+    },
+    ".markdown": {
+        "text_native": TEXT_NATIVE_AVAILABLE,
+    },
+    ".txt": {
+        "text_native": TEXT_NATIVE_AVAILABLE,
     },
 }
 

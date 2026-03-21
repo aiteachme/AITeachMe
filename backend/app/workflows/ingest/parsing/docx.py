@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+
 import structlog
 
 from app.core.exceptions import FileParseError
+from app.workflows.ingest.parsing.docx_archive import load_docx_archive
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import save_image_bytes
 
@@ -26,7 +28,7 @@ except ImportError:
 
 logger = structlog.get_logger()
 
-DOCX_NATIVE_AVAILABLE = Document is not None
+DOCX_NATIVE_AVAILABLE = True
 DOCX_MARKITDOWN_AVAILABLE = MarkItDown is not None
 
 
@@ -40,14 +42,14 @@ async def parse_docx_with_markitdown(
     return await asyncio.to_thread(_parse_docx_with_markitdown_sync, Path(file_path), asset_dir, options)
 
 
-async def parse_docx_with_python_docx(
+async def parse_docx_with_native(
     file_path: str | Path,
     asset_dir: Path,
     options: ParserRunOptions,
 ) -> str:
-    """Parse DOCX through python-docx with image placeholders."""
+    """Parse DOCX through the best native path available in this environment."""
 
-    return await asyncio.to_thread(_parse_docx_with_python_docx_sync, Path(file_path), asset_dir, options)
+    return await asyncio.to_thread(_parse_docx_with_native_sync, Path(file_path), asset_dir, options)
 
 
 def _parse_docx_with_markitdown_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
@@ -62,6 +64,19 @@ def _parse_docx_with_markitdown_sync(path: Path, asset_dir: Path, options: Parse
     if not options.skip_image_supplement:
         supplement_docx_images(path, asset_dir, max_images=options.asset_image_limit)
     return result.text_content
+
+
+def _parse_docx_with_native_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
+    if Document is not None:
+        try:
+            return _parse_docx_with_python_docx_sync(path, asset_dir, options)
+        except Exception as exc:
+            logger.warning(
+                "parse_docx_python_native_failed_fallback",
+                filename=path.name,
+                error=str(exc),
+            )
+    return _parse_docx_with_archive_sync(path, asset_dir, options)
 
 
 def _parse_docx_with_python_docx_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
@@ -86,29 +101,65 @@ def _parse_docx_with_python_docx_sync(path: Path, asset_dir: Path, options: Pars
                     limit=options.asset_image_limit,
                 )
                 break
-            if len(image_bytes) < 1024:
+            filename = _save_docx_image(
+                image_bytes=image_bytes,
+                image_ext=image_ext,
+                asset_dir=asset_dir,
+                image_count=image_count + 1,
+            )
+            if not filename:
                 continue
             image_count += 1
-            filename = save_image_bytes(
-                image_bytes,
-                asset_dir,
-                name_hint=f"doc_img{image_count}",
-                ext=image_ext,
-            )
             sections.append(f"![Document image {image_count}]({filename})")
 
-    result = "\n".join(part for part in sections if part).strip()
-    if not result:
-        raise FileParseError(path.name, reason="DOCX text extraction returned empty markdown.")
+    return _finalize_native_docx_result(path=path, sections=sections, image_count=image_count)
 
-    logger.info("parse_docx_python_native_done", filename=path.name, images=image_count)
-    return result
+
+def _parse_docx_with_archive_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
+    logger.info("parse_docx_archive_native_start", filename=path.name)
+    document = load_docx_archive(path)
+    images_by_rel_id = {item.rel_id: item for item in document.images}
+    rendered_image_rel_ids: set[str] = set()
+    sections: list[str] = []
+    image_count = 0
+
+    for paragraph in document.paragraphs:
+        if paragraph.text:
+            sections.append(_render_paragraph(paragraph.style_name, paragraph.text))
+
+        for rel_id in paragraph.image_rel_ids:
+            if rel_id in rendered_image_rel_ids:
+                continue
+            if image_count >= options.asset_image_limit:
+                logger.info(
+                    "parse_docx_archive_image_limit_reached",
+                    filename=path.name,
+                    limit=options.asset_image_limit,
+                )
+                break
+            image = images_by_rel_id.get(rel_id)
+            if image is None:
+                continue
+            filename = _save_docx_image(
+                image_bytes=image.blob,
+                image_ext=Path(image.internal_path).suffix or ".png",
+                asset_dir=asset_dir,
+                image_count=image_count + 1,
+            )
+            if not filename:
+                continue
+            image_count += 1
+            rendered_image_rel_ids.add(rel_id)
+            sections.append(f"![Document image {image_count}]({filename})")
+
+    return _finalize_native_docx_result(path=path, sections=sections, image_count=image_count)
 
 
 def supplement_docx_images(file_path: Path, asset_dir: Path, *, max_images: int) -> None:
     """Extract document images even when markdown came from MarkItDown."""
 
     if Document is None:
+        _supplement_docx_images_from_archive(file_path, asset_dir, max_images=max_images)
         return
 
     document = Document(str(file_path))
@@ -138,6 +189,58 @@ def supplement_docx_images(file_path: Path, asset_dir: Path, *, max_images: int)
 
     if count:
         logger.info("docx_images_supplemented", filename=file_path.name, count=count)
+
+
+def _supplement_docx_images_from_archive(file_path: Path, asset_dir: Path, *, max_images: int) -> None:
+    document = load_docx_archive(file_path)
+    count = 0
+    for image in document.images:
+        if count >= max_images:
+            logger.info("docx_images_supplement_limited", filename=file_path.name, limit=max_images)
+            return
+        filename = _save_docx_image(
+            image_bytes=image.blob,
+            image_ext=Path(image.internal_path).suffix or ".png",
+            asset_dir=asset_dir,
+            image_count=count + 1,
+        )
+        if not filename:
+            continue
+        count += 1
+
+    if count:
+        logger.info("docx_images_supplemented", filename=file_path.name, count=count)
+
+
+def _save_docx_image(
+    *,
+    image_bytes: bytes,
+    image_ext: str,
+    asset_dir: Path,
+    image_count: int,
+) -> str | None:
+    if len(image_bytes) < 1024:
+        return None
+    return save_image_bytes(
+        image_bytes,
+        asset_dir,
+        name_hint=f"doc_img{image_count}",
+        ext=image_ext,
+    )
+
+
+def _finalize_native_docx_result(
+    *,
+    path: Path,
+    sections: list[str],
+    image_count: int,
+) -> str:
+    result = "\n".join(part for part in sections if part).strip()
+    if not result:
+        raise FileParseError(path.name, reason="DOCX text extraction returned empty markdown.")
+
+    logger.info("parse_docx_native_done", filename=path.name, images=image_count)
+    return result
 
 
 def _render_paragraph(style_name: str | None, text: str) -> str:
