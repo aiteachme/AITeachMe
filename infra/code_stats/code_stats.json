@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-21T15:11:03.989916",
-  "total_commits_analyzed": 111,
+  "generated_at": "2026-03-21T16:00:01.039171",
+  "total_commits_analyzed": 114,
   "stats": [
     {
       "date": "2026-03-11",
@@ -889,6 +889,30 @@
       "code_lines": 26193,
       "other_lines": 12172,
       "message": "feat: 后端自动触发orval"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "69bb8ee",
+      "total_lines": 38365,
+      "code_lines": 26193,
+      "other_lines": 12172,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "9e57d39",
+      "total_lines": 39161,
+      "code_lines": 26880,
+      "other_lines": 12281,
+      "message": "fix doc page toc navigation and responsive control"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "96344d1",
+      "total_lines": 39161,
+      "code_lines": 26880,
+      "other_lines": 12281,
+      "message": "Merge branch 'develop'"
     }
   ]
 }
