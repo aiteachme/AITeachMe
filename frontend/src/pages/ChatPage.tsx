@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { cn } from "../lib/utils";
-import { apiClient } from "../api/client";
+import { apiClient, getApiErrorMessage } from "../api/client";
 
 interface Message {
   id: string;
@@ -26,14 +26,14 @@ interface PaginatedData<T> { items: T[]; total: number; }
 async function fetchHistory(subject: string): Promise<ChatHistoryItem[]> {
   const res = await apiClient<ApiResponse<PaginatedData<ChatHistoryItem>>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/chat/list`,
+    url: `/api/v1/subjects/${subject}/chats/list`,
     data: { page: 1, size: 100 },
   });
   return res.data.items;
 }
 
 async function clearHistory(subject: string): Promise<void> {
-  await apiClient({ method: "POST", url: `/api/v1/subjects/${subject}/chat/clear`, data: {} });
+  await apiClient({ method: "POST", url: `/api/v1/subjects/${subject}/chats/clear`, data: {} });
 }
 
 export function ChatPage() {
@@ -43,6 +43,7 @@ export function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -57,8 +58,12 @@ export function ChatPage() {
         content: item.content,
       }));
       setMessages(msgs);
+      setHistoryError(null);
       setHistoryLoaded(true);
-    }).catch(() => setHistoryLoaded(true));
+    }).catch((error: unknown) => {
+      setHistoryError(getApiErrorMessage(error, "加载聊天记录失败"));
+      setHistoryLoaded(true);
+    });
   }, [subjectId]);
 
   useEffect(() => {
@@ -89,7 +94,7 @@ export function ChatPage() {
 
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "";
-      const response = await fetch(`${baseUrl}/api/v1/subjects/${subjectId}/chat/send`, {
+      const response = await fetch(`${baseUrl}/api/v1/subjects/${subjectId}/chats/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
@@ -141,8 +146,13 @@ export function ChatPage() {
 
   const handleClear = async () => {
     if (!subjectId) return;
-    await clearHistory(subjectId);
-    setMessages([]);
+    try {
+      await clearHistory(subjectId);
+      setMessages([]);
+      setHistoryError(null);
+    } catch (error: unknown) {
+      setHistoryError(getApiErrorMessage(error, "清空聊天记录失败"));
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -207,6 +217,9 @@ export function ChatPage() {
               </div>
               <h2 className="text-2xl font-semibold text-slate-900 mb-2">开始对话</h2>
               <p className="text-slate-500">向 AI 提问，获得即时解答</p>
+              {historyError && (
+                <p className="text-sm text-red-500 mt-3">{historyError}</p>
+              )}
             </div>
           </div>
         ) : (

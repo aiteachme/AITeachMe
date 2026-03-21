@@ -7,7 +7,7 @@ const mockHistory = [
 
 export const chatHandlers = [
   // SSE 流式对话
-  http.post("/api/v1/subjects/:subject/chat/send", async () => {
+  http.post("/api/v1/subjects/:subject/chats/send", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -24,7 +24,7 @@ export const chatHandlers = [
   }),
 
   // 历史记录
-  http.post("/api/v1/subjects/:subject/chat/list", () => {
+  http.post("/api/v1/subjects/:subject/chats/list", () => {
     return HttpResponse.json({
       code: 0,
       data: { items: mockHistory, total: mockHistory.length },
@@ -32,7 +32,7 @@ export const chatHandlers = [
   }),
 
   // 清空记录
-  http.post("/api/v1/subjects/:subject/chat/clear", () => {
+  http.post("/api/v1/subjects/:subject/chats/clear", () => {
     mockHistory.length = 0;
     return HttpResponse.json({ code: 0, data: { cleared: true, deleted_count: 2 } });
   }),

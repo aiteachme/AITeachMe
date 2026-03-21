@@ -17,7 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
-import { apiClient } from "../../api/client";
+import { apiClient, getApiErrorMessage } from "../../api/client";
 
 interface SubjectItem {
   id: number;
@@ -133,6 +133,7 @@ export function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>();
+  const [subjectActionError, setSubjectActionError] = useState<string | undefined>();
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -156,14 +157,11 @@ export function Sidebar() {
       setExpandedSubjects((prev) => new Set([...prev, created.subject_id]));
       setShowNewForm(false);
       setCreateError(undefined);
+      setSubjectActionError(undefined);
       navigate(`/subject/${created.subject_id}/chat`);
     },
     onError: (err: unknown) => {
-      const detail =
-        (err as any)?.response?.data?.detail ??
-        (err as any)?.message ??
-        "创建失败，请重试";
-      setCreateError(String(detail));
+      setCreateError(getApiErrorMessage(err, "创建失败，请重试"));
     },
   });
 
@@ -171,9 +169,13 @@ export function Sidebar() {
     mutationFn: deleteSubject,
     onSuccess: (_, subjectId) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      setSubjectActionError(undefined);
       if (location.pathname.startsWith(`/subject/${subjectId}/`)) {
         navigate("/");
       }
+    },
+    onError: (err: unknown) => {
+      setSubjectActionError(getApiErrorMessage(err, "删除失败，请重试"));
     },
   });
 
@@ -187,6 +189,7 @@ export function Sidebar() {
 
   const handleCreate = (name: string, description: string) => {
     setCreateError(undefined);
+    setSubjectActionError(undefined);
     createMutation.mutate({ name, description });
   };
 
@@ -237,6 +240,10 @@ export function Sidebar() {
               error={createError}
             />
           )}
+
+          {subjectActionError && (
+            <p className="text-xs text-red-500 px-0.5">{subjectActionError}</p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 pb-4">
@@ -263,6 +270,7 @@ export function Sidebar() {
                 </button>
                 <button
                   onClick={() => deleteMutation.mutate(subject.subject_id)}
+                  disabled={deleteMutation.isPending}
                   className="opacity-0 group-hover:opacity-100 p-1 mr-1 text-slate-400 hover:text-red-500 transition-all rounded"
                   title="删除学科"
                 >

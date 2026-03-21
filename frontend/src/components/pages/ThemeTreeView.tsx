@@ -8,6 +8,7 @@ import {
   BookOpen,
   AlertCircle,
 } from "lucide-react";
+import { getApiErrorMessage } from "../../api/client";
 import { fetchThemeTree, type ThemeTreeNodeResponse, type TreeUnitItem } from "../../api/graphApi";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -147,12 +148,12 @@ export function ThemeTreeView({ subject }: { subject: string }) {
   }
 
   if (isError) {
-    const msg = (error as any)?.response?.data?.detail ?? "暂无主题树数据";
+    const msg = getApiErrorMessage(error, "加载主题树失败");
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
         <p className="text-sm">{msg}</p>
-        <p className="text-xs mt-1">请先上传资料并触发知识图谱构建</p>
+        <p className="text-xs mt-1">请稍后重试，或先确认学科与构建状态</p>
       </div>
     );
   }
@@ -161,8 +162,8 @@ export function ThemeTreeView({ subject }: { subject: string }) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <FolderTree className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">主题树为空</p>
-        <p className="text-xs mt-1">构建完成后将自动生成主题树结构</p>
+        <p className="text-sm">还没有可展示的主题树</p>
+        <p className="text-xs mt-1">文件解析完成后，请触发 digest 构建生成课程结构</p>
       </div>
     );
   }

@@ -2,7 +2,7 @@
  * 知识图谱 API 调用层
  * 对应后端 backend/app/api/graph.py 的所有端点
  */
-import { apiClient } from "./client";
+import { apiClient, isApiErrorStatus } from "./client";
 
 /* ---------- 通用类型 ---------- */
 
@@ -312,34 +312,55 @@ export async function fetchTeachingUnitDetail(
 /** 获取当前主题树 */
 export async function fetchThemeTree(
   subject: string,
-): Promise<ThemeTreeResponse> {
-  const res = await apiClient<ApiResponse<ThemeTreeResponse>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/theme-tree/current`,
-  });
-  return res.data;
+): Promise<ThemeTreeResponse | null> {
+  try {
+    const res = await apiClient<ApiResponse<ThemeTreeResponse>>({
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/knowledge/theme-tree/current`,
+    });
+    return res.data;
+  } catch (error) {
+    if (isApiErrorStatus(error, 404, "NO_PUBLISHED_TREE")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** 获取当前先修 DAG */
 export async function fetchPrereqDag(
   subject: string,
-): Promise<PrereqDagResponse> {
-  const res = await apiClient<ApiResponse<PrereqDagResponse>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/prereq-dag/current`,
-  });
-  return res.data;
+): Promise<PrereqDagResponse | null> {
+  try {
+    const res = await apiClient<ApiResponse<PrereqDagResponse>>({
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/knowledge/prereq-dag/current`,
+    });
+    return res.data;
+  } catch (error) {
+    if (isApiErrorStatus(error, 404, "NO_PUBLISHED_DAG")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** 获取当前课程快照 */
 export async function fetchCurriculumSnapshot(
   subject: string,
-): Promise<CurriculumSnapshotResponse> {
-  const res = await apiClient<ApiResponse<CurriculumSnapshotResponse>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/curriculum/current`,
-  });
-  return res.data;
+): Promise<CurriculumSnapshotResponse | null> {
+  try {
+    const res = await apiClient<ApiResponse<CurriculumSnapshotResponse>>({
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/knowledge/curriculum/current`,
+    });
+    return res.data;
+  } catch (error) {
+    if (isApiErrorStatus(error, 404, "NO_PUBLISHED_CURRICULUM_SNAPSHOT")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** 清空学科所有知识数据 */
