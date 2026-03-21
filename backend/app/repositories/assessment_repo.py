@@ -196,6 +196,134 @@ def list_exam_papers(
     return rows, total
 
 
+def list_teaching_unit_ids_by_subject(
+    session: Session,
+    *,
+    subject: str,
+    status: str | None = "active",
+) -> list[int]:
+    """按学科查询教学单元 ID。"""
+
+    stmt = select(TeachingUnit.id).where(TeachingUnit.subject == subject)
+    if status is not None:
+        stmt = stmt.where(TeachingUnit.status == status)
+    stmt = stmt.order_by(TeachingUnit.id)
+    return [int(item) for item in session.exec(stmt).all() if item is not None]
+
+
+def count_active_question_templates(
+    session: Session,
+    *,
+    subject: str,
+    question_types: set[str] | None = None,
+) -> int:
+    """统计学科下可用题模板数量。"""
+
+    stmt = (
+        select(func.count())
+        .select_from(QuestionTemplate)
+        .where(
+            QuestionTemplate.subject == subject,
+            QuestionTemplate.status == "active",
+        )
+    )
+    if question_types:
+        stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))  # type: ignore[union-attr]
+    return int(session.exec(stmt).one())
+
+
+def list_exam_item_snapshots_by_user(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+) -> list[tuple[ExamPaperItem, datetime, int]]:
+    """查询用户在学科下所有出过的题目快照。"""
+
+    stmt = (
+        select(ExamPaperItem, ExamPaper.created_at, ExamPaper.id)
+        .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
+        .where(
+            ExamPaper.subject == subject,
+            ExamPaper.user_id == user_id,
+        )
+        .order_by(ExamPaper.created_at.desc(), ExamPaper.id.desc(), ExamPaperItem.item_order.asc())  # type: ignore[union-attr]
+    )
+    rows = list(session.exec(stmt).all())
+    normalized: list[tuple[ExamPaperItem, datetime, int]] = []
+    for row in rows:
+        item, asked_at, exam_paper_id = row
+        normalized.append((item, asked_at, int(exam_paper_id)))
+    return normalized
+
+
+def delete_exam_paper_cascade(
+    session: Session,
+    *,
+    paper_id: int,
+) -> bool:
+    """删除试卷及其关联数据。"""
+
+    paper = session.get(ExamPaper, paper_id)
+    if paper is None:
+        return False
+
+    item_ids = [
+        int(item_id)
+        for item_id in session.exec(
+            select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id == paper_id)
+        ).all()
+        if item_id is not None
+    ]
+
+    if item_ids:
+        attempts = list(
+            session.exec(
+                select(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(item_ids))  # type: ignore[union-attr]
+            ).all()
+        )
+        for item in attempts:
+            session.delete(item)
+
+        paper_items = list(
+            session.exec(
+                select(ExamPaperItem).where(ExamPaperItem.id.in_(item_ids))  # type: ignore[union-attr]
+            ).all()
+        )
+        for item in paper_items:
+            session.delete(item)
+
+    generation_contexts = list(
+        session.exec(
+            select(ExamPaperGenerationContext).where(ExamPaperGenerationContext.exam_paper_id == paper_id)
+        ).all()
+    )
+    for item in generation_contexts:
+        session.delete(item)
+
+    grade_jobs = list(
+        session.exec(select(ExamGradeJob).where(ExamGradeJob.exam_paper_id == paper_id)).all()
+    )
+    for item in grade_jobs:
+        session.delete(item)
+
+    generate_jobs = list(
+        session.exec(select(ExamGenerateJob).where(ExamGenerateJob.exam_paper_id == paper_id)).all()
+    )
+    for item in generate_jobs:
+        session.delete(item)
+
+    review_tasks = list(
+        session.exec(select(ReviewTask).where(ReviewTask.source_exam_paper_id == paper_id)).all()
+    )
+    for item in review_tasks:
+        session.delete(item)
+
+    session.delete(paper)
+    session.commit()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # UserAnswerAttempt CRUD
 # ---------------------------------------------------------------------------
@@ -468,10 +596,15 @@ def complete_review_task(
     *,
     task_id: int,
     user_id: str,
+    subject: str,
 ) -> ReviewTask | None:
     """标记复习任务完成。"""
 
-    stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.user_id == user_id)
+    stmt = select(ReviewTask).where(
+        ReviewTask.id == task_id,
+        ReviewTask.user_id == user_id,
+        ReviewTask.subject == subject,
+    )
     task = session.exec(stmt).first()
     if task is None:
         return None
@@ -526,6 +659,26 @@ def get_exam_generate_job(session: Session, job_id: int) -> ExamGenerateJob | No
     """查询组卷任务。"""
 
     return session.get(ExamGenerateJob, job_id)
+
+
+def find_active_generate_job(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+) -> ExamGenerateJob | None:
+    """查询用户当前是否存在进行中的组卷任务。"""
+
+    stmt = (
+        select(ExamGenerateJob)
+        .where(
+            ExamGenerateJob.subject == subject,
+            ExamGenerateJob.user_id == user_id,
+            ExamGenerateJob.status.in_(["pending", "running"]),  # type: ignore[union-attr]
+        )
+        .order_by(ExamGenerateJob.created_at.desc(), ExamGenerateJob.id.desc())  # type: ignore[union-attr]
+    )
+    return session.exec(stmt).first()
 
 
 def get_exam_grade_job(session: Session, job_id: int) -> ExamGradeJob | None:

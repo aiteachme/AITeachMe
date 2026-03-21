@@ -1243,13 +1243,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/build": {
+    "/api/v1/subjects/{subject}/knowledge/digest/build": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "触发增量构建",
-        "operationId": "digest_build_api_v1_subjects__subject__digest_build_post",
+        "operationId": "digest_build_api_v1_subjects__subject__knowledge_digest_build_post",
         "parameters": [
           {
             "name": "subject",
@@ -1335,13 +1335,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/status": {
+    "/api/v1/subjects/{subject}/knowledge/digest/status": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "查询增量构建聚合状态",
-        "operationId": "digest_status_api_v1_subjects__subject__digest_status_post",
+        "operationId": "digest_status_api_v1_subjects__subject__knowledge_digest_status_post",
         "parameters": [
           {
             "name": "subject",
@@ -1417,13 +1417,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/query": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/query": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "分页查询知识节点",
-        "operationId": "graph_nodes_query_api_v1_subjects__subject__graph_nodes_query_post",
+        "operationId": "graph_nodes_query_api_v1_subjects__subject__knowledge_graph_nodes_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1502,13 +1502,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/detail": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "知识节点详情",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__graph_nodes_detail_post",
+        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1584,13 +1584,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/full": {
+    "/api/v1/subjects/{subject}/knowledge/graph/full": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取完整知识图谱（节点+边）",
-        "operationId": "graph_full_api_v1_subjects__subject__graph_full_post",
+        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
         "parameters": [
           {
             "name": "subject",
@@ -1656,13 +1656,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/evidence/context": {
+    "/api/v1/subjects/{subject}/knowledge/graph/evidence/context": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取证据原文上下文",
-        "operationId": "evidence_context_api_v1_subjects__subject__graph_evidence_context_post",
+        "operationId": "evidence_context_api_v1_subjects__subject__knowledge_graph_evidence_context_post",
         "parameters": [
           {
             "name": "subject",
@@ -1738,13 +1738,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/query": {
+    "/api/v1/subjects/{subject}/knowledge/units/query": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "分页查询教学单元",
-        "operationId": "units_query_api_v1_subjects__subject__units_query_post",
+        "operationId": "units_query_api_v1_subjects__subject__knowledge_units_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1823,13 +1823,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/detail": {
+    "/api/v1/subjects/{subject}/knowledge/units/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "教学单元详情",
-        "operationId": "unit_detail_api_v1_subjects__subject__units_detail_post",
+        "operationId": "unit_detail_api_v1_subjects__subject__knowledge_units_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1905,13 +1905,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/theme-tree/current": {
+    "/api/v1/subjects/{subject}/knowledge/theme-tree/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前主题树",
-        "operationId": "theme_tree_current_api_v1_subjects__subject__theme_tree_current_post",
+        "operationId": "theme_tree_current_api_v1_subjects__subject__knowledge_theme_tree_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -1977,13 +1977,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/taxonomy/anchors": {
+    "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "锚点管理",
-        "operationId": "taxonomy_anchors_api_v1_subjects__subject__taxonomy_anchors_post",
+        "operationId": "taxonomy_anchors_api_v1_subjects__subject__knowledge_taxonomy_anchors_post",
         "parameters": [
           {
             "name": "subject",
@@ -2059,13 +2059,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/prereq-dag/current": {
+    "/api/v1/subjects/{subject}/knowledge/prereq-dag/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前先修 DAG",
-        "operationId": "prereq_dag_current_api_v1_subjects__subject__prereq_dag_current_post",
+        "operationId": "prereq_dag_current_api_v1_subjects__subject__knowledge_prereq_dag_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2131,13 +2131,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/curriculum/current": {
+    "/api/v1/subjects/{subject}/knowledge/curriculum/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前课程快照",
-        "operationId": "curriculum_current_api_v1_subjects__subject__curriculum_current_post",
+        "operationId": "curriculum_current_api_v1_subjects__subject__knowledge_curriculum_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2206,7 +2206,7 @@
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "清空学科所有知识数据",
         "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
@@ -2275,14 +2275,14 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/send": {
+    "/api/v1/subjects/{subject}/chats/send": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "发送消息",
         "description": "保留原生 SSE 返回。",
-        "operationId": "send_chat_api_v1_subjects__subject__chat_send_post",
+        "operationId": "send_chat_api_v1_subjects__subject__chats_send_post",
         "parameters": [
           {
             "name": "subject",
@@ -2376,13 +2376,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/list": {
+    "/api/v1/subjects/{subject}/chats/list": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "聊天记录列表",
-        "operationId": "list_chat_api_api_v1_subjects__subject__chat_list_post",
+        "operationId": "list_chat_api_api_v1_subjects__subject__chats_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2461,13 +2461,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/clear": {
+    "/api/v1/subjects/{subject}/chats/clear": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "清空聊天记录",
-        "operationId": "clear_chat_api_api_v1_subjects__subject__chat_clear_post",
+        "operationId": "clear_chat_api_api_v1_subjects__subject__chats_clear_post",
         "parameters": [
           {
             "name": "subject",
@@ -2543,13 +2543,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/make": {
+    "/api/v1/subjects/{subject}/exams/make": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "生成试卷",
-        "operationId": "make_exam_api_v1_subjects__subject__exam_make_post",
+        "operationId": "make_exam_api_v1_subjects__subject__exams_make_post",
         "parameters": [
           {
             "name": "subject",
@@ -2645,13 +2645,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/submit": {
+    "/api/v1/subjects/{subject}/exams/submit": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "提交试卷",
-        "operationId": "submit_exam_answers_api_v1_subjects__subject__exam_submit_post",
+        "operationId": "submit_exam_answers_api_v1_subjects__subject__exams_submit_post",
         "parameters": [
           {
             "name": "subject",
@@ -2668,7 +2668,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExamSubmitRequest"
+                "$ref": "#/components/schemas/app__schemas__exams__ExamSubmitRequest"
               }
             }
           }
@@ -2747,13 +2747,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/list": {
+    "/api/v1/subjects/{subject}/exams/list": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "试卷历史",
-        "operationId": "list_exams_api_api_v1_subjects__subject__exam_list_post",
+        "operationId": "list_exams_api_api_v1_subjects__subject__exams_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2784,7 +2784,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_ExamHistoryItem__"
+                  "$ref": "#/components/schemas/app__schemas__common__ApiResponse_PaginatedData_ExamHistoryItem____1"
                 }
               }
             }
@@ -2832,13 +2832,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/delete": {
+    "/api/v1/subjects/{subject}/exams/delete": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "删除试卷",
-        "operationId": "delete_exam_api_api_v1_subjects__subject__exam_delete_post",
+        "operationId": "delete_exam_api_api_v1_subjects__subject__exams_delete_post",
         "parameters": [
           {
             "name": "subject",
@@ -3139,6 +3139,1197 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_PaginatedData_MistakeItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/generate": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "触发试卷生成",
+        "operationId": "api_trigger_exam_generate_api_v1_subjects__subject__exam_generate_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExamGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/history": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "分页考试历史",
+        "operationId": "api_get_exam_history_api_v1_subjects__subject__exam_history_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__common__ApiResponse_PaginatedData_ExamHistoryItem____2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/generate-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "组卷任务状态",
+        "operationId": "api_get_generate_job_status_api_v1_subjects__subject__exam_generate_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/grade-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "判卷任务状态",
+        "operationId": "api_get_grade_job_status_api_v1_subjects__subject__exam_grade_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/question-build": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "触发题目构建",
+        "operationId": "api_trigger_question_build_api_v1_subjects__subject__question_build_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionBuildRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionBuildJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/{exam_paper_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "试卷详情",
+        "operationId": "api_get_exam_detail_api_v1_subjects__subject__exam__exam_paper_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/{exam_paper_id}/submit": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "提交答案",
+        "operationId": "api_submit_exam_api_v1_subjects__subject__exam__exam_paper_id__submit_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__schemas__assessment__ExamSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/exam/{exam_paper_id}/grade": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "触发判分",
+        "operationId": "api_trigger_exam_grade_api_v1_subjects__subject__exam__exam_paper_id__grade_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          },
+          {
+            "name": "regrade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Regrade"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/question-build-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "题目构建任务状态",
+        "operationId": "api_get_question_build_job_status_api_v1_subjects__subject__question_build_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionBuildJobStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/mastery": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "掌握度概览",
+        "operationId": "api_get_mastery_overview_api_v1_subjects__subject__mastery_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryOverviewResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/mastery/unit/{target_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "单元掌握度详情",
+        "operationId": "api_get_unit_mastery_detail_api_v1_subjects__subject__mastery_unit__target_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Target Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryStateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/mastery/node/{target_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "节点掌握度详情",
+        "operationId": "api_get_node_mastery_detail_api_v1_subjects__subject__mastery_node__target_id__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Target Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryStateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/review/tasks": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "待处理复习任务",
+        "operationId": "api_get_review_tasks_api_v1_subjects__subject__review_tasks_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_ReviewTaskResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/review/tasks/{task_id}/complete": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "完成复习任务",
+        "operationId": "api_complete_review_task_api_v1_subjects__subject__review_tasks__task_id__complete_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReviewTaskResponse_"
                 }
               }
             }
@@ -3681,6 +4872,108 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ExamGenerateJobStatusResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamGenerateJobStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamGenerateJobStatusResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamGradeJobStatusResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamGradeJobStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamGradeJobStatusResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamPaperDetailResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPaperDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamPaperDetailResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_FileDeleteData_": {
         "properties": {
           "code": {
@@ -3987,6 +5280,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_MasteryOverviewResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryOverviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[MasteryOverviewResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_MasteryStateResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryStateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[MasteryStateResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_PaginatedData_ChatMessageItem__": {
         "properties": {
           "code": {
@@ -4015,40 +5376,6 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[ChatMessageItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_PaginatedData_ExamHistoryItem__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_ExamHistoryItem_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[ExamHistoryItem]]",
         "example": {
           "code": 0,
           "data": {},
@@ -4293,6 +5620,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_QuestionBuildJobStatusResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionBuildJobStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionBuildJobStatusResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ReportData_": {
         "properties": {
           "code": {
@@ -4321,6 +5682,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ReportData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ReviewTaskResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ReviewTaskResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -4491,6 +5886,44 @@
         },
         "type": "object",
         "title": "ApiResponse[ThemeTreeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_ReviewTaskResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReviewTaskResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[ReviewTaskResponse]]",
         "example": {
           "code": 0,
           "data": {},
@@ -5289,14 +6722,54 @@
         "title": "ExamDeleteRequest",
         "description": "删除试卷请求。"
       },
-      "ExamHistoryItem": {
+      "ExamGenerateJobStatusResponse": {
         "properties": {
-          "exam_id": {
+          "id": {
             "type": "integer",
-            "title": "Exam Id",
-            "description": "试卷 ID。"
+            "title": "Id"
           },
-          "submission_id": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "num_questions": {
+            "type": "integer",
+            "title": "Num Questions"
+          },
+          "exam_paper_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -5305,8 +6778,124 @@
                 "type": "null"
               }
             ],
-            "title": "Submission Id",
-            "description": "最近一次提交 ID。"
+            "title": "Exam Paper Id"
+          },
+          "theme_tree_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Tree Node Id"
+          },
+          "teaching_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Teaching Unit Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "num_questions"
+        ],
+        "title": "ExamGenerateJobStatusResponse"
+      },
+      "ExamGenerateRequest": {
+        "properties": {
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode",
+            "description": "考试模式。"
+          },
+          "num_questions": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Num Questions",
+            "description": "题目数量。",
+            "default": 10
+          },
+          "theme_tree_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Tree Node Id",
+            "description": "可选主题树节点 ID。"
+          },
+          "teaching_unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Ids",
+            "description": "可选教学单元范围。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_mode"
+        ],
+        "title": "ExamGenerateRequest",
+        "description": "触发组卷请求。"
+      },
+      "ExamGradeJobStatusResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
           },
           "score": {
             "anyOf": [
@@ -5317,23 +6906,33 @@
                 "type": "null"
               }
             ],
-            "title": "Score",
-            "description": "最近一次得分。"
+            "title": "Score"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "创建时间。"
+          "states_updated": {
+            "type": "integer",
+            "title": "States Updated"
+          },
+          "tasks_created": {
+            "type": "integer",
+            "title": "Tasks Created"
+          },
+          "mastery_consumed": {
+            "type": "boolean",
+            "title": "Mastery Consumed"
           }
         },
         "type": "object",
         "required": [
-          "exam_id",
-          "created_at"
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "exam_paper_id",
+          "states_updated",
+          "tasks_created",
+          "mastery_consumed"
         ],
-        "title": "ExamHistoryItem",
-        "description": "试卷历史项。"
+        "title": "ExamGradeJobStatusResponse"
       },
       "ExamListRequest": {
         "properties": {
@@ -5398,28 +6997,267 @@
           ]
         }
       },
-      "ExamSubmitRequest": {
+      "ExamPaperDetailResponse": {
         "properties": {
-          "exam_id": {
+          "id": {
             "type": "integer",
-            "title": "Exam Id",
-            "description": "试卷 ID。"
+            "title": "Id"
           },
-          "answers": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "items": {
             "items": {
-              "$ref": "#/components/schemas/AnswerItem"
+              "$ref": "#/components/schemas/ExamPaperItemResponse"
             },
             "type": "array",
-            "title": "Answers",
-            "description": "答案列表。"
+            "title": "Items"
           }
         },
         "type": "object",
         "required": [
-          "exam_id"
+          "id",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "status",
+          "total_items",
+          "created_at"
         ],
-        "title": "ExamSubmitRequest",
-        "description": "交卷请求。"
+        "title": "ExamPaperDetailResponse"
+      },
+      "ExamPaperItemResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "item_order": {
+            "type": "integer",
+            "title": "Item Order"
+          },
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type"
+          },
+          "difficulty": {
+            "type": "string",
+            "title": "Difficulty"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "teaching_unit_id": {
+            "type": "integer",
+            "title": "Teaching Unit Id"
+          },
+          "node_links": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Node Links"
+          },
+          "user_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_order",
+          "question_template_id",
+          "question_type",
+          "difficulty",
+          "stem",
+          "explanation",
+          "teaching_unit_id"
+        ],
+        "title": "ExamPaperItemResponse"
+      },
+      "ExamSubmitAnswerItem": {
+        "properties": {
+          "exam_paper_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Paper Item Id",
+            "description": "试卷题目项 ID。"
+          },
+          "item_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Order",
+            "description": "题目序号（作为兼容键）。"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "用户答案。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "ExamSubmitAnswerItem",
+        "description": "提交答案项。"
       },
       "FileAssetItem": {
         "properties": {
@@ -6297,6 +8135,136 @@
         "description": "登出请求。",
         "example": {}
       },
+      "MasteryOverviewResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "weak_unit_count": {
+            "type": "integer",
+            "title": "Weak Unit Count"
+          },
+          "weak_node_count": {
+            "type": "integer",
+            "title": "Weak Node Count"
+          },
+          "unit_states": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryStateResponse"
+            },
+            "type": "array",
+            "title": "Unit States"
+          },
+          "node_states": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryStateResponse"
+            },
+            "type": "array",
+            "title": "Node States"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "user_id",
+          "weak_unit_count",
+          "weak_node_count"
+        ],
+        "title": "MasteryOverviewResponse"
+      },
+      "MasteryStateResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "granularity": {
+            "type": "string",
+            "title": "Granularity"
+          },
+          "target_id": {
+            "type": "integer",
+            "title": "Target Id"
+          },
+          "mastery_score": {
+            "type": "number",
+            "title": "Mastery Score"
+          },
+          "confidence_score": {
+            "type": "number",
+            "title": "Confidence Score"
+          },
+          "stability_score": {
+            "type": "number",
+            "title": "Stability Score"
+          },
+          "forgetting_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forgetting Due At"
+          },
+          "review_priority": {
+            "type": "number",
+            "title": "Review Priority"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "correct_attempts": {
+            "type": "integer",
+            "title": "Correct Attempts"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "state_version": {
+            "type": "integer",
+            "title": "State Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "granularity",
+          "target_id",
+          "mastery_score",
+          "confidence_score",
+          "stability_score",
+          "review_priority",
+          "total_attempts",
+          "correct_attempts",
+          "state_version",
+          "updated_at"
+        ],
+        "title": "MasteryStateResponse"
+      },
       "MistakeItem": {
         "properties": {
           "id": {
@@ -6420,50 +8388,6 @@
           "pages"
         ],
         "title": "PaginatedData[ChatMessageItem]"
-      },
-      "PaginatedData_ExamHistoryItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ExamHistoryItem"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[ExamHistoryItem]"
       },
       "PaginatedData_FileItem_": {
         "properties": {
@@ -6873,6 +8797,108 @@
         "description": "画像报告请求。",
         "example": {}
       },
+      "QuestionBuildJobStatusResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "target_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Target Unit Ids"
+          },
+          "questions_per_unit": {
+            "type": "integer",
+            "title": "Questions Per Unit"
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress"
+          },
+          "templates_created": {
+            "type": "integer",
+            "title": "Templates Created"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at",
+          "subject",
+          "questions_per_unit",
+          "progress",
+          "templates_created"
+        ],
+        "title": "QuestionBuildJobStatusResponse"
+      },
+      "QuestionBuildRequest": {
+        "properties": {
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Unit Ids",
+            "description": "目标教学单元 ID 列表。"
+          },
+          "questions_per_unit": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Questions Per Unit",
+            "description": "每单元生成题数。",
+            "default": 9
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit_ids"
+        ],
+        "title": "QuestionBuildRequest",
+        "description": "触发题目构建请求。"
+      },
       "QuestionItem": {
         "properties": {
           "question_key": {
@@ -6996,6 +9022,138 @@
         "type": "object",
         "title": "ReportData",
         "description": "学习报告。"
+      },
+      "ReviewTaskResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "task_type": {
+            "type": "string",
+            "title": "Task Type"
+          },
+          "target_id": {
+            "type": "integer",
+            "title": "Target Id"
+          },
+          "target_granularity": {
+            "type": "string",
+            "title": "Target Granularity"
+          },
+          "priority": {
+            "type": "number",
+            "title": "Priority"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "interval_days": {
+            "type": "integer",
+            "title": "Interval Days"
+          },
+          "ease_factor": {
+            "type": "number",
+            "title": "Ease Factor"
+          },
+          "repetition_count": {
+            "type": "integer",
+            "title": "Repetition Count"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_state_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source State Id"
+          },
+          "source_exam_paper_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Exam Paper Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "expired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "subject",
+          "task_type",
+          "target_id",
+          "target_granularity",
+          "priority",
+          "scheduled_at",
+          "status",
+          "interval_days",
+          "ease_factor",
+          "repetition_count",
+          "created_at"
+        ],
+        "title": "ReviewTaskResponse"
       },
       "RuntimeUser": {
         "properties": {
@@ -7808,6 +9966,336 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "app__schemas__assessment__ExamHistoryItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "user_id",
+          "exam_mode",
+          "status",
+          "total_items",
+          "created_at"
+        ],
+        "title": "ExamHistoryItem"
+      },
+      "app__schemas__assessment__ExamSubmitRequest": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/ExamSubmitAnswerItem"
+            },
+            "type": "array",
+            "title": "Answers",
+            "description": "答案列表。"
+          }
+        },
+        "type": "object",
+        "title": "ExamSubmitRequest",
+        "description": "提交试卷请求。"
+      },
+      "app__schemas__common__ApiResponse_PaginatedData_ExamHistoryItem____1": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app__schemas__common__PaginatedData_ExamHistoryItem___1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[ExamHistoryItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "app__schemas__common__ApiResponse_PaginatedData_ExamHistoryItem____2": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app__schemas__common__PaginatedData_ExamHistoryItem___2"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[ExamHistoryItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "app__schemas__common__PaginatedData_ExamHistoryItem___1": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__schemas__exams__ExamHistoryItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[ExamHistoryItem]"
+      },
+      "app__schemas__common__PaginatedData_ExamHistoryItem___2": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__schemas__assessment__ExamHistoryItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[ExamHistoryItem]"
+      },
+      "app__schemas__exams__ExamHistoryItem": {
+        "properties": {
+          "exam_id": {
+            "type": "integer",
+            "title": "Exam Id",
+            "description": "试卷 ID。"
+          },
+          "submission_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Id",
+            "description": "最近一次提交 ID。"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "最近一次得分。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_id",
+          "created_at"
+        ],
+        "title": "ExamHistoryItem",
+        "description": "试卷历史项。"
+      },
+      "app__schemas__exams__ExamSubmitRequest": {
+        "properties": {
+          "exam_id": {
+            "type": "integer",
+            "title": "Exam Id",
+            "description": "试卷 ID。"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerItem"
+            },
+            "type": "array",
+            "title": "Answers",
+            "description": "答案列表。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_id"
+        ],
+        "title": "ExamSubmitRequest",
+        "description": "交卷请求。"
       }
     }
   }

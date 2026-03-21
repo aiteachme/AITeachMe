@@ -1,4 +1,4 @@
-"""Assessment 接口。"""
+﻿"""Assessment 接口。"""
 
 from __future__ import annotations
 
@@ -14,27 +14,29 @@ from app.schemas.assessment import (
     ExamGenerateRequest,
     ExamGradeJobStatusResponse,
     ExamHistoryItem,
+    ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
     ExamSubmitRequest,
-    JobStatusResponse,
     MasteryOverviewResponse,
     MasteryStateResponse,
-    QuestionBuildJobStatusResponse,
+    QuestionBankItemResponse,
     ReviewTaskResponse,
 )
 from app.schemas.common import ApiResponse, PaginatedData, build_paginated_data, ok_response
 from app.services.assessment_service import (
     ExamPaperDetail,
     MasteryOverview,
+    QuestionBankItem,
     complete_review_task,
+    delete_exam_paper,
     get_exam_generate_job_status,
     get_exam_grade_job_status,
     get_exam_history,
     get_exam_paper_detail,
     get_mastery_detail,
     get_mastery_overview,
-    get_question_build_job_status,
+    get_question_bank,
     get_review_tasks,
     submit_exam_answers,
     trigger_exam_generate,
@@ -53,39 +55,6 @@ def _parse_json_list(raw: str | None) -> list:
     except json.JSONDecodeError:
         return []
     return value if isinstance(value, list) else []
-
-
-def _to_job_status_response(
-    *,
-    job_id: int,
-    status: str,
-    error_message: str | None,
-    created_at,
-    updated_at,
-) -> JobStatusResponse:
-    return JobStatusResponse(
-        id=job_id,
-        status=status,
-        error_message=error_message,
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-
-
-def _to_question_build_job_response(job) -> QuestionBuildJobStatusResponse:
-    return QuestionBuildJobStatusResponse(
-        id=job.id or 0,
-        status=job.status,
-        error_message=job.error_message,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        subject=job.subject,
-        target_unit_ids=[int(item) for item in _parse_json_list(job.target_unit_ids_json)],
-        questions_per_unit=job.questions_per_unit,
-        progress=job.progress,
-        templates_created=job.templates_created,
-        warnings=[str(item) for item in _parse_json_list(job.warnings_json)],
-    )
 
 
 def _to_exam_generate_job_response(job) -> ExamGenerateJobStatusResponse:
@@ -230,6 +199,19 @@ def _to_review_task_response(task) -> ReviewTaskResponse:
     )
 
 
+def _to_question_bank_item_response(item: QuestionBankItem) -> QuestionBankItemResponse:
+    return QuestionBankItemResponse(
+        question_template_id=item.question_template_id,
+        stem=item.stem,
+        question_type=item.question_type,
+        difficulty=item.difficulty,
+        teaching_unit_id=item.teaching_unit_id,
+        times_asked=item.times_asked,
+        last_asked_at=item.last_asked_at,
+        last_exam_paper_id=item.last_exam_paper_id,
+    )
+
+
 @router.post(
     "/{subject}/exam/generate",
     response_model=ApiResponse[ExamGenerateJobStatusResponse],
@@ -250,6 +232,7 @@ async def api_trigger_exam_generate(
         user_id=user.user_id,
         exam_mode=body.exam_mode,
         num_questions=body.num_questions,
+        user_prompt=body.user_prompt,
         theme_tree_node_id=body.theme_tree_node_id,
         teaching_unit_ids=body.teaching_unit_ids,
     )
@@ -335,6 +318,23 @@ async def api_get_grade_job_status(
 
 
 @router.get(
+    "/{subject}/exam/question-bank",
+    response_model=ApiResponse[list[QuestionBankItemResponse]],
+    summary="题库视图（列出出过的题目）",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def api_get_question_bank(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionBankItemResponse]]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized)
+    items = await get_question_bank(session, subject=normalized, user_id=user.user_id)
+    return ok_response([_to_question_bank_item_response(item) for item in items])
+
+
+@router.get(
     "/{subject}/exam/{exam_paper_id:int}",
     response_model=ApiResponse[ExamPaperDetailResponse],
     summary="试卷详情",
@@ -355,6 +355,29 @@ async def api_get_exam_detail(
         exam_paper_id=exam_paper_id,
     )
     return ok_response(_to_exam_paper_detail_response(detail))
+
+
+@router.delete(
+    "/{subject}/exam/{exam_paper_id:int}",
+    response_model=ApiResponse[ExamPaperDeleteResponse],
+    summary="删除试卷",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def api_delete_exam(
+    subject: str = Path(...),
+    exam_paper_id: int = Path(..., ge=1),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPaperDeleteResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized)
+    await delete_exam_paper(
+        session,
+        subject=normalized,
+        user_id=user.user_id,
+        exam_paper_id=exam_paper_id,
+    )
+    return ok_response(ExamPaperDeleteResponse(deleted=True, exam_paper_id=exam_paper_id))
 
 
 @router.post(
@@ -412,7 +435,6 @@ async def api_trigger_exam_grade(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
 
-    # 权限校验交由 detail 查询复用：保证试卷属于当前用户
     await get_exam_paper_detail(
         session,
         subject=normalized,
@@ -425,23 +447,6 @@ async def api_trigger_exam_grade(
         regrade=regrade,
     )
     return ok_response(_to_exam_grade_job_response(job))
-
-
-@router.get(
-    "/{subject}/question-build-jobs/{job_id:int}",
-    response_model=ApiResponse[QuestionBuildJobStatusResponse],
-    summary="题目构建任务状态",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def api_get_question_build_job_status(
-    subject: str = Path(...),
-    job_id: int = Path(..., ge=1),
-    session: Session = Depends(get_db),
-) -> ApiResponse[QuestionBuildJobStatusResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-    job = await get_question_build_job_status(session, subject=normalized, job_id=job_id)
-    return ok_response(_to_question_build_job_response(job))
 
 
 @router.get(
@@ -540,5 +545,10 @@ async def api_complete_review_task(
 ) -> ApiResponse[ReviewTaskResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    task = await complete_review_task(session, task_id=task_id, user_id=user.user_id)
+    task = await complete_review_task(
+        session,
+        subject=normalized,
+        task_id=task_id,
+        user_id=user.user_id,
+    )
     return ok_response(_to_review_task_response(task))

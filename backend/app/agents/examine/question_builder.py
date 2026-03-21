@@ -1,10 +1,12 @@
-"""题目模板构建器。"""
+"""Question template builder."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
+import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import structlog
@@ -35,7 +37,7 @@ def _normalize_options(options: list[str] | None) -> str | None:
 
 
 def validate_single_choice_options(options_json: str | None) -> bool:
-    """校验单选题 options 是否为至少 2 项的 JSON 数组。"""
+    """Validate single-choice options is a JSON list with at least 2 items."""
 
     if not options_json:
         return False
@@ -67,12 +69,49 @@ class _GeneratedTemplatePayload(BaseModel):
     questions: list[_GeneratedTemplateItem] = Field(min_length=1)
 
 
+def _clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _pick_reference_sentence(node: _NodeContext) -> str:
+    raw = _clean_text(node.content)
+    if not raw:
+        return f"该知识点围绕“{node.node_name}”的定义、条件与应用。"
+
+    candidates = [
+        _clean_text(part)
+        for part in re.split(r"[。！？!?;\n]+", raw)
+        if _clean_text(part)
+    ]
+    # Prefer medium-length informative sentence.
+    scored = sorted(
+        candidates,
+        key=lambda s: (
+            0 if 18 <= len(s) <= 90 else 1,
+            abs(len(s) - 48),
+        ),
+    )
+    if not scored:
+        return f"该知识点围绕“{node.node_name}”的定义、条件与应用。"
+    picked = scored[0]
+    if len(picked) > 120:
+        picked = picked[:120].rstrip("，,；;:：") + "..."
+    return picked
+
+
+def _build_fill_blank_stem(node_name: str, reference: str) -> tuple[str, str]:
+    if node_name and node_name in reference and len(node_name) >= 2:
+        cloze = reference.replace(node_name, "____", 1)
+        return f"【填空】请补全与该知识点相关的关键表述：{cloze}", node_name
+    return f"【填空】根据知识点说明：{reference}（关键词：____）", node_name or "核心概念"
+
+
 def _build_deterministic_templates(
     *,
     node_contexts: list[_NodeContext],
     questions_per_unit: int,
 ) -> list[_GeneratedTemplateItem]:
-    """LLM 不可用时的本地兜底模板生成。"""
+    """Fallback template generator when LLM is unavailable."""
 
     if not node_contexts:
         return []
@@ -93,16 +132,36 @@ def _build_deterministic_templates(
     for idx in range(max(1, questions_per_unit)):
         qtype, difficulty = matrix[idx % len(matrix)]
         node = node_contexts[idx % len(node_contexts)]
-        stem = f"【{node.node_name}】({difficulty}) 题目 {idx + 1}"
+        reference = _pick_reference_sentence(node)
+
         if qtype == QuestionType.SINGLE_CHOICE.value:
-            options = ["A. 正确概念", "B. 常见误区", "C. 错误迁移", "D. 无关选项"]
+            stem = f"【单选】关于知识点「{node.node_name}」，以下哪一项最恰当？"
+            options = [
+                f"强调“{node.node_name}”的核心含义，并结合条件理解：{reference}",
+                f"把“{node.node_name}”当作不需要条件即可套用的结论",
+                f"只背结果，不需要理解“{node.node_name}”的适用场景",
+                "选择与该知识点无关的描述",
+            ]
             answer = options[0]
+            explanation = (
+                f"正确思路是回到“{node.node_name}”的定义与条件，再结合题目情境判断。"
+            )
         elif qtype == QuestionType.FILL_BLANK.value:
+            stem, answer = _build_fill_blank_stem(node.node_name, reference)
             options = None
-            answer = "关键结论"
+            explanation = f"填空围绕“{node.node_name}”的关键词与核心结论。"
         else:
+            stem = (
+                f"【简答】请用 2-3 句话说明「{node.node_name}」的核心概念，"
+                "并给出一个简短应用步骤。"
+            )
             options = None
-            answer = "完整作答包含核心概念与推理过程。"
+            answer = (
+                f"示例要点：先说明“{node.node_name}”的定义，再写明适用条件，"
+                "最后给出一步应用。"
+            )
+            explanation = f"简答题重点考查你是否真正理解并会应用“{node.node_name}”。"
+
         questions.append(
             _GeneratedTemplateItem(
                 question_type=qtype,
@@ -110,11 +169,30 @@ def _build_deterministic_templates(
                 stem=stem,
                 options=options,
                 answer=answer,
-                explanation=f"围绕 {node.node_name} 的标准解析。",
+                explanation=explanation,
                 knowledge_node_id=node.node_id,
             )
         )
     return questions
+
+
+def _run_llm_call_in_any_context(prompt: str) -> _GeneratedTemplatePayload:
+    async def _call_llm() -> _GeneratedTemplatePayload:
+        return await acompletion_structured(
+            response_model=_GeneratedTemplatePayload,
+            messages=[{"role": SYSTEM, "content": prompt}],
+        )
+
+    try:
+        # No running loop in current thread.
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_call_llm())
+
+    # We are in an async context. Run LLM call in a dedicated thread.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(lambda: asyncio.run(_call_llm()))
+        return future.result(timeout=120)
 
 
 def _try_llm_generate_templates(
@@ -139,19 +217,9 @@ def _try_llm_generate_templates(
         difficulties=", ".join(item.value for item in Difficulty),
     )
 
-    async def _call_llm() -> _GeneratedTemplatePayload:
-        return await acompletion_structured(
-            response_model=_GeneratedTemplatePayload,
-            messages=[{"role": SYSTEM, "content": prompt}],
-        )
-
     try:
-        payload = asyncio.run(_call_llm())
+        payload = _run_llm_call_in_any_context(prompt)
         return payload.questions
-    except RuntimeError:
-        # 当前线程已有事件循环（如 notebook/异步环境），不强行嵌套 run
-        logger.warning("question_builder_llm_skipped_running_loop")
-        return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("question_builder_llm_failed", error=str(exc))
         return None
@@ -184,9 +252,12 @@ def build_question_templates(
     questions_per_unit: int = 9,
     created_by_job_id: int | None = None,
 ) -> list[QuestionTemplate]:
-    """Phase A：为教学单元构建 QuestionTemplate 模板。"""
+    """Build question templates by teaching units."""
 
     created_templates: list[QuestionTemplate] = []
+    valid_question_types = {item.value for item in QuestionType}
+    valid_difficulties = {item.value for item in Difficulty}
+
     for unit_id in unit_ids:
         node_contexts = _load_unit_node_contexts(session, unit_id)
         if not node_contexts:
@@ -204,20 +275,25 @@ def build_question_templates(
                 questions_per_unit=questions_per_unit,
             )
 
-        links_to_create = []
-        for draft in generated:
+        links_to_create: list[QuestionTemplateNodeLink] = []
+        for idx, draft in enumerate(generated):
             question_type = (draft.question_type or "").strip().lower()
             difficulty = (draft.difficulty or "").strip().lower()
-            if question_type not in {item.value for item in QuestionType}:
+            if question_type not in valid_question_types:
                 continue
-            if difficulty not in {item.value for item in Difficulty}:
+            if difficulty not in valid_difficulties:
+                continue
+
+            stem = _clean_text(draft.stem)
+            answer = _clean_text(draft.answer)
+            explanation = _clean_text(draft.explanation)
+            if not stem or not answer or not explanation:
                 continue
 
             options_json = _normalize_options(draft.options)
             if question_type == QuestionType.SINGLE_CHOICE.value and not validate_single_choice_options(options_json):
                 continue
 
-            stem = draft.stem.strip()
             stem_hash = _stem_hash(stem)
             if assessment_repo.find_template_by_stem_hash(session, subject, unit_id, stem_hash) is not None:
                 logger.info("question_builder_skip_duplicate_stem_hash", unit_id=unit_id, stem_hash=stem_hash)
@@ -231,8 +307,8 @@ def build_question_templates(
                 stem=stem,
                 stem_hash=stem_hash,
                 options=options_json,
-                answer=draft.answer.strip(),
-                explanation=draft.explanation.strip(),
+                answer=answer,
+                explanation=explanation,
                 status="active",
                 created_by_job_id=created_by_job_id,
                 created_at=utcnow(),
@@ -241,11 +317,8 @@ def build_question_templates(
             persisted = assessment_repo.create_question_template(session, template)
             created_templates.append(persisted)
 
-            # 至少绑定一个节点，优先使用生成结果中的 knowledge_node_id，否则回退到轮询节点
-            if draft.knowledge_node_id is not None:
-                node_id = draft.knowledge_node_id
-            else:
-                node_id = node_contexts[len(created_templates) % len(node_contexts)].node_id
+            fallback_node = node_contexts[idx % len(node_contexts)].node_id
+            node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node
             links_to_create.append(
                 QuestionTemplateNodeLink(
                     question_template_id=persisted.id or 0,
@@ -257,7 +330,6 @@ def build_question_templates(
             )
 
         if links_to_create:
-            # 延迟批量创建，降低 commit 次数
             assessment_repo.create_template_node_links(session, links_to_create)
 
     return created_templates

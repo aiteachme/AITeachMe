@@ -1,4 +1,4 @@
-"""Assessment API 请求/响应 Schema。"""
+﻿"""Assessment API 请求/响应 Schema。"""
 
 from __future__ import annotations
 
@@ -7,9 +7,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.common import PageParams
-
-
-# ── 请求 ─────────────────────────────────────────────────────
 
 
 class QuestionBuildRequest(BaseModel):
@@ -23,16 +20,17 @@ class ExamGenerateRequest(BaseModel):
     """触发组卷请求。"""
 
     exam_mode: str = Field(description="考试模式。")
-    num_questions: int = Field(default=10, ge=1, le=200, description="题目数量。")
-    theme_tree_node_id: int | None = Field(default=None, description="可选主题树节点 ID。")
-    teaching_unit_ids: list[int] | None = Field(default=None, description="可选教学单元范围。")
+    user_prompt: str | None = Field(default=None, description="用户偏好提示，例如题型偏好、难度方向。")
+    num_questions: int | None = Field(default=None, ge=1, le=200, description="可选：题目数量，默认由后端自动决定。")
+    theme_tree_node_id: int | None = Field(default=None, description="兼容字段：可选主题树节点 ID。")
+    teaching_unit_ids: list[int] | None = Field(default=None, description="兼容字段：可选教学单元范围。")
 
 
 class ExamSubmitAnswerItem(BaseModel):
     """提交答案项。"""
 
     exam_paper_item_id: int | None = Field(default=None, description="试卷题目项 ID。")
-    item_order: int | None = Field(default=None, ge=1, description="题目序号（作为兼容键）。")
+    item_order: int | None = Field(default=None, ge=1, description="题目序号（兼容键）。")
     answer: str = Field(description="用户答案。")
 
 
@@ -50,9 +48,6 @@ class ExamGradeRequest(BaseModel):
 
 class ExamHistoryQuery(PageParams):
     """试卷历史分页请求。"""
-
-
-# ── 响应 ─────────────────────────────────────────────────────
 
 
 class JobStatusResponse(BaseModel):
@@ -104,6 +99,22 @@ class ExamHistoryItem(BaseModel):
     created_at: datetime
     submitted_at: datetime | None = None
     graded_at: datetime | None = None
+
+
+class ExamPaperDeleteResponse(BaseModel):
+    deleted: bool
+    exam_paper_id: int
+
+
+class QuestionBankItemResponse(BaseModel):
+    question_template_id: int
+    stem: str
+    question_type: str
+    difficulty: str
+    teaching_unit_id: int
+    times_asked: int
+    last_asked_at: datetime
+    last_exam_paper_id: int
 
 
 class ExamPaperItemResponse(BaseModel):

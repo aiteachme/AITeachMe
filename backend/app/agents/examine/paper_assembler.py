@@ -86,11 +86,37 @@ def _normalize_exam_mode(exam_mode: ExamMode | str) -> str:
     return str(exam_mode).strip().lower()
 
 
+def _is_legacy_placeholder_template(template: QuestionTemplate) -> bool:
+    stem = (template.stem or "").strip()
+    if not stem:
+        return True
+
+    # Legacy fallback stem pattern: "【xxx】(easy) 题目 1"
+    if stem.startswith("【") and "题目" in stem and ")" in stem:
+        return True
+
+    bad_tokens = ("正确概念", "常见误区", "错误迁移", "无关选项")
+    if sum(token in stem for token in bad_tokens) >= 2:
+        return True
+
+    if template.options:
+        try:
+            opts = json.loads(template.options)
+        except json.JSONDecodeError:
+            opts = None
+        if isinstance(opts, list):
+            joined = " ".join(str(item) for item in opts)
+            if all(token in joined for token in bad_tokens):
+                return True
+    return False
+
+
 def _build_unit_template_pool(
     session: Session,
     *,
     subject: str,
     unit_filter: set[int] | None = None,
+    question_type_filter: set[str] | None = None,
     excluded_template_ids: set[int] | None = None,
 ) -> dict[int, list[QuestionTemplate]]:
     stmt = select(QuestionTemplate).where(
@@ -99,6 +125,8 @@ def _build_unit_template_pool(
     )
     if unit_filter:
         stmt = stmt.where(QuestionTemplate.teaching_unit_id.in_(unit_filter))  # type: ignore[union-attr]
+    if question_type_filter:
+        stmt = stmt.where(QuestionTemplate.question_type.in_(question_type_filter))  # type: ignore[union-attr]
 
     rows = list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
     pool: dict[int, list[QuestionTemplate]] = defaultdict(list)
@@ -107,6 +135,8 @@ def _build_unit_template_pool(
         if item.id is None:
             continue
         if item.id in excluded:
+            continue
+        if _is_legacy_placeholder_template(item):
             continue
         pool[item.teaching_unit_id].append(item)
     return pool
@@ -255,12 +285,14 @@ def assemble_paper(
     num_questions: int,
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
+    preferred_question_types: list[str] | None = None,
     as_of: datetime | None = None,
 ) -> ExamPaper:
     """根据考试模式和学习状态组装试卷。"""
 
     mode = _normalize_exam_mode(exam_mode)
     now = as_of or utcnow()
+    question_type_filter = set(item for item in (preferred_question_types or []) if item)
 
     snapshot = assessment_repo.get_published_curriculum_snapshot(session, subject)
     if snapshot is None or snapshot.id is None:
@@ -295,6 +327,7 @@ def assemble_paper(
             session,
             subject=subject,
             unit_filter=unit_scope or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         selections.extend(
@@ -326,6 +359,7 @@ def assemble_paper(
             for uid in _build_unit_template_pool(
                 session,
                 subject=subject,
+                question_type_filter=question_type_filter or None,
                 excluded_template_ids=excluded_ids,
             ).keys()
             if uid not in weak_units and uid not in prereq_units
@@ -336,18 +370,21 @@ def assemble_paper(
             session,
             subject=subject,
             unit_filter=weak_units or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         prereq_pool = _build_unit_template_pool(
             session,
             subject=subject,
             unit_filter=prereq_units or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         transfer_pool = _build_unit_template_pool(
             session,
             subject=subject,
             unit_filter=transfer_units or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
 
@@ -397,6 +434,7 @@ def assemble_paper(
             session,
             subject=subject,
             unit_filter=due_units or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         selections.extend(
@@ -420,6 +458,7 @@ def assemble_paper(
             session,
             subject=subject,
             unit_filter=set(allocation.keys()) or None,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         for unit_id, count in allocation.items():
@@ -439,6 +478,7 @@ def assemble_paper(
         pool = _build_unit_template_pool(
             session,
             subject=subject,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         selections.extend(
@@ -455,6 +495,7 @@ def assemble_paper(
         fallback_pool = _build_unit_template_pool(
             session,
             subject=subject,
+            question_type_filter=question_type_filter or None,
             excluded_template_ids=excluded_ids,
         )
         selections.extend(
@@ -465,6 +506,42 @@ def assemble_paper(
                 reason="fallback_fill",
             )
         )
+
+    # 若因最近试卷去重导致无题可选，则放宽去重策略补题。
+    if len(selections) < num_questions and excluded_ids:
+        relaxed_pool = _build_unit_template_pool(
+            session,
+            subject=subject,
+            question_type_filter=question_type_filter or None,
+            excluded_template_ids=None,
+        )
+        selections.extend(
+            _select_round_robin(
+                unit_to_templates=relaxed_pool,
+                limit=(num_questions - len(selections)),
+                used_template_ids=used_template_ids,
+                reason="fallback_relaxed_exclusion",
+            )
+        )
+
+    if len(selections) < num_questions and question_type_filter:
+        any_type_pool = _build_unit_template_pool(
+            session,
+            subject=subject,
+            excluded_template_ids=None,
+        )
+        selections.extend(
+            _select_round_robin(
+                unit_to_templates=any_type_pool,
+                limit=(num_questions - len(selections)),
+                used_template_ids=used_template_ids,
+                reason="fallback_any_type",
+            )
+        )
+
+    # 避免创建空试卷：若仍无题，直接失败让上层返回 failed job。
+    if not selections:
+        raise ValueError("当前科目暂无可用题目模板，系统自动构题失败，请稍后重试。")
 
     paper = assessment_repo.create_exam_paper(
         session,

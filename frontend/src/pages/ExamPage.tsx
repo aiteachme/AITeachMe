@@ -1,87 +1,305 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileQuestion, Clock, Loader2, CheckCircle, XCircle } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { MarkdownViewer } from "../components/ui/MarkdownViewer";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, Clock, FileQuestion, Loader2, Trash2, XCircle } from "lucide-react";
 import { apiClient } from "../api/client";
+import { Button } from "../components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
+import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 
-interface QuestionItem {
-  question_key: string;
-  type: string;
+interface ApiResponse<T> {
+  code: number;
+  data: T;
+  message?: string;
+}
+
+interface PaginatedData<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+interface JobStatus {
+  id: number;
+  status: string;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ExamGenerateJob extends JobStatus {
+  subject?: string;
+  user_id?: string;
+  exam_mode?: string;
+  num_questions?: number;
+  exam_paper_id: number | null;
+}
+
+interface ExamGradeJob extends JobStatus {}
+
+interface ExamPaperItem {
+  id: number;
+  item_order: number;
+  question_type: string;
+  difficulty: string;
   stem: string;
   options: string[] | null;
-  knowledge_point: string;
-  difficulty: string;
-}
-
-interface ExamData {
-  exam_id: number;
-  questions: QuestionItem[];
-}
-
-interface AnswerResultItem {
-  question_key: string;
-  is_correct: boolean;
-  user_answer: string;
-  correct_answer: string;
   explanation: string;
-  analysis: string | null;
+  user_answer: string | null;
+  is_correct: boolean | null;
+  score_obtained: number | null;
+  score_max: number | null;
+  error_cause_label: string | null;
 }
 
-interface SubmitData {
-  submission_id: number;
-  score: number;
-  results: AnswerResultItem[];
+interface ExamPaperDetail {
+  id: number;
+  status: string;
+  exam_mode: string;
+  total_items: number;
+  score_obtained: number | null;
+  total_score: number | null;
+  created_at: string;
+  items: ExamPaperItem[];
 }
 
 interface ExamHistoryItem {
-  exam_id: number;
-  submission_id: number | null;
-  score: number | null;
+  id: number;
+  exam_mode: string;
+  status: string;
+  total_items: number;
+  score_obtained: number | null;
+  total_score: number | null;
   created_at: string;
 }
 
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
+interface DeleteExamResult {
+  deleted: boolean;
+  exam_paper_id: number;
+}
 
-async function makeExam(subject: string): Promise<ExamData> {
-  const res = await apiClient<ApiResponse<ExamData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/make`,
-    data: { num: 5, points: null },
+interface QuestionBankItem {
+  question_template_id: number;
+  stem: string;
+  question_type: string;
+  difficulty: string;
+  teaching_unit_id: number;
+  times_asked: number;
+  last_asked_at: string;
+  last_exam_paper_id: number;
+}
+
+type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
+
+const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string }> = [
+  { value: "diagnostic", label: "诊断模式" },
+  { value: "practice", label: "练习模式" },
+  { value: "weakpoint_boost", label: "薄弱强化" },
+  { value: "review", label: "复习模式" },
+  { value: "mock_final", label: "模拟考试" },
+];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toGenerateStatusLabel(status: string): string {
+  if (status === "pending") return "任务排队中...";
+  if (status === "running") return "正在自动构题并组卷...";
+  if (status === "completed") return "试卷生成完成";
+  if (status === "failed") return "试卷生成失败";
+  return "正在生成试卷...";
+}
+
+function toHistoryActionLabel(status: string): string {
+  if (status === "graded") return "查看结果";
+  if (status === "ready" || status === "in_progress") return "开始答题";
+  if (status === "submitted" || status === "grading") return "查看试卷";
+  return "打开试卷";
+}
+
+function toQuestionTypeLabel(value: string): string {
+  if (value === "single_choice") return "单选题";
+  if (value === "fill_blank") return "填空题";
+  if (value === "short_answer") return "简答题";
+  return value;
+}
+
+function toDifficultyLabel(value: string): string {
+  if (value === "easy") return "简单";
+  if (value === "medium") return "中等";
+  if (value === "hard") return "困难";
+  return value;
+}
+
+function toModeLabel(value: string): string {
+  const matched = EXAM_MODE_OPTIONS.find((item) => item.value === value);
+  return matched?.label ?? value;
+}
+
+function toMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const maybe = error as { message?: string; response?: { data?: { message?: string } } };
+    return maybe.response?.data?.message ?? maybe.message ?? "请求失败";
+  }
+  return "请求失败";
+}
+
+async function fetchExamDetail(subject: string, examPaperId: number): Promise<ExamPaperDetail> {
+  const res = await apiClient<ApiResponse<ExamPaperDetail>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
   });
   return res.data;
 }
 
-async function submitExam(subject: string, exam_id: number, answers: Record<string, string>): Promise<SubmitData> {
-  const res = await apiClient<ApiResponse<SubmitData>>({
+async function waitGenerateJobDone(
+  subject: string,
+  jobId: number,
+  onStatus?: (status: string) => void,
+): Promise<ExamGenerateJob> {
+  for (let i = 0; i < 40; i += 1) {
+    const res = await apiClient<ApiResponse<ExamGenerateJob>>({
+      method: "GET",
+      url: `/api/v1/subjects/${subject}/exam/generate-jobs/${jobId}`,
+    });
+    const job = res.data;
+    onStatus?.(job.status);
+    if (job.status === "completed" && job.exam_paper_id) return job;
+    if (job.status === "failed") {
+      throw new Error(job.error_message ?? "试卷生成失败");
+    }
+    await sleep(500);
+  }
+  throw new Error("试卷生成超时，请稍后重试");
+}
+
+async function generateExamPaper(
+  subject: string,
+  options: { examMode: ExamMode; userPrompt: string },
+  onStatus?: (status: string) => void,
+): Promise<ExamPaperDetail> {
+  const body: { exam_mode: ExamMode; user_prompt?: string } = {
+    exam_mode: options.examMode,
+  };
+  const prompt = options.userPrompt.trim();
+  if (prompt) {
+    body.user_prompt = prompt;
+  }
+
+  const res = await apiClient<ApiResponse<ExamGenerateJob>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/submit`,
+    url: `/api/v1/subjects/${subject}/exam/generate`,
+    data: body,
+  });
+
+  let job = res.data;
+  onStatus?.(job.status);
+
+  if (job.status !== "completed" || !job.exam_paper_id) {
+    job = await waitGenerateJobDone(subject, job.id, onStatus);
+  }
+  if (!job.exam_paper_id) {
+    throw new Error("试卷生成完成但未返回试卷 ID");
+  }
+  return fetchExamDetail(subject, job.exam_paper_id);
+}
+
+async function waitGradeJobDone(subject: string, jobId: number): Promise<ExamGradeJob> {
+  for (let i = 0; i < 40; i += 1) {
+    const res = await apiClient<ApiResponse<ExamGradeJob>>({
+      method: "GET",
+      url: `/api/v1/subjects/${subject}/exam/grade-jobs/${jobId}`,
+    });
+    const job = res.data;
+    if (job.status === "completed") return job;
+    if (job.status === "failed") throw new Error(job.error_message ?? "判分失败");
+    await sleep(500);
+  }
+  throw new Error("判分超时，请稍后重试");
+}
+
+async function submitAndGradeExam(
+  subject: string,
+  examPaperId: number,
+  answers: Record<number, string>,
+): Promise<ExamPaperDetail> {
+  await apiClient<ApiResponse<ExamPaperDetail>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/exam/${examPaperId}/submit`,
     data: {
-      exam_id,
-      answers: Object.entries(answers).map(([question_key, answer]) => ({ question_key, answer })),
+      answers: Object.entries(answers).map(([exam_paper_item_id, answer]) => ({
+        exam_paper_item_id: Number(exam_paper_item_id),
+        answer,
+      })),
     },
   });
-  return res.data;
+
+  const gradeRes = await apiClient<ApiResponse<ExamGradeJob>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/exam/${examPaperId}/grade`,
+    params: { regrade: false },
+  });
+
+  let gradeJob = gradeRes.data;
+  if (gradeJob.status !== "completed") {
+    gradeJob = await waitGradeJobDone(subject, gradeJob.id);
+  }
+  if (gradeJob.status !== "completed") {
+    throw new Error("判分任务未完成");
+  }
+  return fetchExamDetail(subject, examPaperId);
 }
 
 async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
   const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/list`,
-    data: { page: 1, size: 20 },
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/exam/history`,
+    params: { page: 1, size: 50 },
   });
   return res.data.items;
+}
+
+async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
+  const res = await apiClient<ApiResponse<QuestionBankItem[]>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/exam/question-bank`,
+  });
+  return res.data;
+}
+
+async function deleteExamPaper(subject: string, examPaperId: number): Promise<DeleteExamResult> {
+  const res = await apiClient<ApiResponse<DeleteExamResult>>({
+    method: "DELETE",
+    url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+  });
+  return res.data;
 }
 
 export function ExamPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [activeExam, setActiveExam] = useState<ExamData | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<SubmitData | null>(null);
+
+  const [activeView, setActiveView] = useState<"papers" | "bank">("papers");
+  const [activePaper, setActivePaper] = useState<ExamPaperDetail | null>(null);
+  const [gradedPaper, setGradedPaper] = useState<ExamPaperDetail | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  const [examMode, setExamMode] = useState<ExamMode>("diagnostic");
+  const [userPrompt, setUserPrompt] = useState<string>("");
+  const [generateProgress, setGenerateProgress] = useState<number>(0);
+  const [generateStatusText, setGenerateStatusText] = useState<string>("");
+
+  const [openingExamId, setOpeningExamId] = useState<number | null>(null);
+  const [deletingExamId, setDeletingExamId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string>("");
+
+  const isReadOnlyPaper = useMemo(() => {
+    if (!activePaper) return false;
+    return activePaper.status === "submitted" || activePaper.status === "grading" || activePaper.status === "graded";
+  }, [activePaper]);
 
   const { data: history = [], isLoading: historyLoading } = useQuery({
     queryKey: ["exam-history", subjectId],
@@ -89,90 +307,275 @@ export function ExamPage() {
     enabled: !!subjectId,
   });
 
-  const generateMutation = useMutation({
-    mutationFn: () => makeExam(subjectId),
-    onSuccess: (data) => { setActiveExam(data); setAnswers({}); setResult(null); },
+  const {
+    data: questionBank = [],
+    isLoading: questionBankLoading,
+    refetch: refetchQuestionBank,
+  } = useQuery({
+    queryKey: ["exam-question-bank", subjectId],
+    queryFn: () => fetchQuestionBank(subjectId),
+    enabled: !!subjectId && activeView === "bank",
   });
 
-  const submitMutation = useMutation({
-    mutationFn: () => submitExam(subjectId, activeExam!.exam_id, answers),
-    onSuccess: (data) => {
-      setResult(data);
+  const generateMutation = useMutation({
+    mutationFn: () =>
+      generateExamPaper(
+        subjectId,
+        { examMode, userPrompt },
+        (status) => {
+          setGenerateStatusText(toGenerateStatusLabel(status));
+          if (status === "completed") setGenerateProgress(100);
+        },
+      ),
+    onMutate: () => {
+      setNotice("");
+      setGenerateProgress(8);
+      setGenerateStatusText("正在自动构题并组卷...");
+    },
+    onSuccess: (paper) => {
+      setGenerateProgress(100);
+      setGenerateStatusText("试卷生成完成");
       queryClient.invalidateQueries({ queryKey: ["exam-history", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["exam-question-bank", subjectId] });
+
+      if (!paper.items.length) {
+        setActivePaper(null);
+        setGradedPaper(null);
+        setAnswers({});
+        setNotice("试卷已生成但暂无题目，请稍后重试。");
+        return;
+      }
+
+      setActivePaper(paper);
+      setGradedPaper(null);
+      setAnswers({});
+    },
+    onError: (error) => {
+      setGenerateProgress(0);
+      setGenerateStatusText("");
+      setNotice(toMessage(error));
+    },
+    onSettled: () => {
+      setTimeout(() => {
+        setGenerateProgress(0);
+        setGenerateStatusText("");
+      }, 800);
     },
   });
 
-  if (activeExam && !result) {
+  useEffect(() => {
+    if (!generateMutation.isPending) return;
+    const timer = window.setInterval(() => {
+      setGenerateProgress((prev) => {
+        const base = prev <= 0 ? 8 : prev;
+        const delta = base < 60 ? 7 : 3;
+        return Math.min(92, base + delta);
+      });
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [generateMutation.isPending]);
+
+  const submitMutation = useMutation({
+    mutationFn: () => submitAndGradeExam(subjectId, activePaper!.id, answers),
+    onMutate: () => setNotice(""),
+    onSuccess: (paper) => {
+      setActivePaper(null);
+      setGradedPaper(paper);
+      queryClient.invalidateQueries({ queryKey: ["exam-history", subjectId] });
+    },
+    onError: (error) => setNotice(toMessage(error)),
+  });
+
+  const openExamMutation = useMutation({
+    mutationFn: (examPaperId: number) => fetchExamDetail(subjectId, examPaperId),
+    onMutate: (examPaperId) => {
+      setNotice("");
+      setOpeningExamId(examPaperId);
+    },
+    onSuccess: (paper) => {
+      if (!paper.items.length) {
+        setActivePaper(null);
+        setGradedPaper(null);
+        setAnswers({});
+        setNotice("该试卷当前没有题目，请重新生成新试卷。");
+        return;
+      }
+
+      if (paper.status === "graded") {
+        setActivePaper(null);
+        setGradedPaper(paper);
+        setAnswers({});
+        return;
+      }
+
+      const restored: Record<number, string> = {};
+      for (const item of paper.items) {
+        if (item.user_answer) restored[item.id] = item.user_answer;
+      }
+      setActivePaper(paper);
+      setGradedPaper(null);
+      setAnswers(restored);
+    },
+    onError: (error) => setNotice(toMessage(error)),
+    onSettled: () => setOpeningExamId(null),
+  });
+
+  const deleteExamMutation = useMutation({
+    mutationFn: (examPaperId: number) => deleteExamPaper(subjectId, examPaperId),
+    onMutate: (examPaperId) => {
+      setNotice("");
+      setDeletingExamId(examPaperId);
+    },
+    onSuccess: (res) => {
+      if (activePaper?.id === res.exam_paper_id) {
+        setActivePaper(null);
+        setAnswers({});
+      }
+      if (gradedPaper?.id === res.exam_paper_id) {
+        setGradedPaper(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["exam-history", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["exam-question-bank", subjectId] });
+      setNotice(`已删除试卷 #${res.exam_paper_id}`);
+    },
+    onError: (error) => setNotice(toMessage(error)),
+    onSettled: () => setDeletingExamId(null),
+  });
+
+  if (activePaper && !gradedPaper) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-slate-900">答题中</h1>
-          <Button variant="ghost" onClick={() => setActiveExam(null)}>退出</Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setActivePaper(null);
+              setAnswers({});
+            }}
+          >
+            返回试卷视图
+          </Button>
         </div>
+
+        {isReadOnlyPaper && (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-slate-600">该试卷已提交，当前为只读状态。</p>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="space-y-4">
-          {activeExam.questions.map((q, i) => (
-            <Card key={q.question_key}>
+          {activePaper.items.map((item, index) => (
+            <Card key={item.id}>
               <CardHeader>
-                <CardTitle className="text-base"><span className="mr-1">{i + 1}.</span><MarkdownViewer content={q.stem} /></CardTitle>
-                <CardDescription>{q.knowledge_point} · {q.difficulty}</CardDescription>
+                <CardTitle className="text-base">
+                  <span className="mr-1">{index + 1}.</span>
+                  <MarkdownViewer content={item.stem} />
+                </CardTitle>
+                <CardDescription>
+                  {toQuestionTypeLabel(item.question_type)} · {toDifficultyLabel(item.difficulty)}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {q.options ? (
+                {item.options ? (
                   <div className="space-y-2">
-                    {q.options.map((opt, j) => (
-                      <label key={j} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                    {item.options.map((option, optionIndex) => (
+                      <label
+                        key={optionIndex}
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm hover:bg-slate-50"
+                      >
                         <input
                           type="radio"
-                          name={q.question_key}
-                          value={opt}
-                          checked={answers[q.question_key] === opt}
-                          onChange={() => setAnswers({ ...answers, [q.question_key]: opt })}
+                          name={`item-${item.id}`}
+                          value={option}
+                          checked={answers[item.id] === option}
+                          disabled={isReadOnlyPaper}
+                          onChange={() => setAnswers((prev) => ({ ...prev, [item.id]: option }))}
                         />
-                        <span className="text-sm text-slate-700"><MarkdownViewer content={opt} /></span>
+                        <span className="text-slate-700">
+                          <MarkdownViewer content={option} />
+                        </span>
                       </label>
                     ))}
                   </div>
                 ) : (
                   <textarea
-                    className="w-full p-3 border border-slate-200 rounded-lg text-sm resize-none focus:outline-none focus:border-slate-400"
-                    rows={3}
+                    className="w-full resize-none rounded-lg border border-slate-200 p-3 text-sm focus:outline-none focus:border-slate-400"
+                    rows={4}
                     placeholder="请输入答案..."
-                    value={answers[q.question_key] ?? ""}
-                    onChange={(e) => setAnswers({ ...answers, [q.question_key]: e.target.value })}
+                    value={answers[item.id] ?? ""}
+                    disabled={isReadOnlyPaper}
+                    onChange={(e) => setAnswers((prev) => ({ ...prev, [item.id]: e.target.value }))}
                   />
                 )}
               </CardContent>
             </Card>
           ))}
         </div>
-        <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
-          {submitMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />提交中...</> : "提交答卷"}
-        </Button>
+
+        {!isReadOnlyPaper && (
+          <Button
+            className="w-full"
+            disabled={submitMutation.isPending}
+            onClick={() => submitMutation.mutate()}
+          >
+            {submitMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                提交并判分中...
+              </>
+            ) : (
+              "提交并判分"
+            )}
+          </Button>
+        )}
       </div>
     );
   }
 
-  if (result) {
+  if (gradedPaper) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-slate-900">答题结果</h1>
-          <Button onClick={() => { setActiveExam(null); setResult(null); }}>返回</Button>
+          <Button
+            onClick={() => {
+              setGradedPaper(null);
+              setAnswers({});
+            }}
+          >
+            返回试卷视图
+          </Button>
         </div>
+
         <Card>
           <CardHeader>
-            <CardTitle>得分：{result.score} 分</CardTitle>
+            <CardTitle>
+              得分：{gradedPaper.score_obtained ?? 0} / {gradedPaper.total_score ?? gradedPaper.total_items}
+            </CardTitle>
+            <CardDescription>试卷 #{gradedPaper.id} · {toModeLabel(gradedPaper.exam_mode)}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {result.results.map((r) => (
-              <div key={r.question_key} className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg">
-                {r.is_correct
-                  ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  : <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />}
-                <div>
-                  <div className="text-sm font-medium text-slate-800">正确答案：<MarkdownViewer content={r.correct_answer} /></div>
-                  <div className="text-xs text-slate-500 mt-1"><MarkdownViewer content={r.explanation} /></div>
-                  {r.analysis && <div className="text-xs text-orange-500 mt-1">错因：<MarkdownViewer content={r.analysis} /></div>}
+            {gradedPaper.items.map((item) => (
+              <div key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                {item.is_correct ? (
+                  <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
+                ) : (
+                  <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+                )}
+                <div className="space-y-1 text-sm text-slate-700">
+                  <div className="font-medium text-slate-900">
+                    第 {item.item_order} 题 · {toQuestionTypeLabel(item.question_type)}
+                  </div>
+                  <div>你的答案：<MarkdownViewer content={item.user_answer ?? "（未作答）"} /></div>
+                  <div className="text-xs text-slate-500">
+                    解析：<MarkdownViewer content={item.explanation} />
+                  </div>
+                  {item.error_cause_label && (
+                    <div className="text-xs text-orange-500">错因：{item.error_cause_label}</div>
+                  )}
                 </div>
               </div>
             ))}
@@ -185,51 +588,246 @@ export function ExamPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">考题预测</h1>
-        <p className="text-slate-500 mt-2">基于学习内容生成的模拟试题</p>
+        <h1 className="text-3xl font-bold text-slate-900">考试中心</h1>
+        <p className="mt-2 text-slate-500">自动构题、组卷、答题、判分</p>
       </div>
 
-      <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="w-full sm:w-auto">
-        {generateMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />生成中...</> : "生成新试卷"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant={activeView === "papers" ? "default" : "outline"}
+          onClick={() => setActiveView("papers")}
+        >
+          试卷视图
+        </Button>
+        <Button
+          variant={activeView === "bank" ? "default" : "outline"}
+          onClick={() => {
+            setActiveView("bank");
+            void refetchQuestionBank();
+          }}
+        >
+          题库视图
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>历史记录</CardTitle>
-          <CardDescription>查看您的练习历史</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {historyLoading && (
-            <div className="flex items-center justify-center py-8 text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
-            </div>
-          )}
-          {!historyLoading && history.length === 0 && (
-            <p className="text-center py-8 text-slate-400 text-sm">暂无考试记录</p>
-          )}
-          <div className="space-y-3">
-            {history.map((item) => (
-              <div key={item.exam_id} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <FileQuestion className="w-5 h-5 text-slate-400" />
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">考卷 #{item.exam_id}</p>
-                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3" />
-                      {new Date(item.created_at).toLocaleDateString("zh-CN")}
-                    </p>
+      {activeView === "papers" && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>生成新试卷</CardTitle>
+              <CardDescription>只需选择考试模式和你的偏好，系统会自动构题并组卷。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <label className="block text-sm text-slate-700">
+                考试模式
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  value={examMode}
+                  disabled={generateMutation.isPending}
+                  onChange={(e) => setExamMode(e.target.value as ExamMode)}
+                >
+                  {EXAM_MODE_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-700">
+                用户提示（可选）
+                <textarea
+                  rows={3}
+                  className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-slate-400"
+                  placeholder="例如：这次多一点简答题，偏重函数与导数，整体难度中等。"
+                  value={userPrompt}
+                  disabled={generateMutation.isPending}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                />
+              </label>
+
+              <Button
+                className="w-full sm:w-auto"
+                disabled={generateMutation.isPending}
+                onClick={() => generateMutation.mutate()}
+              >
+                {generateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  "生成新试卷"
+                )}
+              </Button>
+
+              {(generateMutation.isPending || generateProgress > 0) && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{generateStatusText || "正在生成试卷..."}</span>
+                    <span>{Math.round(generateProgress)}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-100">
+                    <div
+                      className="h-2 rounded-full bg-slate-900 transition-all duration-300"
+                      style={{ width: `${Math.min(Math.max(generateProgress, 0), 100)}%` }}
+                    />
                   </div>
                 </div>
-                <div className="text-right">
-                  {item.score != null
-                    ? <p className="text-lg font-bold text-slate-900">{item.score} 分</p>
-                    : <p className="text-sm text-slate-400">未提交</p>}
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>已生成试卷</CardTitle>
+              <CardDescription>可以多次打开试卷继续答题或查看结果。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {historyLoading && (
+                <div className="flex items-center justify-center py-8 text-slate-400">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  加载中...
                 </div>
+              )}
+
+              {!historyLoading && history.length === 0 && (
+                <p className="py-8 text-center text-sm text-slate-400">暂无试卷记录</p>
+              )}
+
+              <div className="space-y-3">
+                {history.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-center gap-3">
+                      <FileQuestion className="h-5 w-5 text-slate-400" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">试卷 #{item.id}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {toModeLabel(item.exam_mode)} · 共 {item.total_items} 题
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                          <Clock className="h-3 w-3" />
+                          {new Date(item.created_at).toLocaleString("zh-CN")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-[80px] text-right">
+                        {item.score_obtained != null && item.total_score != null ? (
+                          <p className="text-lg font-bold text-slate-900">
+                            {item.score_obtained}/{item.total_score}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-500">{item.status}</p>
+                        )}
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={openExamMutation.isPending || deleteExamMutation.isPending}
+                        onClick={() => openExamMutation.mutate(item.id)}
+                      >
+                        {openingExamId === item.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            打开中...
+                          </>
+                        ) : (
+                          toHistoryActionLabel(item.status)
+                        )}
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={openExamMutation.isPending || deleteExamMutation.isPending}
+                        onClick={() => {
+                          if (!window.confirm(`确认删除试卷 #${item.id} 吗？`)) return;
+                          deleteExamMutation.mutate(item.id);
+                        }}
+                      >
+                        {deletingExamId === item.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            删除中...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            删除
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {activeView === "bank" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>题库视图</CardTitle>
+            <CardDescription>这里展示已经在试卷中出现过的所有题目。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => void refetchQuestionBank()}>
+                刷新
+              </Button>
+            </div>
+
+            {questionBankLoading && (
+              <div className="flex items-center justify-center py-8 text-slate-400">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                加载中...
+              </div>
+            )}
+
+            {!questionBankLoading && questionBank.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-400">暂无已出题目，先在试卷视图生成一套试卷吧。</p>
+            )}
+
+            <div className="space-y-3">
+              {questionBank.map((item) => (
+                <div key={item.question_template_id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>模板 #{item.question_template_id}</span>
+                    <span>·</span>
+                    <span>{toQuestionTypeLabel(item.question_type)}</span>
+                    <span>·</span>
+                    <span>{toDifficultyLabel(item.difficulty)}</span>
+                    <span>·</span>
+                    <span>Unit {item.teaching_unit_id}</span>
+                    <span>·</span>
+                    <span>出现 {item.times_asked} 次</span>
+                    <span>·</span>
+                    <span>最近试卷 #{item.last_exam_paper_id}</span>
+                    <span>·</span>
+                    <span>{new Date(item.last_asked_at).toLocaleString("zh-CN")}</span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-800">
+                    <MarkdownViewer content={item.stem} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!!notice && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-amber-700">{notice}</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

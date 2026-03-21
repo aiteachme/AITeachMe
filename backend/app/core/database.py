@@ -228,6 +228,9 @@ def _table_exists(conn, table_name: str) -> bool:
 def _validate_runtime_schema(engine) -> None:
     """开发阶段直接校验 schema，不再兼容旧库自动迁移。"""
 
+    database_url_path = getattr(engine.url, "database", "") or ""
+    resolved_db_path = str(Path(database_url_path).resolve()) if database_url_path else "aiteachme.db"
+
     with engine.connect() as conn:
         for table_name, required_columns in _SCHEMA_REQUIREMENTS.items():
             if not _table_exists(conn, table_name):
@@ -245,7 +248,7 @@ def _validate_runtime_schema(engine) -> None:
             raise RuntimeError(
                 "当前开发数据库 schema 已过期。"
                 f"表 `{table_name}` 缺少字段: {', '.join(missing_columns)}。"
-                "请删除 `backend/data/aiteachme.db` 或对应 data 目录下数据库后重启服务。"
+                f"请备份后删除 `{resolved_db_path}` 并重启服务。"
             )
 
 
