@@ -43,6 +43,7 @@ from app.models.enums import (
     TaskStatus,
     TemplateNodeRole,
     WeaknessReason,
+    validate_status_transition,
 )
 from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.models.knowledge import (
@@ -120,4 +121,5 @@ __all__ = [
     "UserKnowledgeState",
     "UserProfile",
     "WeaknessReason",
+    "validate_status_transition",
 ]

@@ -326,6 +326,19 @@ class AsyncJobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    FAILED = "failed"
+
+
+def validate_status_transition(
+    current: ExamPaperStatus,
+    target: ExamPaperStatus,
+) -> bool:
+    """校验 ExamPaper 状态机迁移是否合法。"""
+
+    allowed_targets = EXAM_PAPER_STATUS_TRANSITIONS.get(current, [])
+    if target not in allowed_targets:
+        raise ValueError(f"illegal exam paper status transition: {current.value} -> {target.value}")
+    return True
 
 
 class IngestStatus(str, Enum):

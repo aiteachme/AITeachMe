@@ -322,6 +322,7 @@ class ExamGradeJob(SQLModel, table=True):
     score: float | None = Field(default=None, ge=0.0, le=100.0)
     states_updated: int = Field(default=0, ge=0)
     tasks_created: int = Field(default=0, ge=0)
+    mastery_consumed: bool = Field(default=False)
     error_message: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
