@@ -37,6 +37,7 @@ from app.models.knowledge_graph import (
     KnowledgeRevision,
     SubjectBuildLock,
 )
+from app.utils.time import utcnow
 
 logger = structlog.get_logger()
 
@@ -65,7 +66,7 @@ def update_job_progress(
         return
     job.progress = progress
     job.current_step = current_step
-    job.updated_at = datetime.utcnow()
+    job.updated_at = utcnow()
     session.add(job)
     session.commit()
 
@@ -171,7 +172,7 @@ def cleanup_orphan_pending_by_subject(
     2. 无对应 processing 状态的 job
     3. 不在当前锁持有期内
     """
-    cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
+    cutoff = utcnow() - timedelta(hours=ttl_hours)
 
     # 收集当前 processing 状态的 job ids
     processing_graph_ids = {
@@ -378,7 +379,7 @@ def _activate_entities(session: Session, model: type, job_id: int) -> int:
     for row in rows:
         row.status = "active"
         if hasattr(row, "updated_at"):
-            row.updated_at = datetime.utcnow()
+            row.updated_at = utcnow()
         session.add(row)
     return len(rows)
 

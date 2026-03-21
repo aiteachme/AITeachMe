@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 import sqlalchemy as sa
 from sqlmodel import Session, func, select
@@ -13,6 +12,7 @@ from app.models import (
     Document,
     DocumentChunk,
 )
+from app.utils.time import utcnow
 
 
 def bulk_create_documents(session: Session, documents: list[Document]) -> list[Document]:
@@ -43,7 +43,7 @@ def update_document_content(
     if document is None:
         return None
     document.markdown_content = markdown_content
-    document.updated_at = datetime.utcnow()
+    document.updated_at = utcnow()
     session.add(document)
     session.commit()
     session.refresh(document)
@@ -61,7 +61,7 @@ def update_document_step(
     if document is None:
         return None
     document.current_step = current_step
-    document.updated_at = datetime.utcnow()
+    document.updated_at = utcnow()
     session.add(document)
     session.commit()
     session.refresh(document)

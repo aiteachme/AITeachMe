@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
+from app.utils.time import utcnow
+
 
 # ── 课程派生任务（需先于其他表定义，因为多表 FK 引用它） ──
 
@@ -26,8 +28,8 @@ class CurriculumDeriveJob(SQLModel, table=True):
     theme_tree_version_id: int | None = Field(default=None)
     prereq_dag_version_id: int | None = Field(default=None)
     error_message: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 # ── 教学单元 ──
@@ -55,8 +57,8 @@ class TeachingUnit(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class TeachingUnitRevision(SQLModel, table=True):
@@ -78,7 +80,7 @@ class TeachingUnitRevision(SQLModel, table=True):
         default=None, foreign_key="curriculum_derive_job.id",
     )
     is_current: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class TeachingUnitMembership(SQLModel, table=True):
@@ -100,7 +102,7 @@ class TeachingUnitMembership(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 # ── 分类锚点 ──
@@ -123,8 +125,8 @@ class TaxonomyAnchor(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     is_system: bool = Field(default=False)
     status: str = Field(default="active")  # AnchorStatus
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 # ── 主题树 ──
@@ -151,7 +153,7 @@ class ThemeTreeVersion(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class ThemeTreeNode(SQLModel, table=True):
@@ -174,7 +176,7 @@ class ThemeTreeNode(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class UnitTreeMembership(SQLModel, table=True):
@@ -198,7 +200,7 @@ class UnitTreeMembership(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 # ── 先修 DAG ──
@@ -225,7 +227,7 @@ class PrereqDagVersion(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class UnitDependency(SQLModel, table=True):
@@ -250,7 +252,7 @@ class UnitDependency(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 # ── 课程快照 ──
@@ -282,4 +284,4 @@ class CurriculumSnapshot(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="curriculum_derive_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)

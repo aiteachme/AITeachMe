@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
+from app.utils.time import utcnow
+
 
 class KnowledgeNode(SQLModel, table=True):
     """知识节点：身份 + 路由 + 状态，不存内容（内容由 KnowledgeRevision 承载）。"""
@@ -33,8 +35,8 @@ class KnowledgeNode(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="graph_digest_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class KnowledgeAlias(SQLModel, table=True):
@@ -60,7 +62,7 @@ class KnowledgeAlias(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="graph_digest_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class KnowledgeEdge(SQLModel, table=True):
@@ -87,8 +89,8 @@ class KnowledgeEdge(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="graph_digest_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class KnowledgeRevision(SQLModel, table=True):
@@ -111,7 +113,7 @@ class KnowledgeRevision(SQLModel, table=True):
         default=None, foreign_key="graph_digest_job.id",
     )
     is_current: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class EdgeRevision(SQLModel, table=True):
@@ -134,7 +136,7 @@ class EdgeRevision(SQLModel, table=True):
         default=None, foreign_key="graph_digest_job.id",
     )
     is_current: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class EvidenceLink(SQLModel, table=True):
@@ -164,7 +166,7 @@ class EvidenceLink(SQLModel, table=True):
     created_by_job_id: int | None = Field(
         default=None, foreign_key="graph_digest_job.id", index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class GraphDigestJob(SQLModel, table=True):
@@ -194,8 +196,8 @@ class GraphDigestJob(SQLModel, table=True):
         default=None, foreign_key="graph_digest_job.id",
     )
     error_message: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class SubjectBuildLock(SQLModel, table=True):
@@ -206,5 +208,5 @@ class SubjectBuildLock(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(unique=True)
     job_id: int | None = Field(default=None)
-    locked_at: datetime = Field(default_factory=datetime.utcnow)
+    locked_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime | None = Field(default=None)

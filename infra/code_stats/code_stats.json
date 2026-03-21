@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-17T12:51:10.583458",
-  "total_commits_analyzed": 92,
+  "generated_at": "2026-03-18T16:58:25.164073",
+  "total_commits_analyzed": 103,
   "stats": [
     {
       "date": "2026-03-11",
@@ -737,6 +737,94 @@
       "code_lines": 11038,
       "other_lines": 4227,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-16",
+      "commit": "e33e8b2",
+      "total_lines": 15661,
+      "code_lines": 11370,
+      "other_lines": 4291,
+      "message": "docs(backend): 补充 agents 模块文档并增强 SummaryPage 页面"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "b41db39",
+      "total_lines": 19417,
+      "code_lines": 13367,
+      "other_lines": 6050,
+      "message": "docs(backend): 计划新feat"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "a85b797",
+      "total_lines": 15265,
+      "code_lines": 11038,
+      "other_lines": 4227,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-17",
+      "commit": "6662f36",
+      "total_lines": 19643,
+      "code_lines": 13543,
+      "other_lines": 6100,
+      "message": "docs(backend): 完善知识图谱摘要设计文档和任务清单"
+    },
+    {
+      "date": "2026-03-18",
+      "commit": "fae7b26",
+      "total_lines": 30995,
+      "code_lines": 22529,
+      "other_lines": 8466,
+      "message": "feat(backend,frontend): 实现知识图谱摘要生成流程与课程结构体系"
+    },
+    {
+      "date": "2026-03-18",
+      "commit": "2799698",
+      "total_lines": 28985,
+      "code_lines": 20915,
+      "other_lines": 8070,
+      "message": "refactor(backend、frontend)：移除大纲提取逻辑并整合知识相关 API"
+    },
+    {
+      "date": "2026-03-18",
+      "commit": "476370d",
+      "total_lines": 28999,
+      "code_lines": 20924,
+      "other_lines": 8075,
+      "message": "feat(后端、前端)：增强知识图谱提取规则并优化进度展示"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "1aff633",
+      "total_lines": 28501,
+      "code_lines": 20483,
+      "other_lines": 8018,
+      "message": "refactor(backend,frontend): 重组知识图谱文档并增强 UI 组件"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "a5a952b",
+      "total_lines": 15661,
+      "code_lines": 11370,
+      "other_lines": 4291,
+      "message": "Merge branch 'main' into develop"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "c89b094",
+      "total_lines": 15660,
+      "code_lines": 11370,
+      "other_lines": 4290,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "5bcc01e",
+      "total_lines": 28500,
+      "code_lines": 20483,
+      "other_lines": 8017,
+      "message": "Merge branch 'develop' into feat/digest"
     }
   ]
 }

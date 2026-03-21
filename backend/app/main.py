@@ -73,11 +73,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     from app.api.auth import router as auth_router
-    from app.api.chat import router as chat_router
-    from app.api.exam import router as exam_router
+    from app.api.chats import router as chats_router
+    from app.api.exams import router as exams_router
     from app.api.files import router as files_router
-    from app.api.graph import router as graph_router
     from app.api.health import router as health_router
+    from app.api.knowledge import router as knowledge_router
     from app.api.profile import router as profile_router
     from app.api.subjects import router as subjects_router
     from app.api.system import router as system_router
@@ -87,9 +87,9 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(auth_router)
     app.include_router(subjects_router)
     app.include_router(files_router)
-    app.include_router(graph_router)
-    app.include_router(chat_router)
-    app.include_router(exam_router)
+    app.include_router(knowledge_router)
+    app.include_router(chats_router)
+    app.include_router(exams_router)
     app.include_router(profile_router)
 
 

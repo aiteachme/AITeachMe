@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlmodel import Session, func, select
 
 from app.models import UserProfile
+from app.utils.time import utcnow
 
 
 def upsert_profile(
@@ -36,13 +35,13 @@ def upsert_profile(
             mastery=mastery,
             attempts=attempts,
             correct=correct,
-            updated_at=datetime.utcnow(),
+            updated_at=utcnow(),
         )
     else:
         profile.mastery = mastery
         profile.attempts = attempts
         profile.correct = correct
-        profile.updated_at = datetime.utcnow()
+        profile.updated_at = utcnow()
 
     session.add(profile)
     session.commit()

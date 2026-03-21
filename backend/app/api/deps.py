@@ -8,7 +8,7 @@ from typing import Generator
 from sqlmodel import Session
 
 from app.core.config import get_settings
-from app.core.database import get_session
+from app.core.database import managed_session
 from app.utils.subject import validate_subject as _validate_subject
 
 
@@ -37,10 +37,7 @@ def get_current_user_context() -> CurrentUserContext:
 
 
 def get_db() -> Generator[Session, None, None]:
-    """为每个请求提供一个数据库会话。"""
+    """为每个请求提供一个数据库会话（自动 commit/rollback/close）。"""
 
-    session = get_session()
-    try:
+    with managed_session() as session:
         yield session
-    finally:
-        session.close()

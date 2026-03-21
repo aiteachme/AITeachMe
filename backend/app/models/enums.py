@@ -326,4 +326,15 @@ class AsyncJobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+
+
+class IngestStatus(str, Enum):
+    """Ingest 流水线状态。"""
+
+    PENDING = "pending"
+    CLASSIFYING = "classifying"
+    PARSING = "parsing"
+    VALIDATING = "validating"
+    READY_FOR_DIGEST = "ready_for_digest"
+    RETRY_PENDING = "retry_pending"
     FAILED = "failed"

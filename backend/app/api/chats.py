@@ -8,12 +8,12 @@ from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.schemas.chat import ChatClearData, ChatClearRequest, ChatListRequest, ChatMessageItem, ChatSendRequest
+from app.schemas.chats import ChatClearData, ChatClearRequest, ChatListRequest, ChatMessageItem, ChatSendRequest
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.services.chat_service import chat_stream, clear_chat_history, list_chat_history
+from app.services.chats_service import chat_stream, clear_chat_history, list_chat_history
 from app.services.subject_service import get_subject_record
 
-router = APIRouter(prefix="/api/v1/subjects/{subject}/chat", tags=["chat"])
+router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
 
 
 @router.post(

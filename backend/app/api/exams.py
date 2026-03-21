@@ -8,7 +8,7 @@ from sqlmodel import Session
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.schemas.exam import (
+from app.schemas.exams import (
     ExamData,
     ExamDeleteData,
     ExamDeleteRequest,
@@ -18,10 +18,10 @@ from app.schemas.exam import (
     ExamSubmitRequest,
     SubmitData,
 )
-from app.services.exam_service import create_exam, delete_exam, list_exams, submit_exam
+from app.services.exams_service import create_exam, delete_exam, list_exams, submit_exam
 from app.services.subject_service import get_subject_record
 
-router = APIRouter(prefix="/api/v1/subjects/{subject}/exam", tags=["exam"])
+router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 
 
 @router.post(
