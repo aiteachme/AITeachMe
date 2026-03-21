@@ -1,32 +1,44 @@
-"""DocGen 工作流状态定义。"""
+"""DocGen 工作流状态定义（Fan-Out 版本）。"""
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+import operator
+from typing import Annotated, Any, TypedDict
 
 
 class DocGenState(TypedDict, total=False):
-    """DocGen 知识文档生成流水线状态。"""
+    """DocGen 知识文档生成流水线状态。
 
+    带 ``Annotated[..., operator.add]`` 的字段支持 LangGraph
+    Fan-Out → Fan-In 自动聚合。
+    """
+
+    # ── 基础 ──
     subject: str
     job_id: int
     file_ids: list[int]
 
-    # ── 阶段一产出：数据清洗 ──
-    clean_chunks: list[dict[str, Any]]
+    # ── load_files 产出 ──
+    raw_chunks: list[dict[str, Any]]
     # 每项 = {"file_id": int, "content": str, "source_filename": str}
 
-    # ── 阶段二产出：全局目录树 ──
+    # ── cleanse 产出 ──
+    clean_chunks: list[dict[str, Any]]
+
+    # ── outline_map 产出 ──
+    local_outlines: list[dict[str, Any]]
+    # 每项 = {"chunk_index": int, "source_filename": str, "titles": [str]}
+
+    # ── outline_reduce 产出 ──
     outline_tree: dict[str, Any]
-    # JSON 目录树，格式见 GLOBAL_OUTLINE_PROMPT
     chapter_assignments: list[dict[str, Any]]
-    # 每项 = {"chapter_index": int, "title": str, "sections": [...], "source_contents": [str]}
 
-    # ── 阶段三产出：多智能体撰写 ──
-    chapter_drafts: list[dict[str, Any]]
-    # 每项 = {"chapter_index": int, "title": str, "markdown": str}
+    # ── Fan-Out 汇聚字段（operator.add → 自动合并列表）──
+    chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
+    chapter_reviews: Annotated[list[dict[str, Any]], operator.add]
+    chapter_metadatas: Annotated[list[dict[str, Any]], operator.add]
 
-    # ── 阶段四产出：元数据注入与落库 ──
+    # ── finalize_assemble 产出 ──
     doc_ids: list[int]
     merged_markdown: str
     merged_path: str
