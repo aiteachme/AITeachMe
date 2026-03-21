@@ -1,8 +1,7 @@
-"""Ingest Engine 提示词定义。"""
+"""Prompt templates used by ingest workflows."""
 
 SYSTEM_PROMPT_IMAGE_PARSE = """
 请把这张图片转换成结构清晰的 Markdown。
-
 要求：
 1. 如果有文字，请尽量完整提取。
 2. 如果有图表，请描述图表结构、关键字段和结论。

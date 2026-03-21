@@ -9,11 +9,6 @@ import uuid
 import structlog
 from sqlmodel import Session, select
 
-from app.agents.digest.curriculum_workflow import (
-    CurriculumDeriveState,
-    build_curriculum_derive_graph,
-)
-from app.agents.digest.kg_workflow import KGDigestState, build_kg_digest_graph
 from app.core.database import managed_session
 from app.core.exceptions import (
     DigestJobNotFoundError,
@@ -28,6 +23,7 @@ from app.schemas.knowledge import (
     DigestStatusResponse,
     GraphDigestJobResponse,
 )
+from app.workflows.digest import run_curriculum_derive_workflow, run_graph_digest_workflow
 
 logger = structlog.get_logger()
 
@@ -132,32 +128,18 @@ async def run_graph_digest_background(*, subject: str, job_id: int) -> None:
                 job_status=job.status,
                 progress=job.progress,
             )
-
-            # 构建初始状态
-            initial_state: KGDigestState = {
-                "subject": subject,
-                "file_ids": file_ids,
-                "job_id": job_id,
-                "chunk_ids": [],
-                "candidates": [],
-                "all_candidate_edges": [],
-                "clustered_candidates": [],
-                "candidate_name_to_cluster_id": {},
-                "candidate_name_to_resolved_node_id": {},
-                "cluster_id_to_resolved_node_id": {},
-                "new_node_ids": [],
-                "updated_node_ids": [],
-                "merged_node_ids": [],
-                "new_edge_ids": [],
-                "updated_edge_ids": [],
-                "impact_set": None,
-                "lock_acquired": False,
-                "error": None,
-            }
-
-            graph = build_kg_digest_graph()
-            compiled = graph.compile()
-            await compiled.ainvoke(initial_state)
+            result = await run_graph_digest_workflow(
+                subject=subject,
+                job_id=job_id,
+                file_ids=file_ids,
+            )
+            if result.failed:
+                kg_repo.update_digest_job(
+                    session,
+                    job_id,
+                    status="failed",
+                    error_message=result.error.detail[-500:],
+                )
             final_job = session.get(GraphDigestJob, job_id)
             digest_logger.info(
                 "graph_digest_background_completed",
@@ -200,23 +182,18 @@ async def run_curriculum_derive_background(
             if graph_job is None:
                 logger.error("graph_job_not_found_for_curriculum", graph_job_id=graph_job_id)
                 return
-
-            graph = build_curriculum_derive_graph()
-            compiled = graph.compile()
-
-            initial_state: CurriculumDeriveState = {
-                "subject": subject,
-                "graph_job_id": graph_job_id,
-                "curriculum_job_id": curriculum_job_id,
-                "impact_set": None,
-                "derived_unit_ids": [],
-                "theme_tree_version_id": None,
-                "prereq_dag_version_id": None,
-                "snapshot_id": None,
-                "error": None,
-            }
-
-            await compiled.ainvoke(initial_state)
+            result = await run_curriculum_derive_workflow(
+                subject=subject,
+                graph_job_id=graph_job_id,
+                curriculum_job_id=curriculum_job_id,
+            )
+            if result.failed:
+                curriculum_repo.update_curriculum_job(
+                    session,
+                    curriculum_job_id,
+                    status="failed",
+                    error_message=result.error.detail[-500:],
+                )
 
         except Exception:
             logger.exception(
