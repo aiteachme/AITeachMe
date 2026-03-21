@@ -1,4 +1,4 @@
-"""State types for the profile workflow."""
+"""State types for the profile workflow package."""
 
 from __future__ import annotations
 
@@ -6,5 +6,7 @@ from typing import TypedDict
 
 
 class ProfileWorkflowState(TypedDict, total=False):
-    aggregated: bool
-    reported: bool
+    mastery_updated: bool
+    review_scheduled: bool
+    weaknesses_ranked: bool
+    report_generated: bool

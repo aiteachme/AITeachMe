@@ -90,6 +90,33 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
     },
 }
 
+_ASSESSMENT_TABLES: set[str] = {
+    "question_template",
+    "question_template_node_link",
+    "exam_paper",
+    "exam_paper_item",
+    "user_answer_attempt",
+    "user_knowledge_state",
+    "review_task",
+    "exam_paper_generation_context",
+    "question_build_job",
+    "exam_generate_job",
+    "exam_grade_job",
+}
+
+_ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS: tuple[str, ...] = (
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_review_task_pending "
+        "ON review_task (user_id, subject, target_id, target_granularity) "
+        "WHERE status = 'pending'"
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_grade_job_active "
+        "ON exam_grade_job (exam_paper_id) "
+        "WHERE status IN ('pending', 'running')"
+    ),
+)
+
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
     global _vec_ready, _vec_error
@@ -201,6 +228,9 @@ def _table_exists(conn, table_name: str) -> bool:
 def _validate_runtime_schema(engine) -> None:
     """开发阶段直接校验 schema，不再兼容旧库自动迁移。"""
 
+    database_url_path = getattr(engine.url, "database", "") or ""
+    resolved_db_path = str(Path(database_url_path).resolve()) if database_url_path else "aiteachme.db"
+
     with engine.connect() as conn:
         for table_name, required_columns in _SCHEMA_REQUIREMENTS.items():
             if not _table_exists(conn, table_name):
@@ -218,8 +248,34 @@ def _validate_runtime_schema(engine) -> None:
             raise RuntimeError(
                 "当前开发数据库 schema 已过期。"
                 f"表 `{table_name}` 缺少字段: {', '.join(missing_columns)}。"
-                "请删除 `backend/data/aiteachme.db` 或对应 data 目录下数据库后重启服务。"
+                f"请备份后删除 `{resolved_db_path}` 并重启服务。"
             )
+
+
+def _ensure_assessment_schema_integrity(engine) -> None:
+    """确保 assessment 表与部分唯一索引已建立。"""
+
+    with engine.begin() as conn:
+        for ddl in _ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS:
+            conn.execute(sa.text(ddl))
+
+        missing_tables = sorted(
+            table_name
+            for table_name in _ASSESSMENT_TABLES
+            if not _table_exists(conn, table_name)
+        )
+        if missing_tables:
+            raise RuntimeError(
+                "assessment 模块表结构缺失："
+                f"{', '.join(missing_tables)}。"
+                "请检查模型导入与数据库初始化流程。"
+            )
+
+        logger.info(
+            "assessment_schema_ready",
+            table_count=len(_ASSESSMENT_TABLES),
+            ensured_indexes=["uq_review_task_pending", "uq_grade_job_active"],
+        )
 
 
 def init_db() -> None:
@@ -232,6 +288,7 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     _validate_runtime_schema(engine)
+    _ensure_assessment_schema_integrity(engine)
 
     if is_vec_ready():
         with engine.connect() as conn:

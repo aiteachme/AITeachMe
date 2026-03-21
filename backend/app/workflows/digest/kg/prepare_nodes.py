@@ -116,6 +116,13 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
         try:
             chunk_ids = state.get("chunk_ids", [])
             digest_logger.info("kg_extract_started", chunk_count=len(chunk_ids))
+            update_job_progress(
+                session,
+                job_id=state["job_id"],
+                job_type="graph",
+                progress=15,
+                current_step="extract",
+            )
             if not chunk_ids:
                 update_job_progress(
                     session,
@@ -146,6 +153,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 chunk = chunk_map.get(chunk_id)
                 if chunk is None:
                     failed_chunk_count += 1
+                    all_results.append(ChunkExtractionResult())
                     digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
                     continue
 
@@ -161,6 +169,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                         all_candidate_edges.append((edge, chunk_id))
                 except Exception as exc:
                     failed_chunk_count += 1
+                    all_results.append(ChunkExtractionResult())
                     digest_logger.warning(
                         "kg_extract_chunk_failed",
                         chunk_id=chunk_id,
@@ -168,7 +177,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                     )
                     continue
 
-                if (index + 1) % 10 == 0:
+                if (index + 1) % 5 == 0 or index == len(chunk_ids) - 1:
                     progress = 10 + int(30 * (index + 1) / len(chunk_ids))
                     update_job_progress(
                         session,

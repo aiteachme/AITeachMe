@@ -82,6 +82,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 
 def _register_routers(app: FastAPI) -> None:
+    from app.api.assessment import router as assessment_router
     from app.api.auth import router as auth_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
@@ -101,6 +102,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)
+    app.include_router(assessment_router)
 
 
 def create_app() -> FastAPI:

@@ -18,7 +18,7 @@ async def generate_report_suggestions(
     overall_mastery: float | None,
     weak_points: list[dict],
 ) -> list[str]:
-    """Generate study suggestions from profile summary data."""
+    """根据画像摘要生成学习建议。"""
 
     if not weak_points:
         return ["当前没有明显薄弱项，建议保持练习频率并定期回顾重点章节。"]
@@ -39,12 +39,8 @@ async def generate_report_suggestions(
                 {"role": USER, "content": prompt},
             ]
         )
-        suggestions = [
-            line.lstrip("0123456789.、").strip()
-            for line in result.splitlines()
-            if line.strip()
-        ]
-        return suggestions or ["建议优先针对薄弱知识点安排专项复习。"]
+        lines = [line.lstrip("0123456789.、 ").strip() for line in result.splitlines() if line.strip()]
+        return lines or ["建议优先针对薄弱知识点安排专项复习。"]
     except Exception:
         logger.warning("generate_report_suggestions_fallback", subject=subject)
         return ["建议优先针对薄弱知识点安排专项复习。"]
