@@ -1243,13 +1243,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/build": {
+    "/api/v1/subjects/{subject}/knowledge/digest/build": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "触发增量构建",
-        "operationId": "digest_build_api_v1_subjects__subject__digest_build_post",
+        "operationId": "digest_build_api_v1_subjects__subject__knowledge_digest_build_post",
         "parameters": [
           {
             "name": "subject",
@@ -1335,13 +1335,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/digest/status": {
+    "/api/v1/subjects/{subject}/knowledge/digest/status": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "查询增量构建聚合状态",
-        "operationId": "digest_status_api_v1_subjects__subject__digest_status_post",
+        "operationId": "digest_status_api_v1_subjects__subject__knowledge_digest_status_post",
         "parameters": [
           {
             "name": "subject",
@@ -1417,13 +1417,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/query": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/query": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "分页查询知识节点",
-        "operationId": "graph_nodes_query_api_v1_subjects__subject__graph_nodes_query_post",
+        "operationId": "graph_nodes_query_api_v1_subjects__subject__knowledge_graph_nodes_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1502,13 +1502,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/nodes/detail": {
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "知识节点详情",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__graph_nodes_detail_post",
+        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1584,13 +1584,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/full": {
+    "/api/v1/subjects/{subject}/knowledge/graph/full": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取完整知识图谱（节点+边）",
-        "operationId": "graph_full_api_v1_subjects__subject__graph_full_post",
+        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
         "parameters": [
           {
             "name": "subject",
@@ -1656,13 +1656,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/graph/evidence/context": {
+    "/api/v1/subjects/{subject}/knowledge/graph/evidence/context": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "获取证据原文上下文",
-        "operationId": "evidence_context_api_v1_subjects__subject__graph_evidence_context_post",
+        "operationId": "evidence_context_api_v1_subjects__subject__knowledge_graph_evidence_context_post",
         "parameters": [
           {
             "name": "subject",
@@ -1738,13 +1738,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/query": {
+    "/api/v1/subjects/{subject}/knowledge/units/query": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "分页查询教学单元",
-        "operationId": "units_query_api_v1_subjects__subject__units_query_post",
+        "operationId": "units_query_api_v1_subjects__subject__knowledge_units_query_post",
         "parameters": [
           {
             "name": "subject",
@@ -1823,13 +1823,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/units/detail": {
+    "/api/v1/subjects/{subject}/knowledge/units/detail": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "教学单元详情",
-        "operationId": "unit_detail_api_v1_subjects__subject__units_detail_post",
+        "operationId": "unit_detail_api_v1_subjects__subject__knowledge_units_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -1905,13 +1905,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/theme-tree/current": {
+    "/api/v1/subjects/{subject}/knowledge/theme-tree/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前主题树",
-        "operationId": "theme_tree_current_api_v1_subjects__subject__theme_tree_current_post",
+        "operationId": "theme_tree_current_api_v1_subjects__subject__knowledge_theme_tree_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -1977,13 +1977,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/taxonomy/anchors": {
+    "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "锚点管理",
-        "operationId": "taxonomy_anchors_api_v1_subjects__subject__taxonomy_anchors_post",
+        "operationId": "taxonomy_anchors_api_v1_subjects__subject__knowledge_taxonomy_anchors_post",
         "parameters": [
           {
             "name": "subject",
@@ -2059,13 +2059,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/prereq-dag/current": {
+    "/api/v1/subjects/{subject}/knowledge/prereq-dag/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前先修 DAG",
-        "operationId": "prereq_dag_current_api_v1_subjects__subject__prereq_dag_current_post",
+        "operationId": "prereq_dag_current_api_v1_subjects__subject__knowledge_prereq_dag_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2131,13 +2131,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/curriculum/current": {
+    "/api/v1/subjects/{subject}/knowledge/curriculum/current": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "当前课程快照",
-        "operationId": "curriculum_current_api_v1_subjects__subject__curriculum_current_post",
+        "operationId": "curriculum_current_api_v1_subjects__subject__knowledge_curriculum_current_post",
         "parameters": [
           {
             "name": "subject",
@@ -2206,7 +2206,7 @@
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
-          "graph"
+          "knowledge"
         ],
         "summary": "清空学科所有知识数据",
         "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
@@ -2275,14 +2275,14 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/send": {
+    "/api/v1/subjects/{subject}/chats/send": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "发送消息",
         "description": "保留原生 SSE 返回。",
-        "operationId": "send_chat_api_v1_subjects__subject__chat_send_post",
+        "operationId": "send_chat_api_v1_subjects__subject__chats_send_post",
         "parameters": [
           {
             "name": "subject",
@@ -2376,13 +2376,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/list": {
+    "/api/v1/subjects/{subject}/chats/list": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "聊天记录列表",
-        "operationId": "list_chat_api_api_v1_subjects__subject__chat_list_post",
+        "operationId": "list_chat_api_api_v1_subjects__subject__chats_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2461,13 +2461,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chat/clear": {
+    "/api/v1/subjects/{subject}/chats/clear": {
       "post": {
         "tags": [
-          "chat"
+          "chats"
         ],
         "summary": "清空聊天记录",
-        "operationId": "clear_chat_api_api_v1_subjects__subject__chat_clear_post",
+        "operationId": "clear_chat_api_api_v1_subjects__subject__chats_clear_post",
         "parameters": [
           {
             "name": "subject",
@@ -2543,13 +2543,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/make": {
+    "/api/v1/subjects/{subject}/exams/make": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "生成试卷",
-        "operationId": "make_exam_api_v1_subjects__subject__exam_make_post",
+        "operationId": "make_exam_api_v1_subjects__subject__exams_make_post",
         "parameters": [
           {
             "name": "subject",
@@ -2645,13 +2645,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/submit": {
+    "/api/v1/subjects/{subject}/exams/submit": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "提交试卷",
-        "operationId": "submit_exam_answers_api_v1_subjects__subject__exam_submit_post",
+        "operationId": "submit_exam_answers_api_v1_subjects__subject__exams_submit_post",
         "parameters": [
           {
             "name": "subject",
@@ -2747,13 +2747,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/list": {
+    "/api/v1/subjects/{subject}/exams/list": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "试卷历史",
-        "operationId": "list_exams_api_api_v1_subjects__subject__exam_list_post",
+        "operationId": "list_exams_api_api_v1_subjects__subject__exams_list_post",
         "parameters": [
           {
             "name": "subject",
@@ -2832,13 +2832,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exam/delete": {
+    "/api/v1/subjects/{subject}/exams/delete": {
       "post": {
         "tags": [
-          "exam"
+          "exams"
         ],
         "summary": "删除试卷",
-        "operationId": "delete_exam_api_api_v1_subjects__subject__exam_delete_post",
+        "operationId": "delete_exam_api_api_v1_subjects__subject__exams_delete_post",
         "parameters": [
           {
             "name": "subject",
