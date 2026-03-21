@@ -22,8 +22,20 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
-    del app
     init_db()
+    
+    # 自动导出 OpenAPI 接口文档到 frontend
+    try:
+        import sys
+        from pathlib import Path
+        script_dir = Path(__file__).parent.parent / "scripts"
+        sys.path.insert(0, str(script_dir))
+        import export_api_docs
+        export_api_docs.export_openapi_schema(app)
+        sys.path.pop(0)
+    except Exception as e:
+        logger.error("export_openapi_failed", error=str(e))
+        
     logger.info("app_started")
     yield
     logger.info("app_shutdown")
