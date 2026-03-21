@@ -10,7 +10,13 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.workflows.ingest.parsing.docx_archive import summarize_docx_archive
-from app.workflows.ingest.parsing.text import read_text_file
+from app.workflows.ingest.parsing.formats import (
+    categorize_text_extension,
+    is_image_extension,
+    is_text_extension,
+    normalize_extension,
+)
+from app.workflows.ingest.parsing.text import is_probably_text_file, read_text_file
 
 
 try:
@@ -40,10 +46,6 @@ _HEADING_LIKE_RE = re.compile(
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 _TABLE_LIKE_RE = re.compile(r"\|.*\|.*\||\+[-=]+\+", re.MULTILINE)
 _FORMULA_RE = re.compile(r"(?:\\frac|\\sum|\\int|\\sqrt|∑|∫|≤|≥)")
-_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"})
-_TEXT_EXTENSIONS = frozenset({".md", ".markdown", ".txt"})
-
-
 class ClassificationResult(BaseModel):
     """Classification output consumed by the ingest workflow."""
 
@@ -67,7 +69,7 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
     """Inspect a file quickly and choose a parser chain."""
 
     path = Path(file_path)
-    extension = filetype.lower() if filetype.startswith(".") else f".{filetype.lower()}"
+    extension = normalize_extension(filetype)
 
     if extension == ".pdf":
         return _classify_pdf(path)
@@ -75,14 +77,16 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
         return _classify_pptx(path)
     if extension == ".docx":
         return _classify_docx(path)
-    if extension in _TEXT_EXTENSIONS:
+    if is_text_extension(extension):
         return _classify_text_file(path, extension)
-    if extension in _IMAGE_EXTENSIONS:
+    if is_image_extension(extension):
         return ClassificationResult(
             file_category="image",
             estimated_pages=1,
             recommended_parser="llm_vision",
         )
+    if is_probably_text_file(path):
+        return _classify_text_file(path, extension)
     return ClassificationResult(
         file_category="unknown",
         recommended_parser="markitdown",
@@ -270,7 +274,7 @@ def _classify_text_file(path: Path, extension: str) -> ClassificationResult:
     line_count = len(non_empty_lines)
     heading_count = len(_HEADING_LIKE_RE.findall(text[:10000])) + len(_MARKDOWN_HEADING_RE.findall(text[:10000]))
     estimated_pages = max(line_count // 50, 1) if line_count else 0
-    file_category = "markdown" if extension in {".md", ".markdown"} else "text"
+    file_category = categorize_text_extension(extension)
     return ClassificationResult(
         file_category=file_category,
         text_density=round(len(stripped) / max(line_count, 1), 1) if stripped else 0.0,

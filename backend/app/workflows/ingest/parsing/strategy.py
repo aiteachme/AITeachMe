@@ -9,7 +9,17 @@ from pydantic import BaseModel, Field
 from app.core.config import get_settings
 from app.core.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.parsers import DEFAULT_PARSER_CHAIN, get_available_parsers
+from app.workflows.ingest.parsing.formats import (
+    categorize_text_extension,
+    is_image_extension,
+    is_text_extension,
+    normalize_extension,
+)
+from app.workflows.ingest.parsing.parsers import (
+    DEFAULT_PARSER_CHAIN,
+    get_available_parsers,
+    resolve_parser_extension,
+)
 from app.workflows.ingest.parsing.types import ParserRunOptions
 
 _LARGE_FILE_MB = 20
@@ -18,10 +28,6 @@ _MEDIUM_DOC_PAGES = 40
 _LARGE_SLIDE_COUNT = 80
 _LARGE_DOCX_PAGE_COUNT = 60
 _VISION_MAX_MB = 8
-_TEXT_EXTENSIONS = frozenset({".md", ".markdown", ".txt"})
-_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"})
-
-
 class ParsePlan(BaseModel):
     """Materialized parser execution plan stored in workflow state."""
 
@@ -41,11 +47,11 @@ def build_parse_plan(
     """Choose parser chain and runtime budget from file signals and capabilities."""
 
     settings = get_settings()
-    extension = filetype.lower() if filetype.startswith(".") else f".{filetype.lower()}"
+    extension = resolve_parser_extension(file_path, normalize_extension(filetype))
     allow_llm_vision = bool(settings.llm_api_key)
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
     if not available_parsers:
-        if extension in _IMAGE_EXTENSIONS:
+        if is_image_extension(extension):
             raise MissingLLMApiKeyError()
         raise UnsupportedFileTypeError(extension)
 
@@ -89,12 +95,12 @@ def _preferred_parser_order(
     classification: ClassificationResult | None,
     llm_enabled: bool,
 ) -> list[str]:
-    if extension in _IMAGE_EXTENSIONS:
+    if is_image_extension(extension):
         if not llm_enabled:
             return []
         return ["llm_vision"]
 
-    if extension in _TEXT_EXTENSIONS:
+    if is_text_extension(extension):
         return ["text_native"]
 
     if extension == ".pdf":
@@ -138,16 +144,21 @@ def _decide_mode_and_options(
     classification: ClassificationResult | None,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
-    if extension in _IMAGE_EXTENSIONS:
+    if is_image_extension(extension):
         if file_mb > _VISION_MAX_MB:
             options.timeout_s = max(options.timeout_s, 150)
             return "vision_large_image", "Image file routed to LLM vision with extended timeout."
         options.asset_image_limit = 1
         return "vision_image", "Image file routed directly to LLM vision."
 
-    if extension in _TEXT_EXTENSIONS:
+    if is_text_extension(extension):
         options.asset_image_limit = 0
-        return "native_text", "Markdown or text file is normalized directly without document conversion."
+        text_category = categorize_text_extension(extension)
+        if text_category == "markdown":
+            return "native_markdown", "Markdown file is normalized directly without document conversion."
+        if text_category == "structured_text":
+            return "native_structured_text", "Structured text file is preserved inside fenced markdown."
+        return "native_text", "Text file is normalized directly without document conversion."
 
     if extension == ".pdf":
         if classification and classification.file_category == "scanned_pdf":

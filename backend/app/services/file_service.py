@@ -232,10 +232,15 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
                 return
 
             if result.failed:
+                error_metadata = result.error.metadata if result.error else {}
                 batch_logger.warning(
                     "file_parse_background_failed",
                     file_id=file_id,
                     error=result.error.detail,
+                    filename=error_metadata.get("filename"),
+                    filetype=error_metadata.get("filetype"),
+                    parse_mode=error_metadata.get("parse_mode"),
+                    parser_chain=error_metadata.get("parser_chain"),
                 )
 
     await asyncio.gather(*[asyncio.create_task(_run_one(file_id)) for file_id in file_ids])

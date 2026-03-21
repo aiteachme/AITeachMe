@@ -12,7 +12,7 @@ import structlog
 from app.core.exceptions import UnsupportedFileTypeError
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.parsers import PARSER_REGISTRY
+from app.workflows.ingest.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 
 logger = structlog.get_logger()
@@ -39,9 +39,10 @@ async def parse_file(
     assets = Path(asset_dir)
     assets.mkdir(parents=True, exist_ok=True)
 
-    extension = path.suffix.lower()
+    source_extension = path.suffix.lower()
+    extension = resolve_parser_extension(path, source_extension)
     if extension not in PARSER_REGISTRY:
-        raise UnsupportedFileTypeError(extension)
+        raise UnsupportedFileTypeError(source_extension or extension)
 
     plan = parse_plan or build_parse_plan(
         file_path=path,
@@ -56,7 +57,8 @@ async def parse_file(
     logger.info(
         "parse_file_routing",
         filename=path.name,
-        extension=extension,
+        extension=source_extension,
+        resolved_extension=extension,
         parse_mode=plan.mode,
         parser_chain=plan.parser_chain,
         recommended_parser=classification.recommended_parser if classification else None,

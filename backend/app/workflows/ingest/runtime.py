@@ -56,9 +56,17 @@ async def run_parse_file_workflow(
     final_state = result.require_value()
     error_message = final_state.get("error")
     if error_message:
+        parse_plan = final_state.get("parse_plan")
         return err_result(
             "ingest_parse_failed",
             error_message,
-            metadata={"subject": subject, "file_id": file_id},
+            metadata={
+                "subject": subject,
+                "file_id": file_id,
+                "filename": final_state.get("filename"),
+                "filetype": final_state.get("filetype"),
+                "parse_mode": parse_plan.mode if parse_plan else None,
+                "parser_chain": parse_plan.parser_chain if parse_plan else None,
+            },
         )
     return result

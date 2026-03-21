@@ -9,11 +9,14 @@ from app.repositories.subject_repo import (
     delete_subject,
     get_subject_by_slug,
     list_subjects,
-    subject_has_content,
     update_subject,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
-from app.schemas.subject import SubjectDeleteData, SubjectItem
+from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData, SubjectItem
+from app.services.subject_deletion_service import (
+    build_subject_delete_preview,
+    delete_subject_with_all_content,
+)
 from app.services.presenters import require_id
 from app.utils.subject import generate_subject_id, validate_subject_id
 
@@ -97,9 +100,33 @@ def update_subject_record(
     return _to_subject_item(updated)
 
 
-def delete_subject_record(session: Session, *, subject_id: str) -> SubjectDeleteData:
+def preview_subject_delete(session: Session, *, subject_id: str) -> SubjectDeletePreviewData:
     subject = get_subject_record(session, subject_id)
-    if subject_has_content(session, subject.slug):
+    return build_subject_delete_preview(session, subject=subject)
+
+
+def delete_subject_record(
+    session: Session,
+    *,
+    subject_id: str,
+    force: bool = False,
+) -> SubjectDeleteData:
+    subject = get_subject_record(session, subject_id)
+    preview = build_subject_delete_preview(session, subject=subject)
+    if preview.has_content and not force:
         raise SubjectInUseError(subject.slug)
+    deleted_counts = (
+        delete_subject_with_all_content(session, subject=subject)
+        if force
+        else _delete_empty_subject(session, subject)
+    )
+    return SubjectDeleteData(
+        deleted=True,
+        subject_id=subject.slug,
+        deleted_counts=deleted_counts,
+    )
+
+
+def _delete_empty_subject(session: Session, subject: Subject) -> dict[str, int]:
     delete_subject(session, subject)
-    return SubjectDeleteData(deleted=True, subject_id=subject.slug)
+    return {"subject": 1}

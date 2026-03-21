@@ -6,6 +6,7 @@ import re
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s*(.*)", re.MULTILINE)
+_FENCED_BLOCK_RE = re.compile(r"(^(`{3,})[^\n]*\n.*?^\2[ \t]*$)", re.MULTILINE | re.DOTALL)
 
 
 def canonicalize_markdown(raw: str) -> str:
@@ -15,11 +16,36 @@ def canonicalize_markdown(raw: str) -> str:
         return ""
 
     text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    normalized_parts: list[str] = []
+    cursor = 0
+    for match in _FENCED_BLOCK_RE.finditer(text):
+        prefix = text[cursor:match.start()]
+        if prefix:
+            normalized_parts.append(_normalize_text_segment(prefix))
+        normalized_parts.append(match.group(1))
+        cursor = match.end()
+    suffix = text[cursor:]
+    if suffix:
+        normalized_parts.append(_normalize_text_segment(suffix))
+
+    result = "".join(normalized_parts).strip("\n")
+    if result and not result.endswith("\n"):
+        result += "\n"
+    return result
+
+
+def _normalize_text_segment(text: str) -> str:
+    return _collapse_blank_lines(_normalize_non_fenced_markdown(text))
+
+
+def _normalize_non_fenced_markdown(text: str) -> str:
     text = re.sub(r"^(#{1,6})([^\s#])", r"\1 \2", text, flags=re.MULTILINE)
     text = re.sub(r"^(\s*[-*])([^\s])", r"\1 \2", text, flags=re.MULTILINE)
     text = re.sub(r"^(\s*\d+\.)([^\s])", r"\1 \2", text, flags=re.MULTILINE)
-    text = _normalize_heading_levels(text)
+    return _normalize_heading_levels(text)
 
+
+def _collapse_blank_lines(text: str) -> str:
     cleaned: list[str] = []
     prev_blank = False
     for line in (item.rstrip() for item in text.splitlines()):
@@ -33,11 +59,7 @@ def canonicalize_markdown(raw: str) -> str:
         cleaned.pop(0)
     while cleaned and cleaned[-1] == "":
         cleaned.pop()
-
-    result = "\n".join(cleaned)
-    if result and not result.endswith("\n"):
-        result += "\n"
-    return result
+    return "\n".join(cleaned)
 
 
 def _normalize_heading_levels(text: str) -> str:
