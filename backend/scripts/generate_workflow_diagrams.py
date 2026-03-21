@@ -75,7 +75,45 @@ def render_mermaid(export: WorkflowGraphExport) -> str:
     mermaid = draw_mermaid()
     if isinstance(mermaid, bytes):
         mermaid = mermaid.decode("utf-8")
-    return str(mermaid).strip()
+    mermaid = str(mermaid).strip()
+
+    # 注入 extra_edges（Send 动态边）+ 清理假边
+    if export.extra_edges:
+        # 收集 extra_edges 中的源节点名
+        import re as _re
+        extra_sources = set()
+        for edge in export.extra_edges:
+            m = _re.match(r"\s*(\w+)\s", edge)
+            if m:
+                extra_sources.add(m.group(1))
+
+        lines = mermaid.split("\n")
+        # 移除 draw_mermaid 为 Send 源节点生成的假边（如 outline_reduce --> __end__）
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            # 检查是否为某 extra_source 的自动生成边
+            is_fake = False
+            for src in extra_sources:
+                if stripped.startswith(src) and ("-->" in stripped or ".->" in stripped):
+                    is_fake = True
+                    break
+            if not is_fake:
+                cleaned.append(line)
+        lines = cleaned
+
+        # 找到 classDef 位置，在其前面插入 extra_edges
+        insert_idx = len(lines)
+        for i, line in enumerate(lines):
+            if line.strip().startswith("classDef"):
+                insert_idx = i
+                break
+        for edge in export.extra_edges:
+            lines.insert(insert_idx, f"\t{edge};")
+            insert_idx += 1
+        mermaid = "\n".join(lines)
+
+    return mermaid
 
 
 def build_markdown(export: WorkflowGraphExport) -> str:
