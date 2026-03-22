@@ -46,7 +46,6 @@ data/*.sqlite
 
 # orval
 /frontend/src/api/generated/
-/frontend/src/openai.json
 
 
 .history
