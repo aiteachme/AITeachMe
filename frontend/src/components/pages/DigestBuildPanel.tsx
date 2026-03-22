@@ -11,33 +11,23 @@ import {
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
 import { Modal } from "../ui/Modal";
-import { apiClient, getApiErrorMessage } from "../../api/client";
+import { getApiErrorMessage } from "../../api/client";
 import {
-  triggerDigestBuild,
-  fetchDigestStatus,
-} from "../../api/graphApi";
-
-/* ---------- types ---------- */
-
-interface FileItem {
-  id: number;
-  filename: string;
-  filetype: string;
-  status: string;
-  markdown_ready: boolean;
-  created_at: string;
-}
-
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
+  digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost,
+  digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost,
+} from "../../api/generated/knowledge";
+import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
+import type { FileItem } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../api/generated/utils";
 
 async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<FileItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/list`,
-    data: { page: 1, size: 100, status: "completed" },
-  });
-  return res.data.items;
+  return unwrapOrvalResponse(
+    await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
+      page: 1,
+      size: 100,
+      status: "completed",
+    }),
+  )?.items ?? [];
 }
 
 /* ---------- 构建状态步骤映射 ---------- */
@@ -149,7 +139,19 @@ function BuildProgress({
 }) {
   const { data } = useQuery({
     queryKey: ["digest-status", subject, jobId],
-    queryFn: () => fetchDigestStatus(subject, jobId),
+    queryFn: async () => {
+      const status = unwrapOrvalResponse(
+        await digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost(subject, {
+          job_id: jobId,
+        }),
+      );
+
+      if (!status) {
+        throw new Error("查询构建状态失败");
+      }
+
+      return status;
+    },
     enabled: !!jobId,
     refetchInterval: (query) => {
       const d = query.state.data;
@@ -267,7 +269,19 @@ export function DigestBuildButton() {
   });
 
   const buildMutation = useMutation({
-    mutationFn: () => triggerDigestBuild(subject, Array.from(selectedFileIds)),
+    mutationFn: async () => {
+      const result = unwrapOrvalResponse(
+        await digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost(subject, {
+          file_ids: Array.from(selectedFileIds),
+        }),
+      );
+
+      if (!result) {
+        throw new Error("提交构建任务失败");
+      }
+
+      return result;
+    },
     onSuccess: (data) => {
       setAndPersistJobId(data.job_id);
       setShowFileSelect(false);

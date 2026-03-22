@@ -1,6 +1,30 @@
 import { http, HttpResponse } from "msw";
 
-const mockContexts = [
+type ChatRole = "user" | "assistant";
+
+interface ChatContextItem {
+  chunk_id: number;
+  document_id: number;
+  title: string;
+  header_path: string;
+  score: number;
+}
+
+interface ChatHistoryItem {
+  id: number;
+  turn_id: string;
+  role: ChatRole;
+  content: string;
+  contexts: ChatContextItem[] | null;
+  created_at: string;
+}
+
+interface ChatSendBody {
+  question?: unknown;
+  selected_context?: unknown;
+}
+
+const mockContexts: ChatContextItem[] = [
   {
     chunk_id: 101,
     document_id: 11,
@@ -48,7 +72,7 @@ const mockChunkContext: Record<
   },
 };
 
-const mockHistory = [
+const mockHistory: ChatHistoryItem[] = [
   {
     id: 1,
     turn_id: "turn-1",
@@ -62,96 +86,161 @@ const mockHistory = [
     turn_id: "turn-1",
     role: "assistant",
     content:
-      "导数表示函数在某一点的瞬时变化率，也可以理解成该点切线的斜率。如果你愿意，我还可以结合一个具体函数继续推导。",
+      "导数 f'(x₀) 表示曲线 y=f(x) 在点 (x₀, f(x₀)) 处切线的斜率，描述函数在该点的瞬时变化率。",
     contexts: mockContexts,
     created_at: "2026-03-14T10:00:05Z",
   },
 ];
 
-let nextMessageId = 3;
+let nextMessageId = mockHistory.length + 1;
+let turnSeq = 2;
+
+function chunkText(text: string): string[] {
+  const chars = Array.from(text);
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const size = 2 + Math.floor(Math.random() * 4);
+    chunks.push(chars.slice(i, i + size).join(""));
+    i += size;
+  }
+  return chunks;
+}
+
+function buildMockAnswer(question: string, selectedContext: string): string {
+  const context = selectedContext.trim();
+  if (context) {
+    return [
+      "我先基于你划的这段内容来回答：",
+      `「${context}」`,
+      "",
+      `关于“${question}”，可以这样理解：`,
+      "1. 先明确这段话的核心概念和边界条件。",
+      "2. 再把它和当前章节标题对应起来，确认它在知识结构里的位置。",
+      "3. 最后用一个小例子验证理解是否一致。",
+      "",
+      "如果你愿意，我可以继续把这段拆成“定义 / 推导 / 易错点”三层继续讲。",
+    ].join("\n");
+  }
+  return [
+    `收到问题：“${question}”。`,
+    "先给你一个简版回答：",
+    "- 先看概念定义是什么。",
+    "- 再看它和前后知识点如何连接。",
+    "- 最后用一个例子确认是否能应用。",
+    "",
+    "你可以继续追问，我会按同一上下文接着答。",
+  ].join("\n");
+}
+
+function pushHistory(
+  turnId: string,
+  question: string,
+  answer: string,
+  contexts: ChatContextItem[] | null,
+) {
+  const now = new Date();
+  mockHistory.push(
+    {
+      id: nextMessageId,
+      turn_id: turnId,
+      role: "user",
+      content: question,
+      contexts: null,
+      created_at: now.toISOString(),
+    },
+    {
+      id: nextMessageId + 1,
+      turn_id: turnId,
+      role: "assistant",
+      content: answer,
+      contexts,
+      created_at: new Date(now.getTime() + 1000).toISOString(),
+    },
+  );
+  nextMessageId += 2;
+}
+
+async function streamChatResponse(request: Request) {
+  let body: ChatSendBody = {};
+  try {
+    body = (await request.json()) as ChatSendBody;
+  } catch {
+    body = {};
+  }
+
+  const question = typeof body.question === "string" && body.question.trim()
+    ? body.question.trim()
+    : "请解释这段内容";
+  const selectedContext = typeof body.selected_context === "string"
+    ? body.selected_context
+    : "";
+  const turnId = `turn-${turnSeq++}`;
+  const answer = buildMockAnswer(question, selectedContext);
+  const chunks = chunkText(answer);
+  const contexts = mockContexts;
+
+  pushHistory(turnId, question, answer, contexts);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      for (const chunk of chunks) {
+        await sleep(60);
+        controller.enqueue(
+          encoder.encode(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`),
+        );
+      }
+      controller.enqueue(
+        encoder.encode(`event: done\ndata: ${JSON.stringify({ turn_id: turnId, contexts })}\n\n`),
+      );
+      controller.close();
+    },
+  });
+
+  return new HttpResponse(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+function buildHistoryPayload() {
+  return {
+    code: 0,
+    message: "ok",
+    data: {
+      items: [...mockHistory].sort((left, right) => left.created_at.localeCompare(right.created_at)),
+      total: mockHistory.length,
+      page: 1,
+      size: 100,
+      pages: 1,
+    },
+  };
+}
+
+function clearHistoryPayload() {
+  const deletedCount = mockHistory.length;
+  mockHistory.length = 0;
+  nextMessageId = 1;
+  return {
+    code: 0,
+    message: "ok",
+    data: { cleared: true, deleted_count: deletedCount },
+  };
+}
 
 export const chatHandlers = [
-  http.post("/api/v1/subjects/:subject/chats/send", async ({ request }) => {
-    const body = (await request.json()) as {
-      question?: string;
-    };
-    const question = body.question?.trim() || "请解释一下这份资料";
-    const turnId = `mock-turn-${Date.now()}`;
-    const encoder = new TextEncoder();
-    const answer =
-      "我先给你一个可用版解释：这份材料的重点是先把复杂系统拆成清晰工作流，再在每个节点补齐上下文、策略和持久化。这样后续改动会更稳，也更容易定位问题。";
-    const tokens = answer.match(/.{1,8}/g) ?? [answer];
+  http.post("/api/v1/subjects/:subject/chat/send", async ({ request }) => streamChatResponse(request)),
+  http.post("/api/v1/subjects/:subject/chats/send", async ({ request }) => streamChatResponse(request)),
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        for (const token of tokens) {
-          await sleep(70);
-          controller.enqueue(
-            encoder.encode(
-              `event: token\ndata: ${JSON.stringify({ content: token })}\n\n`,
-            ),
-          );
-        }
+  http.post("/api/v1/subjects/:subject/chat/list", () => HttpResponse.json(buildHistoryPayload())),
+  http.post("/api/v1/subjects/:subject/chats/list", () => HttpResponse.json(buildHistoryPayload())),
 
-        controller.enqueue(
-          encoder.encode(
-            `event: done\ndata: ${JSON.stringify({ turn_id: turnId, contexts: mockContexts })}\n\n`,
-          ),
-        );
-        controller.close();
-
-        const createdAt = new Date().toISOString();
-        mockHistory.push(
-          {
-            id: nextMessageId++,
-            turn_id: turnId,
-            role: "user",
-            content: question,
-            contexts: null,
-            created_at: createdAt,
-          },
-          {
-            id: nextMessageId++,
-            turn_id: turnId,
-            role: "assistant",
-            content: answer,
-            contexts: mockContexts,
-            created_at: new Date(Date.now() + 1000).toISOString(),
-          },
-        );
-      },
-    });
-
-    return new HttpResponse(stream, {
-      headers: { "Content-Type": "text/event-stream" },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/chats/list", () =>
-    HttpResponse.json({
-      code: 0,
-      message: "ok",
-      data: {
-        items: [...mockHistory].sort((left, right) =>
-          right.created_at.localeCompare(left.created_at),
-        ),
-        total: mockHistory.length,
-        page: 1,
-        size: 100,
-        pages: 1,
-      },
-    }),
-  ),
-
-  http.post("/api/v1/subjects/:subject/chats/clear", () => {
-    const deletedCount = mockHistory.length;
-    mockHistory.length = 0;
-    return HttpResponse.json({
-      code: 0,
-      message: "ok",
-      data: { cleared: true, deleted_count: deletedCount },
-    });
-  }),
+  http.post("/api/v1/subjects/:subject/chat/clear", () => HttpResponse.json(clearHistoryPayload())),
+  http.post("/api/v1/subjects/:subject/chats/clear", () => HttpResponse.json(clearHistoryPayload())),
 
   http.post("/api/v1/subjects/:subject/knowledge/chunks/context", async ({ request }) => {
     const body = (await request.json()) as { chunk_id?: number };

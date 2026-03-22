@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  clearChatHistory,
-  listChatHistory,
-  streamChatResponse,
-  type ChatContextItem,
-  type ChatHistoryItem,
-  type ChatSendInput,
-} from "../api/chatApi";
-import { getApiErrorMessage } from "../api/client";
+  clearChatApiApiV1SubjectsSubjectChatsClearPost,
+  getSendChatApiV1SubjectsSubjectChatsSendPostUrl,
+  listChatApiApiV1SubjectsSubjectChatsListPost,
+} from "../api/generated/chats";
+import type { ChatContextItem, ChatMessageItem, ChatSendRequest } from "../api/generated/model";
+import { postSseJson, getApiErrorMessage } from "../api/client";
+import { unwrapOrvalResponse } from "../api/generated/utils";
 
 export type ChatMessageStatus = "ready" | "streaming" | "error" | "interrupted";
 
@@ -46,7 +45,13 @@ export function useChatSession(subjectId: string) {
 
       setHistoryLoaded(false);
       try {
-        const items = await listChatHistory(subjectId);
+        const response = await listChatApiApiV1SubjectsSubjectChatsListPost(subjectId, {
+          page: 1,
+          size: 100,
+        });
+        const items = (unwrapOrvalResponse(response)?.items ?? [])
+          .slice()
+          .sort((left, right) => left.created_at.localeCompare(right.created_at));
         if (cancelled) {
           return;
         }
@@ -77,7 +82,7 @@ export function useChatSession(subjectId: string) {
     };
   }, []);
 
-  async function sendMessage(input: ChatSendInput): Promise<SendMessageResult> {
+  async function sendMessage(input: ChatSendRequest): Promise<SendMessageResult> {
     const question = input.question.trim();
     if (!subjectId || !question || isStreaming) {
       return { accepted: false };
@@ -114,58 +119,63 @@ export function useChatSession(subjectId: string) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     let terminalEventReceived = false;
+    let streamFailedDetail: string | null = null;
 
     try {
-      await streamChatResponse(
-        subjectId,
+      const streamResult = await postSseJson(
+        getSendChatApiV1SubjectsSubjectChatsSendPostUrl(subjectId),
         {
           ...input,
           question,
         },
-        async (event) => {
-          if (event.type === "token") {
+        {
+          signal: controller.signal,
+          onToken: (event) => {
             setMessages((current) =>
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
                 content: `${message.content}${event.content}`,
               })),
             );
-            return;
-          }
-
-          if (event.type === "done") {
+          },
+          onDone: (payload) => {
+            const donePayload = parseChatDonePayload(payload);
             terminalEventReceived = true;
             setMessages((current) =>
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
-                turnId: event.turnId,
-                contexts: event.contexts,
+                turnId: donePayload.turnId,
+                contexts: donePayload.contexts,
                 status: "ready",
                 errorDetail: null,
                 createdAt: message.createdAt ?? new Date().toISOString(),
               })),
             );
-            return;
-          }
-
-          terminalEventReceived = true;
-          setMessages((current) =>
-            updateMessage(current, assistantLocalId, (message) => ({
-              ...message,
-              status: "error",
-              errorDetail: event.detail,
-            })),
-          );
         },
-        controller.signal,
+          onError: (payload) => {
+            terminalEventReceived = true;
+            streamFailedDetail = parseChatErrorDetail(payload);
+            setMessages((current) =>
+              updateMessage(current, assistantLocalId, (message) => ({
+                ...message,
+                status: "error",
+                errorDetail: streamFailedDetail,
+              })),
+            );
+          },
+        },
       );
+
+      if (!streamResult.aborted && streamResult.errorPayload && !streamFailedDetail) {
+        streamFailedDetail = parseChatErrorDetail(streamResult.errorPayload);
+      }
 
       if (!terminalEventReceived && !controller.signal.aborted) {
         setMessages((current) =>
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
-            errorDetail: "服务端没有返回完成事件，请稍后重试。",
+            errorDetail: streamFailedDetail ?? "服务端没有返回完成事件，请稍后重试。",
           })),
         );
       }
@@ -207,7 +217,7 @@ export function useChatSession(subjectId: string) {
 
     abortStream();
     try {
-      await clearChatHistory(subjectId);
+      await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
       setMessages([]);
       setHistoryError(null);
     } catch (error: unknown) {
@@ -226,14 +236,14 @@ export function useChatSession(subjectId: string) {
   };
 }
 
-function mapHistoryItemToSessionMessage(item: ChatHistoryItem): ChatSessionMessage {
+function mapHistoryItemToSessionMessage(item: ChatMessageItem): ChatSessionMessage {
   return {
     localId: `history-${item.id}`,
     role: item.role,
     content: item.content,
-    turnId: item.turnId,
-    contexts: item.contexts,
-    createdAt: item.createdAt,
+    turnId: item.turn_id,
+    contexts: item.contexts ?? null,
+    createdAt: item.created_at,
     status: "ready",
     errorDetail: null,
   };
@@ -249,4 +259,38 @@ function updateMessage(
 
 function buildLocalId(role: "user" | "assistant"): string {
   return `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseChatDonePayload(payload: unknown): { turnId: string; contexts: ChatContextItem[] | null } {
+  if (!isRecord(payload)) {
+    return {
+      turnId: "",
+      contexts: null,
+    };
+  }
+
+  return {
+    turnId: typeof payload.turn_id === "string" ? payload.turn_id : "",
+    contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
+  };
+}
+
+function parseChatErrorDetail(payload: unknown): string {
+  if (!isRecord(payload)) {
+    return "发送消息失败";
+  }
+
+  if (typeof payload.detail === "string" && payload.detail.trim()) {
+    return payload.detail;
+  }
+
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message;
+  }
+
+  return "发送消息失败";
 }

@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,15 +13,17 @@ import {
   ChevronDown,
   ChevronUp,
   Send,
-  MessageSquarePlus,
-  MoreHorizontal,
-  Trash2,
-  Clock,
   Bot,
+  Loader2,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
+import { getApiErrorMessage, postSseJson } from "../api/client";
+import { mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost } from "../api/generated/knowledge";
+import { unwrapOrvalResponse } from "../api/generated/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,10 +41,10 @@ interface Comment {
   id: string;
   anchorId: string;
   selectedText: string;
-  author: string;
+  role: "user" | "assistant";
   content: string;
   createdAt: number;
-  resolved: boolean;
+  streaming?: boolean;
 }
 
 interface FloatingComment {
@@ -58,255 +61,6 @@ interface FloatingToolbar {
   left: number;
   selectionViewportTop: number;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Demo markdown                                                      */
-/* ------------------------------------------------------------------ */
-
-const DEMO_MARKDOWN = `# 课程概述
-
-本课程旨在帮助学生系统性地掌握核心知识点，通过理论与实践相结合的方式，深入理解学科的基本概念和应用场景。
-
-## 学习目标
-
-通过本课程的学习，你将能够：
-
-- 理解学科的基本概念和核心理论
-- 掌握常用的分析方法和工具
-- 能够独立完成相关的实践项目
-- 具备进一步深入学习的基础
-
-## 第一章：基础概念
-
-### 1.1 核心定义
-
-在开始深入学习之前，我们需要先明确几个核心概念。这些概念是整个学科体系的基石，理解它们对于后续的学习至关重要。
-
-> 知识的积累是一个循序渐进的过程，每一个概念都建立在前一个概念的基础之上。
-
-### 1.2 基本原理
-
-基本原理是指导我们理解和分析问题的核心框架。掌握这些原理，能够帮助我们在面对复杂问题时，找到正确的分析思路。
-
-| 原理 | 描述 | 应用场景 |
-|------|------|----------|
-| 原理一 | 系统性思维 | 复杂问题分析 |
-| 原理二 | 抽象建模 | 模型构建 |
-| 原理三 | 迭代优化 | 持续改进 |
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-`;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -480,79 +234,113 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
   );
 });
 
+const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: string }) {
+  return (
+    <div className="text-xs text-slate-700 leading-relaxed break-words [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ul]:mb-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_ol]:mb-1.5 [&_li]:leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-blue-200 [&_blockquote]:bg-blue-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_code]:font-mono [&_code]:text-[11px] [&_code]:bg-slate-100 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:text-[11px] [&_table]:border [&_table]:border-slate-200 [&_table]:rounded-md [&_thead]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-slate-100 [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2">
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeHighlight]}>
+        {content || " "}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+function DocGeneratingState({
+  isFetching,
+}: {
+  isFetching: boolean;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white via-slate-50 to-blue-50/40 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(15,23,42,0.45)]">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600">
+          {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-900">知识文档正在生成中</h2>
+          <p className="text-sm text-slate-600">系统正在整理章节和结构化内容，完成后会自动展示在这里。</p>
+        </div>
+      </div>
+      <div className="mt-7 grid gap-3">
+        <div className="h-3 w-11/12 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-3 w-10/12 animate-pulse rounded-full bg-slate-200 [animation-delay:120ms]" />
+        <div className="h-3 w-9/12 animate-pulse rounded-full bg-slate-200 [animation-delay:220ms]" />
+        <div className="h-3 w-8/12 animate-pulse rounded-full bg-slate-200 [animation-delay:320ms]" />
+      </div>
+      <div className="mt-8 flex items-center gap-2 text-xs text-slate-500">
+        <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+        会在下一次拉取后自动刷新
+      </div>
+    </section>
+  );
+}
+
+function DocLoadErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-rose-200 bg-rose-50/60 px-5 py-5">
+      <p className="text-sm text-rose-700">{message}</p>
+      <button
+        onClick={onRetry}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        重试加载
+      </button>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  CommentList                                                        */
 /* ------------------------------------------------------------------ */
 
 function CommentCard({
   comment,
-  menuOpenId,
-  setMenuOpenId,
-  onResolve,
-  onDelete,
 }: {
   comment: Comment;
-  menuOpenId: string | null;
-  setMenuOpenId: (id: string | null) => void;
-  onResolve: (id: string) => void;
-  onDelete: (id: string) => void;
 }) {
+  const isAssistant = comment.role === "assistant";
   return (
     <div
       className={cn(
-        "w-full bg-white border border-slate-200 rounded-lg shadow-sm group hover:shadow-md transition-shadow",
-        comment.resolved && "opacity-50"
+        "w-full rounded-lg border shadow-sm transition-shadow",
+        isAssistant
+          ? "border-blue-100 bg-blue-50/60 hover:shadow-blue-100/70"
+          : "border-slate-200 bg-white hover:shadow-md"
       )}
     >
       <div className="px-3 py-2">
-        <div className="flex items-center justify-between mb-1">
+        <div className="mb-1 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-medium">
-              {comment.author[0]}
+            <div
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white",
+                isAssistant ? "bg-blue-500" : "bg-slate-900"
+              )}
+            >
+              {isAssistant ? "AI" : "我"}
             </div>
-            <span className="text-xs font-medium text-slate-700">{comment.author}</span>
-            <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-              <Clock className="w-2.5 h-2.5" />
+            <span className="text-xs font-medium text-slate-700">
+              {isAssistant ? "AI 助手" : "我"}
+            </span>
+            <span className="text-[10px] text-slate-400">
               {formatTime(comment.createdAt)}
             </span>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setMenuOpenId(menuOpenId === comment.id ? null : comment.id)}
-              className="p-0.5 rounded hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <MoreHorizontal className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-            {menuOpenId === comment.id && (
-              <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-20 min-w-[90px]">
-                <button
-                  onClick={() => onResolve(comment.id)}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
-                >
-                  {comment.resolved ? "重新打开" : "标记解决"}
-                </button>
-                <button
-                  onClick={() => onDelete(comment.id)}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 flex items-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  删除
-                </button>
-              </div>
-            )}
-          </div>
+          {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
         </div>
-        {comment.selectedText && (
-          <p className="text-[11px] text-blue-500 mb-1 truncate">&ldquo;{comment.selectedText}&rdquo;</p>
+        {isAssistant ? (
+          <CommentMarkdown content={comment.content} />
+        ) : (
+          <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
+            {comment.content}
+          </p>
         )}
-        <p
-          className={cn(
-            "text-xs text-slate-600 leading-relaxed",
-            comment.resolved && "line-through"
-          )}
-        >
-          {comment.content}
-        </p>
       </div>
     </div>
   );
@@ -562,21 +350,23 @@ function CommentThread({
   anchorId,
   title,
   comments,
+  selectedText,
+  draft,
+  isStreaming,
   isActive,
-  menuOpenId,
-  setMenuOpenId,
-  onResolve,
-  onDelete,
+  onDraftChange,
+  onSend,
   onJumpToAnchor,
 }: {
   anchorId: string;
   title: string;
   comments: Comment[];
+  selectedText: string;
+  draft: string;
+  isStreaming: boolean;
   isActive: boolean;
-  menuOpenId: string | null;
-  setMenuOpenId: (id: string | null) => void;
-  onResolve: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
   onJumpToAnchor: (id: string) => void;
 }) {
   return (
@@ -597,17 +387,49 @@ function CommentThread({
           {comments.length}
         </span>
       </div>
-      <div className="p-2 space-y-2">
+      {selectedText && (
+        <div className="px-3 py-2 border-b border-slate-100 bg-white/80">
+          <p className="truncate text-[11px] text-blue-500">&ldquo;{selectedText}&rdquo;</p>
+        </div>
+      )}
+      <div className="max-h-64 overflow-y-auto p-2 space-y-2">
         {comments.map((comment) => (
           <CommentCard
             key={comment.id}
             comment={comment}
-            menuOpenId={menuOpenId}
-            setMenuOpenId={setMenuOpenId}
-            onResolve={onResolve}
-            onDelete={onDelete}
           />
         ))}
+      </div>
+      <div className="border-t border-slate-200 bg-white p-2">
+        <textarea
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+          rows={2}
+          disabled={isStreaming}
+          placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
+          className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-50 disabled:text-slate-400"
+        />
+        <div className="mt-2 flex items-center justify-end">
+          <button
+            onClick={onSend}
+            disabled={!draft.trim() || isStreaming}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+              draft.trim() && !isStreaming
+                ? "bg-blue-500 text-white hover:bg-blue-600"
+                : "bg-slate-100 text-slate-300"
+            )}
+          >
+            {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            发送
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -620,11 +442,25 @@ function CommentThread({
 export function DocPage() {
   const navigate = useNavigate();
   const { subjectId } = useParams<{ subjectId: string }>();
-  const [markdown] = useState(DEMO_MARKDOWN);
+  const docMarkdownQuery = useQuery({
+    queryKey: ["docgen-content", subjectId],
+    queryFn: async () => {
+      if (!subjectId) {
+        throw new Error("缺少学科 ID，无法加载知识文档。");
+      }
+      const response = await mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost(subjectId);
+      return unwrapOrvalResponse(response)?.markdown ?? "";
+    },
+    enabled: Boolean(subjectId),
+  });
+  const markdown = docMarkdownQuery.data ?? "";
+  const hasDocMarkdown = markdown.trim().length > 0;
+  const showDocGeneratingState = !docMarkdownQuery.isError && !hasDocMarkdown;
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [threadDrafts, setThreadDrafts] = useState<Record<string, string>>({});
+  const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
 
@@ -648,6 +484,7 @@ export function DocPage() {
   const selectedRangeRef = useRef<Range | null>(null);
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
+  const streamControllersRef = useRef(new Map<string, AbortController>());
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
@@ -698,6 +535,10 @@ export function DocPage() {
         window.clearTimeout(timer);
       }
       headingFlashTimersRef.current.clear();
+      for (const controller of streamControllersRef.current.values()) {
+        controller.abort();
+      }
+      streamControllersRef.current.clear();
     };
   }, []);
 
@@ -748,9 +589,8 @@ export function DocPage() {
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     const headingTop = container.scrollTop + (elRect.top - containerRect.top);
-    const centeredTop = headingTop - container.clientHeight / 2 + elRect.height / 2;
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, centeredTop));
+    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - 8));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [flashHeading]);
@@ -768,6 +608,7 @@ export function DocPage() {
   }, []);
 
   const handleTocItemClick = useCallback((id: string) => {
+    setActiveHeading(id);
     scrollToHeading(id);
     if (isCompactPanels) {
       setActiveDrawer(null);
@@ -777,6 +618,14 @@ export function DocPage() {
   const dismissCommentComposer = useCallback(() => {
     setFloatingComment(null);
     setFloatingInput("");
+  }, []);
+
+  const clearSelectionHighlight = useCallback(() => {
+    selectedRangeRef.current = null;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      selection.removeAllRanges();
+    }
   }, []);
 
   const computeCommentComposerTop = useCallback((selectionViewportTop: number) => {
@@ -790,18 +639,17 @@ export function DocPage() {
     return Math.min(maxTop, Math.max(minTop, rawTop));
   }, []);
 
-  // Close floating toolbar when clicking outside
+  // Keep document selection behavior close to Feishu:
+  // any click outside toolbar clears highlighted range state.
   useEffect(() => {
-    if (!floatingToolbar) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (floatingRef.current && !floatingRef.current.contains(e.target as Node)) {
-        setFloatingToolbar(null);
-        selectedRangeRef.current = null;
-      }
+    const handlePointerDown = (e: MouseEvent) => {
+      if (floatingRef.current?.contains(e.target as Node)) return;
+      clearSelectionHighlight();
+      setFloatingToolbar(null);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [floatingToolbar]);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [clearSelectionHighlight]);
 
   // Keep user text selection highlighted after toolbar render.
   useEffect(() => {
@@ -821,36 +669,149 @@ export function DocPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [floatingToolbar]);
 
-  const addComment = useCallback(() => {
-    if (!floatingInput.trim() || !floatingComment) return;
+  const updateThreadDraft = useCallback((anchorId: string, value: string) => {
+    setThreadDrafts((prev) => {
+      if (prev[anchorId] === value) return prev;
+      return { ...prev, [anchorId]: value };
+    });
+  }, []);
+
+  const streamAssistantReply = useCallback(async (
+    anchorId: string,
+    selectedText: string,
+    question: string
+  ) => {
+    const text = question.trim();
+    if (!text) return;
+
+    const baseId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const userId = `${baseId}-user`;
+    const assistantId = `${baseId}-assistant`;
+    const now = Date.now();
+
     setComments((prev) => [
       ...prev,
       {
-        id: Date.now().toString(),
-        anchorId: floatingComment.anchorId,
-        selectedText: floatingComment.selectedText,
-        author: "我",
-        content: floatingInput.trim(),
-        createdAt: Date.now(),
-        resolved: false,
+        id: userId,
+        anchorId,
+        selectedText,
+        role: "user",
+        content: text,
+        createdAt: now,
+      },
+      {
+        id: assistantId,
+        anchorId,
+        selectedText,
+        role: "assistant",
+        content: "",
+        createdAt: now + 1,
+        streaming: true,
       },
     ]);
+    setThreadStreaming((prev) => ({ ...prev, [anchorId]: true }));
+
+    const previousController = streamControllersRef.current.get(anchorId);
+    if (previousController) {
+      previousController.abort();
+    }
+    const controller = new AbortController();
+    streamControllersRef.current.set(anchorId, controller);
+
+    const appendAssistantDelta = (delta: string) => {
+      if (!delta) return;
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId
+            ? { ...item, content: item.content + delta }
+            : item
+        )
+      );
+    };
+
+    const replaceAssistantContent = (content: string) => {
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId
+            ? { ...item, content }
+            : item
+        )
+      );
+    };
+
+    try {
+      const subject = subjectId ?? "demo";
+      const result = await postSseJson(
+        `/api/v1/subjects/${subject}/chats/send`,
+        {
+          question: text,
+          source: "quick_chat",
+          selected_context: selectedText || undefined,
+        },
+        {
+          signal: controller.signal,
+          onToken: ({ content }) => {
+            appendAssistantDelta(content);
+          },
+          onError: (payload) => {
+            const detail =
+              payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
+                ? payload.detail
+                : "请求失败，请重试。";
+            replaceAssistantContent(detail);
+          },
+        }
+      );
+
+      if (!result.aborted && !result.receivedToken && !result.errorPayload) {
+        replaceAssistantContent("已收到问题，但当前没有返回内容。");
+      }
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || err.name !== "AbortError") {
+        const detail = err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "请求失败，请重试。";
+        replaceAssistantContent(detail);
+      }
+    } finally {
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId ? { ...item, streaming: false } : item
+        )
+      );
+
+      if (streamControllersRef.current.get(anchorId) === controller) {
+        streamControllersRef.current.delete(anchorId);
+        setThreadStreaming((prev) => ({ ...prev, [anchorId]: false }));
+      }
+    }
+  }, [subjectId]);
+
+  const addComment = useCallback(() => {
+    if (!floatingInput.trim() || !floatingComment) return;
+    const question = floatingInput.trim();
+    const { anchorId, selectedText } = floatingComment;
     setFloatingInput("");
+    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
     dismissCommentComposer();
     setFloatingToolbar(null);
-  }, [dismissCommentComposer, floatingInput, floatingComment]);
+    clearSelectionHighlight();
+    void streamAssistantReply(anchorId, selectedText, question);
+  }, [
+    clearSelectionHighlight,
+    dismissCommentComposer,
+    floatingComment,
+    floatingInput,
+    streamAssistantReply,
+  ]);
 
-  const deleteComment = useCallback((id: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== id));
-    setMenuOpenId(null);
-  }, []);
-
-  const resolveComment = useCallback((id: string) => {
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, resolved: !c.resolved } : c))
-    );
-    setMenuOpenId(null);
-  }, []);
+  const sendThreadReply = useCallback((anchorId: string, selectedText: string) => {
+    if (threadStreaming[anchorId]) return;
+    const question = (threadDrafts[anchorId] ?? "").trim();
+    if (!question) return;
+    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
+    void streamAssistantReply(anchorId, selectedText, question);
+  }, [streamAssistantReply, threadDrafts, threadStreaming]);
 
   const openCommentComposer = useCallback(() => {
     if (!floatingToolbar) return;
@@ -973,18 +934,32 @@ export function DocPage() {
     };
   }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible]);
 
-  const unresolvedComments = comments.filter((c) => !c.resolved);
+  const activeStreamingCount = useMemo(
+    () => Object.values(threadStreaming).filter(Boolean).length,
+    [threadStreaming]
+  );
 
-  // Group comments by anchor for right-side threads
+  // Group QA messages by anchor for right-side threads
   const commentsByAnchor = useMemo(() => {
     const map = new Map<string, Comment[]>();
-    for (const c of unresolvedComments) {
+    for (const c of comments) {
       const list = map.get(c.anchorId) ?? [];
       list.push(c);
       map.set(c.anchorId, list);
     }
     return map;
-  }, [unresolvedComments]);
+  }, [comments]);
+
+  const selectedTextByAnchor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [anchorId, anchorComments] of commentsByAnchor.entries()) {
+      const match = anchorComments.find((item) => item.selectedText);
+      if (match?.selectedText) {
+        map.set(anchorId, match.selectedText);
+      }
+    }
+    return map;
+  }, [commentsByAnchor]);
 
   const commentsForAnchor = useCallback(
     (anchorId: string) => commentsByAnchor.get(anchorId)?.length ?? 0,
@@ -1114,7 +1089,7 @@ export function DocPage() {
     if (!isCommentVisible) return;
     const rafId = window.requestAnimationFrame(measureThreadHeights);
     return () => window.cancelAnimationFrame(rafId);
-  }, [commentThreads, floatingComment, measureThreadHeights, menuOpenId, isCommentVisible]);
+  }, [commentThreads, floatingComment, measureThreadHeights, isCommentVisible]);
 
   useEffect(() => {
     if (!isCommentVisible) return;
@@ -1196,11 +1171,14 @@ export function DocPage() {
     >
       <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
         <div className="flex items-center gap-2 text-slate-900">
-          <MessageSquarePlus className="w-4 h-4" />
-          <span className="text-sm font-semibold">评论</span>
+          <Bot className="w-4 h-4" />
+          <span className="text-sm font-semibold">问问 AI</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-slate-500">{unresolvedComments.length} 条待处理</span>
+          <span className="text-xs text-slate-500">
+            {commentThreads.length} 个片段
+            {activeStreamingCount > 0 ? ` · ${activeStreamingCount} 条回复中` : ""}
+          </span>
           <button
             onClick={() => jumpCommentThread(-1)}
             disabled={activeCommentIndex <= 0}
@@ -1210,8 +1188,8 @@ export function DocPage() {
                 ? "text-slate-300 cursor-not-allowed"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             )}
-            aria-label="定位上一条评论"
-            title="定位上一条评论"
+            aria-label="定位上一段对话"
+            title="定位上一段对话"
           >
             <ChevronUp className="w-4 h-4" />
           </button>
@@ -1224,15 +1202,15 @@ export function DocPage() {
                 ? "text-slate-300 cursor-not-allowed"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             )}
-            aria-label="定位下一条评论"
-            title="定位下一条评论"
+            aria-label="定位下一段对话"
+            title="定位下一段对话"
           >
             <ChevronDown className="w-4 h-4" />
           </button>
           <button
             onClick={closeCommentPanel}
             className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
-            aria-label="收起评论栏"
+            aria-label="收起问答栏"
           >
             <ChevronRight className={cn("w-4 h-4", isCompactPanels && "rotate-180")} />
           </button>
@@ -1260,7 +1238,7 @@ export function DocPage() {
                   dismissCommentComposer();
                 }
               }}
-              placeholder="添加评论..."
+              placeholder="基于这段内容向 AI 提问..."
               rows={3}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 resize-none"
               autoFocus
@@ -1283,7 +1261,7 @@ export function DocPage() {
                 )}
               >
                 <Send className="w-3 h-3" />
-                评论
+                发送
               </button>
             </div>
           </div>
@@ -1296,7 +1274,7 @@ export function DocPage() {
         {commentThreads.length === 0 ? (
           <div className="h-full p-3">
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-slate-500">选中文本后点击“评论”即可创建讨论</p>
+              <p className="text-sm text-slate-500">选中文本后点击“问问AI”即可开始对话</p>
             </div>
           </div>
         ) : (
@@ -1324,11 +1302,12 @@ export function DocPage() {
                     anchorId={anchorId}
                     title={tocTitleMap.get(anchorId) ?? anchorId}
                     comments={anchorComments}
+                    selectedText={selectedTextByAnchor.get(anchorId) ?? ""}
+                    draft={threadDrafts[anchorId] ?? ""}
+                    isStreaming={Boolean(threadStreaming[anchorId])}
                     isActive={activeCommentAnchorId === anchorId}
-                    menuOpenId={menuOpenId}
-                    setMenuOpenId={setMenuOpenId}
-                    onResolve={resolveComment}
-                    onDelete={deleteComment}
+                    onDraftChange={(value) => updateThreadDraft(anchorId, value)}
+                    onSend={() => sendThreadReply(anchorId, selectedTextByAnchor.get(anchorId) ?? "")}
                     onJumpToAnchor={scrollToHeading}
                   />
                 </div>
@@ -1401,13 +1380,13 @@ export function DocPage() {
                 "h-10 w-10 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm transition-colors flex items-center justify-center relative",
                 isCommentVisible ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:text-slate-900 hover:bg-white"
               )}
-              aria-label="切换评论抽屉"
-              title="评论"
+              aria-label="切换问答抽屉"
+              title="问问 AI"
             >
-              <MessageSquarePlus className="w-4 h-4" />
-              {unresolvedComments.length > 0 && (
+              <Bot className="w-4 h-4" />
+              {commentThreads.length > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] leading-4 text-center">
-                  {Math.min(unresolvedComments.length, 99)}
+                  {Math.min(commentThreads.length, 99)}
                 </span>
               )}
             </button>
@@ -1464,9 +1443,9 @@ export function DocPage() {
               <button
                 onClick={() => setIsCommentCollapsed(false)}
                 className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
-                aria-label="展开评论栏"
+                aria-label="展开问答栏"
               >
-                <MessageSquarePlus className="w-4 h-4" />
+                <Bot className="w-4 h-4" />
                 <ChevronRight className="w-4 h-4 rotate-180" />
               </button>
             </aside>
@@ -1517,7 +1496,18 @@ export function DocPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
-                  <DocMarkdown content={markdown} />
+                  {docMarkdownQuery.isError ? (
+                    <DocLoadErrorState
+                      message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+                      onRetry={() => {
+                        void docMarkdownQuery.refetch();
+                      }}
+                    />
+                  ) : showDocGeneratingState ? (
+                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} />
+                  ) : (
+                    <DocMarkdown content={markdown} />
+                  )}
                 </article>
             </div>
           </div>
@@ -1541,8 +1531,8 @@ export function DocPage() {
                   onClick={openCommentComposer}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                 >
-                  <MessageSquarePlus className="w-3.5 h-3.5" />
-                  评论
+                  <Bot className="w-3.5 h-3.5" />
+                  问问AI
                 </button>
               </div>
             </div>
@@ -1553,3 +1543,4 @@ export function DocPage() {
     </div>
   );
 }
+
