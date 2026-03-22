@@ -53,11 +53,10 @@ export function TopBar({ className }: TopBarProps) {
           <Github className="w-4 h-4" />
         </a>
 
-        {/* Feedback Button */}
         <button
           className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-          onClick={() => alert("Feedback form would open here")}
-          title="Feedback"
+          onClick={() => alert("这里会弹出反馈表单")}
+          title="意见反馈"
         >
           <MessageCircle className="w-4 h-4" />
         </button>
@@ -73,7 +72,7 @@ export function TopBar({ className }: TopBarProps) {
             >
               {/* Avatar */}
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-xs font-medium">
-                U
+                我
               </div>
               <span className="hidden lg:inline font-medium text-slate-700">用户名</span>
               <ChevronDown
@@ -159,6 +158,7 @@ export function TopBar({ className }: TopBarProps) {
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+          title="菜单"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -177,7 +177,7 @@ export function TopBar({ className }: TopBarProps) {
                 <div className="px-4 py-3 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                      U
+                      我
                     </div>
                     <div>
                       <p className="text-sm font-medium text-slate-900">用户名</p>
@@ -225,7 +225,7 @@ export function TopBar({ className }: TopBarProps) {
 
                   <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                     <MessageCircle className="w-4 h-4 text-slate-400" />
-                    <span>Feedback</span>
+                    <span>意见反馈</span>
                   </button>
                 </div>
 

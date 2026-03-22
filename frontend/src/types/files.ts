@@ -1,0 +1,43 @@
+export interface FileAssetItem {
+  name: string;
+  url: string;
+  mime_type?: string | null;
+}
+
+export interface FileRecord {
+  id: number;
+  filename: string;
+  filetype: string;
+  status: string;
+  ingest_status: string;
+  markdown_ready: boolean;
+  asset_ready: boolean;
+  error_message?: string | null;
+  file_size_bytes?: number | null;
+  detected_language?: string | null;
+  estimated_pages?: number | null;
+  image_count?: number | null;
+  parser_used?: string | null;
+  markdown_content?: string;
+  asset_base_url?: string | null;
+  assets?: FileAssetItem[];
+  latest_updated_at: string;
+  created_at: string;
+}
+
+export interface FilesData {
+  subject: string;
+  total: number;
+  ready_count: number;
+  processing_count: number;
+  failed_count: number;
+  items: FileRecord[];
+}
+
+export interface FilesUploadData {
+  subject: string;
+  filenames: string[];
+  uploaded_items: FileRecord[];
+  accepted_parse_file_ids: number[];
+  started_parse_count: number;
+}

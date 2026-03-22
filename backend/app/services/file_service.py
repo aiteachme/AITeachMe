@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
 import shutil
 import uuid
 from pathlib import Path
@@ -29,12 +30,11 @@ from app.repositories.files_repo import (
     list_raw_files_by_subject,
     update_raw_file,
 )
-from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.files import (
     FileDeleteData,
-    FileGetData,
-    FileItem,
-    FilesParseData,
+    FileAssetItem,
+    FileRecord,
+    FilesData,
     FilesUploadData,
 )
 from app.services.presenters import require_id
@@ -67,10 +67,45 @@ def _extract_parser_used(parse_metadata: str | None) -> str | None:
     return str(parser_used) if parser_used else None
 
 
-def build_file_item(raw_file: RawFile) -> FileItem:
-    """Serialize a raw file into the richer upload-page list item."""
+def _build_asset_base_url(*, subject: str, file_id: int) -> str:
+    return f"/_assets/{subject}/assets/{file_id}"
 
-    return FileItem(
+
+def _build_asset_items(*, subject: str, file_id: int, asset_dir_value: str | None) -> list[FileAssetItem]:
+    if not asset_dir_value:
+        return []
+
+    asset_dir = Path(asset_dir_value)
+    if not asset_dir.exists():
+        return []
+
+    base_url = _build_asset_base_url(subject=subject, file_id=file_id)
+    return [
+        FileAssetItem(
+            name=path.name,
+            url=f"{base_url}/{path.name}",
+            mime_type=mimetypes.guess_type(path.name)[0],
+        )
+        for path in sorted(asset_dir.iterdir())
+        if path.is_file()
+    ]
+
+
+def _read_markdown(markdown_path_value: str | None) -> str:
+    if not markdown_path_value:
+        return ""
+    markdown_path = Path(markdown_path_value)
+    if not markdown_path.exists():
+        return ""
+    return markdown_path.read_text(encoding="utf-8")
+
+
+def build_file_record(raw_file: RawFile) -> FileRecord:
+    """Serialize a raw file into the unified file record."""
+
+    file_id = require_id(raw_file.id, "RawFile.id")
+    asset_base_url = _build_asset_base_url(subject=raw_file.subject, file_id=file_id)
+    return FileRecord(
         id=require_id(raw_file.id, "RawFile.id"),
         filename=raw_file.filename,
         filetype=raw_file.filetype,
@@ -84,6 +119,13 @@ def build_file_item(raw_file: RawFile) -> FileItem:
         estimated_pages=raw_file.estimated_pages,
         image_count=raw_file.image_count,
         parser_used=_extract_parser_used(raw_file.parse_metadata),
+        markdown_content=_read_markdown(raw_file.markdown_path),
+        asset_base_url=asset_base_url if _asset_ready(raw_file.asset_dir) else asset_base_url,
+        assets=_build_asset_items(
+            subject=raw_file.subject,
+            file_id=file_id,
+            asset_dir_value=raw_file.asset_dir,
+        ),
         latest_updated_at=raw_file.updated_at,
         created_at=raw_file.created_at,
     )
@@ -152,7 +194,7 @@ async def save_uploaded_files(
     return FilesUploadData(
         subject=subject,
         filenames=[item.filename for item in saved],
-        uploaded_items=[build_file_item(item) for item in saved],
+        uploaded_items=[build_file_record(item) for item in saved],
         accepted_parse_file_ids=[],
         started_parse_count=0,
     )
@@ -168,14 +210,13 @@ async def save_uploaded_files_and_request_parse(
 
     upload_data = await save_uploaded_files(session, subject=subject, files=files)
     file_ids = [item.id for item in upload_data.uploaded_items]
-    parse_data = request_files_parse(session, subject=subject, file_ids=file_ids)
-    refreshed_items = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
+    refreshed_items = _start_parse_for_files(session, subject=subject, file_ids=file_ids)
     return FilesUploadData(
         subject=subject,
         filenames=upload_data.filenames,
-        uploaded_items=[build_file_item(item) for item in refreshed_items],
-        accepted_parse_file_ids=parse_data.accepted_file_ids,
-        started_parse_count=len(parse_data.accepted_file_ids),
+        uploaded_items=[build_file_record(item) for item in refreshed_items],
+        accepted_parse_file_ids=file_ids,
+        started_parse_count=len(file_ids),
     )
 
 
@@ -205,17 +246,17 @@ def get_subject_files_or_raise(
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
 
 
-def request_files_parse(
+def _start_parse_for_files(
     session: Session,
     *,
     subject: str,
     file_ids: list[int],
-) -> FilesParseData:
-    """Accept a batch file parse request."""
+) -> list[RawFile]:
+    """Move pending files into parsing state and return refreshed rows."""
 
     raw_files = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
     logger.info(
-        "file_parse_requested",
+        "file_parse_state_transition_requested",
         subject=subject,
         requested_file_ids=file_ids,
         raw_file_states=[
@@ -228,7 +269,6 @@ def request_files_parse(
             for item in raw_files
         ],
     )
-    accepted_ids: list[int] = []
     for raw_file in raw_files:
         raw_file_id = require_id(raw_file.id, "RawFile.id")
         if raw_file.status != TaskStatus.PENDING.value:
@@ -240,35 +280,13 @@ def request_files_parse(
             error_message=None,
             ingest_status=IngestStatus.CLASSIFYING.value,
         )
-        accepted_ids.append(raw_file_id)
     logger.info(
-        "file_parse_accepted",
+        "file_parse_state_transition_completed",
         subject=subject,
-        accepted_file_ids=accepted_ids,
-        accepted_count=len(accepted_ids),
+        accepted_file_ids=file_ids,
+        accepted_count=len(file_ids),
     )
-    return FilesParseData(accepted_file_ids=accepted_ids)
-
-
-def retry_file_parse(
-    session: Session,
-    *,
-    subject: str,
-    file_id: int,
-) -> FilesParseData:
-    """Retry one failed raw file."""
-
-    raw_file = get_subject_file_or_raise(session, subject=subject, file_id=file_id)
-    if raw_file.status != TaskStatus.FAILED.value:
-        raise InvalidRawFileStateError(file_id, raw_file.status, TaskStatus.FAILED.value)
-    update_raw_file(
-        session,
-        raw_file,
-        status=TaskStatus.PROCESSING.value,
-        error_message=None,
-        ingest_status=IngestStatus.CLASSIFYING.value,
-    )
-    return FilesParseData(accepted_file_ids=[file_id])
+    return get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
 
 
 async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
@@ -314,70 +332,28 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
     batch_logger.info("file_parse_background_completed")
 
 
-def list_files(
+def list_subject_files(
     session: Session,
     *,
     subject: str,
-    page: int,
-    size: int,
-    status: str | None = None,
-) -> PaginatedData[FileItem]:
-    """List files by page."""
+) -> FilesData:
+    """Return the full files dataset for one subject."""
 
-    items, total = list_raw_files_by_subject(
+    raw_files, total = list_raw_files_by_subject(
         session,
         subject,
-        limit=size,
-        offset=(page - 1) * size,
-        status=status,
+        limit=1000,
+        offset=0,
+        status=None,
     )
-    return build_paginated_data(
-        items=[build_file_item(item) for item in items],
-        page=page,
-        size=size,
+    records = [build_file_record(item) for item in raw_files]
+    return FilesData(
+        subject=subject,
         total=total,
-    )
-
-
-def get_file_result(
-    session: Session,
-    *,
-    subject: str,
-    file_id: int,
-) -> FileGetData:
-    """Load one parsed file result."""
-
-    raw_file = get_subject_file_or_raise(session, subject=subject, file_id=file_id)
-    markdown_content = ""
-    if raw_file.markdown_path:
-        markdown_path = Path(raw_file.markdown_path)
-        if markdown_path.exists():
-            markdown_content = markdown_path.read_text(encoding="utf-8")
-
-    assets: list[dict[str, str]] = []
-    if raw_file.asset_dir:
-        asset_dir = Path(raw_file.asset_dir)
-        if asset_dir.exists():
-            assets = [{"path": str(path)} for path in sorted(asset_dir.iterdir()) if path.is_file()]
-
-    return FileGetData(
-        file_id=file_id,
-        filename=raw_file.filename,
-        filetype=raw_file.filetype,
-        status=raw_file.status,
-        ingest_status=raw_file.ingest_status,
-        markdown_ready=_path_exists(raw_file.markdown_path),
-        asset_ready=_asset_ready(raw_file.asset_dir),
-        error_message=raw_file.error_message,
-        file_size_bytes=raw_file.file_size_bytes,
-        detected_language=raw_file.detected_language,
-        estimated_pages=raw_file.estimated_pages,
-        image_count=raw_file.image_count,
-        parser_used=_extract_parser_used(raw_file.parse_metadata),
-        markdown_content=markdown_content,
-        assets=assets,
-        latest_updated_at=raw_file.updated_at,
-        created_at=raw_file.created_at,
+        ready_count=sum(1 for item in records if item.markdown_ready),
+        processing_count=sum(1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value),
+        failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
+        items=records,
     )
 
 

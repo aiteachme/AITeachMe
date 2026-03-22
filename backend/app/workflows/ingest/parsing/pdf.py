@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from pydantic import BaseModel
 import structlog
 
 from app.core.exceptions import FileParseError
+from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import save_image_bytes
 
@@ -33,6 +36,21 @@ logger = structlog.get_logger()
 PDF_PYMUPDF_NATIVE_AVAILABLE = fitz is not None
 PDF_MARKITDOWN_AVAILABLE = MarkItDown is not None
 PDF_PYMUPDF4LLM_AVAILABLE = pymupdf4llm is not None
+PDF_PYMUPDF_OCR_VISION_AVAILABLE = fitz is not None
+
+
+class _PDFOCRPage(BaseModel):
+    page_number: int
+    base_text: str = ""
+    image_filename: str | None = None
+    image_bytes: bytes | None = None
+
+
+class _PDFImageCandidate(BaseModel):
+    page_number: int
+    image_index: int
+    image_bytes: bytes
+    image_ext: str
 
 
 async def parse_pdf_with_pymupdf4llm(
@@ -65,17 +83,151 @@ async def parse_pdf_with_pymupdf_native(
     return await asyncio.to_thread(_parse_pdf_with_pymupdf_native_sync, Path(file_path), asset_dir, options)
 
 
+async def parse_pdf_with_pymupdf_ocr_vision(
+    file_path: str | Path,
+    asset_dir: Path,
+    options: ParserRunOptions,
+) -> str:
+    """Parse PDF with native extraction plus page-level vision OCR for scanned content."""
+
+    if fitz is None:
+        raise FileParseError(Path(file_path).name, reason="PyMuPDF is not available.")
+
+    path = Path(file_path)
+    logger.info(
+        "parse_pdf_ocr_vision_start",
+        filename=path.name,
+        parser_parallelism=options.parser_parallelism,
+        llm_ocr_page_concurrency=options.llm_ocr_page_concurrency,
+        ocr_page_limit=options.ocr_page_limit,
+        ocr_language_mode=options.ocr_language_mode,
+    )
+    pages = await asyncio.to_thread(_build_pdf_ocr_pages, path, asset_dir, options)
+    if not pages:
+        raise FileParseError(path.name, reason="PDF OCR parser found no pages.")
+
+    ocr_map = await _run_page_ocr(pages, options)
+    sections: list[str] = []
+    for page in pages:
+        sections.append(f"<!-- page:{page.page_number} -->")
+        if page.base_text.strip():
+            sections.append(page.base_text.strip())
+        ocr_text = ocr_map.get(page.page_number, "")
+        if ocr_text:
+            sections.append("### OCR Text")
+            sections.append(ocr_text.strip())
+        if page.image_filename:
+            sections.append(f"![Page {page.page_number}]({page.image_filename})")
+        sections.append("")
+
+    result = "\n".join(sections).strip()
+    if not result:
+        raise FileParseError(path.name, reason="PDF OCR parser returned empty markdown.")
+    return result
+
+
+async def _run_page_ocr(
+    pages: list[_PDFOCRPage],
+    options: ParserRunOptions,
+) -> dict[int, str]:
+    semaphore = asyncio.Semaphore(max(1, options.llm_ocr_page_concurrency))
+    ocr_map: dict[int, str] = {}
+
+    async def _ocr_one(page: _PDFOCRPage) -> None:
+        if page.image_bytes is None:
+            return
+        async with semaphore:
+            text = await parse_image_bytes_with_llm_vision(
+                page.image_bytes,
+                mime_type="image/png",
+                language_mode=options.ocr_language_mode,
+            )
+        ocr_map[page.page_number] = text
+
+    await asyncio.gather(*[_ocr_one(page) for page in pages])
+    return ocr_map
+
+
+def _build_pdf_ocr_pages(path: Path, asset_dir: Path, options: ParserRunOptions) -> list[_PDFOCRPage]:
+    if fitz is None:
+        return []
+
+    document = fitz.open(str(path))
+    pages: list[_PDFOCRPage] = []
+    ocr_pages = 0
+    captured_pages = 0
+    min_text_chars = max(options.ocr_text_char_threshold, 20)
+
+    for page_index in range(len(document)):
+        page = document[page_index]
+        page_number = page_index + 1
+        base_text = (page.get_text("text") or "").strip()
+        has_image = bool(page.get_images(full=True))
+        should_ocr = (
+            options.enable_page_vision_ocr
+            and ocr_pages < options.ocr_page_limit
+            and has_image
+            and len(base_text) < min_text_chars
+        )
+        if not should_ocr:
+            if has_image and len(base_text) < min_text_chars and captured_pages < options.asset_image_limit:
+                page_bytes = _render_page_png(page)
+                filename = save_image_bytes(
+                    page_bytes,
+                    asset_dir,
+                    name_hint=f"page{page_number}_img",
+                    ext=".png",
+                )
+                pages.append(
+                    _PDFOCRPage(
+                        page_number=page_number,
+                        base_text=base_text,
+                        image_filename=filename,
+                    )
+                )
+                captured_pages += 1
+            else:
+                pages.append(_PDFOCRPage(page_number=page_number, base_text=base_text))
+            continue
+
+        page_bytes = _render_page_png(page)
+        filename = save_image_bytes(
+            page_bytes,
+            asset_dir,
+            name_hint=f"page{page_number}_ocr",
+            ext=".png",
+        )
+        pages.append(
+            _PDFOCRPage(
+                page_number=page_number,
+                base_text=base_text,
+                image_filename=filename,
+                image_bytes=page_bytes,
+            )
+        )
+        ocr_pages += 1
+        captured_pages += 1
+
+    document.close()
+    return pages
+
+
 def _parse_pdf_with_pymupdf4llm_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
     if pymupdf4llm is None:
         raise FileParseError(path.name, reason="pymupdf4llm is not available.")
 
-    logger.info("parse_pdf_pymupdf4llm_start", filename=path.name)
+    logger.info("parse_pdf_pymupdf4llm_start", filename=path.name, parser_parallelism=options.parser_parallelism)
     text = pymupdf4llm.to_markdown(str(path))
     if not text or not text.strip():
         raise FileParseError(path.name, reason="pymupdf4llm returned empty markdown.")
 
     if not options.skip_image_supplement:
-        supplement_pdf_images(path, asset_dir, max_images=options.asset_image_limit)
+        supplement_pdf_images(
+            path,
+            asset_dir,
+            max_images=options.asset_image_limit,
+            workers=options.parser_parallelism,
+        )
     return text
 
 
@@ -83,13 +235,18 @@ def _parse_pdf_with_markitdown_sync(path: Path, asset_dir: Path, options: Parser
     if MarkItDown is None:
         raise FileParseError(path.name, reason="MarkItDown is not available.")
 
-    logger.info("parse_pdf_markitdown_start", filename=path.name)
+    logger.info("parse_pdf_markitdown_start", filename=path.name, parser_parallelism=options.parser_parallelism)
     result = MarkItDown().convert(str(path))
     if not result.text_content or not result.text_content.strip():
         raise FileParseError(path.name, reason="MarkItDown returned empty markdown.")
 
     if not options.skip_image_supplement:
-        supplement_pdf_images(path, asset_dir, max_images=options.asset_image_limit)
+        supplement_pdf_images(
+            path,
+            asset_dir,
+            max_images=options.asset_image_limit,
+            workers=options.parser_parallelism,
+        )
     return result.text_content
 
 
@@ -97,10 +254,11 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
     if fitz is None:
         raise FileParseError(path.name, reason="PyMuPDF is not available.")
 
-    logger.info("parse_pdf_native_start", filename=path.name)
+    logger.info("parse_pdf_native_start", filename=path.name, parser_parallelism=options.parser_parallelism)
     document = fitz.open(str(path))
     sections: list[str] = []
-    image_count = 0
+    image_candidates: list[_PDFImageCandidate] = []
+    seen_xref: set[int] = set()
 
     for page_index in range(len(document)):
         page = document[page_index]
@@ -112,79 +270,133 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
             sections.append(text.strip())
 
         for image_index, image_info in enumerate(page.get_images(full=True), start=1):
-            if image_count >= options.asset_image_limit:
-                logger.info(
-                    "parse_pdf_native_image_limit_reached",
-                    filename=path.name,
-                    limit=options.asset_image_limit,
-                )
+            if len(image_candidates) >= options.asset_image_limit:
                 break
-
-            base_image = _extract_pdf_image(document, image_info[0])
+            xref = int(image_info[0])
+            if xref in seen_xref:
+                continue
+            seen_xref.add(xref)
+            base_image = _extract_pdf_image(document, xref)
             if base_image is None:
                 continue
-
             image_bytes, image_ext = base_image
             if len(image_bytes) < 2048:
                 continue
-
-            image_count += 1
-            filename = save_image_bytes(
-                image_bytes,
-                asset_dir,
-                name_hint=f"p{page_number}_img{image_index}",
-                ext=f".{image_ext}",
+            image_candidates.append(
+                _PDFImageCandidate(
+                    page_number=page_number,
+                    image_index=image_index,
+                    image_bytes=image_bytes,
+                    image_ext=image_ext,
+                )
             )
-            sections.append(f"![Image {image_count}]({filename})")
-
         sections.append("")
-        if image_count >= options.asset_image_limit:
+        if len(image_candidates) >= options.asset_image_limit:
+            logger.info(
+                "parse_pdf_native_image_limit_reached",
+                filename=path.name,
+                limit=options.asset_image_limit,
+            )
             break
 
     document.close()
+    image_names = _save_pdf_images_parallel(image_candidates, asset_dir, workers=options.parser_parallelism)
+    for index, image_name in enumerate(image_names, start=1):
+        if not image_name:
+            continue
+        sections.append(f"![Image {index}]({image_name})")
+
     result = "\n".join(sections).strip()
     if not result:
         raise FileParseError(path.name, reason="PyMuPDF returned empty markdown.")
 
-    logger.info("parse_pdf_native_done", filename=path.name, images=image_count)
+    logger.info("parse_pdf_native_done", filename=path.name, images=len([name for name in image_names if name]))
     return result
 
 
-def supplement_pdf_images(file_path: Path, asset_dir: Path, *, max_images: int) -> None:
+def supplement_pdf_images(
+    file_path: Path,
+    asset_dir: Path,
+    *,
+    max_images: int,
+    workers: int,
+) -> None:
     """Extract images when markdown came from a non-native parser."""
 
     if fitz is None:
         return
 
     document = fitz.open(str(file_path))
-    count = 0
+    seen_xref: set[int] = set()
+    candidates: list[_PDFImageCandidate] = []
     for page_index in range(len(document)):
         page = document[page_index]
         for image_index, image_info in enumerate(page.get_images(full=True), start=1):
-            if count >= max_images:
-                logger.info("pdf_images_supplement_limited", filename=file_path.name, limit=max_images)
+            if len(candidates) >= max_images:
                 document.close()
+                _save_pdf_images_parallel(candidates, asset_dir, workers=workers)
+                logger.info("pdf_images_supplement_limited", filename=file_path.name, limit=max_images)
                 return
 
-            base_image = _extract_pdf_image(document, image_info[0])
+            xref = int(image_info[0])
+            if xref in seen_xref:
+                continue
+            seen_xref.add(xref)
+
+            base_image = _extract_pdf_image(document, xref)
             if base_image is None:
                 continue
-
             image_bytes, image_ext = base_image
             if len(image_bytes) < 2048:
                 continue
-
-            save_image_bytes(
-                image_bytes,
-                asset_dir,
-                name_hint=f"p{page_index + 1}_img{image_index}",
-                ext=f".{image_ext}",
+            candidates.append(
+                _PDFImageCandidate(
+                    page_number=page_index + 1,
+                    image_index=image_index,
+                    image_bytes=image_bytes,
+                    image_ext=image_ext,
+                )
             )
-            count += 1
 
     document.close()
-    if count:
-        logger.info("pdf_images_supplemented", filename=file_path.name, count=count)
+    names = _save_pdf_images_parallel(candidates, asset_dir, workers=workers)
+    if names:
+        logger.info("pdf_images_supplemented", filename=file_path.name, count=len([name for name in names if name]))
+
+
+def _save_pdf_images_parallel(
+    candidates: list[_PDFImageCandidate],
+    asset_dir: Path,
+    *,
+    workers: int,
+) -> list[str]:
+    if not candidates:
+        return []
+
+    max_workers = min(max(workers, 1), 10)
+    if max_workers == 1:
+        return [_save_pdf_candidate(candidate, asset_dir) for candidate in candidates]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_save_pdf_candidate, candidate, asset_dir) for candidate in candidates]
+        return [future.result() for future in futures]
+
+
+def _save_pdf_candidate(candidate: _PDFImageCandidate, asset_dir: Path) -> str:
+    return save_image_bytes(
+        candidate.image_bytes,
+        asset_dir,
+        name_hint=f"p{candidate.page_number}_img{candidate.image_index}",
+        ext=f".{candidate.image_ext}",
+    )
+
+
+def _render_page_png(page: object) -> bytes:
+    if fitz is None:
+        return b""
+    matrix = fitz.Matrix(2.0, 2.0)
+    pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+    return pixmap.tobytes("png")
 
 
 def _extract_pdf_image(document: object, xref: int) -> tuple[bytes, str] | None:

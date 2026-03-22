@@ -162,6 +162,12 @@ def build_plan_parse_node(*, context: WorkflowContext):
                 timeout_s=parse_plan.options.timeout_s,
                 asset_image_limit=parse_plan.options.asset_image_limit,
                 skip_image_supplement=parse_plan.options.skip_image_supplement,
+                parser_parallelism=parse_plan.options.parser_parallelism,
+                llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
+                ocr_page_limit=parse_plan.options.ocr_page_limit,
+                ocr_text_char_threshold=parse_plan.options.ocr_text_char_threshold,
+                asset_gallery_limit=parse_plan.options.asset_gallery_limit,
+                ocr_language_mode=parse_plan.options.ocr_language_mode,
             )
             return {
                 **state,

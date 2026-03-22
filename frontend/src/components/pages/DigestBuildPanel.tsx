@@ -1,65 +1,97 @@
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Loader2,
-  Play,
-  CheckCircle,
-  XCircle,
-  FileText,
-  Zap,
-} from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, FileText, Loader2, Play, XCircle, Zap } from "lucide-react";
+
+import { apiClient, getApiErrorMessage } from "../../api/client";
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
 import { Modal } from "../ui/Modal";
-import { getApiErrorMessage } from "../../api/client";
-import {
-  digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost,
-  digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost,
-} from "../../api/generated/knowledge";
-import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
-import type { FileItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
+import type { FileRecord, FilesData } from "../../types/files";
 
-async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
-  return unwrapOrvalResponse(
-    await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
-      page: 1,
-      size: 100,
-      status: "completed",
-    }),
-  )?.items ?? [];
+interface ApiResponse<T> {
+  code: number;
+  data: T;
 }
 
-/* ---------- 构建状态步骤映射 ---------- */
+interface DigestGraphJob {
+  status: string;
+  progress: number;
+  current_step: string | null;
+  nodes_added: number;
+  nodes_updated: number;
+  nodes_merged: number;
+  edges_added: number;
+  edges_updated: number;
+  error_message: string | null;
+}
+
+interface DigestCurriculumJob {
+  status: string;
+  progress: number;
+  current_step: string | null;
+  units_added: number;
+  units_updated: number;
+  error_message: string | null;
+}
+
+interface DigestStatusData {
+  graph_job: DigestGraphJob;
+  curriculum_job: DigestCurriculumJob | null;
+}
+
+interface DigestBuildData {
+  job_id: number;
+}
 
 const STEP_LABELS: Record<string, string> = {
-  acquire_lock: "获取构建锁",
-  prepare: "准备数据",
-  extract: "抽取知识节点",
-  cluster: "聚类候选节点",
-  resolve_nodes: "对齐知识节点",
-  resolve_edges: "对齐知识边",
-  analyze_impact: "分析影响集",
-  finalize_graph: "完成图谱构建",
-  derive_units: "生成教学单元",
-  derive_theme_tree: "派生主题树",
-  derive_prereq_dag: "派生先修图",
-  finalize_curriculum: "完成课程结构",
+  acquire_lock: "Acquire lock",
+  prepare: "Prepare data",
+  extract: "Extract knowledge",
+  cluster: "Cluster candidates",
+  resolve_nodes: "Resolve nodes",
+  resolve_edges: "Resolve edges",
+  analyze_impact: "Analyze impact",
+  finalize_graph: "Finalize graph",
+  derive_units: "Derive units",
+  derive_theme_tree: "Build theme tree",
+  derive_prereq_dag: "Build prerequisite DAG",
+  finalize_curriculum: "Finalize curriculum",
 };
 
-/* ---------- Context：共享 job 状态 ---------- */
-
-interface DigestJobContext {
+interface DigestJobContextValue {
   activeJobId: number | null;
   setAndPersistJobId: (jobId: number | null) => void;
   subject: string;
 }
 
-const DigestCtx = createContext<DigestJobContext | null>(null);
+const DigestJobContext = createContext<DigestJobContextValue | null>(null);
 
-/**
- * Provider：管理当前学科的构建任务状态，包裹 Button 和 Progress 两个子组件。
- */
+async function fetchSubjectFiles(subject: string): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/files`,
+  });
+  return response.data;
+}
+
+async function buildDigest(subject: string, fileIds: number[]): Promise<DigestBuildData> {
+  const response = await apiClient<ApiResponse<DigestBuildData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/digest/build`,
+    data: { file_ids: fileIds },
+  });
+  return response.data;
+}
+
+async function fetchDigestStatus(subject: string, jobId: number): Promise<DigestStatusData> {
+  const response = await apiClient<ApiResponse<DigestStatusData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/digest/status`,
+    data: { job_id: jobId },
+  });
+  return response.data;
+}
+
 export function DigestBuildProvider({
   subject,
   children,
@@ -81,32 +113,32 @@ export function DigestBuildProvider({
     (jobId: number | null) => {
       setActiveJobId(jobId);
       try {
-        if (jobId !== null) {
-          localStorage.setItem(storageKey, String(jobId));
-        } else {
+        if (jobId === null) {
           localStorage.removeItem(storageKey);
+        } else {
+          localStorage.setItem(storageKey, String(jobId));
         }
       } catch {
-        /* ignore */
+        // ignore localStorage failures
       }
     },
     [storageKey],
   );
 
   return (
-    <DigestCtx.Provider value={{ activeJobId, setAndPersistJobId, subject }}>
+    <DigestJobContext.Provider value={{ activeJobId, setAndPersistJobId, subject }}>
       {children}
-    </DigestCtx.Provider>
+    </DigestJobContext.Provider>
   );
 }
 
 function useDigestJob() {
-  const ctx = useContext(DigestCtx);
-  if (!ctx) throw new Error("useDigestJob must be used inside DigestBuildProvider");
-  return ctx;
+  const context = useContext(DigestJobContext);
+  if (!context) {
+    throw new Error("useDigestJob must be used inside DigestBuildProvider");
+  }
+  return context;
 }
-
-/* ---------- 构建进度条（独立组件，可放在页面任意位置） ---------- */
 
 export function DigestBuildProgress() {
   const { activeJobId, setAndPersistJobId, subject } = useDigestJob();
@@ -117,16 +149,14 @@ export function DigestBuildProgress() {
     queryClient.invalidateQueries({ queryKey: ["prereq-dag", subject] });
     queryClient.invalidateQueries({ queryKey: ["graph-nodes", subject] });
     setAndPersistJobId(null);
-  }, [queryClient, subject, setAndPersistJobId]);
+  }, [queryClient, setAndPersistJobId, subject]);
 
-  if (!activeJobId) return null;
+  if (!activeJobId) {
+    return null;
+  }
 
-  return (
-    <BuildProgress subject={subject} jobId={activeJobId} onComplete={handleComplete} />
-  );
+  return <BuildProgress subject={subject} jobId={activeJobId} onComplete={handleComplete} />;
 }
-
-/* ---------- 内部进度条渲染 ---------- */
 
 function BuildProgress({
   subject,
@@ -139,93 +169,97 @@ function BuildProgress({
 }) {
   const { data } = useQuery({
     queryKey: ["digest-status", subject, jobId],
-    queryFn: async () => {
-      const status = unwrapOrvalResponse(
-        await digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost(subject, {
-          job_id: jobId,
-        }),
-      );
-
-      if (!status) {
-        throw new Error("查询构建状态失败");
-      }
-
-      return status;
-    },
+    queryFn: () => fetchDigestStatus(subject, jobId),
     enabled: !!jobId,
     refetchInterval: (query) => {
-      const d = query.state.data;
-      if (!d) return 3000;
-      const graphDone = d.graph_job.status === "completed" || d.graph_job.status === "failed";
-      const currDone = !d.curriculum_job || d.curriculum_job.status === "completed" || d.curriculum_job.status === "failed";
-      return graphDone && currDone ? false : 3000;
+      const status = query.state.data;
+      if (!status) {
+        return 3000;
+      }
+
+      const graphDone =
+        status.graph_job.status === "completed" || status.graph_job.status === "failed";
+      const curriculumDone =
+        !status.curriculum_job ||
+        status.curriculum_job.status === "completed" ||
+        status.curriculum_job.status === "failed";
+
+      return graphDone && curriculumDone ? false : 3000;
     },
   });
 
   useEffect(() => {
-    if (!data) return;
+    if (!data) {
+      return;
+    }
+
     const graphDone = data.graph_job.status === "completed";
-    const currDone = data.curriculum_job?.status === "completed";
-    if (graphDone && currDone) {
+    const curriculumDone = !data.curriculum_job || data.curriculum_job.status === "completed";
+    if (graphDone && curriculumDone) {
       onComplete();
     }
   }, [data, onComplete]);
 
   if (!data) {
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
-        <Loader2 className="w-4 h-4 animate-spin" />查询构建状态...
+      <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading digest progress...
       </div>
     );
   }
 
-  const { graph_job, curriculum_job } = data;
-  const isFailed = graph_job.status === "failed" || curriculum_job?.status === "failed";
-  const errorMsg = graph_job.error_message || curriculum_job?.error_message;
-
-  const graphProgress = graph_job.progress;
-  const currProgress = curriculum_job?.progress ?? 0;
-  const totalProgress = Math.round(graphProgress * 0.5 + currProgress * 0.5);
-
-  const currentStep = curriculum_job?.current_step || graph_job.current_step;
-  const stepLabel = currentStep ? (STEP_LABELS[currentStep] ?? currentStep) : "准备中";
+  const { graph_job: graphJob, curriculum_job: curriculumJob } = data;
+  const isFailed = graphJob.status === "failed" || curriculumJob?.status === "failed";
+  const totalProgress = Math.round(graphJob.progress * 0.5 + (curriculumJob?.progress ?? 0) * 0.5);
+  const currentStep = curriculumJob?.current_step || graphJob.current_step;
+  const stepLabel = currentStep ? STEP_LABELS[currentStep] ?? currentStep : "Preparing";
+  const errorMessage = graphJob.error_message || curriculumJob?.error_message || null;
 
   return (
     <Card>
-      <CardContent className="pt-4 pb-4">
+      <CardContent className="pb-4 pt-4">
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             {isFailed ? (
-              <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <XCircle className="h-5 w-5 shrink-0 text-red-500" />
             ) : totalProgress >= 100 ? (
-              <CheckCircle className="w-5 h-5 text-green-500 shrink-0" />
+              <CheckCircle className="h-5 w-5 shrink-0 text-green-500" />
             ) : (
-              <Loader2 className="w-5 h-5 animate-spin text-blue-500 shrink-0" />
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-500" />
             )}
             <div className="flex-1">
-              <div className="flex items-center justify-between text-sm mb-1">
+              <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="text-slate-700">{stepLabel}</span>
                 <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    graph_job.status === "completed" ? "bg-green-50 text-green-600" :
-                    graph_job.status === "failed" ? "bg-red-50 text-red-600" :
-                    "bg-blue-50 text-blue-600"
-                  }`}>
-                    图谱: {graph_job.status === "completed" ? "完成" : graph_job.status === "failed" ? "失败" : "构建中"}
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs ${
+                      graphJob.status === "completed"
+                        ? "bg-green-50 text-green-600"
+                        : graphJob.status === "failed"
+                          ? "bg-red-50 text-red-600"
+                          : "bg-blue-50 text-blue-600"
+                    }`}
+                  >
+                    Graph: {graphJob.status}
                   </span>
-                  {curriculum_job && (
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      curriculum_job.status === "completed" ? "bg-green-50 text-green-600" :
-                      curriculum_job.status === "failed" ? "bg-red-50 text-red-600" :
-                      "bg-blue-50 text-blue-600"
-                    }`}>
-                      课程: {curriculum_job.status === "completed" ? "完成" : curriculum_job.status === "failed" ? "失败" : "派生中"}
+                  {curriculumJob ? (
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        curriculumJob.status === "completed"
+                          ? "bg-green-50 text-green-600"
+                          : curriculumJob.status === "failed"
+                            ? "bg-red-50 text-red-600"
+                            : "bg-blue-50 text-blue-600"
+                      }`}
+                    >
+                      Curriculum: {curriculumJob.status}
                     </span>
-                  )}
+                  ) : null}
                   <span className="text-slate-400">{totalProgress}%</span>
                 </div>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-2">
+              <div className="h-2 w-full rounded-full bg-slate-100">
                 <div
                   className={`h-2 rounded-full transition-all duration-500 ${
                     isFailed ? "bg-red-400" : "bg-blue-500"
@@ -236,52 +270,47 @@ function BuildProgress({
             </div>
           </div>
 
-          <div className="flex gap-4 text-xs text-slate-500">
-            <span>节点 +{graph_job.nodes_added} / 更新 {graph_job.nodes_updated} / 合并 {graph_job.nodes_merged}</span>
-            <span>边 +{graph_job.edges_added} / 更新 {graph_job.edges_updated}</span>
-            {curriculum_job && (
-              <span>教学单元 +{curriculum_job.units_added} / 更新 {curriculum_job.units_updated}</span>
-            )}
+          <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+            <span>
+              Nodes +{graphJob.nodes_added} / updated {graphJob.nodes_updated} / merged {graphJob.nodes_merged}
+            </span>
+            <span>
+              Edges +{graphJob.edges_added} / updated {graphJob.edges_updated}
+            </span>
+            {curriculumJob ? (
+              <span>
+                Units +{curriculumJob.units_added} / updated {curriculumJob.units_updated}
+              </span>
+            ) : null}
           </div>
 
-          {isFailed && errorMsg && (
-            <div className="text-xs text-red-500 bg-red-50 rounded p-2 mt-2">
-              {errorMsg}
-            </div>
-          )}
+          {errorMessage ? (
+            <div className="mt-2 rounded bg-red-50 p-2 text-xs text-red-500">{errorMessage}</div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-/* ---------- 触发按钮 + 文件选择弹窗 ---------- */
-
 export function DigestBuildButton() {
   const { setAndPersistJobId, subject } = useDigestJob();
   const [showFileSelect, setShowFileSelect] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
 
-  const { data: files = [], isLoading: filesLoading } = useQuery({
-    queryKey: ["completed-files-digest", subject],
-    queryFn: () => fetchCompletedFiles(subject),
+  const { data: filesData, isLoading: filesLoading } = useQuery({
+    queryKey: ["digest-files", subject],
+    queryFn: () => fetchSubjectFiles(subject),
     enabled: showFileSelect && !!subject,
   });
 
+  const readyFiles = useMemo<FileRecord[]>(
+    () => (filesData?.items ?? []).filter((file) => file.markdown_ready),
+    [filesData],
+  );
+
   const buildMutation = useMutation({
-    mutationFn: async () => {
-      const result = unwrapOrvalResponse(
-        await digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost(subject, {
-          file_ids: Array.from(selectedFileIds),
-        }),
-      );
-
-      if (!result) {
-        throw new Error("提交构建任务失败");
-      }
-
-      return result;
-    },
+    mutationFn: () => buildDigest(subject, Array.from(selectedFileIds)),
     onSuccess: (data) => {
       setAndPersistJobId(data.job_id);
       setShowFileSelect(false);
@@ -289,47 +318,52 @@ export function DigestBuildButton() {
     },
   });
 
-  const toggleFile = (id: number) => {
-    setSelectedFileIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+  const toggleFile = useCallback((fileId: number) => {
+    setSelectedFileIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
       return next;
     });
-  };
+  }, []);
 
   return (
     <>
       <Button onClick={() => setShowFileSelect(true)} variant="outline" size="sm">
-        <Zap className="w-4 h-4 mr-1" />构建知识图谱
+        <Zap className="mr-1 h-4 w-4" />
+        Build digest
       </Button>
 
       <Modal
         open={showFileSelect}
         onClose={() => setShowFileSelect(false)}
-        title="选择文件构建知识图谱"
+        title="Choose files for digest build"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            选择已解析完成的文件，系统将增量构建知识图谱并自动派生课程结构。
+            This panel now reads from the unified `GET /files` response and filters ready files
+            locally. The legacy list request path is no longer used.
           </p>
 
-          {filesLoading && (
-            <div className="flex items-center text-slate-400 text-sm py-4">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />加载文件列表...
+          {filesLoading ? (
+            <div className="flex items-center py-4 text-sm text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading ready files...
             </div>
-          )}
+          ) : null}
 
-          {!filesLoading && files.length === 0 && (
-            <p className="text-sm text-slate-400 py-4">
-              没有已解析完成的文件，请先上传并解析资料
-            </p>
-          )}
+          {!filesLoading && readyFiles.length === 0 ? (
+            <p className="py-4 text-sm text-slate-400">No ready files are available yet.</p>
+          ) : null}
 
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {files.map((file) => (
+          <div className="max-h-60 space-y-2 overflow-y-auto">
+            {readyFiles.map((file) => (
               <label
                 key={file.id}
-                className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
                   selectedFileIds.has(file.id)
                     ? "border-slate-400 bg-slate-50"
                     : "border-slate-200 hover:bg-slate-50"
@@ -341,34 +375,40 @@ export function DigestBuildButton() {
                   onChange={() => toggleFile(file.id)}
                   className="rounded border-slate-300"
                 />
-                <FileText className="w-4 h-4 text-slate-400" />
-                <span className="text-sm text-slate-700 flex-1">{file.filename}</span>
-                <CheckCircle className="w-4 h-4 text-green-500" />
+                <FileText className="h-4 w-4 text-slate-400" />
+                <span className="flex-1 text-sm text-slate-700">{file.filename}</span>
+                <CheckCircle className="h-4 w-4 text-green-500" />
               </label>
             ))}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowFileSelect(false)}>
-              取消
+              Cancel
             </Button>
             <Button
               onClick={() => buildMutation.mutate()}
               disabled={selectedFileIds.size === 0 || buildMutation.isPending}
             >
               {buildMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin mr-1" />提交中...</>
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Building...
+                </>
               ) : (
-                <><Play className="w-4 h-4 mr-1" />开始构建</>
+                <>
+                  <Play className="mr-1 h-4 w-4" />
+                  Start build
+                </>
               )}
             </Button>
           </div>
 
-          {buildMutation.isError && (
+          {buildMutation.isError ? (
             <p className="text-xs text-red-500">
-              {getApiErrorMessage(buildMutation.error, "构建请求失败")}
+              {getApiErrorMessage(buildMutation.error, "Digest build failed")}
             </p>
-          )}
+          ) : null}
         </div>
       </Modal>
     </>

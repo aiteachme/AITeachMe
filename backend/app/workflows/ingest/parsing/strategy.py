@@ -12,6 +12,7 @@ from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     is_image_extension,
+    is_markitdown_generic_extension,
     is_text_extension,
     normalize_extension,
 )
@@ -28,6 +29,9 @@ _MEDIUM_DOC_PAGES = 40
 _LARGE_SLIDE_COUNT = 80
 _LARGE_DOCX_PAGE_COUNT = 60
 _VISION_MAX_MB = 8
+_MIN_INTERNAL_PARALLELISM = 5
+_MAX_INTERNAL_PARALLELISM = 10
+
 class ParsePlan(BaseModel):
     """Materialized parser execution plan stored in workflow state."""
 
@@ -57,7 +61,18 @@ def build_parse_plan(
 
     file_mb = round((file_size_bytes or 0) / (1024 * 1024), 2)
     estimated_pages = classification.estimated_pages if classification else 0
-    options = ParserRunOptions(timeout_s=settings.ingest_parser_timeout_s)
+    parser_parallelism = _derive_parser_parallelism(
+        base_concurrency=settings.ingest_parse_concurrency,
+        file_mb=file_mb,
+        estimated_pages=estimated_pages,
+    )
+    ocr_language_mode = _derive_ocr_language_mode(classification)
+    options = ParserRunOptions(
+        timeout_s=settings.ingest_parser_timeout_s,
+        parser_parallelism=parser_parallelism,
+        llm_ocr_page_concurrency=parser_parallelism,
+        ocr_language_mode=ocr_language_mode,
+    )
     preferred_order = _preferred_parser_order(
         extension=extension,
         file_mb=file_mb,
@@ -105,10 +120,14 @@ def _preferred_parser_order(
 
     if extension == ".pdf":
         if classification and classification.file_category == "scanned_pdf":
+            if llm_enabled:
+                return ["pymupdf_ocr_vision", "pymupdf_native", "markitdown", "pymupdf4llm"]
             return ["pymupdf_native", "markitdown", "pymupdf4llm"]
         if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
             return ["pymupdf_native", "pymupdf4llm", "markitdown"]
         if classification and (classification.has_tables or classification.has_formulas):
+            if llm_enabled:
+                return ["pymupdf4llm", "pymupdf_ocr_vision", "pymupdf_native", "markitdown"]
             return ["pymupdf4llm", "pymupdf_native", "markitdown"]
         return _classification_first(classification, extension)
 
@@ -121,6 +140,9 @@ def _preferred_parser_order(
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             return ["python_pptx_native", "markitdown"]
         return _classification_first(classification, extension)
+
+    if is_markitdown_generic_extension(extension):
+        return ["markitdown_generic"]
 
     return _classification_first(classification, extension)
 
@@ -163,8 +185,10 @@ def _decide_mode_and_options(
     if extension == ".pdf":
         if classification and classification.file_category == "scanned_pdf":
             options.asset_image_limit = 8
-            options.timeout_s = min(options.timeout_s, 75)
-            return "fast_scanned_pdf", "Scanned PDF prefers native text-plus-image extraction."
+            options.ocr_page_limit = 18
+            options.timeout_s = max(options.timeout_s, 140)
+            options.enable_page_vision_ocr = True
+            return "fast_scanned_pdf", "Scanned PDF enables page-level OCR with parallel extraction."
         if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
             options.asset_image_limit = 12
             options.skip_image_supplement = True
@@ -172,6 +196,7 @@ def _decide_mode_and_options(
             return "fast_large_pdf", "Large PDF uses faster parser order and caps image extraction."
         if estimated_pages >= _MEDIUM_DOC_PAGES:
             options.asset_image_limit = 16
+            options.ocr_page_limit = 10
             return "balanced_medium_pdf", "Medium PDF keeps balanced extraction with moderate asset budget."
         return "quality_pdf", "Text-heavy PDF keeps quality-first parser ordering."
 
@@ -189,4 +214,32 @@ def _decide_mode_and_options(
             return "fast_pptx", "Large slide deck prefers native parsing and skips secondary image sweep."
         return "balanced_pptx", "Slide deck uses balanced parser ordering."
 
+    if is_markitdown_generic_extension(extension):
+        options.asset_image_limit = 12
+        return "generic_markitdown", "Generic document format routed to MarkItDown parser."
+
     return "balanced_default", "Default parser chain selected."
+
+
+def _derive_parser_parallelism(
+    *,
+    base_concurrency: int,
+    file_mb: float,
+    estimated_pages: int,
+) -> int:
+    dynamic = max(base_concurrency, 1)
+    if file_mb >= 5:
+        dynamic += 1
+    if file_mb >= 15:
+        dynamic += 1
+    if estimated_pages >= 30:
+        dynamic += 1
+    if estimated_pages >= 100:
+        dynamic += 2
+    return min(max(dynamic, _MIN_INTERNAL_PARALLELISM), _MAX_INTERNAL_PARALLELISM)
+
+
+def _derive_ocr_language_mode(classification: ClassificationResult | None) -> str:
+    if classification and classification.detected_language == "en":
+        return "en"
+    return "zh"

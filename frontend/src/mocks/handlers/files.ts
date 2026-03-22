@@ -1,5 +1,7 @@
 import { http, HttpResponse } from "msw";
 
+import type { FileAssetItem, FileRecord, FilesData } from "../../types/files";
+
 type MockFile = {
   id: number;
   filename: string;
@@ -16,6 +18,8 @@ type MockFile = {
   parser_used: string | null;
   latest_updated_at: string;
   created_at: string;
+  markdown_content: string;
+  assets: FileAssetItem[];
 };
 
 type PendingKnowledgeBuild = {
@@ -26,31 +30,103 @@ type PendingKnowledgeBuild = {
 };
 
 const now = () => new Date().toISOString();
+const SVG_ASSET_NAME = "figure-1.svg";
 
 let nextFileId = 4;
 const filePollTicks = new Map<number, number>();
 
+function buildAssetBaseUrl(subject: string, fileId: number): string {
+  return `/_assets/${subject}/assets/${fileId}`;
+}
+
+function buildFileAssets(subject: string, fileId: number): FileAssetItem[] {
+  const assetBaseUrl = buildAssetBaseUrl(subject, fileId);
+  return [
+    {
+      name: SVG_ASSET_NAME,
+      url: `${assetBaseUrl}/${SVG_ASSET_NAME}`,
+      mime_type: "image/svg+xml",
+    },
+  ];
+}
+
+function buildReadyMarkdown(filename: string): string {
+  return [
+    `# ${filename}`,
+    "",
+    "This is a mock parse result used to verify the unified files response.",
+    "",
+    "## Notes",
+    "",
+    "- Preview reads Markdown directly from `GET /files`.",
+    "- Images use relative paths and are resolved by `assetBaseUrl` in `MarkdownViewer`.",
+    "",
+    `![Preview image](${SVG_ASSET_NAME})`,
+  ].join("\n");
+}
+
+function serializeFile(subject: string, file: MockFile): FileRecord {
+  const assetBaseUrl = buildAssetBaseUrl(subject, file.id);
+  return {
+    id: file.id,
+    filename: file.filename,
+    filetype: file.filetype,
+    status: file.status,
+    ingest_status: file.ingest_status,
+    markdown_ready: file.markdown_ready,
+    asset_ready: file.asset_ready,
+    error_message: file.error_message,
+    file_size_bytes: file.file_size_bytes,
+    detected_language: file.detected_language,
+    estimated_pages: file.estimated_pages,
+    image_count: file.image_count,
+    parser_used: file.parser_used,
+    markdown_content: file.markdown_ready ? file.markdown_content : "",
+    asset_base_url: assetBaseUrl,
+    assets: file.assets,
+    latest_updated_at: file.latest_updated_at,
+    created_at: file.created_at,
+  };
+}
+
+function buildFilesResponse(subject: string): FilesData {
+  const items = [...mockFiles]
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .map((file) => serializeFile(subject, file));
+
+  return {
+    subject,
+    total: items.length,
+    ready_count: items.filter((item) => item.markdown_ready).length,
+    processing_count: items.filter((item) => !item.markdown_ready && item.status !== "failed").length,
+    failed_count: items.filter((item) => item.status === "failed").length,
+    items,
+  };
+}
+
 const mockFiles: MockFile[] = [
   {
     id: 1,
-    filename: "高数第一章.pdf",
+    filename: "calculus-final.pdf",
     filetype: "pdf",
     status: "completed",
     ingest_status: "completed",
     markdown_ready: true,
-    asset_ready: false,
+    asset_ready: true,
     error_message: null,
     file_size_bytes: 248000,
     detected_language: "zh",
     estimated_pages: 12,
-    image_count: 0,
-    parser_used: "markitdown",
+    image_count: 1,
+    parser_used: "pdf_mixed",
     latest_updated_at: "2026-03-22T10:00:00Z",
     created_at: "2026-03-22T09:58:00Z",
+    markdown_content: buildReadyMarkdown("calculus-final.pdf"),
+    assets: buildFileAssets("mock-subject", 1),
   },
   {
     id: 2,
-    filename: "导数与微分笔记.docx",
+    filename: "discrete-notes.docx",
     filetype: "docx",
     status: "processing",
     ingest_status: "extracting",
@@ -64,16 +140,18 @@ const mockFiles: MockFile[] = [
     parser_used: null,
     latest_updated_at: "2026-03-22T10:03:00Z",
     created_at: "2026-03-22T10:02:00Z",
+    markdown_content: "",
+    assets: [],
   },
   {
     id: 3,
-    filename: "积分练习题.pdf",
+    filename: "algorithms-exercises.pdf",
     filetype: "pdf",
     status: "failed",
     ingest_status: "failed",
     markdown_ready: false,
     asset_ready: false,
-    error_message: "Mock: PDF 解析超时，可直接重试",
+    error_message: "Mock: PDF parse failed",
     file_size_bytes: 156000,
     detected_language: "zh",
     estimated_pages: 6,
@@ -81,6 +159,8 @@ const mockFiles: MockFile[] = [
     parser_used: null,
     latest_updated_at: "2026-03-22T10:04:00Z",
     created_at: "2026-03-22T10:01:00Z",
+    markdown_content: "",
+    assets: [],
   },
 ];
 
@@ -96,78 +176,7 @@ let publishedDoc = {
 
 let pendingKnowledgeBuild: PendingKnowledgeBuild | null = null;
 
-function getMockMarkdown(file: MockFile): string {
-  return `# ${file.filename}
-
-这是 ${file.filename} 的 mock 解析结果。
-
-- 文件类型：${file.filetype}
-- 解析状态：${file.markdown_ready ? "已生成 Markdown" : file.status}
-- 语言：${file.detected_language ?? "未知"}
-
-## 核心内容
-
-这里模拟展示 ingest 产出的 Markdown 内容，便于前端联调预览。`;
-}
-
-function buildMockKnowledgeMarkdown(sourceFileIds: number[], prompt: string | null): string {
-  return `# 知识文档总览
-
-## 目录
-
-- 第一章 核心概念
-- 第二章 方法与公式
-- 第三章 复习与易错点
-
----
-
-# 第一章 核心概念
-
-> 📌 本章概要：先搭起整体主线，再把关键概念讲清楚。
-
-## 基础定义
-
-这里是 mock 生成的章节正文，用来模拟多章节知识文档的最终发布效果。
-
-📊 本章标签：#核心概念 #基础定义
-
----
-
-# 第二章 方法与公式
-
-> 📌 本章概要：本章聚焦常用方法、关键公式与典型用法。
-
-## 关键公式
-
-- 公式 A
-- 公式 B
-
-📊 本章标签：#公式 #方法
-
----
-
-# 第三章 复习与易错点
-
-> 📌 本章概要：最后集中整理复习抓手、典型误区和答题提醒。
-
-## 复习建议
-
-- 回看定义边界
-- 对照例题检查思路
-- 重点核对易错点
-
-## 来源文件
-
-${sourceFileIds.map((fileId) => `- 文件 ${fileId}`).join("\n")}
-
-## 用户要求
-
-${prompt ?? "按章节归纳重点、公式和易错点。"}
-
-📊 本章标签：#复习 #易错点`;
-}
-
-function advanceFileParsing() {
+function advanceFileParsing(subject: string) {
   for (const file of mockFiles) {
     if (file.markdown_ready || file.status === "failed") {
       continue;
@@ -186,8 +195,11 @@ function advanceFileParsing() {
     file.status = "completed";
     file.ingest_status = "completed";
     file.markdown_ready = true;
-    file.asset_ready = false;
+    file.asset_ready = true;
+    file.image_count = 1;
     file.parser_used = file.parser_used ?? "markitdown";
+    file.markdown_content = buildReadyMarkdown(file.filename);
+    file.assets = buildFileAssets(subject, file.id);
     file.latest_updated_at = now();
   }
 }
@@ -204,38 +216,88 @@ function advanceKnowledgeBuild() {
 
   publishedDoc = {
     exists: true,
-    markdown: buildMockKnowledgeMarkdown(
-      pendingKnowledgeBuild.source_file_ids,
-      pendingKnowledgeBuild.prompt,
-    ),
-    updated_at: pendingKnowledgeBuild.requested_at,
-    source_file_ids: pendingKnowledgeBuild.source_file_ids,
+    updated_at: now(),
+    source_file_ids: [...pendingKnowledgeBuild.source_file_ids],
     prompt: pendingKnowledgeBuild.prompt,
+    markdown: [
+      "# 知识文档总览",
+      "",
+      "## 目录",
+      "",
+      "- 第一章 核心概念梳理",
+      "- 第二章 方法与例题",
+      "- 第三章 复习抓手",
+      "",
+      "---",
+      "",
+      "# 第一章 核心概念梳理",
+      "",
+      "> 📌 本章概要：本章先整理核心概念与基本定义，帮助你快速建立统一的知识框架。",
+      "",
+      "## 关键主题",
+      "",
+      ...pendingKnowledgeBuild.source_file_ids.map((fileId) => `- 来自文件 ${fileId} 的重点内容`),
+      "",
+      "📊 本章标签：#概念 #主线",
+      "",
+      "---",
+      "",
+      "# 第二章 方法与例题",
+      "",
+      "> 📌 本章概要：本章围绕常见方法、公式和典型题型展开，方便继续练习和迁移应用。",
+      "",
+      "## 方法提示",
+      "",
+      pendingKnowledgeBuild.prompt ?? "未提供额外生成提示，本章按默认教学结构组织。",
+      "",
+      "📊 本章标签：#方法 #例题",
+      "",
+      "---",
+      "",
+      "# 第三章 复习抓手",
+      "",
+      "> 📌 本章概要：最后一章汇总复习顺序、常见误区和二次回看建议，便于考前快速过一遍。",
+      "",
+      "## 复习建议",
+      "",
+      "- 先回顾目录，再逐章定位薄弱点。",
+      "- 结合原始资料复核公式、定义和图示。",
+      "",
+      "📊 本章标签：#复习 #总结",
+    ].join("\n"),
   };
   pendingKnowledgeBuild = null;
 }
 
+function buildMockSvg(label: string): string {
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`,
+    `<rect width="640" height="360" fill="#eff6ff" rx="24" ry="24"/>`,
+    `<rect x="40" y="48" width="560" height="264" fill="#ffffff" stroke="#93c5fd" stroke-width="4" rx="20" ry="20"/>`,
+    `<text x="320" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#1d4ed8">AITeachMe Asset Preview</text>`,
+    `<text x="320" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#475569">${label}</text>`,
+    `</svg>`,
+  ].join("");
+}
+
 export const fileHandlers = [
-  http.post("/api/v1/subjects/:subject/files/list", () => {
-    advanceFileParsing();
+  http.get("/api/v1/subjects/:subject/files", ({ params }) => {
+    const subject = String(params.subject);
+    advanceFileParsing(subject);
     return HttpResponse.json({
       code: 0,
-      data: {
-        items: [...mockFiles].sort((left, right) =>
-          right.created_at.localeCompare(left.created_at),
-        ),
-        total: mockFiles.length,
-      },
+      data: buildFilesResponse(subject),
     });
   }),
 
   http.post("/api/v1/subjects/:subject/files/upload", async ({ params, request }) => {
+    const subject = String(params.subject);
     const formData = await request.formData();
     const uploads = formData.getAll("files");
     const createdAt = now();
 
     const newItems = uploads.map((entry, index) => {
-      const filename = entry instanceof File ? entry.name : `新文件${nextFileId + index}.txt`;
+      const filename = entry instanceof File ? entry.name : `mock-file-${nextFileId + index}.txt`;
       const filetype = filename.split(".").pop()?.toLowerCase() ?? "txt";
       const fileId = nextFileId + index;
       const item: MockFile = {
@@ -254,6 +316,8 @@ export const fileHandlers = [
         parser_used: null,
         latest_updated_at: createdAt,
         created_at: createdAt,
+        markdown_content: "",
+        assets: [],
       };
       filePollTicks.set(fileId, 0);
       mockFiles.unshift(item);
@@ -265,131 +329,68 @@ export const fileHandlers = [
     return HttpResponse.json({
       code: 0,
       data: {
-        subject: params.subject,
+        subject,
         filenames: newItems.map((item) => item.filename),
-        uploaded_items: newItems,
+        uploaded_items: newItems.map((item) => serializeFile(subject, item)),
         accepted_parse_file_ids: newItems.map((item) => item.id),
         started_parse_count: newItems.length,
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/get", async ({ request }) => {
-    advanceFileParsing();
-    const body = (await request.json()) as { file_id?: number };
-    const file = mockFiles.find((item) => item.id === body.file_id);
+  http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
+    const body = (await request.json()) as { file_id?: number; file_ids?: number[] };
+    const candidateIds = body.file_ids?.length ? body.file_ids : body.file_id ? [body.file_id] : [];
+    const deletedIds: number[] = [];
 
-    if (!file) {
+    for (const fileId of candidateIds) {
+      const index = mockFiles.findIndex((item) => item.id === fileId);
+      if (index >= 0) {
+        mockFiles.splice(index, 1);
+        filePollTicks.delete(fileId);
+        deletedIds.push(fileId);
+      }
+    }
+
+    return HttpResponse.json({
+      code: 0,
+      data: { deleted_file_ids: deletedIds },
+    });
+  }),
+
+  http.get("/_assets/:subject/assets/:fileId/:assetName", ({ params }) => {
+    const fileId = Number(params.fileId);
+    const assetName = String(params.assetName);
+    const file = mockFiles.find((item) => item.id === fileId);
+    const asset = file?.assets.find((item) => item.name === assetName);
+
+    if (!file || !asset) {
       return HttpResponse.json(
         {
           code: 404,
-          message: "文件不存在",
+          message: "Asset not found",
           error_code: "RAW_FILE_NOT_FOUND",
         },
         { status: 404 },
       );
     }
 
-    return HttpResponse.json({
-      code: 0,
-      data: {
-        file_id: file.id,
-        filename: file.filename,
-        filetype: file.filetype,
-        status: file.status,
-        ingest_status: file.ingest_status,
-        markdown_ready: file.markdown_ready,
-        asset_ready: file.asset_ready,
-        error_message: file.error_message,
-        file_size_bytes: file.file_size_bytes,
-        detected_language: file.detected_language,
-        estimated_pages: file.estimated_pages,
-        image_count: file.image_count,
-        parser_used: file.parser_used,
-        markdown_content: file.markdown_ready ? getMockMarkdown(file) : "",
-        assets: [],
-        latest_updated_at: file.latest_updated_at,
-        created_at: file.created_at,
+    return new HttpResponse(buildMockSvg(`${file.filename} / ${assetName}`), {
+      headers: {
+        "Content-Type": asset.mime_type ?? "image/svg+xml",
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/retry", async ({ request }) => {
-    const body = (await request.json()) as { file_id?: number };
-    const file = mockFiles.find((item) => item.id === body.file_id);
+  http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {
+    const body = (await request.json()) as { prompt?: string | null };
+    const readyFileIds = mockFiles.filter((item) => item.markdown_ready).map((item) => item.id);
 
-    if (!file) {
-      return HttpResponse.json(
-        { code: 404, message: "文件不存在", error_code: "RAW_FILE_NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    file.status = "processing";
-    file.ingest_status = "classifying";
-    file.error_message = null;
-    file.markdown_ready = false;
-    file.latest_updated_at = now();
-    filePollTicks.set(file.id, 0);
-
-    return HttpResponse.json({
-      code: 0,
-      data: { accepted_file_ids: [file.id] },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
-    const body = (await request.json()) as { file_id?: number };
-    const fileId = body.file_id ?? 0;
-    const index = mockFiles.findIndex((item) => item.id === fileId);
-
-    if (index >= 0) {
-      mockFiles.splice(index, 1);
-      filePollTicks.delete(fileId);
-    }
-
-    return HttpResponse.json({
-      code: 0,
-      data: { deleted_file_ids: index >= 0 ? [fileId] : [] },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/files/parse", async ({ request }) => {
-    const body = (await request.json()) as { file_ids?: number[] };
-    const accepted = body.file_ids ?? [];
-    for (const fileId of accepted) {
-      const file = mockFiles.find((item) => item.id === fileId);
-      if (!file) {
-        continue;
-      }
-      file.status = "processing";
-      file.ingest_status = "classifying";
-      file.markdown_ready = false;
-      file.error_message = null;
-      file.latest_updated_at = now();
-      filePollTicks.set(fileId, 0);
-    }
-    return HttpResponse.json({
-      code: 0,
-      data: { accepted_file_ids: accepted },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/knowledge/build", async ({ params, request }) => {
-    const body = (await request.json()) as {
-      file_ids?: number[];
-      prompt?: string | null;
-    };
-    const readyFileIds = mockFiles
-      .filter((item) => item.markdown_ready)
-      .map((item) => item.id);
-    const acceptedFileIds = body.file_ids?.length ? body.file_ids : readyFileIds;
-
-    if (!acceptedFileIds.length) {
+    if (!readyFileIds.length) {
       return HttpResponse.json(
         {
           code: 422,
-          message: "当前没有可用于生成知识文档的已解析文件",
+          message: "No ready files are available for document generation",
           error_code: "NO_READY_FILES_FOR_DOCGEN",
         },
         { status: 422 },
@@ -400,8 +401,8 @@ export const fileHandlers = [
       return HttpResponse.json(
         {
           code: 409,
-          message: `学科 ${params.subject} 正在构建中，请稍后重试。`,
-          error_code: "SUBJECT_BUILD_LOCK_CONFLICT",
+          message: "Knowledge build already in progress",
+          error_code: "BUILD_IN_PROGRESS",
         },
         { status: 409 },
       );
@@ -410,7 +411,7 @@ export const fileHandlers = [
     const requestedAt = now();
     pendingKnowledgeBuild = {
       requested_at: requestedAt,
-      source_file_ids: acceptedFileIds,
+      source_file_ids: readyFileIds,
       prompt: body.prompt?.trim() || null,
       poll_count: 0,
     };
@@ -418,7 +419,7 @@ export const fileHandlers = [
     return HttpResponse.json({
       code: 0,
       data: {
-        accepted_file_ids: acceptedFileIds,
+        accepted_file_ids: readyFileIds,
         prompt: pendingKnowledgeBuild.prompt,
         ready_file_count: readyFileIds.length,
         requested_at: requestedAt,

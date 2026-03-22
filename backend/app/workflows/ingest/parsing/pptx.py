@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import structlog
@@ -56,13 +57,18 @@ def _parse_pptx_with_markitdown_sync(path: Path, asset_dir: Path, options: Parse
     if MarkItDown is None:
         raise FileParseError(path.name, reason="MarkItDown is not available.")
 
-    logger.info("parse_pptx_markitdown_start", filename=path.name)
+    logger.info("parse_pptx_markitdown_start", filename=path.name, parser_parallelism=options.parser_parallelism)
     result = MarkItDown().convert(str(path))
     if not result.text_content or not result.text_content.strip():
         raise FileParseError(path.name, reason="MarkItDown returned empty markdown.")
 
     if not options.skip_image_supplement:
-        supplement_pptx_images(path, asset_dir, max_images=options.asset_image_limit)
+        supplement_pptx_images(
+            path,
+            asset_dir,
+            max_images=options.asset_image_limit,
+            workers=options.parser_parallelism,
+        )
     return result.text_content
 
 
@@ -70,7 +76,7 @@ def _parse_pptx_with_python_pptx_sync(path: Path, asset_dir: Path, options: Pars
     if Presentation is None or MSO_SHAPE_TYPE is None:
         raise FileParseError(path.name, reason="python-pptx is not available.")
 
-    logger.info("parse_pptx_python_native_start", filename=path.name)
+    logger.info("parse_pptx_python_native_start", filename=path.name, parser_parallelism=options.parser_parallelism)
     presentation = Presentation(str(path))
     sections: list[str] = []
     image_count = 0
@@ -121,19 +127,19 @@ def _parse_pptx_with_python_pptx_sync(path: Path, asset_dir: Path, options: Pars
     return result
 
 
-def supplement_pptx_images(file_path: Path, asset_dir: Path, *, max_images: int) -> None:
+def supplement_pptx_images(file_path: Path, asset_dir: Path, *, max_images: int, workers: int) -> None:
     """Extract PPTX images when markdown came from MarkItDown."""
 
     if Presentation is None or MSO_SHAPE_TYPE is None:
         return
 
     presentation = Presentation(str(file_path))
-    count = 0
+    images: list[tuple[bytes, str, str]] = []
     for slide_index, slide in enumerate(presentation.slides, start=1):
         for shape in _iter_shapes(slide.shapes):
-            if count >= max_images:
+            if len(images) >= max_images:
                 logger.info("pptx_images_supplement_limited", filename=file_path.name, limit=max_images)
-                return
+                break
             if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
                 continue
 
@@ -141,16 +147,19 @@ def supplement_pptx_images(file_path: Path, asset_dir: Path, *, max_images: int)
             if len(image_bytes) < 1024:
                 continue
 
-            save_image_bytes(
-                image_bytes,
-                asset_dir,
-                name_hint=f"slide{slide_index}_img{count + 1}",
-                ext=f".{_normalize_image_extension(shape.image.content_type)}",
+            images.append(
+                (
+                    image_bytes,
+                    f".{_normalize_image_extension(shape.image.content_type)}",
+                    f"slide{slide_index}_img{len(images) + 1}",
+                )
             )
-            count += 1
+        if len(images) >= max_images:
+            break
+    saved_count = _save_pptx_supplement_images(images, asset_dir, workers=workers)
 
-    if count:
-        logger.info("pptx_images_supplemented", filename=file_path.name, count=count)
+    if saved_count:
+        logger.info("pptx_images_supplemented", filename=file_path.name, count=saved_count)
 
 
 def _iter_shapes(shapes: Iterable[object]) -> Iterator[object]:
@@ -166,3 +175,28 @@ def _normalize_image_extension(content_type: str | None) -> str:
         return "png"
     extension = content_type.split("/")[-1]
     return "jpg" if extension == "jpeg" else extension
+
+
+def _save_pptx_supplement_images(
+    images: list[tuple[bytes, str, str]],
+    asset_dir: Path,
+    *,
+    workers: int,
+) -> int:
+    if not images:
+        return 0
+
+    max_workers = min(max(workers, 1), 10)
+    if max_workers == 1:
+        for image_bytes, image_ext, hint in images:
+            save_image_bytes(image_bytes, asset_dir, name_hint=hint, ext=image_ext)
+        return len(images)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(save_image_bytes, image_bytes, asset_dir, hint, image_ext)
+            for image_bytes, image_ext, hint in images
+        ]
+        for future in futures:
+            future.result()
+    return len(images)

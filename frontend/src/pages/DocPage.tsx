@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useLocation, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { TopBar } from "../components/layout/TopBar";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
@@ -2289,12 +2288,7 @@ export function DocPage() {
   );
 
   return (
-    <div className="relative h-screen overflow-hidden bg-slate-50">
-      <div className="fixed top-3 right-4 z-[70]">
-        <TopBar />
-      </div>
-
-      {!isCompactPanels && (
+    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-transparent flex flex-col">      {!isCompactPanels && (
         <div className="hidden lg:block absolute left-4 top-16 z-30">
           {isTocCollapsed ? (
             <aside className="w-11 h-11">
