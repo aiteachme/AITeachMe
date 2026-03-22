@@ -9,7 +9,10 @@ import {
   Clock,
   Loader2,
   MessageSquare,
-  FileText
+  FileText,
+  Paperclip,
+  X,
+  FileUp
 } from "lucide-react";
 
 import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
@@ -26,9 +29,11 @@ export function HomePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>({ requirement: "" });
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -55,20 +60,29 @@ export function HomePage() {
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setError(null);
-      // OpenMAIC goes to generation preview, here we go to upload to start feeding materials
-      navigate(`/subject/${created.subject_id}/upload`);
+      // Pass the uploaded files to the newly redesigned UploadPage
+      navigate(`/subject/${created.subject_id}/upload`, {
+        state: { 
+          initialFiles: selectedFiles,
+          initialPrompt: form.requirement 
+        }
+      });
     },
     onError: (err: unknown) => {
       setError(getApiErrorMessage(err, "创建失败，请重试"));
     },
   });
 
-  const canGenerate = !!form.requirement.trim();
+  const canGenerate = !!form.requirement.trim() || selectedFiles.length > 0;
 
   const handleGenerate = () => {
     if (!canGenerate) return;
     setError(null);
-    createMutation.mutate(form.requirement.trim());
+    let name = form.requirement.trim();
+    if (!name && selectedFiles.length > 0) {
+      name = selectedFiles[0].name.replace(/\.[^/.]+$/, "") || "新建学科";
+    }
+    createMutation.mutate(name);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -80,6 +94,18 @@ export function HomePage() {
 
   const updateForm = (val: string) => {
     setForm({ requirement: val });
+  };
+
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...Array.from(e.target.files as FileList)]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
 
@@ -155,31 +181,67 @@ export function HomePage() {
               disabled={createMutation.isPending}
             />
 
-            {/* Toolbar row */}
-            <div className="px-3 pb-3 flex items-end justify-between gap-2">
-              <div className="flex-1">
-                {/* Optional left toolbar elements can go here */}
-                {createMutation.isPending && (
-                  <span className="text-xs text-indigo-500 font-medium flex items-center ml-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> 正在创建你的学习空间...
-                  </span>
-                )}
-              </div>
+            <div className="px-3 pb-3 flex flex-col gap-2">
+              {/* File Attachment Area */}
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-slate-100">
+                  {selectedFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg transition-colors group">
+                      <FileUp className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
+                      <span className="max-w-[140px] truncate font-medium">{file.name}</span>
+                      <button 
+                        onClick={() => removeFile(idx)}
+                        title="移除文件"
+                        className="ml-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Send button */}
-              <button
-                onClick={handleGenerate}
-                disabled={!canGenerate || createMutation.isPending}
-                className={cn(
-                  "shrink-0 h-9 rounded-xl flex items-center justify-center gap-1.5 transition-all px-4",
-                  canGenerate && !createMutation.isPending
-                    ? "bg-slate-900 text-white hover:bg-slate-800 shadow-md hover:shadow-lg cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                )}
-              >
-                <span className="text-sm font-semibold">进入课堂</span>
-                <ArrowUp className="w-4 h-4 ml-0.5" />
-              </button>
+              <div className="flex items-end justify-between px-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <input 
+                    type="file" 
+                    title="选择要上传的文件资料"
+                    multiple 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange}
+                    accept=".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    上传文件资料
+                  </button>
+                  {createMutation.isPending && (
+                    <span className="text-xs text-indigo-500 font-medium flex items-center ml-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> 正在准备学习空间...
+                    </span>
+                  )}
+                </div>
+
+                {/* Send button */}
+                <button
+                  onClick={handleGenerate}
+                  disabled={!canGenerate || createMutation.isPending}
+                  className={cn(
+                    "shrink-0 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all px-5",
+                    canGenerate && !createMutation.isPending
+                      ? "bg-indigo-600 text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <span className="text-sm font-bold">开始学习</span>
+                  <ArrowUp className="w-4 h-4 ml-0.5" />
+                </button>
+              </div>
             </div>
           </div>
         </motion.div>

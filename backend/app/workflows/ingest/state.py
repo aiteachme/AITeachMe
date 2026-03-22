@@ -27,6 +27,10 @@ class IngestParseState(TypedDict, total=False):
     parse_metadata: str | None
     parser_used: str | None
     attempted_parsers: list[str]
+    parser_elapsed_s: dict[str, float]
     markdown_chars: int
     image_count: int
+    rewritten_image_refs: int
+    extracted_data_images: int
+    appended_asset_images: int
     error: str | None

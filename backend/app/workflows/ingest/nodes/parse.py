@@ -38,6 +38,9 @@ def build_parse_file_node(*, context: WorkflowContext):
             asset_dir=str(asset_dir),
             parse_mode=parse_plan.mode if parse_plan else None,
             parser_chain=parse_plan.parser_chain if parse_plan else None,
+            parser_parallelism=parse_plan.options.parser_parallelism if parse_plan else None,
+            llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency if parse_plan else None,
+            ocr_language_mode=parse_plan.options.ocr_language_mode if parse_plan else None,
         )
         try:
             parse_result = await parse_file(
@@ -61,9 +64,19 @@ def build_parse_file_node(*, context: WorkflowContext):
                     "timeout_s": parse_plan.options.timeout_s if parse_plan else None,
                     "asset_image_limit": parse_plan.options.asset_image_limit if parse_plan else None,
                     "skip_image_supplement": parse_plan.options.skip_image_supplement if parse_plan else None,
+                    "parser_parallelism": parse_plan.options.parser_parallelism if parse_plan else None,
+                    "llm_ocr_page_concurrency": parse_plan.options.llm_ocr_page_concurrency if parse_plan else None,
+                    "ocr_page_limit": parse_plan.options.ocr_page_limit if parse_plan else None,
+                    "ocr_text_char_threshold": parse_plan.options.ocr_text_char_threshold if parse_plan else None,
+                    "asset_gallery_limit": parse_plan.options.asset_gallery_limit if parse_plan else None,
+                    "ocr_language_mode": parse_plan.options.ocr_language_mode if parse_plan else None,
                     "elapsed_s": elapsed,
                     "markdown_chars": len(parse_result.markdown),
                     "image_count": image_count,
+                    "parser_elapsed_s": parse_result.parser_elapsed_s,
+                    "rewritten_image_refs": parse_result.rewritten_image_refs,
+                    "extracted_data_images": parse_result.extracted_data_images,
+                    "appended_asset_images": parse_result.appended_asset_images,
                 },
                 ensure_ascii=False,
             )
@@ -93,17 +106,25 @@ def build_parse_file_node(*, context: WorkflowContext):
                 parse_mode=parse_plan.mode if parse_plan else None,
                 parser_used=parse_result.parser_used,
                 attempted_parsers=parse_result.attempted_parsers,
+                parser_elapsed_s=parse_result.parser_elapsed_s,
                 markdown_chars=len(parse_result.markdown),
                 image_count=image_count,
                 elapsed_s=elapsed,
+                rewritten_image_refs=parse_result.rewritten_image_refs,
+                extracted_data_images=parse_result.extracted_data_images,
+                appended_asset_images=parse_result.appended_asset_images,
             )
             return {
                 **state,
                 "parse_metadata": parse_metadata,
                 "parser_used": parse_result.parser_used,
                 "attempted_parsers": parse_result.attempted_parsers,
+                "parser_elapsed_s": parse_result.parser_elapsed_s,
                 "markdown_chars": len(parse_result.markdown),
                 "image_count": image_count,
+                "rewritten_image_refs": parse_result.rewritten_image_refs,
+                "extracted_data_images": parse_result.extracted_data_images,
+                "appended_asset_images": parse_result.appended_asset_images,
                 "error": None,
             }
         except Exception as exc:

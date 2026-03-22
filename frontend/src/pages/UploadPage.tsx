@@ -2,6 +2,7 @@ import {
   type ChangeEvent,
   type DragEvent,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,17 +12,17 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
-  FileText,
   Loader2,
   RefreshCw,
   Sparkles,
-  Trash2,
-  Upload,
+  Paperclip,
+  FileUp,
+  X,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { getApiErrorMessage } from "../api/client";
 import { apiClient } from "../api/client";
 import {
   deleteFilesApiApiV1SubjectsSubjectFilesDeletePost,
@@ -33,15 +34,9 @@ import {
 import type { FileGetData, FileItem, FilesUploadData } from "../api/generated/model";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/Card";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
+import { cn } from "../lib/utils";
 
 interface ApiResponse<T> {
   code: number;
@@ -55,6 +50,7 @@ interface DocGenBuildData {
   ready_file_count: number;
 }
 
+// API functions
 async function fetchFiles(subject: string): Promise<FileItem[]> {
   const response = await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
     page: 1,
@@ -68,134 +64,81 @@ async function fetchFileResult(subject: string, fileId: number): Promise<FileGet
     file_id: fileId,
   });
   const data = unwrapOrvalResponse<FileGetData>(response);
-  if (!data) {
-    throw new Error("加载文件解析结果失败");
-  }
+  if (!data) throw new Error("加载文件解析结果失败");
   return data;
 }
 
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
-  const response = await uploadFilesApiV1SubjectsSubjectFilesUploadPost(subject, {
-    files,
-  });
+  const response = await uploadFilesApiV1SubjectsSubjectFilesUploadPost(subject, { files });
   const data = unwrapOrvalResponse<FilesUploadData>(response);
-  if (!data) {
-    throw new Error("上传文件失败");
-  }
+  if (!data) throw new Error("上传文件失败");
   return data;
 }
 
 async function retryFile(subject: string, fileId: number): Promise<void> {
-  await retryUploadedFileApiV1SubjectsSubjectFilesRetryPost(subject, {
-    file_id: fileId,
-  });
+  await retryUploadedFileApiV1SubjectsSubjectFilesRetryPost(subject, { file_id: fileId });
 }
 
 async function deleteFile(subject: string, fileId: number): Promise<void> {
-  await deleteFilesApiApiV1SubjectsSubjectFilesDeletePost(subject, {
-    file_id: fileId,
-  });
+  await deleteFilesApiApiV1SubjectsSubjectFilesDeletePost(subject, { file_id: fileId });
 }
 
-async function triggerDocGenBuild(
-  subject: string,
-  prompt?: string,
-): Promise<DocGenBuildData> {
+async function triggerDocGenBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
   const res = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
-    data: {
-      prompt,
-    },
+    data: { prompt },
   });
   return res.data;
 }
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg";
-const SUPPORTED_FORMATS = "PDF / DOCX / Markdown / TXT / PNG / JPG";
 
-function formatFileSize(bytes: number | null | undefined): string {
-  if (!bytes || bytes <= 0) {
-    return "未知大小";
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatTimestamp(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function getFileStatusMeta(file: FileItem): {
-  label: string;
-  description: string;
-  tone: string;
-  icon: JSX.Element;
-} {
+function getFileStatusMeta(file: FileItem) {
   if (file.markdown_ready) {
     return {
       label: "已就绪",
-      description: file.parser_used ? `已生成 Markdown，解析器：${file.parser_used}` : "已生成 Markdown，可开始生成知识文档",
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
     };
   }
-
   if (file.status === "failed") {
     return {
       label: "解析失败",
-      description: file.error_message ?? "解析未完成，可直接重试",
-      tone: "border-red-200 bg-red-50 text-red-700",
+      tone: "text-red-600 bg-red-50 border-red-200",
       icon: <AlertCircle className="h-4 w-4 text-red-500" />,
     };
   }
-
   if (ACTIVE_FILE_STATUSES.has(file.status) || file.ingest_status !== "pending") {
     return {
       label: "解析中",
-      description: "上传成功后已自动进入 ingest 解析流程",
-      tone: "border-blue-200 bg-blue-50 text-blue-700",
-      icon: <Loader2 className="h-4 w-4 animate-spin text-blue-500" />,
+      tone: "text-indigo-600 bg-indigo-50 border-indigo-200",
+      icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
     };
   }
-
   return {
     label: "等待处理",
-    description: "已入队，正在等待后台处理",
-    tone: "border-amber-200 bg-amber-50 text-amber-700",
-    icon: <RefreshCw className="h-4 w-4 text-amber-500" />,
+    tone: "text-amber-600 bg-amber-50 border-amber-200",
+    icon: <RefreshCw className="h-4 w-4 text-amber-500 animate-spin-slow" />,
   };
 }
 
 export function UploadPage() {
   const { subjectId = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [docPrompt, setDocPrompt] = useState("");
+  const state = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
+
+  const [docPrompt, setDocPrompt] = useState(state?.initialPrompt || "");
   const [previewFile, setPreviewFile] = useState<FileGetData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [lastUpload, setLastUpload] = useState<FilesUploadData | null>(null);
+  const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
 
-  const {
-    data: files = [],
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  const { data: files = [], isLoading } = useQuery({
     queryKey: ["files", subjectId],
     queryFn: () => fetchFiles(subjectId),
     enabled: !!subjectId,
@@ -205,57 +148,44 @@ export function UploadPage() {
     },
   });
 
-  const readyFiles = useMemo(
-    () => files.filter((file) => file.markdown_ready),
-    [files],
-  );
-  const activeFiles = useMemo(
-    () => files.filter((file) => !file.markdown_ready && file.status !== "failed"),
-    [files],
-  );
+  const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
 
   const uploadMutation = useMutation({
     mutationFn: (selectedFiles: File[]) => uploadFiles(subjectId, selectedFiles),
-    onSuccess: (data) => {
-      setLastUpload(data);
-      void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
   const retryMutation = useMutation({
     mutationFn: (fileId: number) => retryFile(subjectId, fileId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (fileId: number) => deleteFile(subjectId, fileId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
   const buildMutation = useMutation({
-    mutationFn: () =>
-      triggerDocGenBuild(
-        subjectId,
-        docPrompt.trim() || undefined,
-      ),
-    onSuccess: (data) => {
-      navigate(`/subject/${subjectId}/doc?job_id=${data.job_id}`);
-    },
+    mutationFn: () => triggerDocGenBuild(subjectId, docPrompt.trim() || undefined),
+    onSuccess: (data) => navigate(`/subject/${subjectId}/doc?job_id=${data.job_id}`),
   });
 
   const handleUpload = useCallback(
     async (selectedFiles: File[]) => {
-      if (!selectedFiles.length) {
-        return;
-      }
+      if (!selectedFiles.length) return;
       await uploadMutation.mutateAsync(selectedFiles);
     },
-    [uploadMutation],
+    [uploadMutation]
   );
+
+  // Auto upload initial files from state
+  useEffect(() => {
+    if (state?.initialFiles?.length && !hasAutoUploaded && subjectId) {
+      setHasAutoUploaded(true);
+      void handleUpload(state.initialFiles);
+      navigate(location.pathname, { replace: true, state: {} }); // Clear state
+    }
+  }, [state, subjectId, hasAutoUploaded, handleUpload, navigate, location.pathname]);
 
   const handleFileInputChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -263,7 +193,7 @@ export function UploadPage() {
       event.target.value = "";
       await handleUpload(selectedFiles);
     },
-    [handleUpload],
+    [handleUpload]
   );
 
   const handleDrop = useCallback(
@@ -272,7 +202,7 @@ export function UploadPage() {
       const droppedFiles = Array.from(event.dataTransfer.files ?? []);
       await handleUpload(droppedFiles);
     },
-    [handleUpload],
+    [handleUpload]
   );
 
   const handlePreview = useCallback(
@@ -285,277 +215,184 @@ export function UploadPage() {
         setPreviewLoading(false);
       }
     },
-    [subjectId],
+    [subjectId]
   );
 
   return (
-    <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(251,191,36,0.18),_transparent_30%),linear-gradient(135deg,#ffffff_0%,#f8fafc_55%,#eef6ff_100%)] p-6 shadow-sm md:p-8">
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.9fr]">
-          <div className="space-y-5">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-medium text-sky-700 backdrop-blur">
-                <Sparkles className="h-3.5 w-3.5" />
-                上传即解析，开始对话即生成知识文档
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
-                  先放资料，再直接进入你的知识文档
-                </h1>
-                <p className="max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
-                  这里先收集资料和你的生成要求。文件上传后会自动进入解析，至少有一个文件就绪后，就可以直接开始生成知识文档并跳转到文档页。
-                </p>
-              </div>
-            </div>
+    <div className="min-h-full w-full bg-gradient-to-b from-slate-50 to-slate-200/40 flex flex-col items-center px-4 pt-10 md:pt-16 pb-16 relative overflow-x-hidden">
+      {/* Background Decor */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-10 left-1/4 w-[400px] h-[400px] bg-sky-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
+        <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
+      </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur">
-              <label
-                htmlFor="doc-prompt"
-                className="mb-3 block text-sm font-medium text-slate-700"
-              >
-                知识文档生成要求
-              </label>
-              <textarea
-                id="doc-prompt"
-                value={docPrompt}
-                onChange={(event) => setDocPrompt(event.target.value)}
-                placeholder="比如：请整理成适合期末复习的知识文档，按章节归纳重点、常见误区和典型题型。"
-                className="min-h-[180px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-sky-300 focus:bg-white focus:ring-2 focus:ring-sky-100"
-              />
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-slate-500">
-                  {readyFiles.length > 0
-                    ? `当前已有 ${readyFiles.length} 个文件可直接用于生成知识文档`
-                    : "至少等 1 个文件解析完成后，才会启用开始对话"}
-                </div>
-                <Button
-                  size="lg"
-                  onClick={() => buildMutation.mutate()}
-                  disabled={readyFiles.length === 0 || buildMutation.isPending}
-                  className="rounded-2xl bg-slate-900 px-6 text-white hover:bg-slate-800"
-                >
-                  {buildMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      正在生成知识文档
-                    </>
-                  ) : (
-                    <>
-                      开始对话
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-              {buildMutation.isError && (
-                <p className="mt-3 text-sm text-red-500">
-                  {getApiErrorMessage(buildMutation.error, "知识文档构建失败，请稍后重试")}
-                </p>
-              )}
-            </div>
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-4xl"
+      >
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 backdrop-blur shadow-sm mb-4">
+            <Sparkles className="h-3.5 w-3.5" />
+            上传资料 自动解析 构建知识文档
           </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">为专属学习构建语料</h1>
+          <p className="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+            补充更多材料或完善要求。当至少有一份文件解析就绪后，即可一键生成知识文档。
+          </p>
+        </div>
 
-          <div className="rounded-[26px] border border-slate-200 bg-slate-950 p-5 text-white shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-100">上传资料</p>
-                <p className="mt-1 text-xs text-slate-400">{SUPPORTED_FORMATS}</p>
-              </div>
-              {uploadMutation.isPending && (
-                <Loader2 className="h-5 w-5 animate-spin text-sky-300" />
-              )}
-            </div>
+        {/* Central Hub Area */}
+        <div
+          className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl shadow-xl shadow-indigo-100 p-2 focus-within:shadow-2xl focus-within:shadow-indigo-500/10 transition-shadow transition-colors"
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          {/* Main Request Input */}
+          <textarea
+            value={docPrompt}
+            onChange={(e) => setDocPrompt(e.target.value)}
+            disabled={buildMutation.isPending}
+            placeholder="知识文档生成要求（例如：整理成适合期末复习的文档，重点提炼常见题型...）"
+            className="w-full resize-none border-0 bg-transparent px-5 pt-4 pb-2 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none min-h-[120px] max-h-[250px] transition-all"
+          />
 
-            <div
-              className="mt-5 cursor-pointer rounded-[24px] border border-dashed border-slate-700 bg-white/5 p-6 transition hover:border-sky-400 hover:bg-white/10"
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={(event) => void handleDrop(event)}
-              onDragOver={(event) => event.preventDefault()}
-            >
-              <div className="flex flex-col items-center gap-4 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-400/15 text-sky-300">
-                  <Upload className="h-7 w-7" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-base font-medium text-white">
-                    {uploadMutation.isPending ? "文件上传中..." : "拖拽文件到这里，或点击选择文件"}
-                  </p>
-                  <p className="text-sm leading-6 text-slate-400">
-                    文件上传成功后会立即自动触发 ingest 解析，不需要再手动点一次解析按钮。
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-2xl border-slate-600 bg-transparent text-white hover:bg-white/10"
+          {/* Files List Inline inside the box */}
+          <div className="px-4 pb-2 flex flex-col gap-2">
+            <AnimatePresence>
+              {files.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="flex flex-wrap gap-2 py-2 border-t border-slate-100"
                 >
-                  选择文件
-                </Button>
+                  {files.map((file) => {
+                    const meta = getFileStatusMeta(file);
+                    return (
+                      <motion.div
+                        key={file.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className={cn(
+                          "flex items-center gap-1.5 border px-2.5 py-1.5 rounded-lg transition-colors group text-sm font-medium",
+                          meta.tone
+                        )}
+                        title={meta.label}
+                      >
+                        {meta.icon}
+                        <span className="max-w-[120px] truncate">{file.filename}</span>
+                        {file.markdown_ready ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void handlePreview(file.id); }}
+                            className="ml-1 opacity-60 hover:opacity-100 hover:text-indigo-600 transition-opacity p-0.5"
+                            title="预览"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null}
+                        {file.status === "failed" ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); retryMutation.mutate(file.id); }}
+                            className="ml-1 opacity-60 hover:opacity-100 hover:text-indigo-600 transition-opacity p-0.5"
+                            title="重试解析"
+                            disabled={retryMutation.isPending}
+                          >
+                            <RefreshCw className={cn("w-3.5 h-3.5", retryMutation.isPending && "animate-spin")} />
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id); }}
+                          className="ml-0.5 opacity-60 hover:opacity-100 hover:text-red-500 transition-opacity p-0.5"
+                          title="删除"
+                          disabled={deleteMutation.isPending}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </motion.div>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Bottom Actions Row */}
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center gap-3">
                 <input
-                  ref={fileInputRef}
                   type="file"
+                  title="选择资料文件"
                   multiple
                   accept={ACCEPT_TEXT}
                   className="hidden"
-                  onChange={(event) => void handleFileInputChange(event)}
+                  ref={fileInputRef}
+                  onChange={handleFileInputChange}
                 />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                >
+                  <Paperclip className="w-4 h-4" />
+                  上传文件资料
+                </button>
+                {uploadMutation.isPending && (
+                  <span className="text-xs text-indigo-500 font-medium flex items-center">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> 上传中...
+                  </span>
+                )}
+                {buildMutation.isError && (
+                  <span className="text-xs text-red-500 font-medium flex items-center">
+                    <AlertCircle className="w-3.5 h-3.5 mr-1" /> 构建失败，请重试
+                  </span>
+                )}
               </div>
+
+              <Button
+                size="lg"
+                onClick={() => buildMutation.mutate()}
+                disabled={readyFiles.length === 0 || buildMutation.isPending}
+                className={cn(
+                  "rounded-full px-6 transition-all duration-300 shadow-md",
+                  readyFiles.length > 0 && !buildMutation.isPending
+                    ? "bg-indigo-600 text-white hover:bg-indigo-500 hover:-translate-y-0.5 hover:shadow-lg shadow-indigo-500/20"
+                    : "bg-slate-100 text-slate-400"
+                )}
+              >
+                {buildMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    正在生成文档...
+                  </>
+                ) : (
+                  <>
+                    开始生成知识文档
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </>
+                )}
+              </Button>
             </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">总文件</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{files.length}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">已就绪</p>
-                <p className="mt-2 text-2xl font-semibold text-emerald-300">{readyFiles.length}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">处理中</p>
-                <p className="mt-2 text-2xl font-semibold text-sky-300">{activeFiles.length}</p>
-              </div>
-            </div>
-
-            {lastUpload && (
-              <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-                最近上传了 {lastUpload.filenames.length} 个文件，已自动受理 {lastUpload.started_parse_count} 个解析任务。
-              </div>
-            )}
-
-            {uploadMutation.isError && (
-              <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
-                {getApiErrorMessage(uploadMutation.error, "上传失败，请稍后重试")}
-              </div>
-            )}
           </div>
         </div>
-      </section>
 
-      <Card className="rounded-[24px]">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl text-slate-900">文件队列</CardTitle>
-          <CardDescription>
-            这里直接展示当前 subject 的文件状态，是否完成以本地 Markdown 产物是否存在为准。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {isLoading && (
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              正在加载文件列表...
+        {/* Info Text below */}
+        <div className="mt-6 flex flex-col items-center justify-center gap-2">
+          {isLoading && files.length === 0 ? (
+            <div className="text-sm text-slate-400 flex items-center gap-1.5">
+              <Loader2 className="w-4 h-4 animate-spin" /> 加载资料中...
+            </div>
+          ) : files.length === 0 ? (
+            <div className="text-sm text-slate-400 flex items-center gap-1.5">
+              提示：您可以直接拖拽文件到上面的输入框内
+            </div>
+          ) : (
+            <div className="text-sm text-slate-400">
+              已上传 <span className="font-semibold text-slate-700">{files.length}</span> 份文件，就绪 <span className="font-semibold text-emerald-600">{readyFiles.length}</span> 份
             </div>
           )}
-
-          {isError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-600">
-              {getApiErrorMessage(error, "文件列表加载失败")}
-            </div>
-          )}
-
-          {!isLoading && !isError && files.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-              还没有上传资料，先把文档拖进来，我们就从这里开始。
-            </div>
-          )}
-
-          {!isLoading && !isError && files.map((file) => {
-            const meta = getFileStatusMeta(file);
-            const showPreview = file.markdown_ready;
-
-            return (
-              <div
-                key={file.id}
-                className="flex flex-col gap-4 rounded-[22px] border border-slate-200 bg-white p-4 transition hover:border-slate-300 md:flex-row md:items-start md:justify-between"
-              >
-                <div className="min-w-0 flex-1 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
-                      <FileText className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-medium text-slate-900 md:text-base">
-                          {file.filename}
-                        </p>
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${meta.tone}`}>
-                          {meta.icon}
-                          {meta.label}
-                        </span>
-                      </div>
-                      <p className="text-sm leading-6 text-slate-500">
-                        {meta.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                      类型：{file.filetype.toUpperCase()}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                      大小：{formatFileSize(file.file_size_bytes)}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                      更新时间：{formatTimestamp(file.latest_updated_at)}
-                    </span>
-                    {file.detected_language && (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                        语言：{file.detected_language}
-                      </span>
-                    )}
-                    {file.estimated_pages != null && (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                        预估页数：{file.estimated_pages}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                  {showPreview && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handlePreview(file.id)}
-                    >
-                      <Eye className="h-4 w-4" />
-                      预览
-                    </Button>
-                  )}
-
-                  {file.status === "failed" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => retryMutation.mutate(file.id)}
-                      disabled={retryMutation.isPending}
-                    >
-                      {retryMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      重试
-                    </Button>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-slate-500 hover:bg-red-50 hover:text-red-600"
-                    onClick={() => deleteMutation.mutate(file.id)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    删除
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+        </div>
+      </motion.div>
 
       {previewLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
@@ -566,6 +403,7 @@ export function UploadPage() {
         </div>
       )}
 
+      {/* File Preview Modal */}
       <Modal
         open={previewFile !== null}
         onClose={() => setPreviewFile(null)}
@@ -581,11 +419,6 @@ export function UploadPage() {
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
                 状态：{previewFile.markdown_ready ? "可预览" : previewFile.status}
               </span>
-              {previewFile.parser_used && (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                  解析器：{previewFile.parser_used}
-                </span>
-              )}
             </div>
           )}
 
