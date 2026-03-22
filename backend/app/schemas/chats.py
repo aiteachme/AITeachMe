@@ -27,6 +27,7 @@ class ChatSendRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "question": "什么是条件概率？",
+                "source": "quick_chat",
                 "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
                 "source_chunk_id": 12,
             }
@@ -34,6 +35,7 @@ class ChatSendRequest(BaseModel):
     )
 
     question: str = Field(description="Current user question.")
+    source: str | None = Field(default=None, description="Optional source tag that enables direct chat mode.")
     selected_context: str | None = Field(default=None, description="Optional highlighted context.")
     source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
 

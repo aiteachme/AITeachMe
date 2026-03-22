@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Loader2 } from "lucide-react";
-import { fetchChatChunkContext } from "../../api/chatApi";
+import { chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost } from "../../api/generated/knowledge";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -19,12 +20,17 @@ export function ChatCitationModal({
 }: ChatCitationModalProps) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["chat-chunk-context", subject, chunkId],
-    queryFn: () => fetchChatChunkContext(subject, chunkId!),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost(subject, {
+          chunk_id: chunkId!,
+        }),
+      ),
     enabled: open && !!subject && chunkId !== null,
   });
 
   const title = data
-    ? `${data.documentTitle} › ${data.chunkHeaderPath || data.chunkTitle}`
+    ? `${data.document_title} › ${data.chunk_header_path || data.chunk_title}`
     : "查看原文";
 
   return (
@@ -53,16 +59,16 @@ export function ChatCitationModal({
               <div className="mt-3 space-y-2 text-sm text-slate-600">
                 <div className="flex items-start gap-2">
                   <BookOpen className="mt-0.5 h-4 w-4 text-sky-600" />
-                  <span>{data.documentTitle}</span>
+                  <span>{data.document_title}</span>
                 </div>
                 <div className="pl-6 text-slate-500">
-                  {data.chunkHeaderPath || data.chunkTitle}
+                  {data.chunk_header_path || data.chunk_title}
                 </div>
               </div>
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-inner">
-              <MarkdownViewer content={data.chunkContent} />
+              <MarkdownViewer content={data.chunk_content} />
             </div>
           </>
         ) : null}

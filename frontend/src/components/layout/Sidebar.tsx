@@ -18,14 +18,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  createSubject,
-  deleteSubject,
-  fetchSubjectDeletePreview,
-  fetchSubjects,
-  type SubjectDeletePreviewData,
-  type SubjectItem,
-} from "../../api/subjectsApi";
+  createSubjectApiApiV1SubjectsAddPost,
+  deleteSubjectApiApiV1SubjectsDeletePost,
+  listSubjectsApiApiV1SubjectsListPost,
+  previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
+} from "../../api/generated/subjects";
+import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
 import { getApiErrorMessage } from "../../api/client";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
@@ -112,7 +112,13 @@ export function Sidebar() {
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
-    queryFn: fetchSubjects,
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await listSubjectsApiApiV1SubjectsListPost({
+          page: 1,
+          size: 100,
+        }),
+      )?.items ?? [],
   });
 
   useEffect(() => {
@@ -124,7 +130,20 @@ export function Sidebar() {
   }, [location.pathname]);
 
   const createMutation = useMutation({
-    mutationFn: createSubject,
+    mutationFn: async ({ name, description }: { name: string; description: string }) => {
+      const created = unwrapOrvalResponse(
+        await createSubjectApiApiV1SubjectsAddPost({
+          name,
+          description,
+        }),
+      );
+
+      if (!created) {
+        throw new Error("创建学科失败");
+      }
+
+      return created;
+    },
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setExpandedSubjects((prev) => new Set([...prev, created.subject_id]));
@@ -139,7 +158,12 @@ export function Sidebar() {
   });
 
   const deletePreviewMutation = useMutation({
-    mutationFn: fetchSubjectDeletePreview,
+    mutationFn: async (subjectId: string) =>
+      unwrapOrvalResponse(
+        await previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost({
+          subject_id: subjectId,
+        }),
+      ) ?? null,
     onSuccess: (preview) => {
       setDeletePreview(preview);
       setSubjectActionError(undefined);
@@ -151,7 +175,12 @@ export function Sidebar() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteSubject,
+    mutationFn: async (subjectId: string) => {
+      await deleteSubjectApiApiV1SubjectsDeletePost({
+        subject_id: subjectId,
+        force: true,
+      });
+    },
     onSuccess: (_, subjectId) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setSubjectActionError(undefined);
@@ -268,7 +297,7 @@ export function Sidebar() {
             </div>
           )}
 
-          {subjects.map((subject) => (
+          {subjects.map((subject: SubjectItem) => (
             <div key={subject.subject_id} className="mb-2">
               <div className="group flex items-center">
                 <button

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, FileText, MapPin } from "lucide-react";
-import { fetchEvidenceContext } from "../../api/graphApi";
+import { evidenceContextApiV1SubjectsSubjectKnowledgeGraphEvidenceContextPost } from "../../api/generated/knowledge";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -24,7 +25,12 @@ export function EvidenceContextModal({
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["evidence-context", subject, evidenceId],
-    queryFn: () => fetchEvidenceContext(subject, evidenceId!),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await evidenceContextApiV1SubjectsSubjectKnowledgeGraphEvidenceContextPost(subject, {
+          evidence_id: evidenceId!,
+        }),
+      ) ?? null,
     enabled: open && !!evidenceId,
   });
 
@@ -45,7 +51,11 @@ export function EvidenceContextModal({
     const { chunk_content, highlight_start, highlight_end, quote_text } = data;
 
     // 如果有高亮位置，拆分内容
-    if (highlight_start !== null && highlight_end !== null && highlight_start < highlight_end) {
+    if (
+      highlight_start != null &&
+      highlight_end != null &&
+      highlight_start < highlight_end
+    ) {
       const before = chunk_content.slice(0, highlight_start);
       const highlighted = chunk_content.slice(highlight_start, highlight_end);
       const after = chunk_content.slice(highlight_end);

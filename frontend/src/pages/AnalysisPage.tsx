@@ -17,7 +17,8 @@ import type {
   MasteryStateResponse,
   ReviewTaskResponse,
   TeachingUnitResponse,
-} from "../api/generated/aITeachMe.schemas";
+} from "../api/generated/model";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 interface DisplayMasteryState extends MasteryStateResponse {
   display_name: string;
@@ -70,10 +71,11 @@ function extractApiError(data: unknown, fallback: string): string {
 
 async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewResponse> {
   const res = await apiGetMasteryOverviewApiV1SubjectsSubjectMasteryGet(subject);
-  if (res.status !== 200 || !res.data?.data) {
+  const data = unwrapOrvalResponse(res);
+  if (res.status !== 200 || !data) {
     throw new Error(extractApiError(res.data, "掌握度数据加载失败"));
   }
-  return res.data.data;
+  return data;
 }
 
 async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> {
@@ -81,7 +83,7 @@ async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> 
   if (res.status !== 200) {
     throw new Error(extractApiError(res.data, "复习任务加载失败"));
   }
-  return res.data?.data ?? [];
+  return unwrapOrvalResponse(res) ?? [];
 }
 
 async function fetchKnowledgeNodes(subject: string): Promise<KnowledgeNodeResponse[]> {
@@ -95,7 +97,7 @@ async function fetchKnowledgeNodes(subject: string): Promise<KnowledgeNodeRespon
     if (res.status !== 200) {
       throw new Error(extractApiError(res.data, "知识点映射加载失败"));
     }
-    const payload = res.data?.data;
+    const payload = unwrapOrvalResponse(res);
     const items = payload?.items ?? [];
     merged.push(...items);
     if (page >= (payload?.pages ?? page) || items.length < size) {
@@ -116,7 +118,7 @@ async function fetchTeachingUnits(subject: string): Promise<TeachingUnitResponse
     if (res.status !== 200) {
       throw new Error(extractApiError(res.data, "教学单元映射加载失败"));
     }
-    const payload = res.data?.data;
+    const payload = unwrapOrvalResponse(res);
     const items = payload?.items ?? [];
     merged.push(...items);
     if (page >= (payload?.pages ?? page) || items.length < size) {

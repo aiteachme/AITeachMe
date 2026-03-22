@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T06:08:24.892541",
-  "total_commits_analyzed": 155,
+  "generated_at": "2026-03-22T09:52:08.196467",
+  "total_commits_analyzed": 164,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1241,6 +1241,78 @@
       "code_lines": 39384,
       "other_lines": 12557,
       "message": "Merge remote-tracking branch 'origin/main' into fe"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "7b59c5f",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "d3088ac",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "chore: 加上openai.json"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "0a25960",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "36c7381",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "ca39edd",
+      "total_lines": 38843,
+      "code_lines": 26788,
+      "other_lines": 12055,
+      "message": "satsh"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "92aa767",
+      "total_lines": 38868,
+      "code_lines": 26813,
+      "other_lines": 12055,
+      "message": "satsh"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "0986dd1",
+      "total_lines": 52261,
+      "code_lines": 39676,
+      "other_lines": 12585,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "1c60341",
+      "total_lines": 51789,
+      "code_lines": 39402,
+      "other_lines": 12387,
+      "message": "feat: sync backend api and frontend updates"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "30ef81a",
+      "total_lines": 51789,
+      "code_lines": 39402,
+      "other_lines": 12387,
+      "message": "Merge branch 'dev_lx'"
     }
   ]
 }

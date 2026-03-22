@@ -15,10 +15,11 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  fetchFullGraph,
-  fetchGraphNodeDetail,
-} from "../../api/graphApi";
+  graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost,
+  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
+} from "../../api/generated/knowledge";
 import { ExternalLink } from "lucide-react";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -103,7 +104,12 @@ function NodeDetailSidebar({
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["graph-node-detail", subject, nodeId],
-    queryFn: () => fetchGraphNodeDetail(subject, nodeId),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject, {
+          node_id: nodeId,
+        }),
+      ) ?? null,
     enabled: !!nodeId,
   });
 
@@ -117,6 +123,9 @@ function NodeDetailSidebar({
   if (!data) return null;
 
   const color = NODE_COLORS[data.node_type] ?? DEFAULT_COLOR;
+  const aliases = data.aliases ?? [];
+  const incidentEdges = data.incident_edges ?? [];
+  const evidenceList = data.evidence ?? [];
 
   return (
     <div className="space-y-4 animate-in slide-in-from-right-4 duration-200">
@@ -156,13 +165,13 @@ function NodeDetailSidebar({
         </div>
       )}
 
-      {data.aliases.length > 0 && (
+      {aliases.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
             <Tag className="w-3 h-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {data.aliases.map((a) => (
+            {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
               <span
                 key={a.id}
                 className={`text-xs px-2 py-0.5 rounded-full ${
@@ -176,13 +185,13 @@ function NodeDetailSidebar({
         </div>
       )}
 
-      {data.incident_edges.length > 0 && (
+      {incidentEdges.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Link2 className="w-3 h-3" />关联知识 ({data.incident_edges.length})
+            <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
-            {data.incident_edges.map((edge) => (
+            {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
               <button
                 key={edge.id}
                 onClick={() => onNavigate(edge.other_node_id)}
@@ -200,13 +209,13 @@ function NodeDetailSidebar({
         </div>
       )}
 
-      {data.evidence.length > 0 && (
+      {evidenceList.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <FileText className="w-3 h-3" />来源证据 ({data.evidence.length})
+            <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {data.evidence.map((ev) => (
+            {evidenceList.map((ev: { id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button
                 key={ev.id}
                 onClick={() => onEvidenceClick?.(ev.id)}
@@ -257,7 +266,10 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
 
   const { data: rawData, isLoading, isError } = useQuery({
     queryKey: ["full-graph", subject],
-    queryFn: () => fetchFullGraph(subject),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost(subject),
+      ) ?? null,
     enabled: !!subject,
     retry: false,
   });
@@ -266,7 +278,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
   const neighborMap = useMemo(() => {
     const map = new Map<number, Set<number>>();
     if (!rawData) return map;
-    for (const e of rawData.edges) {
+    for (const e of rawData.edges ?? []) {
       if (!map.has(e.source_node_id)) map.set(e.source_node_id, new Set());
       if (!map.has(e.target_node_id)) map.set(e.target_node_id, new Set());
       map.get(e.source_node_id)!.add(e.target_node_id);
@@ -280,13 +292,13 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     if (!rawData) return { nodes: [], links: [] };
 
     const nodeIdSet = new Set<number>();
-    let filteredNodes = rawData.nodes;
+    let filteredNodes = rawData.nodes ?? [];
     if (filterType) {
-      filteredNodes = rawData.nodes.filter(
-        (n) => n.node_type.toLowerCase() === filterType.toLowerCase(),
+      filteredNodes = (rawData.nodes ?? []).filter(
+        (n: GraphNode) => n.node_type.toLowerCase() === filterType.toLowerCase(),
       );
     }
-    const nodes: GraphNode[] = filteredNodes.map((n) => {
+    const nodes: GraphNode[] = filteredNodes.map((n: GraphNode) => {
       nodeIdSet.add(n.id);
       return {
         id: n.id,
@@ -296,9 +308,9 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
       };
     });
 
-    const links: GraphLink[] = rawData.edges
-      .filter((e) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
-      .map((e) => ({
+    const links: GraphLink[] = (rawData.edges ?? [])
+      .filter((e: { source_node_id: number; target_node_id: number }) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
+      .map((e: { source_node_id: number; target_node_id: number; edge_type: string; confidence: number; weight: number }) => ({
         source: e.source_node_id,
         target: e.target_node_id,
         edge_type: e.edge_type,
@@ -512,7 +524,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
           style={{ minHeight: 500 }}
         >
           <ForceGraph2D
-            ref={fgRef}
+            ref={fgRef as any}
             graphData={graphData}
             width={graphWidth}
             height={dimensions.height || 500}

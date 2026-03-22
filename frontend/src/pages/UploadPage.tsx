@@ -22,17 +22,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getApiErrorMessage } from "../api/client";
+import { apiClient } from "../api/client";
 import {
-  deleteFile,
-  fetchFileResult,
-  fetchFiles,
-  retryFile,
-  uploadFiles,
-  type FileGetData,
-  type FileItem,
-  type FilesUploadData,
-} from "../api/filesApi";
-import { triggerDocGenBuild } from "../api/graphApi";
+  deleteFilesApiApiV1SubjectsSubjectFilesDeletePost,
+  getFileApiApiV1SubjectsSubjectFilesGetPost,
+  listFilesApiApiV1SubjectsSubjectFilesListPost,
+  retryUploadedFileApiV1SubjectsSubjectFilesRetryPost,
+  uploadFilesApiV1SubjectsSubjectFilesUploadPost,
+} from "../api/generated/files";
+import type { FileGetData, FileItem, FilesUploadData } from "../api/generated/model";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
 import {
   Card,
@@ -44,11 +43,79 @@ import {
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
 
+interface ApiResponse<T> {
+  code: number;
+  data: T;
+}
+
+interface DocGenBuildData {
+  job_id: number;
+  accepted_file_ids: number[];
+  prompt: string | null;
+  ready_file_count: number;
+}
+
+async function fetchFiles(subject: string): Promise<FileItem[]> {
+  const response = await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
+    page: 1,
+    size: 100,
+  });
+  return unwrapOrvalResponse<{ items?: FileItem[] }>(response)?.items ?? [];
+}
+
+async function fetchFileResult(subject: string, fileId: number): Promise<FileGetData> {
+  const response = await getFileApiApiV1SubjectsSubjectFilesGetPost(subject, {
+    file_id: fileId,
+  });
+  const data = unwrapOrvalResponse<FileGetData>(response);
+  if (!data) {
+    throw new Error("加载文件解析结果失败");
+  }
+  return data;
+}
+
+async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
+  const response = await uploadFilesApiV1SubjectsSubjectFilesUploadPost(subject, {
+    files,
+  });
+  const data = unwrapOrvalResponse<FilesUploadData>(response);
+  if (!data) {
+    throw new Error("上传文件失败");
+  }
+  return data;
+}
+
+async function retryFile(subject: string, fileId: number): Promise<void> {
+  await retryUploadedFileApiV1SubjectsSubjectFilesRetryPost(subject, {
+    file_id: fileId,
+  });
+}
+
+async function deleteFile(subject: string, fileId: number): Promise<void> {
+  await deleteFilesApiApiV1SubjectsSubjectFilesDeletePost(subject, {
+    file_id: fileId,
+  });
+}
+
+async function triggerDocGenBuild(
+  subject: string,
+  prompt?: string,
+): Promise<DocGenBuildData> {
+  const res = await apiClient<ApiResponse<DocGenBuildData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
+    data: {
+      prompt,
+    },
+  });
+  return res.data;
+}
+
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg";
 const SUPPORTED_FORMATS = "PDF / DOCX / Markdown / TXT / PNG / JPG";
 
-function formatFileSize(bytes: number | null): string {
+function formatFileSize(bytes: number | null | undefined): string {
   if (!bytes || bytes <= 0) {
     return "未知大小";
   }
@@ -173,7 +240,6 @@ export function UploadPage() {
     mutationFn: () =>
       triggerDocGenBuild(
         subjectId,
-        undefined,
         docPrompt.trim() || undefined,
       ),
     onSuccess: (data) => {
@@ -438,7 +504,7 @@ export function UploadPage() {
                         语言：{file.detected_language}
                       </span>
                     )}
-                    {file.estimated_pages !== null && (
+                    {file.estimated_pages != null && (
                       <span className="rounded-full bg-slate-100 px-2.5 py-1">
                         预估页数：{file.estimated_pages}
                       </span>
