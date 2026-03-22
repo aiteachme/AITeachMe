@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "highlight.js/styles/github-dark.css";
 
 async function prepare() {
   if (import.meta.env.VITE_USE_MOCK === "true") {

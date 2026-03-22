@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-18T16:58:25.164073",
-  "total_commits_analyzed": 103,
+  "generated_at": "2026-03-21T16:00:01.039171",
+  "total_commits_analyzed": 114,
   "stats": [
     {
       "date": "2026-03-11",
@@ -825,6 +825,94 @@
       "code_lines": 20483,
       "other_lines": 8017,
       "message": "Merge branch 'develop' into feat/digest"
+    },
+    {
+      "date": "2026-03-18",
+      "commit": "e6c3d73",
+      "total_lines": 28500,
+      "code_lines": 20483,
+      "other_lines": 8017,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "ccd0ce3",
+      "total_lines": 28500,
+      "code_lines": 20483,
+      "other_lines": 8017,
+      "message": "chore: 本地包版本问题？"
+    },
+    {
+      "date": "2026-03-20",
+      "commit": "6bb780f",
+      "total_lines": 29633,
+      "code_lines": 21371,
+      "other_lines": 8262,
+      "message": "chore: 整理接口、命名规范，强化ingest，细化操作"
+    },
+    {
+      "date": "2026-03-20",
+      "commit": "0e057ba",
+      "total_lines": 32614,
+      "code_lines": 22981,
+      "other_lines": 9633,
+      "message": "docs: 详细增加docs设计文档"
+    },
+    {
+      "date": "2026-03-20",
+      "commit": "55f8e47",
+      "total_lines": 32757,
+      "code_lines": 23102,
+      "other_lines": 9655,
+      "message": "fix: 修复 digest 复用空任务并补齐构建前的文档切块准备 - 在 digest prepa"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "a51c76a",
+      "total_lines": 33690,
+      "code_lines": 23870,
+      "other_lines": 9820,
+      "message": "add markdown"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "0213b06",
+      "total_lines": 33703,
+      "code_lines": 23880,
+      "other_lines": 9823,
+      "message": "feat: 每次启动uvicorn即自动导出更新openapi文档"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "961bc07",
+      "total_lines": 38365,
+      "code_lines": 26193,
+      "other_lines": 12172,
+      "message": "feat: 后端自动触发orval"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "69bb8ee",
+      "total_lines": 38365,
+      "code_lines": 26193,
+      "other_lines": 12172,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "9e57d39",
+      "total_lines": 39161,
+      "code_lines": 26880,
+      "other_lines": 12281,
+      "message": "fix doc page toc navigation and responsive control"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "96344d1",
+      "total_lines": 39161,
+      "code_lines": 26880,
+      "other_lines": 12281,
+      "message": "Merge branch 'develop'"
     }
   ]
 }
