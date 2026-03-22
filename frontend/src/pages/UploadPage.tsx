@@ -13,30 +13,20 @@ import {
   CheckCircle2,
   Eye,
   Loader2,
-  RefreshCw,
-  Sparkles,
   Paperclip,
-  FileUp,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { apiClient } from "../api/client";
-import {
-  deleteFilesApiApiV1SubjectsSubjectFilesDeletePost,
-  getFileApiApiV1SubjectsSubjectFilesGetPost,
-  listFilesApiApiV1SubjectsSubjectFilesListPost,
-  retryUploadedFileApiV1SubjectsSubjectFilesRetryPost,
-  uploadFilesApiV1SubjectsSubjectFilesUploadPost,
-} from "../api/generated/files";
-import type { FileGetData, FileItem, FilesUploadData } from "../api/generated/model";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
 import { cn } from "../lib/utils";
+import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 interface ApiResponse<T> {
   code: number;
@@ -50,52 +40,46 @@ interface DocGenBuildData {
   ready_file_count: number;
 }
 
-// API functions
-async function fetchFiles(subject: string): Promise<FileItem[]> {
-  const response = await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
-    page: 1,
-    size: 100,
+async function fetchFiles(subject: string): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/files`,
   });
-  return unwrapOrvalResponse<{ items?: FileItem[] }>(response)?.items ?? [];
-}
-
-async function fetchFileResult(subject: string, fileId: number): Promise<FileGetData> {
-  const response = await getFileApiApiV1SubjectsSubjectFilesGetPost(subject, {
-    file_id: fileId,
-  });
-  const data = unwrapOrvalResponse<FileGetData>(response);
-  if (!data) throw new Error("加载文件解析结果失败");
-  return data;
+  return response.data;
 }
 
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
-  const response = await uploadFilesApiV1SubjectsSubjectFilesUploadPost(subject, { files });
-  const data = unwrapOrvalResponse<FilesUploadData>(response);
-  if (!data) throw new Error("上传文件失败");
-  return data;
-}
-
-async function retryFile(subject: string, fileId: number): Promise<void> {
-  await retryUploadedFileApiV1SubjectsSubjectFilesRetryPost(subject, { file_id: fileId });
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  const response = await apiClient<ApiResponse<FilesUploadData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/upload`,
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
 }
 
 async function deleteFile(subject: string, fileId: number): Promise<void> {
-  await deleteFilesApiApiV1SubjectsSubjectFilesDeletePost(subject, { file_id: fileId });
+  await apiClient<ApiResponse<{ deleted_file_ids: number[] }>>({
+    method: "DELETE",
+    url: `/api/v1/subjects/${subject}/files/${fileId}`,
+  });
 }
 
 async function triggerDocGenBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
-  const res = await apiClient<ApiResponse<DocGenBuildData>>({
+  const response = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
     data: { prompt },
   });
-  return res.data;
+  return response.data;
 }
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg";
 
-function getFileStatusMeta(file: FileItem) {
+function getFileStatusMeta(file: FileRecord) {
   if (file.markdown_ready) {
     return {
       label: "已就绪",
@@ -103,6 +87,7 @@ function getFileStatusMeta(file: FileItem) {
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
     };
   }
+
   if (file.status === "failed") {
     return {
       label: "解析失败",
@@ -110,6 +95,7 @@ function getFileStatusMeta(file: FileItem) {
       icon: <AlertCircle className="h-4 w-4 text-red-500" />,
     };
   }
+
   if (ACTIVE_FILE_STATUSES.has(file.status) || file.ingest_status !== "pending") {
     return {
       label: "解析中",
@@ -117,10 +103,11 @@ function getFileStatusMeta(file: FileItem) {
       icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
     };
   }
+
   return {
     label: "等待处理",
     tone: "text-amber-600 bg-amber-50 border-amber-200",
-    icon: <RefreshCw className="h-4 w-4 text-amber-500 animate-spin-slow" />,
+    icon: <Loader2 className="h-4 w-4 animate-spin text-amber-500" />,
   };
 }
 
@@ -134,29 +121,24 @@ export function UploadPage() {
   const state = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
 
   const [docPrompt, setDocPrompt] = useState(state?.initialPrompt || "");
-  const [previewFile, setPreviewFile] = useState<FileGetData | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
 
-  const { data: files = [], isLoading } = useQuery({
+  const { data: filesData, isLoading } = useQuery({
     queryKey: ["files", subjectId],
     queryFn: () => fetchFiles(subjectId),
     enabled: !!subjectId,
     refetchInterval: (query) => {
-      const items = query.state.data ?? [];
+      const items = query.state.data?.items ?? [];
       return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 2500 : false;
     },
   });
 
-  const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
+  const files = filesData?.items ?? [];
+  const readyFiles = useMemo(() => files.filter((file) => file.markdown_ready), [files]);
 
   const uploadMutation = useMutation({
     mutationFn: (selectedFiles: File[]) => uploadFiles(subjectId, selectedFiles),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
-  });
-
-  const retryMutation = useMutation({
-    mutationFn: (fileId: number) => retryFile(subjectId, fileId),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
@@ -172,18 +154,19 @@ export function UploadPage() {
 
   const handleUpload = useCallback(
     async (selectedFiles: File[]) => {
-      if (!selectedFiles.length) return;
+      if (!selectedFiles.length) {
+        return;
+      }
       await uploadMutation.mutateAsync(selectedFiles);
     },
-    [uploadMutation]
+    [uploadMutation],
   );
 
-  // Auto upload initial files from state
   useEffect(() => {
     if (state?.initialFiles?.length && !hasAutoUploaded && subjectId) {
       setHasAutoUploaded(true);
       void handleUpload(state.initialFiles);
-      navigate(location.pathname, { replace: true, state: {} }); // Clear state
+      navigate(location.pathname, { replace: true, state: {} });
     }
   }, [state, subjectId, hasAutoUploaded, handleUpload, navigate, location.pathname]);
 
@@ -193,7 +176,7 @@ export function UploadPage() {
       event.target.value = "";
       await handleUpload(selectedFiles);
     },
-    [handleUpload]
+    [handleUpload],
   );
 
   const handleDrop = useCallback(
@@ -202,28 +185,27 @@ export function UploadPage() {
       const droppedFiles = Array.from(event.dataTransfer.files ?? []);
       await handleUpload(droppedFiles);
     },
-    [handleUpload]
+    [handleUpload],
   );
 
   const handlePreview = useCallback(
-    async (fileId: number) => {
-      setPreviewLoading(true);
-      try {
-        const data = await fetchFileResult(subjectId, fileId);
-        setPreviewFile(data);
-      } finally {
-        setPreviewLoading(false);
-      }
+    (fileId: number) => {
+      setPreviewFile(files.find((file) => file.id === fileId) ?? null);
     },
-    [subjectId]
+    [files],
   );
 
   return (
-    <div className="min-h-full w-full bg-gradient-to-b from-slate-50 to-slate-200/40 flex flex-col items-center px-4 pt-10 md:pt-16 pb-16 relative overflow-x-hidden">
-      {/* Background Decor */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-10 left-1/4 w-[400px] h-[400px] bg-sky-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
-        <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
+    <div className="relative flex min-h-full w-full flex-col items-center overflow-x-hidden bg-gradient-to-b from-slate-50 to-slate-200/40 px-4 pb-16 pt-10 md:pt-16">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          className="absolute left-1/4 top-10 h-[400px] w-[400px] animate-pulse rounded-full bg-sky-400/10 blur-3xl"
+          style={{ animationDuration: "6s" }}
+        />
+        <div
+          className="absolute bottom-10 right-1/4 h-[400px] w-[400px] animate-pulse rounded-full bg-indigo-500/10 blur-3xl"
+          style={{ animationDuration: "8s" }}
+        />
       </div>
 
       <motion.div
@@ -232,40 +214,39 @@ export function UploadPage() {
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="relative z-10 w-full max-w-4xl"
       >
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 backdrop-blur shadow-sm mb-4">
+        <div className="mb-10 text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 shadow-sm backdrop-blur">
             <Sparkles className="h-3.5 w-3.5" />
-            上传资料 自动解析 构建知识文档
+            上传资料，自动解析，直接进入知识构建
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">为专属学习构建语料</h1>
-          <p className="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
-            补充更多材料或完善要求。当至少有一份文件解析就绪后，即可一键生成知识文档。
+          <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
+            为专属学习系统补充材料
+          </h1>
+          <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">
+            文件上传后会自动进入解析流程。只要有至少一份资料完成解析，就可以直接开始生成知识文档。
           </p>
         </div>
 
-        {/* Central Hub Area */}
         <div
-          className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-3xl shadow-xl shadow-indigo-100 p-2 focus-within:shadow-2xl focus-within:shadow-indigo-500/10 transition-shadow transition-colors"
+          className="rounded-3xl border border-slate-200/80 bg-white/80 p-2 shadow-xl shadow-indigo-100 backdrop-blur-xl transition-shadow transition-colors focus-within:shadow-2xl focus-within:shadow-indigo-500/10"
           onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(event) => event.preventDefault()}
         >
-          {/* Main Request Input */}
           <textarea
             value={docPrompt}
-            onChange={(e) => setDocPrompt(e.target.value)}
+            onChange={(event) => setDocPrompt(event.target.value)}
             disabled={buildMutation.isPending}
-            placeholder="知识文档生成要求（例如：整理成适合期末复习的文档，重点提炼常见题型...）"
-            className="w-full resize-none border-0 bg-transparent px-5 pt-4 pb-2 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none min-h-[120px] max-h-[250px] transition-all"
+            placeholder="知识文档生成要求，例如：整理成适合期末复习的文档，重点提炼概念、公式和典型题型。"
+            className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
-          {/* Files List Inline inside the box */}
-          <div className="px-4 pb-2 flex flex-col gap-2">
+          <div className="flex flex-col gap-2 px-4 pb-2">
             <AnimatePresence>
-              {files.length > 0 && (
+              {files.length > 0 ? (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="flex flex-wrap gap-2 py-2 border-t border-slate-100"
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="flex flex-wrap gap-2 border-t border-slate-100 py-2"
                 >
                   {files.map((file) => {
                     const meta = getFileStatusMeta(file);
@@ -276,48 +257,43 @@ export function UploadPage() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className={cn(
-                          "flex items-center gap-1.5 border px-2.5 py-1.5 rounded-lg transition-colors group text-sm font-medium",
-                          meta.tone
+                          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                          meta.tone,
                         )}
                         title={meta.label}
                       >
                         {meta.icon}
-                        <span className="max-w-[120px] truncate">{file.filename}</span>
+                        <span className="max-w-[140px] truncate">{file.filename}</span>
                         {file.markdown_ready ? (
                           <button
-                            onClick={(e) => { e.stopPropagation(); void handlePreview(file.id); }}
-                            className="ml-1 opacity-60 hover:opacity-100 hover:text-indigo-600 transition-opacity p-0.5"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePreview(file.id);
+                            }}
+                            className="ml-1 p-0.5 opacity-60 transition-opacity hover:text-indigo-600 hover:opacity-100"
                             title="预览"
                           >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        ) : null}
-                        {file.status === "failed" ? (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); retryMutation.mutate(file.id); }}
-                            className="ml-1 opacity-60 hover:opacity-100 hover:text-indigo-600 transition-opacity p-0.5"
-                            title="重试解析"
-                            disabled={retryMutation.isPending}
-                          >
-                            <RefreshCw className={cn("w-3.5 h-3.5", retryMutation.isPending && "animate-spin")} />
+                            <Eye className="h-3.5 w-3.5" />
                           </button>
                         ) : null}
                         <button
-                          onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id); }}
-                          className="ml-0.5 opacity-60 hover:opacity-100 hover:text-red-500 transition-opacity p-0.5"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            deleteMutation.mutate(file.id);
+                          }}
+                          className="ml-0.5 p-0.5 opacity-60 transition-opacity hover:text-red-500 hover:opacity-100"
                           title="删除"
                           disabled={deleteMutation.isPending}
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </motion.div>
                     );
                   })}
                 </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
 
-            {/* Bottom Actions Row */}
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-3">
                 <input
@@ -332,21 +308,23 @@ export function UploadPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 >
-                  <Paperclip className="w-4 h-4" />
+                  <Paperclip className="h-4 w-4" />
                   上传文件资料
                 </button>
-                {uploadMutation.isPending && (
-                  <span className="text-xs text-indigo-500 font-medium flex items-center">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> 上传中...
+                {uploadMutation.isPending ? (
+                  <span className="flex items-center text-xs font-medium text-indigo-500">
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    上传中...
                   </span>
-                )}
-                {buildMutation.isError && (
-                  <span className="text-xs text-red-500 font-medium flex items-center">
-                    <AlertCircle className="w-3.5 h-3.5 mr-1" /> 构建失败，请重试
+                ) : null}
+                {buildMutation.isError ? (
+                  <span className="flex items-center text-xs font-medium text-red-500">
+                    <AlertCircle className="mr-1 h-3.5 w-3.5" />
+                    构建失败，请重试
                   </span>
-                )}
+                ) : null}
               </div>
 
               <Button
@@ -354,21 +332,21 @@ export function UploadPage() {
                 onClick={() => buildMutation.mutate()}
                 disabled={readyFiles.length === 0 || buildMutation.isPending}
                 className={cn(
-                  "rounded-full px-6 transition-all duration-300 shadow-md",
+                  "rounded-full px-6 shadow-md transition-all duration-300",
                   readyFiles.length > 0 && !buildMutation.isPending
-                    ? "bg-indigo-600 text-white hover:bg-indigo-500 hover:-translate-y-0.5 hover:shadow-lg shadow-indigo-500/20"
-                    : "bg-slate-100 text-slate-400"
+                    ? "bg-indigo-600 text-white shadow-indigo-500/20 hover:-translate-y-0.5 hover:bg-indigo-500 hover:shadow-lg"
+                    : "bg-slate-100 text-slate-400",
                 )}
               >
                 {buildMutation.isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     正在生成文档...
                   </>
                 ) : (
                   <>
                     开始生成知识文档
-                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
                   </>
                 )}
               </Button>
@@ -376,34 +354,25 @@ export function UploadPage() {
           </div>
         </div>
 
-        {/* Info Text below */}
         <div className="mt-6 flex flex-col items-center justify-center gap-2">
           {isLoading && files.length === 0 ? (
-            <div className="text-sm text-slate-400 flex items-center gap-1.5">
-              <Loader2 className="w-4 h-4 animate-spin" /> 加载资料中...
+            <div className="flex items-center gap-1.5 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              加载资料中...
             </div>
           ) : files.length === 0 ? (
-            <div className="text-sm text-slate-400 flex items-center gap-1.5">
-              提示：您可以直接拖拽文件到上面的输入框内
+            <div className="flex items-center gap-1.5 text-sm text-slate-400">
+              提示：你可以直接把文件拖到上面的输入区域中
             </div>
           ) : (
             <div className="text-sm text-slate-400">
-              已上传 <span className="font-semibold text-slate-700">{files.length}</span> 份文件，就绪 <span className="font-semibold text-emerald-600">{readyFiles.length}</span> 份
+              已上传 <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span> 份文件，就绪{" "}
+              <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span> 份
             </div>
           )}
         </div>
       </motion.div>
 
-      {previewLoading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-          <div className="flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
-            <span className="text-sm text-slate-600">正在加载解析结果...</span>
-          </div>
-        </div>
-      )}
-
-      {/* File Preview Modal */}
       <Modal
         open={previewFile !== null}
         onClose={() => setPreviewFile(null)}
@@ -411,7 +380,7 @@ export function UploadPage() {
         className="max-w-4xl"
       >
         <div className="space-y-4">
-          {previewFile && (
+          {previewFile ? (
             <div className="flex flex-wrap gap-2 text-xs text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
                 类型：{previewFile.filetype.toUpperCase()}
@@ -420,11 +389,14 @@ export function UploadPage() {
                 状态：{previewFile.markdown_ready ? "可预览" : previewFile.status}
               </span>
             </div>
-          )}
+          ) : null}
 
           {previewFile?.markdown_content ? (
             <article className="prose prose-slate max-w-none">
-              <MarkdownViewer content={previewFile.markdown_content} />
+              <MarkdownViewer
+                content={previewFile.markdown_content}
+                assetBaseUrl={previewFile.asset_base_url ?? undefined}
+              />
             </article>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
