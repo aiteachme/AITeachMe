@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -18,12 +22,73 @@ from app.core.logger import configure_logging
 logger = structlog.get_logger()
 
 
+def _sync_frontend_api_client(app: FastAPI) -> None:
+    """导出 OpenAPI 并尝试触发 Orval 生成前端客户端。"""
+
+    if os.getenv("AITEACHME_SYNC_OPENAPI", "true").lower() in {"0", "false", "no"}:
+        logger.info("sync_openapi_skipped", reason="env_disabled")
+        return
+
+    project_root = Path(__file__).resolve().parents[2]
+    frontend_dir = project_root / "frontend"
+    openapi_path = frontend_dir / "openapi.json"
+    orval_config = frontend_dir / "orval.config.js"
+    generated_dir = frontend_dir / "src" / "api" / "generated"
+
+    if not frontend_dir.exists():
+        logger.info("sync_openapi_skipped", reason="frontend_not_found", path=str(frontend_dir))
+        return
+
+    try:
+        schema = app.openapi()
+        payload = json.dumps(schema, ensure_ascii=False, indent=2) + "\n"
+        openapi_path.parent.mkdir(parents=True, exist_ok=True)
+
+        previous = openapi_path.read_text(encoding="utf-8") if openapi_path.exists() else ""
+        schema_changed = previous != payload
+        if schema_changed:
+            openapi_path.write_text(payload, encoding="utf-8")
+            logger.info("openapi_exported", path=str(openapi_path))
+        else:
+            logger.info("openapi_unchanged", path=str(openapi_path))
+
+        should_run_orval = schema_changed or not generated_dir.exists()
+        if not should_run_orval:
+            logger.info("orval_generation_skipped", reason="schema_unchanged")
+            return
+
+        if not orval_config.exists():
+            logger.warning("orval_generation_skipped", reason="config_missing", path=str(orval_config))
+            return
+
+        npx_cmd = "npx.cmd" if os.name == "nt" else "npx"
+        result = subprocess.run(
+            [npx_cmd, "orval", "--config", orval_config.name],
+            cwd=frontend_dir,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            logger.info("orval_generation_succeeded", output_dir=str(generated_dir))
+            return
+
+        logger.warning(
+            "orval_generation_failed",
+            returncode=result.returncode,
+            stdout=(result.stdout or "").strip()[-800:],
+            stderr=(result.stderr or "").strip()[-800:],
+        )
+    except Exception as exc:
+        logger.warning("sync_openapi_failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
-    del app
     init_db()
+    _sync_frontend_api_client(app)
     logger.info("app_started")
     yield
     logger.info("app_shutdown")

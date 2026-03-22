@@ -1,65 +1,281 @@
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, Target, Award, Loader2, BookOpen } from "lucide-react";
+import { Award, BookOpen, Loader2, Target, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import { apiClient } from "../api/client";
+import {
+  apiGetMasteryOverviewApiV1SubjectsSubjectMasteryGet,
+  apiGetReviewTasksApiV1SubjectsSubjectReviewTasksGet,
+} from "../api/generated/assessment";
+import {
+  graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost,
+  unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost,
+} from "../api/generated/knowledge";
+import type {
+  KnowledgeNodeResponse,
+  MasteryOverviewResponse,
+  MasteryStateResponse,
+  ReviewTaskResponse,
+  TeachingUnitResponse,
+} from "../api/generated/aITeachMe.schemas";
 
-interface ProfileItem {
-  knowledge_point: string;
-  mastery: number | null;
-  attempts: number;
-  correct: number;
+interface DisplayMasteryState extends MasteryStateResponse {
+  display_name: string;
 }
 
-interface ReportData {
-  overall_mastery: number | null;
-  weak_points_top5: ProfileItem[];
-  suggestions: string[];
+const WEAK_THRESHOLD = 0.8;
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value * 100)));
 }
 
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
-
-async function fetchProfiles(subject: string): Promise<ProfileItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<ProfileItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/profile/list`,
-    data: { page: 1, size: 50 },
-  });
-  return res.data.items;
+function formatReason(reason?: string | null): string {
+  const mapping: Record<string, string> = {
+    forgetting_due: "到期遗忘",
+    repeated_wrong: "重复错误",
+    prereq_gap: "前置薄弱",
+    newly_learned: "新学知识待巩固",
+  };
+  if (!reason) return "";
+  return mapping[reason] ?? reason;
 }
 
-async function fetchReport(subject: string): Promise<ReportData> {
-  const res = await apiClient<ApiResponse<ReportData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/profile/report`,
-    data: {},
-  });
-  return res.data;
+function formatDate(value: string): string {
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleDateString("zh-CN");
+}
+
+function extractApiError(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") {
+    return fallback;
+  }
+
+  const maybeMessage = (data as { message?: unknown }).message;
+  if (typeof maybeMessage === "string" && maybeMessage.trim()) {
+    return maybeMessage;
+  }
+
+  const maybeDetail = (data as { detail?: unknown }).detail;
+  if (Array.isArray(maybeDetail) && maybeDetail.length > 0) {
+    const first = maybeDetail[0] as { msg?: unknown };
+    if (typeof first?.msg === "string" && first.msg.trim()) {
+      return first.msg;
+    }
+  }
+
+  return fallback;
+}
+
+async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewResponse> {
+  const res = await apiGetMasteryOverviewApiV1SubjectsSubjectMasteryGet(subject);
+  if (res.status !== 200 || !res.data?.data) {
+    throw new Error(extractApiError(res.data, "掌握度数据加载失败"));
+  }
+  return res.data.data;
+}
+
+async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> {
+  const res = await apiGetReviewTasksApiV1SubjectsSubjectReviewTasksGet(subject);
+  if (res.status !== 200) {
+    throw new Error(extractApiError(res.data, "复习任务加载失败"));
+  }
+  return res.data?.data ?? [];
+}
+
+async function fetchKnowledgeNodes(subject: string): Promise<KnowledgeNodeResponse[]> {
+  const size = 100;
+  const merged: KnowledgeNodeResponse[] = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const res = await graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost(subject, {
+      page,
+      size,
+    });
+    if (res.status !== 200) {
+      throw new Error(extractApiError(res.data, "知识点映射加载失败"));
+    }
+    const payload = res.data?.data;
+    const items = payload?.items ?? [];
+    merged.push(...items);
+    if (page >= (payload?.pages ?? page) || items.length < size) {
+      break;
+    }
+  }
+  return merged;
+}
+
+async function fetchTeachingUnits(subject: string): Promise<TeachingUnitResponse[]> {
+  const size = 100;
+  const merged: TeachingUnitResponse[] = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const res = await unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost(subject, {
+      page,
+      size,
+    });
+    if (res.status !== 200) {
+      throw new Error(extractApiError(res.data, "教学单元映射加载失败"));
+    }
+    const payload = res.data?.data;
+    const items = payload?.items ?? [];
+    merged.push(...items);
+    if (page >= (payload?.pages ?? page) || items.length < size) {
+      break;
+    }
+  }
+  return merged;
 }
 
 export function AnalysisPage() {
   const { subjectId = "" } = useParams();
 
-  const { data: profiles = [], isLoading: profileLoading } = useQuery({
-    queryKey: ["profile", subjectId],
-    queryFn: () => fetchProfiles(subjectId),
+  const {
+    data: overview,
+    isLoading: masteryLoading,
+    error: masteryError,
+  } = useQuery({
+    queryKey: ["analysis-mastery-overview", subjectId],
+    queryFn: () => fetchMasteryOverview(subjectId),
     enabled: !!subjectId,
   });
 
-  const { data: report, isLoading: reportLoading } = useQuery({
-    queryKey: ["report", subjectId],
-    queryFn: () => fetchReport(subjectId),
+  const {
+    data: reviewTasks = [],
+    isLoading: tasksLoading,
+    error: tasksError,
+  } = useQuery({
+    queryKey: ["analysis-review-tasks", subjectId],
+    queryFn: () => fetchReviewTasks(subjectId),
     enabled: !!subjectId,
   });
 
-  const isLoading = profileLoading || reportLoading;
-  const overallPct = report?.overall_mastery != null ? Math.round(report.overall_mastery * 100) : null;
+  const { data: knowledgeNodes = [] } = useQuery({
+    queryKey: ["analysis-knowledge-nodes", subjectId],
+    queryFn: () => fetchKnowledgeNodes(subjectId),
+    enabled: !!subjectId,
+    retry: 0,
+  });
+
+  const { data: teachingUnits = [] } = useQuery({
+    queryKey: ["analysis-teaching-units", subjectId],
+    queryFn: () => fetchTeachingUnits(subjectId),
+    enabled: !!subjectId,
+    retry: 0,
+  });
+
+  const isLoading = masteryLoading || tasksLoading;
+
+  const hasNodeStates = (overview?.node_states?.length ?? 0) > 0;
+  const baseStates = hasNodeStates
+    ? overview?.node_states ?? []
+    : overview?.unit_states ?? [];
+
+  const nodeNameMap = useMemo(
+    () => new Map<number, string>((knowledgeNodes ?? []).map((n) => [n.id, n.canonical_name])),
+    [knowledgeNodes]
+  );
+  const unitNameMap = useMemo(
+    () => new Map<number, string>((teachingUnits ?? []).map((u) => [u.id, u.canonical_name])),
+    [teachingUnits]
+  );
+
+  const displayStates = useMemo<DisplayMasteryState[]>(() => {
+    return [...baseStates]
+      .map((state) => {
+        const mappedName = hasNodeStates
+          ? nodeNameMap.get(state.target_id)
+          : unitNameMap.get(state.target_id);
+        return {
+          ...state,
+          display_name:
+            mappedName ??
+            (hasNodeStates ? `知识点 #${state.target_id}` : `教学单元 #${state.target_id}`),
+        };
+      })
+      .sort((a, b) => {
+        if (a.mastery_score !== b.mastery_score) {
+          return a.mastery_score - b.mastery_score;
+        }
+        if (a.review_priority !== b.review_priority) {
+          return b.review_priority - a.review_priority;
+        }
+        return b.total_attempts - a.total_attempts;
+      });
+  }, [baseStates, hasNodeStates, nodeNameMap, unitNameMap]);
+
+  const weakStates = useMemo(
+    () => displayStates.filter((item) => item.mastery_score < WEAK_THRESHOLD).slice(0, 5),
+    [displayStates]
+  );
+
+  const overallMastery = useMemo(() => {
+    if (!displayStates.length) return null;
+    const attempted = displayStates.filter((item) => item.total_attempts > 0);
+    if (attempted.length > 0) {
+      const totalAttempts = attempted.reduce((sum, item) => sum + item.total_attempts, 0);
+      const totalCorrect = attempted.reduce((sum, item) => sum + item.correct_attempts, 0);
+      return totalAttempts > 0 ? totalCorrect / totalAttempts : null;
+    }
+    return displayStates.reduce((sum, item) => sum + item.mastery_score, 0) / displayStates.length;
+  }, [displayStates]);
+
+  const weakCount = hasNodeStates
+    ? overview?.weak_node_count ?? weakStates.length
+    : overview?.weak_unit_count ?? weakStates.length;
+
+  const suggestions = useMemo(() => {
+    const pendingTasks = [...reviewTasks]
+      .filter((task) => task.status === "pending")
+      .sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority;
+        }
+        return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+      });
+
+    if (pendingTasks.length > 0) {
+      return pendingTasks.slice(0, 3).map((task) => {
+        const mappedName =
+          task.target_granularity === "node"
+            ? nodeNameMap.get(task.target_id)
+            : unitNameMap.get(task.target_id);
+        const displayName =
+          mappedName ??
+          (task.target_granularity === "node"
+            ? `知识点 #${task.target_id}`
+            : `教学单元 #${task.target_id}`);
+        const reason = formatReason(task.reason);
+        const reasonText = reason ? `（${reason}）` : "";
+        return `优先复习「${displayName}」${reasonText}，建议在 ${formatDate(task.scheduled_at)} 前完成。`;
+      });
+    }
+
+    if (weakStates.length > 0) {
+      return weakStates.slice(0, 2).map((item) => {
+        return `优先加强「${item.display_name}」，当前掌握度约 ${clampPercent(
+          item.mastery_score
+        )}%，建议先做针对性练习再复盘错因。`;
+      });
+    }
+
+    return ["当前没有明显薄弱项，建议保持练习频率并定期回顾重点章节。"];
+  }, [reviewTasks, weakStates, nodeNameMap, unitNameMap]);
+
+  const errorMessage = masteryError
+    ? masteryError instanceof Error
+      ? masteryError.message
+      : "掌握度数据加载失败，请稍后重试"
+    : tasksError
+    ? tasksError instanceof Error
+      ? tasksError.message
+      : "复习任务加载失败，请稍后重试"
+    : "";
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-32 text-slate-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        加载中...
       </div>
     );
   }
@@ -68,8 +284,16 @@ export function AnalysisPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-slate-900">学习分析</h1>
-        <p className="text-slate-500 mt-2">追踪您的学习进度和表现</p>
+        <p className="mt-2 text-slate-500">基于作答记录与掌握度状态生成学习画像</p>
       </div>
+
+      {!!errorMessage && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-amber-700">{errorMessage}</p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-3">
         <Card>
@@ -78,8 +302,10 @@ export function AnalysisPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-3xl font-bold text-slate-900">{overallPct != null ? `${overallPct}%` : "—"}</p>
-              <TrendingUp className="w-8 h-8 text-slate-400" />
+              <p className="text-3xl font-bold text-slate-900">
+                {overallMastery != null ? `${clampPercent(overallMastery)}%` : "--"}
+              </p>
+              <TrendingUp className="h-8 w-8 text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -91,10 +317,10 @@ export function AnalysisPage() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-3xl font-bold text-slate-900">{profiles.length}</p>
-                <p className="text-xs text-slate-500 mt-1">个</p>
+                <p className="text-3xl font-bold text-slate-900">{displayStates.length}</p>
+                <p className="mt-1 text-xs text-slate-500">个</p>
               </div>
-              <Target className="w-8 h-8 text-slate-400" />
+              <Target className="h-8 w-8 text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -106,10 +332,10 @@ export function AnalysisPage() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-3xl font-bold text-orange-500">{report?.weak_points_top5.length ?? 0}</p>
-                <p className="text-xs text-slate-500 mt-1">需加强</p>
+                <p className="text-3xl font-bold text-orange-500">{weakCount}</p>
+                <p className="mt-1 text-xs text-slate-500">需加强</p>
               </div>
-              <Award className="w-8 h-8 text-slate-400" />
+              <Award className="h-8 w-8 text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -122,17 +348,26 @@ export function AnalysisPage() {
             <CardDescription>各知识点学习情况</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profiles.length === 0 && <p className="text-center py-4 text-slate-400 text-sm">暂无数据</p>}
-            {profiles.map((item) => {
-              const pct = item.mastery != null ? Math.round(item.mastery * 100) : 0;
+            {displayStates.length === 0 && (
+              <p className="py-4 text-center text-sm text-slate-400">暂无数据</p>
+            )}
+            {displayStates.map((item) => {
+              const pct = clampPercent(item.mastery_score);
               return (
-                <div key={item.knowledge_point}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-slate-700">{item.knowledge_point}</span>
-                    <span className="text-sm text-slate-500">{pct}%</span>
+                <div key={`${item.granularity}-${item.target_id}`}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-medium text-slate-700">
+                      {item.display_name}
+                    </span>
+                    <span className="shrink-0 text-sm text-slate-500">
+                      {pct}% · {item.correct_attempts}/{item.total_attempts}
+                    </span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div className="bg-slate-900 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  <div className="h-2 w-full rounded-full bg-slate-100">
+                    <div
+                      className="h-2 rounded-full bg-slate-900 transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
                 </div>
               );
@@ -147,15 +382,18 @@ export function AnalysisPage() {
               <CardDescription>需要加强练习的内容</CardDescription>
             </CardHeader>
             <CardContent>
-              {(report?.weak_points_top5 ?? []).length === 0 && (
-                <p className="text-center py-4 text-slate-400 text-sm">暂无数据</p>
+              {weakStates.length === 0 && (
+                <p className="py-4 text-center text-sm text-slate-400">暂无数据</p>
               )}
               <div className="space-y-3">
-                {(report?.weak_points_top5 ?? []).map((item) => (
-                  <div key={item.knowledge_point} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <span className="text-sm font-medium text-slate-700">{item.knowledge_point}</span>
-                    <span className="text-sm text-orange-600 font-medium">
-                      {item.mastery != null ? `${Math.round(item.mastery * 100)}%` : "—"}
+                {weakStates.map((item) => (
+                  <div
+                    key={`${item.granularity}-${item.target_id}`}
+                    className="flex items-center justify-between rounded-lg bg-slate-50 p-3"
+                  >
+                    <span className="text-sm font-medium text-slate-700">{item.display_name}</span>
+                    <span className="text-sm font-medium text-orange-600">
+                      {clampPercent(item.mastery_score)}%
                     </span>
                   </div>
                 ))}
@@ -163,23 +401,21 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          {report?.suggestions && report.suggestions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>复习建议</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {report.suggestions.map((s, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-                      <BookOpen className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>复习建议</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {suggestions.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                    <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
