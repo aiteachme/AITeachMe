@@ -29,13 +29,16 @@ async def send_chat(
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    direct_mode = bool(body.source and body.source.strip())
+    if not direct_mode:
+        get_subject_record(session, normalized_subject)
     return StreamingResponse(
         chat_stream(
             request,
             session,
             subject=normalized_subject,
             question=body.question,
+            source=body.source,
             selected_context=body.selected_context,
             source_chunk_id=body.source_chunk_id,
         ),

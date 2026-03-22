@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from uuid import uuid4
 
 import structlog
 from fastapi import Request
 from sqlmodel import Session
 
 from app.agents.interact.context_builder import build_chat_messages
-from app.agents.interact.retriever import retrieve
+from app.agents.interact.retriever import RetrievalResult, retrieve
 from app.agents.interact.streamer import format_sse_event, stream_llm_events
 from app.core.config import get_settings
 from app.models import ChatMessage
@@ -29,7 +30,7 @@ from app.services.presenters import mastery_to_text, require_id
 logger = structlog.get_logger()
 
 
-def _serialize_contexts(results: list[object]) -> list[dict] | None:
+def _serialize_contexts(results: list[RetrievalResult]) -> list[dict] | None:
     if not results:
         return None
     payload: list[dict] = []
@@ -92,57 +93,73 @@ async def chat_stream(
     *,
     subject: str,
     question: str,
+    source: str | None = None,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """执行聊天检索与流式回答。"""
+    direct_mode = bool(source and source.strip())
+    retrieval_results: list[RetrievalResult] = []
+    contexts: list[dict] | None = None
 
-    settings = get_settings()
-    retrieval_results = await retrieve(
-        query=question,
-        subject=subject,
-        top_k=settings.rag_top_k,
-        similarity_threshold=settings.rag_similarity_threshold,
-        search_func=lambda query_embedding, query_subject, top_k: [
+    if direct_mode:
+        messages = build_chat_messages(
+            subject=subject,
+            retrieval_results=[],
+            recent_messages=[],
+            weak_points=[],
+            recent_mistakes=[],
+            question=question,
+            selected_context=selected_context,
+            source_chunk_id=source_chunk_id,
+        )
+    else:
+        settings = get_settings()
+        retrieval_results = await retrieve(
+            query=question,
+            subject=subject,
+            top_k=settings.rag_top_k,
+            similarity_threshold=settings.rag_similarity_threshold,
+            search_func=lambda query_embedding, query_subject, top_k: [
+                {
+                    "chunk_id": require_id(result.chunk.id, "DocumentChunk.id"),
+                    "document_id": result.chunk.document_id,
+                    "title": result.chunk.title,
+                    "header_path": result.chunk.header_path,
+                    "content": result.chunk.content,
+                    "score": result.score,
+                }
+                for result in vector_search(
+                    session,
+                    query_embedding,
+                    query_subject,
+                    top_k=top_k,
+                )
+            ],
+        )
+
+        recent_messages = [
+            {"role": item.role, "content": item.content}
+            for item in get_recent_turns(session, subject, n_turns=settings.chat_history_turns)
+        ]
+        weak_points = [
             {
-                "chunk_id": require_id(result.chunk.id, "DocumentChunk.id"),
-                "document_id": result.chunk.document_id,
-                "title": result.chunk.title,
-                "header_path": result.chunk.header_path,
-                "content": result.chunk.content,
-                "score": result.score,
+                "knowledge_point": item.knowledge_point,
+                "mastery_text": mastery_to_text(item.mastery),
             }
-            for result in vector_search(
-                session,
-                query_embedding,
-                query_subject,
-                top_k=top_k,
-            )
-        ],
-    )
-
-    recent_messages = [
-        {"role": item.role, "content": item.content}
-        for item in get_recent_turns(session, subject, n_turns=settings.chat_history_turns)
-    ]
-    weak_points = [
-        {
-            "knowledge_point": item.knowledge_point,
-            "mastery_text": mastery_to_text(item.mastery),
-        }
-        for item in get_weak_points(session, subject, limit=10)
-    ]
-    recent_mistakes, _ = list_mistakes_by_subject(session, subject, limit=5, offset=0)
-    messages = build_chat_messages(
-        subject=subject,
-        retrieval_results=retrieval_results,
-        recent_messages=recent_messages,
-        weak_points=weak_points,
-        recent_mistakes=recent_mistakes,
-        question=question,
-        selected_context=selected_context,
-        source_chunk_id=source_chunk_id,
-    )
+            for item in get_weak_points(session, subject, limit=10)
+        ]
+        recent_mistakes, _ = list_mistakes_by_subject(session, subject, limit=5, offset=0)
+        messages = build_chat_messages(
+            subject=subject,
+            retrieval_results=retrieval_results,
+            recent_messages=recent_messages,
+            weak_points=weak_points,
+            recent_mistakes=recent_mistakes,
+            question=question,
+            selected_context=selected_context,
+            source_chunk_id=source_chunk_id,
+        )
 
     collected_tokens: list[str] = []
     try:
@@ -153,18 +170,21 @@ async def chat_stream(
             return
 
         full_response = "".join(collected_tokens)
-        contexts = _serialize_contexts(retrieval_results)
-        _, assistant_message = create_message_pair(
-            session,
-            subject=subject,
-            user_content=question,
-            assistant_content=full_response,
-            contexts=contexts,
-        )
+        turn_id = str(uuid4())
+        if not direct_mode:
+            contexts = _serialize_contexts(retrieval_results)
+            _, assistant_message = create_message_pair(
+                session,
+                subject=subject,
+                user_content=question,
+                assistant_content=full_response,
+                contexts=contexts,
+            )
+            turn_id = assistant_message.turn_id
         yield format_sse_event(
             "done",
             {
-                "turn_id": assistant_message.turn_id,
+                "turn_id": turn_id,
                 "contexts": contexts,
             },
         )
