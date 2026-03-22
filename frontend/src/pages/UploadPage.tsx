@@ -6,72 +6,55 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
-import { apiClient } from "../api/client";
-
-interface FileItem {
-  id: number;
-  filename: string;
-  filetype: string;
-  status: string;
-  markdown_ready: boolean;
-  latest_updated_at: string;
-  created_at: string;
-}
-
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
-
-interface FileGetData {
-  file_id: number;
-  filename: string;
-  status: string;
-  markdown_content: string;
-  assets: { path: string }[];
-}
+import {
+  deleteFilesApiApiV1SubjectsSubjectFilesDeletePost,
+  getFileApiApiV1SubjectsSubjectFilesGetPost,
+  listFilesApiApiV1SubjectsSubjectFilesListPost,
+  parseUploadedFilesApiV1SubjectsSubjectFilesParsePost,
+  uploadFilesApiV1SubjectsSubjectFilesUploadPost,
+} from "../api/generated/files";
+import type { FileGetData, FileItem } from "../api/generated/model";
+import { unwrapOrvalResponse } from "../api/generated/utils";
 
 async function fetchFiles(subject: string): Promise<FileItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<FileItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/list`,
-    data: { page: 1, size: 50 },
-  });
-  return res.data.items;
+  return unwrapOrvalResponse(
+    await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
+      page: 1,
+      size: 50,
+    }),
+  )?.items ?? [];
 }
 
 async function uploadFiles(subject: string, files: File[]): Promise<void> {
-  const formData = new FormData();
-  files.forEach((f) => formData.append("files", f));
-  await apiClient({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/upload`,
-    data: formData,
-    headers: { "Content-Type": "multipart/form-data" },
+  await uploadFilesApiV1SubjectsSubjectFilesUploadPost(subject, {
+    files,
   });
 }
 
 async function parseFiles(subject: string, fileIds: number[]): Promise<void> {
-  await apiClient({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/parse`,
-    data: { file_ids: fileIds },
+  await parseUploadedFilesApiV1SubjectsSubjectFilesParsePost(subject, {
+    file_ids: fileIds,
   });
 }
 
 async function deleteFile(subject: string, fileId: number): Promise<void> {
-  await apiClient({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/delete`,
-    data: { file_id: fileId },
+  await deleteFilesApiApiV1SubjectsSubjectFilesDeletePost(subject, {
+    file_id: fileId,
   });
 }
 
 async function fetchFileResult(subject: string, fileId: number): Promise<FileGetData> {
-  const res = await apiClient<ApiResponse<FileGetData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/get`,
-    data: { file_id: fileId },
-  });
-  return res.data;
+  const result = unwrapOrvalResponse(
+    await getFileApiApiV1SubjectsSubjectFilesGetPost(subject, {
+      file_id: fileId,
+    }),
+  );
+
+  if (!result) {
+    throw new Error("加载文件结果失败");
+  }
+
+  return result;
 }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {

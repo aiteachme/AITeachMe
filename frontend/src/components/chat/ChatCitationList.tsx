@@ -1,5 +1,5 @@
 import { BookOpenText, ChevronRight, LibraryBig } from "lucide-react";
-import { type ChatContextItem } from "../../api/chatApi";
+import type { ChatContextItem } from "../../api/generated/model";
 
 interface ChatCitationListProps {
   contexts: ChatContextItem[];
@@ -16,9 +16,9 @@ export function ChatCitationList({ contexts, onOpenContext }: ChatCitationListPr
       <div className="grid gap-2">
         {contexts.map((context) => (
           <button
-            key={`${context.chunkId}-${context.documentId}`}
+            key={`${context.chunk_id}-${context.document_id}`}
             type="button"
-            onClick={() => onOpenContext(context.chunkId)}
+            onClick={() => onOpenContext(context.chunk_id)}
             className="group rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md"
           >
             <div className="flex items-start justify-between gap-3">
@@ -28,7 +28,7 @@ export function ChatCitationList({ contexts, onOpenContext }: ChatCitationListPr
                   <span className="truncate">{context.title || "未命名切块"}</span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                  {context.headerPath || "未提供标题路径"}
+                  {context.header_path || "未提供标题路径"}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2 text-xs text-slate-400">

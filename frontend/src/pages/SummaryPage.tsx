@@ -19,7 +19,7 @@ import {
   DigestBuildButton,
   DigestBuildProgress,
 } from "../components/pages/DigestBuildPanel";
-import { clearSubjectKnowledge } from "../api/graphApi";
+import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
 
 /* ---------- 知识视图 Tab ---------- */
 
@@ -40,7 +40,7 @@ export function SummaryPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const clearMutation = useMutation({
-    mutationFn: () => clearSubjectKnowledge(subjectId),
+    mutationFn: () => knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost(subjectId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["theme-tree", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["prereq-dag", subjectId] });

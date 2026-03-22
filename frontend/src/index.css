@@ -31,3 +31,53 @@
   }
 }
 
+@keyframes headingFlash {
+  0% {
+    background-color: transparent;
+    color: rgb(15 23 42);
+  }
+  30% {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: rgb(29, 78, 216);
+  }
+  65% {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: rgb(37, 99, 235);
+  }
+  100% {
+    background-color: transparent;
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .toc-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+  }
+
+  .toc-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .toc-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .toc-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.35);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .toc-scroll:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.65);
+  }
+
+  .heading-flash {
+    animation: headingFlash 0.9s ease-out;
+    border-radius: 0.5rem;
+  }
+}
+

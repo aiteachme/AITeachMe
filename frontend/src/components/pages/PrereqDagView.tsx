@@ -7,8 +7,13 @@ import {
   ArrowRight,
   BookOpen,
 } from "lucide-react";
-import { getApiErrorMessage } from "../../api/client";
-import { fetchPrereqDag, fetchTeachingUnits, type UnitDependencyItem } from "../../api/graphApi";
+import { getApiErrorMessage, isApiErrorStatus } from "../../api/client";
+import {
+  prereqDagCurrentApiV1SubjectsSubjectKnowledgePrereqDagCurrentPost,
+  unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost,
+} from "../../api/generated/knowledge";
+import type { PrereqDagResponse, UnitDependencyItem } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../api/generated/utils";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -86,12 +91,16 @@ const DEP_TYPE_LABEL: Record<string, { label: string; color: string }> = {
 
 /* ---------- 无依赖时展示教学单元 ---------- */
 
-import type { PrereqDagResponse } from "../../api/graphApi";
-
 function NoDependenciesView({ subject, dagData }: { subject: string; dagData: PrereqDagResponse | null | undefined }) {
   const { data: unitsData } = useQuery({
     queryKey: ["teaching-units-dag", subject],
-    queryFn: () => fetchTeachingUnits(subject),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost(subject, {
+          page: 1,
+          size: 50,
+        }),
+      ) ?? null,
     enabled: !!subject,
   });
 
@@ -155,14 +164,26 @@ function NoDependenciesView({ subject, dagData }: { subject: string; dagData: Pr
 export function PrereqDagView({ subject }: { subject: string }) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["prereq-dag", subject],
-    queryFn: () => fetchPrereqDag(subject),
+    queryFn: async () => {
+      try {
+        return unwrapOrvalResponse(
+          await prereqDagCurrentApiV1SubjectsSubjectKnowledgePrereqDagCurrentPost(subject),
+        ) ?? null;
+      } catch (queryError) {
+        if (isApiErrorStatus(queryError, 404, "NO_PUBLISHED_DAG")) {
+          return null;
+        }
+        throw queryError;
+      }
+    },
     enabled: !!subject,
     retry: false,
   });
 
   const layers = useMemo(() => {
-    if (!data?.dependencies.length) return [];
-    return buildLayers(data.dependencies);
+    const dependencies = data?.dependencies ?? [];
+    if (dependencies.length === 0) return [];
+    return buildLayers(dependencies);
   }, [data]);
 
   // 按层分组
@@ -195,7 +216,9 @@ export function PrereqDagView({ subject }: { subject: string }) {
     );
   }
 
-  if (!data || data.dependencies.length === 0) {
+  const dependencies = data?.dependencies ?? [];
+
+  if (!data || dependencies.length === 0) {
     return <NoDependenciesView subject={subject} dagData={data} />;
   }
 
@@ -213,7 +236,7 @@ export function PrereqDagView({ subject }: { subject: string }) {
             }`}>
               {data.status === "published" ? "已发布" : data.status}
             </span>
-            <span>{data.dependencies.length} 条依赖关系</span>
+            <span>{dependencies.length} 条依赖关系</span>
           </div>
 
           {/* 拓扑层级视图 */}
@@ -249,7 +272,7 @@ export function PrereqDagView({ subject }: { subject: string }) {
         <CardContent className="pt-6">
           <h3 className="text-sm font-medium text-slate-700 mb-3">依赖关系明细</h3>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {data.dependencies.map((dep) => {
+            {dependencies.map((dep) => {
               const typeInfo = DEP_TYPE_LABEL[dep.dependency_type] ?? {
                 label: dep.dependency_type,
                 color: "bg-slate-100 text-slate-600",

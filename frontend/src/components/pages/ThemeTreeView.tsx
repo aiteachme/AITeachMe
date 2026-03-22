@@ -8,8 +8,10 @@ import {
   BookOpen,
   AlertCircle,
 } from "lucide-react";
-import { getApiErrorMessage } from "../../api/client";
-import { fetchThemeTree, type ThemeTreeNodeResponse, type TreeUnitItem } from "../../api/graphApi";
+import { getApiErrorMessage, isApiErrorStatus } from "../../api/client";
+import { themeTreeCurrentApiV1SubjectsSubjectKnowledgeThemeTreeCurrentPost } from "../../api/generated/knowledge";
+import type { ThemeTreeNodeResponse, TreeUnitItem } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../api/generated/utils";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -51,8 +53,10 @@ function UnitCard({ unit }: { unit: TreeUnitItem }) {
 
 function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: number }) {
   const [expanded, setExpanded] = useState(depth < 2);
-  const hasChildren = node.children.length > 0;
-  const hasUnits = node.units.length > 0;
+  const children = node.children ?? [];
+  const units = node.units ?? [];
+  const hasChildren = children.length > 0;
+  const hasUnits = units.length > 0;
   const isUncategorized = node.node_type === "uncategorized";
   const canExpand = hasChildren || hasUnits;
 
@@ -95,7 +99,7 @@ function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: nu
             )}
             {hasUnits && (
               <span className="text-[10px] text-slate-400 shrink-0">
-                {node.units.length} 个教学单元
+                {units.length} 个教学单元
               </span>
             )}
           </div>
@@ -110,7 +114,7 @@ function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: nu
           {/* 挂载的教学单元 */}
           {hasUnits && (
             <div className="space-y-2 py-2">
-              {node.units.map((u: TreeUnitItem) => (
+              {units.map((u: TreeUnitItem) => (
                 <UnitCard key={u.teaching_unit_id} unit={u} />
               ))}
             </div>
@@ -118,7 +122,7 @@ function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: nu
           {/* 子节点 */}
           {hasChildren && (
             <ul className="space-y-0.5">
-              {node.children.map((child) => (
+              {children.map((child) => (
                 <TreeNode key={child.id} node={child} depth={depth + 1} />
               ))}
             </ul>
@@ -134,7 +138,18 @@ function TreeNode({ node, depth = 0 }: { node: ThemeTreeNodeResponse; depth?: nu
 export function ThemeTreeView({ subject }: { subject: string }) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["theme-tree", subject],
-    queryFn: () => fetchThemeTree(subject),
+    queryFn: async () => {
+      try {
+        return unwrapOrvalResponse(
+          await themeTreeCurrentApiV1SubjectsSubjectKnowledgeThemeTreeCurrentPost(subject),
+        ) ?? null;
+      } catch (queryError) {
+        if (isApiErrorStatus(queryError, 404, "NO_PUBLISHED_TREE")) {
+          return null;
+        }
+        throw queryError;
+      }
+    },
     enabled: !!subject,
     retry: false,
   });
@@ -158,7 +173,9 @@ export function ThemeTreeView({ subject }: { subject: string }) {
     );
   }
 
-  if (!data || data.tree.length === 0) {
+  const tree = data?.tree ?? [];
+
+  if (!data || tree.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <FolderTree className="w-8 h-8 mb-2 text-slate-300" />
@@ -170,8 +187,8 @@ export function ThemeTreeView({ subject }: { subject: string }) {
 
   // 统计总教学单元数
   const countUnits = (nodes: ThemeTreeNodeResponse[]): number =>
-    nodes.reduce((sum, n) => sum + n.units.length + countUnits(n.children), 0);
-  const totalUnits = countUnits(data.tree);
+    nodes.reduce((sum, n) => sum + (n.units?.length ?? 0) + countUnits(n.children ?? []), 0);
+  const totalUnits = countUnits(tree);
 
   return (
     <Card>
@@ -190,7 +207,7 @@ export function ThemeTreeView({ subject }: { subject: string }) {
           </div>
         </div>
         <ul className="space-y-1">
-          {data.tree.map((node) => (
+          {tree.map((node) => (
             <TreeNode key={node.id} node={node} />
           ))}
         </ul>

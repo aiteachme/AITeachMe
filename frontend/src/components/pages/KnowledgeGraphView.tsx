@@ -14,16 +14,17 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
-  fetchGraphNodes,
-  fetchGraphNodeDetail,
-  type KnowledgeNodeResponse,
-} from "../../api/graphApi";
+  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
+  graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost,
+} from "../../api/generated/knowledge";
+import type { KnowledgeNodeResponse } from "../../api/generated/model";
 import { getApiErrorMessage } from "../../api/client";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
+import { unwrapOrvalResponse } from "../../api/generated/utils";
 
 /* ---------- 节点类型配色 ---------- */
 
@@ -61,7 +62,12 @@ function NodeDetailPanel({
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["graph-node-detail", subject, nodeId],
-    queryFn: () => fetchGraphNodeDetail(subject, nodeId),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject, {
+          node_id: nodeId,
+        }),
+      ) ?? null,
     enabled: !!nodeId,
   });
 
@@ -79,6 +85,9 @@ function NodeDetailPanel({
     label: data.node_type,
     color: "bg-slate-100 text-slate-600",
   };
+  const aliases = data.aliases ?? [];
+  const incidentEdges = data.incident_edges ?? [];
+  const evidenceList = data.evidence ?? [];
 
   return (
     <div className="space-y-4">
@@ -122,13 +131,13 @@ function NodeDetailPanel({
       )}
 
       {/* 别名 */}
-      {data.aliases.length > 0 && (
+      {aliases.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
             <Tag className="w-3 h-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {data.aliases.map((a) => (
+            {aliases.map((a) => (
               <span
                 key={a.id}
                 className={`text-xs px-2 py-0.5 rounded-full ${
@@ -145,13 +154,13 @@ function NodeDetailPanel({
       )}
 
       {/* 关联边 */}
-      {data.incident_edges.length > 0 && (
+      {incidentEdges.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Link2 className="w-3 h-3" />关联知识 ({data.incident_edges.length})
+            <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
-            {data.incident_edges.map((edge) => (
+            {incidentEdges.map((edge) => (
               <button
                 key={edge.id}
                 onClick={() => onNavigate(edge.other_node_id)}
@@ -172,13 +181,13 @@ function NodeDetailPanel({
       )}
 
       {/* 证据 */}
-      {data.evidence.length > 0 && (
+      {evidenceList.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <FileText className="w-3 h-3" />来源证据 ({data.evidence.length})
+            <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {data.evidence.map((ev) => (
+            {evidenceList.map((ev) => (
               <button
                 key={ev.id}
                 onClick={() => onEvidenceClick(ev.id)}
@@ -225,7 +234,14 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["graph-nodes", subject, nodeType, page],
-    queryFn: () => fetchGraphNodes(subject, nodeType, page, pageSize),
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost(subject, {
+          node_type: nodeType,
+          page,
+          size: pageSize,
+        }),
+      ) ?? null,
     enabled: !!subject,
     retry: false,
   });

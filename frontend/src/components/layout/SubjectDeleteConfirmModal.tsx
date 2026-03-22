@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import type {
   SubjectDeletePreviewData,
   SubjectItem,
-} from "../../api/subjectsApi";
+} from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -31,6 +31,7 @@ export function SubjectDeleteConfirmModal({
   onConfirm,
 }: SubjectDeleteConfirmModalProps) {
   const subjectName = preview?.subject_name || subject?.name || "该学科";
+  const impactItems = preview?.impact_items ?? [];
 
   return (
     <Modal open={open} onClose={onClose} title="确认删除学科" className="max-w-2xl">
@@ -58,8 +59,8 @@ export function SubjectDeleteConfirmModal({
               共检测到 <span className="font-semibold text-slate-900">{preview.total_related_records}</span> 条关联记录。
             </div>
             <div className="space-y-2">
-              {preview.impact_items.length > 0 ? (
-                preview.impact_items.map((item) => (
+              {impactItems.length > 0 ? (
+                impactItems.map((item) => (
                   <div
                     key={item.key}
                     className="rounded-lg border border-slate-200 px-4 py-3"
