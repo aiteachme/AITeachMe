@@ -143,7 +143,7 @@ export function HomePage() {
           <div className="bg-slate-900 text-white p-2 rounded-xl shadow-lg">
             <BookOpen className="w-8 h-8" />
           </div>
-          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">AI TEACH ME</h1>
+          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">AI 赛博私教</h1>
         </motion.div>
 
         {/* ── Slogan ── */}

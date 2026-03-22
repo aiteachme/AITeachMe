@@ -254,7 +254,7 @@ export function Sidebar() {
                 exit={{ opacity: 0, x: -10 }}
                 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden"
               >
-                AI TEACH ME
+                AI 赛博私教
               </motion.h1>
             )}
           </AnimatePresence>

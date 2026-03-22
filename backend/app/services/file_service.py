@@ -68,7 +68,7 @@ def _extract_parser_used(parse_metadata: str | None) -> str | None:
 
 
 def _build_asset_base_url(*, subject: str, file_id: int) -> str:
-    return f"/api/v1/subjects/{subject}/files/{file_id}/assets"
+    return f"/_assets/{subject}/assets/{file_id}"
 
 
 def _build_asset_items(*, subject: str, file_id: int, asset_dir_value: str | None) -> list[FileAssetItem]:
@@ -355,25 +355,6 @@ def list_subject_files(
         failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
         items=records,
     )
-
-
-def get_file_asset_path(
-    session: Session,
-    *,
-    subject: str,
-    file_id: int,
-    asset_name: str,
-) -> Path:
-    """Resolve a public asset path for one file."""
-
-    raw_file = get_subject_file_or_raise(session, subject=subject, file_id=file_id)
-    if not raw_file.asset_dir:
-        raise RawFileNotFoundError(file_id)
-
-    asset_path = Path(raw_file.asset_dir) / asset_name
-    if not asset_path.exists() or not asset_path.is_file():
-        raise RawFileNotFoundError(file_id)
-    return asset_path
 
 
 def delete_files(

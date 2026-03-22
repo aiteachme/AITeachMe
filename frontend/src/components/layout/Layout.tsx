@@ -8,7 +8,6 @@ const FULL_BLEED_SUFFIXES = ["/doc", "/upload"];
 
 export function Layout() {
   const { pathname } = useLocation();
-  const hideTopBar = pathname.startsWith("/subject/");
   const isFullBleed = FULL_BLEED_SUFFIXES.some((s) => pathname.endsWith(s));
   const isHome = pathname === "/";
 
@@ -16,15 +15,13 @@ export function Layout() {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Top Bar — hidden when the page provides its own */}
-        {!hideTopBar && (
-          <header className="flex-shrink-0 h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-end z-10">
-            <TopBar />
-          </header>
-        )}
+        {/* Top Bar — ALWAYS SHOW on all tabs to ensure User / Github buttons are visible */}
+        <header className="flex-shrink-0 h-16 px-6 flex items-center justify-end z-40 w-full relative bg-transparent">
+          <TopBar />
+        </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto relative bg-slate-50/50">
+        <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-gradient-to-b from-slate-50 to-slate-200/40 flex flex-col">
           <AnimatePresence mode="wait">
             {isFullBleed || isHome ? (
               <motion.div
@@ -33,7 +30,7 @@ export function Layout() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className="min-h-full"
+                className="flex-1 min-h-[calc(100vh-4rem)] flex flex-col w-full"
               >
                 <Outlet />
               </motion.div>

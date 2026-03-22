@@ -68,8 +68,9 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
 
 async function deleteFile(subject: string, fileId: number): Promise<void> {
   await apiClient<ApiResponse<{ deleted_file_ids: number[] }>>({
-    method: "DELETE",
-    url: `/api/v1/subjects/${subject}/files/${fileId}`,
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/files/delete`,
+    data: { file_id: fileId },
   });
 }
 
@@ -85,7 +86,7 @@ async function triggerDocGenBuild(subject: string, prompt?: string): Promise<Doc
 function getFileStatusMeta(file: FileRecord) {
   if (file.markdown_ready) {
     return {
-      label: "Ready",
+      label: "已就绪",
       tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
     };
@@ -93,7 +94,7 @@ function getFileStatusMeta(file: FileRecord) {
 
   if (file.status === "failed") {
     return {
-      label: "Failed",
+      label: "失败",
       tone: "text-red-600 bg-red-50 border-red-200",
       icon: <AlertCircle className="h-4 w-4 text-red-500" />,
     };
@@ -101,21 +102,21 @@ function getFileStatusMeta(file: FileRecord) {
 
   if (ACTIVE_FILE_STATUSES.has(file.status) || file.ingest_status !== "pending") {
     return {
-      label: "Processing",
+      label: "解析中",
       tone: "text-indigo-600 bg-indigo-50 border-indigo-200",
       icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
     };
   }
 
   return {
-    label: "Queued",
+    label: "等待处理",
     tone: "text-amber-600 bg-amber-50 border-amber-200",
     icon: <Loader2 className="h-4 w-4 animate-spin text-amber-500" />,
   };
 }
 
 function formatFileType(file: FileRecord): string {
-  return file.filetype ? file.filetype.toUpperCase() : "UNKNOWN";
+  return file.filetype ? file.filetype.toUpperCase() : "未知格式";
 }
 
 export function UploadPage() {
@@ -206,7 +207,7 @@ export function UploadPage() {
   );
 
   return (
-    <div className="relative flex min-h-full w-full flex-col items-center overflow-x-hidden bg-gradient-to-b from-slate-50 to-slate-200/40 px-4 pb-16 pt-10 md:pt-16">
+    <div className="flex-1 w-full flex flex-col items-center px-4 pt-10 md:pt-16 pb-16 relative overflow-x-hidden">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           className="absolute left-1/4 top-10 h-[400px] w-[400px] animate-pulse rounded-full bg-sky-400/10 blur-3xl"
@@ -227,14 +228,13 @@ export function UploadPage() {
         <div className="mb-10 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 shadow-sm backdrop-blur">
             <Sparkles className="h-3.5 w-3.5" />
-            Upload files and parse them automatically
+            上传资料 自动解析
           </div>
           <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
-            Build your study material from uploaded sources
+            为专属学习构建语料
           </h1>
           <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">
-            The files module now uses one unified query endpoint. Upload starts parsing immediately,
-            preview reads from the same data source, and Markdown images resolve through asset URLs.
+            支持拖拽或选择文件上传。资料一旦上传系统便会自动开始多模态解析并为你构建私有知识库。
           </p>
         </div>
 
@@ -247,7 +247,7 @@ export function UploadPage() {
             value={docPrompt}
             onChange={(event) => setDocPrompt(event.target.value)}
             disabled={buildMutation.isPending}
-            placeholder="Optional: describe how the final knowledge document should be organized."
+            placeholder="可选：一句话描述你期望生成的知识文档大纲结构或侧重点..."
             className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
@@ -283,7 +283,7 @@ export function UploadPage() {
                               setPreviewFileId(file.id);
                             }}
                             className="ml-1 p-0.5 opacity-60 transition-opacity hover:text-indigo-600 hover:opacity-100"
-                            title="Preview"
+                            title="预览"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
@@ -295,7 +295,7 @@ export function UploadPage() {
                             deleteMutation.mutate(file.id);
                           }}
                           className="ml-0.5 p-0.5 opacity-60 transition-opacity hover:text-red-500 hover:opacity-100"
-                          title="Delete"
+                          title="删除"
                           disabled={deleteMutation.isPending}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -311,7 +311,7 @@ export function UploadPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="file"
-                  title="Select files"
+                  title="选择文件"
                   multiple
                   accept={ACCEPT_TEXT}
                   className="hidden"
@@ -324,27 +324,27 @@ export function UploadPage() {
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 >
                   <Paperclip className="h-4 w-4" />
-                  Add files
+                  添加文件
                 </button>
 
                 {uploadMutation.isPending ? (
                   <span className="flex items-center text-xs font-medium text-indigo-500">
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Uploading and starting parse...
+                    正在上传并启动解析...
                   </span>
                 ) : null}
 
                 {uploadMutation.isError ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {getApiErrorMessage(uploadMutation.error, "Upload failed")}
+                    {getApiErrorMessage(uploadMutation.error, "上传失败")}
                   </span>
                 ) : null}
 
                 {buildMutation.isError ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {getApiErrorMessage(buildMutation.error, "Document build failed")}
+                    {getApiErrorMessage(buildMutation.error, "知识文档构建失败")}
                   </span>
                 ) : null}
               </div>
@@ -363,11 +363,11 @@ export function UploadPage() {
                 {buildMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Building document...
+                    正在生成知识文档...
                   </>
                 ) : (
                   <>
-                    Build knowledge document
+                    开始生成知识文档
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </>
                 )}
@@ -378,18 +378,18 @@ export function UploadPage() {
 
         <div className="mt-6 flex flex-col items-center justify-center gap-2">
           {isLoading && files.length === 0 ? (
-            <div className="flex items-center gap-1.5 text-sm text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading files...
-            </div>
+             <div className="flex items-center gap-1.5 text-sm text-slate-400">
+               <Loader2 className="h-4 w-4 animate-spin" />
+               正在加载文件...
+             </div>
           ) : files.length === 0 ? (
-            <div className="flex items-center gap-1.5 text-sm text-slate-400">
-              No files yet. Drag files into the box above or use the add button.
+             <div className="flex items-center gap-1.5 text-sm text-slate-400">
+               暂无文件。请将文件拖拽至上方白框或使用添加文件按钮。
             </div>
           ) : (
             <div className="text-sm text-slate-400">
-              Total <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span>,
-              ready <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span>
+              总计 <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span>，
+              已就绪 <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span>
             </div>
           )}
         </div>
@@ -398,21 +398,21 @@ export function UploadPage() {
       <Modal
         open={previewFile !== null}
         onClose={() => setPreviewFileId(null)}
-        title={previewFile?.filename ?? "Preview"}
+        title={previewFile?.filename ?? "预览"}
         className="max-w-4xl"
       >
         <div className="space-y-4">
           {previewFile ? (
             <div className="flex flex-wrap gap-2 text-xs text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                Type: {formatFileType(previewFile)}
+                格式：{formatFileType(previewFile)}
               </span>
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                Status: {previewFile.markdown_ready ? "Markdown ready" : previewFile.status}
+                状态：{previewFile.markdown_ready ? "Markdown 转换成功" : previewFile.status}
               </span>
               {previewFile.parser_used ? (
                 <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                  Parser: {previewFile.parser_used}
+                  解析器：{previewFile.parser_used}
                 </span>
               ) : null}
             </div>
@@ -427,7 +427,7 @@ export function UploadPage() {
             </article>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-              Markdown content is not ready yet.
+              Markdown 尚未就绪，请稍后。
             </div>
           )}
         </div>

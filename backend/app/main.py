@@ -13,6 +13,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.database import init_db
@@ -67,6 +68,12 @@ def _register_middlewares(app: FastAPI) -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+def _register_static_mounts(app: FastAPI) -> None:
+    data_dir = Path(get_settings().data_dir).resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -127,6 +134,7 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(**_build_app_metadata())
     _register_middlewares(app)
+    _register_static_mounts(app)
     _register_exception_handlers(app)
     _register_routers(app)
     return app

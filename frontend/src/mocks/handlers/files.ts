@@ -30,7 +30,7 @@ let nextDocgenJobId = 1;
 const filePollTicks = new Map<number, number>();
 
 function buildAssetBaseUrl(subject: string, fileId: number): string {
-  return `/api/v1/subjects/${subject}/files/${fileId}/assets`;
+  return `/_assets/${subject}/assets/${fileId}`;
 }
 
 function buildFileAssets(subject: string, fileId: number): FileAssetItem[] {
@@ -338,21 +338,6 @@ export const fileHandlers = [
     });
   }),
 
-  http.delete("/api/v1/subjects/:subject/files/:fileId", ({ params }) => {
-    const fileId = Number(params.fileId);
-    const index = mockFiles.findIndex((item) => item.id === fileId);
-
-    if (index >= 0) {
-      mockFiles.splice(index, 1);
-      filePollTicks.delete(fileId);
-    }
-
-    return HttpResponse.json({
-      code: 0,
-      data: { deleted_file_ids: index >= 0 ? [fileId] : [] },
-    });
-  }),
-
   http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
     const body = (await request.json()) as { file_id?: number; file_ids?: number[] };
     const candidateIds = body.file_ids?.length ? body.file_ids : body.file_id ? [body.file_id] : [];
@@ -373,7 +358,7 @@ export const fileHandlers = [
     });
   }),
 
-  http.get("/api/v1/subjects/:subject/files/:fileId/assets/:assetName", ({ params }) => {
+  http.get("/_assets/:subject/assets/:fileId/:assetName", ({ params }) => {
     const fileId = Number(params.fileId);
     const assetName = String(params.assetName);
     const file = mockFiles.find((item) => item.id === fileId);

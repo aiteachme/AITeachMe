@@ -60,21 +60,19 @@ This is now the single read endpoint for file list, parse status, Markdown previ
 curl "http://localhost:8000/api/v1/subjects/math/files"
 ```
 
-### Read one asset
+### Delete files
 
-Use the `asset_base_url` and `assets[].url` returned by the files query response.
+Use the same endpoint for single delete and batch delete.
 
-```bash
-curl "http://localhost:8000/api/v1/subjects/math/files/1/assets/figure-1.png"
-```
-
-### Delete one file
+Delete one:
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/subjects/math/files/1"
+curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"file_id\":1}"
 ```
 
-### Delete multiple files
+Delete many:
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
@@ -105,4 +103,4 @@ curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/get" ^
 1. The files module no longer exposes separate parse or retry APIs.
 2. Upload is the only write entry for parse start.
 3. `GET /files` returns full records, including Markdown content and asset URLs for preview.
-4. Frontend previews should always resolve images through the returned asset base URL.
+4. Asset URLs are runtime static paths, not extra documented files APIs.
