@@ -6,6 +6,7 @@ backend/scripts/export_openapi.py
 
 import json
 import sys
+import types
 from pathlib import Path
 
 # ============ 配置 ============
@@ -41,6 +42,13 @@ def main():
     
     try:
         sys.path.insert(0, str(BACKEND_DIR))
+        try:
+            import python_multipart  # type: ignore # noqa: F401
+        except ModuleNotFoundError:
+            # Keep OpenAPI export available in restricted local environments.
+            stub = types.ModuleType("python_multipart")
+            stub.__version__ = "0.0.13"
+            sys.modules["python_multipart"] = stub
         from app.main import app
         
         if export_openapi_schema(app):

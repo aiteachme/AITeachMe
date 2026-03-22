@@ -204,17 +204,28 @@ export const profileHandlers = [
     return HttpResponse.json({ code: 0, data: mockReviewTasks });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/graph/nodes/query", () => {
+  http.post("/api/v1/subjects/:subject/knowledge/overview", ({ params }) => {
     return HttpResponse.json({
       code: 0,
-      data: { items: mockKnowledgeNodes, total: mockKnowledgeNodes.length, page: 1, size: 500 },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/knowledge/units/query", () => {
-    return HttpResponse.json({
-      code: 0,
-      data: { items: mockUnitItems, total: mockUnitItems.length, page: 1, size: 500 },
+      data: {
+        subject: String(params.subject ?? "mock-subject"),
+        generated_at: new Date().toISOString(),
+        snapshot: null,
+        theme_tree: null,
+        prereq_dag: null,
+        graph: {
+          nodes: mockKnowledgeNodes,
+          edges: [],
+        },
+        units: mockUnitItems,
+        stats: {
+          node_count: mockKnowledgeNodes.length,
+          edge_count: 0,
+          unit_count: mockUnitItems.length,
+          theme_node_count: 0,
+          dependency_count: 0,
+        },
+      },
     });
   }),
 ];

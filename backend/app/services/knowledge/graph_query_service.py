@@ -6,7 +6,6 @@ import structlog
 from sqlmodel import Session
 
 from app.core.exceptions import (
-    EvidenceNotFoundError,
     KnowledgeChunkNotFoundError,
     KnowledgeNodeNotFoundError,
 )
@@ -16,7 +15,6 @@ from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     AliasItem,
     ChunkContextResponse,
-    EvidenceContextResponse,
     EvidenceSummary,
     FullGraphResponse,
     GraphEdgeResponse,
@@ -184,50 +182,6 @@ def get_full_graph(
         for e in edges_raw
     ]
     return FullGraphResponse(nodes=nodes, edges=edges)
-
-
-def get_evidence_context(
-    session: Session, *, subject: str, evidence_id: int
-) -> EvidenceContextResponse:
-    """获取证据的 chunk 上下文，用于前端高亮显示原文。"""
-    from app.models.knowledge_graph import EvidenceLink
-
-    ev = session.get(EvidenceLink, evidence_id)
-    if ev is None or ev.subject != subject:
-        raise EvidenceNotFoundError(evidence_id)
-
-    chunk = knowledge_repo.get_chunk_by_id(session, ev.chunk_id)
-    if chunk is None:
-        raise EvidenceNotFoundError(evidence_id)
-
-    doc = knowledge_repo.get_document_by_id(session, ev.document_id)
-    doc_title = doc.title if doc else f"文档#{ev.document_id}"
-
-    # 在 chunk content 中定位 quote_text 的位置
-    highlight_start: int | None = None
-    highlight_end: int | None = None
-
-    if ev.source_span_start is not None and ev.source_span_end is not None:
-        highlight_start = ev.source_span_start
-        highlight_end = ev.source_span_end
-    elif ev.quote_text:
-        idx = chunk.content.find(ev.quote_text)
-        if idx >= 0:
-            highlight_start = idx
-            highlight_end = idx + len(ev.quote_text)
-
-    return EvidenceContextResponse(
-        evidence_id=ev.id,  # type: ignore[arg-type]
-        document_id=ev.document_id,
-        document_title=doc_title,
-        chunk_id=ev.chunk_id,
-        chunk_title=chunk.title,
-        chunk_header_path=chunk.header_path,
-        chunk_content=chunk.content,
-        quote_text=ev.quote_text,
-        highlight_start=highlight_start,
-        highlight_end=highlight_end,
-    )
 
 
 def get_chunk_context(

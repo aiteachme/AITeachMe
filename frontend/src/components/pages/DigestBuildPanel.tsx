@@ -6,10 +6,13 @@ import { Modal } from "../ui/Modal";
 import { getApiErrorMessage } from "../../api/client";
 import {
   digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost,
-  digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost,
 } from "../../api/generated/knowledge";
 import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
 import type { FileItem } from "../../api/generated/model";
+import {
+  fetchKnowledgeOverview,
+  type KnowledgeOverviewBuildStatus,
+} from "../../api/knowledgeOverview";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 
 async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
@@ -74,26 +77,12 @@ function useDigestJob() {
   return ctx;
 }
 
-function isTerminalStatus(status?: string | null): boolean {
-  return status === "completed" || status === "failed";
+function isDigestTerminal(buildStatus: KnowledgeOverviewBuildStatus): boolean {
+  return !!buildStatus.is_terminal;
 }
 
-function isDigestTerminal(data: {
-  graph_job: { status: string };
-  curriculum_job?: { status: string } | null;
-}): boolean {
-  const graphDone = isTerminalStatus(data.graph_job.status);
-  const curriculumDone = !data.curriculum_job || isTerminalStatus(data.curriculum_job.status);
-  return graphDone && curriculumDone;
-}
-
-function isDigestSuccess(data: {
-  graph_job: { status: string };
-  curriculum_job?: { status: string } | null;
-}): boolean {
-  const graphOk = data.graph_job.status === "completed";
-  const curriculumOk = !data.curriculum_job || data.curriculum_job.status === "completed";
-  return graphOk && curriculumOk;
+function isDigestSuccess(buildStatus: KnowledgeOverviewBuildStatus): boolean {
+  return !!buildStatus.is_success;
 }
 
 export function DigestBuildProgress() {
@@ -115,19 +104,18 @@ export function DigestBuildButton() {
   });
 
   const { data: activeJobStatus } = useQuery({
-    queryKey: ["digest-status", subject, activeJobId],
+    queryKey: ["digest-build-status", subject, activeJobId],
     queryFn: async () => {
       if (!activeJobId) return null;
-      const status = unwrapOrvalResponse(
-        await digestStatusApiV1SubjectsSubjectKnowledgeDigestStatusPost(subject, {
-          job_id: activeJobId,
-        }),
-      );
-
-      if (!status) {
-        throw new Error("查询构建状态失败");
+      const overview = await fetchKnowledgeOverview(subject, {
+        include: ["build_status"],
+        full: false,
+        jobId: activeJobId,
+      });
+      const status = overview.build_status;
+      if (!status || status.graph_job_id !== activeJobId) {
+        return null;
       }
-
       return status;
     },
     enabled: !!activeJobId,
@@ -144,16 +132,11 @@ export function DigestBuildButton() {
     }
 
     if (isDigestSuccess(activeJobStatus)) {
-      queryClient.invalidateQueries({ queryKey: ["theme-tree", subject] });
-      queryClient.invalidateQueries({ queryKey: ["prereq-dag", subject] });
-      queryClient.invalidateQueries({ queryKey: ["graph-nodes", subject] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
+      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
       setLastJobError("");
     } else {
-      const message =
-        activeJobStatus.graph_job.error_message ??
-        activeJobStatus.curriculum_job?.error_message ??
-        "知识构建失败，请稍后重试";
+      const message = activeJobStatus.error_message ?? "知识构建失败，请稍后重试";
       setLastJobError(message);
     }
 

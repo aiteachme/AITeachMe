@@ -8,17 +8,36 @@ import {
   apiGetReviewTasksApiV1SubjectsSubjectReviewTasksGet,
 } from "../api/generated/assessment";
 import {
-  graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost,
-  unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost,
-} from "../api/generated/knowledge";
-import type {
-  KnowledgeNodeResponse,
-  MasteryOverviewResponse,
-  MasteryStateResponse,
-  ReviewTaskResponse,
-  TeachingUnitResponse,
-} from "../api/generated/model";
+  fetchKnowledgeOverview,
+  type KnowledgeOverviewNode as KnowledgeNodeResponse,
+  type KnowledgeOverviewUnit as TeachingUnitResponse,
+} from "../api/knowledgeOverview";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+
+interface MasteryStateResponse {
+  target_id: number;
+  granularity: string;
+  mastery_score: number;
+  review_priority: number;
+  total_attempts: number;
+  correct_attempts: number;
+}
+
+interface MasteryOverviewResponse {
+  weak_unit_count: number;
+  weak_node_count: number;
+  unit_states: MasteryStateResponse[];
+  node_states: MasteryStateResponse[];
+}
+
+interface ReviewTaskResponse {
+  status: string;
+  priority: number;
+  scheduled_at: string;
+  target_granularity: string;
+  target_id: number;
+  reason?: string | null;
+}
 
 interface DisplayMasteryState extends MasteryStateResponse {
   display_name: string;
@@ -36,7 +55,7 @@ function formatReason(reason?: string | null): string {
     forgetting_due: "到期遗忘",
     repeated_wrong: "重复错误",
     prereq_gap: "前置薄弱",
-    newly_learned: "新学知识待巩固",
+    newly_learned: "新学内容待巩固",
   };
   if (!reason) return "";
   return mapping[reason] ?? reason;
@@ -86,46 +105,14 @@ async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> 
   return unwrapOrvalResponse(res) ?? [];
 }
 
-async function fetchKnowledgeNodes(subject: string): Promise<KnowledgeNodeResponse[]> {
-  const size = 100;
-  const merged: KnowledgeNodeResponse[] = [];
-  for (let page = 1; page <= 20; page += 1) {
-    const res = await graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost(subject, {
-      page,
-      size,
-    });
-    if (res.status !== 200) {
-      throw new Error(extractApiError(res.data, "知识点映射加载失败"));
-    }
-    const payload = unwrapOrvalResponse(res);
-    const items = payload?.items ?? [];
-    merged.push(...items);
-    if (page >= (payload?.pages ?? page) || items.length < size) {
-      break;
-    }
-  }
-  return merged;
-}
-
-async function fetchTeachingUnits(subject: string): Promise<TeachingUnitResponse[]> {
-  const size = 100;
-  const merged: TeachingUnitResponse[] = [];
-  for (let page = 1; page <= 20; page += 1) {
-    const res = await unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost(subject, {
-      page,
-      size,
-    });
-    if (res.status !== 200) {
-      throw new Error(extractApiError(res.data, "教学单元映射加载失败"));
-    }
-    const payload = unwrapOrvalResponse(res);
-    const items = payload?.items ?? [];
-    merged.push(...items);
-    if (page >= (payload?.pages ?? page) || items.length < size) {
-      break;
-    }
-  }
-  return merged;
+async function fetchKnowledgeMappings(
+  subject: string
+): Promise<{ nodes: KnowledgeNodeResponse[]; units: TeachingUnitResponse[] }> {
+  const overview = await fetchKnowledgeOverview(subject);
+  return {
+    nodes: overview.graph?.nodes ?? [],
+    units: overview.units ?? [],
+  };
 }
 
 export function AnalysisPage() {
@@ -151,19 +138,15 @@ export function AnalysisPage() {
     enabled: !!subjectId,
   });
 
-  const { data: knowledgeNodes = [] } = useQuery({
-    queryKey: ["analysis-knowledge-nodes", subjectId],
-    queryFn: () => fetchKnowledgeNodes(subjectId),
+  const { data: knowledgeMappings } = useQuery({
+    queryKey: ["analysis-knowledge-mappings", subjectId],
+    queryFn: () => fetchKnowledgeMappings(subjectId),
     enabled: !!subjectId,
     retry: 0,
   });
 
-  const { data: teachingUnits = [] } = useQuery({
-    queryKey: ["analysis-teaching-units", subjectId],
-    queryFn: () => fetchTeachingUnits(subjectId),
-    enabled: !!subjectId,
-    retry: 0,
-  });
+  const knowledgeNodes = knowledgeMappings?.nodes ?? [];
+  const teachingUnits = knowledgeMappings?.units ?? [];
 
   const isLoading = masteryLoading || tasksLoading;
 
@@ -256,7 +239,7 @@ export function AnalysisPage() {
       return weakStates.slice(0, 2).map((item) => {
         return `优先加强「${item.display_name}」，当前掌握度约 ${clampPercent(
           item.mastery_score
-        )}%，建议先做针对性练习再复盘错因。`;
+        )}% ，建议先做针对性练习再复盘错因。`;
       });
     }
 
@@ -286,7 +269,7 @@ export function AnalysisPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-slate-900">学习分析</h1>
-        <p className="mt-2 text-slate-500">基于作答记录与掌握度状态生成学习画像</p>
+        <p className="mt-2 text-slate-500">基于作答记录和掌握度状态生成学习画像</p>
       </div>
 
       {!!errorMessage && (
@@ -320,7 +303,7 @@ export function AnalysisPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-3xl font-bold text-slate-900">{displayStates.length}</p>
-                <p className="mt-1 text-xs text-slate-500">个</p>
+                <p className="mt-1 text-xs text-slate-500">项</p>
               </div>
               <Target className="h-8 w-8 text-slate-400" />
             </div>

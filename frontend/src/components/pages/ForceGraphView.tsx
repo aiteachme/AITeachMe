@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import {
   Loader2,
-  AlertCircle,
   Network,
   X,
   ZoomIn,
@@ -15,36 +14,36 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost,
   graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
 } from "../../api/generated/knowledge";
+import type { KnowledgeOverviewGraph as FullGraphResponse } from "../../api/knowledgeOverview";
 import { ExternalLink } from "lucide-react";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
-/* ---------- 节点类型配色（Canvas 用 hex） ---------- */
+/* ---------- 鑺傜偣绫诲瀷閰嶈壊锛圕anvas 鐢?hex锛?---------- */
 
 const NODE_COLORS: Record<string, { bg: string; border: string; label: string }> = {
-  Topic:      { bg: "#dbeafe", border: "#3b82f6", label: "主题" },
-  topic:      { bg: "#dbeafe", border: "#3b82f6", label: "主题" },
-  Concept:    { bg: "#f3e8ff", border: "#a855f7", label: "概念" },
-  concept:    { bg: "#f3e8ff", border: "#a855f7", label: "概念" },
-  Method:     { bg: "#fef3c7", border: "#f59e0b", label: "方法" },
-  method:     { bg: "#fef3c7", border: "#f59e0b", label: "方法" },
-  Definition: { bg: "#d1fae5", border: "#10b981", label: "定义" },
-  definition: { bg: "#d1fae5", border: "#10b981", label: "定义" },
-  Example:    { bg: "#fce7f3", border: "#ec4899", label: "示例" },
-  example:    { bg: "#fce7f3", border: "#ec4899", label: "示例" },
-  Theorem:    { bg: "#e0e7ff", border: "#6366f1", label: "定理" },
-  theorem:    { bg: "#e0e7ff", border: "#6366f1", label: "定理" },
-  Formula:    { bg: "#cffafe", border: "#06b6d4", label: "公式" },
-  formula:    { bg: "#cffafe", border: "#06b6d4", label: "公式" },
+  Topic:      { bg: "#dbeafe", border: "#3b82f6", label: "涓婚" },
+  topic:      { bg: "#dbeafe", border: "#3b82f6", label: "涓婚" },
+  Concept:    { bg: "#f3e8ff", border: "#a855f7", label: "姒傚康" },
+  concept:    { bg: "#f3e8ff", border: "#a855f7", label: "姒傚康" },
+  Method:     { bg: "#fef3c7", border: "#f59e0b", label: "鏂规硶" },
+  method:     { bg: "#fef3c7", border: "#f59e0b", label: "鏂规硶" },
+  Definition: { bg: "#d1fae5", border: "#10b981", label: "瀹氫箟" },
+  definition: { bg: "#d1fae5", border: "#10b981", label: "瀹氫箟" },
+  Example:    { bg: "#fce7f3", border: "#ec4899", label: "绀轰緥" },
+  example:    { bg: "#fce7f3", border: "#ec4899", label: "绀轰緥" },
+  Theorem:    { bg: "#e0e7ff", border: "#6366f1", label: "瀹氱悊" },
+  theorem:    { bg: "#e0e7ff", border: "#6366f1", label: "瀹氱悊" },
+  Formula:    { bg: "#cffafe", border: "#06b6d4", label: "鍏紡" },
+  formula:    { bg: "#cffafe", border: "#06b6d4", label: "鍏紡" },
 };
 
-const DEFAULT_COLOR = { bg: "#f1f5f9", border: "#64748b", label: "其他" };
+const DEFAULT_COLOR = { bg: "#f1f5f9", border: "#64748b", label: "鍏朵粬" };
 
-/* ---------- 边类型颜色 ---------- */
+/* ---------- 杈圭被鍨嬮鑹?---------- */
 
 const EDGE_COLORS: Record<string, string> = {
   prerequisite: "#ef4444",
@@ -57,7 +56,7 @@ const EDGE_COLORS: Record<string, string> = {
 
 const DEFAULT_EDGE_COLOR = "#cbd5e1";
 
-/* ---------- 图数据类型 ---------- */
+/* ---------- 鍥炬暟鎹被鍨?---------- */
 
 interface GraphNode {
   id: number;
@@ -68,7 +67,7 @@ interface GraphNode {
   y?: number;
   vx?: number;
   vy?: number;
-  // 运行时动画状态
+  // 杩愯鏃跺姩鐢荤姸鎬?
   __hovered?: boolean;
   __selected?: boolean;
   __neighborOf?: boolean;
@@ -87,7 +86,7 @@ interface GraphData {
   links: GraphLink[];
 }
 
-/* ---------- 详情侧边栏 ---------- */
+/* ---------- 璇︽儏渚ц竟鏍?---------- */
 
 function NodeDetailSidebar({
   subject,
@@ -100,7 +99,7 @@ function NodeDetailSidebar({
   nodeId: number;
   onClose: () => void;
   onNavigate: (id: number) => void;
-  onEvidenceClick?: (evidenceId: number) => void;
+  onEvidenceClick?: (chunkId: number, quoteText: string) => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["graph-node-detail", subject, nodeId],
@@ -116,7 +115,7 @@ function NodeDetailSidebar({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-slate-400">
-        <Loader2 className="w-4 h-4 animate-spin mr-2" />加载中...
+        <Loader2 className="w-4 h-4 animate-spin mr-2" />鍔犺浇涓?..
       </div>
     );
   }
@@ -140,7 +139,7 @@ function NodeDetailSidebar({
               {color.label}
             </span>
           </div>
-          <p className="text-xs text-slate-400">置信度 {Math.round(data.confidence * 100)}%</p>
+          <p className="text-xs text-slate-400">缃俊搴?{Math.round(data.confidence * 100)}%</p>
         </div>
         <button
           onClick={onClose}
@@ -168,7 +167,7 @@ function NodeDetailSidebar({
       {aliases.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Tag className="w-3 h-3" />别名
+            <Tag className="w-3 h-3" />鍒悕
           </div>
           <div className="flex flex-wrap gap-1.5">
             {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
@@ -188,7 +187,7 @@ function NodeDetailSidebar({
       {incidentEdges.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
+            <Link2 className="w-3 h-3" />鍏宠仈鐭ヨ瘑 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
@@ -212,19 +211,19 @@ function NodeDetailSidebar({
       {evidenceList.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
+            <FileText className="w-3 h-3" />鏉ユ簮璇佹嵁 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {evidenceList.map((ev: { id: number; quote_text: string; evidence_role: string; confidence: number }) => (
+            {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button
                 key={ev.id}
-                onClick={() => onEvidenceClick?.(ev.id)}
+                onClick={() => onEvidenceClick?.(ev.chunk_id, ev.quote_text)}
                 className="w-full text-left text-xs text-slate-600 bg-slate-50 rounded p-2 border-l-2 border-slate-300 hover:border-amber-400 hover:bg-amber-50/50 transition-colors cursor-pointer group"
               >
                 <p className="line-clamp-3">{ev.quote_text}</p>
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-[10px] text-slate-400">
-                    {ev.evidence_role} · {Math.round(ev.confidence * 100)}%
+                    {ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%
                   </p>
                   <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-amber-500 transition-colors" />
                 </div>
@@ -237,9 +236,19 @@ function NodeDetailSidebar({
   );
 }
 
-/* ---------- 主组件 ---------- */
+/* ---------- 涓荤粍浠?---------- */
 
-export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject: string; toolbar?: React.ReactNode; onEvidenceClick?: (evidenceId: number) => void }) {
+export function ForceGraphView({
+  subject,
+  toolbar,
+  onEvidenceClick,
+  fullGraphData,
+}: {
+  subject: string;
+  toolbar?: React.ReactNode;
+  onEvidenceClick?: (chunkId: number, quoteText: string) => void;
+  fullGraphData: FullGraphResponse | null;
+}) {
   const fgRef = useRef<ForceGraphMethods | undefined>();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -247,7 +256,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string | undefined>(undefined);
 
-  // 响应式尺寸 — 使用 border-box 尺寸确保 canvas 填满容器
+  // 鍝嶅簲寮忓昂瀵?鈥?浣跨敤 border-box 灏哄纭繚 canvas 濉弧瀹瑰櫒
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -264,17 +273,9 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     return () => obs.disconnect();
   }, [selectedNodeId]);
 
-  const { data: rawData, isLoading, isError } = useQuery({
-    queryKey: ["full-graph", subject],
-    queryFn: async () =>
-      unwrapOrvalResponse(
-        await graphFullApiV1SubjectsSubjectKnowledgeGraphFullPost(subject),
-      ) ?? null,
-    enabled: !!subject,
-    retry: false,
-  });
+  const rawData = fullGraphData;
 
-  // 构建邻接表用于高亮
+  // 鏋勫缓閭绘帴琛ㄧ敤浜庨珮浜?
   const neighborMap = useMemo(() => {
     const map = new Map<number, Set<number>>();
     if (!rawData) return map;
@@ -287,7 +288,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     return map;
   }, [rawData]);
 
-  // 转换为 force-graph 数据格式
+  // 杞崲涓?force-graph 鏁版嵁鏍煎紡
   const graphData: GraphData = useMemo(() => {
     if (!rawData) return { nodes: [], links: [] };
 
@@ -321,7 +322,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     return { nodes, links };
   }, [rawData, filterType]);
 
-  // 节点绘制
+  // 鑺傜偣缁樺埗
   const paintNode = useCallback(
     (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const x = node.x ?? 0;
@@ -342,26 +343,26 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // 发光效果
+      // 鍙戝厜鏁堟灉
       if (isHovered || isSelected) {
         ctx.shadowColor = color.border;
         ctx.shadowBlur = 12;
       }
 
-      // 填充
+      // 濉厖
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, 2 * Math.PI);
       ctx.fillStyle = color.bg;
       ctx.fill();
 
-      // 边框
+      // 杈规
       ctx.strokeStyle = color.border;
       ctx.lineWidth = isHovered || isSelected ? 2 : 1;
       ctx.stroke();
 
       ctx.shadowBlur = 0;
 
-      // 标签（缩放足够大时显示）
+      // 鏍囩锛堢缉鏀捐冻澶熷ぇ鏃舵樉绀猴級
       if (globalScale > 1.2 || isHovered || isSelected || isNeighbor) {
         const fontSize = Math.max(10 / globalScale, 2.5);
         ctx.font = `${isHovered || isSelected ? "bold " : ""}${fontSize}px sans-serif`;
@@ -376,7 +377,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     [hoveredNodeId, selectedNodeId, neighborMap],
   );
 
-  // 边绘制
+  // 杈圭粯鍒?
   const paintLink = useCallback(
     (link: GraphLink, ctx: CanvasRenderingContext2D, _globalScale: number) => {
       const source = link.source as GraphNode;
@@ -398,7 +399,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
       ctx.lineTo(target.x, target.y ?? 0);
       ctx.stroke();
 
-      // 箭头
+      // 绠ご
       if (isHighlighted) {
         const dx = target.x - source.x;
         const dy = (target.y ?? 0) - (source.y ?? 0);
@@ -427,7 +428,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
-    // 平滑居中
+    // 骞虫粦灞呬腑
     if (fgRef.current) {
       fgRef.current.centerAt(node.x, node.y, 400);
       fgRef.current.zoom(3, 400);
@@ -445,7 +446,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
   const handleZoomOut = () => fgRef.current?.zoom(fgRef.current.zoom() / 1.5, 300);
   const handleFit = () => fgRef.current?.zoomToFit(400, 40);
 
-  // 初始化后自适应
+  // 鍒濆鍖栧悗鑷€傚簲
   useEffect(() => {
     if (graphData.nodes.length > 0) {
       const timer = setTimeout(() => fgRef.current?.zoomToFit(600, 60), 500);
@@ -454,37 +455,19 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
   }, [graphData.nodes.length]);
 
   const NODE_TYPES = [
-    { value: undefined, label: "全部" },
-    { value: "Topic", label: "主题" },
-    { value: "Concept", label: "概念" },
-    { value: "Method", label: "方法" },
-    { value: "Definition", label: "定义" },
-    { value: "Example", label: "示例" },
+    { value: undefined, label: "鍏ㄩ儴" },
+    { value: "Topic", label: "涓婚" },
+    { value: "Concept", label: "姒傚康" },
+    { value: "Method", label: "鏂规硶" },
+    { value: "Definition", label: "瀹氫箟" },
+    { value: "Example", label: "绀轰緥" },
   ];
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16 text-slate-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />加载知识图谱...
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-        <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">暂无知识图谱数据</p>
-        <p className="text-xs mt-1">请先上传资料并触发知识图谱构建</p>
-      </div>
-    );
-  }
 
   if (graphData.nodes.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <Network className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">暂无知识节点</p>
+        <p className="text-sm">鏆傛棤鐭ヨ瘑鑺傜偣</p>
       </div>
     );
   }
@@ -494,7 +477,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
   return (
     <div className="flex gap-4" style={{ height: 600 }}>
       <div className={`${selectedNodeId ? "w-3/5" : "w-full"} flex flex-col transition-all duration-300 min-w-0`}>
-        {/* 工具栏：视图切换 + 类型筛选 */}
+        {/* 宸ュ叿鏍忥細瑙嗗浘鍒囨崲 + 绫诲瀷绛涢€?*/}
         <div className="flex items-center gap-3 mb-3 flex-wrap">
           {toolbar}
           <div className="flex flex-wrap gap-1.5 items-center">
@@ -512,12 +495,12 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
               </button>
             ))}
             <span className="text-xs text-slate-400 ml-2">
-              {graphData.nodes.length} 节点 · {graphData.links.length} 边
+              {graphData.nodes.length} 鑺傜偣 路 {graphData.links.length} 杈?
             </span>
           </div>
         </div>
 
-        {/* 画布 */}
+        {/* 鐢诲竷 */}
         <div
           ref={containerRef}
           className="flex-1 rounded-xl border border-slate-200 bg-white overflow-hidden relative"
@@ -549,9 +532,9 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
             enablePanInteraction={true}
           />
 
-          {/* 图例 */}
+          {/* 鍥句緥 */}
           <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 px-3 py-2 shadow-sm">
-            <p className="text-[10px] text-slate-400 mb-1.5 font-medium">节点类型</p>
+            <p className="text-[10px] text-slate-400 mb-1.5 font-medium">鑺傜偣绫诲瀷</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {Object.entries(NODE_COLORS)
                 .filter(([k]) => k[0] === k[0].toUpperCase())
@@ -567,22 +550,22 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
             </div>
           </div>
 
-          {/* 缩放控制 */}
+          {/* 缂╂斁鎺у埗 */}
           <div className="absolute bottom-3 right-3 flex gap-1 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 p-1 shadow-sm">
-            <button onClick={handleZoomIn} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="放大">
+            <button onClick={handleZoomIn} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="鏀惧ぇ">
               <ZoomIn className="w-4 h-4" />
             </button>
-            <button onClick={handleZoomOut} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="缩小">
+            <button onClick={handleZoomOut} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="缂╁皬">
               <ZoomOut className="w-4 h-4" />
             </button>
-            <button onClick={handleFit} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="适应画布">
+            <button onClick={handleFit} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500" title="閫傚簲鐢诲竷">
               <Maximize2 className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* 详情侧边栏 */}
+      {/* 璇︽儏渚ц竟鏍?*/}
       {selectedNodeId && (
         <div className="w-2/5">
           <Card>
@@ -608,3 +591,5 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     </div>
   );
 }
+
+

@@ -12,9 +12,12 @@ import asyncio
 import time
 from typing import AsyncGenerator, TypeVar
 
-import instructor
 import litellm
 import structlog
+try:
+    import instructor
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
+    instructor = None
 
 from app.core.tracing import LLMCallRecord, get_tracker
 from app.core.config import get_settings
@@ -178,6 +181,8 @@ async def acompletion_structured(
     api_key = settings.require_llm_api_key()
     profile = get_task_profile(task_type)
     model_name = f"openai/{profile.model}"
+    if instructor is None:
+        raise LLMCallError(reason="instructor is not installed")
     client = instructor.from_litellm(litellm.acompletion)
     last_error: Exception | None = None
 
