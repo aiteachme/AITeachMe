@@ -43,6 +43,11 @@ async def send_chat(
             source_chunk_id=body.source_chunk_id,
         ),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

@@ -7,9 +7,18 @@ export default defineConfig({
         output: {
             mode: "tags",
 
-            target: "./src/api/generated",
+            target: "./src/api/generated/endpoints.ts",
+
+            schemas: "./src/api/generated/model",
+
             client: "react-query",
-            clean: true,
+
+            override: {
+                mutator: {
+                    path: "./src/api/client.ts",
+                    name: "orvalApiClient",
+                },
+            },
         },
     },
 })

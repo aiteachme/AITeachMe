@@ -11,33 +11,23 @@ import {
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
 import { Modal } from "../ui/Modal";
-import { apiClient, getApiErrorMessage } from "../../api/client";
+import { getApiErrorMessage } from "../../api/client";
 import {
-  triggerDocGenBuild,
-  fetchDocGenStatus,
-} from "../../api/graphApi";
-
-/* ---------- types ---------- */
-
-interface FileItem {
-  id: number;
-  filename: string;
-  filetype: string;
-  status: string;
-  markdown_ready: boolean;
-  created_at: string;
-}
-
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
+  docgenBuildApiV1SubjectsSubjectKnowledgeDocgenBuildPost,
+  docgenStatusApiV1SubjectsSubjectKnowledgeDocgenStatusPost,
+} from "../../api/generated/knowledge";
+import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
+import type { FileItem } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../api/generated/utils";
 
 async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<FileItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/files/list`,
-    data: { page: 1, size: 100, status: "completed" },
-  });
-  return res.data.items;
+  return unwrapOrvalResponse(
+    await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
+      page: 1,
+      size: 100,
+      status: "completed",
+    }),
+  )?.items ?? [];
 }
 
 /* ---------- 构建状态步骤映射 ---------- */
@@ -135,7 +125,19 @@ function BuildProgress({
 }) {
   const { data } = useQuery({
     queryKey: ["docgen-status", subject, jobId],
-    queryFn: () => fetchDocGenStatus(subject, jobId),
+    queryFn: async () => {
+      const status = unwrapOrvalResponse(
+        await docgenStatusApiV1SubjectsSubjectKnowledgeDocgenStatusPost(subject, {
+          job_id: jobId,
+        }),
+      );
+
+      if (!status) {
+        throw new Error("查询文档生成状态失败");
+      }
+
+      return status;
+    },
     enabled: !!jobId,
     refetchInterval: (query) => {
       const d = query.state.data;
@@ -204,9 +206,9 @@ function BuildProgress({
             </div>
           </div>
 
-          {(job.total_chapters > 0 || job.completed_chapters > 0) && (
+          {((job.total_chapters ?? 0) > 0 || (job.completed_chapters ?? 0) > 0) && (
             <div className="flex gap-4 text-xs text-slate-500">
-              <span>已撰写章节: {job.completed_chapters} / {job.total_chapters || "?"}</span>
+              <span>已撰写章节: {job.completed_chapters ?? 0} / {job.total_chapters || "?"}</span>
             </div>
           )}
 
@@ -235,7 +237,19 @@ export function DocGenBuildButton() {
   });
 
   const buildMutation = useMutation({
-    mutationFn: () => triggerDocGenBuild(subject, Array.from(selectedFileIds)),
+    mutationFn: async () => {
+      const result = unwrapOrvalResponse(
+        await docgenBuildApiV1SubjectsSubjectKnowledgeDocgenBuildPost(subject, {
+          file_ids: Array.from(selectedFileIds),
+        }),
+      );
+
+      if (!result) {
+        throw new Error("提交文档生成任务失败");
+      }
+
+      return result;
+    },
     onSuccess: (data) => {
       setAndPersistJobId(data.job_id);
       setShowFileSelect(false);

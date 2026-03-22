@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,11 +15,15 @@ import {
   Send,
   Bot,
   Loader2,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
-import { sendChatApiV1SubjectsSubjectChatsSendPost } from "../api/generated/chats";
+import { getApiErrorMessage, postSseJson } from "../api/client";
+import { mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost } from "../api/generated/knowledge";
+import { unwrapOrvalResponse } from "../api/generated/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -56,255 +61,6 @@ interface FloatingToolbar {
   left: number;
   selectionViewportTop: number;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Demo markdown                                                      */
-/* ------------------------------------------------------------------ */
-
-const DEMO_MARKDOWN = `# 课程概述
-
-本课程旨在帮助学生系统性地掌握核心知识点，通过理论与实践相结合的方式，深入理解学科的基本概念和应用场景。
-
-## 学习目标
-
-通过本课程的学习，你将能够：
-
-- 理解学科的基本概念和核心理论
-- 掌握常用的分析方法和工具
-- 能够独立完成相关的实践项目
-- 具备进一步深入学习的基础
-
-## 第一章：基础概念
-
-### 1.1 核心定义
-
-在开始深入学习之前，我们需要先明确几个核心概念。这些概念是整个学科体系的基石，理解它们对于后续的学习至关重要。
-
-> 知识的积累是一个循序渐进的过程，每一个概念都建立在前一个概念的基础之上。
-
-### 1.2 基本原理
-
-基本原理是指导我们理解和分析问题的核心框架。掌握这些原理，能够帮助我们在面对复杂问题时，找到正确的分析思路。
-
-| 原理 | 描述 | 应用场景 |
-|------|------|----------|
-| 原理一 | 系统性思维 | 复杂问题分析 |
-| 原理二 | 抽象建模 | 模型构建 |
-| 原理三 | 迭代优化 | 持续改进 |
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-
-### 1.3 发展历程
-
-学科的发展经历了多个重要阶段，每个阶段都有其标志性的突破和贡献。了解这些历史，有助于我们更好地理解当前的知识体系。
-
-## 第二章：核心理论
-
-### 2.1 理论框架
-
-理论框架为我们提供了一个系统化的视角来审视和理解问题。一个好的理论框架应该具备以下特征：
-
-1. **完整性**：能够覆盖所有关键方面
-2. **一致性**：内部逻辑自洽
-3. **可验证性**：可以通过实验或观察来验证
-4. **简洁性**：用最少的假设解释最多的现象
-
-### 2.2 关键定理
-
-关键定理是理论体系中最重要的结论，它们经过严格的证明，具有普遍的适用性。
-
-$$
-E = mc^2
-$$
-
-这个著名的公式揭示了质量与能量之间的等价关系，是现代物理学的基石之一。
-
-### 2.3 应用方法
-
-将理论应用到实际问题中，需要掌握一套系统的方法论。以下是常用的分析步骤：
-
-1. 问题定义与分析
-2. 模型选择与构建
-3. 参数估计与验证
-4. 结果解释与应用
-
-## 第三章：实践应用
-
-### 3.1 案例分析
-
-通过具体的案例，我们可以更直观地理解理论的应用方式。每个案例都包含了完整的分析过程和结论。
-
-\`\`\`python
-# 示例代码
-def analyze(data):
-    """对数据进行分析处理"""
-    result = preprocess(data)
-    model = build_model(result)
-    return model.predict()
-\`\`\`
-
-### 3.2 实验设计
-
-良好的实验设计是获得可靠结果的前提。在设计实验时，需要考虑以下因素：
-
-- **变量控制**：明确自变量和因变量
-- **样本选择**：确保样本的代表性
-- **重复性**：保证实验结果可重复
-
-### 3.3 结果评估
-
-对实验结果的评估需要采用科学的方法，避免主观偏见的影响。常用的评估指标包括准确率、召回率、F1 分数等。
-
-## 总结与展望
-
-本课程涵盖了从基础概念到实践应用的完整知识体系。通过系统的学习，相信你已经对这个学科有了全面的了解。
-
-未来的学习方向包括：
-
-- 深入研究特定领域的前沿问题
-- 参与实际项目，积累实践经验
-- 关注学科的最新发展动态
-`;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -478,6 +234,67 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
   );
 });
 
+const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: string }) {
+  return (
+    <div className="text-xs text-slate-700 leading-relaxed break-words [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ul]:mb-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_ol]:mb-1.5 [&_li]:leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-blue-200 [&_blockquote]:bg-blue-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_code]:font-mono [&_code]:text-[11px] [&_code]:bg-slate-100 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:text-[11px] [&_table]:border [&_table]:border-slate-200 [&_table]:rounded-md [&_thead]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-slate-100 [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2">
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeHighlight]}>
+        {content || " "}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+function DocGeneratingState({
+  isFetching,
+}: {
+  isFetching: boolean;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white via-slate-50 to-blue-50/40 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(15,23,42,0.45)]">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600">
+          {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-900">知识文档正在生成中</h2>
+          <p className="text-sm text-slate-600">系统正在整理章节和结构化内容，完成后会自动展示在这里。</p>
+        </div>
+      </div>
+      <div className="mt-7 grid gap-3">
+        <div className="h-3 w-11/12 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-3 w-10/12 animate-pulse rounded-full bg-slate-200 [animation-delay:120ms]" />
+        <div className="h-3 w-9/12 animate-pulse rounded-full bg-slate-200 [animation-delay:220ms]" />
+        <div className="h-3 w-8/12 animate-pulse rounded-full bg-slate-200 [animation-delay:320ms]" />
+      </div>
+      <div className="mt-8 flex items-center gap-2 text-xs text-slate-500">
+        <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+        会在下一次拉取后自动刷新
+      </div>
+    </section>
+  );
+}
+
+function DocLoadErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-rose-200 bg-rose-50/60 px-5 py-5">
+      <p className="text-sm text-rose-700">{message}</p>
+      <button
+        onClick={onRetry}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        重试加载
+      </button>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  CommentList                                                        */
 /* ------------------------------------------------------------------ */
@@ -517,9 +334,13 @@ function CommentCard({
           </div>
           {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
         </div>
-        <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
-          {comment.content}
-        </p>
+        {isAssistant ? (
+          <CommentMarkdown content={comment.content} />
+        ) : (
+          <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
+            {comment.content}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -621,7 +442,20 @@ function CommentThread({
 export function DocPage() {
   const navigate = useNavigate();
   const { subjectId } = useParams<{ subjectId: string }>();
-  const [markdown] = useState(DEMO_MARKDOWN);
+  const docMarkdownQuery = useQuery({
+    queryKey: ["docgen-content", subjectId],
+    queryFn: async () => {
+      if (!subjectId) {
+        throw new Error("缺少学科 ID，无法加载知识文档。");
+      }
+      const response = await mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost(subjectId);
+      return unwrapOrvalResponse(response)?.markdown ?? "";
+    },
+    enabled: Boolean(subjectId),
+  });
+  const markdown = docMarkdownQuery.data ?? "";
+  const hasDocMarkdown = markdown.trim().length > 0;
+  const showDocGeneratingState = !docMarkdownQuery.isError && !hasDocMarkdown;
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
@@ -895,88 +729,49 @@ export function DocPage() {
       );
     };
 
+    const replaceAssistantContent = (content: string) => {
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId
+            ? { ...item, content }
+            : item
+        )
+      );
+    };
+
     try {
       const subject = subjectId ?? "demo";
-      const responseData = await sendChatApiV1SubjectsSubjectChatsSendPost(
-        subject,
+      const result = await postSseJson(
+        `/api/v1/subjects/${subject}/chats/send`,
         {
           question: text,
           source: "quick_chat",
           selected_context: selectedText || undefined,
         },
-        { adapter: "fetch", responseType: "stream" },
-        controller.signal
+        {
+          signal: controller.signal,
+          onToken: ({ content }) => {
+            appendAssistantDelta(content);
+          },
+          onError: (payload) => {
+            const detail =
+              payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
+                ? payload.detail
+                : "请求失败，请重试。";
+            replaceAssistantContent(detail);
+          },
+        }
       );
 
-      let received = false;
-
-      const consumeSsePayloadLine = (line: string) => {
-        if (!line.startsWith("data:")) return;
-        const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") return;
-        try {
-          const parsed = JSON.parse(raw) as { content?: string };
-          if (typeof parsed.content === "string" && parsed.content.length > 0) {
-            received = true;
-            appendAssistantDelta(parsed.content);
-          }
-        } catch {
-          // Ignore malformed chunk.
-        }
-      };
-
-      if (responseData instanceof ReadableStream) {
-        const reader = responseData.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            consumeSsePayloadLine(line);
-          }
-        }
-        const trailing = buffer.trim();
-        if (trailing) {
-          consumeSsePayloadLine(trailing);
-        }
-      } else if (typeof responseData === "string") {
-        const lines = responseData.split("\n");
-        for (const line of lines) {
-          consumeSsePayloadLine(line);
-        }
-      } else if (
-        responseData &&
-        typeof responseData === "object" &&
-        "content" in responseData &&
-        typeof (responseData as { content?: unknown }).content === "string"
-      ) {
-        received = true;
-        appendAssistantDelta((responseData as { content: string }).content);
-      }
-
-      if (!received) {
-        setComments((prev) =>
-          prev.map((item) =>
-            item.id === assistantId
-              ? { ...item, content: "已收到问题，但当前没有返回内容。" }
-              : item
-          )
-        );
+      if (!result.aborted && !result.receivedToken && !result.errorPayload) {
+        replaceAssistantContent("已收到问题，但当前没有返回内容。");
       }
     } catch (err: unknown) {
       if (!(err instanceof Error) || err.name !== "AbortError") {
-        setComments((prev) =>
-          prev.map((item) =>
-            item.id === assistantId
-              ? { ...item, content: "请求失败，请重试。" }
-              : item
-          )
-        );
+        const detail = err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "请求失败，请重试。";
+        replaceAssistantContent(detail);
       }
     } finally {
       setComments((prev) =>
@@ -1701,7 +1496,18 @@ export function DocPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
-                  <DocMarkdown content={markdown} />
+                  {docMarkdownQuery.isError ? (
+                    <DocLoadErrorState
+                      message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+                      onRetry={() => {
+                        void docMarkdownQuery.refetch();
+                      }}
+                    />
+                  ) : showDocGeneratingState ? (
+                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} />
+                  ) : (
+                    <DocMarkdown content={markdown} />
+                  )}
                 </article>
             </div>
           </div>
@@ -1737,3 +1543,4 @@ export function DocPage() {
     </div>
   );
 }
+
