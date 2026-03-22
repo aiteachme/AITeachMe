@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T10:52:45.625547",
-  "total_commits_analyzed": 169,
+  "generated_at": "2026-03-22T10:59:25.350157",
+  "total_commits_analyzed": 173,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1352,6 +1352,38 @@
       "total_lines": 52928,
       "code_lines": 40324,
       "other_lines": 12604,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "3cd7d1a",
+      "total_lines": 51286,
+      "code_lines": 38820,
+      "other_lines": 12466,
+      "message": "feat: 优化判卷逻辑，支持并发处理短答案评分与错因标注"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "58cb527",
+      "total_lines": 51836,
+      "code_lines": 39445,
+      "other_lines": 12391,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "551abdd",
+      "total_lines": 52928,
+      "code_lines": 40324,
+      "other_lines": 12604,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "bd85007",
+      "total_lines": 52975,
+      "code_lines": 40367,
+      "other_lines": 12608,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
