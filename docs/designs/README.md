@@ -1,95 +1,101 @@
 # AITeachMe 开发设计文档
 
 ## 1. 文档定位
-当前目录是一套面向开发的设计文档，用来回答三个问题：
 
-- 这个项目的系统边界、核心模型和五大引擎分别是什么
-- 前端、后端、Agent、数据层应该如何协同设计
-- 后续开发时，哪些地方应当保持稳定，哪些地方适合扩展能力
+`docs/designs/` 用来描述当前项目的工程真相、架构边界和后续演进方向。它回答的是：
 
-本文档集只讨论工程设计、接口规范、AI 方案、开发方法，不包含商业、融资、定价、增长等敏感内容。
+- 现在的系统分层、数据流和工作流到底长什么样
+- 哪些代码目录是真相源，哪些只是生成物或运行时产物
+- 五大引擎如何读写数据库、本地文件和向量索引
+- 未来从本地优先演进到中心化部署时，哪些边界应该保持稳定
 
----
-
-## 2. 使用原则
-
-### 2.1 当前代码是实现真相源
-
-文档必须和当前代码兼容。遇到以下内容冲突时，以代码为准：
-
-- `backend/app/api/*`
-- `backend/app/services/*`
-- `backend/app/models/*`
-- `backend/app/agents/*`
-- `frontend/src/pages/*`
-- `frontend/src/components/*`
-
-### 2.2 设计文档不等于代码搬运
-
-文档不追求逐行复述代码，而是要稳定说明：
-
-- 模块职责
-- 设计边界
-- 数据流
-- 适合采用的方法
-- 可结合的技术
-- 开发时应优先遵守的规范
-
-### 2.3 五大引擎文档以设计方法为主
-
-五大引擎文档重点讲：
-
-- 这个引擎要解决什么问题
-- 应该如何设计
-- 典型 Pipeline 如何拆步骤
-- 每个关键子模块的输入与输出是什么
-- 适合使用哪些技术方法
-- 可以继续长出哪些能力
-
-具体接口定义集中放在 `03_api_contracts_and_dev_workflow.md`，引擎文档只保留必要的实现落点说明。
+这套文档以当前仓库代码为准，不以历史设计、旧分支、生成文件或过期页面实现为准。
 
 ---
 
-## 3. 文档目录
+## 2. 真相源约定
+
+发生冲突时，优先级如下：
+
+1. `backend/app/api/*`
+2. `backend/app/services/*`
+3. `backend/app/workflows/*`
+4. `backend/app/repositories/*`
+5. `backend/app/models/*`
+6. `backend/app/schemas/*`
+7. `backend/app/core/*`
+8. `frontend/src/pages/*`、`frontend/src/components/*`、`frontend/src/api/*`
+
+特别说明：
+
+- `backend/app/workflows/README.md` 是后端工作流编排规范真相源。
+- `frontend/openapi.json` 与 `frontend/src/api/generated/*` 是生成产物，不是接口真相源。
+- `backend/data/*` 与 `data/*` 是运行时数据，不是源码。
+
+---
+
+## 3. 当前架构总览
+
+当前项目的主骨架是：
+
+`React 前端 -> FastAPI 资源接口 -> services 触发与编排入口 -> workflows 状态流 -> repositories/models 持久化 -> SQLite + sqlite-vec + 本地文件系统`
+
+系统围绕学习闭环组织，而不是围绕单一聊天能力组织：
+
+`资料接入 -> 知识整理 -> 教学对话 -> 测评诊断 -> 学习状态`
+
+当前后端是本地优先架构：
+
+- 关系数据：SQLite
+- 向量索引：sqlite-vec
+- 原始资料与调试产物：本地文件系统
+- 长流程：service 触发 + workflow 编排 + 作业状态表
+
+---
+
+## 4. 文档目录
 
 | 文档 | 作用 |
 | --- | --- |
-| `01_system_architecture.md` | 系统总览、前后端分层、五大引擎在整体架构中的位置 |
-| `10_repo_structure_and_runtime_files.md` | 仓库结构、前后端目录职责、生成物边界、运行时文件布局 |
-| `02_domain_model_and_state.md` | 领域模型、关键状态、对象关系、存储边界 |
-| `03_api_contracts_and_dev_workflow.md` | 接口设计规范、统一响应规范、长流程规范、联调流程 |
-| `04_ingest_engine.md` | Ingest 引擎设计：多格式资料接入、解析、规范化、材料化 |
-| `05_digest_engine.md` | Digest 引擎设计：知识文档生成、知识图谱、Teaching Unit、课程视图、证据链 |
-| `06_interact_engine.md` | Interact 引擎设计：教学对话、RAG、上下文装配、流式输出 |
-| `07_examine_engine.md` | Examine 引擎设计：出题、判卷、诊断、错题回流 |
-| `08_profile_engine.md` | Profile 引擎设计：掌握度、报告、错题本、学习状态层 |
-| `09_ai_stack_and_refactor_guide.md` | AI 技术栈、应用方法、评测与工程化方向 |
+| `01_system_architecture.md` | 系统分层、资源边界、页面与工作流映射 |
+| `02_domain_model_and_state.md` | 领域对象、状态对象、当前/旧版/过渡态模型 |
+| `03_api_contracts_and_dev_workflow.md` | API 契约、统一响应、联调与生成工作流 |
+| `04_ingest_engine.md` | 资料接入、解析、材料化、解析产物边界 |
+| `05_digest_engine.md` | 知识文档、图谱、课程结构、证据链与版本化 |
+| `06_interact_engine.md` | 教学对话、检索、流式输出、引用来源 |
+| `07_examine_engine.md` | 测评蓝图、组卷、判卷、旧 exam 与新 assessment 双轨 |
+| `08_profile_engine.md` | 掌握度、复习调度、薄弱分析、旧 profile 与新状态层 |
+| `09_ai_stack_and_refactor_guide.md` | AI 技术栈、工程化方法与重构指导 |
+| `10_repo_structure_and_runtime_files.md` | 仓库目录、生成物、运行时目录、本地调试产物 |
+| `11_database_and_storage_architecture.md` | 数据库、向量索引、本地文件、对象存储与迁移路线 |
 
 ---
 
-## 4. 推荐阅读顺序
+## 5. 推荐阅读顺序
 
-### 4.1 新加入项目的开发者
+### 5.1 新加入项目的开发者
 
 1. `01_system_architecture.md`
 2. `10_repo_structure_and_runtime_files.md`
+3. `11_database_and_storage_architecture.md`
+4. `02_domain_model_and_state.md`
+5. `03_api_contracts_and_dev_workflow.md`
+6. 再进入对应引擎文档
+
+### 5.2 后端开发
+
+1. `01_system_architecture.md`
+2. `11_database_and_storage_architecture.md`
 3. `02_domain_model_and_state.md`
-4. `03_api_contracts_and_dev_workflow.md`
-5. 再按职责进入对应引擎文档
+4. `10_repo_structure_and_runtime_files.md`
+5. `03_api_contracts_and_dev_workflow.md`
+6. `04` 到 `09`
 
-### 4.2 后端开发
-
-1. `01_system_architecture.md`
-2. `10_repo_structure_and_runtime_files.md`
-3. `02_domain_model_and_state.md`
-4. `03_api_contracts_and_dev_workflow.md`
-5. `04` 到 `09`
-
-### 4.3 前端开发
+### 5.3 前端开发
 
 1. `01_system_architecture.md`
-2. `10_repo_structure_and_runtime_files.md`
-3. `03_api_contracts_and_dev_workflow.md`
+2. `03_api_contracts_and_dev_workflow.md`
+3. `10_repo_structure_and_runtime_files.md`
 4. `05_digest_engine.md`
 5. `06_interact_engine.md`
 6. `07_examine_engine.md`
@@ -97,46 +103,44 @@
 
 ---
 
-## 5. 页面、引擎、实现落点
+## 6. 页面、资源组与工作流映射
 
-| 前端页面 | 主要引擎 | 后端资源组 | 主要服务与 Agent |
+| 前端页面 | 主要资源组 | 当前主要 service | 当前主要 workflow / 后端主链路 |
 | --- | --- | --- | --- |
-| `UploadPage` | Ingest | `files` | `file_service` + `agents/ingest/*` |
-| `KnowledgeDocsPage` | Digest | `knowledge` | `knowledge/digest_service` + `agents/digest/doc_builder` |
-| `SummaryPage` | Digest | `knowledge` | `knowledge/curriculum_service` / `knowledge/graph_query_service` + `agents/digest/*` |
-| `ChatPage` | Interact | `chats` | `chats_service` + `agents/interact/*` |
-| `ExamPage` | Examine | `exams` | `exams_service` + `agents/examine/*` |
-| `AnalysisPage` | Profile | `profile` | `profile_service` + `agents/profile/*` |
+| `UploadPage` | `files` | `file_service` | `workflows/ingest/*` |
+| `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service`、`knowledge/curriculum_service` | `workflows/digest/docs/*`、`workflows/digest/kg/*`、`workflows/digest/curriculum/*` |
+| `SummaryPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 Digest 产出的图谱/课程快照 |
+| `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
+| `ExamPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | 旧 exam API + 新 `workflows/examine/*` |
+| `AnalysisPage` | `profile`、`assessment` | `profile_service`、`assessment_service` | 旧 profile API + 新 `workflows/profile/*` |
 
-这六个页面不是松散功能点，而是围绕同一条学习闭环展开：
-
-`资料接入 -> 知识整理 -> 知识浏览与对话 -> 诊断测评 -> 学习画像`
-
-其中 `KnowledgeDocsPage` 是用户日常学习的主阵地——AI 自动把零散资料整理成分章节的精美知识文档，用户在文档上阅读、划线提问、标记重点，形成"边读边学"的沉浸体验。
-
----
-
-## 6. 文档写作约定
-
-为了让这套文档长期可维护，后续新增内容建议遵守以下写法：
-
-- 先写职责，再写实现落点
-- 先写稳定原则，再写可选技术
-- 先写设计方法，再写当前开发注意点
-- 少写历史迁移叙事，多写当前可执行的方法和边界
+其中 `exams/profile` 仍是当前对外可用接口的一部分，但 assessment/profile 新工作流和新数据表已经存在并在数据库中有真实数据，文档必须把这两套链路同时讲清楚。
 
 ---
 
 ## 7. 当前开发最重要的约束
 
-- 后端源码是接口真相源，`frontend/openapi.json` 和 `frontend/src/api/generated/*` 目前只能视为生成产物
-- 当前业务接口以 `POST` 为主，聊天流式输出采用 `POST + SSE`
-- 文件解析和知识构建属于长流程，设计上应保持“触发 + 状态查询 + 后台执行”的统一模式
-- 项目是本地优先架构，SQLite、本地文件系统和 sqlite-vec 是当前重要基础设施
-- 前端仍存在手写调用、生成调用、MSW mock 并存的问题，开发时必须先确认真实后端口径
+- 后端路由、schema、workflow 才是接口和状态真相源。
+- `services/*` 负责触发与结果封装，复杂业务流程以 `workflows/*` 为主编排中心。
+- 项目当前是本地优先架构，SQLite、本地文件与 sqlite-vec 仍是默认基础设施。
+- 开发阶段允许“数据库写结构化真相 + 本地写正式产物/调试摘要”的双写策略。
+- 设计文档必须显式区分：
+  - 当前稳定主路径
+  - 仍在线的 legacy 路径
+  - 正在演进中的 workflow-backed 路径
 
 ---
 
-## 8. 一句话总纲
+## 8. 文档写作约定
 
-这套文档的目标不是复述代码，而是把 AITeachMe 的开发设计讲清楚：系统如何分层、五大引擎如何协作、接口如何规范、AI 技术如何落地，以及后续开发应当沿着什么方法继续推进。
+- 先写职责边界，再写当前实现落点。
+- 先写数据与状态，再写技术手段。
+- 只在必要时列文件，优先讲行为与边界。
+- 涉及数据库和本地文件时，优先写清“写到哪里、谁负责写、什么时候写”。
+- 涉及 workflow 时，优先写清节点顺序和节点持久化责任。
+
+---
+
+## 9. 一句话总纲
+
+这套文档的目标不是复述代码，而是把当前 AITeachMe 的工程真相讲清楚：前端如何触发学习流程，后端如何用 workflows 编排五大引擎，数据如何落到 SQLite、本地文件和向量索引，以及未来如何从本地优先平滑演进到中心化部署。

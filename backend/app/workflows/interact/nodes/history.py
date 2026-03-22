@@ -1,4 +1,10 @@
-"""History-loading node builders for the interact workflow."""
+"""History-loading node builders for the interact workflow.
+
+Reads DB: ``chat_message`` plus legacy ``user_profile`` and ``mistake`` summaries.
+Writes DB: none.
+Writes FS: none.
+Idempotency: read-only node; repeated runs return the latest persisted history snapshot.
+"""
 
 from __future__ import annotations
 

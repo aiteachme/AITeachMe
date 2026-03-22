@@ -1,4 +1,11 @@
-"""Preparation-phase nodes for the digest graph workflow."""
+"""Preparation-phase nodes for the digest graph workflow.
+
+Reads DB: ``graph_digest_job``, ``raw_file``, ``document``, ``document_chunk``.
+Writes DB: ``graph_digest_job`` progress, ``subject_build_lock``, and materialized
+``document`` / ``document_chunk`` / ``chunk_embeddings`` rows when missing.
+Writes FS: reads cleaned markdown from the ingest output paths.
+Idempotency: chunk materialization reuses existing documents/chunks when already present.
+"""
 
 from __future__ import annotations
 

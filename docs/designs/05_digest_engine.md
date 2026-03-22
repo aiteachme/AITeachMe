@@ -2,452 +2,240 @@
 
 ## 1. 目标与职责
 
-Digest 引擎是 AITeachMe 的知识组织层，承担两大核心使命：
+Digest 是 AITeachMe 的知识组织层，负责把材料层转换成两类可消费结构：
 
-**使命一：生成知识文档。** 把 Ingest 产出的零散 Markdown 材料，自动整理成分章节、有结构、可阅读的精美知识文档系列。这是用户日常学习的主阵地——不是让用户去读原始 PDF，而是读 AI 整理过的、按知识脉络重新组织的"教学级文档"。
+- 面向用户的可读知识文档
+- 面向系统的知识图谱与课程结构
 
-**使命二：构建知识图谱与课程结构。** 在文档生成的基础上，进一步抽取知识实体与关系，派生 Teaching Unit、Theme Tree、Prereq DAG 等结构化教学视图，为 Interact（对话）、Examine（测评）、Profile（画像）提供统一的知识基础。
-
-从系统位置看，Digest 位于 Ingest 与 Interact / Examine / Profile 之间，是全局的知识中枢。
-
-### 1.1 为什么知识文档是第一优先级
-
-用户上传资料后，最迫切的需求不是"看一张知识图谱"，而是"快速搞懂这些资料讲了什么"。知识文档直接回答这个问题：
-
-- 把 300 页教材浓缩成 10 篇按章节组织的精华笔记
-- 每篇文档有清晰的标题层级、重点标记、考频标签
-- 用户可以在文档上划线提问，直接进入 Interact 对话
-- 文档是后续出题、对话、画像的"可读版知识底座"
-
-这个设计参考了蜂考速成课的产品思路——把知识按章节整理成可直接阅读的重点笔记，但我们更进一步：文档是 AI 从原始资料自动生成的，而且可以交互。
-
-### 1.2 Digest 不做什么
-
-- 不做原始文件解析（Ingest 的事）
-- 不做教学对话（Interact 的事）
-- 不做出题判卷（Examine 的事）
-- 不做画像统计（Profile 的事）
+它位于 Ingest 和 Interact / Examine / Profile 之间，是全局知识中枢。
 
 ---
 
 ## 2. 当前实现落点
 
-- 前端页面与组件：`SummaryPage`、图谱视图、主题树视图、DAG 视图、证据弹窗
+- 前端消费页面：`KnowledgeDocsPage`、`SummaryPage`
 - 后端资源组：`knowledge`
-- 业务编排：`services/knowledge/digest_service.py`、`services/knowledge/curriculum_service.py`、`services/knowledge/graph_query_service.py`
-- Agent 与工作流：`agents/digest/*`
-- 核心模型：知识图谱、Teaching Unit、课程版本对象、构建任务对象
+- 业务入口：
+  - `services/knowledge/digest_service.py`
+  - `services/knowledge/curriculum_service.py`
+  - `services/knowledge/graph_query_service.py`
+- 工作流编排：
+  - `backend/app/workflows/digest/docs/*`
+  - `backend/app/workflows/digest/kg/*`
+  - `backend/app/workflows/digest/curriculum/*`
+
+当前 Digest 的编排真相已经是 `workflows/*`，不再以旧 `agents/digest/*` 为中心。
 
 ---
 
-## 3. 知识文档生成 Pipeline
+## 3. 当前主 Pipeline
 
-这是 Digest 引擎新增的核心能力，优先级高于知识图谱构建。
+### 3.1 知识文档 Pipeline
 
-### 3.1 整体流程
-
-```
-Ingest 产出的 Markdown 文件集合
-  → 章节识别与合并
-    → 知识脉络梳理
-      → 分文档生成（每个一级主题一个文档）
-        → 内容增强（重点标记、标签、考频、示例补充）
-          → 文档落库与版本管理
-```
-
-### 3.2 Pipeline 步骤
-
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 材料汇总 | `doc_builder.collect_materials` | subject 下所有已解析的 Markdown 文件 | 合并后的全量文本 + 文件来源映射 |
-| 2. 章节识别 | `doc_builder.identify_chapters` | 全量文本、原始标题结构 | 章节大纲（一级主题列表 + 各主题包含的内容范围） |
-| 3. 知识脉络梳理 | `doc_builder.organize_outline` | 章节大纲、原始内容 | 每个章节的二级/三级标题结构、知识点排列顺序 |
-| 4. 分文档生成 | `doc_builder.generate_chapter_doc` | 单个章节的大纲 + 对应原始内容 | 一篇完整的知识文档（Markdown） |
-| 5. 内容增强 | `doc_builder.enhance_doc` | 生成的文档 | 增强后的文档（含重点标记、标签、考频提示、补充示例） |
-| 6. 落库与版本 | `doc_builder.persist_docs` | 增强后的文档集合 | `KnowledgeDoc` 记录 + Markdown 文件 |
+| 1. 任务创建 | `digest_service` | `subject`、文件集合 | `docgen_job` |
+| 2. 文件加载 | `workflows/digest/docs/nodes/load_files_node.py` | `raw_file.markdown_path` | 原始 Markdown 列表 |
+| 3. 清洗与标准化 | `cleanse_node.py` | Markdown 列表 | 清洗后的文本、`docgen_intermediate/clean_*` |
+| 4. 大纲生成 | `outline_map_node.py`、`outline_reduce_node.py` | 清洗文本 | 全局大纲、章节分配 |
+| 5. 分章撰写与复核 | `draft_node.py`、`review_node.py`、`metadata_node.py` | 章节内容 | 章节 Markdown、摘要、标签 |
+| 6. 最终组装 | `finalize_node.py` | 章节结果 | `knowledge_doc`、`knowledge_docs/*.md` |
 
-### 3.3 章节识别策略
+### 3.2 图谱与课程结构 Pipeline
 
-章节识别是整个流程的关键决策点。策略如下：
-
-**规则层（不用 LLM）：**
-- 从所有 Markdown 文件中提取 H1/H2 标题
-- 按标题语义分组（"第一章"、"Chapter 1"、"1."等模式）
-- 合并来自不同文件但属于同一章节的内容
-
-**LLM 层（处理边界情况）：**
-- 当标题结构不清晰时，用 LLM 识别主题边界
-- 当多个文件有重叠内容时，用 LLM 决定合并策略
-- 生成每个章节的摘要标题（用于文档列表展示）
-
-### 3.4 单文档生成规范
-
-每篇知识文档遵循统一的结构规范：
-
-```markdown
-# 章节标题
-
-> 📌 本章概要：用 2-3 句话概括本章核心内容
-
-## 1. 第一个知识点
-
-正文内容...
-
-> 💡 **重点** 需要特别记忆的核心概念
-
-> 📝 **例题** 典型例题或应用场景
-
-## 2. 第二个知识点
-
-...
-
----
-
-📊 本章标签：`#核心概念` `#易考点` `#需要记忆`
-```
-
-规范要点：
-- 一级标题 = 章节名，全文档只有一个
-- 二级标题 = 知识点，是文档的主要骨架
-- 三级标题 = 知识点的子话题
-- 重点内容用 blockquote + emoji 标记（💡重点、📝例题、⚠️易错点、🔗关联）
-- 文档末尾附标签，标签来自知识图谱的节点属性
-- 保留原始资料中的图片引用（来自 Ingest 提取的 asset）
-- 公式保留 LaTeX 格式
-
-### 3.5 内容增强策略
-
-生成基础文档后，增强模块做以下处理：
-
-| 增强类型 | 方法 | 说明 |
-| --- | --- | --- |
-| 重点标记 | LLM 判断 | 识别核心定义、关键公式、必记结论，加 💡 标记 |
-| 考频标签 | 规则 + LLM | 根据知识点在原始资料中出现的频率和位置推断考频 |
-| 易错点 | LLM 生成 | 基于知识点特征生成常见误区提示 |
-| 补充示例 | LLM 生成 | 为抽象概念补充具体例子或类比 |
-| 关联提示 | 图谱查询 | 标注"本知识点与 XX 相关，建议先学 YY" |
-| 章节标签 | LLM 分类 | 给章节打标签：`#核心概念` `#公式推导` `#应用题型` 等 |
-
-### 3.6 数据模型
-
-```
-KnowledgeDoc
-  id: int
-  subject: str
-  chapter_index: int          -- 章节序号（决定排列顺序）
-  title: str                  -- 章节标题
-  summary: str                -- 章节摘要（2-3句话）
-  markdown_content: str       -- 完整 Markdown 内容
-  markdown_path: str          -- Markdown 文件路径
-  tags: str                   -- JSON 数组，章节标签
-  source_file_ids: str        -- JSON 数组，来源文件 ID
-  word_count: int             -- 字数
-  version: int                -- 版本号（资料更新后重新生成）
-  status: str                 -- draft / published / archived
-  created_at: datetime
-  updated_at: datetime
-```
-
-### 3.7 增量更新策略
-
-用户上传新资料后，不需要重新生成所有文档：
-
-1. 对比新资料与已有章节的关联度
-2. 只重新生成受影响的章节文档
-3. 保留未受影响章节的版本
-4. 版本号递增，旧版本标记为 archived
-
----
-
-## 4. 知识文档前端页面设计（KnowledgeDocsPage）
-
-这是用户日常学习的主阵地，设计目标是"让用户愿意在这里长时间阅读和学习"。
-
-### 4.1 整体布局（三栏结构）
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  顶部导航栏：学科名 / 文档标题 / 搜索 / 设置          │
-├──────────┬──────────────────────────────┬───────────────┤
-│          │                              │               │
-│  左侧栏   │       中间主阅读区            │   右侧栏      │
-│  (240px)  │       (自适应宽度)            │   (360px)     │
-│          │                              │               │
-│  文档目录  │   精美渲染的知识文档内容       │   AI 对话栏   │
-│  章节列表  │   支持划线、标注、提问         │   划线提问     │
-│  大纲导航  │                              │   上下文问答   │
-│          │                              │               │
-│  标签筛选  │                              │   快捷操作     │
-│          │                              │               │
-└──────────┴──────────────────────────────┴───────────────┘
-```
-
-### 4.2 左侧栏：文档目录与大纲
-
-**文档列表（上半部分）：**
-- 显示当前学科的所有知识文档，按章节序号排列
-- 每个条目显示：章节序号、标题、标签（彩色小标签）、字数
-- 当前阅读的文档高亮
-- 支持按标签筛选（如只看"核心概念"标签的章节）
-
-**大纲导航（下半部分）：**
-- 当前文档的 H2/H3 标题树
-- 点击跳转到对应位置
-- 当前阅读位置自动高亮（滚动同步）
-- 参考飞书文档的大纲交互体验
-
-### 4.3 中间主阅读区
-
-**渲染要求：**
-- Markdown 渲染引擎需要支持 3000+ 行文档的流畅滚动（虚拟滚动或分段渲染）
-- 标题层级用不同字号 + 左侧色条区分
-- 代码块支持语法高亮
-- LaTeX 公式渲染（KaTeX，性能优于 MathJax）
-- 图片懒加载 + 点击放大
-- 表格响应式，宽表格可横向滚动
-- blockquote 按 emoji 前缀渲染为不同样式的卡片：
-  - 💡 重点 → 蓝色卡片
-  - 📝 例题 → 绿色卡片
-  - ⚠️ 易错点 → 橙色卡片
-  - 🔗 关联 → 紫色卡片
-- 标签渲染为彩色胶囊
-
-**交互能力：**
-- 划线选中文本 → 弹出浮动工具栏：「提问」「标记重点」「添加笔记」
-- 点击「提问」→ 选中文本作为上下文发送到右侧 AI 对话栏
-- 点击「标记重点」→ 文本加高亮背景（持久化到本地）
-- 点击「添加笔记」→ 在文本旁边添加批注气泡
-
-**性能要求：**
-- 首屏渲染 < 200ms（即使文档 3000 行）
-- 滚动帧率 60fps
-- 大纲同步延迟 < 50ms
-- 推荐方案：用 `react-markdown` + 自定义 renderer + `IntersectionObserver` 做大纲同步，长文档用分段渲染（按 H2 切分为独立 section，视口外的 section 用占位高度替代）
-
-### 4.4 右侧栏：AI 对话栏
-
-右侧对话栏不是独立的聊天页面，而是"文档伴读助手"：
-
-- 对话上下文自动绑定当前阅读的文档和章节
-- 用户划线提问时，选中文本自动作为对话的引用上下文
-- 对话历史按文档分组，切换文档时切换对话上下文
-- 支持快捷提问按钮：「解释这段」「举个例子」「这个会考吗」「和 XX 有什么关系」
-- AI 回复中引用文档内容时，点击可跳转到文档对应位置
-
-这个对话栏复用 Interact 引擎的能力，但上下文装配策略不同于独立 ChatPage：
-- 优先注入当前文档内容作为 context
-- 注入用户选中的文本作为 focus
-- 注入该章节相关的知识图谱节点作为 background
-
-### 4.5 视觉风格
-
-整体风格参考飞书文档的阅读体验：
-- 白色/浅灰背景，正文用 16px 字号，行高 1.75
-- 标题用深色加粗，H2 左侧有 3px 的主题色竖线
-- 段落间距适中，不拥挤也不松散
-- 代码块用圆角浅色背景
-- 重点卡片（blockquote）有左侧色条 + 浅色背景
-- 标签用圆角胶囊样式，不同类别不同颜色
-- 暗色模式支持
-
----
-
-## 5. 知识图谱构建 Pipeline
-
-知识图谱是 Digest 的第二大产出，在知识文档生成之后执行。
-
-### 5.1 Pipeline 设计
-
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 构建触发 | `digest_service.trigger_digest_build` | `subject`、`file_ids`、可选幂等键 | `GraphDigestJob` |
-| 2. 材料准备 | `kg_workflow.prepare` | `Document`、`DocumentChunk`、已有图谱状态 | 待抽取 chunk 集合、构建上下文 |
-| 3. 候选抽取 | `kg_extractor.extract_candidates` | 单个或批量 chunk | 候选节点、候选边、证据绑定 |
-| 4. 批内聚类 | `kg_clusterer` | 候选节点/边、名称与语义相似度 | 候选簇、代表项 |
-| 5. 实体对齐 | `kg_resolver.resolve_node / resolve_edge` | 候选簇、现有图谱、embedding | 新实体或新修订决策 |
-| 6. 证据写回 | `kg_workflow.finalize_graph` | 对齐结果、证据来源 | 节点、边、修订、EvidenceLink |
-| 7. 影响分析 | `kg_impact_analyzer.analyze_impact` | 新旧图谱差异 | 受影响节点、单元、树、DAG 范围 |
-| 8. 图谱收尾 | `run_kg_digest_workflow` | 图谱增量结果、任务状态 | 完成态 `GraphDigestJob` |
-| 9. 单元派生 | `unit_builder.derive_teaching_units` | 当前图谱、局部关系、embedding | `TeachingUnit` 集合 |
-| 10. 主题树派生 | `theme_tree_builder.derive_theme_tree` | 单元、锚点、历史挂载 | `ThemeTreeVersion` |
-| 11. 先修图派生 | `prereq_dag_builder.derive_prereq_dag` | 单元、图中依赖、影响范围 | `PrereqDagVersion` |
-| 12. 快照发布 | `curriculum_workflow.finalize` | Tree、DAG、单元版本 | `CurriculumSnapshot` |
+| 1. 图谱任务创建 | `digest_service` | `subject`、文件集合 | `graph_digest_job` |
+| 2. 材料准备 | `workflows/digest/kg/prepare_nodes.py` | `raw_file`、Markdown | `document`、`document_chunk`、待处理 chunk |
+| 3. 候选抽取与聚类 | `prepare_nodes.py` | `document_chunk` | 节点/边候选 |
+| 4. 实体对齐与证据挂接 | `resolve_nodes.py`、`mutations.py` | 候选集合 | `knowledge_*`、`evidence_link` |
+| 5. 图谱收尾 | `finalize_nodes.py` | 图谱增量结果 | 完成态 `graph_digest_job`、派生 `curriculum_derive_job` |
+| 6. 课程派生 | `curriculum/nodes.py` | 当前图谱与影响集 | `teaching_unit*`、`theme_tree*`、`prereq_dag*`、`curriculum_snapshot` |
 
-### 5.2 查询与消费 Pipeline
+---
 
-| 步骤 | 子模块 | 输入 | 输出 |
+## 4. 核心设计原则
+
+### 4.1 Digest 同时服务用户与系统
+
+Digest 的产出必须分两层理解：
+
+- 用户可读层：知识文档
+- 系统真相层：图谱、课程结构、证据链、版本快照
+
+### 4.2 图谱是真相层，文档是消费层
+
+知识文档适合阅读和交互，但它不替代图谱和课程结构的真相角色。
+
+### 4.3 Teaching Unit 是图谱到教学的桥梁
+
+不要直接拿细粒度知识节点去承担章节、课程和测评编排职责；这正是 `TeachingUnit` 存在的意义。
+
+### 4.4 Theme Tree 与 Prereq DAG 各司其职
+
+- Theme Tree：表达展示归属与章节组织
+- Prereq DAG：表达学习顺序与依赖关系
+
+### 4.5 证据链与版本化必须长期保留
+
+Digest 不是一次性脚本，而是持续演进的知识构建系统。节点、边、单元、快照都要能追溯到：
+
+- 哪些 chunk
+- 哪次作业
+- 当前是否处于发布版本
+
+---
+
+## 5. 数据库写入对象
+
+### 5.1 知识文档链路
+
+直接写入：
+
+- `docgen_job`
+- `knowledge_doc`
+
+### 5.2 图谱链路
+
+直接写入：
+
+- `graph_digest_job`
+- `subject_build_lock`
+- `document`
+- `document_chunk`
+- `chunk_embeddings`
+- `knowledge_node`
+- `knowledge_edge`
+- `knowledge_revision`
+- `edge_revision`
+- `evidence_link`
+- `knowledge_alias`
+
+### 5.3 课程结构链路
+
+直接写入：
+
+- `curriculum_derive_job`
+- `teaching_unit`
+- `teaching_unit_revision`
+- `teaching_unit_membership`
+- `taxonomy_anchor`
+- `theme_tree_version`
+- `theme_tree_node`
+- `unit_tree_membership`
+- `prereq_dag_version`
+- `unit_dependency`
+- `curriculum_snapshot`
+
+---
+
+## 6. 本地落盘对象
+
+Digest 当前明确写本地文件的部分主要是知识文档链路：
+
+- `data/<subject>/knowledge_docs/*.md`
+- `data/<subject>/knowledge_docs/merged_knowledge_base.md`
+- `data/<subject>/docgen_intermediate/*.md`
+- `data/<subject>/docgen_intermediate/*.json`
+
+图谱与课程结构当前以数据库为主；如果后续补更多调试摘要，应统一写入：
+
+- `data/<subject>/debug/digest.graph/<job_id>/`
+- `data/<subject>/debug/digest.curriculum/<job_id>/`
+- `data/<subject>/debug/digest.docs/<job_id>/`
+
+---
+
+## 7. 关键状态推进
+
+### 7.1 图谱构建
+
+`graph_digest_job` 负责表达：
+
+- pending
+- processing
+- completed / failed
+
+并维护：
+
+- `progress`
+- `current_step`
+- `input_chunk_count`
+- `curriculum_job_id`
+
+### 7.2 课程派生
+
+`curriculum_derive_job` 负责表达：
+
+- 受影响单元派生
+- 主题树版本生成
+- 先修图版本生成
+- `curriculum_snapshot` 发布
+
+### 7.3 知识文档生成
+
+`docgen_job` 负责表达：
+
+- loading
+- cleansing
+- outlining
+- drafting
+- assembling
+- done / failed
+
+---
+
+## 8. 节点到表责任
+
+### 8.1 Digest Docs
+
+| 节点 / 模块 | 读 DB | 写 DB | 写 FS |
 | --- | --- | --- | --- |
-| 1. 选择查询视图 | `SummaryPage` / 组件层 | 用户想看图谱、单元、树、DAG、证据 | 具体查询类型 |
-| 2. 数据读取 | `graph_query_service` / `curriculum_service` | subject、查询条件、对象 ID | 节点列表、单元列表、树、DAG、快照 |
-| 3. 细节展开 | `get_graph_node_detail` / `get_evidence_context` / `get_teaching_unit_detail` | 节点 ID、证据 ID、单元 ID | 详情数据、原文上下文 |
-| 4. 前端消费 | 图谱视图、树视图、证据弹窗 | 查询结果 | 可视化展示、跳转、进一步问答入口 |
+| `load_files_node.py` | `raw_file` | `docgen_job` | 读取 Markdown 文件 |
+| `cleanse_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/clean_*` |
+| `outline_map_node.py` | `docgen_job` | `docgen_job` | 无 |
+| `outline_reduce_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/*.json` |
+| `draft_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/draft_*` |
+| `finalize_node.py` | `docgen_job` | `knowledge_doc`、`docgen_job` | `knowledge_docs/*.md`、merged 文档 |
+
+### 8.2 Digest Graph
+
+| 节点 / 模块 | 读 DB | 写 DB | 写 FS |
+| --- | --- | --- | --- |
+| `prepare_nodes.py` | `raw_file`、`document`、`document_chunk` | `graph_digest_job`、`document`、`document_chunk`、`chunk_embeddings` | 读取 Markdown |
+| `resolve_nodes.py` | `knowledge_*`、`document_chunk` | `knowledge_*`、`evidence_link`、`knowledge_alias` | 无 |
+| `finalize_nodes.py` | `graph_digest_job` | `graph_digest_job`、`curriculum_derive_job`、构建锁释放 | 无 |
+
+### 8.3 Digest Curriculum
+
+| 节点 / 模块 | 读 DB | 写 DB | 写 FS |
+| --- | --- | --- | --- |
+| `curriculum/nodes.py` | `knowledge_*`、旧版本课程对象 | `curriculum_derive_job`、`teaching_unit*`、`theme_tree*`、`prereq_dag*`、`curriculum_snapshot` | 无 |
 
 ---
 
-## 6. 核心设计原则
+## 9. 开发关注点
 
-### 6.1 知识文档是用户的第一触点
+### 9.1 文档要承认 Digest 已经是“三条 workflow”
 
-用户上传资料后，第一个看到的不应该是抽象的知识图谱，而是"AI 帮我整理好的笔记"。知识文档是用户感知价值最直接的产出，也是后续所有交互的入口：
+当前 Digest 不是单一“图谱构建器”，而是 docs / graph / curriculum 三条工作流组合。
 
-- 在文档上划线提问 → 进入 Interact
-- 文档末尾的"测一测" → 进入 Examine
-- 文档标签和重点 → 反映 Profile 的薄弱点
+### 9.2 知识文档不是可有可无的附属能力
 
-### 6.2 知识图谱是真相源
+`knowledge_doc` 和 `knowledge_docs/` 已经是正式业务产物，设计文档必须把它们写成一等对象。
 
-知识文档是面向用户的"可读层"，知识图谱是面向系统的"真相层"。图谱层负责表达：
+### 9.3 图谱与课程结构要继续保持数据库真相优先
 
-- 知识点是什么
-- 知识点之间是什么关系
-- 这些关系来自哪些证据
-- 当前内容处于什么版本
-
-文档生成依赖图谱提供标签、关联提示、考频等元信息。
-
-### 6.3 Teaching Unit 是教学粒度桥梁
-
-知识节点适合表达细粒度实体，但不适合直接承担"教学编排"职责。Teaching Unit 的价值在于：
-
-- 把多个相近知识点聚成可教单元
-- 给课程结构一个稳定中间层
-- 让图谱层与章节层解耦
-
-### 6.4 Theme Tree 与 Prereq DAG 不应混用
-
-- 主题归属关系 → 树形表达（Theme Tree）
-- 学习先修关系 → DAG 表达（Prereq DAG）
-
-不要试图用一棵树同时表达"是什么主题"和"应该先学什么"。
-
-### 6.5 证据链是教学系统的可解释性基础
-
-Digest 产出的每个节点、边、单元、课程视图，都应尽量能追溯到哪些 chunk、哪些文档、哪次构建。
-
-### 6.6 增量构建优先于整库重算
-
-教学资料是会持续上传和更新的，Digest 设计上支持增量构建、构建任务状态、影响分析、版本快照。
+本地调试文件可以加，但不能反过来取代 `graph_digest_job`、`knowledge_*`、`curriculum_snapshot` 这些结构化真相。
 
 ---
 
-## 7. 设计方法
+## 10. 总结
 
-### 7.1 知识文档生成方法
+Digest 是项目最核心的知识中枢，当前已经形成清晰分工：
 
-**章节识别：** 规则优先 + LLM 兜底。先用正则和标题模式识别章节边界，处理不了的交给 LLM。
+- docs workflow：生成用户可读知识文档
+- kg workflow：构建知识图谱与证据链
+- curriculum workflow：派生教学单元、主题树、先修图和课程快照
 
-**文档生成：** 每个章节独立调用 LLM 生成，prompt 中注入：
-- 该章节对应的原始内容片段
-- 全局大纲（让 LLM 知道上下文）
-- 输出格式规范（标题层级、标记语法、标签格式）
-
-**内容增强：** 生成后二次处理，用轻量 LLM 调用标注重点、生成标签、补充示例。
-
-### 7.2 候选抽取
-
-从 chunk 中抽取候选节点、候选边，为候选项绑定来源证据。抽取阶段的目标不是立刻得到最终真相，而是把候选集合采样得足够完整。
-
-### 7.3 候选聚类与归并
-
-知识资料里存在大量同名异写、近义表达、多文档重复描述。聚类层结合规范化名称、Alias、Embedding 相似度、LLM 辅助判断。
-
-### 7.4 实体对齐与修订
-
-候选项进入知识层时，先判定是否已有实体，再决定创建新实体还是创建新修订，再把证据链接挂上去。
-
-### 7.5 影响分析
-
-图谱更新后，判断哪些节点发生了变化、哪些单元受影响、哪些主题树挂载受影响、哪些先修关系需要重新推导。
-
-### 7.6 Teaching Unit 派生
-
-Teaching Unit 的生成是"教学聚类"而不是普通聚类，要考虑是否适合一起讲、是否属于同一个局部概念组、是否共享证据上下文。
-
-### 7.7 Theme Tree 与 Prereq DAG 派生
-
-Theme Tree 重点是"如何展示和组织"（章 → 节 → 主题 → 单元挂载）。Prereq DAG 重点是"学习顺序与依赖"（学习路径推荐、先修检查、出题顺序设计）。
-
----
-
-## 8. 可结合的技术方法
-
-### 8.1 结构化抽取
-
-Digest 非常适合"结构化抽取而不是自由文本解析"，尤其在候选节点抽取、候选边抽取、树结构生成、单元命名等环节。优势：易校验、易调试、易存档、易做回归测试。
-
-### 8.2 规则 + Embedding + LLM 的混合对齐
-
-实体对齐不适合完全依赖单一技术：规则快速筛掉明显同名 → Embedding 找近似候选 → LLM 处理边界案例。
-
-### 8.3 图算法
-
-Digest 本质上是知识组织系统，图算法是核心能力：局部子图提取、聚类、影响扩散、环检测、传递约简、连通分量与层级分析。
-
-### 8.4 人工锚点与半自动课程编排
-
-Theme Tree 支持锚点管理，适合演进为半自动课程编排模式：系统给出结构建议 → 人工调整锚点与挂载 → 后续构建遵守人工约束。
-
-### 8.5 长文档渲染技术
-
-知识文档页面需要处理 3000+ 行的长文档，推荐技术方案：
-- `react-markdown` + 自定义 renderer 组件
-- KaTeX 做公式渲染（比 MathJax 快 10x）
-- `IntersectionObserver` 做大纲滚动同步
-- 按 H2 分段的虚拟化渲染（视口外 section 用占位高度替代）
-- 图片懒加载 + `loading="lazy"`
-
----
-
-## 9. 可以继续长出的能力
-
-- 知识文档的协同编辑（用户可以修改 AI 生成的文档）
-- 文档内嵌小测验（"读完这段，试试这道题"）
-- 文档阅读进度追踪（反馈到 Profile）
-- 节点与关系的置信度评分
-- 冲突知识检测
-- 多资料版本差异分析
-- 图谱 diff 与课程 diff
-- 单元难度估计
-- 证据热力图
-- 人工审核队列
-- 基于图谱的考试蓝图生成
-
----
-
-## 10. 开发关注点
-
-### 10.1 知识文档生成是最高优先级
-
-当前 Digest 已有完整的知识图谱构建流程，但缺少面向用户的"可读产出"。知识文档生成应作为下一阶段的最高优先级开发项。
-
-### 10.2 材料层桥接仍需继续做实
-
-Digest 当前最重要的工程关注点之一，是保证 `Document / Chunk / Embedding` 这条材料链真正稳定存在。
-
-### 10.3 文档页面性能是硬指标
-
-知识文档页面的渲染性能直接影响用户体验。3000 行文档必须做到首屏 < 200ms、滚动 60fps。这不是"优化项"，而是"必须项"。
-
-### 10.4 评测体系仍值得补强
-
-Digest 的复杂度很高，后续开发时非常适合补充抽取样本集、对齐样本集、单元派生样本集、课程结构回归样本。
-
----
-
-## 11. 总结
-
-Digest 是 AITeachMe 最核心的知识中枢，它的产出分两层：
-
-**面向用户的可读层：** 知识文档系列——AI 自动整理的分章节精美笔记，用户在上面阅读、划线、提问、标记，这是日常学习的主阵地。
-
-**面向系统的结构层：** 知识图谱、Teaching Unit、Theme Tree、Prereq DAG——为对话、测评、画像提供统一的知识基础。
-
-开发这层时，最重要的是稳住五件事：
-
-- 知识文档是用户的第一触点
-- 知识图谱是真相层
-- Teaching Unit 是教学粒度层
-- Theme Tree 与 Prereq DAG 各司其职
-- 证据与版本始终可追溯
-
-只要这五件事稳住，Digest 就会成为整个系统最有复用价值的能力中心。
+只要持续守住“文档是消费层、图谱是知识真相层、课程结构是教学组织层”这三个边界，Digest 就能持续为 Interact、Examine 和 Profile 提供稳定底座。

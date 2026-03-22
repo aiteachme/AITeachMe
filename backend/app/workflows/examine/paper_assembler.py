@@ -1,4 +1,13 @@
-"""组卷器：Phase B 组卷 + 快照。"""
+"""组卷器：Phase B 组卷 + 快照。
+
+Reads DB: ``question_template*``, ``curriculum_snapshot``, ``user_knowledge_state``,
+``review_task`` and related curriculum memberships.
+Writes DB: ``exam_generate_job``, ``exam_paper``, ``exam_paper_item`` and
+``exam_paper_generation_context``.
+Writes FS: none.
+Idempotency: each generate job should assemble one paper snapshot; reruns create/refresh that job's
+paper context rather than mutating historical papers in place.
+"""
 
 from __future__ import annotations
 

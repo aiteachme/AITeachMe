@@ -1,4 +1,11 @@
-"""Question template builder."""
+"""Question template builder.
+
+Reads DB: ``teaching_unit_membership`` plus graph / curriculum context used to build prompts.
+Writes DB: ``question_template`` and ``question_template_node_link``.
+Writes FS: none.
+Idempotency: template creation is best-effort deduplicated by content hashing, but reruns may still
+produce additional templates for the same unit when the source context changes.
+"""
 
 from __future__ import annotations
 

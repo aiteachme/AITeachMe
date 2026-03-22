@@ -38,8 +38,10 @@ yarn-error.log*
 backend/uploads/
 backend/data/*.db
 backend/data/*.sqlite
+backend/data/**
 data/*.db
 data/*.sqlite
+data/**
 *.log
 .env
 .env.local

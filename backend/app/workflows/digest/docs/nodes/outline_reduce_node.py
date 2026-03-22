@@ -1,4 +1,10 @@
-"""节点：Outline Reduce — 全局统筹 + chapter_assignments 组装。"""
+"""节点：Outline Reduce — 全局统筹 + chapter_assignments 组装。
+
+Reads DB: ``docgen_job``.
+Writes DB: ``docgen_job`` progress / chapter counts.
+Writes FS: writes outline summaries and chapter assignments into ``docgen_intermediate/``.
+Idempotency: reruns overwrite the same JSON intermediates for the active docgen job.
+"""
 
 from __future__ import annotations
 

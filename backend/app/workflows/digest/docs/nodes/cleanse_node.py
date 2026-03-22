@@ -1,4 +1,11 @@
-"""节点：数据清洗与标准化（不含 I/O）。"""
+"""节点：数据清洗与标准化。
+
+Reads DB: ``docgen_job``.
+Writes DB: ``docgen_job`` progress.
+Writes FS: writes intermediate cleaned markdown and cleanse summaries under
+``docgen_intermediate/``.
+Idempotency: reruns overwrite the same intermediate files for the active docgen job.
+"""
 
 from __future__ import annotations
 

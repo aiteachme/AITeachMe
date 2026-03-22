@@ -1,4 +1,10 @@
-"""Fan-Out 子节点：撰写单个章节（由 Send 分发）。"""
+"""Fan-Out 子节点：撰写单个章节（由 Send 分发）。
+
+Reads DB: ``docgen_job``.
+Writes DB: ``docgen_job`` progress.
+Writes FS: writes chapter draft markdown into ``docgen_intermediate/``.
+Idempotency: reruns overwrite the same draft file for the same chapter index.
+"""
 
 from __future__ import annotations
 

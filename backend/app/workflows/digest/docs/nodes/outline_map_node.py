@@ -1,4 +1,10 @@
-"""节点：Outline Map — 并发提取/生成局部标题。"""
+"""节点：Outline Map — 并发提取/生成局部标题。
+
+Reads DB: ``docgen_job``.
+Writes DB: ``docgen_job`` progress.
+Writes FS: none.
+Idempotency: reruns recompute local outlines from the same cleaned chunks for the active job.
+"""
 
 from __future__ import annotations
 

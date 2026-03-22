@@ -1,4 +1,10 @@
-"""Load, fingerprint, classify, and plan nodes for ingest workflows."""
+"""Load, fingerprint, classify, and plan nodes for ingest workflows.
+
+Reads DB: ``raw_file``.
+Writes DB: ``raw_file`` classification / ingest-prep metadata.
+Writes FS: reads the persisted raw file path and derives deterministic markdown/assets paths.
+Idempotency: reruns refresh metadata for the same ``raw_file`` and reuse the same output paths.
+"""
 
 from __future__ import annotations
 

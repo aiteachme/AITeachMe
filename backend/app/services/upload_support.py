@@ -1,4 +1,11 @@
-"""文件系统路径辅助函数。"""
+"""文件系统路径辅助函数。
+
+当前约定：
+
+- 正式业务产物仍按 ``data/<subject>/raw|markdown|assets|knowledge_docs`` 落盘
+- 开发期调试快照统一约定写到
+  ``data/<subject>/debug/<workflow>/<run_or_job_id>/``
+"""
 
 from __future__ import annotations
 
@@ -41,6 +48,12 @@ def build_temp_dir(subject: str) -> Path:
     """返回临时目录。"""
 
     return build_subject_dir(subject) / "temp"
+
+
+def build_debug_dir(subject: str) -> Path:
+    """返回学科级调试产物根目录。"""
+
+    return build_subject_dir(subject) / "debug"
 
 
 def build_raw_file_path(subject: str, record_id: int, extension: str) -> Path:
@@ -89,3 +102,21 @@ def build_docgen_intermediate_dir(subject: str) -> Path:
     """返回 DocGen 中间产物目录（清洗/大纲等过程文件）。"""
 
     return build_subject_dir(subject) / "docgen_intermediate"
+
+
+def _sanitize_debug_segment(value: str) -> str:
+    """规范化 debug 目录片段，避免路径分隔符污染目录结构。"""
+
+    return value.replace("/", "_").replace("\\", "_").replace(" ", "_")
+
+
+def build_workflow_debug_dir(subject: str, workflow_name: str) -> Path:
+    """返回 workflow 级调试目录。"""
+
+    return build_debug_dir(subject) / _sanitize_debug_segment(workflow_name)
+
+
+def build_workflow_run_debug_dir(subject: str, workflow_name: str, run_or_job_id: str | int) -> Path:
+    """返回具体一次运行的调试目录。"""
+
+    return build_workflow_debug_dir(subject, workflow_name) / _sanitize_debug_segment(str(run_or_job_id))
