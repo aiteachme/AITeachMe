@@ -6,7 +6,7 @@ import {
 } from "../api/generated/chats";
 import type { ChatContextItem, ChatMessageItem, ChatSendRequest } from "../api/generated/model";
 import { postSseJson, getApiErrorMessage } from "../api/client";
-import { unwrapOrvalResponse } from "../api/generated/utils";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 export type ChatMessageStatus = "ready" | "streaming" | "error" | "interrupted";
 
@@ -49,7 +49,7 @@ export function useChatSession(subjectId: string) {
           page: 1,
           size: 100,
         });
-        const items = (unwrapOrvalResponse(response)?.items ?? [])
+        const items = (unwrapOrvalResponse<{ items?: ChatMessageItem[] }>(response)?.items ?? [])
           .slice()
           .sort((left, right) => left.created_at.localeCompare(right.created_at));
         if (cancelled) {

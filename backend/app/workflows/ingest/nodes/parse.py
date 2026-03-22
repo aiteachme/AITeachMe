@@ -1,4 +1,10 @@
-"""Parse-phase nodes for ingest workflows."""
+"""Parse-phase nodes for ingest workflows.
+
+Reads DB: ``raw_file`` lookup during parse result persistence.
+Writes DB: ``raw_file`` ingest status transitions and parse metadata.
+Writes FS: overwrites ``markdown/<raw_file_id>.md`` and files under ``assets/<raw_file_id>/``.
+Idempotency: reruns replace markdown/assets for the same file and refresh metadata in place.
+"""
 
 from __future__ import annotations
 

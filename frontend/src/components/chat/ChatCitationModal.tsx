@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Loader2 } from "lucide-react";
 import { chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost } from "../../api/generated/knowledge";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 

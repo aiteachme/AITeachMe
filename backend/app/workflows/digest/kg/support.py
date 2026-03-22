@@ -1,4 +1,10 @@
-"""Support helpers for digest graph workflow nodes."""
+"""Support helpers for digest graph workflow nodes.
+
+Reads DB: ``raw_file``, ``document``, ``document_chunk``.
+Writes DB: ``document``, ``document_chunk``, ``chunk_embeddings`` and document step updates.
+Writes FS: reads ingest-produced markdown files from subject-scoped storage.
+Idempotency: document/chunk materialization reuses existing rows and only inserts what is missing.
+"""
 
 from __future__ import annotations
 

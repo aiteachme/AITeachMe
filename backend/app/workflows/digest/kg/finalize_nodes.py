@@ -1,4 +1,11 @@
-"""Finalize and failure nodes for the digest graph workflow."""
+"""Finalize and failure nodes for the digest graph workflow.
+
+Reads DB: ``graph_digest_job`` and pending graph entities for the active job.
+Writes DB: graph activation / cleanup, build-lock release, ``graph_digest_job`` final state,
+and the next ``curriculum_derive_job`` trigger row.
+Writes FS: none.
+Idempotency: finalize/fail rewrites the active job outcome and cleans the same pending rows.
+"""
 
 from __future__ import annotations
 

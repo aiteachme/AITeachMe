@@ -1,334 +1,236 @@
 # 07. Examine 引擎
 
 ## 1. 目标与职责
-Examine 引擎负责把“知识内容”转成“诊断式测评”，再把测评结果转成可继续利用的教学信号。
 
-它在系统中的职责不只是生成几道题，而是承担一条完整链路：
+Examine 负责把知识内容转成诊断式测评，并把测评结果回流给学习状态层。它的目标不是“随机出几道题”，而是形成完整测评闭环：
 
-- 组织测评范围
-- 生成题目
-- 判卷与分析
-- 形成错题
-- 回流画像
-
-因此 Examine 更适合被理解为“诊断引擎”，而不是简单的题库或考试页面。
+- 确定测评范围
+- 组织试卷
+- 判卷和错因分析
+- 形成可追踪答题记录
+- 把结果送回掌握度与复习调度
 
 ---
 
 ## 2. 当前实现落点
 
-当前代码里，Examine 主要落在以下位置：
+当前 Examine 处于显式双轨期。
+
+### 2.1 legacy 路径
 
 - 前端页面：`frontend/src/pages/ExamPage.tsx`
 - 后端资源组：`exams`
-- 业务编排：`backend/app/services/exams_service.py`
-- Agent：`generator.py`、`grader.py`
-- 关键对象：`Exam`、`Question`、`ExamSubmission`、`AnswerRecord`、`Mistake`
+- 业务入口：`backend/app/services/exams_service.py`
+- 关键模型：`exam`、`question`、`exam_submission`、`answer_record`、`mistake`
 
-当前 Examine 已经具备最小可用的业务闭环，但在设计层仍有大量可以继续长出的空间。
+### 2.2 workflow-backed 新路径
+
+- 后端资源组：`assessment`
+- 业务入口：`backend/app/services/assessment_service.py`
+- 工作流编排：`backend/app/workflows/examine/*`
+- 关键模型：
+  - `question_build_job`
+  - `question_template`
+  - `exam_generate_job`
+  - `exam_paper`
+  - `exam_paper_item`
+  - `exam_grade_job`
+  - `user_answer_attempt`
+
+文档必须把这两条链路都写清楚，不能再假装系统里只有旧 `exam/question` 模型。
 
 ---
 
-## 3. Pipeline 设计
+## 3. 当前主 Pipeline
 
-### 3.1 组卷 Pipeline
+### 3.1 legacy 测评链路
 
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 组卷请求 | `ExamPage` + `/exams/make` | `subject`、题量、可选知识点范围 | 组卷请求 |
-| 2. 蓝图组装 | `exams_service.create_exam` | 知识点列表、薄弱点、近期错题、用户指定范围 | 组卷上下文 |
-| 3. 题目生成 | `generator.generate_exam` | 组卷上下文、题型/难度集合 | 结构化题目列表 |
-| 4. 试卷落库 | `create_exam_with_questions` | `Exam`、`Question[]` | 持久化试卷与题目 |
-| 5. 前端展示 | `ExamPage` | `exam_id`、题目列表 | 作答界面 |
+| 1. 组卷请求 | `POST /exams/make` | `subject`、题量、知识点 | legacy 试卷 |
+| 2. 出题 | `exams_service.create_exam` | 知识点候选 | `exam`、`question[]` |
+| 3. 交卷 | `POST /exams/submit` | `exam_id`、答案 | 判卷结果 |
+| 4. 判卷与错题 | `exams_service.submit_exam` | 题目、答案 | `exam_submission`、`answer_record`、`mistake` |
+| 5. 画像回流 | `profile_service` 相关逻辑 | 判卷结果 | `user_profile` |
 
-### 3.2 交卷与回流 Pipeline
+### 3.2 workflow-backed 新测评链路
 
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 交卷请求 | `/exams/submit` | `exam_id`、答案列表 | 待判卷请求 |
-| 2. 题目加载 | `get_exam_by_id` + `get_questions_by_exam_id` | `exam_id`、subject | 题目全集 |
-| 3. 判卷 | `grader.grade_exam` | 题目、用户答案 | 每题对错、总分 |
-| 4. 错因分析 | `generate_mistake_analysis` | 错题、用户答案、标准答案 | 错因文本 |
-| 5. 结果落库 | `create_submission_with_records` + `bulk_create_mistakes` | 判卷结果、错因结果 | `ExamSubmission`、`AnswerRecord`、`Mistake` |
-| 6. 画像回流 | `_update_profiles_from_grading` | 题目知识点、判卷结果 | 更新后的 `UserProfile` |
-| 7. 结果返回 | `SubmitData` | 分数、逐题结果、错因 | 前端结果页 |
+| 1. 模板构建 | `question_build_workflow.py` | `teaching_unit` 集合 | `question_template` |
+| 2. 组卷 | `paper_assembler.py` / `assessment_service` | `subject`、模式、数量、快照 | `exam_generate_job`、`exam_paper`、`exam_paper_item` |
+| 3. 提交答案 | `assessment_service.submit_exam_answers` | `exam_paper_id`、答案 | `user_answer_attempt` |
+| 4. 判卷 | `exam_grade_workflow.py`、`answer_grader.py` | 试卷与作答 | `exam_grade_job`、已判分 attempts |
+| 5. 状态回流 | `workflows/profile/*` | 判卷结果 | `user_knowledge_state`、`review_task` |
 
-### 3.3 关键子模块输入输出
-
-- 蓝图组装模块
-  输入：subject、知识点候选、薄弱点、近期错题、用户指定点位。
-  输出：适合交给出题模型的测评上下文。
-- 出题模块
-  输入：测评上下文、题型集合、难度集合。
-  输出：结构化题目列表。
-- 判卷模块
-  输入：题目、用户答案。
-  输出：每题得分或对错、总分、可选分析。
-- 错因模块
-  输入：错误题目、正确答案、用户答案、知识点。
-  输出：错因解释、可进一步扩展的错误标签。
-- 回流模块
-  输入：题目知识点、判卷结果。
-  输出：掌握度统计、薄弱点更新、后续 Profile 输入。
+---
 
 ## 4. 核心设计原则
 
-### 4.1 测评的目标是诊断，而不是刷题
+### 4.1 测评优先服务诊断，不是单纯刷题
 
-Examine 的设计应优先服务以下目标：
+Examine 的高价值不在“题目多”，而在“能知道哪里不会、为什么不会、下一步该补什么”。
 
-- 发现薄弱点
-- 检查是否真正理解
-- 判断学习顺序是否合理
-- 为下一轮讲解或练习提供输入
+### 4.2 测评范围必须绑定知识结构
 
-如果系统只会随机出题，即使实现了“考试功能”，也不算真正完成了 Diagnose 这一层。
+新测评链路应优先围绕：
 
-### 4.2 测评范围应绑定知识结构
+- `curriculum_snapshot`
+- `teaching_unit`
+- `question_template`
 
-题目不应脱离当前学科知识结构独立生成。设计上，题目范围最好与以下对象建立联系：
+来组织范围，而不是只依赖自由字符串知识点。
 
-- 知识点
-- Teaching Unit
-- Theme Tree 主题位置
-- Prereq DAG 先修链路
+### 4.3 蓝图要先于题目
 
-这样测评结果才能自然回流到课程与画像中。
+试卷的稳定性来自蓝图层，而不只是题目内容本身。当前 assessment 链路已经比 legacy 链路更接近“先蓝图、后试卷快照”的设计。
 
-### 4.3 测评蓝图应先于题目本身
+### 4.4 判卷结果必须结构化
 
-真正稳定的测评系统，不应直接从“要几道题”开始，而应先定义测评蓝图，例如：
+可复用的判卷输出至少应包括：
 
-- 测什么范围
-- 按什么粒度测
-- 题型如何分配
-- 难度如何分配
-- 是否偏重薄弱点
-- 是诊断测评、训练测评还是模拟测评
+- 是否正确
+- 分数
+- 错因标签
+- 题目快照
+- 与知识单元或节点的关联
 
-当前代码已经有题目生成链路，但设计上仍值得把“蓝图层”单独强化。
+### 4.5 测评必须接回状态层
 
-### 4.4 判卷结果应尽量结构化
+测评不是终点，最终要回到：
 
-错题分析如果只有一段自由文本，虽然能看，但不易复用。更理想的测评设计应该逐步把结果拆成：
-
-- 对错
-- 正确答案
-- 解析
-- 错因类别
-- 薄弱知识点
-- 推荐下一步动作
-
-这会直接提升 Profile、Interact、复盘页和专项练习的可用性。
-
-### 4.5 测评必须能接回学习闭环
-
-Examine 不应是终点。设计上，测评结果最好自然接回：
-
-- 错题本
-- 画像更新
-- Chat 复盘
-- 针对性再练
-
-这也是它区别于普通考试模块的核心价值。
+- `user_knowledge_state`
+- `review_task`
+- 对话复盘
+- 后续再练
 
 ---
 
-## 5. 设计方法
+## 5. 数据库写入对象
 
-### 5.1 测评蓝图设计
+### 5.1 legacy 链路
 
-建议把测评设计拆成“蓝图 + 题目生成”两层。
+直接写入：
 
-蓝图层适合定义：
+- `exam`
+- `question`
+- `exam_submission`
+- `answer_record`
+- `mistake`
 
-- 目标范围
-- 目标粒度
-- 题型分布
-- 难度分布
-- 时长或题量
-- 是否覆盖先修链
-- 是否优先打薄弱点
+并间接更新：
 
-这样后续无论是 AI 出题、模板出题还是题库出题，都能落在同一蓝图接口下。
+- `user_profile`
 
-### 5.2 题目生成设计
+### 5.2 workflow-backed 新链路
 
-题目生成可以采用多种策略组合：
+直接写入：
 
-- 完全生成式
-- 模板参数化生成
-- 图谱节点到题目模板映射
-- 题库检索 + 改写
+- `question_build_job`
+- `question_template`
+- `question_template_node_link`
+- `exam_generate_job`
+- `exam_paper`
+- `exam_paper_item`
+- `exam_paper_generation_context`
+- `exam_grade_job`
+- `user_answer_attempt`
 
-当前项目已经具备结构化出题能力，后续适合继续保持“先结构化约束，再让模型生成内容”的路线。
+并在 Profile workflow 中继续推进：
 
-### 5.3 题型设计
-
-对于当前教学场景，题型设计适合至少覆盖：
-
-- 单选
-- 填空
-- 简答
-
-后续如果继续扩展，也很适合加入：
-
-- 判断
-- 多选
-- 推导题
-- 连线 / 排序类题
-- 基于材料选段的阅读理解题
-
-### 5.4 难度设计
-
-难度不应只作为展示标签，而应参与出题逻辑本身。设计上可把难度用于：
-
-- 控制题目深度
-- 控制干扰项复杂度
-- 控制步骤数
-- 控制是否跨单元综合
-
-当前代码已保留 `difficulty` 字段，后续适合让它真正进入蓝图层。
-
-### 5.5 判卷设计
-
-判卷设计最好按题型分层：
-
-- 客观题优先规则判定
-- 半结构化题优先模式匹配与规则融合
-- 主观题再交给 LLM 判定
-
-这种分层设计的好处是：
-
-- 稳定
-- 便宜
-- 可解释
-- 易加回退逻辑
-
-### 5.6 错因分析设计
-
-错因分析的价值远高于“判对错”。对于教学系统，错因分析至少可以围绕这些维度展开：
-
-- 概念不清
-- 步骤遗漏
-- 运算失误
-- 审题错误
-- 知识点混淆
-- 先修缺失
-
-即便当前数据库还没有完整承载这些标签，设计上也应把它们视作未来自然扩展方向。
-
-### 5.7 复盘设计
-
-真正高价值的测评系统，应支持测后复盘。复盘至少可以设计成三种方式：
-
-- 即时逐题讲解
-- 错题专项复盘
-- 基于知识点的总结反馈
-
-这层一旦做实，Examine 和 Interact 的边界会非常自然地打通。
+- `user_knowledge_state`
+- `review_task`
 
 ---
 
-## 6. 可结合的技术方法
+## 6. 本地落盘对象
 
-### 6.1 结构化出题
+当前 Examine 以数据库为主，没有强依赖的正式本地业务文件。
 
-当前项目已经在使用结构化出题，这是非常适合继续保留的方法。它适用于：
+开发阶段如果需要补调试快照，统一写入：
 
-- 题目字段约束
-- 选项结构约束
-- 答案与解析分离
-- 知识点和难度标签化
+- `data/<subject>/debug/examine.question_build/<job_id>/`
+- `data/<subject>/debug/examine.generate/<job_id>/`
+- `data/<subject>/debug/examine.grade/<job_id>/`
 
-### 6.2 模板化题目生成
+推荐只保存：
 
-对很多学科而言，完全生成式出题并不是唯一选择。后续可以继续结合：
-
-- 题目模板
-- 参数替换
-- 条件组合
-- 干扰项生成
-
-模板化能显著提高稳定性，尤其适合基础训练和高频知识点。
-
-### 6.3 LLM 判卷与 Rubric
-
-对于简答和步骤题，可以继续结合：
-
-- Rubric 评分标准
-- 分步骤评分
-- 标准答案要点比对
-- 多轮评语生成
-
-这种方法比“整段自由判定”更适合教学场景，也更容易调试。
-
-### 6.4 自适应测评
-
-Examine 后续非常适合结合以下方向：
-
-- 按薄弱点加权选题
-- 按最近表现调整难度
-- 按先修依赖补链
-- 按单元掌握度缩放范围
-
-这会让测评更像个性化诊断，而不是统一卷面。
-
-### 6.5 错题再练
-
-当前已经有错题数据，因此很适合继续长出：
-
-- 错题重做
-- 同知识点变式题
-- 同错因专项题
-- 错题到 Chat 复盘
-
-这类能力和教学闭环天然契合。
+- 组卷选择理由摘要
+- 模板命中统计
+- 判卷汇总摘要
 
 ---
 
-## 7. 可以继续长出的能力
+## 7. 关键状态推进
 
-Examine 后续很适合扩展以下方向：
+### 7.1 legacy 链路
 
-- 单元级随堂测
-- 学科级模拟卷
-- 先修诊断卷
-- 专项薄弱点强化卷
-- 错题同构变式卷
-- 图谱节点覆盖率分析
-- 基于 Theme Tree 的章节测评
-- 基于 DAG 的补链测评
-- 分步骤评分与评语
-- 测后学习计划输出
+主要通过：
 
-这些能力可以分阶段推进，但都应围绕同一条诊断闭环展开。
+- `exam`
+- `exam_submission`
 
----
+隐式表达流程状态。
 
-## 8. 开发关注点
+### 7.2 workflow-backed 链路
 
-### 8.1 当前前后端仍有旧路径口径残留
+显式状态表包括：
 
-当前 `ExamPage`、MSW 和部分生成产物仍存在旧 `/exam/*` 口径，而真实后端资源组是 `exams`。任何继续开发 Examine 的工作，最好先核实真实后端路径。
+- `question_build_job`
+- `exam_generate_job`
+- `exam_grade_job`
+- `exam_paper.status`
 
-### 8.2 当前蓝图层仍偏薄
+这套设计更适合：
 
-当前请求主要围绕“题量 + 点位列表”展开，离真正稳定的测评蓝图还有距离。因此 Examine 的设计重点之一，就是把蓝图层做厚。
-
-### 8.3 当前画像回流仍主要是简单统计
-
-测评已经能回流画像，但回流粒度和结构化程度还有限。后续如果继续增强 Examine，应优先考虑让“题目结果 -> 学习状态”的映射更加明确。
+- 幂等触发
+- 长流程追踪
+- 失败恢复
+- 前端轮询状态
 
 ---
 
-## 9. 总结
+## 8. 节点到表责任
 
-Examine 引擎的正确定位不是考试页面，而是教学系统里的诊断层。它应当持续围绕四件事设计：
+### 8.1 新链路主要责任矩阵
 
-- 有范围感的测评蓝图
-- 有结构感的题目生成
-- 有解释力的判卷与错因分析
-- 有闭环感的结果回流
+| 模块 | 读 DB | 写 DB | 写 FS |
+| --- | --- | --- | --- |
+| `question_build_workflow.py` | `teaching_unit`、图谱/课程对象 | `question_build_job` | 无 |
+| `question_builder.py` | `teaching_unit`、知识节点 | `question_template`、`question_template_node_link` | 无 |
+| `paper_assembler.py` | `question_template`、`curriculum_snapshot`、`user_knowledge_state`、`review_task` | `exam_paper`、`exam_paper_item`、`exam_paper_generation_context`、`exam_generate_job` | 无 |
+| `exam_grade_workflow.py` | `exam_paper`、`exam_grade_job` | `exam_grade_job`、`exam_paper.status` | 无 |
+| `answer_grader.py` | `exam_paper_item`、`user_answer_attempt`、知识节点 | `user_answer_attempt` | 无 |
+| `workflows/profile/mastery_updater.py` | `exam_paper*`、`user_answer_attempt` | `user_knowledge_state` | 无 |
+| `workflows/profile/review_scheduler.py` | `user_knowledge_state`、`review_task` | `review_task`、`forgetting_due_at` 相关字段 | 无 |
 
-只要这四件事持续增强，Examine 就会成为系统里最能体现“会教、会诊断、会反馈”的一层。
+### 8.2 legacy 链路说明
+
+legacy 责任主要集中在 `exams_service.py` 与旧 repo 层，不在当前新 workflow 中。
+
+---
+
+## 9. 开发关注点
+
+### 9.1 新文档必须显式区分两条链路
+
+任何继续写 Examine 设计的人，都不能再把 `Exam` / `Question` 当成系统唯一测评模型。
+
+### 9.2 新链路应该优先围绕课程快照与模板
+
+assessment 方向的核心价值在于“可追踪蓝图 + 可快照试卷 + 可回流状态”，这也是它优于 legacy 链路的地方。
+
+### 9.3 前端当前可能仍更多消费 legacy 接口
+
+这不是问题，但文档要写清楚“当前 UI 可用路径”和“后续演进主路径”不是同一个层次。
+
+---
+
+## 10. 总结
+
+Examine 当前不是单一路径，而是：
+
+- 一条仍对外服务的 legacy exam/profile 链路
+- 一条已经落地到 workflow、job 表和新 assessment 模型的演进链路
+
+后续开发应优先强化后者，同时在文档和代码里继续明确两条链路的边界、状态表和回流路径，避免再出现“文档描述只有旧世界，数据库却已经进入新世界”的漂移。

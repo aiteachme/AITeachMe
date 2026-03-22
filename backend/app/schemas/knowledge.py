@@ -35,16 +35,11 @@ class DocGenBuildRequest(BaseModel):
     """触发知识文档生成请求。"""
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"file_ids": [1, 2]}}
+        json_schema_extra={"example": {"file_ids": [1, 2], "prompt": "请整理成适合复习的知识文档"}}
     )
 
-    file_ids: list[int] = Field(min_length=1, description="参与生成的已解析文件 ID。")
-
-
-class DocGenStatusRequest(BaseModel):
-    """查询知识文档生成状态请求。"""
-
-    job_id: int = Field(description="DocGenJob ID。")
+    file_ids: list[int] | None = Field(default=None, description="参与生成的已解析文件 ID；为空时自动选择当前 subject 下全部可用文件。")
+    prompt: str | None = Field(default=None, description="用户提供的知识文档用途说明与生成要求。")
 
 
 class GraphNodesQueryRequest(PageParams):
@@ -110,6 +105,9 @@ class DocGenBuildData(BaseModel):
     """触发文档生成返回数据。"""
 
     job_id: int = Field(description="DocGenJob ID。")
+    accepted_file_ids: list[int] = Field(default_factory=list, description="本次用于文档生成的文件 ID。")
+    prompt: str | None = Field(default=None, description="用户提供的生成要求。")
+    ready_file_count: int = Field(default=0, description="当前可用的 ready 文件数量。")
 
 
 class DocGenJobResponse(BaseModel):
@@ -129,16 +127,16 @@ class DocGenJobResponse(BaseModel):
     updated_at: datetime
 
 
-class DocGenStatusResponse(BaseModel):
-    """知识文档生成状态响应。"""
+class DocGenGetResponse(BaseModel):
+    """知识文档聚合查询响应。"""
 
-    job: DocGenJobResponse
-
-
-class DocGenContentResponse(BaseModel):
-    """知识文档生成产物响应。"""
-
-    markdown: str = Field(description="合并后的最终 Markdown 内容。")
+    exists: bool = Field(description="最终 merged 文档是否已存在。")
+    markdown: str = Field(default="", description="合并后的最终 Markdown 内容。")
+    merged_path: str | None = Field(default=None, description="最终 merged Markdown 本地路径。")
+    updated_at: datetime | None = Field(default=None, description="最终 merged 文档最近更新时间。")
+    job: DocGenJobResponse | None = Field(default=None, description="最近一次 DocGen 任务状态。")
+    source_file_ids: list[int] = Field(default_factory=list, description="最终文档或当前任务关联的文件 ID。")
+    prompt: str | None = Field(default=None, description="用户提供的生成要求。")
 
 
 class DigestStatusResponse(BaseModel):

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, FileText, MapPin } from "lucide-react";
 import { evidenceContextApiV1SubjectsSubjectKnowledgeGraphEvidenceContextPost } from "../../api/generated/knowledge";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 

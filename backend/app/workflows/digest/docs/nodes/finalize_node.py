@@ -1,4 +1,12 @@
-"""节点：最终组装 — 合并章节、双轨落库。"""
+"""节点：最终组装 — 合并章节、双轨落库。
+
+Reads DB: ``docgen_job``.
+Writes DB: ``knowledge_doc`` and final ``docgen_job`` state.
+Writes FS: writes chapter markdown files and the merged knowledge base under
+``knowledge_docs/``.
+Idempotency: reruns overwrite the same filesystem outputs and append/update job-linked
+knowledge-doc rows for the active build.
+"""
 
 from __future__ import annotations
 

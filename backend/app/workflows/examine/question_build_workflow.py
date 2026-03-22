@@ -1,4 +1,11 @@
-"""QuestionBuildJob 工作流：基于 LangGraph 的题目模板构建状态机。"""
+"""QuestionBuildJob 工作流：基于 LangGraph 的题目模板构建状态机。
+
+Reads DB: ``question_build_job``, ``teaching_unit*`` and graph-backed teaching context.
+Writes DB: ``question_build_job`` progress/status and, via downstream builder calls,
+``question_template`` / ``question_template_node_link``.
+Writes FS: none.
+Idempotency: reruns target the same build job and reuse its unit scope while refreshing progress.
+"""
 
 from __future__ import annotations
 

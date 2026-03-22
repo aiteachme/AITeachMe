@@ -1,4 +1,10 @@
-"""节点：从数据库加载原始 Markdown 文件。"""
+"""节点：从数据库加载原始 Markdown 文件。
+
+Reads DB: ``docgen_job`` and ``raw_file``.
+Writes DB: ``docgen_job`` progress.
+Writes FS: reads persisted ingest markdown files.
+Idempotency: repeated runs read the same markdown inputs and refresh job progress only.
+"""
 
 from __future__ import annotations
 

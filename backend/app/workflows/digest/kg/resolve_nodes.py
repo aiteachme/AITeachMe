@@ -1,4 +1,12 @@
-"""Resolve-phase nodes for the digest graph workflow."""
+"""Resolve-phase nodes for the digest graph workflow.
+
+Reads DB: existing graph entities, revisions, aliases, evidence, and prepared chunks.
+Writes DB: ``knowledge_node`` / ``knowledge_edge`` revisions, aliases, evidence links,
+and ``graph_digest_job`` progress.
+Writes FS: none.
+Idempotency: reruns reconcile candidates against the same graph identity layer and append
+only the needed revisions / evidence for the active job.
+"""
 
 from __future__ import annotations
 

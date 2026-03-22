@@ -1,4 +1,12 @@
-"""ExamGradeJob 工作流：判卷 → 掌握度更新 → 复习调度。"""
+"""ExamGradeJob 工作流：判卷 → 掌握度更新 → 复习调度。
+
+Reads DB: ``exam_grade_job``, ``exam_paper*`` and downstream profile state tables.
+Writes DB: ``exam_grade_job`` progress/status, ``exam_paper.status``, graded attempts,
+``user_knowledge_state`` and ``review_task`` via delegated profile steps.
+Writes FS: none.
+Idempotency: grading jobs are intentionally single-active per paper; reruns should reconcile the
+same paper/job rather than creating parallel grading flows.
+"""
 
 from __future__ import annotations
 

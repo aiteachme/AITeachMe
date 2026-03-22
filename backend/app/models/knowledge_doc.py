@@ -44,5 +44,6 @@ class DocGenJob(SQLModel, table=True):
     completed_chapters: int = Field(default=0, description="已完成章节数")
     error_message: str | None = Field(default=None)
     input_file_ids_json: str = Field(default="[]", description="输入文件 ID JSON")
+    user_prompt: str | None = Field(default=None, description="用户提供的文档生成要求。")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

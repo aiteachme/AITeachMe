@@ -176,6 +176,20 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
+    "docgen_job": {
+        "id",
+        "subject",
+        "status",
+        "progress",
+        "current_step",
+        "total_chapters",
+        "completed_chapters",
+        "error_message",
+        "input_file_ids_json",
+        "user_prompt",
+        "created_at",
+        "updated_at",
+    },
 }
 
 _ASSESSMENT_TABLES: set[str] = {
@@ -333,11 +347,34 @@ def _validate_runtime_schema(engine) -> None:
                 missing_columns=missing_columns,
                 existing_columns=sorted(existing_columns),
             )
-            raise RuntimeError(
-                "当前开发数据库 schema 已过期。"
-                f"表 `{table_name}` 缺少字段: {', '.join(missing_columns)}。"
-                f"请备份后删除 `{resolved_db_path}` 并重启服务。"
+            raise OutdatedSchemaError(
+                table_name=table_name,
+                missing_columns=missing_columns,
+                existing_columns=sorted(existing_columns),
             )
+
+
+def _backup_outdated_db(db_path: Path) -> Path:
+    """备份旧数据库与侧车文件，为自动重建让路。"""
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_path = db_path.with_name(f"{db_path.stem}.schema_outdated.{timestamp}{db_path.suffix}")
+    index = 1
+    while backup_path.exists():
+        backup_path = db_path.with_name(
+            f"{db_path.stem}.schema_outdated.{timestamp}.{index}{db_path.suffix}"
+        )
+        index += 1
+
+    db_path.rename(backup_path)
+    for sidecar_suffix in ("-wal", "-shm", "-journal"):
+        old_sidecar = Path(f"{db_path}{sidecar_suffix}")
+        if not old_sidecar.exists():
+            continue
+        new_sidecar = Path(f"{backup_path}{sidecar_suffix}")
+        old_sidecar.rename(new_sidecar)
+
+    return backup_path
 
 
 def _ensure_assessment_schema_integrity(engine) -> None:
@@ -364,29 +401,6 @@ def _ensure_assessment_schema_integrity(engine) -> None:
             table_count=len(_ASSESSMENT_TABLES),
             ensured_indexes=["uq_review_task_pending", "uq_grade_job_active"],
         )
-
-
-def init_db() -> None:
-    """初始化数据库与向量表。"""
-
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = db_path.with_name(f"{db_path.stem}.schema_outdated.{timestamp}{db_path.suffix}")
-    index = 1
-    while backup_path.exists():
-        backup_path = db_path.with_name(
-            f"{db_path.stem}.schema_outdated.{timestamp}.{index}{db_path.suffix}"
-        )
-        index += 1
-
-    db_path.rename(backup_path)
-    for sidecar_suffix in ("-wal", "-shm", "-journal"):
-        old_sidecar = Path(f"{db_path}{sidecar_suffix}")
-        if not old_sidecar.exists():
-            continue
-        new_sidecar = Path(f"{backup_path}{sidecar_suffix}")
-        old_sidecar.rename(new_sidecar)
-
-    return backup_path
 
 
 def _init_db_once(engine, settings) -> None:

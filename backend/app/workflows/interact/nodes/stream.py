@@ -1,4 +1,10 @@
-"""Streaming node builders for the interact workflow."""
+"""Streaming node builders for the interact workflow.
+
+Reads DB: none.
+Writes DB: none directly; persistence happens in the next node.
+Writes FS: none.
+Idempotency: non-idempotent external LLM stream; on rerun it generates a fresh assistant response.
+"""
 
 from __future__ import annotations
 

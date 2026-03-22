@@ -49,6 +49,9 @@ GLOBAL_OUTLINE_PROMPT = """\
 - 各文本块的局部标题汇总：
 {local_outlines}
 
+## 用户补充要求
+{user_prompt}
+
 ## 要求
 1. 组织为"章-节"的两级结构（chapter → section）
 2. 每一章应有一个概括性的章标题
@@ -86,6 +89,9 @@ WRITER_PROMPT = """\
 - 章节标题：{chapter_title}
 - 章节序号：第 {chapter_index} 章（共 {total_chapters} 章）
 
+## 用户补充要求
+{user_prompt}
+
 ## 上一节摘要（防重复）
 {prev_summary}
 
@@ -120,6 +126,9 @@ REVIEWER_PROMPT = """\
 
 ## 文档内容
 {document}
+
+## 用户补充要求
+{user_prompt}
 
 ## 检查项
 1. 是否有且仅有一个一级标题（`#`）

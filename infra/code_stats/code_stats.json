@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T09:52:08.196467",
-  "total_commits_analyzed": 164,
+  "generated_at": "2026-03-22T10:52:45.625547",
+  "total_commits_analyzed": 169,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1313,6 +1313,46 @@
       "code_lines": 39402,
       "other_lines": 12387,
       "message": "Merge branch 'dev_lx'"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "9b726b0",
+      "total_lines": 52457,
+      "code_lines": 39726,
+      "other_lines": 12731,
+      "message": "docs: 强化 Ingest 与 Digest 数据库重构规范"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "6533b0d",
+      "total_lines": 52454,
+      "code_lines": 39725,
+      "other_lines": 12729,
+      "message": "chore: 优化logger"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "5a1dc27",
+      "total_lines": 51789,
+      "code_lines": 39402,
+      "other_lines": 12387,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "d3f119d",
+      "total_lines": 52214,
+      "code_lines": 39611,
+      "other_lines": 12603,
+      "message": "feat: 打通上传即解析与知识文档一体化流程"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "5be287e",
+      "total_lines": 52928,
+      "code_lines": 40324,
+      "other_lines": 12604,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }

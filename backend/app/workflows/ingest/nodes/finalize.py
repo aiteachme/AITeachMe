@@ -1,4 +1,10 @@
-"""Finalize nodes for ingest workflows."""
+"""Finalize nodes for ingest workflows.
+
+Reads DB: ``raw_file``.
+Writes DB: final ``raw_file`` success / failure state and ingest readiness.
+Writes FS: no new files; final state points at markdown/assets written earlier in the workflow.
+Idempotency: success/failure finalization rewrites the same record for the same ``raw_file``.
+"""
 
 from __future__ import annotations
 

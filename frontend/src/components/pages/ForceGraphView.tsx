@@ -19,9 +19,9 @@ import {
   graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
 } from "../../api/generated/knowledge";
 import { ExternalLink } from "lucide-react";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
 
 /* ---------- 节点类型配色（Canvas 用 hex） ---------- */
 
@@ -171,7 +171,7 @@ function NodeDetailSidebar({
             <Tag className="w-3 h-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {aliases.map((a) => (
+            {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
               <span
                 key={a.id}
                 className={`text-xs px-2 py-0.5 rounded-full ${
@@ -191,7 +191,7 @@ function NodeDetailSidebar({
             <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
-            {incidentEdges.map((edge) => (
+            {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
               <button
                 key={edge.id}
                 onClick={() => onNavigate(edge.other_node_id)}
@@ -215,7 +215,7 @@ function NodeDetailSidebar({
             <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {evidenceList.map((ev) => (
+            {evidenceList.map((ev: { id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button
                 key={ev.id}
                 onClick={() => onEvidenceClick?.(ev.id)}
@@ -295,10 +295,10 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     let filteredNodes = rawData.nodes ?? [];
     if (filterType) {
       filteredNodes = (rawData.nodes ?? []).filter(
-        (n) => n.node_type.toLowerCase() === filterType.toLowerCase(),
+        (n: GraphNode) => n.node_type.toLowerCase() === filterType.toLowerCase(),
       );
     }
-    const nodes: GraphNode[] = filteredNodes.map((n) => {
+    const nodes: GraphNode[] = filteredNodes.map((n: GraphNode) => {
       nodeIdSet.add(n.id);
       return {
         id: n.id,
@@ -309,8 +309,8 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
     });
 
     const links: GraphLink[] = (rawData.edges ?? [])
-      .filter((e) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
-      .map((e) => ({
+      .filter((e: { source_node_id: number; target_node_id: number }) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
+      .map((e: { source_node_id: number; target_node_id: number; edge_type: string; confidence: number; weight: number }) => ({
         source: e.source_node_id,
         target: e.target_node_id,
         edge_type: e.edge_type,

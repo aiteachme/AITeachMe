@@ -234,6 +234,14 @@ class NoPublishedCurriculumSnapshotError(AITeachMeError):
         super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照。")
 
 
+class NoReadyFilesForDocGenError(AITeachMeError):
+    error_code = "NO_READY_FILES_FOR_DOCGEN"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 暂无已解析完成的文件，无法生成知识文档。")
+
+
 class SubjectBuildLockConflictError(AITeachMeError):
     error_code = "SUBJECT_BUILD_LOCK_CONFLICT"
     status_code = HTTPStatus.CONFLICT

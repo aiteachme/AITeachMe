@@ -24,8 +24,8 @@ import {
   previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
 } from "../../api/generated/subjects";
 import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
 import { getApiErrorMessage } from "../../api/client";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
@@ -297,7 +297,7 @@ export function Sidebar() {
             </div>
           )}
 
-          {subjects.map((subject) => (
+          {subjects.map((subject: SubjectItem) => (
             <div key={subject.subject_id} className="mb-2">
               <div className="group flex items-center">
                 <button

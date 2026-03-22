@@ -1,4 +1,12 @@
-"""Digest curriculum workflow nodes and routing."""
+"""Digest curriculum workflow nodes and routing.
+
+Reads DB: graph entities, prior curriculum versions, and the active derive job.
+Writes DB: ``curriculum_derive_job``, ``teaching_unit*``, ``theme_tree*``,
+``prereq_dag*``, ``curriculum_snapshot`` and version publish/archive flags.
+Writes FS: none.
+Idempotency: reruns target the same derive job and replace the active published versions
+through explicit publish/archive transitions.
+"""
 
 from __future__ import annotations
 

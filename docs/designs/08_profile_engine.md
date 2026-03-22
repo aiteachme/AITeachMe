@@ -1,313 +1,204 @@
 # 08. Profile 引擎
 
 ## 1. 目标与职责
-Profile 引擎负责把学习过程中的行为沉淀为可持续利用的学习状态。
 
-它在系统中的职责不只是做一个统计页，而是承担一层“学习状态层”：
+Profile 负责把学习过程沉淀成可持续利用的学习状态。它不只是分析页，而是整套教学系统的状态层，主要回答：
 
-- 记录掌握度
-- 标记薄弱点
-- 汇总错题
-- 生成报告
-- 为对话和测评提供个性化上下文
-
-如果说 Digest 负责建知识世界，Profile 负责描述学习者在这个知识世界中的当前位置。
+- 用户现在会什么、不会什么
+- 哪些单元需要复习
+- 哪些薄弱点会影响后续学习顺序
+- 哪些状态应该送回 Interact 和 Examine
 
 ---
 
 ## 2. 当前实现落点
 
-当前代码里，Profile 主要落在以下位置：
+当前 Profile 同样处于双轨期。
+
+### 2.1 legacy 路径
 
 - 前端页面：`frontend/src/pages/AnalysisPage.tsx`
 - 后端资源组：`profile`
-- 业务编排：`backend/app/services/profile_service.py`
-- Agent：`backend/app/agents/profile/reporter.py`
-- 核心对象：`UserProfile`、`Mistake`、`ReportData`
+- 业务入口：`backend/app/services/profile_service.py`
+- 关键模型：`user_profile`、`mistake`
 
-当前这层已经能支撑最小可用画像，但从设计上还有很大的成长空间。
+### 2.2 workflow-backed 新路径
+
+- 后端资源组：`assessment`
+- 业务入口：`backend/app/services/assessment_service.py`
+- 工作流编排：`backend/app/workflows/profile/*`
+- 关键模型：
+  - `user_knowledge_state`
+  - `review_task`
+  - 以及由 Examine 触发的 `user_answer_attempt`
 
 ---
 
-## 3. Pipeline 设计
+## 3. 当前主 Pipeline
 
-### 3.1 学习状态写入 Pipeline
+### 3.1 legacy 画像链路
 
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 学习事件产生 | 当前主要来自 `Examine` | 判卷结果、知识点、对错记录 | 原始学习事件 |
-| 2. 事件聚合 | `_update_profiles_from_grading` | 题目知识点、`grading_items` | 按知识点聚合的 attempts/correct |
-| 3. 状态更新 | `profile_repo.upsert_profile` | `user_id`、subject、knowledge_point、统计值 | 最新 `UserProfile` |
-| 4. 薄弱点形成 | `get_weak_points` | 全量或局部画像状态 | 薄弱点集合 |
+| 1. 测评结果回流 | legacy `exams_service` | 判卷结果 | 知识点级统计 |
+| 2. 画像更新 | `profile_repo.upsert_profile` | knowledge point、attempt/correct | `user_profile` |
+| 3. 薄弱点查询 | `profile_service` | `subject` | 薄弱点列表、学习报告 |
+| 4. 错题本查询 | `profile_service.list_mistakes` | `subject` | `mistake` 列表 |
 
-### 3.2 状态读取与报告 Pipeline
+### 3.2 workflow-backed 新状态链路
 
-| 步骤 | 子模块 | 输入 | 输出 |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| 1. 画像列表读取 | `list_profiles` | subject、分页参数 | `ProfileItem[]` |
-| 2. 总体掌握度计算 | `get_report` | 全量画像记录 | `overall_mastery` |
-| 3. 薄弱点摘要 | `get_weak_points` | 画像状态、阈值、limit | Top 薄弱点 |
-| 4. 建议生成 | `generate_report_suggestions` | 总体掌握度、薄弱点摘要 | 建议文本列表 |
-| 5. 错题本读取 | `list_mistakes` | subject、分页参数 | `MistakeItem[]` |
-| 6. 前端展示 | `AnalysisPage` | 画像、报告、错题数据 | 分析页、后续跳转入口 |
+| 1. 判卷完成 | `workflows/examine/exam_grade_workflow.py` | 已判卷试卷 | 进入状态回流 |
+| 2. 掌握度更新 | `workflows/profile/mastery_updater.py` | `exam_paper_item`、`user_answer_attempt` | `user_knowledge_state` |
+| 3. 复习调度 | `workflows/profile/review_scheduler.py` | 更新后的状态 | `review_task` |
+| 4. 薄弱分析 | `workflows/profile/weakness_analyzer.py` | 掌握度、答题记录、课程结构 | 薄弱排序结果 |
+| 5. assessment 查询 | `assessment_service` | `subject`、用户 | mastery overview、review tasks |
 
-### 3.3 关键子模块输入输出
-
-- 事件聚合模块
-  输入：测评结果、题目知识点、用户标识。
-  输出：每个知识点的 attempts/correct 增量。
-- 画像更新模块
-  输入：知识点统计值、历史画像。
-  输出：更新后的 `UserProfile`。
-- 薄弱点排序模块
-  输入：画像集合、阈值、limit。
-  输出：按掌握度排序的薄弱点列表。
-- 报告生成模块
-  输入：总体掌握度、薄弱点摘要。
-  输出：自然语言学习建议。
-- 错题聚合模块
-  输入：`Mistake`、`AnswerRecord`、`Question`、`Exam` 关联数据。
-  输出：可供前端展示的错题本条目。
+---
 
 ## 4. 核心设计原则
 
-### 4.1 画像是状态层，不是报表层
+### 4.1 Profile 是状态层，不是报表层
 
-Profile 的正确定位不是“把已有数据做成图表”，而是维护一个可以被别的模块直接消费的学习状态层。
+Profile 的核心价值不在于“画了几张图”，而在于它能否被其他引擎直接消费。
 
-它的输出应服务：
+### 4.2 状态要尽量锚定稳定对象
 
-- Chat 的上下文装配
-- Examine 的出题范围与难度
-- 学习报告与复习建议
-- 错题复盘与专项练习
+新链路优先锚定：
 
-### 4.2 画像必须落到具体知识粒度
+- `teaching_unit_id`
+- 知识节点链接
+- `curriculum_snapshot`
 
-总体得分可以帮助概览，但真正能指导教学的状态，一定要落到具体粒度，例如：
+这比只依赖 `knowledge_point` 字符串更稳定。
 
-- 知识点
-- Teaching Unit
-- 章节
-- 先修链路
+### 4.3 学习状态应该同时有强度、时间性和任务性
 
-当前项目已经具备知识点级画像雏形，后续设计上值得继续往更稳定粒度延伸。
-
-### 4.3 画像不应只记录结果，还应记录置信度与时间性
-
-同样是 `80% mastery`，其含义可能完全不同：
-
-- 做过 1 题答对
-- 做过 20 题最近连续退步
-- 很久没练但历史正确率高
-
-因此 Profile 的设计长期应区分：
+当前新链路已经开始把状态拆成：
 
 - 掌握度
-- 样本量
-- 近期趋势
-- 遗忘风险
+- 置信度
+- 稳定性
+- 遗忘到期时间
+- 待复习任务
 
-### 4.4 错题是画像的一部分，而不是旁路数据
+这比旧的单一正确率画像更适合教学闭环。
 
-错题本不应被视为单独附属模块。对教学系统来说，错题数据天然就是画像的一部分，因为它直接表达了：
+### 4.4 状态必须接回其他引擎
 
-- 哪里不会
-- 怎么错的
-- 是否反复错
-- 错在哪类知识上
+Profile 的输出至少要能回到：
 
-### 4.5 画像应优先服务闭环
-
-Profile 的设计价值，不在于做得多复杂，而在于它是否真的能回到：
-
-- 问答
-- 测评
-- 复习
-- 课程安排
-
-如果画像只停留在展示页，就没有真正发挥作用。
+- Interact：弱项、复习上下文、错题复盘
+- Examine：组卷优先级、薄弱点命中、复习任务驱动的测评
 
 ---
 
-## 5. 设计方法
+## 5. 数据库写入对象
 
-### 5.1 画像锚点设计
+### 5.1 legacy 链路
 
-画像要先解决“挂在哪”。当前项目主要挂在：
+直接写入：
 
-- `subject`
-- `knowledge_point`
-- `user_id`
+- `user_profile`
+- `mistake`
 
-这是一种可工作的起点。长期设计上更理想的锚点可以逐步扩展为：
+### 5.2 workflow-backed 新链路
 
-- `knowledge_node_id`
-- `teaching_unit_id`
-- `theme_tree_node_id`
+直接写入：
 
-这样可以显著减少知识命名变化带来的状态漂移。
+- `user_knowledge_state`
+- `review_task`
 
-### 5.2 学习事件设计
+并消费：
 
-画像最好由学习事件驱动，而不是只由最终统计结果驱动。常见学习事件包括：
-
-- 答题正确
-- 答题错误
-- 错题重做
-- 聊天求助
-- 章节学习完成
-- 选段精读
-
-当前项目主要使用考试结果驱动画像，这是合理起点；但设计上应把“学习事件层”视为后续自然扩展点。
-
-### 5.3 掌握度设计
-
-掌握度是 Profile 最核心的指标之一。设计上可分阶段实现：
-
-1. 简单正确率
-2. 时间衰减后的正确率
-3. 带置信度的掌握度
-4. 带知识追踪的掌握度
-
-当前代码处在第一阶段，这并不意味着后续只能停在这个层面。
-
-### 5.4 薄弱点设计
-
-薄弱点不只是“最低分列表”，更适合综合判断：
-
-- 当前 mastery
-- 最近错误频率
-- 先修链位置
-- 是否长期未复习
-
-如果后续把这层做好，Profile 就不只是告诉用户“哪里差”，还能告诉系统“下一步该怎么教”。
-
-### 5.5 报告设计
-
-学习报告不应只是情绪化总结，而应尽量围绕结构化状态生成，例如：
-
-- 整体掌握度
-- Top 薄弱点
-- 近期进步与退步
-- 建议优先复习顺序
-- 建议进入哪类练习或对话模式
-
-当前报告层已经具备雏形，后续适合把它做得更像“行动建议生成器”。
-
-### 5.6 错题本设计
-
-错题本的高价值设计不只是列表展示，而是支持：
-
-- 按知识点筛选
-- 按错因筛选
-- 按时间筛选
-- 从错题进入复盘
-- 从错题进入再练
-
-这会让错题本从静态记录升级为主动训练入口。
+- `user_answer_attempt`
+- `exam_paper`
+- `exam_paper_item`
+- `curriculum_snapshot`
 
 ---
 
-## 6. 可结合的技术方法
+## 6. 本地落盘对象
 
-### 6.1 统计型画像
+当前 Profile 以数据库为主，没有强依赖的正式本地业务文件。
 
-当前最适合继续使用的基础方法是统计型画像，例如：
+如需补调试摘要，统一写入：
 
-- 正确率
-- 尝试次数
-- 最近错误次数
-- Top 薄弱点
+- `data/<subject>/debug/profile.mastery/<run_or_job_id>/`
+- `data/<subject>/debug/profile.review/<run_or_job_id>/`
+- `data/<subject>/debug/profile.weakness/<run_or_job_id>/`
 
-它简单、稳定、可解释，适合作为底座。
+建议只保存：
 
-### 6.2 时间衰减模型
-
-后续如果要让画像更符合学习现实，非常适合加入时间衰减，例如：
-
-- 最近做题权重更高
-- 很久未练的知识点自动下调可信度
-- 连续正确 / 连续错误形成趋势信号
-
-### 6.3 知识追踪模型
-
-当数据积累更多后，Profile 非常适合结合：
-
-- BKT
-- 简化的 mastery update 规则
-- 更复杂的神经知识追踪方法
-
-这类技术不需要一开始就上线，但设计上值得预留：
-
-- 学习事件
-- 时间戳
-- 稳定锚点
-
-### 6.4 图谱驱动画像
-
-后续还可以把 Digest 结构引入画像，例如：
-
-- 节点掌握度汇聚成 Teaching Unit 掌握度
-- Unit 掌握度汇聚成章节热区
-- DAG 上的薄弱链路用于推荐先补哪一段
-
-这会让 Profile 从“孤立分数表”升级为“结构化学习地图”。
-
-### 6.5 报告生成技术
-
-报告层适合继续采用：
-
-- 结构化数据先计算
-- LLM 再负责自然语言建议
-
-这样既能保证报告有数据基础，也能保证语言更适合作为学习建议。
+- 状态聚合摘要
+- 薄弱排序结果
+- 复习任务变更摘要
 
 ---
 
-## 7. 可以继续长出的能力
+## 7. 关键状态推进
 
-Profile 后续很适合扩展以下方向：
+### 7.1 legacy 路径
 
-- 知识点掌握度热图
-- Teaching Unit 雷达图
-- 章节覆盖率
-- 遗忘风险提示
-- 最近进步曲线
-- 错题类型分布
-- 画像驱动的学习计划
-- 画像驱动的专项出题
-- 画像驱动的对话模式切换
-- 画像驱动的复习节奏
+主要依赖：
 
-这些能力都能明显提升系统的“个性化教学感”。
+- `user_profile.mastery`
+- `mistake`
 
----
+来表达学习状态和错题积累。
 
-## 8. 开发关注点
+### 7.2 workflow-backed 新路径
 
-### 8.1 当前画像仍主要由考试驱动
+新的状态对象包括：
 
-当前画像主要从考试结果回流得到，而聊天、精读、单元学习等行为尚未系统化进入画像层。后续如果增强 Profile，首先应考虑事件来源的扩展。
+- `user_knowledge_state`
+  - mastery score
+  - confidence score
+  - stability score
+  - repetition count
+  - forgetting due
+- `review_task`
+  - pending
+  - completed
+  - expired
 
-### 8.2 当前锚点仍主要是字符串
-
-当前 `knowledge_point` 字符串作为主锚点的方式足够轻量，但长期稳定性有限，因此在做更复杂画像前，最好同步考虑与图谱或单元的稳定关联。
-
-### 8.3 前端还没有把错题本用起来
-
-后端已经具备错题查询能力，但前端主页面还没有充分消费这部分数据。对于 Profile 来说，这是一块非常自然、也非常值得优先利用的输出层。
+这让“画像”从静态概览变成了可以驱动复习和出题的可执行状态层。
 
 ---
 
-## 9. 总结
+## 8. 节点到表责任
 
-Profile 引擎的价值不在于“展示了多少统计图”，而在于它是否真正承担了学习状态层的职责。
+| 模块 | 读 DB | 写 DB | 写 FS |
+| --- | --- | --- | --- |
+| `mastery_updater.py` | `exam_paper`、`exam_paper_item`、`user_answer_attempt`、已有 `user_knowledge_state` | `user_knowledge_state` | 无 |
+| `review_scheduler.py` | `user_knowledge_state`、已有 `review_task` | `review_task`、状态相关字段 | 无 |
+| `weakness_analyzer.py` | `user_knowledge_state`、`user_answer_attempt`、`curriculum_snapshot`、课程结构对象 | 无 | 无 |
+| legacy `profile_service` 链路 | `user_profile`、`mistake` | `user_profile` | 无 |
 
-对 AITeachMe 来说，Profile 最值得持续加强的三件事是：
+---
 
-- 用稳定锚点描述学习状态
-- 用学习事件不断更新状态
-- 把状态重新送回对话、测评和复习流程
+## 9. 开发关注点
 
-只要这三件事持续做实，Profile 就会从一个分析页升级成整套系统的个性化中枢。
+### 9.1 不能再把 UserProfile 当成唯一画像对象
+
+`user_profile` 仍在线，但已经不是系统唯一、也不是长期最值得强化的学习状态层。
+
+### 9.2 新状态层是 Interact 和 Examine 的共同输入
+
+`user_knowledge_state` 和 `review_task` 的价值，不只是分析页展示，而是驱动下一轮对话与测评。
+
+### 9.3 文档必须明确双轨现状
+
+任何设计文档如果继续只讲 `UserProfile + Mistake`，都会和当前数据库与 workflow 真相失配。
+
+---
+
+## 10. 总结
+
+Profile 当前已经从“掌握度统计页”演进成双轨状态层：
+
+- legacy 链路继续服务现有 `profile` API
+- workflow-backed 新链路已经落到 `user_knowledge_state` 与 `review_task`
+
+后续开发应优先强化新链路，同时继续在文档中准确说明两套状态对象各自的责任、读写边界和消费方，避免前端、后端和设计文档再出现状态模型漂移。

@@ -18,7 +18,7 @@ import type {
   ReviewTaskResponse,
   TeachingUnitResponse,
 } from "../api/generated/model";
-import { unwrapOrvalResponse } from "../api/generated/utils";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 interface DisplayMasteryState extends MasteryStateResponse {
   display_name: string;

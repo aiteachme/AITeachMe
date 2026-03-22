@@ -22,8 +22,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
 import { getApiErrorMessage, postSseJson } from "../api/client";
-import { mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost } from "../api/generated/knowledge";
-import { unwrapOrvalResponse } from "../api/generated/utils";
+import { apiClient } from "../api/client";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -60,6 +59,34 @@ interface FloatingToolbar {
   top: number;
   left: number;
   selectionViewportTop: number;
+}
+
+interface ApiResponse<T> {
+  code: number;
+  data: T;
+}
+
+interface DocGenJobResponse {
+  id: number;
+  subject: string;
+  status: string;
+  progress: number;
+  current_step?: string | null;
+  total_chapters?: number;
+  completed_chapters?: number;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DocGenGetResponse {
+  exists: boolean;
+  markdown?: string;
+  merged_path?: string | null;
+  updated_at?: string | null;
+  job?: DocGenJobResponse | null;
+  source_file_ids?: number[];
+  prompt?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -448,13 +475,23 @@ export function DocPage() {
       if (!subjectId) {
         throw new Error("缺少学科 ID，无法加载知识文档。");
       }
-      const response = await mockFullMarkdownApiV1SubjectsSubjectKnowledgeMockFullMarkdownPost(subjectId);
-      return unwrapOrvalResponse(response)?.markdown ?? "";
+      const response = await apiClient<ApiResponse<DocGenGetResponse>>({
+        method: "POST",
+        url: `/api/v1/subjects/${subjectId}/knowledge/docgen/get`,
+      });
+      return response.data;
     },
     enabled: Boolean(subjectId),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) {
+        return 2500;
+      }
+      return data.exists && (data.markdown ?? "").trim().length > 0 ? false : 2500;
+    },
   });
-  const markdown = docMarkdownQuery.data ?? "";
-  const hasDocMarkdown = markdown.trim().length > 0;
+  const markdown = docMarkdownQuery.data?.markdown ?? "";
+  const hasDocMarkdown = Boolean(docMarkdownQuery.data?.exists && markdown.trim().length > 0);
   const showDocGeneratingState = !docMarkdownQuery.isError && !hasDocMarkdown;
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
@@ -1543,4 +1580,3 @@ export function DocPage() {
     </div>
   );
 }
-

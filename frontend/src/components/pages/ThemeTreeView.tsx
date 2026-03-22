@@ -11,7 +11,7 @@ import {
 import { getApiErrorMessage, isApiErrorStatus } from "../../api/client";
 import { themeTreeCurrentApiV1SubjectsSubjectKnowledgeThemeTreeCurrentPost } from "../../api/generated/knowledge";
 import type { ThemeTreeNodeResponse, TreeUnitItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -207,7 +207,7 @@ export function ThemeTreeView({ subject }: { subject: string }) {
           </div>
         </div>
         <ul className="space-y-1">
-          {tree.map((node) => (
+          {tree.map((node: ThemeTreeNodeResponse) => (
             <TreeNode key={node.id} node={node} />
           ))}
         </ul>

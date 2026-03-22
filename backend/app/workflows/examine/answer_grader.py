@@ -1,4 +1,10 @@
-"""Exam grader: score attempts and label likely error causes."""
+"""判卷器：判分 + 错因标注。
+
+Reads DB: ``exam_paper``, ``exam_paper_item``, ``user_answer_attempt`` and referenced knowledge nodes.
+Writes DB: graded ``user_answer_attempt`` fields such as correctness, scores and error labels.
+Writes FS: none.
+Idempotency: reruns recompute grading for the same attempts and overwrite grading fields in place.
+"""
 
 from __future__ import annotations
 

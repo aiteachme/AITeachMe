@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import shutil
 import traceback
 import uuid
+from datetime import datetime
+from pathlib import Path
 
 import structlog
 from sqlmodel import Session, select
@@ -12,20 +15,94 @@ from sqlmodel import Session, select
 from app.core.database import managed_session
 from app.core.exceptions import (
     DigestJobNotFoundError,
+    NoReadyFilesForDocGenError,
+    RawFileNotFoundError,
     SubjectBuildLockConflictError,
 )
 from app.models.curriculum import CurriculumDeriveJob, CurriculumSnapshot
 from app.models.knowledge_graph import GraphDigestJob
+from app.models.raw_file import RawFile
 from app.repositories import curriculum_repo, kg_repo
+from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
+from app.repositories.knowledge import docgen_repo
 from app.schemas.knowledge import (
     CurriculumJobResponse,
     DigestBuildData,
+    DocGenBuildData,
+    DocGenGetResponse,
+    DocGenJobResponse,
     DigestStatusResponse,
     GraphDigestJobResponse,
+)
+from app.services.upload_support import (
+    build_docgen_intermediate_dir,
+    build_knowledge_docs_dir,
+    build_merged_knowledge_base_path,
 )
 from app.workflows.digest import run_curriculum_derive_workflow, run_graph_digest_workflow
 
 logger = structlog.get_logger()
+
+
+def _parse_json_int_list(payload: str | None) -> list[int]:
+    if not payload:
+        return []
+    try:
+        raw = json.loads(payload)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [int(item) for item in raw if isinstance(item, (int, str)) and str(item).isdigit()]
+
+
+def _markdown_ready(raw_file: RawFile) -> bool:
+    return bool(raw_file.markdown_path and Path(raw_file.markdown_path).exists())
+
+
+def _build_docgen_job_response(job) -> DocGenJobResponse:
+    return DocGenJobResponse.model_validate(job)
+
+
+def _collect_published_doc_source_ids(session: Session, subject: str) -> list[int]:
+    source_file_ids: set[int] = set()
+    for doc in docgen_repo.get_docs_by_subject(session, subject, status="published"):
+        source_file_ids.update(_parse_json_int_list(doc.source_file_ids))
+    return sorted(source_file_ids)
+
+
+def _select_ready_docgen_file_ids(
+    session: Session,
+    *,
+    subject: str,
+    file_ids: list[int] | None,
+) -> tuple[list[int], int]:
+    all_files = list_all_raw_files_by_subject(session, subject)
+    ready_file_ids = [raw_file.id for raw_file in all_files if raw_file.id is not None and _markdown_ready(raw_file)]
+    ready_file_count = len(ready_file_ids)
+
+    if file_ids is None:
+        accepted = ready_file_ids
+    else:
+        requested_items = list_raw_files_by_ids(session, subject, file_ids)
+        found_ids = {item.id for item in requested_items if item.id is not None}
+        missing_ids = [file_id for file_id in file_ids if file_id not in found_ids]
+        if missing_ids:
+            raise RawFileNotFoundError(missing_ids[0])
+        ready_set = set(ready_file_ids)
+        accepted = [file_id for file_id in file_ids if file_id in ready_set]
+
+    if not accepted:
+        raise NoReadyFilesForDocGenError(subject)
+
+    return accepted, ready_file_count
+
+
+def _reset_docgen_outputs(session: Session, *, subject: str) -> None:
+    docgen_repo.delete_docs_by_subject(session, subject)
+    for directory in (build_knowledge_docs_dir(subject), build_docgen_intermediate_dir(subject)):
+        if directory.exists():
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -308,30 +385,48 @@ def trigger_docgen_build(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int],
-) -> int:
-    """创建 DocGen 任务并返回 job_id。"""
+    file_ids: list[int] | None,
+    prompt: str | None,
+) -> DocGenBuildData:
+    """创建 DocGen 任务并返回聚合构建信息。"""
 
     from app.models.knowledge_doc import DocGenJob
-    from app.repositories.knowledge import docgen_repo
 
+    accepted_file_ids, ready_file_count = _select_ready_docgen_file_ids(
+        session,
+        subject=subject,
+        file_ids=file_ids,
+    )
+    _reset_docgen_outputs(session, subject=subject)
     job = docgen_repo.create_docgen_job(
         session,
         DocGenJob(
             subject=subject,
             status="pending",
-            input_file_ids_json=json.dumps(sorted(file_ids)),
+            input_file_ids_json=json.dumps(sorted(accepted_file_ids)),
+            user_prompt=(prompt or "").strip() or None,
         ),
     )
-    logger.info("docgen_build_triggered", subject=subject, job_id=job.id, file_ids=file_ids)
-    return job.id  # type: ignore[return-value]
+    logger.info(
+        "docgen_build_triggered",
+        subject=subject,
+        job_id=job.id,
+        accepted_file_ids=accepted_file_ids,
+        ready_file_count=ready_file_count,
+        has_prompt=bool(prompt and prompt.strip()),
+    )
+    return DocGenBuildData(
+        job_id=job.id,  # type: ignore[arg-type]
+        accepted_file_ids=accepted_file_ids,
+        prompt=(prompt or "").strip() or None,
+        ready_file_count=ready_file_count,
+    )
 
 
 async def run_docgen_background(*, subject: str, job_id: int) -> None:
     """后台异步执行 DocGen 工作流。"""
 
     from app.models.knowledge_doc import DocGenJob
-    from app.repositories.knowledge import docgen_repo
     from app.workflows.digest import run_docgen_workflow
 
     with managed_session() as session:
@@ -352,6 +447,7 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
                 subject=subject,
                 job_id=job_id,
                 file_ids=file_ids,
+                user_prompt=job.user_prompt,
             )
             if result.failed:
                 docgen_repo.update_docgen_job(
@@ -375,3 +471,37 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
             except Exception:
                 logger.exception("failed_to_mark_docgen_job_failed", job_id=job_id)
 
+
+def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
+    """聚合读取知识文档最终结果与最近任务状态。"""
+
+    merged_path = build_merged_knowledge_base_path(subject)
+    latest_job = docgen_repo.get_latest_docgen_job_by_subject(session, subject)
+    job_response = _build_docgen_job_response(latest_job) if latest_job is not None else None
+    prompt = latest_job.user_prompt if latest_job is not None else None
+    source_file_ids = (
+        _collect_published_doc_source_ids(session, subject)
+        if merged_path.exists()
+        else _parse_json_int_list(latest_job.input_file_ids_json if latest_job is not None else None)
+    )
+
+    if merged_path.exists():
+        return DocGenGetResponse(
+            exists=True,
+            markdown=merged_path.read_text(encoding="utf-8"),
+            merged_path=str(merged_path),
+            updated_at=datetime.fromtimestamp(merged_path.stat().st_mtime),
+            job=job_response,
+            source_file_ids=source_file_ids,
+            prompt=prompt,
+        )
+
+    return DocGenGetResponse(
+        exists=False,
+        markdown="",
+        merged_path=str(merged_path),
+        updated_at=None,
+        job=job_response,
+        source_file_ids=source_file_ids,
+        prompt=prompt,
+    )

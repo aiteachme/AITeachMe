@@ -17,6 +17,7 @@ class DocGenState(TypedDict, total=False):
     subject: str
     job_id: int
     file_ids: list[int]
+    user_prompt: str | None
 
     # ── load_files 产出 ──
     raw_chunks: list[dict[str, Any]]

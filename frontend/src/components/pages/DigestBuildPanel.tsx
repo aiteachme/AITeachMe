@@ -18,7 +18,7 @@ import {
 } from "../../api/generated/knowledge";
 import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
 import type { FileItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 
 async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
   return unwrapOrvalResponse(

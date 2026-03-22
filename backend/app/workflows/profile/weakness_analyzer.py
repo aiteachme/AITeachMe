@@ -1,4 +1,11 @@
-"""薄弱分析：多维度优先级排序。"""
+"""薄弱分析：多维度优先级排序。
+
+Reads DB: ``user_knowledge_state``, ``user_answer_attempt``, ``exam_paper_item`` and current
+curriculum snapshot structures.
+Writes DB: none.
+Writes FS: none.
+Idempotency: read-only analysis over the current persisted mastery and answer history.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,12 @@
-"""掌握度更新：纯函数 + 试卷驱动更新流程。"""
+"""掌握度更新：纯函数 + 试卷驱动更新流程。
+
+Reads DB: ``exam_paper``, ``exam_paper_item``, ``user_answer_attempt`` and existing
+``user_knowledge_state`` rows.
+Writes DB: ``user_knowledge_state`` mastery/confidence/stability aggregates and related timestamps.
+Writes FS: none.
+Idempotency: guarded by paper-consumption semantics; once a paper is consumed, reruns should not
+double-apply the same attempts.
+"""
 
 from __future__ import annotations
 

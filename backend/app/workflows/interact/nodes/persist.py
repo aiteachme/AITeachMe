@@ -1,4 +1,10 @@
-"""Persistence node builders for the interact workflow."""
+"""Persistence node builders for the interact workflow.
+
+Reads DB: none.
+Writes DB: ``chat_message`` user/assistant turn pairs with serialized citation contexts.
+Writes FS: none.
+Idempotency: should run once per completed turn; rerunning would create another persisted pair.
+"""
 
 from __future__ import annotations
 

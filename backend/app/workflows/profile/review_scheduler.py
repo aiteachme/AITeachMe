@@ -1,4 +1,11 @@
-"""掌握度复习调度：SM-2 纯函数 + ReviewTask 调度。"""
+"""掌握度复习调度：SM-2 纯函数 + ReviewTask 调度。
+
+Reads DB: ``user_knowledge_state`` and existing ``review_task`` rows.
+Writes DB: ``review_task`` plus review-related scheduling fields on ``user_knowledge_state``.
+Writes FS: none.
+Idempotency: reruns reconcile pending tasks for the same user/subject/target instead of creating
+unbounded duplicates.
+"""
 
 from __future__ import annotations
 

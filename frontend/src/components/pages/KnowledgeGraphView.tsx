@@ -19,12 +19,12 @@ import {
 } from "../../api/generated/knowledge";
 import type { KnowledgeNodeResponse } from "../../api/generated/model";
 import { getApiErrorMessage } from "../../api/client";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
 
 /* ---------- 节点类型配色 ---------- */
 
@@ -137,7 +137,7 @@ function NodeDetailPanel({
             <Tag className="w-3 h-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {aliases.map((a) => (
+            {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
               <span
                 key={a.id}
                 className={`text-xs px-2 py-0.5 rounded-full ${
@@ -160,7 +160,7 @@ function NodeDetailPanel({
             <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
-            {incidentEdges.map((edge) => (
+            {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
               <button
                 key={edge.id}
                 onClick={() => onNavigate(edge.other_node_id)}
@@ -187,7 +187,7 @@ function NodeDetailPanel({
             <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {evidenceList.map((ev) => (
+            {evidenceList.map((ev: { id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button
                 key={ev.id}
                 onClick={() => onEvidenceClick(ev.id)}

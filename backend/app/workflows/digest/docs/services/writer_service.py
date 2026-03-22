@@ -33,6 +33,7 @@ async def write_chapter(
     chapter_index: int,
     total_chapters: int,
     global_outline_text: str,
+    user_prompt: str | None,
     prev_summary: str,
     next_preview: str,
     source_content: str,
@@ -47,6 +48,7 @@ async def write_chapter(
         chapter_title=chapter_title,
         chapter_index=chapter_index,
         total_chapters=total_chapters,
+        user_prompt=user_prompt or "（无额外要求）",
         prev_summary=prev_summary or "（本章为第一章，无上一节内容）",
         source_content=source_content,
         next_preview=next_preview or "（本章为最后一章，无后续内容）",
@@ -62,11 +64,12 @@ async def write_chapter(
         return f"# {chapter_title}\n\n> 📌 本章概要：本章节自动生成失败，以下为原始素材内容。\n\n{source_content}"
 
 
-async def review_chapter(markdown: str, source_summary: str) -> dict:
+async def review_chapter(markdown: str, source_summary: str, *, user_prompt: str | None = None) -> dict:
     """调用 Reviewer Agent 质检单章。"""
     prompt = REVIEWER_PROMPT.format(
         document=markdown[:8000],
         source_summary=source_summary[:2000],
+        user_prompt=user_prompt or "（无额外要求）",
     )
     try:
         result = await acompletion(

@@ -13,7 +13,7 @@ import {
   unitsQueryApiV1SubjectsSubjectKnowledgeUnitsQueryPost,
 } from "../../api/generated/knowledge";
 import type { PrereqDagResponse, UnitDependencyItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../api/generated/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
@@ -131,7 +131,7 @@ function NoDependenciesView({ subject, dagData }: { subject: string; dagData: Pr
               教学单元（{units.length} 个，无先后顺序）
             </h3>
             <div className="space-y-2">
-              {units.map((unit) => (
+              {units.map((unit: { id: number; canonical_name: string; confidence: number }) => (
                 <div
                   key={unit.id}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 text-sm"
@@ -272,7 +272,7 @@ export function PrereqDagView({ subject }: { subject: string }) {
         <CardContent className="pt-6">
           <h3 className="text-sm font-medium text-slate-700 mb-3">依赖关系明细</h3>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {dependencies.map((dep) => {
+            {dependencies.map((dep: UnitDependencyItem) => {
               const typeInfo = DEP_TYPE_LABEL[dep.dependency_type] ?? {
                 label: dep.dependency_type,
                 color: "bg-slate-100 text-slate-600",
