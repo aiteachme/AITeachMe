@@ -12,15 +12,13 @@ import {
   ChevronDown,
   ChevronUp,
   Send,
-  MessageSquarePlus,
-  MoreHorizontal,
-  Trash2,
-  Clock,
   Bot,
+  Loader2,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
+import { sendChatApiV1SubjectsSubjectChatsSendPost } from "../api/generated/chats";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,10 +36,10 @@ interface Comment {
   id: string;
   anchorId: string;
   selectedText: string;
-  author: string;
+  role: "user" | "assistant";
   content: string;
   createdAt: number;
-  resolved: boolean;
+  streaming?: boolean;
 }
 
 interface FloatingComment {
@@ -486,71 +484,40 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
 
 function CommentCard({
   comment,
-  menuOpenId,
-  setMenuOpenId,
-  onResolve,
-  onDelete,
 }: {
   comment: Comment;
-  menuOpenId: string | null;
-  setMenuOpenId: (id: string | null) => void;
-  onResolve: (id: string) => void;
-  onDelete: (id: string) => void;
 }) {
+  const isAssistant = comment.role === "assistant";
   return (
     <div
       className={cn(
-        "w-full bg-white border border-slate-200 rounded-lg shadow-sm group hover:shadow-md transition-shadow",
-        comment.resolved && "opacity-50"
+        "w-full rounded-lg border shadow-sm transition-shadow",
+        isAssistant
+          ? "border-blue-100 bg-blue-50/60 hover:shadow-blue-100/70"
+          : "border-slate-200 bg-white hover:shadow-md"
       )}
     >
       <div className="px-3 py-2">
-        <div className="flex items-center justify-between mb-1">
+        <div className="mb-1 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-medium">
-              {comment.author[0]}
+            <div
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white",
+                isAssistant ? "bg-blue-500" : "bg-slate-900"
+              )}
+            >
+              {isAssistant ? "AI" : "我"}
             </div>
-            <span className="text-xs font-medium text-slate-700">{comment.author}</span>
-            <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-              <Clock className="w-2.5 h-2.5" />
+            <span className="text-xs font-medium text-slate-700">
+              {isAssistant ? "AI 助手" : "我"}
+            </span>
+            <span className="text-[10px] text-slate-400">
               {formatTime(comment.createdAt)}
             </span>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setMenuOpenId(menuOpenId === comment.id ? null : comment.id)}
-              className="p-0.5 rounded hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <MoreHorizontal className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-            {menuOpenId === comment.id && (
-              <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-20 min-w-[90px]">
-                <button
-                  onClick={() => onResolve(comment.id)}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
-                >
-                  {comment.resolved ? "重新打开" : "标记解决"}
-                </button>
-                <button
-                  onClick={() => onDelete(comment.id)}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 flex items-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  删除
-                </button>
-              </div>
-            )}
-          </div>
+          {comment.streaming && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
         </div>
-        {comment.selectedText && (
-          <p className="text-[11px] text-blue-500 mb-1 truncate">&ldquo;{comment.selectedText}&rdquo;</p>
-        )}
-        <p
-          className={cn(
-            "text-xs text-slate-600 leading-relaxed",
-            comment.resolved && "line-through"
-          )}
-        >
+        <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
           {comment.content}
         </p>
       </div>
@@ -562,21 +529,23 @@ function CommentThread({
   anchorId,
   title,
   comments,
+  selectedText,
+  draft,
+  isStreaming,
   isActive,
-  menuOpenId,
-  setMenuOpenId,
-  onResolve,
-  onDelete,
+  onDraftChange,
+  onSend,
   onJumpToAnchor,
 }: {
   anchorId: string;
   title: string;
   comments: Comment[];
+  selectedText: string;
+  draft: string;
+  isStreaming: boolean;
   isActive: boolean;
-  menuOpenId: string | null;
-  setMenuOpenId: (id: string | null) => void;
-  onResolve: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
   onJumpToAnchor: (id: string) => void;
 }) {
   return (
@@ -597,17 +566,49 @@ function CommentThread({
           {comments.length}
         </span>
       </div>
-      <div className="p-2 space-y-2">
+      {selectedText && (
+        <div className="px-3 py-2 border-b border-slate-100 bg-white/80">
+          <p className="truncate text-[11px] text-blue-500">&ldquo;{selectedText}&rdquo;</p>
+        </div>
+      )}
+      <div className="max-h-64 overflow-y-auto p-2 space-y-2">
         {comments.map((comment) => (
           <CommentCard
             key={comment.id}
             comment={comment}
-            menuOpenId={menuOpenId}
-            setMenuOpenId={setMenuOpenId}
-            onResolve={onResolve}
-            onDelete={onDelete}
           />
         ))}
+      </div>
+      <div className="border-t border-slate-200 bg-white p-2">
+        <textarea
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+          rows={2}
+          disabled={isStreaming}
+          placeholder={isStreaming ? "AI 正在回复..." : "继续追问这段内容..."}
+          className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:bg-slate-50 disabled:text-slate-400"
+        />
+        <div className="mt-2 flex items-center justify-end">
+          <button
+            onClick={onSend}
+            disabled={!draft.trim() || isStreaming}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+              draft.trim() && !isStreaming
+                ? "bg-blue-500 text-white hover:bg-blue-600"
+                : "bg-slate-100 text-slate-300"
+            )}
+          >
+            {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            发送
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -624,7 +625,8 @@ export function DocPage() {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [threadDrafts, setThreadDrafts] = useState<Record<string, string>>({});
+  const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
 
@@ -648,6 +650,7 @@ export function DocPage() {
   const selectedRangeRef = useRef<Range | null>(null);
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
+  const streamControllersRef = useRef(new Map<string, AbortController>());
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
@@ -698,6 +701,10 @@ export function DocPage() {
         window.clearTimeout(timer);
       }
       headingFlashTimersRef.current.clear();
+      for (const controller of streamControllersRef.current.values()) {
+        controller.abort();
+      }
+      streamControllersRef.current.clear();
     };
   }, []);
 
@@ -748,9 +755,8 @@ export function DocPage() {
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     const headingTop = container.scrollTop + (elRect.top - containerRect.top);
-    const centeredTop = headingTop - container.clientHeight / 2 + elRect.height / 2;
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, centeredTop));
+    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - 8));
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [flashHeading]);
@@ -768,6 +774,7 @@ export function DocPage() {
   }, []);
 
   const handleTocItemClick = useCallback((id: string) => {
+    setActiveHeading(id);
     scrollToHeading(id);
     if (isCompactPanels) {
       setActiveDrawer(null);
@@ -777,6 +784,14 @@ export function DocPage() {
   const dismissCommentComposer = useCallback(() => {
     setFloatingComment(null);
     setFloatingInput("");
+  }, []);
+
+  const clearSelectionHighlight = useCallback(() => {
+    selectedRangeRef.current = null;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      selection.removeAllRanges();
+    }
   }, []);
 
   const computeCommentComposerTop = useCallback((selectionViewportTop: number) => {
@@ -790,18 +805,17 @@ export function DocPage() {
     return Math.min(maxTop, Math.max(minTop, rawTop));
   }, []);
 
-  // Close floating toolbar when clicking outside
+  // Keep document selection behavior close to Feishu:
+  // any click outside toolbar clears highlighted range state.
   useEffect(() => {
-    if (!floatingToolbar) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (floatingRef.current && !floatingRef.current.contains(e.target as Node)) {
-        setFloatingToolbar(null);
-        selectedRangeRef.current = null;
-      }
+    const handlePointerDown = (e: MouseEvent) => {
+      if (floatingRef.current?.contains(e.target as Node)) return;
+      clearSelectionHighlight();
+      setFloatingToolbar(null);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [floatingToolbar]);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [clearSelectionHighlight]);
 
   // Keep user text selection highlighted after toolbar render.
   useEffect(() => {
@@ -821,36 +835,188 @@ export function DocPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [floatingToolbar]);
 
-  const addComment = useCallback(() => {
-    if (!floatingInput.trim() || !floatingComment) return;
+  const updateThreadDraft = useCallback((anchorId: string, value: string) => {
+    setThreadDrafts((prev) => {
+      if (prev[anchorId] === value) return prev;
+      return { ...prev, [anchorId]: value };
+    });
+  }, []);
+
+  const streamAssistantReply = useCallback(async (
+    anchorId: string,
+    selectedText: string,
+    question: string
+  ) => {
+    const text = question.trim();
+    if (!text) return;
+
+    const baseId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const userId = `${baseId}-user`;
+    const assistantId = `${baseId}-assistant`;
+    const now = Date.now();
+
     setComments((prev) => [
       ...prev,
       {
-        id: Date.now().toString(),
-        anchorId: floatingComment.anchorId,
-        selectedText: floatingComment.selectedText,
-        author: "我",
-        content: floatingInput.trim(),
-        createdAt: Date.now(),
-        resolved: false,
+        id: userId,
+        anchorId,
+        selectedText,
+        role: "user",
+        content: text,
+        createdAt: now,
+      },
+      {
+        id: assistantId,
+        anchorId,
+        selectedText,
+        role: "assistant",
+        content: "",
+        createdAt: now + 1,
+        streaming: true,
       },
     ]);
+    setThreadStreaming((prev) => ({ ...prev, [anchorId]: true }));
+
+    const previousController = streamControllersRef.current.get(anchorId);
+    if (previousController) {
+      previousController.abort();
+    }
+    const controller = new AbortController();
+    streamControllersRef.current.set(anchorId, controller);
+
+    const appendAssistantDelta = (delta: string) => {
+      if (!delta) return;
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId
+            ? { ...item, content: item.content + delta }
+            : item
+        )
+      );
+    };
+
+    try {
+      const subject = subjectId ?? "demo";
+      const responseData = await sendChatApiV1SubjectsSubjectChatsSendPost(
+        subject,
+        {
+          question: text,
+          source: "quick_chat",
+          selected_context: selectedText || undefined,
+        },
+        { adapter: "fetch", responseType: "stream" },
+        controller.signal
+      );
+
+      let received = false;
+
+      const consumeSsePayloadLine = (line: string) => {
+        if (!line.startsWith("data:")) return;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === "[DONE]") return;
+        try {
+          const parsed = JSON.parse(raw) as { content?: string };
+          if (typeof parsed.content === "string" && parsed.content.length > 0) {
+            received = true;
+            appendAssistantDelta(parsed.content);
+          }
+        } catch {
+          // Ignore malformed chunk.
+        }
+      };
+
+      if (responseData instanceof ReadableStream) {
+        const reader = responseData.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            consumeSsePayloadLine(line);
+          }
+        }
+        const trailing = buffer.trim();
+        if (trailing) {
+          consumeSsePayloadLine(trailing);
+        }
+      } else if (typeof responseData === "string") {
+        const lines = responseData.split("\n");
+        for (const line of lines) {
+          consumeSsePayloadLine(line);
+        }
+      } else if (
+        responseData &&
+        typeof responseData === "object" &&
+        "content" in responseData &&
+        typeof (responseData as { content?: unknown }).content === "string"
+      ) {
+        received = true;
+        appendAssistantDelta((responseData as { content: string }).content);
+      }
+
+      if (!received) {
+        setComments((prev) =>
+          prev.map((item) =>
+            item.id === assistantId
+              ? { ...item, content: "已收到问题，但当前没有返回内容。" }
+              : item
+          )
+        );
+      }
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || err.name !== "AbortError") {
+        setComments((prev) =>
+          prev.map((item) =>
+            item.id === assistantId
+              ? { ...item, content: "请求失败，请重试。" }
+              : item
+          )
+        );
+      }
+    } finally {
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === assistantId ? { ...item, streaming: false } : item
+        )
+      );
+
+      if (streamControllersRef.current.get(anchorId) === controller) {
+        streamControllersRef.current.delete(anchorId);
+        setThreadStreaming((prev) => ({ ...prev, [anchorId]: false }));
+      }
+    }
+  }, [subjectId]);
+
+  const addComment = useCallback(() => {
+    if (!floatingInput.trim() || !floatingComment) return;
+    const question = floatingInput.trim();
+    const { anchorId, selectedText } = floatingComment;
     setFloatingInput("");
+    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
     dismissCommentComposer();
     setFloatingToolbar(null);
-  }, [dismissCommentComposer, floatingInput, floatingComment]);
+    clearSelectionHighlight();
+    void streamAssistantReply(anchorId, selectedText, question);
+  }, [
+    clearSelectionHighlight,
+    dismissCommentComposer,
+    floatingComment,
+    floatingInput,
+    streamAssistantReply,
+  ]);
 
-  const deleteComment = useCallback((id: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== id));
-    setMenuOpenId(null);
-  }, []);
-
-  const resolveComment = useCallback((id: string) => {
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, resolved: !c.resolved } : c))
-    );
-    setMenuOpenId(null);
-  }, []);
+  const sendThreadReply = useCallback((anchorId: string, selectedText: string) => {
+    if (threadStreaming[anchorId]) return;
+    const question = (threadDrafts[anchorId] ?? "").trim();
+    if (!question) return;
+    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
+    void streamAssistantReply(anchorId, selectedText, question);
+  }, [streamAssistantReply, threadDrafts, threadStreaming]);
 
   const openCommentComposer = useCallback(() => {
     if (!floatingToolbar) return;
@@ -973,18 +1139,32 @@ export function DocPage() {
     };
   }, [computeCommentComposerTop, floatingComment?.anchorId, isCommentVisible]);
 
-  const unresolvedComments = comments.filter((c) => !c.resolved);
+  const activeStreamingCount = useMemo(
+    () => Object.values(threadStreaming).filter(Boolean).length,
+    [threadStreaming]
+  );
 
-  // Group comments by anchor for right-side threads
+  // Group QA messages by anchor for right-side threads
   const commentsByAnchor = useMemo(() => {
     const map = new Map<string, Comment[]>();
-    for (const c of unresolvedComments) {
+    for (const c of comments) {
       const list = map.get(c.anchorId) ?? [];
       list.push(c);
       map.set(c.anchorId, list);
     }
     return map;
-  }, [unresolvedComments]);
+  }, [comments]);
+
+  const selectedTextByAnchor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [anchorId, anchorComments] of commentsByAnchor.entries()) {
+      const match = anchorComments.find((item) => item.selectedText);
+      if (match?.selectedText) {
+        map.set(anchorId, match.selectedText);
+      }
+    }
+    return map;
+  }, [commentsByAnchor]);
 
   const commentsForAnchor = useCallback(
     (anchorId: string) => commentsByAnchor.get(anchorId)?.length ?? 0,
@@ -1114,7 +1294,7 @@ export function DocPage() {
     if (!isCommentVisible) return;
     const rafId = window.requestAnimationFrame(measureThreadHeights);
     return () => window.cancelAnimationFrame(rafId);
-  }, [commentThreads, floatingComment, measureThreadHeights, menuOpenId, isCommentVisible]);
+  }, [commentThreads, floatingComment, measureThreadHeights, isCommentVisible]);
 
   useEffect(() => {
     if (!isCommentVisible) return;
@@ -1196,11 +1376,14 @@ export function DocPage() {
     >
       <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
         <div className="flex items-center gap-2 text-slate-900">
-          <MessageSquarePlus className="w-4 h-4" />
-          <span className="text-sm font-semibold">评论</span>
+          <Bot className="w-4 h-4" />
+          <span className="text-sm font-semibold">问问 AI</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-slate-500">{unresolvedComments.length} 条待处理</span>
+          <span className="text-xs text-slate-500">
+            {commentThreads.length} 个片段
+            {activeStreamingCount > 0 ? ` · ${activeStreamingCount} 条回复中` : ""}
+          </span>
           <button
             onClick={() => jumpCommentThread(-1)}
             disabled={activeCommentIndex <= 0}
@@ -1210,8 +1393,8 @@ export function DocPage() {
                 ? "text-slate-300 cursor-not-allowed"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             )}
-            aria-label="定位上一条评论"
-            title="定位上一条评论"
+            aria-label="定位上一段对话"
+            title="定位上一段对话"
           >
             <ChevronUp className="w-4 h-4" />
           </button>
@@ -1224,15 +1407,15 @@ export function DocPage() {
                 ? "text-slate-300 cursor-not-allowed"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             )}
-            aria-label="定位下一条评论"
-            title="定位下一条评论"
+            aria-label="定位下一段对话"
+            title="定位下一段对话"
           >
             <ChevronDown className="w-4 h-4" />
           </button>
           <button
             onClick={closeCommentPanel}
             className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
-            aria-label="收起评论栏"
+            aria-label="收起问答栏"
           >
             <ChevronRight className={cn("w-4 h-4", isCompactPanels && "rotate-180")} />
           </button>
@@ -1260,7 +1443,7 @@ export function DocPage() {
                   dismissCommentComposer();
                 }
               }}
-              placeholder="添加评论..."
+              placeholder="基于这段内容向 AI 提问..."
               rows={3}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 resize-none"
               autoFocus
@@ -1283,7 +1466,7 @@ export function DocPage() {
                 )}
               >
                 <Send className="w-3 h-3" />
-                评论
+                发送
               </button>
             </div>
           </div>
@@ -1296,7 +1479,7 @@ export function DocPage() {
         {commentThreads.length === 0 ? (
           <div className="h-full p-3">
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-slate-500">选中文本后点击“评论”即可创建讨论</p>
+              <p className="text-sm text-slate-500">选中文本后点击“问问AI”即可开始对话</p>
             </div>
           </div>
         ) : (
@@ -1324,11 +1507,12 @@ export function DocPage() {
                     anchorId={anchorId}
                     title={tocTitleMap.get(anchorId) ?? anchorId}
                     comments={anchorComments}
+                    selectedText={selectedTextByAnchor.get(anchorId) ?? ""}
+                    draft={threadDrafts[anchorId] ?? ""}
+                    isStreaming={Boolean(threadStreaming[anchorId])}
                     isActive={activeCommentAnchorId === anchorId}
-                    menuOpenId={menuOpenId}
-                    setMenuOpenId={setMenuOpenId}
-                    onResolve={resolveComment}
-                    onDelete={deleteComment}
+                    onDraftChange={(value) => updateThreadDraft(anchorId, value)}
+                    onSend={() => sendThreadReply(anchorId, selectedTextByAnchor.get(anchorId) ?? "")}
                     onJumpToAnchor={scrollToHeading}
                   />
                 </div>
@@ -1401,13 +1585,13 @@ export function DocPage() {
                 "h-10 w-10 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm transition-colors flex items-center justify-center relative",
                 isCommentVisible ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:text-slate-900 hover:bg-white"
               )}
-              aria-label="切换评论抽屉"
-              title="评论"
+              aria-label="切换问答抽屉"
+              title="问问 AI"
             >
-              <MessageSquarePlus className="w-4 h-4" />
-              {unresolvedComments.length > 0 && (
+              <Bot className="w-4 h-4" />
+              {commentThreads.length > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] leading-4 text-center">
-                  {Math.min(unresolvedComments.length, 99)}
+                  {Math.min(commentThreads.length, 99)}
                 </span>
               )}
             </button>
@@ -1464,9 +1648,9 @@ export function DocPage() {
               <button
                 onClick={() => setIsCommentCollapsed(false)}
                 className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
-                aria-label="展开评论栏"
+                aria-label="展开问答栏"
               >
-                <MessageSquarePlus className="w-4 h-4" />
+                <Bot className="w-4 h-4" />
                 <ChevronRight className="w-4 h-4 rotate-180" />
               </button>
             </aside>
@@ -1541,8 +1725,8 @@ export function DocPage() {
                   onClick={openCommentComposer}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                 >
-                  <MessageSquarePlus className="w-3.5 h-3.5" />
-                  评论
+                  <Bot className="w-3.5 h-3.5" />
+                  问问AI
                 </button>
               </div>
             </div>

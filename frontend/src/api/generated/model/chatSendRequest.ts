@@ -12,6 +12,8 @@
 export interface ChatSendRequest {
   /** 当前问题。 */
   question: string;
+  /** 消息来源标识；有值时走直连大模型模式。 */
+  source?: string | null;
   /** 用户划词上下文。 */
   selected_context?: string | null;
   /** 划词来源块 ID。 */

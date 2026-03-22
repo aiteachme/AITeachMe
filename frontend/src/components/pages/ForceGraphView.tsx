@@ -512,7 +512,7 @@ export function ForceGraphView({ subject, toolbar, onEvidenceClick }: { subject:
           style={{ minHeight: 500 }}
         >
           <ForceGraph2D
-            ref={fgRef}
+            ref={fgRef as any}
             graphData={graphData}
             width={graphWidth}
             height={dimensions.height || 500}
