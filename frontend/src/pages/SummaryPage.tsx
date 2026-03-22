@@ -17,7 +17,6 @@ import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
 import {
   DigestBuildProvider,
   DigestBuildButton,
-  DigestBuildProgress,
 } from "../components/pages/DigestBuildPanel";
 import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
 
@@ -69,9 +68,6 @@ export function SummaryPage() {
           </Button>
         </div>
       </div>
-
-      {/* 构建进度（内联，位于 Tab 上方） */}
-      <DigestBuildProgress />
 
       {/* 视图切换 Tab */}
       <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">

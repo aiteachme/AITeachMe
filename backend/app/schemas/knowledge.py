@@ -70,8 +70,6 @@ class GraphDigestJobResponse(BaseModel):
     id: int
     subject: str
     status: str
-    progress: int
-    current_step: str | None = None
     input_chunk_count: int = 0
     nodes_added: int = 0
     nodes_updated: int = 0
@@ -90,8 +88,6 @@ class CurriculumJobResponse(BaseModel):
     subject: str
     graph_job_id: int
     status: str
-    progress: int
-    current_step: str | None = None
     units_added: int = 0
     units_updated: int = 0
     theme_tree_version_id: int | None = None

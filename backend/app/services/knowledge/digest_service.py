@@ -203,7 +203,6 @@ async def run_graph_digest_background(*, subject: str, job_id: int) -> None:
             digest_logger.info(
                 "graph_digest_background_started",
                 job_status=job.status,
-                progress=job.progress,
             )
             result = await run_graph_digest_workflow(
                 subject=subject,
@@ -221,8 +220,6 @@ async def run_graph_digest_background(*, subject: str, job_id: int) -> None:
             digest_logger.info(
                 "graph_digest_background_completed",
                 final_status=final_job.status if final_job is not None else None,
-                final_progress=final_job.progress if final_job is not None else None,
-                final_step=final_job.current_step if final_job is not None else None,
                 input_chunk_count=final_job.input_chunk_count if final_job is not None else None,
             )
 
@@ -298,8 +295,6 @@ def _build_graph_job_response(job: GraphDigestJob) -> GraphDigestJobResponse:
         id=job.id,  # type: ignore[arg-type]
         subject=job.subject,
         status=job.status,
-        progress=job.progress,
-        current_step=job.current_step,
         input_chunk_count=job.input_chunk_count,
         nodes_added=job.nodes_added,
         nodes_updated=job.nodes_updated,
@@ -320,8 +315,6 @@ def _build_curriculum_job_response(
         subject=job.subject,
         graph_job_id=job.graph_job_id,
         status=job.status,
-        progress=job.progress,
-        current_step=job.current_step,
         units_added=job.units_added,
         units_updated=job.units_updated,
         theme_tree_version_id=job.theme_tree_version_id,
@@ -361,8 +354,6 @@ def get_digest_status(
         subject=subject,
         job_id=job_id,
         graph_status=job.status,
-        graph_progress=job.progress,
-        graph_step=job.current_step,
         input_chunk_count=job.input_chunk_count,
         curriculum_job_id=job.curriculum_job_id,
         curriculum_status=curriculum_resp.status if curriculum_resp is not None else None,
