@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T16:38:42.585385",
-  "total_commits_analyzed": 175,
+  "generated_at": "2026-03-22T18:56:28.326973",
+  "total_commits_analyzed": 183,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1401,6 +1401,70 @@
       "code_lines": 42643,
       "other_lines": 12845,
       "message": "feat: sync chat backend and frontend updates"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "a9e7f16",
+      "total_lines": 53083,
+      "code_lines": 40392,
+      "other_lines": 12691,
+      "message": "feat: 移除构建进度相关字段，更新 API 接口文档，重构知识图谱构建面板"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "80feef0",
+      "total_lines": 52911,
+      "code_lines": 40267,
+      "other_lines": 12644,
+      "message": "refactor: 重构知识概览及相关组件"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "cb44c47",
+      "total_lines": 55488,
+      "code_lines": 42643,
+      "other_lines": 12845,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "3f864de",
+      "total_lines": 52251,
+      "code_lines": 39764,
+      "other_lines": 12487,
+      "message": "refactor: 重构知识体系相关 Schema 与服务，移除 `GraphDigestJob` "
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "80b1b55",
+      "total_lines": 52167,
+      "code_lines": 39689,
+      "other_lines": 12478,
+      "message": "refactor: 移除知识概览相关的构建状态字段，简化 API 接口"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "282373a",
+      "total_lines": 51824,
+      "code_lines": 39394,
+      "other_lines": 12430,
+      "message": "refactor: 重构测评服务与工作流，移除任务持久化机制，引入结果数据类，并简化试卷生成与批改流"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "36a34fa",
+      "total_lines": 54337,
+      "code_lines": 41670,
+      "other_lines": 12667,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "2dbbbfe",
+      "total_lines": 54344,
+      "code_lines": 41693,
+      "other_lines": 12651,
+      "message": "refactor: 优化 ForceGraphView 组件，调整节点和边的样式，更新中文标签，简化"
     }
   ]
 }
