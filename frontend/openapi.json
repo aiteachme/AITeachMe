@@ -2230,6 +2230,341 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/chats/sessions/list": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "会话列表",
+        "operationId": "list_chat_sessions_api_api_v1_subjects__subject__chats_sessions_list_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionListRequest",
+                "default": {
+                  "page": 1,
+                  "size": 20
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_ChatSessionItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/chats/threads/list": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "划词问答轮次列表",
+        "operationId": "list_chat_threads_api_api_v1_subjects__subject__chats_threads_list_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatThreadListRequest",
+                "default": {
+                  "page": 1,
+                  "size": 20,
+                  "source": "quick_chat"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_ChatThreadTurnItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/chats/sessions/create": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "创建会话",
+        "operationId": "create_chat_session_api_api_v1_subjects__subject__chats_sessions_create_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionCreateRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChatSessionCreateData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/chats/sessions/delete": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "删除会话",
+        "operationId": "delete_chat_session_api_api_v1_subjects__subject__chats_sessions_delete_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChatSessionDeleteData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/exams/make": {
       "post": {
         "tags": [
@@ -4319,6 +4654,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ChatSessionCreateData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatSessionCreateData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ChatSessionCreateData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ChatSessionDeleteData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatSessionDeleteData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ChatSessionDeleteData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ChunkContextResponse_": {
         "properties": {
           "code": {
@@ -5067,6 +5470,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_PaginatedData_ChatSessionItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedData_ChatSessionItem_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[ChatSessionItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_PaginatedData_ChatThreadTurnItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedData_ChatThreadTurnItem_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[ChatThreadTurnItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_PaginatedData_FileItem__": {
         "properties": {
           "code": {
@@ -5645,11 +6116,26 @@
         "description": "Result payload for clearing chat history."
       },
       "ChatClearRequest": {
-        "properties": {},
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional session ID to clear only one session."
+          }
+        },
         "type": "object",
         "title": "ChatClearRequest",
         "description": "Request body for clearing chat history.",
-        "example": {}
+        "example": {
+          "session_id": "optional-session-id"
+        }
       },
       "ChatContextItem": {
         "properties": {
@@ -5706,6 +6192,18 @@
             "title": "Size",
             "description": "每页数量。",
             "default": 20
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional session ID filter."
           }
         },
         "type": "object",
@@ -5786,6 +6284,18 @@
             "title": "Question",
             "description": "Current user question."
           },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional session ID. Auto-created when omitted."
+          },
           "source": {
             "anyOf": [
               {
@@ -5797,6 +6307,18 @@
             ],
             "title": "Source",
             "description": "Optional source tag that enables direct chat mode."
+          },
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id",
+            "description": "Optional doc heading anchor for highlighted QA."
           },
           "selected_context": {
             "anyOf": [
@@ -5830,11 +6352,305 @@
         "title": "ChatSendRequest",
         "description": "Request body for sending one chat message.",
         "example": {
+          "anchor_id": "chapter-1",
           "question": "什么是条件概率？",
           "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
-          "source": "quick_chat",
+          "session_id": "dbe63613-08f6-4818-8317-cdf8d7a794a8",
+          "source": "doc_selection",
           "source_chunk_id": 12
         }
+      },
+      "ChatSessionCreateData": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/ChatSessionItem",
+            "description": "Created session."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "title": "ChatSessionCreateData",
+        "description": "Result payload for creating one session."
+      },
+      "ChatSessionCreateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Optional session title."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Optional source tag."
+          }
+        },
+        "type": "object",
+        "title": "ChatSessionCreateRequest",
+        "description": "Request body for creating a chat session."
+      },
+      "ChatSessionDeleteData": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "Whether session was deleted."
+          },
+          "deleted_message_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Deleted Message Count",
+            "description": "Deleted message count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "deleted_message_count"
+        ],
+        "title": "ChatSessionDeleteData",
+        "description": "Result payload for deleting one session."
+      },
+      "ChatSessionDeleteRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Target session ID."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "ChatSessionDeleteRequest",
+        "description": "Request body for deleting one chat session."
+      },
+      "ChatSessionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Session ID."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Session title."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Session source."
+          },
+          "message_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Message Count",
+            "description": "Message count in this session."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Created time."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Updated time."
+          },
+          "last_message_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Message At",
+            "description": "Last message time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "message_count",
+          "created_at",
+          "updated_at",
+          "last_message_at"
+        ],
+        "title": "ChatSessionItem",
+        "description": "One chat session item."
+      },
+      "ChatSessionListRequest": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "页码，从 1 开始。",
+            "default": 1
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。",
+            "default": 20
+          }
+        },
+        "type": "object",
+        "title": "ChatSessionListRequest",
+        "description": "Pagination request for chat sessions.",
+        "example": {
+          "page": 1,
+          "size": 20
+        }
+      },
+      "ChatThreadListRequest": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "页码，从 1 开始。",
+            "default": 1
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。",
+            "default": 20
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Optional source tag filter, defaults to doc quick chat.",
+            "default": "quick_chat"
+          }
+        },
+        "type": "object",
+        "title": "ChatThreadListRequest",
+        "description": "Pagination request for doc-selection chat turns.",
+        "example": {
+          "page": 1,
+          "size": 20
+        }
+      },
+      "ChatThreadTurnItem": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "Conversation turn ID."
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Resolved session ID."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Source tag, e.g. quick_chat."
+          },
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id",
+            "description": "Doc heading anchor."
+          },
+          "selected_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Text",
+            "description": "Selected text for this turn."
+          },
+          "source_chunk_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Chunk Id",
+            "description": "Optional source chunk ID."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Turn bind time."
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageItem"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "Messages under this turn, sorted by time asc."
+          }
+        },
+        "type": "object",
+        "required": [
+          "turn_id",
+          "session_id",
+          "created_at"
+        ],
+        "title": "ChatThreadTurnItem",
+        "description": "One persisted turn with thread metadata for doc-selection QA."
       },
       "ChunkContextRequest": {
         "properties": {
@@ -8241,6 +9057,94 @@
           "pages"
         ],
         "title": "PaginatedData[ChatMessageItem]"
+      },
+      "PaginatedData_ChatSessionItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSessionItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[ChatSessionItem]"
+      },
+      "PaginatedData_ChatThreadTurnItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatThreadTurnItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[ChatThreadTurnItem]"
       },
       "PaginatedData_FileItem_": {
         "properties": {

@@ -5,7 +5,7 @@ import {
   listChatApiApiV1SubjectsSubjectChatsListPost,
 } from "../api/generated/chats";
 import type { ChatContextItem, ChatMessageItem, ChatSendRequest } from "../api/generated/model";
-import { postSseJson, getApiErrorMessage } from "../api/client";
+import { getApiErrorMessage, postSseJson } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 export type ChatMessageStatus = "ready" | "streaming" | "error" | "interrupted";
@@ -23,9 +23,22 @@ export interface ChatSessionMessage {
 
 interface SendMessageResult {
   accepted: boolean;
+  sessionId: string | null;
 }
 
-export function useChatSession(subjectId: string) {
+interface UseChatSessionOptions {
+  sessionId?: string | null;
+  enabled?: boolean;
+  loadWithoutSession?: boolean;
+  onSessionResolved?: (sessionId: string) => void;
+}
+
+export function useChatSession(subjectId: string, options: UseChatSessionOptions = {}) {
+  const sessionId = options.sessionId ?? null;
+  const enabled = options.enabled ?? true;
+  const loadWithoutSession = options.loadWithoutSession ?? true;
+  const onSessionResolved = options.onSessionResolved;
+
   const [messages, setMessages] = useState<ChatSessionMessage[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -36,7 +49,18 @@ export function useChatSession(subjectId: string) {
     let cancelled = false;
 
     async function loadHistory() {
+      if (!enabled) {
+        setHistoryLoaded(true);
+        return;
+      }
+
       if (!subjectId) {
+        setMessages([]);
+        setHistoryError(null);
+        setHistoryLoaded(true);
+        return;
+      }
+      if (!sessionId && !loadWithoutSession) {
         setMessages([]);
         setHistoryError(null);
         setHistoryLoaded(true);
@@ -48,6 +72,7 @@ export function useChatSession(subjectId: string) {
         const response = await listChatApiApiV1SubjectsSubjectChatsListPost(subjectId, {
           page: 1,
           size: 100,
+          session_id: sessionId ?? undefined,
         });
         const items = (unwrapOrvalResponse<{ items?: ChatMessageItem[] }>(response)?.items ?? [])
           .slice()
@@ -69,12 +94,12 @@ export function useChatSession(subjectId: string) {
       }
     }
 
-    loadHistory();
+    void loadHistory();
     return () => {
       cancelled = true;
       abortControllerRef.current?.abort();
     };
-  }, [subjectId]);
+  }, [enabled, loadWithoutSession, sessionId, subjectId]);
 
   useEffect(() => {
     return () => {
@@ -85,9 +110,10 @@ export function useChatSession(subjectId: string) {
   async function sendMessage(input: ChatSendRequest): Promise<SendMessageResult> {
     const question = input.question.trim();
     if (!subjectId || !question || isStreaming) {
-      return { accepted: false };
+      return { accepted: false, sessionId: null };
     }
 
+    const resolvedSessionId = input.session_id ?? sessionId ?? null;
     const userLocalId = buildLocalId("user");
     const assistantLocalId = buildLocalId("assistant");
     const now = new Date().toISOString();
@@ -120,6 +146,7 @@ export function useChatSession(subjectId: string) {
     abortControllerRef.current = controller;
     let terminalEventReceived = false;
     let streamFailedDetail: string | null = null;
+    let streamSessionId: string | null = resolvedSessionId;
 
     try {
       const streamResult = await postSseJson(
@@ -127,6 +154,7 @@ export function useChatSession(subjectId: string) {
         {
           ...input,
           question,
+          session_id: resolvedSessionId ?? undefined,
         },
         {
           signal: controller.signal,
@@ -141,6 +169,10 @@ export function useChatSession(subjectId: string) {
           onDone: (payload) => {
             const donePayload = parseChatDonePayload(payload);
             terminalEventReceived = true;
+            streamSessionId = donePayload.sessionId ?? streamSessionId;
+            if (donePayload.sessionId) {
+              onSessionResolved?.(donePayload.sessionId);
+            }
             setMessages((current) =>
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
@@ -151,7 +183,7 @@ export function useChatSession(subjectId: string) {
                 createdAt: message.createdAt ?? new Date().toISOString(),
               })),
             );
-        },
+          },
           onError: (payload) => {
             terminalEventReceived = true;
             streamFailedDetail = parseChatErrorDetail(payload);
@@ -203,7 +235,10 @@ export function useChatSession(subjectId: string) {
       abortControllerRef.current = null;
     }
 
-    return { accepted: true };
+    return {
+      accepted: true,
+      sessionId: streamSessionId ?? null,
+    };
   }
 
   function abortStream() {
@@ -217,7 +252,11 @@ export function useChatSession(subjectId: string) {
 
     abortStream();
     try {
-      await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
+      if (sessionId) {
+        await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, { session_id: sessionId });
+      } else {
+        await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
+      }
       setMessages([]);
       setHistoryError(null);
     } catch (error: unknown) {
@@ -265,16 +304,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function parseChatDonePayload(payload: unknown): { turnId: string; contexts: ChatContextItem[] | null } {
+function parseChatDonePayload(payload: unknown): {
+  turnId: string;
+  sessionId: string | null;
+  contexts: ChatContextItem[] | null;
+} {
   if (!isRecord(payload)) {
     return {
       turnId: "",
+      sessionId: null,
       contexts: null,
     };
   }
 
   return {
     turnId: typeof payload.turn_id === "string" ? payload.turn_id : "",
+    sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
     contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
   };
 }

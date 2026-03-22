@@ -9,6 +9,7 @@ from sqlmodel import Session, func, select
 from app.models import (
     AnswerRecord,
     ChatMessage,
+    ChatSession,
     CurriculumDeriveJob,
     CurriculumSnapshot,
     Document,
@@ -88,6 +89,10 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "chat_message": _count_query(
             session,
             select(func.count()).select_from(ChatMessage).where(ChatMessage.subject == subject),
+        ),
+        "chat_session": _count_query(
+            session,
+            select(func.count()).select_from(ChatSession).where(ChatSession.subject == subject),
         ),
         "user_profile": _count_query(
             session,
@@ -243,8 +248,8 @@ def build_subject_delete_preview(
         SubjectDeleteImpactItem(
             key="chat",
             label="对话记录",
-            count=detail_counts["chat_message"],
-            description="会删除该学科下的全部聊天消息。",
+            count=detail_counts["chat_message"] + detail_counts["chat_session"],
+            description="会删除该学科下的会话和聊天消息。",
         ),
         SubjectDeleteImpactItem(
             key="profile",
@@ -332,10 +337,15 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
 
 def _delete_chat_messages(session: Session, *, subject: str) -> None:
     messages = list(session.exec(select(ChatMessage).where(ChatMessage.subject == subject)).all())
-    if not messages:
-        return
     for message in messages:
         session.delete(message)
+
+    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject)).all())
+    for item in sessions:
+        session.delete(item)
+
+    if not messages and not sessions:
+        return
     session.commit()
 
 

@@ -11,7 +11,7 @@ from app.models.assessment import (
     UserAnswerAttempt,
     UserKnowledgeState,
 )
-from app.models.chat import ChatMessage
+from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     CurriculumDeriveJob,
     CurriculumSnapshot,
@@ -70,6 +70,7 @@ __all__ = [
     "AnswerRecord",
     "AsyncJobStatus",
     "ChatMessage",
+    "ChatSession",
     "CurriculumDeriveJob",
     "CurriculumSnapshot",
     "Difficulty",

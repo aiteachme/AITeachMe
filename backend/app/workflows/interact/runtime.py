@@ -25,6 +25,7 @@ from app.workflows.interact.support.streaming import SSEEventEmitter
 def create_interact_initial_state(
     *,
     subject: str,
+    session_id: str | None,
     question: str,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
@@ -33,6 +34,7 @@ def create_interact_initial_state(
 
     return {
         "subject": subject,
+        "session_id": session_id,
         "question": question,
         "selected_context": selected_context,
         "source_chunk_id": source_chunk_id,
@@ -44,6 +46,7 @@ def create_interact_initial_state(
 async def run_interact_workflow(
     *,
     subject: str,
+    session_id: str | None,
     question: str,
     session: Session,
     request: Request,
@@ -71,6 +74,7 @@ async def run_interact_workflow(
         ),
         initial_state=create_interact_initial_state(
             subject=subject,
+            session_id=session_id,
             question=question,
             selected_context=selected_context,
             source_chunk_id=source_chunk_id,
@@ -111,6 +115,7 @@ async def stream_chat_workflow(
     request: Request,
     session: Session,
     subject: str,
+    session_id: str | None,
     question: str,
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
@@ -125,6 +130,7 @@ async def stream_chat_workflow(
             event_bus=event_bus,
             question=question,
             request=request,
+            session_id=session_id,
             selected_context=selected_context,
             session=session,
             source_chunk_id=source_chunk_id,
@@ -141,6 +147,7 @@ async def _execute_interact_workflow(
     event_bus: InProcessEventBus | None,
     question: str,
     request: Request,
+    session_id: str | None,
     selected_context: str | None,
     session: Session,
     source_chunk_id: int | None,
@@ -149,6 +156,7 @@ async def _execute_interact_workflow(
     try:
         result = await run_interact_workflow(
             subject=subject,
+            session_id=session_id,
             question=question,
             session=session,
             request=request,

@@ -27,7 +27,9 @@ class ChatSendRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "question": "什么是条件概率？",
-                "source": "quick_chat",
+                "session_id": "dbe63613-08f6-4818-8317-cdf8d7a794a8",
+                "source": "doc_selection",
+                "anchor_id": "chapter-1",
                 "selected_context": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
                 "source_chunk_id": 12,
             }
@@ -35,7 +37,9 @@ class ChatSendRequest(BaseModel):
     )
 
     question: str = Field(description="Current user question.")
+    session_id: str | None = Field(default=None, description="Optional session ID. Auto-created when omitted.")
     source: str | None = Field(default=None, description="Optional source tag that enables direct chat mode.")
+    anchor_id: str | None = Field(default=None, description="Optional doc heading anchor for highlighted QA.")
     selected_context: str | None = Field(default=None, description="Optional highlighted context.")
     source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
 
@@ -43,11 +47,15 @@ class ChatSendRequest(BaseModel):
 class ChatListRequest(PageParams):
     """Pagination request for chat history."""
 
+    session_id: str | None = Field(default=None, description="Optional session ID filter.")
+
 
 class ChatClearRequest(BaseModel):
     """Request body for clearing chat history."""
 
-    model_config = ConfigDict(json_schema_extra={"example": {}})
+    model_config = ConfigDict(json_schema_extra={"example": {"session_id": "optional-session-id"}})
+
+    session_id: str | None = Field(default=None, description="Optional session ID to clear only one session.")
 
 
 class ChatClearData(BaseModel):
@@ -55,6 +63,57 @@ class ChatClearData(BaseModel):
 
     cleared: bool = Field(description="Whether the history was cleared.")
     deleted_count: int = Field(description="Deleted message count.", ge=0)
+
+
+class ChatSessionListRequest(PageParams):
+    """Pagination request for chat sessions."""
+
+
+class ChatThreadListRequest(PageParams):
+    """Pagination request for doc-selection chat turns."""
+
+    source: str | None = Field(
+        default="quick_chat",
+        description="Optional source tag filter, defaults to doc quick chat.",
+    )
+
+
+class ChatSessionCreateRequest(BaseModel):
+    """Request body for creating a chat session."""
+
+    title: str | None = Field(default=None, description="Optional session title.")
+    source: str | None = Field(default=None, description="Optional source tag.")
+
+
+class ChatSessionDeleteRequest(BaseModel):
+    """Request body for deleting one chat session."""
+
+    session_id: str = Field(description="Target session ID.")
+
+
+class ChatSessionItem(BaseModel):
+    """One chat session item."""
+
+    id: str = Field(description="Session ID.")
+    title: str = Field(description="Session title.")
+    source: str | None = Field(default=None, description="Session source.")
+    message_count: int = Field(description="Message count in this session.", ge=0)
+    created_at: datetime = Field(description="Created time.")
+    updated_at: datetime = Field(description="Updated time.")
+    last_message_at: datetime = Field(description="Last message time.")
+
+
+class ChatSessionCreateData(BaseModel):
+    """Result payload for creating one session."""
+
+    session: ChatSessionItem = Field(description="Created session.")
+
+
+class ChatSessionDeleteData(BaseModel):
+    """Result payload for deleting one session."""
+
+    deleted: bool = Field(description="Whether session was deleted.")
+    deleted_message_count: int = Field(description="Deleted message count.", ge=0)
 
 
 class SSETokenEvent(BaseModel):
@@ -67,6 +126,7 @@ class SSEDoneEvent(BaseModel):
     """SSE done event payload."""
 
     turn_id: str = Field(description="Persisted turn ID.")
+    session_id: str = Field(description="Resolved session ID.")
     contexts: list[ChatContextItem] | None = Field(default=None, description="Retrieved citation list.")
 
 
@@ -86,3 +146,19 @@ class ChatMessageItem(BaseModel):
     content: str = Field(description="Message content.")
     contexts: list[ChatContextItem] | None = Field(default=None, description="Assistant citation list.")
     created_at: datetime = Field(description="Created time.")
+
+
+class ChatThreadTurnItem(BaseModel):
+    """One persisted turn with thread metadata for doc-selection QA."""
+
+    turn_id: str = Field(description="Conversation turn ID.")
+    session_id: str = Field(description="Resolved session ID.")
+    source: str | None = Field(default=None, description="Source tag, e.g. quick_chat.")
+    anchor_id: str | None = Field(default=None, description="Doc heading anchor.")
+    selected_text: str | None = Field(default=None, description="Selected text for this turn.")
+    source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID.")
+    created_at: datetime = Field(description="Turn bind time.")
+    messages: list[ChatMessageItem] = Field(
+        default_factory=list,
+        description="Messages under this turn, sorted by time asc.",
+    )
