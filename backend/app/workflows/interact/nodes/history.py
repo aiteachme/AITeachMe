@@ -37,6 +37,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session)
                 session,
                 state["subject"],
                 n_turns=settings.chat_history_turns,
+                session_id=state.get("session_id"),
             )
         ]
         weak_points = [

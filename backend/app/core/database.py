@@ -120,6 +120,31 @@ class OutdatedSchemaError(RuntimeError):
 
 
 _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
+    "chat_message": {
+        "id",
+        "subject",
+        "user_id",
+        "session_id",
+        "turn_id",
+        "source",
+        "anchor_id",
+        "selected_text",
+        "source_chunk_id",
+        "role",
+        "content",
+        "contexts",
+        "created_at",
+    },
+    "chat_session": {
+        "id",
+        "subject",
+        "user_id",
+        "title",
+        "source",
+        "created_at",
+        "updated_at",
+        "last_message_at",
+    },
     "raw_file": {
         "id",
         "subject",

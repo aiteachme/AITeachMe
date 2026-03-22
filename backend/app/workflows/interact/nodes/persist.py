@@ -36,10 +36,18 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session):
                 **state,
                 "error": "Assistant response is empty.",
             }
+        session_id = state.get("session_id")
+        if not session_id:
+            workflow_logger.error("interact_missing_session_id")
+            return {
+                **state,
+                "error": "Missing session_id for chat persistence.",
+            }
 
         _, assistant_message = create_message_pair(
             session,
             subject=state["subject"],
+            session_id=session_id,
             user_content=state["question"],
             assistant_content=assistant_response,
             contexts=[

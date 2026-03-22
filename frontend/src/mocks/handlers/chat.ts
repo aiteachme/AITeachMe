@@ -19,9 +19,30 @@ interface ChatHistoryItem {
   created_at: string;
 }
 
+interface ChatTurnItem {
+  turn_id: string;
+  session_id: string;
+  source?: string | null;
+  anchor_id?: string | null;
+  selected_text?: string | null;
+  created_at: string;
+}
+
+interface ChatSessionItem {
+  id: string;
+  title: string;
+  source?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+}
+
 interface ChatSendBody {
   question?: unknown;
+  session_id?: unknown;
   selected_context?: unknown;
+  source?: unknown;
+  anchor_id?: unknown;
 }
 
 const mockContexts: ChatContextItem[] = [
@@ -92,8 +113,32 @@ const mockHistory: ChatHistoryItem[] = [
   },
 ];
 
+const mockTurns: ChatTurnItem[] = [
+  {
+    turn_id: "turn-1",
+    session_id: "session-1",
+    source: "quick_chat",
+    anchor_id: "section",
+    selected_text: "导数是函数在某一点瞬时变化率的度量。",
+    created_at: "2026-03-14T10:00:00Z",
+  },
+];
+
+const mockSessions: ChatSessionItem[] = [
+  {
+    id: "session-1",
+    title: "导数的几何意义是什么？",
+    source: null,
+    created_at: "2026-03-14T09:59:58Z",
+    updated_at: "2026-03-14T10:00:05Z",
+    last_message_at: "2026-03-14T10:00:05Z",
+  },
+];
+
+const turnSessionMap = new Map<string, string>([["turn-1", "session-1"]]);
 let nextMessageId = mockHistory.length + 1;
 let turnSeq = 2;
+let sessionSeq = 2;
 
 function chunkText(text: string): string[] {
   const chars = Array.from(text);
@@ -133,13 +178,63 @@ function buildMockAnswer(question: string, selectedContext: string): string {
   ].join("\n");
 }
 
+function buildSessionTitle(question: string): string {
+  const text = question.trim();
+  if (!text) return "新会话";
+  return text.length > 24 ? `${text.slice(0, 24)}...` : text;
+}
+
+function resolveSession(sessionId: string | null, question: string): ChatSessionItem {
+  if (sessionId) {
+    const existing = mockSessions.find((item) => item.id === sessionId);
+    if (existing) {
+      return existing;
+    }
+  }
+  const now = new Date().toISOString();
+  const created: ChatSessionItem = {
+    id: `session-${sessionSeq++}`,
+    title: buildSessionTitle(question),
+    source: null,
+    created_at: now,
+    updated_at: now,
+    last_message_at: now,
+  };
+  mockSessions.unshift(created);
+  return created;
+}
+
+function touchSession(sessionId: string, question: string) {
+  const target = mockSessions.find((item) => item.id === sessionId);
+  if (!target) return;
+  const now = new Date().toISOString();
+  target.updated_at = now;
+  target.last_message_at = now;
+  if (target.title === "新会话") {
+    target.title = buildSessionTitle(question);
+  }
+}
+
 function pushHistory(
+  sessionId: string,
   turnId: string,
   question: string,
   answer: string,
   contexts: ChatContextItem[] | null,
+  source: string | null,
+  anchorId: string | null,
+  selectedText: string | null,
 ) {
   const now = new Date();
+  turnSessionMap.set(turnId, sessionId);
+  mockTurns.unshift({
+    turn_id: turnId,
+    session_id: sessionId,
+    source,
+    anchor_id: anchorId,
+    selected_text: selectedText,
+    created_at: now.toISOString(),
+  });
   mockHistory.push(
     {
       id: nextMessageId,
@@ -159,6 +254,19 @@ function pushHistory(
     },
   );
   nextMessageId += 2;
+  touchSession(sessionId, question);
+}
+
+function listSessionItems() {
+  return [...mockSessions]
+    .map((item) => {
+      const messageCount = mockHistory.filter((entry) => turnSessionMap.get(entry.turn_id) === item.id).length;
+      return {
+        ...item,
+        message_count: messageCount,
+      };
+    })
+    .sort((a, b) => b.last_message_at.localeCompare(a.last_message_at));
 }
 
 async function streamChatResponse(request: Request) {
@@ -175,12 +283,18 @@ async function streamChatResponse(request: Request) {
   const selectedContext = typeof body.selected_context === "string"
     ? body.selected_context
     : "";
+  const source = typeof body.source === "string" ? body.source : null;
+  const anchorId = typeof body.anchor_id === "string" ? body.anchor_id : null;
+  const askedSessionId = typeof body.session_id === "string" && body.session_id.trim()
+    ? body.session_id.trim()
+    : null;
+  const sessionItem = resolveSession(askedSessionId, question);
   const turnId = `turn-${turnSeq++}`;
   const answer = buildMockAnswer(question, selectedContext);
   const chunks = chunkText(answer);
   const contexts = mockContexts;
 
-  pushHistory(turnId, question, answer, contexts);
+  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedContext || null);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -192,7 +306,9 @@ async function streamChatResponse(request: Request) {
         );
       }
       controller.enqueue(
-        encoder.encode(`event: done\ndata: ${JSON.stringify({ turn_id: turnId, contexts })}\n\n`),
+        encoder.encode(
+          `event: done\ndata: ${JSON.stringify({ turn_id: turnId, session_id: sessionItem.id, contexts })}\n\n`,
+        ),
       );
       controller.close();
     },
@@ -207,13 +323,17 @@ async function streamChatResponse(request: Request) {
   });
 }
 
-function buildHistoryPayload() {
+function buildHistoryPayload(sessionId: string | null) {
+  const items = (sessionId
+    ? mockHistory.filter((item) => turnSessionMap.get(item.turn_id) === sessionId)
+    : mockHistory
+  ).sort((left, right) => left.created_at.localeCompare(right.created_at));
   return {
     code: 0,
     message: "ok",
     data: {
-      items: [...mockHistory].sort((left, right) => left.created_at.localeCompare(right.created_at)),
-      total: mockHistory.length,
+      items,
+      total: items.length,
       page: 1,
       size: 100,
       pages: 1,
@@ -221,10 +341,45 @@ function buildHistoryPayload() {
   };
 }
 
-function clearHistoryPayload() {
-  const deletedCount = mockHistory.length;
+async function clearHistoryPayload(request: Request) {
+  let sessionId: string | null = null;
+  try {
+    const body = (await request.json()) as { session_id?: unknown };
+    if (typeof body.session_id === "string" && body.session_id.trim()) {
+      sessionId = body.session_id.trim();
+    }
+  } catch {
+    sessionId = null;
+  }
+
+  if (!sessionId) {
+    const deletedCount = mockHistory.length;
+    mockHistory.length = 0;
+    turnSessionMap.clear();
+    mockTurns.length = 0;
+    mockSessions.length = 0;
+    nextMessageId = 1;
+    return {
+      code: 0,
+      message: "ok",
+      data: { cleared: true, deleted_count: deletedCount },
+    };
+  }
+
+  const keepItems = mockHistory.filter((item) => turnSessionMap.get(item.turn_id) !== sessionId);
+  const deletedCount = mockHistory.length - keepItems.length;
   mockHistory.length = 0;
-  nextMessageId = 1;
+  mockHistory.push(...keepItems);
+
+  for (const [turnId, mappedSessionId] of turnSessionMap.entries()) {
+    if (mappedSessionId === sessionId) {
+      turnSessionMap.delete(turnId);
+    }
+  }
+  const nextTurns = mockTurns.filter((item) => item.session_id !== sessionId);
+  mockTurns.length = 0;
+  mockTurns.push(...nextTurns);
+
   return {
     code: 0,
     message: "ok",
@@ -236,11 +391,122 @@ export const chatHandlers = [
   http.post("/api/v1/subjects/:subject/chat/send", async ({ request }) => streamChatResponse(request)),
   http.post("/api/v1/subjects/:subject/chats/send", async ({ request }) => streamChatResponse(request)),
 
-  http.post("/api/v1/subjects/:subject/chat/list", () => HttpResponse.json(buildHistoryPayload())),
-  http.post("/api/v1/subjects/:subject/chats/list", () => HttpResponse.json(buildHistoryPayload())),
+  http.post("/api/v1/subjects/:subject/chat/list", async ({ request }) => {
+    const body = (await request.json()) as { session_id?: unknown };
+    const sessionId = typeof body.session_id === "string" ? body.session_id : null;
+    return HttpResponse.json(buildHistoryPayload(sessionId));
+  }),
+  http.post("/api/v1/subjects/:subject/chats/list", async ({ request }) => {
+    const body = (await request.json()) as { session_id?: unknown };
+    const sessionId = typeof body.session_id === "string" ? body.session_id : null;
+    return HttpResponse.json(buildHistoryPayload(sessionId));
+  }),
 
-  http.post("/api/v1/subjects/:subject/chat/clear", () => HttpResponse.json(clearHistoryPayload())),
-  http.post("/api/v1/subjects/:subject/chats/clear", () => HttpResponse.json(clearHistoryPayload())),
+  http.post("/api/v1/subjects/:subject/chat/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
+  http.post("/api/v1/subjects/:subject/chats/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
+
+  http.post("/api/v1/subjects/:subject/chats/sessions/list", () =>
+    HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        items: listSessionItems(),
+        total: mockSessions.length,
+        page: 1,
+        size: 100,
+        pages: 1,
+      },
+    })),
+
+  http.post("/api/v1/subjects/:subject/chats/sessions/create", async ({ request }) => {
+    const body = (await request.json()) as { title?: unknown; source?: unknown };
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "新会话";
+    const source = typeof body.source === "string" ? body.source : null;
+    const now = new Date().toISOString();
+    const created: ChatSessionItem = {
+      id: `session-${sessionSeq++}`,
+      title,
+      source,
+      created_at: now,
+      updated_at: now,
+      last_message_at: now,
+    };
+    mockSessions.unshift(created);
+    return HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        session: {
+          ...created,
+          message_count: 0,
+        },
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subject/chats/sessions/delete", async ({ request }) => {
+    const body = (await request.json()) as { session_id?: unknown };
+    const sessionId = typeof body.session_id === "string" ? body.session_id : "";
+    if (!sessionId) {
+      return HttpResponse.json(
+        { code: 400, message: "session_id 不能为空", data: null },
+        { status: 400 },
+      );
+    }
+
+    const before = mockHistory.length;
+    const keepItems = mockHistory.filter((item) => turnSessionMap.get(item.turn_id) !== sessionId);
+    mockHistory.length = 0;
+    mockHistory.push(...keepItems);
+    for (const [turnId, mappedSessionId] of turnSessionMap.entries()) {
+      if (mappedSessionId === sessionId) {
+        turnSessionMap.delete(turnId);
+      }
+    }
+    const nextTurns = mockTurns.filter((item) => item.session_id !== sessionId);
+    mockTurns.length = 0;
+    mockTurns.push(...nextTurns);
+    const nextSessions = mockSessions.filter((item) => item.id !== sessionId);
+    mockSessions.length = 0;
+    mockSessions.push(...nextSessions);
+
+    return HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        deleted: true,
+        deleted_message_count: before - keepItems.length,
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subject/chats/threads/list", async ({ request }) => {
+    const body = (await request.json()) as { source?: unknown };
+    const source = typeof body.source === "string" ? body.source : null;
+
+    const items = mockTurns
+      .filter((turn) => (source ? turn.source === source : true))
+      .filter((turn) => typeof turn.anchor_id === "string" && turn.anchor_id.trim().length > 0)
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .map((turn) => ({
+        ...turn,
+        messages: mockHistory
+          .filter((message) => message.turn_id === turn.turn_id)
+          .sort((left, right) => left.created_at.localeCompare(right.created_at)),
+      }));
+
+    return HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        items,
+        total: items.length,
+        page: 1,
+        size: 100,
+        pages: 1,
+      },
+    });
+  }),
 
   http.post("/api/v1/subjects/:subject/knowledge/chunks/context", async ({ request }) => {
     const body = (await request.json()) as { chunk_id?: number };

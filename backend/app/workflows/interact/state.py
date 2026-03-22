@@ -17,6 +17,7 @@ from app.workflows.interact.support.types import (
 
 class InteractWorkflowState(TypedDict, total=False):
     subject: str
+    session_id: str | None
     question: str
     selected_context: str | None
     source_chunk_id: int | None
