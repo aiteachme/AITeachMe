@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T10:59:25.350157",
-  "total_commits_analyzed": 173,
+  "generated_at": "2026-03-22T16:38:42.585385",
+  "total_commits_analyzed": 175,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1385,6 +1385,22 @@
       "code_lines": 40367,
       "other_lines": 12608,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "498f3f4",
+      "total_lines": 52975,
+      "code_lines": 40367,
+      "other_lines": 12608,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "278bfb6",
+      "total_lines": 55488,
+      "code_lines": 42643,
+      "other_lines": 12845,
+      "message": "feat: sync chat backend and frontend updates"
     }
   ]
 }
