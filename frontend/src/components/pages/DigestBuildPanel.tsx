@@ -1,18 +1,12 @@
-﻿import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, createContext, useContext } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Play, CheckCircle, FileText, Zap } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { getApiErrorMessage } from "../../api/client";
-import {
-  digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost,
-} from "../../api/generated/knowledge";
+import { digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost } from "../../api/generated/knowledge";
 import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
 import type { FileItem } from "../../api/generated/model";
-import {
-  fetchKnowledgeOverview,
-  type KnowledgeOverviewBuildStatus,
-} from "../../api/knowledgeOverview";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 
 async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
@@ -27,13 +21,11 @@ async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
   );
 }
 
-interface DigestJobContext {
-  activeJobId: number | null;
-  setAndPersistJobId: (jobId: number | null) => void;
+interface DigestBuildContext {
   subject: string;
 }
 
-const DigestCtx = createContext<DigestJobContext | null>(null);
+const DigestCtx = createContext<DigestBuildContext | null>(null);
 
 export function DigestBuildProvider({
   subject,
@@ -42,47 +34,13 @@ export function DigestBuildProvider({
   subject: string;
   children: React.ReactNode;
 }) {
-  const storageKey = `digest-job-${subject}`;
-  const [activeJobId, setActiveJobId] = useState<number | null>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      return saved ? Number(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const setAndPersistJobId = useCallback(
-    (jobId: number | null) => {
-      setActiveJobId(jobId);
-      try {
-        if (jobId !== null) {
-          localStorage.setItem(storageKey, String(jobId));
-        } else {
-          localStorage.removeItem(storageKey);
-        }
-      } catch {
-        // ignore storage errors
-      }
-    },
-    [storageKey],
-  );
-
-  return <DigestCtx.Provider value={{ activeJobId, setAndPersistJobId, subject }}>{children}</DigestCtx.Provider>;
+  return <DigestCtx.Provider value={{ subject }}>{children}</DigestCtx.Provider>;
 }
 
-function useDigestJob() {
+function useDigestBuild() {
   const ctx = useContext(DigestCtx);
-  if (!ctx) throw new Error("useDigestJob must be used inside DigestBuildProvider");
+  if (!ctx) throw new Error("useDigestBuild must be used inside DigestBuildProvider");
   return ctx;
-}
-
-function isDigestTerminal(buildStatus: KnowledgeOverviewBuildStatus): boolean {
-  return !!buildStatus.is_terminal;
-}
-
-function isDigestSuccess(buildStatus: KnowledgeOverviewBuildStatus): boolean {
-  return !!buildStatus.is_success;
 }
 
 export function DigestBuildProgress() {
@@ -90,58 +48,19 @@ export function DigestBuildProgress() {
 }
 
 export function DigestBuildButton() {
-  const { activeJobId, setAndPersistJobId, subject } = useDigestJob();
+  const { subject } = useDigestBuild();
   const queryClient = useQueryClient();
 
   const [showFileSelect, setShowFileSelect] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
-  const [lastJobError, setLastJobError] = useState<string>("");
+  const [lastBuildError, setLastBuildError] = useState<string>("");
+  const [lastBuildMessage, setLastBuildMessage] = useState<string>("");
 
   const { data: files = [], isLoading: filesLoading } = useQuery({
     queryKey: ["completed-files-digest", subject],
     queryFn: () => fetchCompletedFiles(subject),
     enabled: showFileSelect && !!subject,
   });
-
-  const { data: activeJobStatus } = useQuery({
-    queryKey: ["digest-build-status", subject, activeJobId],
-    queryFn: async () => {
-      if (!activeJobId) return null;
-      const overview = await fetchKnowledgeOverview(subject, {
-        include: ["build_status"],
-        full: false,
-        jobId: activeJobId,
-      });
-      const status = overview.build_status;
-      if (!status || status.graph_job_id !== activeJobId) {
-        return null;
-      }
-      return status;
-    },
-    enabled: !!activeJobId,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data) return 3000;
-      return isDigestTerminal(data) ? false : 3000;
-    },
-  });
-
-  useEffect(() => {
-    if (!activeJobStatus || !isDigestTerminal(activeJobStatus)) {
-      return;
-    }
-
-    if (isDigestSuccess(activeJobStatus)) {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
-      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
-      setLastJobError("");
-    } else {
-      const message = activeJobStatus.error_message ?? "知识构建失败，请稍后重试";
-      setLastJobError(message);
-    }
-
-    setAndPersistJobId(null);
-  }, [activeJobStatus, queryClient, setAndPersistJobId, subject]);
 
   const buildMutation = useMutation({
     mutationFn: async () => {
@@ -158,14 +77,16 @@ export function DigestBuildButton() {
       return result;
     },
     onSuccess: (data) => {
-      setAndPersistJobId(data.job_id);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
+      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
       setShowFileSelect(false);
       setSelectedFileIds(new Set());
-      setLastJobError("");
+      setLastBuildError("");
+      setLastBuildMessage((data as { message?: string }).message ?? "构建已触发，稍后可刷新查看结果");
     },
   });
 
-  const isJobRunning = !!activeJobId && (!activeJobStatus || !isDigestTerminal(activeJobStatus));
+  const isJobRunning = buildMutation.isPending;
 
   const toggleFile = (id: number) => {
     setSelectedFileIds((prev) => {
@@ -193,7 +114,8 @@ export function DigestBuildButton() {
         )}
       </Button>
 
-      {!!lastJobError && <p className="mt-2 text-xs text-red-500">{lastJobError}</p>}
+      {!!lastBuildMessage && <p className="mt-2 text-xs text-emerald-600">{lastBuildMessage}</p>}
+      {!!lastBuildError && <p className="mt-2 text-xs text-red-500">{lastBuildError}</p>}
 
       <Modal open={showFileSelect} onClose={() => setShowFileSelect(false)} title="选择文件构建知识图谱">
         <div className="space-y-4">
@@ -238,7 +160,7 @@ export function DigestBuildButton() {
             </Button>
             <Button
               onClick={() => buildMutation.mutate()}
-              disabled={selectedFileIds.size === 0 || buildMutation.isPending || isJobRunning}
+              disabled={selectedFileIds.size === 0 || buildMutation.isPending}
             >
               {buildMutation.isPending ? (
                 <>

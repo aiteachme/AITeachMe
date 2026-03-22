@@ -1890,78 +1890,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/curriculum/current": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "当前课程快照",
-        "operationId": "curriculum_current_api_v1_subjects__subject__knowledge_curriculum_current_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_CurriculumSnapshotResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
@@ -4459,40 +4387,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_CurriculumSnapshotResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CurriculumSnapshotResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[CurriculumSnapshotResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_DigestBuildData_": {
         "properties": {
           "code": {
@@ -6097,21 +5991,15 @@
       },
       "DigestBuildData": {
         "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "GraphDigestJob ID."
-          },
-          "is_existing": {
-            "type": "boolean",
-            "title": "Is Existing",
-            "description": "Whether an existing job was reused.",
-            "default": false
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Build trigger confirmation message."
           }
         },
         "type": "object",
         "required": [
-          "job_id"
+          "message"
         ],
         "title": "DigestBuildData",
         "description": "Digest build trigger response payload."
@@ -7937,68 +7825,6 @@
         "title": "KnowledgeNodeResponse",
         "description": "Knowledge node list item."
       },
-      "KnowledgeOverviewBuildStatus": {
-        "properties": {
-          "graph_job_id": {
-            "type": "integer",
-            "title": "Graph Job Id"
-          },
-          "graph_status": {
-            "type": "string",
-            "title": "Graph Status"
-          },
-          "curriculum_job_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Curriculum Job Id"
-          },
-          "curriculum_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Curriculum Status"
-          },
-          "is_terminal": {
-            "type": "boolean",
-            "title": "Is Terminal",
-            "default": false
-          },
-          "is_success": {
-            "type": "boolean",
-            "title": "Is Success",
-            "default": false
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "graph_job_id",
-          "graph_status"
-        ],
-        "title": "KnowledgeOverviewBuildStatus",
-        "description": "Latest (or specified) digest build status summary for overview polling."
-      },
       "KnowledgeOverviewRequest": {
         "properties": {
           "include": {
@@ -8021,18 +7847,6 @@
             "title": "Full",
             "description": "Whether to return full payload. Current implementation favors full payload.",
             "default": true
-          },
-          "job_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job Id",
-            "description": "Optional GraphDigestJob ID for build-status lookup in overview."
           }
         },
         "type": "object",
@@ -8099,16 +7913,6 @@
           },
           "stats": {
             "$ref": "#/components/schemas/KnowledgeOverviewStats"
-          },
-          "build_status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/KnowledgeOverviewBuildStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "type": "object",

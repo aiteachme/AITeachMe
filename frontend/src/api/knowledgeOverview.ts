@@ -2,7 +2,6 @@
 import type {
   CurriculumSnapshotResponse,
   FullGraphResponse,
-  KnowledgeOverviewBuildStatus as KnowledgeOverviewBuildStatusModel,
   KnowledgeNodeResponse,
   KnowledgeOverviewRequest,
   KnowledgeOverviewResponse as KnowledgeOverviewPayload,
@@ -28,7 +27,6 @@ export type KnowledgeOverviewGraph = FullGraphResponse;
 export type KnowledgeOverviewUnit = TeachingUnitResponse;
 export type KnowledgeOverviewSnapshot = CurriculumSnapshotResponse;
 export type KnowledgeOverviewStats = KnowledgeOverviewStatsModel;
-export type KnowledgeOverviewBuildStatus = KnowledgeOverviewBuildStatusModel;
 
 export interface KnowledgeOverviewResponse {
   subject: string;
@@ -39,13 +37,11 @@ export interface KnowledgeOverviewResponse {
   graph: KnowledgeOverviewGraph | null;
   units: KnowledgeOverviewUnit[];
   stats: KnowledgeOverviewStats;
-  build_status: KnowledgeOverviewBuildStatus | null;
 }
 
 export interface FetchKnowledgeOverviewOptions {
   include?: string[];
   full?: boolean;
-  jobId?: number;
 }
 
 const DEFAULT_STATS: KnowledgeOverviewStats = {
@@ -63,7 +59,6 @@ export async function fetchKnowledgeOverview(
   const req: KnowledgeOverviewRequest = {
     full: options?.full ?? (options?.include ? false : true),
     include: options?.include,
-    job_id: options?.jobId,
   };
   const response = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subject, req);
   const payload = unwrapOrvalResponse<KnowledgeOverviewPayload>(response);
@@ -81,6 +76,5 @@ export async function fetchKnowledgeOverview(
     graph: payload.graph ?? null,
     units: payload.units ?? [],
     stats: payload.stats ?? DEFAULT_STATS,
-    build_status: payload.build_status ?? null,
   };
 }
