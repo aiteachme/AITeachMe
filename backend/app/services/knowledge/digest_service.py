@@ -1,4 +1,4 @@
-"""消化构建服务层：触发增量构建、后台执行、状态查询。"""
+"""Digest build and docgen services."""
 
 from __future__ import annotations
 
@@ -10,30 +10,15 @@ from datetime import datetime
 from pathlib import Path
 
 import structlog
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.core.database import managed_session
-from app.core.exceptions import (
-    DigestJobNotFoundError,
-    NoReadyFilesForDocGenError,
-    RawFileNotFoundError,
-    SubjectBuildLockConflictError,
-)
-from app.models.curriculum import CurriculumDeriveJob, CurriculumSnapshot
-from app.models.knowledge_graph import GraphDigestJob
+from app.core.exceptions import NoReadyFilesForDocGenError, RawFileNotFoundError
 from app.models.raw_file import RawFile
-from app.repositories import curriculum_repo, kg_repo
+from app.repositories import curriculum_repo
 from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
 from app.repositories.knowledge import docgen_repo
-from app.schemas.knowledge import (
-    CurriculumJobResponse,
-    DigestBuildData,
-    DocGenBuildData,
-    DocGenGetResponse,
-    DocGenJobResponse,
-    DigestStatusResponse,
-    GraphDigestJobResponse,
-)
+from app.schemas.knowledge import DigestBuildData, DocGenBuildData, DocGenGetResponse, DocGenJobResponse
 from app.services.upload_support import (
     build_docgen_intermediate_dir,
     build_knowledge_docs_dir,
@@ -105,21 +90,8 @@ def _reset_docgen_outputs(session: Session, *, subject: str) -> None:
             shutil.rmtree(directory, ignore_errors=True)
 
 
-# ---------------------------------------------------------------------------
-# 幂等键生成
-# ---------------------------------------------------------------------------
-
-
-def _compute_idempotency_key(subject: str, file_ids: list[int]) -> str:
-    """开发阶段默认生成一次性幂等键，避免复用历史空任务。"""
-
-    del file_ids
-    return f"{subject}:{uuid.uuid4().hex}"
-
-
-# ---------------------------------------------------------------------------
-# 触发增量构建
-# ---------------------------------------------------------------------------
+def _new_graph_run_id() -> int:
+    return (uuid.uuid4().int % 2_000_000_000) + 1
 
 
 def trigger_digest_build(
@@ -129,133 +101,39 @@ def trigger_digest_build(
     file_ids: list[int],
     idempotency_key: str | None = None,
 ) -> DigestBuildData:
-    """触发增量构建：三层检查（幂等键命中 → 运行中冲突 → 创建新 job）。
+    """Trigger digest graph build without persisting graph job rows."""
 
-    不在此处获取构建锁，锁由工作流 acquire_lock_node 获取。
-    """
-    key = idempotency_key or _compute_idempotency_key(subject, file_ids)
-    digest_logger = logger.bind(
-        subject=subject,
-        file_ids=file_ids,
-        idempotency_key=key,
-    )
-    digest_logger.info("digest_build_requested")
-
-    # 1) 幂等键命中 → 返回已有 job
-    existing = kg_repo.find_job_by_idempotency_key(session, key)
-    if existing is not None:
-        digest_logger.info(
-            "digest_build_existing_job_reused",
-            existing_job_id=existing.id,
-            existing_status=existing.status,
-        )
-        return DigestBuildData(
-            job_id=existing.id,  # type: ignore[arg-type]
-            is_existing=True,
-        )
-
-    # 2) 同 subject 是否有运行中的 job → 409
-    running = session.exec(
-        select(GraphDigestJob).where(
-            GraphDigestJob.subject == subject,
-            GraphDigestJob.status == "processing",
-        )
-    ).first()
-    if running is not None:
-        digest_logger.warning(
-            "digest_build_conflict",
-            running_job_id=running.id,
-            running_status=running.status,
-        )
-        raise SubjectBuildLockConflictError(subject)
-
-    # 3) 创建新 job
-    job = kg_repo.create_digest_job(
-        session,
-        GraphDigestJob(
-            subject=subject,
-            idempotency_key=key,
-            status="pending",
-            input_file_ids_json=json.dumps(sorted(file_ids)),
-        ),
-    )
-    digest_logger.info("digest_build_job_created", job_id=job.id)
-    return DigestBuildData(job_id=job.id, is_existing=False)  # type: ignore[arg-type]
+    del session, idempotency_key
+    logger.info("digest_build_requested", subject=subject, file_ids=file_ids)
+    return DigestBuildData(message="增量构建已触发")
 
 
-# ---------------------------------------------------------------------------
-# 后台执行图谱构建
-# ---------------------------------------------------------------------------
+async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> None:
+    """Run graph digest workflow in background with an ephemeral run id."""
 
-
-async def run_graph_digest_background(*, subject: str, job_id: int) -> None:
-    """后台异步执行 GraphDigestJob 工作流。"""
-    with managed_session() as session:
-        try:
-            job = session.get(GraphDigestJob, job_id)
-            if job is None:
-                logger.error("graph_digest_job_not_found", job_id=job_id)
-                return
-
-            # 解析 file_ids
-            file_ids: list[int] = json.loads(job.input_file_ids_json or "[]")
-            digest_logger = logger.bind(subject=subject, job_id=job_id, file_ids=file_ids)
-            digest_logger.info(
-                "graph_digest_background_started",
-                job_status=job.status,
+    run_id = _new_graph_run_id()
+    digest_logger = logger.bind(subject=subject, run_id=run_id, file_ids=file_ids)
+    try:
+        digest_logger.info("graph_digest_background_started")
+        result = await run_graph_digest_workflow(subject=subject, job_id=run_id, file_ids=file_ids)
+        if result.failed:
+            digest_logger.error(
+                "graph_digest_background_failed",
+                error=result.error.detail,
             )
-            result = await run_graph_digest_workflow(
-                subject=subject,
-                job_id=job_id,
-                file_ids=file_ids,
-            )
-            if result.failed:
-                kg_repo.update_digest_job(
-                    session,
-                    job_id,
-                    status="failed",
-                    error_message=result.error.detail[-500:],
-                )
-            final_job = session.get(GraphDigestJob, job_id)
-            digest_logger.info(
-                "graph_digest_background_completed",
-                final_status=final_job.status if final_job is not None else None,
-                input_chunk_count=final_job.input_chunk_count if final_job is not None else None,
-            )
-
-        except Exception:
-            logger.exception(
-                "graph_digest_background_error",
-                subject=subject,
-                job_id=job_id,
-            )
-            # 尝试标记 job 为 failed
-            try:
-                kg_repo.update_digest_job(
-                    session,
-                    job_id,
-                    status="failed",
-                    error_message=traceback.format_exc()[-500:],
-                )
-            except Exception:
-                logger.exception("failed_to_mark_job_failed", job_id=job_id)
-
-
-# ---------------------------------------------------------------------------
-# 后台执行课程派生
-# ---------------------------------------------------------------------------
+            return
+        digest_logger.info("graph_digest_background_completed")
+    except Exception:
+        digest_logger.exception("graph_digest_background_error")
 
 
 async def run_curriculum_derive_background(
     *, subject: str, graph_job_id: int, curriculum_job_id: int
 ) -> None:
-    """后台异步执行 CurriculumDeriveJob 工作流。"""
+    """Run curriculum derive workflow and keep failure fallback for existing table."""
+
     with managed_session() as session:
         try:
-            graph_job = session.get(GraphDigestJob, graph_job_id)
-            if graph_job is None:
-                logger.error("graph_job_not_found_for_curriculum", graph_job_id=graph_job_id)
-                return
             result = await run_curriculum_derive_workflow(
                 subject=subject,
                 graph_job_id=graph_job_id,
@@ -268,7 +146,6 @@ async def run_curriculum_derive_background(
                     status="failed",
                     error_message=result.error.detail[-500:],
                 )
-
         except Exception:
             logger.exception(
                 "curriculum_derive_background_error",
@@ -285,93 +162,6 @@ async def run_curriculum_derive_background(
                 logger.exception("failed_to_mark_curriculum_job_failed")
 
 
-# ---------------------------------------------------------------------------
-# 状态查询
-# ---------------------------------------------------------------------------
-
-
-def _build_graph_job_response(job: GraphDigestJob) -> GraphDigestJobResponse:
-    return GraphDigestJobResponse(
-        id=job.id,  # type: ignore[arg-type]
-        subject=job.subject,
-        status=job.status,
-        input_chunk_count=job.input_chunk_count,
-        nodes_added=job.nodes_added,
-        nodes_updated=job.nodes_updated,
-        nodes_merged=job.nodes_merged,
-        edges_added=job.edges_added,
-        edges_updated=job.edges_updated,
-        error_message=job.error_message,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-    )
-
-
-def _build_curriculum_job_response(
-    job: CurriculumDeriveJob,
-) -> CurriculumJobResponse:
-    return CurriculumJobResponse(
-        id=job.id,  # type: ignore[arg-type]
-        subject=job.subject,
-        graph_job_id=job.graph_job_id,
-        status=job.status,
-        units_added=job.units_added,
-        units_updated=job.units_updated,
-        theme_tree_version_id=job.theme_tree_version_id,
-        prereq_dag_version_id=job.prereq_dag_version_id,
-        error_message=job.error_message,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-    )
-
-
-def get_digest_status(
-    session: Session, *, subject: str, job_id: int
-) -> DigestStatusResponse:
-    """聚合查询：GraphDigestJob + 关联 CurriculumDeriveJob + 当前快照 ID。"""
-    job = session.get(GraphDigestJob, job_id)
-    if job is None or job.subject != subject:
-        raise DigestJobNotFoundError(job_id)
-
-    graph_resp = _build_graph_job_response(job)
-
-    curriculum_resp: CurriculumJobResponse | None = None
-    if job.curriculum_job_id is not None:
-        cjob = session.get(CurriculumDeriveJob, job.curriculum_job_id)
-        if cjob is not None:
-            curriculum_resp = _build_curriculum_job_response(cjob)
-
-    snapshot = session.exec(
-        select(CurriculumSnapshot).where(
-            CurriculumSnapshot.subject == subject,
-            CurriculumSnapshot.status == "published",
-        )
-    ).first()
-    snapshot_id = snapshot.id if snapshot is not None else None
-
-    logger.info(
-        "digest_status_loaded",
-        subject=subject,
-        job_id=job_id,
-        graph_status=job.status,
-        input_chunk_count=job.input_chunk_count,
-        curriculum_job_id=job.curriculum_job_id,
-        curriculum_status=curriculum_resp.status if curriculum_resp is not None else None,
-        snapshot_id=snapshot_id,
-    )
-
-    return DigestStatusResponse(
-        graph_job=graph_resp,
-        curriculum_job=curriculum_resp,
-        current_curriculum_snapshot_id=snapshot_id,
-    )
-
-
-# ---------------------------------------------------------------------------
-# DocGen 知识文档生成
-# ---------------------------------------------------------------------------
-
-
 def trigger_docgen_build(
     session: Session,
     *,
@@ -379,7 +169,7 @@ def trigger_docgen_build(
     file_ids: list[int] | None,
     prompt: str | None,
 ) -> DocGenBuildData:
-    """创建 DocGen 任务并返回聚合构建信息。"""
+    """Create a docgen job and return accepted source info."""
 
     from app.models.knowledge_doc import DocGenJob
 
@@ -415,7 +205,7 @@ def trigger_docgen_build(
 
 
 async def run_docgen_background(*, subject: str, job_id: int) -> None:
-    """后台异步执行 DocGen 工作流。"""
+    """Run docgen workflow in background."""
 
     from app.models.knowledge_doc import DocGenJob
     from app.workflows.digest import run_docgen_workflow
@@ -431,7 +221,6 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
             docgen_logger = logger.bind(subject=subject, job_id=job_id, file_ids=file_ids)
             docgen_logger.info("docgen_background_started")
 
-            # 标记为 processing
             docgen_repo.update_docgen_job(session, job_id, status="processing")
 
             result = await run_docgen_workflow(
@@ -442,20 +231,19 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
             )
             if result.failed:
                 docgen_repo.update_docgen_job(
-                    session, job_id,
+                    session,
+                    job_id,
                     status="failed",
                     error_message=result.error.detail[-500:],
                 )
-            docgen_logger.info(
-                "docgen_background_completed",
-                success=result.ok,
-            )
+            docgen_logger.info("docgen_background_completed", success=result.ok)
 
         except Exception:
             logger.exception("docgen_background_error", subject=subject, job_id=job_id)
             try:
                 docgen_repo.update_docgen_job(
-                    session, job_id,
+                    session,
+                    job_id,
                     status="failed",
                     error_message=traceback.format_exc()[-500:],
                 )
@@ -464,7 +252,7 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
 
 
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
-    """聚合读取知识文档最终结果与最近任务状态。"""
+    """Read merged markdown result and the latest docgen status."""
 
     merged_path = build_merged_knowledge_base_path(subject)
     latest_job = docgen_repo.get_latest_docgen_job_by_subject(session, subject)
@@ -496,3 +284,4 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         source_file_ids=source_file_ids,
         prompt=prompt,
     )
+

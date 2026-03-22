@@ -13,7 +13,6 @@ from app.schemas.knowledge import (
     ChunkContextRequest,
     ChunkContextResponse,
     ClearKnowledgeResponse,
-    CurriculumSnapshotResponse,
     DigestBuildData,
     DigestBuildRequest,
     DocGenBuildData,
@@ -29,7 +28,6 @@ from app.schemas.knowledge import (
 )
 from app.services.knowledge.curriculum_service import (
     clear_subject_knowledge,
-    get_current_curriculum_snapshot,
     get_teaching_unit_detail,
     manage_taxonomy_anchors,
 )
@@ -71,12 +69,11 @@ async def digest_build(
         file_ids=body.file_ids,
         idempotency_key=body.idempotency_key,
     )
-    if not data.is_existing:
-        background_tasks.add_task(
-            run_graph_digest_background,
-            subject=normalized,
-            job_id=data.job_id,
-        )
+    background_tasks.add_task(
+        run_graph_digest_background,
+        subject=normalized,
+        file_ids=body.file_ids,
+    )
 
     return ok_response(data)
 
@@ -145,7 +142,6 @@ async def knowledge_overview(
             subject=normalized,
             include=body.include,
             full=body.full,
-            job_id=body.job_id,
         )
     )
 
@@ -223,21 +219,6 @@ async def taxonomy_anchors(
             order_index=body.order_index,
         )
     )
-
-
-@router.post(
-    "/curriculum/current",
-    response_model=ApiResponse[CurriculumSnapshotResponse],
-    summary="当前课程快照",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def curriculum_current(
-    subject: str = Path(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[CurriculumSnapshotResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-    return ok_response(get_current_curriculum_snapshot(session, subject=normalized))
 
 
 @router.post(

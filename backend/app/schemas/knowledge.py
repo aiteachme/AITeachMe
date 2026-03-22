@@ -69,10 +69,6 @@ class KnowledgeOverviewRequest(BaseModel):
         default=True,
         description="Whether to return full payload. Current implementation favors full payload.",
     )
-    job_id: int | None = Field(
-        default=None,
-        description="Optional GraphDigestJob ID for build-status lookup in overview.",
-    )
 
 
 class ChunkContextRequest(BaseModel):
@@ -113,25 +109,7 @@ class AnchorManageRequest(BaseModel):
 class DigestBuildData(BaseModel):
     """Digest build trigger response payload."""
 
-    job_id: int = Field(description="GraphDigestJob ID.")
-    is_existing: bool = Field(default=False, description="Whether an existing job was reused.")
-
-
-class GraphDigestJobResponse(BaseModel):
-    """Graph digest job status."""
-
-    id: int
-    subject: str
-    status: str
-    input_chunk_count: int = 0
-    nodes_added: int = 0
-    nodes_updated: int = 0
-    nodes_merged: int = 0
-    edges_added: int = 0
-    edges_updated: int = 0
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    message: str = Field(description="Build trigger confirmation message.")
 
 
 class CurriculumJobResponse(BaseModel):
@@ -139,7 +117,6 @@ class CurriculumJobResponse(BaseModel):
 
     id: int
     subject: str
-    graph_job_id: int
     status: str
     units_added: int = 0
     units_updated: int = 0
@@ -189,9 +166,8 @@ class DocGenGetResponse(BaseModel):
 
 
 class DigestStatusResponse(BaseModel):
-    """Digest status aggregate: graph job + optional curriculum job + snapshot pointer."""
+    """Digest status aggregate: curriculum job + snapshot pointer."""
 
-    graph_job: GraphDigestJobResponse
     curriculum_job: CurriculumJobResponse | None = None
     current_curriculum_snapshot_id: int | None = None
 
@@ -445,18 +421,6 @@ class KnowledgeOverviewStats(BaseModel):
     dependency_count: int = 0
 
 
-class KnowledgeOverviewBuildStatus(BaseModel):
-    """Latest (or specified) digest build status summary for overview polling."""
-
-    graph_job_id: int
-    graph_status: str
-    curriculum_job_id: int | None = None
-    curriculum_status: str | None = None
-    is_terminal: bool = False
-    is_success: bool = False
-    error_message: str | None = None
-
-
 class KnowledgeOverviewResponse(BaseModel):
     """Knowledge overview aggregated payload for summary tabs."""
 
@@ -468,7 +432,6 @@ class KnowledgeOverviewResponse(BaseModel):
     graph: FullGraphResponse | None = None
     units: list[TeachingUnitResponse] = Field(default_factory=list)
     stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
-    build_status: KnowledgeOverviewBuildStatus | None = None
 
 
 class ClearKnowledgeResponse(BaseModel):

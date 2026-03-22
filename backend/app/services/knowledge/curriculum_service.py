@@ -30,12 +30,10 @@ from app.models.knowledge import Document, DocumentChunk
 from app.models.knowledge_graph import (
     EdgeRevision,
     EvidenceLink,
-    GraphDigestJob,
     KnowledgeAlias,
     KnowledgeEdge,
     KnowledgeNode,
     KnowledgeRevision,
-    SubjectBuildLock,
 )
 from app.repositories import curriculum_repo, knowledge_repo
 from app.schemas.common import PaginatedData, build_paginated_data
@@ -540,11 +538,6 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     # 9. KnowledgeEdge / KnowledgeNode
     _delete_all(KnowledgeEdge, "knowledge_edge")
     _delete_all(KnowledgeNode, "knowledge_node")
-    session.commit()
-
-    # 10. GraphDigestJob / SubjectBuildLock
-    _delete_all(GraphDigestJob, "graph_digest_job")
-    _delete_all(SubjectBuildLock, "subject_build_lock")
     session.commit()
 
     # ── 文档与向量切块 ──
