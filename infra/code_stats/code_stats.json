@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T06:08:24.892541",
-  "total_commits_analyzed": 155,
+  "generated_at": "2026-03-22T06:15:49.042393",
+  "total_commits_analyzed": 158,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1241,6 +1241,30 @@
       "code_lines": 39384,
       "other_lines": 12557,
       "message": "Merge remote-tracking branch 'origin/main' into fe"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "7b59c5f",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "d3088ac",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "chore: 加上openai.json"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "0a25960",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "Merge branch 'dev_ywl'"
     }
   ]
 }
