@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-21T16:00:01.039171",
-  "total_commits_analyzed": 114,
+  "generated_at": "2026-03-22T06:08:24.892541",
+  "total_commits_analyzed": 155,
   "stats": [
     {
       "date": "2026-03-11",
@@ -913,6 +913,334 @@
       "code_lines": 26880,
       "other_lines": 12281,
       "message": "Merge branch 'develop'"
+    },
+    {
+      "date": "2026-03-19",
+      "commit": "4c9220e",
+      "total_lines": 30558,
+      "code_lines": 21814,
+      "other_lines": 8744,
+      "message": "docs(assessment-mastery-layer): 新增第四层测评与掌握度设计文档"
+    },
+    {
+      "date": "2026-03-20",
+      "commit": "69e9ec2",
+      "total_lines": 33181,
+      "code_lines": 23364,
+      "other_lines": 9817,
+      "message": "docs: 新增仓库结构与运行时文件布局文档"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "612a688",
+      "total_lines": 33317,
+      "code_lines": 23446,
+      "other_lines": 9871,
+      "message": "feat: 改造学科创建流程并增强基础交互与设计文档"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "751d48d",
+      "total_lines": 34815,
+      "code_lines": 24433,
+      "other_lines": 10382,
+      "message": "Merge branch 'develop' into feat/exam"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "6e9075c",
+      "total_lines": 30558,
+      "code_lines": 21814,
+      "other_lines": 8744,
+      "message": "fix: 前端环境重新构建"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "4aafb03",
+      "total_lines": 31041,
+      "code_lines": 22205,
+      "other_lines": 8836,
+      "message": "feat: 新增测评与掌握度层数据模型及相关枚举定义"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "f89ad59",
+      "total_lines": 35298,
+      "code_lines": 24824,
+      "other_lines": 10474,
+      "message": "Merge remote-tracking branch 'origin/develop' into"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "764b98c",
+      "total_lines": 39785,
+      "code_lines": 28531,
+      "other_lines": 11254,
+      "message": "feat(assessment): 新增测评 API 模式与服务层实现"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "7ee7c0f",
+      "total_lines": 34924,
+      "code_lines": 24796,
+      "other_lines": 10128,
+      "message": "refactor: 重构工作流编排并下沉 ingest 解析链"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "5c6cab4",
+      "total_lines": 34932,
+      "code_lines": 24885,
+      "other_lines": 10047,
+      "message": "refactor: 重构 digest 工作流目录并改为基于 LangGraph 图导出流程图"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "64a48cf",
+      "total_lines": 39785,
+      "code_lines": 28531,
+      "other_lines": 11254,
+      "message": "Merge branch 'feat/exam' of github.com:aiteachme/A"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "ae6c040",
+      "total_lines": 35696,
+      "code_lines": 25480,
+      "other_lines": 10216,
+      "message": "refactor: 统一 workflows 模块的 runtime 组织形式"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "e751f0f",
+      "total_lines": 36174,
+      "code_lines": 25874,
+      "other_lines": 10300,
+      "message": "fix: 修复 ingest 对 docx 和 markdown 的解析链路"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "9e8fa9f",
+      "total_lines": 34275,
+      "code_lines": 24301,
+      "other_lines": 9974,
+      "message": "feat(core): 增强核心模块，新增 10 个 Agent 基础能力"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "67d1958",
+      "total_lines": 36177,
+      "code_lines": 25876,
+      "other_lines": 10301,
+      "message": "fix: 修复上传页文件解析状态未自动刷新的问题"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "a13c638",
+      "total_lines": 37695,
+      "code_lines": 27075,
+      "other_lines": 10620,
+      "message": "Merge remote-tracking branch 'origin/feat_langgrap"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "0b3001b",
+      "total_lines": 36284,
+      "code_lines": 25973,
+      "other_lines": 10311,
+      "message": "fix: 修复聊天接口路径错位与知识视图空态判定"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "9dc01c4",
+      "total_lines": 37588,
+      "code_lines": 26920,
+      "other_lines": 10668,
+      "message": "feat(core): 增强核心模块 — 新增 10 个 Agent 基础能力 + 配置化"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "a003c75",
+      "total_lines": 37242,
+      "code_lines": 26821,
+      "other_lines": 10421,
+      "message": "fix: 优化 ingest 文本路由并补齐 yaml 等文件解析支持"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "acce73f",
+      "total_lines": 38653,
+      "code_lines": 27865,
+      "other_lines": 10788,
+      "message": "Merge remote-tracking branch 'origin/feat_core' in"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "8c724f5",
+      "total_lines": 41258,
+      "code_lines": 29856,
+      "other_lines": 11402,
+      "message": "feat: 增加digest doc"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "a6d570f",
+      "total_lines": 41720,
+      "code_lines": 30251,
+      "other_lines": 11469,
+      "message": "feat(docgen): 实现知识文档生成全流程的前后端集成与性能优化"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "e9dde3d",
+      "total_lines": 48544,
+      "code_lines": 34619,
+      "other_lines": 13925,
+      "message": "refactor: 全面优化 ExamPage 组件，提升试卷生成与评分流程的体验和效率"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "65d9236",
+      "total_lines": 41750,
+      "code_lines": 30278,
+      "other_lines": 11472,
+      "message": "docs: 添加文档"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "2956722",
+      "total_lines": 45861,
+      "code_lines": 31998,
+      "other_lines": 13863,
+      "message": "feat: 重构 interact 对话页并同步聊天工作流契约"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "e2f50a1",
+      "total_lines": 45958,
+      "code_lines": 32089,
+      "other_lines": 13869,
+      "message": "fix: 修复 digest 向量写入冲突与失败状态显示不准问题"
+    },
+    {
+      "date": "2026-03-21",
+      "commit": "efdf89a",
+      "total_lines": 39161,
+      "code_lines": 26880,
+      "other_lines": 12281,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "cb5fdfb",
+      "total_lines": 58003,
+      "code_lines": 41185,
+      "other_lines": 16818,
+      "message": "fix: 修复 digest 题库类文档空图谱抽取"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "9a5dba0",
+      "total_lines": 47959,
+      "code_lines": 36025,
+      "other_lines": 11934,
+      "message": "Merge remote-tracking branch 'origin/feat/exam' in"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "e42c522",
+      "total_lines": 48054,
+      "code_lines": 36114,
+      "other_lines": 11940,
+      "message": "fix: 修复考卷生成与打开请求超时问题"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "a0c27ac",
+      "total_lines": 41991,
+      "code_lines": 30476,
+      "other_lines": 11515,
+      "message": "feat: 优化docgen，分子任务进行"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "b71bc66",
+      "total_lines": 48053,
+      "code_lines": 36113,
+      "other_lines": 11940,
+      "message": "fix: 修复判卷工作流状态类型在运行时解析失败"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "733d246",
+      "total_lines": 51370,
+      "code_lines": 38703,
+      "other_lines": 12667,
+      "message": "Merge remote-tracking branch 'origin/feat_ywl2' in"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "34dba3a",
+      "total_lines": 42054,
+      "code_lines": 30526,
+      "other_lines": 11528,
+      "message": "fix: 优化导出图"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "f8608c9",
+      "total_lines": 51433,
+      "code_lines": 38753,
+      "other_lines": 12680,
+      "message": "Merge remote-tracking branch 'origin/feat_ywl2' in"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "7932c68",
+      "total_lines": 51452,
+      "code_lines": 38772,
+      "other_lines": 12680,
+      "message": "fix: 修复 assessment 枚举导出遗漏导致的启动报错"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "b435388",
+      "total_lines": 51546,
+      "code_lines": 38854,
+      "other_lines": 12692,
+      "message": "fix: 增加考试生成作业的超时处理和状态检查逻辑"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "396944f",
+      "total_lines": 51222,
+      "code_lines": 38761,
+      "other_lines": 12461,
+      "message": "feat: 增强学习画像分析能力，新增掌握度概览与复习任务功能"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "2dba325",
+      "total_lines": 51239,
+      "code_lines": 38777,
+      "other_lines": 12462,
+      "message": "feat: 更新 Vite 配置以支持环境变量和 API 代理"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "5afae25",
+      "total_lines": 51239,
+      "code_lines": 38777,
+      "other_lines": 12462,
+      "message": "Merge remote-tracking branch 'origin/dev_wzx' into"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "ec7424d",
+      "total_lines": 51941,
+      "code_lines": 39384,
+      "other_lines": 12557,
+      "message": "Merge remote-tracking branch 'origin/main' into fe"
     }
   ]
 }
