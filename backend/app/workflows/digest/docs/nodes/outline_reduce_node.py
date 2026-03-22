@@ -36,6 +36,7 @@ def build_outline_reduce_node(*, context: WorkflowContext):
         job_id = state["job_id"]
         clean_chunks = state.get("clean_chunks", [])
         local_outlines = state.get("local_outlines", [])
+        user_prompt = state.get("user_prompt")
 
         with managed_session() as session:
             docgen_repo.update_docgen_job(
@@ -53,6 +54,7 @@ def build_outline_reduce_node(*, context: WorkflowContext):
             outline_tree = await generate_global_outline(
                 chunk_count=len(clean_chunks),
                 local_outlines_text=local_text,
+                user_prompt=user_prompt,
             )
         except Exception:
             # 兜底

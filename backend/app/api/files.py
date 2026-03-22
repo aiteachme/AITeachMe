@@ -19,18 +19,15 @@ from app.schemas.files import (
     FilesParseData,
     FilesParseRequest,
     FilesUploadData,
-    FileStatusData,
-    FileStatusRequest,
 )
 from app.services.file_service import (
     delete_files,
     get_file_result,
-    get_file_status,
     list_files,
     request_files_parse,
     retry_file_parse,
     run_parse_files_background,
-    save_uploaded_files,
+    save_uploaded_files_and_request_parse,
 )
 from app.services.subject_service import get_subject_record
 
@@ -44,13 +41,21 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
     responses=build_error_responses([400, 404, 413, 422, 500]),
 )
 async def upload_files(
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     files: list[UploadFile] = File(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    return ok_response(await save_uploaded_files(session, subject=normalized_subject, files=files))
+    data = await save_uploaded_files_and_request_parse(session, subject=normalized_subject, files=files)
+    if data.accepted_parse_file_ids:
+        background_tasks.add_task(
+            run_parse_files_background,
+            subject=normalized_subject,
+            file_ids=data.accepted_parse_file_ids,
+        )
+    return ok_response(data)
 
 
 @router.post(
@@ -97,22 +102,6 @@ async def retry_uploaded_file(
         file_ids=data.accepted_file_ids,
     )
     return ok_response(data)
-
-
-@router.post(
-    "/status",
-    response_model=ApiResponse[FileStatusData],
-    summary="文件状态",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def get_file_status_api(
-    subject: str = Path(...),
-    body: FileStatusRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[FileStatusData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    return ok_response(get_file_status(session, subject=normalized_subject, file_id=body.file_id))
 
 
 @router.post(

@@ -50,11 +50,13 @@ async def generate_local_titles(content: str) -> list[str]:
 async def generate_global_outline(
     chunk_count: int,
     local_outlines_text: str,
+    user_prompt: str | None = None,
 ) -> dict:
     """LLM 全局统筹生成目录树。"""
     prompt = GLOBAL_OUTLINE_PROMPT.format(
         chunk_count=chunk_count,
         local_outlines=local_outlines_text,
+        user_prompt=user_prompt or "（无额外要求）",
     )
     try:
         result = await acompletion(

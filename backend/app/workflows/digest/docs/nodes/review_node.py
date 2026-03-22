@@ -27,6 +27,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
         draft = state["draft"]
         outline_tree = state.get("outline_tree", {})
         total_chapters = state.get("total_chapters", 1)
+        user_prompt = state.get("user_prompt")
 
         ch_index = draft["chapter_index"]
         ch_title = draft["title"]
@@ -36,7 +37,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
 
         node_logger.info("review_start", chapter_index=ch_index)
 
-        review_result = await review_chapter(markdown, source_summary)
+        review_result = await review_chapter(markdown, source_summary, user_prompt=user_prompt)
 
         final_markdown = markdown
         if not review_result.get("passed", True):
@@ -54,6 +55,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
                     chapter_index=ch_index,
                     total_chapters=total_chapters,
                     global_outline_text=global_outline_text,
+                    user_prompt=user_prompt,
                     prev_summary="",
                     next_preview="",
                     source_content=source_text,

@@ -68,6 +68,17 @@ def list_raw_files_by_subject(
     return list(session.exec(stmt).all()), total
 
 
+def list_all_raw_files_by_subject(session: Session, subject: str) -> list[RawFile]:
+    """查询学科下全部文件，按创建时间升序返回。"""
+
+    stmt = (
+        select(RawFile)
+        .where(RawFile.subject == subject)
+        .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
+    )
+    return list(session.exec(stmt).all())
+
+
 def update_raw_file(
     session: Session,
     raw_file: RawFile,

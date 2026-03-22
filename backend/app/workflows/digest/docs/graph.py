@@ -76,6 +76,7 @@ def _fan_out_to_draft(state: DocGenState) -> list[Send]:
             "subject": state["subject"],
             "outline_tree": outline_tree,
             "total_chapters": total,
+            "user_prompt": state.get("user_prompt"),
             "prev_summary": prev_summary,
             "next_preview": next_preview,
         }))
@@ -93,6 +94,7 @@ def _fan_out_to_review(state: DocGenState) -> list[Send]:
             "draft": draft,
             "outline_tree": outline_tree,
             "total_chapters": total,
+            "user_prompt": state.get("user_prompt"),
         })
         for draft in drafts
     ]
@@ -185,12 +187,14 @@ def create_docgen_initial_state(
     subject: str,
     job_id: int,
     file_ids: list[int],
+    user_prompt: str | None = None,
 ) -> DocGenState:
     """创建 DocGen 工作流初始状态。"""
     return DocGenState(
         subject=subject,
         job_id=job_id,
         file_ids=file_ids,
+        user_prompt=user_prompt,
         error=None,
     )
 

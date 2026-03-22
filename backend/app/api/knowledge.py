@@ -34,9 +34,7 @@ from app.schemas.knowledge import (
     AnchorManageRequest,
     DocGenBuildRequest,
     DocGenBuildData,
-    DocGenStatusRequest,
-    DocGenStatusResponse,
-    DocGenContentResponse,
+    DocGenGetResponse,
 )
 from app.services.knowledge.curriculum_service import (
     clear_subject_knowledge,
@@ -49,12 +47,12 @@ from app.services.knowledge.curriculum_service import (
 )
 from app.services.knowledge.digest_service import (
     get_digest_status,
+    get_docgen_result,
     run_graph_digest_background,
     trigger_digest_build,
     trigger_docgen_build,
     run_docgen_background,
 )
-from app.services.upload_support import build_merged_knowledge_base_path
 from app.services.knowledge.graph_query_service import (
     get_evidence_context,
     get_full_graph,
@@ -128,56 +126,33 @@ async def docgen_build(
 ) -> ApiResponse[DocGenBuildData]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    job_id = trigger_docgen_build(
+    data = trigger_docgen_build(
         session,
         subject=normalized,
         file_ids=body.file_ids,
+        prompt=body.prompt,
     )
     background_tasks.add_task(
         run_docgen_background,
         subject=normalized,
-        job_id=job_id,
+        job_id=data.job_id,
     )
-    return ok_response(DocGenBuildData(job_id=job_id))
+    return ok_response(data)
 
 
 @router.post(
-    "/docgen/status",
-    response_model=ApiResponse[DocGenStatusResponse],
-    summary="查询知识文档生成状态",
+    "/docgen/get",
+    response_model=ApiResponse[DocGenGetResponse],
+    summary="查询知识文档最终内容与最近生成状态",
     responses=build_error_responses([400, 404, 500]),
 )
-async def docgen_status(
-    subject: str = Path(...),
-    body: DocGenStatusRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[DocGenStatusResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-    from app.models.knowledge_doc import DocGenJob
-    job = session.get(DocGenJob, body.job_id)
-    if job is None:
-        raise ValueError(f"Job not found: {body.job_id}")
-    return ok_response(DocGenStatusResponse(job=job))
-
-
-@router.post(
-    "/docgen/content",
-    response_model=ApiResponse[DocGenContentResponse],
-    summary="查询生成的知识文档最终 Markdown 内容",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def docgen_content(
+async def docgen_get(
     subject: str = Path(...),
     session: Session = Depends(get_db),
-) -> ApiResponse[DocGenContentResponse]:
+) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    path = build_merged_knowledge_base_path(normalized)
-    if not path.exists():
-        return ok_response(DocGenContentResponse(markdown=""))
-    content = path.read_text(encoding="utf-8")
-    return ok_response(DocGenContentResponse(markdown=content))
+    return ok_response(get_docgen_result(session, subject=normalized))
 
 
 @router.post(

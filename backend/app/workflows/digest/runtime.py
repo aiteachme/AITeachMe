@@ -181,6 +181,7 @@ async def run_docgen_workflow(
     subject: str,
     job_id: int,
     file_ids: list[int],
+    user_prompt: str | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> WorkflowResult[DocGenState]:
     """运行 DocGen 知识文档生成工作流。"""
@@ -202,7 +203,12 @@ async def run_docgen_workflow(
     result = await run_state_graph(
         workflow_name="digest.docgen",
         graph_builder=lambda: build_docgen_graph(context=context),
-        initial_state=create_docgen_initial_state(subject=subject, job_id=job_id, file_ids=file_ids),
+        initial_state=create_docgen_initial_state(
+            subject=subject,
+            job_id=job_id,
+            file_ids=file_ids,
+            user_prompt=user_prompt,
+        ),
         context=context,
     )
     if result.failed:

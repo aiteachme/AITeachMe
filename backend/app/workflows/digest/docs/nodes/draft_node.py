@@ -36,6 +36,7 @@ def build_draft_chapter_node(*, context: WorkflowContext):
         job_id = state["job_id"]
         outline_tree = state.get("outline_tree", {})
         total_chapters = state.get("total_chapters", 1)
+        user_prompt = state.get("user_prompt")
         prev_summary = state.get("prev_summary", "")
         next_preview = state.get("next_preview", "")
         subject = state.get("subject", "")
@@ -54,6 +55,7 @@ def build_draft_chapter_node(*, context: WorkflowContext):
             chapter_index=ch_index,
             total_chapters=total_chapters,
             global_outline_text=global_outline_text,
+            user_prompt=user_prompt,
             prev_summary=prev_summary,
             next_preview=next_preview,
             source_content=source_text,

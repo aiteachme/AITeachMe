@@ -973,88 +973,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/status": {
-      "post": {
-        "tags": [
-          "files"
-        ],
-        "summary": "文件状态",
-        "operationId": "get_file_status_api_api_v1_subjects__subject__files_status_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FileStatusRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_FileStatusData_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/files/list": {
       "post": {
         "tags": [
@@ -1570,95 +1488,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docgen/status": {
+    "/api/v1/subjects/{subject}/knowledge/docgen/get": {
       "post": {
         "tags": [
           "knowledge"
         ],
-        "summary": "查询知识文档生成状态",
-        "operationId": "docgen_status_api_v1_subjects__subject__knowledge_docgen_status_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocGenStatusRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DocGenStatusResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/docgen/content": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "查询生成的知识文档最终 Markdown 内容",
-        "operationId": "docgen_content_api_v1_subjects__subject__knowledge_docgen_content_post",
+        "summary": "查询知识文档最终内容与最近生成状态",
+        "operationId": "docgen_get_api_v1_subjects__subject__knowledge_docgen_get_post",
         "parameters": [
           {
             "name": "subject",
@@ -1676,7 +1512,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DocGenContentResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_DocGenGetResponse_"
                 }
               }
             }
@@ -5225,7 +5061,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_DocGenContentResponse_": {
+      "ApiResponse_DocGenGetResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -5242,7 +5078,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DocGenContentResponse"
+                "$ref": "#/components/schemas/DocGenGetResponse"
               },
               {
                 "type": "null"
@@ -5252,41 +5088,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[DocGenContentResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_DocGenStatusResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DocGenStatusResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[DocGenStatusResponse]",
+        "title": "ApiResponse[DocGenGetResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5593,40 +5395,6 @@
         },
         "type": "object",
         "title": "ApiResponse[FileGetData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_FileStatusData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FileStatusData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[FileStatusData]",
         "example": {
           "code": 0,
           "data": {},
@@ -7198,6 +6966,32 @@
             "type": "integer",
             "title": "Job Id",
             "description": "DocGenJob ID。"
+          },
+          "accepted_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Accepted File Ids",
+            "description": "本次用于文档生成的文件 ID。"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "description": "用户提供的生成要求。"
+          },
+          "ready_file_count": {
+            "type": "integer",
+            "title": "Ready File Count",
+            "description": "当前可用的 ready 文件数量。",
+            "default": 0
           }
         },
         "type": "object",
@@ -7210,42 +7004,120 @@
       "DocGenBuildRequest": {
         "properties": {
           "file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "minItems": 1,
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "File Ids",
-            "description": "参与生成的已解析文件 ID。"
+            "description": "参与生成的已解析文件 ID；为空时自动选择当前 subject 下全部可用文件。"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "description": "用户提供的知识文档用途说明与生成要求。"
           }
         },
         "type": "object",
-        "required": [
-          "file_ids"
-        ],
         "title": "DocGenBuildRequest",
         "description": "触发知识文档生成请求。",
         "example": {
           "file_ids": [
             1,
             2
-          ]
+          ],
+          "prompt": "请整理成适合复习的知识文档"
         }
       },
-      "DocGenContentResponse": {
+      "DocGenGetResponse": {
         "properties": {
+          "exists": {
+            "type": "boolean",
+            "title": "Exists",
+            "description": "最终 merged 文档是否已存在。"
+          },
           "markdown": {
             "type": "string",
             "title": "Markdown",
-            "description": "合并后的最终 Markdown 内容。"
+            "description": "合并后的最终 Markdown 内容。",
+            "default": ""
+          },
+          "merged_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Path",
+            "description": "最终 merged Markdown 本地路径。"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "最终 merged 文档最近更新时间。"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocGenJobResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次 DocGen 任务状态。"
+          },
+          "source_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Source File Ids",
+            "description": "最终文档或当前任务关联的文件 ID。"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "description": "用户提供的生成要求。"
           }
         },
         "type": "object",
         "required": [
-          "markdown"
+          "exists"
         ],
-        "title": "DocGenContentResponse",
-        "description": "知识文档生成产物响应。"
+        "title": "DocGenGetResponse",
+        "description": "知识文档聚合查询响应。"
       },
       "DocGenJobResponse": {
         "properties": {
@@ -7319,34 +7191,6 @@
         ],
         "title": "DocGenJobResponse",
         "description": "DocGenJob 状态。"
-      },
-      "DocGenStatusRequest": {
-        "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "DocGenJob ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id"
-        ],
-        "title": "DocGenStatusRequest",
-        "description": "查询知识文档生成状态请求。"
-      },
-      "DocGenStatusResponse": {
-        "properties": {
-          "job": {
-            "$ref": "#/components/schemas/DocGenJobResponse"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job"
-        ],
-        "title": "DocGenStatusResponse",
-        "description": "知识文档生成状态响应。"
       },
       "ErrorResponse": {
         "properties": {
@@ -8217,9 +8061,101 @@
             "title": "Filename",
             "description": "文件名。"
           },
+          "filetype": {
+            "type": "string",
+            "title": "Filetype",
+            "description": "文件扩展名。"
+          },
           "status": {
             "$ref": "#/components/schemas/TaskStatusValue",
             "description": "解析任务状态。"
+          },
+          "ingest_status": {
+            "type": "string",
+            "title": "Ingest Status",
+            "description": "Ingest 流水线状态。"
+          },
+          "markdown_ready": {
+            "type": "boolean",
+            "title": "Markdown Ready",
+            "description": "Markdown 是否可用。"
+          },
+          "asset_ready": {
+            "type": "boolean",
+            "title": "Asset Ready",
+            "description": "资源目录是否可用。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "失败原因。"
+          },
+          "file_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size Bytes",
+            "description": "文件大小（字节）。"
+          },
+          "detected_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Language",
+            "description": "检测到的语言。"
+          },
+          "estimated_pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Pages",
+            "description": "预估页数。"
+          },
+          "image_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Count",
+            "description": "提取图片数量。"
+          },
+          "parser_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Used",
+            "description": "最终使用的解析器。"
           },
           "markdown_content": {
             "type": "string",
@@ -8233,14 +8169,32 @@
             "type": "array",
             "title": "Assets",
             "description": "资源列表。"
+          },
+          "latest_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest Updated At",
+            "description": "最近更新时间。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
           }
         },
         "type": "object",
         "required": [
           "file_id",
           "filename",
+          "filetype",
           "status",
-          "markdown_content"
+          "ingest_status",
+          "markdown_ready",
+          "asset_ready",
+          "markdown_content",
+          "latest_updated_at",
+          "created_at"
         ],
         "title": "FileGetData",
         "description": "文件解析结果。"
@@ -8281,10 +8235,92 @@
             "$ref": "#/components/schemas/TaskStatusValue",
             "description": "解析状态。"
           },
+          "ingest_status": {
+            "type": "string",
+            "title": "Ingest Status",
+            "description": "Ingest 流水线状态。"
+          },
           "markdown_ready": {
             "type": "boolean",
             "title": "Markdown Ready",
             "description": "Markdown 是否已生成。"
+          },
+          "asset_ready": {
+            "type": "boolean",
+            "title": "Asset Ready",
+            "description": "资源目录是否可用。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "失败原因。"
+          },
+          "file_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size Bytes",
+            "description": "文件大小（字节）。"
+          },
+          "detected_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Language",
+            "description": "检测到的语言。"
+          },
+          "estimated_pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Pages",
+            "description": "预估页数。"
+          },
+          "image_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Count",
+            "description": "提取图片数量。"
+          },
+          "parser_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Used",
+            "description": "最终使用的解析器。"
           },
           "latest_updated_at": {
             "type": "string",
@@ -8305,7 +8341,9 @@
           "filename",
           "filetype",
           "status",
+          "ingest_status",
           "markdown_ready",
+          "asset_ready",
           "latest_updated_at",
           "created_at"
         ],
@@ -8364,78 +8402,6 @@
         "title": "FileRetryRequest",
         "description": "文件重试请求。"
       },
-      "FileStatusData": {
-        "properties": {
-          "file_id": {
-            "type": "integer",
-            "title": "File Id",
-            "description": "文件 ID。"
-          },
-          "upload_status": {
-            "type": "string",
-            "title": "Upload Status",
-            "description": "上传状态。"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatusValue",
-            "description": "解析任务状态。"
-          },
-          "markdown_ready": {
-            "type": "boolean",
-            "title": "Markdown Ready",
-            "description": "Markdown 是否可用。"
-          },
-          "asset_ready": {
-            "type": "boolean",
-            "title": "Asset Ready",
-            "description": "资源目录是否可用。"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message",
-            "description": "失败原因。"
-          },
-          "latest_updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Latest Updated At",
-            "description": "最近更新时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_id",
-          "upload_status",
-          "status",
-          "markdown_ready",
-          "asset_ready",
-          "latest_updated_at"
-        ],
-        "title": "FileStatusData",
-        "description": "文件状态数据。"
-      },
-      "FileStatusRequest": {
-        "properties": {
-          "file_id": {
-            "type": "integer",
-            "title": "File Id",
-            "description": "文件 ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_id"
-        ],
-        "title": "FileStatusRequest",
-        "description": "单文件状态请求。"
-      },
       "FilesParseData": {
         "properties": {
           "accepted_file_ids": {
@@ -8480,14 +8446,6 @@
             "title": "Subject",
             "description": "学科标识。"
           },
-          "file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "File Ids",
-            "description": "新建文件 ID 列表。"
-          },
           "filenames": {
             "items": {
               "type": "string"
@@ -8495,12 +8453,33 @@
             "type": "array",
             "title": "Filenames",
             "description": "原始文件名列表。"
+          },
+          "uploaded_items": {
+            "items": {
+              "$ref": "#/components/schemas/FileItem"
+            },
+            "type": "array",
+            "title": "Uploaded Items",
+            "description": "上传后的文件项列表。"
+          },
+          "accepted_parse_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Accepted Parse File Ids",
+            "description": "已自动受理解析的文件 ID。"
+          },
+          "started_parse_count": {
+            "type": "integer",
+            "title": "Started Parse Count",
+            "description": "自动触发解析的文件数量。",
+            "default": 0
           }
         },
         "type": "object",
         "required": [
           "subject",
-          "file_ids",
           "filenames"
         ],
         "title": "FilesUploadData",

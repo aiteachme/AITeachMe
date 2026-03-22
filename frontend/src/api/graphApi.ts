@@ -64,6 +64,9 @@ export interface DigestStatusResponse {
 
 export interface DocGenBuildData {
   job_id: number;
+  accepted_file_ids: number[];
+  prompt: string | null;
+  ready_file_count: number;
 }
 
 export interface DocGenJobResponse {
@@ -85,6 +88,16 @@ export interface DocGenStatusResponse {
 
 export interface DocGenContentResponse {
   markdown: string;
+}
+
+export interface DocGenGetResponse {
+  exists: boolean;
+  markdown: string;
+  merged_path: string | null;
+  updated_at: string | null;
+  job: DocGenJobResponse | null;
+  source_file_ids: number[];
+  prompt: string | null;
 }
 
 export interface KnowledgeNodeResponse {
@@ -281,38 +294,59 @@ export async function fetchDigestStatus(
 /** 触发文档生成 */
 export async function triggerDocGenBuild(
   subject: string,
-  fileIds: number[],
+  fileIds?: number[],
+  prompt?: string,
 ): Promise<DocGenBuildData> {
   const res = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
-    data: { file_ids: fileIds },
+    data: {
+      file_ids: fileIds,
+      prompt,
+    },
   });
   return res.data;
 }
 
-/** 查询文档生成状态 */
+/** 查询知识文档聚合结果 */
+export async function fetchDocGenResult(
+  subject: string,
+): Promise<DocGenGetResponse> {
+  const res = await apiClient<ApiResponse<DocGenGetResponse>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docgen/get`,
+  });
+  return res.data;
+}
+
+/** 兼容旧调用：查询文档生成状态 */
 export async function fetchDocGenStatus(
   subject: string,
   jobId: number,
 ): Promise<DocGenStatusResponse> {
-  const res = await apiClient<ApiResponse<DocGenStatusResponse>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/docgen/status`,
-    data: { job_id: jobId },
-  });
-  return res.data;
+  const result = await fetchDocGenResult(subject);
+  return {
+    job: result.job ?? {
+      id: jobId,
+      subject,
+      status: result.exists ? "completed" : "pending",
+      progress: result.exists ? 100 : 0,
+      current_step: null,
+      total_chapters: 0,
+      completed_chapters: 0,
+      error_message: null,
+      created_at: result.updated_at ?? new Date().toISOString(),
+      updated_at: result.updated_at ?? new Date().toISOString(),
+    },
+  };
 }
 
-/** 获取最新文档内容 */
+/** 兼容旧调用：获取最新文档内容 */
 export async function fetchDocGenContent(
   subject: string,
 ): Promise<DocGenContentResponse> {
-  const res = await apiClient<ApiResponse<DocGenContentResponse>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/docgen/content`,
-  });
-  return res.data;
+  const result = await fetchDocGenResult(subject);
+  return { markdown: result.markdown };
 }
 
 /** 分页查询知识节点 */

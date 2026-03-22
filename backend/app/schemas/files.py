@@ -16,17 +16,13 @@ class FilesParseRequest(BaseModel):
     file_ids: list[int] = Field(min_length=1, description="待解析文件 ID 列表。")
 
 
-class FileStatusRequest(BaseModel):
-    """单文件状态请求。"""
+class FileGetRequest(BaseModel):
+    """单文件详情请求。"""
 
     file_id: int = Field(description="文件 ID。")
 
 
-class FileGetRequest(FileStatusRequest):
-    """单文件详情请求。"""
-
-
-class FileRetryRequest(FileStatusRequest):
+class FileRetryRequest(FileGetRequest):
     """文件重试请求。"""
 
 
@@ -53,8 +49,10 @@ class FilesUploadData(BaseModel):
     """上传返回数据。"""
 
     subject: str = Field(description="学科标识。")
-    file_ids: list[int] = Field(description="新建文件 ID 列表。")
     filenames: list[str] = Field(description="原始文件名列表。")
+    uploaded_items: list["FileItem"] = Field(default_factory=list, description="上传后的文件项列表。")
+    accepted_parse_file_ids: list[int] = Field(default_factory=list, description="已自动受理解析的文件 ID。")
+    started_parse_count: int = Field(default=0, description="自动触发解析的文件数量。")
 
 
 class FilesParseData(BaseModel):
@@ -76,21 +74,17 @@ class FileItem(BaseModel):
     filename: str = Field(description="文件名。")
     filetype: str = Field(description="文件扩展名。")
     status: TaskStatusValue = Field(description="解析状态。")
+    ingest_status: str = Field(description="Ingest 流水线状态。")
     markdown_ready: bool = Field(description="Markdown 是否已生成。")
-    latest_updated_at: datetime = Field(description="最近更新时间。")
-    created_at: datetime = Field(description="创建时间。")
-
-
-class FileStatusData(BaseModel):
-    """文件状态数据。"""
-
-    file_id: int = Field(description="文件 ID。")
-    upload_status: str = Field(description="上传状态。")
-    status: TaskStatusValue = Field(description="解析任务状态。")
-    markdown_ready: bool = Field(description="Markdown 是否可用。")
     asset_ready: bool = Field(description="资源目录是否可用。")
     error_message: str | None = Field(default=None, description="失败原因。")
+    file_size_bytes: int | None = Field(default=None, description="文件大小（字节）。")
+    detected_language: str | None = Field(default=None, description="检测到的语言。")
+    estimated_pages: int | None = Field(default=None, description="预估页数。")
+    image_count: int | None = Field(default=None, description="提取图片数量。")
+    parser_used: str | None = Field(default=None, description="最终使用的解析器。")
     latest_updated_at: datetime = Field(description="最近更新时间。")
+    created_at: datetime = Field(description="创建时间。")
 
 
 class FileAssetItem(BaseModel):
@@ -104,6 +98,21 @@ class FileGetData(BaseModel):
 
     file_id: int = Field(description="文件 ID。")
     filename: str = Field(description="文件名。")
+    filetype: str = Field(description="文件扩展名。")
     status: TaskStatusValue = Field(description="解析任务状态。")
+    ingest_status: str = Field(description="Ingest 流水线状态。")
+    markdown_ready: bool = Field(description="Markdown 是否可用。")
+    asset_ready: bool = Field(description="资源目录是否可用。")
+    error_message: str | None = Field(default=None, description="失败原因。")
+    file_size_bytes: int | None = Field(default=None, description="文件大小（字节）。")
+    detected_language: str | None = Field(default=None, description="检测到的语言。")
+    estimated_pages: int | None = Field(default=None, description="预估页数。")
+    image_count: int | None = Field(default=None, description="提取图片数量。")
+    parser_used: str | None = Field(default=None, description="最终使用的解析器。")
     markdown_content: str = Field(description="解析后的 Markdown。")
     assets: list[FileAssetItem] = Field(default_factory=list, description="资源列表。")
+    latest_updated_at: datetime = Field(description="最近更新时间。")
+    created_at: datetime = Field(description="创建时间。")
+
+
+FilesUploadData.model_rebuild()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import shutil
 import uuid
 from pathlib import Path
@@ -33,7 +34,6 @@ from app.schemas.files import (
     FileDeleteData,
     FileGetData,
     FileItem,
-    FileStatusData,
     FilesParseData,
     FilesUploadData,
 )
@@ -43,6 +43,50 @@ from app.utils.subject import validate_subject
 from app.workflows.ingest import run_parse_file_workflow
 
 logger = structlog.get_logger()
+
+
+def _path_exists(path_value: str | None) -> bool:
+    return bool(path_value and Path(path_value).exists())
+
+
+def _asset_ready(path_value: str | None) -> bool:
+    if not path_value:
+        return False
+    path = Path(path_value)
+    return path.exists() and path.is_dir()
+
+
+def _extract_parser_used(parse_metadata: str | None) -> str | None:
+    if not parse_metadata:
+        return None
+    try:
+        payload = json.loads(parse_metadata)
+    except json.JSONDecodeError:
+        return None
+    parser_used = payload.get("parser_used")
+    return str(parser_used) if parser_used else None
+
+
+def build_file_item(raw_file: RawFile) -> FileItem:
+    """Serialize a raw file into the richer upload-page list item."""
+
+    return FileItem(
+        id=require_id(raw_file.id, "RawFile.id"),
+        filename=raw_file.filename,
+        filetype=raw_file.filetype,
+        status=raw_file.status,
+        ingest_status=raw_file.ingest_status,
+        markdown_ready=_path_exists(raw_file.markdown_path),
+        asset_ready=_asset_ready(raw_file.asset_dir),
+        error_message=raw_file.error_message,
+        file_size_bytes=raw_file.file_size_bytes,
+        detected_language=raw_file.detected_language,
+        estimated_pages=raw_file.estimated_pages,
+        image_count=raw_file.image_count,
+        parser_used=_extract_parser_used(raw_file.parse_metadata),
+        latest_updated_at=raw_file.updated_at,
+        created_at=raw_file.created_at,
+    )
 
 
 async def save_uploaded_file(
@@ -107,8 +151,31 @@ async def save_uploaded_files(
         saved.append(await save_uploaded_file(session, subject=subject, file=file))
     return FilesUploadData(
         subject=subject,
-        file_ids=[require_id(item.id, "RawFile.id") for item in saved],
         filenames=[item.filename for item in saved],
+        uploaded_items=[build_file_item(item) for item in saved],
+        accepted_parse_file_ids=[],
+        started_parse_count=0,
+    )
+
+
+async def save_uploaded_files_and_request_parse(
+    session: Session,
+    *,
+    subject: str,
+    files: list[UploadFile],
+) -> FilesUploadData:
+    """Save files and immediately enqueue ingest parsing in the same request."""
+
+    upload_data = await save_uploaded_files(session, subject=subject, files=files)
+    file_ids = [item.id for item in upload_data.uploaded_items]
+    parse_data = request_files_parse(session, subject=subject, file_ids=file_ids)
+    refreshed_items = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
+    return FilesUploadData(
+        subject=subject,
+        filenames=upload_data.filenames,
+        uploaded_items=[build_file_item(item) for item in refreshed_items],
+        accepted_parse_file_ids=parse_data.accepted_file_ids,
+        started_parse_count=len(parse_data.accepted_file_ids),
     )
 
 
@@ -265,41 +332,10 @@ def list_files(
         status=status,
     )
     return build_paginated_data(
-        items=[
-            FileItem(
-                id=require_id(item.id, "RawFile.id"),
-                filename=item.filename,
-                filetype=item.filetype,
-                status=item.status,
-                markdown_ready=bool(item.markdown_path),
-                latest_updated_at=item.updated_at,
-                created_at=item.created_at,
-            )
-            for item in items
-        ],
+        items=[build_file_item(item) for item in items],
         page=page,
         size=size,
         total=total,
-    )
-
-
-def get_file_status(
-    session: Session,
-    *,
-    subject: str,
-    file_id: int,
-) -> FileStatusData:
-    """Load one file status."""
-
-    raw_file = get_subject_file_or_raise(session, subject=subject, file_id=file_id)
-    return FileStatusData(
-        file_id=file_id,
-        upload_status=TaskStatus.COMPLETED.value,
-        status=raw_file.status,
-        markdown_ready=bool(raw_file.markdown_path),
-        asset_ready=bool(raw_file.asset_dir),
-        error_message=raw_file.error_message,
-        latest_updated_at=raw_file.updated_at,
     )
 
 
@@ -327,9 +363,21 @@ def get_file_result(
     return FileGetData(
         file_id=file_id,
         filename=raw_file.filename,
+        filetype=raw_file.filetype,
         status=raw_file.status,
+        ingest_status=raw_file.ingest_status,
+        markdown_ready=_path_exists(raw_file.markdown_path),
+        asset_ready=_asset_ready(raw_file.asset_dir),
+        error_message=raw_file.error_message,
+        file_size_bytes=raw_file.file_size_bytes,
+        detected_language=raw_file.detected_language,
+        estimated_pages=raw_file.estimated_pages,
+        image_count=raw_file.image_count,
+        parser_used=_extract_parser_used(raw_file.parse_metadata),
         markdown_content=markdown_content,
         assets=assets,
+        latest_updated_at=raw_file.updated_at,
+        created_at=raw_file.created_at,
     )
 
 

@@ -26,6 +26,18 @@ def get_docgen_job(session: Session, job_id: int) -> DocGenJob | None:
     return session.get(DocGenJob, job_id)
 
 
+def get_latest_docgen_job_by_subject(session: Session, subject: str) -> DocGenJob | None:
+    """按学科查询最近一次 DocGen 任务。"""
+
+    stmt = (
+        select(DocGenJob)
+        .where(DocGenJob.subject == subject)
+        .order_by(DocGenJob.created_at.desc())  # type: ignore[union-attr]
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
 def update_docgen_job(
     session: Session,
     job_id: int,
