@@ -38,11 +38,20 @@ class DocGenState(TypedDict, total=False):
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     chapter_reviews: Annotated[list[dict[str, Any]], operator.add]
     chapter_metadatas: Annotated[list[dict[str, Any]], operator.add]
+    draft_ms: Annotated[int, operator.add]
+    review_ms: Annotated[int, operator.add]
+    metadata_ms: Annotated[int, operator.add]
+    llm_calls_total: Annotated[int, operator.add]
+    llm_calls_skipped: Annotated[int, operator.add]
 
     # ── finalize_assemble 产出 ──
     doc_ids: list[int]
     merged_markdown: str
     merged_path: str
+    load_ms: int
+    cleanse_ms: int
+    outline_ms: Annotated[int, operator.add]
+    finalize_ms: int
 
     # ── 错误 ──
     error: str | None

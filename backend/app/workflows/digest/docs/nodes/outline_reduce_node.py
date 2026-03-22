@@ -9,6 +9,7 @@ Idempotency: reruns overwrite the same JSON intermediates for the active docgen 
 from __future__ import annotations
 
 import json
+from time import perf_counter
 
 import structlog
 
@@ -21,16 +22,22 @@ from app.workflows.digest.docs.services.outline_service import (
     generate_global_outline,
 )
 from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 
 
-def build_outline_reduce_node(*, context: WorkflowContext):
+def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
     """构建全局目录树 Reduce 节点。"""
 
     async def outline_reduce_node(state: DocGenState) -> dict:
+        started_at = perf_counter()
         node_logger = context.get_logger().bind(node="outline_reduce")
-        node_logger.info("outline_reduce_started")
+        node_logger.info(
+            "outline_reduce_started",
+            clean_chunk_count=len(state.get("clean_chunks", [])),
+            local_outline_count=len(state.get("local_outlines", [])),
+        )
 
         subject = state["subject"]
         job_id = state["job_id"]
@@ -45,29 +52,65 @@ def build_outline_reduce_node(*, context: WorkflowContext):
 
         # 拼接局部摘要
         local_text = "\n".join(
-            f"文本块 {item['chunk_index']}（来源：{item['source_filename']}）：{', '.join(item['titles'])}"
+            (
+                f"文本块 {item['chunk_index']}（来源：{item['source_filename']}）\n"
+                f"标题候选：{', '.join(item['titles']) or '（无）'}\n"
+                f"内容预览：{item.get('preview', '（无预览）')}"
+            )
             for item in local_outlines
         )
 
-        # 全局 LLM 统筹
-        try:
-            outline_tree = await generate_global_outline(
-                chunk_count=len(clean_chunks),
-                local_outlines_text=local_text,
-                user_prompt=user_prompt,
-            )
-        except Exception:
-            # 兜底
+        outline_plan = strategy.plan_outline(
+            chunk_count=len(clean_chunks),
+            local_outlines=local_outlines,
+            user_prompt=user_prompt,
+        )
+
+        if outline_plan.mode == "local_fast_path":
+            first_outline = local_outlines[0] if local_outlines else {}
+            first_titles = list(first_outline.get("titles", []))
+            chapter_title = first_titles[0] if first_titles else clean_chunks[0].get("source_filename", "第1章")
+            section_titles = first_titles[1:5] or ["全部内容"]
             outline_tree = {
-                "chapters": [
-                    {
-                        "chapter_index": i + 1,
-                        "title": c.get("source_filename", f"第{i+1}章"),
-                        "sections": [{"title": "全部内容", "source_chunk_indices": [i]}],
-                    }
-                    for i, c in enumerate(clean_chunks)
-                ]
+                "chapters": [{
+                    "chapter_index": 1,
+                    "title": chapter_title,
+                    "sections": [
+                        {"title": title, "source_chunk_indices": [0]}
+                        for title in section_titles
+                    ],
+                }]
             }
+            llm_calls_total = 0
+            node_logger.info(
+                "outline_reduce_fast_path",
+                chapter_title=chapter_title,
+                section_count=len(section_titles),
+                reason=outline_plan.reason,
+            )
+        else:
+            # 全局 LLM 统筹
+            try:
+                node_logger.info("outline_reduce_planned", mode=outline_plan.mode, reason=outline_plan.reason)
+                outline_tree = await generate_global_outline(
+                    chunk_count=len(clean_chunks),
+                    local_outlines_text=local_text,
+                    user_prompt=user_prompt,
+                )
+                llm_calls_total = 1
+            except Exception:
+                # 兜底
+                llm_calls_total = 0
+                outline_tree = {
+                    "chapters": [
+                        {
+                            "chapter_index": i + 1,
+                            "title": c.get("source_filename", f"第{i+1}章"),
+                            "sections": [{"title": "全部内容", "source_chunk_indices": [i]}],
+                        }
+                        for i, c in enumerate(clean_chunks)
+                    ]
+                }
 
         # 组装分配
         chapter_assignments = build_chapter_assignments(outline_tree, clean_chunks)
@@ -89,10 +132,26 @@ def build_outline_reduce_node(*, context: WorkflowContext):
 
         with managed_session() as session:
             docgen_repo.update_docgen_job(
-                session, job_id, progress=40, total_chapters=len(chapter_assignments),
+                session,
+                job_id,
+                current_step="drafting",
+                progress=40,
+                total_chapters=len(chapter_assignments),
+                completed_chapters=0,
             )
 
-        node_logger.info("outline_reduce_done", chapters=len(chapter_assignments))
-        return {"outline_tree": outline_tree, "chapter_assignments": chapter_assignments}
+        outline_ms = int((perf_counter() - started_at) * 1000)
+        node_logger.info(
+            "outline_reduce_done",
+            chapters=len(chapter_assignments),
+            outline_ms=outline_ms,
+            llm_calls_total=llm_calls_total,
+        )
+        return {
+            "outline_tree": outline_tree,
+            "chapter_assignments": chapter_assignments,
+            "outline_ms": outline_ms,
+            "llm_calls_total": llm_calls_total,
+        }
 
     return outline_reduce_node

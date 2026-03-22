@@ -50,8 +50,8 @@ _DEFAULT_PROFILES: dict[TaskType, TaskProfile] = {
     TaskType.CLASSIFY: TaskProfile(model="", temperature=0.1, timeout_s=30),
     TaskType.VISION: TaskProfile(model="", temperature=0.3, timeout_s=120),
     TaskType.REASONING: TaskProfile(model="", temperature=0.2, timeout_s=120, max_retries=2),
-    TaskType.DOCGEN: TaskProfile(model="", temperature=0.5, timeout_s=120),
-    TaskType.DOCGEN_LIGHT: TaskProfile(model="", temperature=0.1, timeout_s=30),
+    TaskType.DOCGEN: TaskProfile(model="", temperature=0.5, timeout_s=120, max_retries=1),
+    TaskType.DOCGEN_LIGHT: TaskProfile(model="", temperature=0.1, timeout_s=30, max_retries=1),
     TaskType.DEFAULT: TaskProfile(model=""),
 }
 

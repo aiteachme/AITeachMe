@@ -46,6 +46,7 @@ from app.services.knowledge.curriculum_service import (
     manage_taxonomy_anchors,
 )
 from app.services.knowledge.digest_service import (
+    ensure_docgen_started,
     get_digest_status,
     get_docgen_result,
     run_graph_digest_background,
@@ -227,11 +228,19 @@ async def docgen_build(
     responses=build_error_responses([400, 404, 500]),
 )
 async def docgen_get(
+    background_tasks: BackgroundTasks,
     subject: str = Path(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
+    data = ensure_docgen_started(session, subject=normalized)
+    if data is not None:
+        background_tasks.add_task(
+            run_docgen_background,
+            subject=normalized,
+            job_id=data.job_id,
+        )
     return ok_response(get_docgen_result(session, subject=normalized))
 
 @router.post(

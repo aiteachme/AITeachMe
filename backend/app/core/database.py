@@ -480,14 +480,14 @@ def get_session() -> Session:
         优先使用 ``managed_session()`` 上下文管理器，它提供自动 commit/rollback/close。
     """
 
-    return Session(get_engine())
+    return Session(get_engine(), expire_on_commit=False)
 
 
 @contextmanager
 def managed_session() -> Generator[Session, None, None]:
     """安全的 session 上下文管理器：成功时 commit，异常时 rollback，最终 close。"""
 
-    session = Session(get_engine())
+    session = Session(get_engine(), expire_on_commit=False)
     try:
         yield session
         session.commit()

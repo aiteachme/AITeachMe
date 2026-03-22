@@ -28,6 +28,8 @@ from __future__ import annotations
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
+from app.core.database import managed_session
+from app.repositories.knowledge import docgen_repo
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.nodes.cleanse_node import build_cleanse_node
 from app.workflows.digest.docs.nodes.draft_node import build_draft_chapter_node
@@ -38,6 +40,7 @@ from app.workflows.digest.docs.nodes.outline_map_node import build_outline_map_n
 from app.workflows.digest.docs.nodes.outline_reduce_node import build_outline_reduce_node
 from app.workflows.digest.docs.nodes.review_node import build_review_chapter_node
 from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
 
 
 # ── 路由函数 ──
@@ -122,17 +125,64 @@ def _fan_out_to_metadata(state: DocGenState) -> list[Send]:
 # ── Collector 节点（Fan-In 聚合点） ──
 
 
-async def _collect_drafts(state: DocGenState) -> dict:
-    """Fan-In 收集所有 draft 结果（operator.add 已自动合并）。
+def build_collect_drafts_node(*, context: WorkflowContext):
+    """汇总草稿阶段结果，并统一更新进度。"""
 
-    此节点仅用作聚合边界，不做额外处理。
-    """
-    return {}  # chapter_drafts 已在 state 中自动汇聚
+    async def collect_drafts(state: DocGenState) -> dict:
+        drafts = state.get("chapter_drafts", [])
+        total = len(drafts)
+        total_draft_ms = state.get("draft_ms", 0)
+        llm_calls_total = state.get("llm_calls_total", 0)
+        llm_calls_skipped = state.get("llm_calls_skipped", 0)
+        if total:
+            with managed_session() as session:
+                docgen_repo.update_docgen_job(
+                    session,
+                    state["job_id"],
+                    current_step="reviewing",
+                    progress=68,
+                    completed_chapters=total,
+                )
+        context.get_logger().bind(node="collect_drafts").info(
+            "drafts_collected",
+            count=total,
+            total_draft_ms=total_draft_ms,
+            llm_calls_total=llm_calls_total,
+            llm_calls_skipped=llm_calls_skipped,
+        )
+        return {}
+
+    return collect_drafts
 
 
-async def _collect_reviews(state: DocGenState) -> dict:
-    """Fan-In 收集所有 review 结果。"""
-    return {}  # chapter_reviews 已在 state 中自动汇聚
+def build_collect_reviews_node(*, context: WorkflowContext):
+    """汇总 review 阶段结果，并统一更新进度。"""
+
+    async def collect_reviews(state: DocGenState) -> dict:
+        reviews = state.get("chapter_reviews", [])
+        total = len(reviews)
+        total_review_ms = state.get("review_ms", 0)
+        llm_calls_total = state.get("llm_calls_total", 0)
+        llm_calls_skipped = state.get("llm_calls_skipped", 0)
+        if total:
+            with managed_session() as session:
+                docgen_repo.update_docgen_job(
+                    session,
+                    state["job_id"],
+                    current_step="metadata",
+                    progress=84,
+                    completed_chapters=total,
+                )
+        context.get_logger().bind(node="collect_reviews").info(
+            "reviews_collected",
+            count=total,
+            total_review_ms=total_review_ms,
+            llm_calls_total=llm_calls_total,
+            llm_calls_skipped=llm_calls_skipped,
+        )
+        return {}
+
+    return collect_reviews
 
 
 # ── 图构建 ──
@@ -142,19 +192,20 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """构建 DocGen Fan-Out 知识文档生成工作流。"""
 
     wf = StateGraph(DocGenState)
+    strategy = DocGenExecutionStrategy.from_settings()
 
     # ── 主干节点 ──
-    wf.add_node("load_files", build_load_files_node(context=context))
-    wf.add_node("cleanse", build_cleanse_node(context=context))
+    wf.add_node("load_files", build_load_files_node(context=context, strategy=strategy))
+    wf.add_node("cleanse", build_cleanse_node(context=context, strategy=strategy))
     wf.add_node("outline_map", build_outline_map_node(context=context))
-    wf.add_node("outline_reduce", build_outline_reduce_node(context=context))
+    wf.add_node("outline_reduce", build_outline_reduce_node(context=context, strategy=strategy))
 
     # ── Fan-Out 子节点 ──
-    wf.add_node("draft_chapter", build_draft_chapter_node(context=context))
-    wf.add_node("collect_drafts", _collect_drafts)
-    wf.add_node("review_chapter", build_review_chapter_node(context=context))
-    wf.add_node("collect_reviews", _collect_reviews)
-    wf.add_node("extract_metadata", build_extract_metadata_node(context=context))
+    wf.add_node("draft_chapter", build_draft_chapter_node(context=context, strategy=strategy))
+    wf.add_node("collect_drafts", build_collect_drafts_node(context=context))
+    wf.add_node("review_chapter", build_review_chapter_node(context=context, strategy=strategy))
+    wf.add_node("collect_reviews", build_collect_reviews_node(context=context))
+    wf.add_node("extract_metadata", build_extract_metadata_node(context=context, strategy=strategy))
     wf.add_node("finalize_assemble", build_finalize_assemble_node(context=context))
 
     # ── 入口 ──

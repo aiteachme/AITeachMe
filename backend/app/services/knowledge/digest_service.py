@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import traceback
@@ -12,6 +13,7 @@ from pathlib import Path
 import structlog
 from sqlmodel import Session, select
 
+from app.core.config import get_settings
 from app.core.database import managed_session
 from app.core.exceptions import (
     DigestJobNotFoundError,
@@ -226,6 +228,22 @@ async def run_graph_digest_background(*, subject: str, job_id: int) -> None:
                 input_chunk_count=final_job.input_chunk_count if final_job is not None else None,
             )
 
+        except asyncio.CancelledError:
+            logger.warning(
+                "graph_digest_background_cancelled",
+                subject=subject,
+                job_id=job_id,
+            )
+            try:
+                kg_repo.update_digest_job(
+                    session,
+                    job_id,
+                    status="failed",
+                    error_message="后台任务已取消",
+                )
+            except Exception:
+                logger.exception("failed_to_mark_graph_job_cancelled", job_id=job_id)
+            raise
         except Exception:
             logger.exception(
                 "graph_digest_background_error",
@@ -272,6 +290,21 @@ async def run_curriculum_derive_background(
                     error_message=result.error.detail[-500:],
                 )
 
+        except asyncio.CancelledError:
+            logger.warning(
+                "curriculum_derive_background_cancelled",
+                curriculum_job_id=curriculum_job_id,
+            )
+            try:
+                curriculum_repo.update_curriculum_job(
+                    session,
+                    curriculum_job_id,
+                    status="failed",
+                    error_message="后台任务已取消",
+                )
+            except Exception:
+                logger.exception("failed_to_mark_curriculum_job_cancelled")
+            raise
         except Exception:
             logger.exception(
                 "curriculum_derive_background_error",
@@ -423,6 +456,49 @@ def trigger_docgen_build(
     )
 
 
+def ensure_docgen_started(
+    session: Session,
+    *,
+    subject: str,
+) -> DocGenBuildData | None:
+    """Auto-start docgen when the client is only polling for results."""
+
+    merged_path = build_merged_knowledge_base_path(subject)
+    if merged_path.exists():
+        logger.info("docgen_autostart_skipped", subject=subject, reason="merged_exists")
+        return None
+
+    latest_job = docgen_repo.get_latest_docgen_job_by_subject(session, subject)
+    if latest_job is not None:
+        logger.info(
+            "docgen_autostart_skipped",
+            subject=subject,
+            reason="job_exists",
+            job_id=latest_job.id,
+            job_status=latest_job.status,
+        )
+        return None
+
+    try:
+        data = trigger_docgen_build(
+            session,
+            subject=subject,
+            file_ids=None,
+            prompt=None,
+        )
+    except NoReadyFilesForDocGenError:
+        logger.info("docgen_autostart_skipped", subject=subject, reason="no_ready_files")
+        return None
+
+    logger.info(
+        "docgen_autostart_triggered",
+        subject=subject,
+        job_id=data.job_id,
+        accepted_file_ids=data.accepted_file_ids,
+    )
+    return data
+
+
 async def run_docgen_background(*, subject: str, job_id: int) -> None:
     """后台异步执行 DocGen 工作流。"""
 
@@ -438,7 +514,14 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
 
             file_ids: list[int] = json.loads(job.input_file_ids_json or "[]")
             docgen_logger = logger.bind(subject=subject, job_id=job_id, file_ids=file_ids)
-            docgen_logger.info("docgen_background_started")
+            settings = get_settings()
+            docgen_logger.info(
+                "docgen_background_started",
+                file_count=len(file_ids),
+                llm_concurrency_limit=settings.llm_concurrency_limit,
+                docgen_max_parallel_chapters=settings.docgen_max_parallel_chapters,
+                docgen_io_parallelism=settings.docgen_io_parallelism,
+            )
 
             # 标记为 processing
             docgen_repo.update_docgen_job(session, job_id, status="processing")
@@ -453,19 +536,35 @@ async def run_docgen_background(*, subject: str, job_id: int) -> None:
                 docgen_repo.update_docgen_job(
                     session, job_id,
                     status="failed",
+                    current_step="failed",
                     error_message=result.error.detail[-500:],
                 )
             docgen_logger.info(
                 "docgen_background_completed",
                 success=result.ok,
+                failed=result.failed,
             )
 
+        except asyncio.CancelledError:
+            logger.warning("docgen_background_cancelled", subject=subject, job_id=job_id)
+            try:
+                docgen_repo.update_docgen_job(
+                    session,
+                    job_id,
+                    status="failed",
+                    current_step="cancelled",
+                    error_message="后台任务已取消",
+                )
+            except Exception:
+                logger.exception("failed_to_mark_docgen_job_cancelled", job_id=job_id)
+            raise
         except Exception:
             logger.exception("docgen_background_error", subject=subject, job_id=job_id)
             try:
                 docgen_repo.update_docgen_job(
                     session, job_id,
                     status="failed",
+                    current_step="failed",
                     error_message=traceback.format_exc()[-500:],
                 )
             except Exception:
@@ -477,6 +576,14 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
 
     merged_path = build_merged_knowledge_base_path(subject)
     latest_job = docgen_repo.get_latest_docgen_job_by_subject(session, subject)
+    logger.info(
+        "docgen_get_requested",
+        subject=subject,
+        merged_exists=merged_path.exists(),
+        latest_job_id=latest_job.id if latest_job is not None else None,
+        latest_job_status=latest_job.status if latest_job is not None else None,
+        latest_job_step=latest_job.current_step if latest_job is not None else None,
+    )
     job_response = _build_docgen_job_response(latest_job) if latest_job is not None else None
     prompt = latest_job.user_prompt if latest_job is not None else None
     source_file_ids = (

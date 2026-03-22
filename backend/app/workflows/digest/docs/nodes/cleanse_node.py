@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import perf_counter
 
 import structlog
 
@@ -24,16 +25,22 @@ from app.workflows.digest.docs.services.cleanse_service import (
     stitch_sentences,
 )
 from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 
 
-def build_cleanse_node(*, context: WorkflowContext):
+def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
     """构建清洗节点（并发 LLM 自愈）。"""
 
     async def cleanse_node(state: DocGenState) -> dict:
+        started_at = perf_counter()
         node_logger = context.get_logger().bind(node="cleanse")
-        node_logger.info("cleanse_started")
+        node_logger.info(
+            "cleanse_started",
+            raw_chunk_count=len(state.get("raw_chunks", [])),
+            skip_llm_cleanse_for_clean_markdown=strategy.skip_llm_cleanse_for_clean_markdown,
+        )
 
         subject = state["subject"]
         job_id = state["job_id"]
@@ -51,13 +58,33 @@ def build_cleanse_node(*, context: WorkflowContext):
             cleaned = stitch_sentences(cleaned)
             pre_healed.append({**chunk, "content": cleaned})
 
-        # LLM 语义自愈（文件级并发）
+        # LLM 语义自愈（仅对需要的块执行）
         async def _heal(chunk: dict) -> dict:
-            healed = await llm_heal_full(chunk["content"])
-            return {**chunk, "content": healed}
+            decision = strategy.decide_cleanse(
+                source_filename=chunk["source_filename"],
+                content=chunk["content"],
+            )
+            if not decision.use_llm:
+                return {
+                    **chunk,
+                    "cleanse_reason": decision.reason,
+                    "llm_calls_total": 0,
+                    "llm_calls_skipped": 1,
+                }
+
+            healed, call_count = await llm_heal_full(chunk["content"])
+            return {
+                **chunk,
+                "content": healed,
+                "cleanse_reason": decision.reason,
+                "llm_calls_total": call_count,
+                "llm_calls_skipped": 0,
+            }
 
         clean_chunks = await asyncio.gather(*(_heal(c) for c in pre_healed))
         clean_chunks = list(clean_chunks)
+        llm_calls_total = sum(int(chunk.get("llm_calls_total", 0)) for chunk in clean_chunks)
+        llm_calls_skipped = sum(int(chunk.get("llm_calls_skipped", 0)) for chunk in clean_chunks)
 
         # 保存中间产物
         intermediate_dir = build_docgen_intermediate_dir(subject)
@@ -79,7 +106,19 @@ def build_cleanse_node(*, context: WorkflowContext):
         with managed_session() as session:
             docgen_repo.update_docgen_job(session, job_id, progress=20)
 
-        node_logger.info("cleanse_done", count=len(clean_chunks))
-        return {"clean_chunks": clean_chunks}
+        cleanse_ms = int((perf_counter() - started_at) * 1000)
+        node_logger.info(
+            "cleanse_done",
+            count=len(clean_chunks),
+            cleanse_ms=cleanse_ms,
+            llm_calls_total=llm_calls_total,
+            llm_calls_skipped=llm_calls_skipped,
+        )
+        return {
+            "clean_chunks": clean_chunks,
+            "cleanse_ms": cleanse_ms,
+            "llm_calls_total": llm_calls_total,
+            "llm_calls_skipped": llm_calls_skipped,
+        }
 
     return cleanse_node

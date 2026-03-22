@@ -35,10 +35,10 @@ Digest 是 AITeachMe 的知识组织层，负责把材料层转换成两类可�
 | 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
 | 1. 任务创建 | `digest_service` | `subject`、文件集合 | `docgen_job` |
-| 2. 文件加载 | `workflows/digest/docs/nodes/load_files_node.py` | `raw_file.markdown_path` | 原始 Markdown 列表 |
-| 3. 清洗与标准化 | `cleanse_node.py` | Markdown 列表 | 清洗后的文本、`docgen_intermediate/clean_*` |
-| 4. 大纲生成 | `outline_map_node.py`、`outline_reduce_node.py` | 清洗文本 | 全局大纲、章节分配 |
-| 5. 分章撰写与复核 | `draft_node.py`、`review_node.py`、`metadata_node.py` | 章节内容 | 章节 Markdown、摘要、标签 |
+| 2. 文件加载 | `workflows/digest/docs/nodes/load_files_node.py` | `raw_file.markdown_path` | 原始 Markdown 列表；批量查库 + 并发读本地文件 |
+| 3. 清洗与标准化 | `cleanse_node.py` | Markdown 列表 | 规则清洗后的文本；默认不做全文 LLM 自愈，仅对严重 OCR 噪声执行条件式修复；`docgen_intermediate/clean_*` |
+| 4. 大纲生成 | `outline_map_node.py`、`outline_reduce_node.py` | 清洗文本 | 标题候选、内容预览、全局章节树、章节分配；先走轻量规则抽取，再由单次全局 LLM 统筹分章 |
+| 5. 分章撰写与复核 | `draft_node.py`、`review_node.py`、`metadata_node.py` | 章节内容 | 章节 Markdown、摘要、标签；默认“一章一次正式生成”，review 以结构/公式审计为主，仅异常时触发定向修订；metadata 走规则快路径 |
 | 6. 最终组装 | `finalize_node.py` | 章节结果 | `knowledge_doc`、`knowledge_docs/*.md` |
 
 ### 3.2 图谱与课程结构 Pipeline
@@ -83,6 +83,14 @@ Digest 不是一次性脚本，而是持续演进的知识构建系统。节点�
 - 哪些 chunk
 - 哪次作业
 - 当前是否处于发布版本
+
+### 4.6 DocGen 要优先保证“章节顺 + 速度快 + 公式正确”
+
+知识文档不是普通摘要，而是用户直接拿来学习和复习的讲义型产物。`docgen` 必须同时守住：
+
+- 章节组织顺：先基础、后方法、再应用，不做材料拼盘
+- 速度快：减少细碎 LLM 往返，优先用规则抽取和单次全局统筹
+- 概念与公式正确：公式优先保真，不允许为了文风牺牲准确性
 
 ---
 
@@ -180,8 +188,12 @@ Digest 当前明确写本地文件的部分主要是知识文档链路：
 - cleansing
 - outlining
 - drafting
+- reviewing
+- metadata
 - assembling
 - done / failed
+
+其中 `reviewing` 与 `metadata` 阶段当前以规则快路径为主，只在结构异常、公式覆盖不足或质量明显不稳时再升级到额外 LLM 修订。
 
 ---
 
@@ -192,11 +204,14 @@ Digest 当前明确写本地文件的部分主要是知识文档链路：
 | 节点 / 模块 | 读 DB | 写 DB | 写 FS |
 | --- | --- | --- | --- |
 | `load_files_node.py` | `raw_file` | `docgen_job` | 读取 Markdown 文件 |
-| `cleanse_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/clean_*` |
-| `outline_map_node.py` | `docgen_job` | `docgen_job` | 无 |
-| `outline_reduce_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/*.json` |
-| `draft_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/draft_*` |
-| `finalize_node.py` | `docgen_job` | `knowledge_doc`、`docgen_job` | `knowledge_docs/*.md`、merged 文档 |
+| `cleanse_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/clean_*`；规则清洗优先，仅严重 OCR 噪声时触发 LLM 修复 |
+| `outline_map_node.py` | `docgen_job` | `docgen_job` | 无；抽取标题候选与内容预览，默认不做逐块 LLM |
+| `outline_reduce_node.py` | `docgen_job` | `docgen_job` | `docgen_intermediate/*.json`；单次全局统筹分章，生成章节分配并切到 `drafting` |
+| `draft_node.py` | `docgen_job` | 无 | `docgen_intermediate/draft_*`；默认“一章一次” LLM 撰写，减少 section 级碎片化调用 |
+| `review_node.py` | 无 | 无 | 无；先做结构/公式规则审计，仅在硬失败时做定向修订 |
+| `metadata_node.py` | 无 | 无 | 无；从最终 Markdown 规则提取摘要与标签，不再依赖额外慢调用 |
+| `collect_drafts` / `collect_reviews` | `docgen_job` | `docgen_job` | 无；汇总更新 `reviewing` / `metadata` 进度 |
+| `finalize_node.py` | `docgen_job` | `knowledge_doc`、`docgen_job` | `knowledge_docs/*.md`、merged 文档；本地文件并发写入 + 单次批量落库，生成可直接阅读的总讲义入口 |
 
 ### 8.2 Digest Graph
 

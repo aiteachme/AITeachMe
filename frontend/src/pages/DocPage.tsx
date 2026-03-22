@@ -487,12 +487,20 @@ export function DocPage() {
       if (!data) {
         return 2500;
       }
+      const job = data.job;
+      const isTerminalFailure = job?.status === "failed" || job?.current_step === "cancelled";
+      if (isTerminalFailure) {
+        return false;
+      }
       return data.exists && (data.markdown ?? "").trim().length > 0 ? false : 2500;
     },
   });
   const markdown = docMarkdownQuery.data?.markdown ?? "";
   const hasDocMarkdown = Boolean(docMarkdownQuery.data?.exists && markdown.trim().length > 0);
-  const showDocGeneratingState = !docMarkdownQuery.isError && !hasDocMarkdown;
+  const docgenJob = docMarkdownQuery.data?.job ?? null;
+  const docgenFailed = docgenJob?.status === "failed" || docgenJob?.current_step === "cancelled";
+  const docgenFailureMessage = docgenJob?.error_message?.trim() || "知识文档生成失败，请重试。";
+  const showDocGeneratingState = !docMarkdownQuery.isError && !docgenFailed && !hasDocMarkdown;
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
@@ -1536,6 +1544,13 @@ export function DocPage() {
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+                      onRetry={() => {
+                        void docMarkdownQuery.refetch();
+                      }}
+                    />
+                  ) : docgenFailed ? (
+                    <DocLoadErrorState
+                      message={docgenFailureMessage}
                       onRetry={() => {
                         void docMarkdownQuery.refetch();
                       }}
