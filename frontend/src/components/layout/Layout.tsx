@@ -4,7 +4,7 @@ import { TopBar } from "./TopBar";
 import { AnimatePresence, motion } from "framer-motion";
 
 /** Pages that manage their own header + layout (no shared TopBar / padding) */
-const FULL_BLEED_SUFFIXES = ["/doc"];
+const FULL_BLEED_SUFFIXES = ["/doc", "/upload"];
 
 export function Layout() {
   const { pathname } = useLocation();

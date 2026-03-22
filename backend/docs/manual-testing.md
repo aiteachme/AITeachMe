@@ -1,22 +1,20 @@
-# 手动联调
+# Manual Testing
 
-这轮以后端架构重构后的接口为准，重点验证统一响应、分页、重试和删除能力。
-
-## 1. 启动服务
+## Start service
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-## 2. 基础检查
+## Basic checks
 
-### 健康检查
+### Health
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-### 系统初始化
+### Init
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/system/init ^
@@ -24,17 +22,17 @@ curl -X POST http://localhost:8000/api/v1/system/init ^
   -d "{}"
 ```
 
-## 3. 学科
+## Subject
 
-### 创建学科
+### Create subject
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/subjects/add ^
   -H "Content-Type: application/json" ^
-  -d "{\"subject\":\"math\",\"name\":\"高等数学\",\"description\":\"手动联调用\"}"
+  -d "{\"subject\":\"math\",\"name\":\"Mathematics\",\"description\":\"Manual testing subject\"}"
 ```
 
-### 学科列表
+### List subjects
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/subjects/list ^
@@ -42,182 +40,69 @@ curl -X POST http://localhost:8000/api/v1/subjects/list ^
   -d "{\"page\":1,\"size\":20}"
 ```
 
-## 4. 文件阶段
+## Files module
 
-### 上传多个文件
+### Upload files
+
+Upload immediately starts parsing in the background.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/upload" ^
   -F "files=@C:\path\to\lesson1.pdf" ^
-  -F "files=@C:\path\to\lesson2.pdf"
+  -F "files=@C:\path\to\lesson2.docx"
 ```
 
-### 查看文件列表
+### Query all files
+
+This is now the single read endpoint for file list, parse status, Markdown preview metadata, and asset URLs.
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/list" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"page\":1,\"size\":20}"
+curl "http://localhost:8000/api/v1/subjects/math/files"
 ```
 
-### 触发解析
+### Read one asset
+
+Use the `asset_base_url` and `assets[].url` returned by the files query response.
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/parse" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"file_ids\":[1,2]}"
+curl "http://localhost:8000/api/v1/subjects/math/files/1/assets/figure-1.png"
 ```
 
-### 查询单文件状态
+### Delete one file
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/status" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"file_id\":1}"
+curl -X DELETE "http://localhost:8000/api/v1/subjects/math/files/1"
 ```
 
-### 查看解析结果
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/get" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"file_id\":1}"
-```
-
-### 重试失败文件
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/files/retry" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"file_id\":1}"
-```
-
-### 删除文件
+### Delete multiple files
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/subjects/math/files/delete" ^
   -H "Content-Type: application/json" ^
-  -d "{\"file_ids\":[2]}"
+  -d "{\"file_ids\":[2,3]}"
 ```
 
-验收点：
+## Knowledge document
 
-1. `files/status` 只返回状态与错误信息，不返回全文。
-2. `files/get` 能单独查看 Markdown。
-3. `failed` 状态可以重试。
-4. 已被知识集合引用的文件删除会被拒绝。
-
-## 5. 知识集合阶段
-
-### 构建知识集合
+### Build document
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/build" ^
+curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/build" ^
   -H "Content-Type: application/json" ^
-  -d "{\"file_ids\":[1,2],\"title\":\"概率论复习\",\"desc\":\"第一章到第三章\"}"
+  -d "{\"prompt\":\"Focus on final exam review and key formulas.\"}"
 ```
 
-### 查询构建状态
+### Query built document
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/status" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"docset_id\":1}"
-```
-
-### 知识集合列表
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/list" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"page\":1,\"size\":20}"
-```
-
-### 知识集合详情
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/get" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"docset_id\":1}"
-```
-
-### 知识树
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/tree" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"docset_id\":1}"
-```
-
-### 重试知识构建
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/retry" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"docset_id\":1}"
-```
-
-### 删除知识集合
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/delete" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"docset_id\":1}"
-```
-
-验收点：
-
-1. 一次 build 能消费多个文件。
-2. 构建失败会进入 `failed`，并带 `error_message`。
-3. 只有失败任务允许重试。
-4. 删除知识集合后，关联的文档、切块和大纲会一起清理。
-
-## 6. 下游能力
-
-### 聊天
-
-```bash
-curl -N -X POST "http://localhost:8000/api/v1/subjects/math/chat/send" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"question\":\"解释一下条件概率\"}"
-```
-
-### 聊天列表
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/chat/list" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"page\":1,\"size\":20}"
-```
-
-### 清空聊天
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/chat/clear" ^
+curl -X POST "http://localhost:8000/api/v1/subjects/math/knowledge/docgen/get" ^
   -H "Content-Type: application/json" ^
   -d "{}"
 ```
 
-### 生成试卷
+## Notes
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/exam/make" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"num\":5}"
-```
-
-### 删除试卷
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/exam/delete" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"exam_id\":1}"
-```
-
-### 学习报告
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/subjects/math/profile/report" ^
-  -H "Content-Type: application/json" ^
-  -d "{}"
-```
+1. The files module no longer exposes separate parse or retry APIs.
+2. Upload is the only write entry for parse start.
+3. `GET /files` returns full records, including Markdown content and asset URLs for preview.
+4. Frontend previews should always resolve images through the returned asset base URL.
