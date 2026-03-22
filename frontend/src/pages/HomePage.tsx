@@ -64,13 +64,13 @@ export function HomePage() {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <MessageSquare className="w-10 h-10 text-slate-700 mb-3" />
-            <CardTitle>AI 对话</CardTitle>
-            <CardDescription>随时提问，即时解答</CardDescription>
+            <CardTitle>AI 助手</CardTitle>
+            <CardDescription>在任意页面随时唤起</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link to={firstSubject ? `/subject/${firstSubject}/chat` : "#"}>
+            <Link to={firstSubject ? `/subject/${firstSubject}/doc` : "#"}>
               <Button variant="outline" className="w-full" disabled={!firstSubject}>
-                开始对话
+                打开文档
               </Button>
             </Link>
           </CardContent>
@@ -120,8 +120,8 @@ export function HomePage() {
                   <p className="text-xs text-slate-400 mt-0.5">{subject.subject_id}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Link to={`/subject/${subject.subject_id}/chat`}>
-                    <Button variant="ghost" size="sm">对话</Button>
+                  <Link to={`/subject/${subject.subject_id}/doc`}>
+                    <Button variant="ghost" size="sm">文档</Button>
                   </Link>
                   <Link to={`/subject/${subject.subject_id}/upload`}>
                     <Button variant="outline" size="sm">上传资料</Button>

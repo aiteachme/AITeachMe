@@ -9,7 +9,6 @@ import {
   FileEdit,
   Loader2,
   Menu,
-  MessageSquare,
   Plus,
   Trash2,
   Upload,
@@ -31,7 +30,6 @@ import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
 
 const MODULES = [
-  { id: "chat", name: "对话", icon: <MessageSquare className="w-4 h-4" /> },
   { id: "upload", name: "上传资料", icon: <Upload className="w-4 h-4" /> },
   { id: "summary", name: "知识总结", icon: <BookOpen className="w-4 h-4" /> },
   { id: "exam", name: "考题预测", icon: <FileText className="w-4 h-4" /> },
@@ -150,7 +148,7 @@ export function Sidebar() {
       setShowNewForm(false);
       setCreateError(undefined);
       setSubjectActionError(undefined);
-      navigate(`/subject/${created.subject_id}/chat`);
+      navigate(`/subject/${created.subject_id}/upload`);
     },
     onError: (error: unknown) => {
       setCreateError(getApiErrorMessage(error, "创建失败，请重试"));

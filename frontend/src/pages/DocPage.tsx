@@ -17,12 +17,14 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
+import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,6 +40,8 @@ type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface Comment {
   id: string;
+  threadId: string;
+  sessionId: string | null;
   anchorId: string;
   selectedText: string;
   role: "user" | "assistant";
@@ -61,9 +65,68 @@ interface FloatingToolbar {
   selectionViewportTop: number;
 }
 
+interface HighlightSegment {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+interface SelectionHighlight {
+  id: string;
+  threadId: string;
+  anchorId: string;
+  selectedText: string;
+  segments: HighlightSegment[];
+}
+
+interface CommentThreadView {
+  threadId: string;
+  anchorId: string;
+  selectedText: string;
+  comments: Comment[];
+  createdAt: number;
+}
+
+interface CommentThreadLayout {
+  top: number;
+  aligned: boolean;
+}
+
+interface CommentThreadLayoutResult {
+  positions: Record<string, CommentThreadLayout>;
+  totalHeight: number;
+}
+
 interface ApiResponse<T> {
   code: number;
   data: T;
+}
+
+interface PaginatedData<T> {
+  items: T[];
+  page?: number;
+  size?: number;
+  total?: number;
+  pages?: number;
+}
+
+interface ThreadMessageItem {
+  id: number;
+  turn_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+interface ThreadTurnItem {
+  turn_id: string;
+  session_id: string;
+  source?: string | null;
+  anchor_id?: string | null;
+  selected_text?: string | null;
+  created_at: string;
+  messages: ThreadMessageItem[];
 }
 
 interface DocGenJobResponse {
@@ -116,23 +179,8 @@ function formatTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const COMMENT_THREAD_GAP = 12;
-const COMMENT_THREAD_DEFAULT_HEIGHT = 140;
-const COMMENT_THREAD_TOP_PADDING = 8;
-const COMMENT_THREAD_BOTTOM_PADDING = 10;
-const COMMENT_THREAD_EDGE_FADE = 68;
-const COMMENT_THREAD_HIDE_OFFSET = 28;
 const COMPACT_PANEL_BREAKPOINT = 1536;
-
-function numberRecordEqual(a: Record<string, number>, b: Record<string, number>): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (Math.abs((a[key] ?? 0) - (b[key] ?? 0)) > 0.5) return false;
-  }
-  return true;
-}
+const THREAD_HISTORY_PAGE_SIZE = 100;
 
 function tocEqual(a: TocItem[], b: TocItem[]): boolean {
   if (a.length !== b.length) return false;
@@ -158,6 +206,114 @@ function extractText(node: React.ReactNode): string {
     return extractText((node as React.ReactElement).props.children);
   }
   return "";
+}
+
+function moveRecordKey<T>(
+  record: Record<string, T>,
+  fromKey: string,
+  toKey: string,
+  merge: (incoming: T, existing: T | undefined) => T = (incoming) => incoming
+): Record<string, T> {
+  if (fromKey === toKey) {
+    return record;
+  }
+  if (!(fromKey in record)) {
+    return record;
+  }
+  const incoming = record[fromKey];
+  const existing = record[toKey];
+  const nextValue = merge(incoming, existing);
+  const next: Record<string, T> = { ...record, [toKey]: nextValue };
+  delete next[fromKey];
+  return next;
+}
+
+function parseDoneSessionId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const sessionId = (payload as { session_id?: unknown }).session_id;
+  return typeof sessionId === "string" && sessionId.trim() ? sessionId : null;
+}
+
+function buildCommentThreadLayout(
+  threads: CommentThreadView[],
+  heightByThreadId: Map<string, number>,
+  desiredTopByThreadId: Map<string, number>,
+  pinnedThreadId: string | null
+): CommentThreadLayoutResult {
+  const gap = 12;
+  const estimatedHeight = 236;
+
+  if (threads.length === 0) {
+    return { positions: {}, totalHeight: 0 };
+  }
+
+  const heights = threads.map((thread) => {
+    const measured = heightByThreadId.get(thread.threadId);
+    return Math.max(132, measured ?? estimatedHeight);
+  });
+  const positions: number[] = new Array(threads.length).fill(0);
+
+  const pinnedIndex = pinnedThreadId
+    ? threads.findIndex((thread) => thread.threadId === pinnedThreadId && desiredTopByThreadId.has(thread.threadId))
+    : -1;
+
+  if (pinnedIndex < 0) {
+    let cursor = 0;
+    for (let i = 0; i < threads.length; i += 1) {
+      const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
+      const top = desiredTop === undefined ? cursor : Math.max(cursor, desiredTop);
+      positions[i] = top;
+      cursor = top + heights[i] + gap;
+    }
+  } else {
+    const pinnedDesiredTop = desiredTopByThreadId.get(threads[pinnedIndex].threadId) ?? 0;
+    positions[pinnedIndex] = Math.max(0, pinnedDesiredTop);
+
+    let downCursor = positions[pinnedIndex] + heights[pinnedIndex] + gap;
+    for (let i = pinnedIndex + 1; i < threads.length; i += 1) {
+      const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
+      const top = desiredTop === undefined ? downCursor : Math.max(downCursor, desiredTop);
+      positions[i] = top;
+      downCursor = top + heights[i] + gap;
+    }
+
+    let upCursor = positions[pinnedIndex];
+    for (let i = pinnedIndex - 1; i >= 0; i -= 1) {
+      const maxTop = upCursor - gap - heights[i];
+      const desiredTop = desiredTopByThreadId.get(threads[i].threadId);
+      positions[i] = desiredTop === undefined ? maxTop : Math.min(maxTop, desiredTop);
+      upCursor = positions[i];
+    }
+
+    const minTop = Math.min(...positions);
+    if (minTop < 0) {
+      const shift = -minTop;
+      for (let i = 0; i < positions.length; i += 1) {
+        positions[i] += shift;
+      }
+    }
+  }
+
+  const result: Record<string, CommentThreadLayout> = {};
+  let totalHeight = 0;
+  for (let i = 0; i < threads.length; i += 1) {
+    const thread = threads[i];
+    const desiredTop = desiredTopByThreadId.get(thread.threadId);
+    const top = positions[i];
+    const height = heights[i];
+    result[thread.threadId] = {
+      top,
+      aligned: desiredTop !== undefined && Math.abs(desiredTop - top) <= 4,
+    };
+    totalHeight = Math.max(totalHeight, top + height);
+  }
+
+  return {
+    positions: result,
+    totalHeight: totalHeight + 2,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,7 +539,11 @@ function CommentThread({
   isActive,
   onDraftChange,
   onSend,
+  onFocus,
   onJumpToAnchor,
+  onOpenAssistant,
+  compactMode,
+  isAligned,
 }: {
   anchorId: string;
   title: string;
@@ -394,32 +554,62 @@ function CommentThread({
   isActive: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  onFocus: () => void;
   onJumpToAnchor: (id: string) => void;
+  onOpenAssistant: () => void;
+  compactMode: boolean;
+  isAligned: boolean;
 }) {
   return (
     <section
+      onClick={onFocus}
       className={cn(
         "rounded-xl border bg-slate-50/60 shadow-sm overflow-hidden transition-colors",
-        isActive ? "border-blue-300 shadow-blue-100/80" : "border-slate-200"
+        isActive
+          ? "border-blue-400 bg-blue-50/35 shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_8px_26px_-18px_rgba(59,130,246,0.6)]"
+          : "border-slate-200",
+        isAligned && !isActive && "border-slate-300/80"
       )}
     >
       <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
         <button
+          type="button"
           onClick={() => onJumpToAnchor(anchorId)}
-          className="text-left text-xs font-semibold text-slate-700 hover:text-blue-600 truncate"
+          className={cn(
+            "text-left text-xs font-semibold truncate transition-colors",
+            isActive ? "text-blue-700" : "text-slate-700 hover:text-blue-600"
+          )}
         >
           {title}
         </button>
-        <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
-          {comments.length}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenAssistant}
+            className={cn(
+              "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
+            )}
+            title="在 AI 面板继续对话"
+          >
+            <ExternalLink className="h-2.5 w-2.5" />
+            AI面板
+          </button>
+          <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
+            {comments.length}
+          </span>
+        </div>
       </div>
       {selectedText && (
-        <div className="px-3 py-2 border-b border-slate-100 bg-white/80">
-          <p className="truncate text-[11px] text-blue-500">&ldquo;{selectedText}&rdquo;</p>
+        <div className={cn(
+          "px-3 py-2 border-b border-slate-100 bg-white/80 transition-colors",
+          isActive && "bg-blue-50/70 border-blue-100"
+        )}>
+          <p className={cn("truncate text-[11px]", isActive ? "text-blue-700 font-medium" : "text-blue-500")}>
+            &ldquo;{selectedText}&rdquo;
+          </p>
         </div>
       )}
-      <div className="max-h-64 overflow-y-auto p-2 space-y-2">
+      <div className={cn("p-2 space-y-2", compactMode ? "max-h-64 overflow-y-auto" : "overflow-visible")}>
         {comments.map((comment) => (
           <CommentCard
             key={comment.id}
@@ -467,7 +657,7 @@ function CommentThread({
 /* ------------------------------------------------------------------ */
 
 export function DocPage() {
-  const navigate = useNavigate();
+  const { openAssistant } = useSubjectAiAssistant();
   const { subjectId } = useParams<{ subjectId: string }>();
   const docMarkdownQuery = useQuery({
     queryKey: ["docgen-content", subjectId],
@@ -504,8 +694,16 @@ export function DocPage() {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
+  const [threadSessionIds, setThreadSessionIds] = useState<Record<string, string>>({});
+  const [threadHistoryLoaded, setThreadHistoryLoaded] = useState(false);
+  const [threadHistoryError, setThreadHistoryError] = useState<string | null>(null);
+  const [selectionHighlights, setSelectionHighlights] = useState<SelectionHighlight[]>([]);
   const [threadDrafts, setThreadDrafts] = useState<Record<string, string>>({});
   const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
+  const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
+  const [pinnedThreadId, setPinnedThreadId] = useState<string | null>(null);
+  const [commentListOriginTop, setCommentListOriginTop] = useState<number | null>(null);
+  const [threadHeightsById, setThreadHeightsById] = useState<Record<string, number>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
 
@@ -513,9 +711,6 @@ export function DocPage() {
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
   const [floatingComment, setFloatingComment] = useState<FloatingComment | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
-  const [threadHeights, setThreadHeights] = useState<Record<string, number>>({});
-  const [threadTops, setThreadTops] = useState<Record<string, number>>({});
-  const [threadOpacity, setThreadOpacity] = useState<Record<string, number>>({});
   const [isCompactPanels, setIsCompactPanels] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
   );
@@ -526,6 +721,7 @@ export function DocPage() {
   const floatingRef = useRef<HTMLDivElement>(null);
   const commentPanelRef = useRef<HTMLDivElement>(null);
   const commentViewportRef = useRef<HTMLDivElement>(null);
+  const commentThreadListRef = useRef<HTMLDivElement>(null);
   const selectedRangeRef = useRef<Range | null>(null);
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
@@ -587,6 +783,114 @@ export function DocPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadThreadHistory() {
+      if (!subjectId) {
+        setComments([]);
+        setThreadSessionIds({});
+        setSelectionHighlights([]);
+        setActiveCommentThreadId(null);
+        setThreadHistoryError(null);
+        setThreadHistoryLoaded(true);
+        return;
+      }
+
+      setThreadHistoryLoaded(false);
+      setThreadHistoryError(null);
+      try {
+        const items: ThreadTurnItem[] = [];
+        let page = 1;
+        let totalPages = 1;
+        while (page <= totalPages) {
+          if (cancelled) {
+            return;
+          }
+          const response = await apiClient<ApiResponse<PaginatedData<ThreadTurnItem>>>({
+            method: "POST",
+            url: `/api/v1/subjects/${subjectId}/chats/threads/list`,
+            data: {
+              page,
+              size: THREAD_HISTORY_PAGE_SIZE,
+              source: "quick_chat",
+            },
+          });
+          const payload = response.data;
+          const pageItems = payload?.items ?? [];
+          items.push(...pageItems);
+          totalPages = Math.max(1, payload?.pages ?? page);
+          page += 1;
+          if (pageItems.length < THREAD_HISTORY_PAGE_SIZE) {
+            break;
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextComments: Comment[] = [];
+        const nextSessionIds: Record<string, string> = {};
+        const selectedTextByThread = new Map<string, string>();
+
+        for (const turn of items) {
+          const anchorId = turn.anchor_id?.trim();
+          const threadId = turn.session_id?.trim();
+          if (!anchorId || !threadId) {
+            continue;
+          }
+          nextSessionIds[threadId] = threadId;
+
+          const selectedText = turn.selected_text?.trim() ?? "";
+          if (selectedText && !selectedTextByThread.has(threadId)) {
+            selectedTextByThread.set(threadId, selectedText);
+          }
+          const resolvedSelectedText = selectedText || selectedTextByThread.get(threadId) || "";
+          for (const message of turn.messages ?? []) {
+            if (message.role !== "user" && message.role !== "assistant") {
+              continue;
+            }
+            const createdAtTs = Date.parse(message.created_at);
+            nextComments.push({
+              id: `history-${message.id}`,
+              threadId,
+              sessionId: threadId,
+              anchorId,
+              selectedText: resolvedSelectedText,
+              role: message.role,
+              content: message.content,
+              createdAt: Number.isFinite(createdAtTs) ? createdAtTs : Date.now(),
+            });
+          }
+        }
+
+        nextComments.sort((left, right) => left.createdAt - right.createdAt);
+        setComments(nextComments);
+        setThreadSessionIds(nextSessionIds);
+        setSelectionHighlights([]);
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        setComments([]);
+        setThreadSessionIds({});
+        setSelectionHighlights([]);
+        setActiveCommentThreadId(null);
+        setThreadHistoryError(getApiErrorMessage(error, "加载划词问答历史失败"));
+      } finally {
+        if (!cancelled) {
+          setThreadHistoryLoaded(true);
+        }
+      }
+    }
+
+    void loadThreadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [subjectId]);
+
   // Track active heading on scroll — uses the single scroll container
   useEffect(() => {
     const container = scrollRef.current;
@@ -639,6 +943,153 @@ export function DocPage() {
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [flashHeading]);
+
+  const captureRangeSegments = useCallback((range: Range): HighlightSegment[] => {
+    const container = scrollRef.current;
+    if (!container) {
+      return [];
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const rects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 1 || rect.height > 1,
+    );
+    const toSegment = (rect: DOMRect): HighlightSegment => ({
+      top: rect.top - containerRect.top + container.scrollTop,
+      left: rect.left - containerRect.left + container.scrollLeft,
+      width: Math.max(16, rect.width),
+      height: Math.max(18, rect.height),
+    });
+
+    if (rects.length === 0) {
+      const rect = range.getBoundingClientRect();
+      if (rect.width < 1 && rect.height < 1) {
+        return [];
+      }
+      return [toSegment(rect)];
+    }
+
+    return rects.map(toSegment);
+  }, []);
+
+  const captureSelectionSegments = useCallback((): HighlightSegment[] => {
+    const range = selectedRangeRef.current;
+    if (!range) {
+      return [];
+    }
+    return captureRangeSegments(range);
+  }, [captureRangeSegments]);
+
+  const buildSelectionSegmentsFromText = useCallback((anchorId: string, selectedText: string): HighlightSegment[] => {
+    const contentRoot = contentAreaRef.current;
+    if (!contentRoot) {
+      return [];
+    }
+    const target = selectedText.trim();
+    if (!target) {
+      return [];
+    }
+    const heading = contentRoot.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
+    if (!heading) {
+      return [];
+    }
+    const allHeadings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+    const headingIndex = allHeadings.findIndex((node) => node === heading);
+    const nextHeading = headingIndex >= 0 ? allHeadings[headingIndex + 1] ?? null : null;
+    const sectionRoots: Node[] = [];
+    let node: Node | null = heading;
+    while (node && node !== nextHeading) {
+      sectionRoots.push(node);
+      node = node.nextSibling;
+    }
+    if (sectionRoots.length === 0) {
+      return [];
+    }
+
+    const textEntries: Array<{ node: Text; start: number; end: number }> = [];
+    let rawText = "";
+    for (const rootNode of sectionRoots) {
+      const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+      let current = walker.nextNode();
+      while (current) {
+        const textNode = current as Text;
+        const value = textNode.nodeValue ?? "";
+        if (value.length > 0) {
+          const start = rawText.length;
+          rawText += value;
+          textEntries.push({ node: textNode, start, end: rawText.length });
+        }
+        current = walker.nextNode();
+      }
+    }
+    if (!rawText || textEntries.length === 0) {
+      return [];
+    }
+
+    let matchStart = rawText.indexOf(target);
+    let matchEnd = matchStart >= 0 ? matchStart + target.length : -1;
+    if (matchStart < 0) {
+      const condensedRawChars: string[] = [];
+      const rawIndexByCondensed: number[] = [];
+      for (let i = 0; i < rawText.length; i += 1) {
+        const char = rawText[i];
+        if (!/\s/u.test(char)) {
+          condensedRawChars.push(char);
+          rawIndexByCondensed.push(i);
+        }
+      }
+      const condensedRaw = condensedRawChars.join("");
+      const condensedTarget = target.replace(/\s+/gu, "");
+      const condensedStart = condensedTarget ? condensedRaw.indexOf(condensedTarget) : -1;
+      if (condensedStart < 0) {
+        return [];
+      }
+      const rawStart = rawIndexByCondensed[condensedStart];
+      const rawEnd = rawIndexByCondensed[condensedStart + condensedTarget.length - 1];
+      if (rawStart === undefined || rawEnd === undefined) {
+        return [];
+      }
+      matchStart = rawStart;
+      matchEnd = rawEnd + 1;
+    }
+    if (matchStart < 0 || matchEnd <= matchStart) {
+      return [];
+    }
+
+    const startEntry = textEntries.find((entry) => matchStart >= entry.start && matchStart < entry.end);
+    const endBoundary = Math.max(matchStart, matchEnd - 1);
+    const endEntry = textEntries.find((entry) => endBoundary >= entry.start && endBoundary < entry.end);
+    if (!startEntry || !endEntry) {
+      return [];
+    }
+
+    const range = document.createRange();
+    range.setStart(startEntry.node, matchStart - startEntry.start);
+    range.setEnd(endEntry.node, matchEnd - endEntry.start);
+    return captureRangeSegments(range);
+  }, [captureRangeSegments]);
+
+  const createLocalThreadId = useCallback((anchorId: string) => (
+    `local-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  ), []);
+
+  const addSelectionHighlight = useCallback((threadId: string, anchorId: string, selectedText: string, preferred?: HighlightSegment[]) => {
+    const segments = preferred ?? captureSelectionSegments();
+    if (segments.length === 0) {
+      return;
+    }
+    const next: SelectionHighlight = {
+      id: `highlight-${threadId}`,
+      threadId,
+      anchorId,
+      selectedText,
+      segments,
+    };
+    setSelectionHighlights((prev) => {
+      const kept = prev.filter((item) => item.threadId !== threadId);
+      return [next, ...kept].slice(0, 200);
+    });
+  }, [captureSelectionSegments]);
 
   const openTocDrawer = useCallback(() => {
     setActiveDrawer((prev) => (prev === "toc" ? null : "toc"));
@@ -714,14 +1165,84 @@ export function DocPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [floatingToolbar]);
 
-  const updateThreadDraft = useCallback((anchorId: string, value: string) => {
+  const updateThreadDraft = useCallback((threadId: string, value: string) => {
     setThreadDrafts((prev) => {
-      if (prev[anchorId] === value) return prev;
-      return { ...prev, [anchorId]: value };
+      if (prev[threadId] === value) return prev;
+      return { ...prev, [threadId]: value };
     });
   }, []);
 
+  const rebindThreadIdToSession = useCallback((threadId: string, candidateSessionId: string | null): string => {
+    const resolvedSessionId = candidateSessionId?.trim() ?? "";
+    if (!resolvedSessionId) {
+      return threadId;
+    }
+    if (threadId === resolvedSessionId) {
+      setThreadSessionIds((prev) => {
+        if (prev[threadId] === resolvedSessionId) {
+          return prev;
+        }
+        return { ...prev, [threadId]: resolvedSessionId };
+      });
+      setComments((prev) => {
+        let changed = false;
+        const next = prev.map((item) => {
+          if (item.threadId !== threadId || item.sessionId === resolvedSessionId) {
+            return item;
+          }
+          changed = true;
+          return { ...item, sessionId: resolvedSessionId };
+        });
+        return changed ? next : prev;
+      });
+      return resolvedSessionId;
+    }
+
+    setComments((prev) =>
+      prev.map((item) =>
+        item.threadId === threadId
+          ? { ...item, threadId: resolvedSessionId, sessionId: resolvedSessionId }
+          : item
+      )
+    );
+    setThreadSessionIds((prev) => {
+      const withCurrent = prev[threadId] === resolvedSessionId
+        ? prev
+        : { ...prev, [threadId]: resolvedSessionId };
+      return moveRecordKey(withCurrent, threadId, resolvedSessionId, (_, existing) => existing ?? resolvedSessionId);
+    });
+    setThreadDrafts((prev) => moveRecordKey(prev, threadId, resolvedSessionId, (incoming, existing) => existing ?? incoming));
+    setThreadStreaming((prev) => moveRecordKey(
+      prev,
+      threadId,
+      resolvedSessionId,
+      (incoming, existing) => Boolean(existing || incoming),
+    ));
+    setSelectionHighlights((prev) => {
+      const remapped = prev.map((item) => (
+        item.threadId === threadId ? { ...item, threadId: resolvedSessionId } : item
+      ));
+      const deduped = new Map<string, SelectionHighlight>();
+      for (const item of remapped) {
+        if (!deduped.has(item.threadId)) {
+          deduped.set(item.threadId, item);
+        }
+      }
+      return Array.from(deduped.values());
+    });
+    setActiveCommentThreadId((prev) => (prev === threadId ? resolvedSessionId : prev));
+
+    const controller = streamControllersRef.current.get(threadId);
+    if (controller) {
+      streamControllersRef.current.delete(threadId);
+      streamControllersRef.current.set(resolvedSessionId, controller);
+    }
+
+    return resolvedSessionId;
+  }, []);
+
   const streamAssistantReply = useCallback(async (
+    threadId: string,
     anchorId: string,
     selectedText: string,
     question: string
@@ -738,6 +1259,8 @@ export function DocPage() {
       ...prev,
       {
         id: userId,
+        threadId,
+        sessionId: threadSessionIds[threadId] ?? null,
         anchorId,
         selectedText,
         role: "user",
@@ -746,6 +1269,8 @@ export function DocPage() {
       },
       {
         id: assistantId,
+        threadId,
+        sessionId: threadSessionIds[threadId] ?? null,
         anchorId,
         selectedText,
         role: "assistant",
@@ -754,14 +1279,15 @@ export function DocPage() {
         streaming: true,
       },
     ]);
-    setThreadStreaming((prev) => ({ ...prev, [anchorId]: true }));
+    setThreadStreaming((prev) => ({ ...prev, [threadId]: true }));
 
-    const previousController = streamControllersRef.current.get(anchorId);
+    const previousController = streamControllersRef.current.get(threadId);
     if (previousController) {
       previousController.abort();
     }
     const controller = new AbortController();
-    streamControllersRef.current.set(anchorId, controller);
+    streamControllersRef.current.set(threadId, controller);
+    let boundThreadId = threadId;
 
     const appendAssistantDelta = (delta: string) => {
       if (!delta) return;
@@ -783,6 +1309,9 @@ export function DocPage() {
         )
       );
     };
+    const bindSessionToThread = (candidateSessionId: string | null) => {
+      boundThreadId = rebindThreadIdToSession(boundThreadId, candidateSessionId);
+    };
 
     try {
       const subject = subjectId ?? "demo";
@@ -791,12 +1320,17 @@ export function DocPage() {
         {
           question: text,
           source: "quick_chat",
+          session_id: threadSessionIds[threadId] ?? undefined,
+          anchor_id: anchorId,
           selected_context: selectedText || undefined,
         },
         {
           signal: controller.signal,
           onToken: ({ content }) => {
             appendAssistantDelta(content);
+          },
+          onDone: (payload) => {
+            bindSessionToThread(parseDoneSessionId(payload));
           },
           onError: (payload) => {
             const detail =
@@ -808,6 +1342,7 @@ export function DocPage() {
         }
       );
 
+      bindSessionToThread(parseDoneSessionId(result.donePayload));
       if (!result.aborted && !result.receivedToken && !result.errorPayload) {
         replaceAssistantContent("已收到问题，但当前没有返回内容。");
       }
@@ -825,37 +1360,56 @@ export function DocPage() {
         )
       );
 
-      if (streamControllersRef.current.get(anchorId) === controller) {
-        streamControllersRef.current.delete(anchorId);
-        setThreadStreaming((prev) => ({ ...prev, [anchorId]: false }));
+      let activeControllerThreadId: string | null = null;
+      for (const [key, value] of streamControllersRef.current.entries()) {
+        if (value === controller) {
+          activeControllerThreadId = key;
+          break;
+        }
+      }
+      if (activeControllerThreadId) {
+        streamControllersRef.current.delete(activeControllerThreadId);
+        setThreadStreaming((prev) => ({ ...prev, [activeControllerThreadId]: false }));
+      } else if (boundThreadId) {
+        setThreadStreaming((prev) => ({ ...prev, [boundThreadId]: false }));
       }
     }
-  }, [subjectId]);
+  }, [rebindThreadIdToSession, subjectId, threadSessionIds]);
 
   const addComment = useCallback(() => {
     if (!floatingInput.trim() || !floatingComment) return;
     const question = floatingInput.trim();
     const { anchorId, selectedText } = floatingComment;
+    const threadId = createLocalThreadId(anchorId);
+    const segments = captureSelectionSegments();
+    addSelectionHighlight(threadId, anchorId, selectedText, segments);
+    setActiveCommentThreadId(threadId);
+    setPinnedThreadId(threadId);
     setFloatingInput("");
-    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
+    setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
     dismissCommentComposer();
     setFloatingToolbar(null);
     clearSelectionHighlight();
-    void streamAssistantReply(anchorId, selectedText, question);
+    void streamAssistantReply(threadId, anchorId, selectedText, question);
   }, [
     clearSelectionHighlight,
+    addSelectionHighlight,
+    captureSelectionSegments,
+    createLocalThreadId,
     dismissCommentComposer,
     floatingComment,
     floatingInput,
     streamAssistantReply,
   ]);
 
-  const sendThreadReply = useCallback((anchorId: string, selectedText: string) => {
-    if (threadStreaming[anchorId]) return;
-    const question = (threadDrafts[anchorId] ?? "").trim();
+  const sendThreadReply = useCallback((threadId: string, anchorId: string, selectedText: string) => {
+    if (threadStreaming[threadId]) return;
+    const question = (threadDrafts[threadId] ?? "").trim();
     if (!question) return;
-    setThreadDrafts((prev) => ({ ...prev, [anchorId]: "" }));
-    void streamAssistantReply(anchorId, selectedText, question);
+    setThreadDrafts((prev) => ({ ...prev, [threadId]: "" }));
+    setActiveCommentThreadId(threadId);
+    setPinnedThreadId(threadId);
+    void streamAssistantReply(threadId, anchorId, selectedText, question);
   }, [streamAssistantReply, threadDrafts, threadStreaming]);
 
   const openCommentComposer = useCallback(() => {
@@ -925,7 +1479,7 @@ export function DocPage() {
       );
       setFloatingToolbar({
         anchorId: headingId,
-        selectedText: selectedText.slice(0, 60),
+        selectedText,
         top,
         left,
         selectionViewportTop: rect.top + rect.height / 2,
@@ -984,32 +1538,19 @@ export function DocPage() {
     [threadStreaming]
   );
 
-  // Group QA messages by anchor for right-side threads
-  const commentsByAnchor = useMemo(() => {
+  const commentsByThread = useMemo(() => {
     const map = new Map<string, Comment[]>();
-    for (const c of comments) {
-      const list = map.get(c.anchorId) ?? [];
-      list.push(c);
-      map.set(c.anchorId, list);
+    for (const item of comments) {
+      const list = map.get(item.threadId) ?? [];
+      list.push(item);
+      map.set(item.threadId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((left, right) => left.createdAt - right.createdAt);
     }
     return map;
   }, [comments]);
 
-  const selectedTextByAnchor = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const [anchorId, anchorComments] of commentsByAnchor.entries()) {
-      const match = anchorComments.find((item) => item.selectedText);
-      if (match?.selectedText) {
-        map.set(anchorId, match.selectedText);
-      }
-    }
-    return map;
-  }, [commentsByAnchor]);
-
-  const commentsForAnchor = useCallback(
-    (anchorId: string) => commentsByAnchor.get(anchorId)?.length ?? 0,
-    [commentsByAnchor]
-  );
   const tocOrderMap = useMemo(
     () => new Map(toc.map((item, index) => [item.id, index])),
     [toc]
@@ -1018,30 +1559,253 @@ export function DocPage() {
     () => new Map(toc.map((item) => [item.id, item.text])),
     [toc]
   );
-  const commentThreads = useMemo(
-    () =>
-      Array.from(commentsByAnchor.entries()).sort(
-        ([anchorA], [anchorB]) =>
-          (tocOrderMap.get(anchorA) ?? Number.MAX_SAFE_INTEGER) -
-          (tocOrderMap.get(anchorB) ?? Number.MAX_SAFE_INTEGER)
-      ),
-    [commentsByAnchor, tocOrderMap]
-  );
-  const commentAnchorIds = useMemo(
-    () => commentThreads.map(([anchorId]) => anchorId),
+  const commentThreads = useMemo<CommentThreadView[]>(() => (
+    Array.from(commentsByThread.entries())
+      .map(([threadId, threadComments]) => {
+        const anchorId = threadComments.find((item) => item.anchorId)?.anchorId ?? "";
+        const selectedText = threadComments.find((item) => item.selectedText)?.selectedText ?? "";
+        const createdAt = threadComments[0]?.createdAt ?? 0;
+        return {
+          threadId,
+          anchorId,
+          selectedText,
+          comments: threadComments,
+          createdAt,
+        };
+      })
+      .filter((item) => item.anchorId)
+      .sort((left, right) => {
+        const leftOrder = tocOrderMap.get(left.anchorId) ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = tocOrderMap.get(right.anchorId) ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+        return left.createdAt - right.createdAt;
+      })
+  ), [commentsByThread, tocOrderMap]);
+  const commentThreadIds = useMemo(
+    () => commentThreads.map((item) => item.threadId),
     [commentThreads]
   );
+  const commentThreadById = useMemo(
+    () => new Map(commentThreads.map((item) => [item.threadId, item] as const)),
+    [commentThreads]
+  );
+  const highlightTopByThreadId = useMemo(() => {
+    const next = new Map<string, number>();
+    for (const highlight of selectionHighlights) {
+      if (highlight.segments.length === 0) {
+        continue;
+      }
+      const segmentTop = Math.min(...highlight.segments.map((segment) => segment.top));
+      const existing = next.get(highlight.threadId);
+      next.set(highlight.threadId, existing === undefined ? segmentTop : Math.min(existing, segmentTop));
+    }
+    return next;
+  }, [selectionHighlights]);
+  const measureCommentListOrigin = useCallback(() => {
+    if (isCompactPanels) {
+      setCommentListOriginTop(null);
+      return;
+    }
+    const container = scrollRef.current;
+    const list = commentThreadListRef.current;
+    if (!container || !list) {
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    const nextTop = listRect.top - containerRect.top + container.scrollTop;
+    setCommentListOriginTop((prev) => {
+      if (prev !== null && Math.abs(prev - nextTop) < 0.5) {
+        return prev;
+      }
+      return nextTop;
+    });
+  }, [isCompactPanels]);
+  const threadHeightMap = useMemo(
+    () => new Map(Object.entries(threadHeightsById)),
+    [threadHeightsById]
+  );
+  const desiredTopByThreadId = useMemo(() => {
+    const next = new Map<string, number>();
+    if (isCompactPanels || commentListOriginTop === null) {
+      return next;
+    }
+    for (const thread of commentThreads) {
+      const highlightTop = highlightTopByThreadId.get(thread.threadId);
+      if (highlightTop === undefined) {
+        continue;
+      }
+      next.set(thread.threadId, Math.max(0, highlightTop - commentListOriginTop - 2));
+    }
+    return next;
+  }, [commentListOriginTop, commentThreads, highlightTopByThreadId, isCompactPanels]);
+  const desktopThreadLayout = useMemo(
+    () => buildCommentThreadLayout(commentThreads, threadHeightMap, desiredTopByThreadId, pinnedThreadId),
+    [commentThreads, desiredTopByThreadId, pinnedThreadId, threadHeightMap]
+  );
+  const threadCountByAnchor = useMemo(() => {
+    const next = new Map<string, number>();
+    for (const item of commentThreads) {
+      next.set(item.anchorId, (next.get(item.anchorId) ?? 0) + 1);
+    }
+    return next;
+  }, [commentThreads]);
+  const commentsForAnchor = useCallback(
+    (anchorId: string) => threadCountByAnchor.get(anchorId) ?? 0,
+    [threadCountByAnchor]
+  );
+
+  useEffect(() => {
+    if (!pinnedThreadId) {
+      return;
+    }
+    if (commentThreadById.has(pinnedThreadId)) {
+      return;
+    }
+    setPinnedThreadId(null);
+  }, [commentThreadById, pinnedThreadId]);
+
+  useEffect(() => {
+    if (isCompactPanels) {
+      setCommentListOriginTop(null);
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      measureCommentListOrigin();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [
+    isCompactPanels,
+    measureCommentListOrigin,
+    commentThreads.length,
+    isCommentCollapsed,
+    activeDrawer,
+    isCommentVisible,
+  ]);
+
+  useEffect(() => {
+    if (isCompactPanels) {
+      return;
+    }
+    const handleLayoutChange = () => {
+      measureCommentListOrigin();
+    };
+    const container = scrollRef.current;
+    window.addEventListener("resize", handleLayoutChange);
+    container?.addEventListener("scroll", handleLayoutChange, { passive: true });
+
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => handleLayoutChange())
+      : null;
+    if (observer) {
+      if (commentPanelRef.current) {
+        observer.observe(commentPanelRef.current);
+      }
+      if (commentThreadListRef.current) {
+        observer.observe(commentThreadListRef.current);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleLayoutChange);
+      container?.removeEventListener("scroll", handleLayoutChange);
+      observer?.disconnect();
+    };
+  }, [isCompactPanels, measureCommentListOrigin]);
+
+  useEffect(() => {
+    if (isCompactPanels) {
+      setThreadHeightsById({});
+      return;
+    }
+    const next: Record<string, number> = {};
+    for (const thread of commentThreads) {
+      const node = threadRefs.current.get(thread.threadId);
+      if (!node) {
+        continue;
+      }
+      const measured = Math.ceil(node.getBoundingClientRect().height);
+      if (measured > 0) {
+        next[thread.threadId] = measured;
+      }
+    }
+    setThreadHeightsById((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length) {
+        let same = true;
+        for (const key of nextKeys) {
+          if (prev[key] !== next[key]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) {
+          return prev;
+        }
+      }
+      return next;
+    });
+  }, [commentThreads, comments, isCompactPanels, threadDrafts, threadStreaming]);
+
+  useEffect(() => {
+    if (!activeCommentThreadId) {
+      return;
+    }
+    if (commentThreads.some((item) => item.threadId === activeCommentThreadId)) {
+      return;
+    }
+    setActiveCommentThreadId(commentThreads[0]?.threadId ?? null);
+  }, [activeCommentThreadId, commentThreads]);
+
+  useEffect(() => {
+    if (!hasDocMarkdown || commentThreads.length === 0) {
+      return;
+    }
+    setSelectionHighlights((prev) => {
+      const threadIdSet = new Set(commentThreads.map((item) => item.threadId));
+      const kept = prev.filter((item) => threadIdSet.has(item.threadId));
+      const existing = new Set(kept.map((item) => item.threadId));
+      const next: SelectionHighlight[] = [...kept];
+      let changed = kept.length !== prev.length;
+      for (const thread of commentThreads) {
+        if (existing.has(thread.threadId) || !thread.selectedText) {
+          continue;
+        }
+        const segments = buildSelectionSegmentsFromText(thread.anchorId, thread.selectedText);
+        if (segments.length === 0) {
+          continue;
+        }
+        next.push({
+          id: `highlight-${thread.threadId}`,
+          threadId: thread.threadId,
+          anchorId: thread.anchorId,
+          selectedText: thread.selectedText,
+          segments,
+        });
+        changed = true;
+      }
+      return changed ? next.slice(0, 200) : prev;
+    });
+  }, [buildSelectionSegmentsFromText, commentThreads, hasDocMarkdown]);
+
   const activeCommentIndex = useMemo(() => {
-    if (commentAnchorIds.length === 0) return -1;
+    if (commentThreadIds.length === 0) return -1;
+    if (activeCommentThreadId) {
+      const activeByThreadId = commentThreadIds.indexOf(activeCommentThreadId);
+      if (activeByThreadId >= 0) {
+        return activeByThreadId;
+      }
+    }
     if (!activeHeading) return 0;
-    const directMatchIndex = commentAnchorIds.indexOf(activeHeading);
-    if (directMatchIndex >= 0) return directMatchIndex;
     const activeOrder = tocOrderMap.get(activeHeading);
     if (activeOrder === undefined) return 0;
     let nearestIndex = 0;
     let nearestDistance = Number.MAX_SAFE_INTEGER;
-    for (let i = 0; i < commentAnchorIds.length; i += 1) {
-      const order = tocOrderMap.get(commentAnchorIds[i]);
+    for (let i = 0; i < commentThreadIds.length; i += 1) {
+      const order = tocOrderMap.get(commentThreads[i]?.anchorId ?? "");
       if (order === undefined) continue;
       const distance = Math.abs(order - activeOrder);
       if (distance < nearestDistance) {
@@ -1050,112 +1814,70 @@ export function DocPage() {
       }
     }
     return nearestIndex;
-  }, [activeHeading, commentAnchorIds, tocOrderMap]);
-  const activeCommentAnchorId = activeCommentIndex >= 0
-    ? commentAnchorIds[activeCommentIndex]
+  }, [activeCommentThreadId, activeHeading, commentThreadIds, commentThreads, tocOrderMap]);
+  const activeThreadId = activeCommentIndex >= 0
+    ? commentThreadIds[activeCommentIndex]
     : null;
-  const jumpCommentThread = useCallback((direction: -1 | 1) => {
-    if (commentAnchorIds.length === 0) return;
-    const baseIndex = activeCommentIndex < 0 ? 0 : activeCommentIndex;
-    const nextIndex = Math.min(
-      commentAnchorIds.length - 1,
-      Math.max(0, baseIndex + direction)
-    );
-    scrollToHeading(commentAnchorIds[nextIndex]);
-  }, [activeCommentIndex, commentAnchorIds, scrollToHeading]);
-  const openAiAssistant = useCallback(() => {
-    if (!subjectId) return;
-    navigate(`/subject/${subjectId}/chat`);
-  }, [navigate, subjectId]);
+  const highlightedThreadId = activeCommentThreadId ?? activeThreadId;
 
-  const measureThreadHeights = useCallback(() => {
-    const next: Record<string, number> = {};
-    for (const [anchorId] of commentThreads) {
-      const node = threadRefs.current.get(anchorId);
-      if (node) {
-        next[anchorId] = Math.ceil(node.getBoundingClientRect().height);
-      }
-    }
-    setThreadHeights((prev) => (numberRecordEqual(prev, next) ? prev : next));
-  }, [commentThreads]);
-
-  const updateThreadTops = useCallback(() => {
-    if (!isCommentVisible) {
-      setThreadTops({});
-      setThreadOpacity({});
+  const focusCommentThread = useCallback((
+    threadId: string,
+    options: { scrollToDoc?: boolean; pinToSelection?: boolean; scrollThreadIntoView?: boolean } = {}
+  ) => {
+    const thread = commentThreadById.get(threadId);
+    if (!thread) {
       return;
     }
-    const container = scrollRef.current;
-    const viewport = commentViewportRef.current;
-    if (!container || !viewport) return;
-    const viewportRect = viewport.getBoundingClientRect();
-    const maxBottom = viewportRect.height - COMMENT_THREAD_BOTTOM_PADDING;
-    let cursorTop = -Infinity;
-    const nextTops: Record<string, number> = {};
-    const nextOpacity: Record<string, number> = {};
-
-    for (const [anchorId] of commentThreads) {
-      const anchor = container.querySelector(`[data-heading-id="${anchorId}"]`) as HTMLElement | null;
-      if (!anchor) continue;
-      const rect = anchor.getBoundingClientRect();
-      const rawTop = rect.top - viewportRect.top;
-      const threadHeight = threadHeights[anchorId] ?? COMMENT_THREAD_DEFAULT_HEIGHT;
-      if (
-        rawTop + threadHeight < -COMMENT_THREAD_HIDE_OFFSET ||
-        rawTop > viewportRect.height + COMMENT_THREAD_HIDE_OFFSET
-      ) {
-        continue;
-      }
-      const maxTop = Math.max(COMMENT_THREAD_TOP_PADDING, maxBottom - threadHeight);
-      const minVisibleTop = -threadHeight + 8;
-      const stackedTop = Math.max(rawTop, cursorTop + COMMENT_THREAD_GAP);
-      const top = Math.max(minVisibleTop, Math.min(maxTop, stackedTop));
-      const topFade = top < COMMENT_THREAD_EDGE_FADE
-        ? Math.max(0, top / COMMENT_THREAD_EDGE_FADE)
-        : 1;
-      const bottomDistance = viewportRect.height - (top + threadHeight);
-      const bottomFade = bottomDistance < COMMENT_THREAD_EDGE_FADE
-        ? Math.max(0, bottomDistance / COMMENT_THREAD_EDGE_FADE)
-        : 1;
-      const opacity = Math.min(1, Math.max(0, Math.min(topFade, bottomFade)));
-      if (opacity <= 0.01) {
-        continue;
-      }
-      nextTops[anchorId] = top;
-      nextOpacity[anchorId] = opacity;
-      cursorTop = top + threadHeight;
+    if (isCompactPanels) {
+      setActiveDrawer("comment");
+    } else {
+      setIsCommentCollapsed(false);
     }
-
-    setThreadTops((prev) => (numberRecordEqual(prev, nextTops) ? prev : nextTops));
-    setThreadOpacity((prev) => (numberRecordEqual(prev, nextOpacity) ? prev : nextOpacity));
-  }, [commentThreads, isCommentVisible, threadHeights]);
-
-  useEffect(() => {
-    if (!isCommentVisible) return;
-    const rafId = window.requestAnimationFrame(measureThreadHeights);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [commentThreads, floatingComment, measureThreadHeights, isCommentVisible]);
-
-  useEffect(() => {
-    if (!isCommentVisible) return;
-    const container = scrollRef.current;
-    if (!container) return;
-    let rafId = 0;
-    const syncPositions = () => {
-      window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(() => {
-        updateThreadTops();
+    setActiveCommentThreadId(threadId);
+    if (options.pinToSelection) {
+      setPinnedThreadId(threadId);
+    }
+    if (options.scrollToDoc !== false) {
+      scrollToHeading(thread.anchorId);
+    }
+    if (options.scrollThreadIntoView !== false) {
+      window.requestAnimationFrame(() => {
+        threadRefs.current.get(threadId)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
-    };
-    syncPositions();
-    container.addEventListener("scroll", syncPositions, { passive: true });
-    window.addEventListener("resize", syncPositions);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      container.removeEventListener("scroll", syncPositions);
-      window.removeEventListener("resize", syncPositions);
-    };
-  }, [isCommentVisible, updateThreadTops]);
+    }
+  }, [commentThreadById, isCompactPanels, scrollToHeading]);
+
+  const locateCommentThread = useCallback((threadId: string) => {
+    focusCommentThread(threadId, {
+      scrollToDoc: false,
+      pinToSelection: true,
+      scrollThreadIntoView: isCompactPanels,
+    });
+  }, [focusCommentThread, isCompactPanels]);
+
+  const jumpCommentThread = useCallback((direction: -1 | 1) => {
+    if (commentThreadIds.length === 0) return;
+    const baseIndex = activeCommentIndex < 0 ? 0 : activeCommentIndex;
+    const nextIndex = Math.min(
+      commentThreadIds.length - 1,
+      Math.max(0, baseIndex + direction)
+    );
+    const nextThreadId = commentThreadIds[nextIndex];
+    if (!nextThreadId) {
+      return;
+    }
+    focusCommentThread(nextThreadId);
+  }, [activeCommentIndex, commentThreadIds, focusCommentThread]);
+  const openAiAssistant = useCallback((threadId?: string) => {
+    if (!subjectId) return;
+    const targetThreadId = threadId ?? activeThreadId ?? commentThreadIds[0] ?? null;
+    const targetSessionId = targetThreadId ? (threadSessionIds[targetThreadId] ?? null) : null;
+    if (targetSessionId) {
+      openAssistant({ sessionId: targetSessionId });
+      return;
+    }
+    openAssistant();
+  }, [activeThreadId, commentThreadIds, openAssistant, subjectId, threadSessionIds]);
 
   const closeCommentPanel = useCallback(() => {
     if (isCompactPanels) {
@@ -1208,10 +1930,10 @@ export function DocPage() {
     <div
       ref={commentPanelRef}
       className={cn(
-        "relative w-full flex flex-col overflow-hidden",
+        "relative w-full",
         isCompactPanels
-          ? "h-full rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          : "border-l border-slate-200/90 pl-3 bg-transparent"
+          ? "h-full rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
+          : "border-l border-slate-200/90 pl-3 bg-transparent overflow-visible"
       )}
     >
       <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
@@ -1240,10 +1962,10 @@ export function DocPage() {
           </button>
           <button
             onClick={() => jumpCommentThread(1)}
-            disabled={activeCommentIndex < 0 || activeCommentIndex >= commentAnchorIds.length - 1}
+            disabled={activeCommentIndex < 0 || activeCommentIndex >= commentThreadIds.length - 1}
             className={cn(
               "w-7 h-7 rounded-lg transition-colors flex items-center justify-center",
-              activeCommentIndex < 0 || activeCommentIndex >= commentAnchorIds.length - 1
+              activeCommentIndex < 0 || activeCommentIndex >= commentThreadIds.length - 1
                 ? "text-slate-300 cursor-not-allowed"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             )}
@@ -1264,13 +1986,21 @@ export function DocPage() {
 
       {floatingComment && (
         <div
-          className="absolute left-3 right-3 z-30 rounded-xl border border-slate-200 bg-white shadow-lg"
+          className="absolute left-3 right-3 z-30 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_28px_56px_-30px_rgba(15,23,42,0.68)] backdrop-blur"
           style={{ top: floatingComment.top }}
         >
-          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80 rounded-t-xl">
-            <p className="text-xs text-slate-500 truncate">&ldquo;{floatingComment.selectedText}&rdquo;</p>
+          <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.85),rgba(248,250,252,0.95),rgba(239,246,255,0.85))] px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900 text-white shadow-sm">
+                <Sparkles className="h-3.5 w-3.5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">AI Assistant</p>
+                <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 60)}&rdquo;</p>
+              </div>
+            </div>
           </div>
-          <div className="p-3">
+          <div className="space-y-2.5 p-3">
             <textarea
               value={floatingInput}
               onChange={(e) => setFloatingInput(e.target.value)}
@@ -1285,13 +2015,13 @@ export function DocPage() {
               }}
               placeholder="基于这段内容向 AI 提问..."
               rows={3}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 resize-none"
+              className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
               autoFocus
             />
-            <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center justify-between">
               <button
                 onClick={dismissCommentComposer}
-                className="text-xs text-slate-400 hover:text-slate-600"
+                className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               >
                 取消
               </button>
@@ -1299,13 +2029,13 @@ export function DocPage() {
                 onClick={addComment}
                 disabled={!floatingInput.trim()}
                 className={cn(
-                  "flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
                   floatingInput.trim()
-                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
                     : "bg-slate-100 text-slate-300"
                 )}
               >
-                <Send className="w-3 h-3" />
+                <Send className="h-3.5 w-3.5" />
                 发送
               </button>
             </div>
@@ -1313,47 +2043,117 @@ export function DocPage() {
         </div>
       )}
 
-      <div ref={commentViewportRef} className="relative flex-1 overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-12 z-20 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-20 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent" />
-        {commentThreads.length === 0 ? (
-          <div className="h-full p-3">
+      <div ref={commentViewportRef} className={cn("relative", isCompactPanels && "flex-1 overflow-y-auto")}>
+        {isCompactPanels && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-12 z-20 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-20 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent" />
+          </>
+        )}
+        {!threadHistoryLoaded ? (
+          <div className={cn("p-3", isCompactPanels && "h-full")}>
+            <div className={cn(
+              "flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400",
+              isCompactPanels ? "h-full" : "h-24"
+            )}>
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          </div>
+        ) : threadHistoryError ? (
+          <div className={cn("p-3", isCompactPanels && "h-full")}>
+            <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-4 text-xs leading-5 text-rose-600">
+              {threadHistoryError}
+            </div>
+          </div>
+        ) : commentThreads.length === 0 ? (
+          <div className={cn("p-3", isCompactPanels && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
               <p className="text-sm text-slate-500">选中文本后点击“问问AI”即可开始对话</p>
             </div>
           </div>
+        ) : isCompactPanels ? (
+          <div ref={commentThreadListRef} className="relative p-3 space-y-3">
+            {commentThreads.map((thread) => (
+              <div
+                key={thread.threadId}
+                data-thread-id={thread.threadId}
+                ref={(node: HTMLDivElement | null) => {
+                  if (node) {
+                    threadRefs.current.set(thread.threadId, node);
+                  } else {
+                    threadRefs.current.delete(thread.threadId);
+                  }
+                }}
+              >
+                <CommentThread
+                  anchorId={thread.anchorId}
+                  title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
+                  comments={thread.comments}
+                  selectedText={thread.selectedText}
+                  draft={threadDrafts[thread.threadId] ?? ""}
+                  isStreaming={Boolean(threadStreaming[thread.threadId])}
+                  isActive={highlightedThreadId === thread.threadId}
+                  onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
+                  onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
+                  onFocus={() => focusCommentThread(thread.threadId, { scrollToDoc: false, scrollThreadIntoView: false })}
+                  onJumpToAnchor={(id) => {
+                    setActiveCommentThreadId(thread.threadId);
+                    setPinnedThreadId(thread.threadId);
+                    scrollToHeading(id);
+                  }}
+                  onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                  compactMode
+                  isAligned
+                />
+              </div>
+            ))}
+          </div>
         ) : (
-          <div className="relative h-full">
-            {commentThreads.map(([anchorId, anchorComments]) => {
-              const top = threadTops[anchorId];
-              const opacity = threadOpacity[anchorId] ?? 0;
-              if (top === undefined || opacity <= 0) {
-                return null;
-              }
+          <div
+            ref={commentThreadListRef}
+            className="relative px-3 py-3"
+            style={{ minHeight: Math.max(160, desktopThreadLayout.totalHeight + 24) }}
+          >
+            {commentThreads.map((thread) => {
+              const layout = desktopThreadLayout.positions[thread.threadId];
+              const top = layout?.top ?? 0;
               return (
                 <div
-                  key={anchorId}
+                  key={thread.threadId}
+                  data-thread-id={thread.threadId}
                   ref={(node: HTMLDivElement | null) => {
                     if (node) {
-                      threadRefs.current.set(anchorId, node);
+                      threadRefs.current.set(thread.threadId, node);
                     } else {
-                      threadRefs.current.delete(anchorId);
+                      threadRefs.current.delete(thread.threadId);
                     }
                   }}
-                  className="absolute left-1 right-2 transition-[top,opacity] duration-150"
-                  style={{ top, opacity }}
+                  className="absolute left-3 right-3 transition-[top] duration-200 ease-out"
+                  style={{ top }}
                 >
                   <CommentThread
-                    anchorId={anchorId}
-                    title={tocTitleMap.get(anchorId) ?? anchorId}
-                    comments={anchorComments}
-                    selectedText={selectedTextByAnchor.get(anchorId) ?? ""}
-                    draft={threadDrafts[anchorId] ?? ""}
-                    isStreaming={Boolean(threadStreaming[anchorId])}
-                    isActive={activeCommentAnchorId === anchorId}
-                    onDraftChange={(value) => updateThreadDraft(anchorId, value)}
-                    onSend={() => sendThreadReply(anchorId, selectedTextByAnchor.get(anchorId) ?? "")}
-                    onJumpToAnchor={scrollToHeading}
+                    anchorId={thread.anchorId}
+                    title={tocTitleMap.get(thread.anchorId) ?? thread.anchorId}
+                    comments={thread.comments}
+                    selectedText={thread.selectedText}
+                    draft={threadDrafts[thread.threadId] ?? ""}
+                    isStreaming={Boolean(threadStreaming[thread.threadId])}
+                    isActive={highlightedThreadId === thread.threadId}
+                    onDraftChange={(value) => updateThreadDraft(thread.threadId, value)}
+                    onSend={() => sendThreadReply(thread.threadId, thread.anchorId, thread.selectedText)}
+                    onFocus={() => focusCommentThread(thread.threadId, {
+                      scrollToDoc: false,
+                      pinToSelection: true,
+                      scrollThreadIntoView: false,
+                    })}
+                    onJumpToAnchor={(id) => {
+                      setActiveCommentThreadId(thread.threadId);
+                      setPinnedThreadId(thread.threadId);
+                      scrollToHeading(id);
+                    }}
+                    onOpenAssistant={() => openAiAssistant(thread.threadId)}
+                    compactMode={false}
+                    isAligned={layout?.aligned ?? false}
                   />
                 </div>
               );
@@ -1469,37 +2269,17 @@ export function DocPage() {
         </>
       )}
 
-      <div className="hidden lg:block absolute bottom-6 right-4 z-30">
-        <button
-          onClick={openAiAssistant}
-          className="h-11 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-lg px-4 text-slate-700 hover:text-slate-900 hover:bg-white transition-colors inline-flex items-center gap-2"
-          aria-label="AI 助手"
-          title="AI 助手"
-        >
-          <Bot className="w-4 h-4" />
-          <span className="text-xs font-semibold tracking-wide uppercase">AI</span>
-        </button>
-      </div>
-
-      {!isCompactPanels && (
-        <>
-          {isCommentCollapsed ? (
-            <aside className="hidden lg:flex absolute right-4 top-16 z-20">
-              <button
-                onClick={() => setIsCommentCollapsed(false)}
-                className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
-                aria-label="展开问答栏"
-              >
-                <Bot className="w-4 h-4" />
-                <ChevronRight className="w-4 h-4 rotate-180" />
-              </button>
-            </aside>
-          ) : (
-            <aside className="hidden lg:flex absolute right-4 top-16 bottom-5 w-80 z-20">
-              {commentPanel}
-            </aside>
-          )}
-        </>
+      {!isCompactPanels && isCommentCollapsed && (
+        <aside className="hidden lg:flex absolute right-4 top-16 z-20">
+          <button
+            onClick={() => setIsCommentCollapsed(false)}
+            className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm px-2 py-2.5 text-slate-600 hover:text-slate-900 hover:bg-white transition-colors flex items-center gap-1"
+            aria-label="展开问答栏"
+          >
+            <Bot className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 rotate-180" />
+          </button>
+        </aside>
       )}
 
       {isCompactPanels && (
@@ -1523,9 +2303,7 @@ export function DocPage() {
             "min-h-full pr-4 transition-[padding-left,padding-right] duration-300 pl-4 md:pl-6",
             isCompactPanels
               ? "lg:pr-6 lg:pl-6"
-              : isCommentCollapsed
-                ? "lg:pr-20"
-                : "lg:pr-[22rem]",
+              : "lg:pr-6",
             isCompactPanels
               ? null
               : isTocCollapsed
@@ -1536,7 +2314,7 @@ export function DocPage() {
           <div className="mx-auto max-w-[1800px] px-6 py-8">
             <div
               ref={contentAreaRef}
-              className="mx-auto flex min-h-full w-full max-w-[1380px]"
+              className="mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
               >
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
@@ -1561,8 +2339,49 @@ export function DocPage() {
                     <DocMarkdown content={markdown} />
                   )}
                 </article>
+                {!isCompactPanels && !isCommentCollapsed && (
+                  <aside className="hidden lg:block w-80 shrink-0 py-8">
+                    {commentPanel}
+                  </aside>
+                )}
             </div>
           </div>
+
+          {selectionHighlights.map((highlight) => (
+            <div key={highlight.id}>
+              {highlight.segments.map((segment, index) => (
+                <button
+                  key={`${highlight.id}-${index}`}
+                  type="button"
+                  onClick={() => locateCommentThread(highlight.threadId)}
+                  data-highlight-thread-id={highlight.threadId}
+                  className={cn(
+                    "group absolute z-30 rounded-[3px] transition-colors focus-visible:outline-none",
+                    highlightedThreadId === highlight.threadId
+                      ? "bg-blue-100/45 ring-1 ring-blue-300/70 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]"
+                      : "bg-transparent hover:bg-amber-100/35 focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                  )}
+                  style={{
+                    top: segment.top,
+                    left: segment.left,
+                    width: segment.width,
+                    height: segment.height,
+                  }}
+                  title={`定位问答：${highlight.selectedText}`}
+                  aria-label="定位划词问答"
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute inset-x-0 bottom-0 rounded-full transition-all",
+                      highlightedThreadId === highlight.threadId
+                        ? "h-[2.5px] bg-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.28),0_4px_10px_-6px_rgba(37,99,235,0.85)]"
+                        : "h-[1.5px] bg-amber-300/90 shadow-[0_0_0_1px_rgba(245,158,11,0.24),0_2px_8px_-6px_rgba(245,158,11,0.7)] group-hover:h-[2px] group-hover:bg-amber-400/95"
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          ))}
 
           {floatingToolbar && (
             <div
@@ -1574,16 +2393,16 @@ export function DocPage() {
               }}
               onMouseUp={(e) => e.stopPropagation()}
             >
-              <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-lg">
-                <span className="max-w-36 truncate text-[11px] text-slate-400">
-                  &ldquo;{floatingToolbar.selectedText}&rdquo;
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/95 px-2 py-1.5 shadow-[0_22px_44px_-28px_rgba(15,23,42,0.82)] backdrop-blur">
+                <span className="max-w-40 truncate px-1 text-[11px] text-slate-500">
+                  &ldquo;{floatingToolbar.selectedText.slice(0, 60)}&rdquo;
                 </span>
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={openCommentComposer}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-slate-800"
                 >
-                  <Bot className="w-3.5 h-3.5" />
+                  <Sparkles className="h-3.5 w-3.5" />
                   问问AI
                 </button>
               </div>

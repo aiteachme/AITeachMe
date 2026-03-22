@@ -8,9 +8,31 @@ from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.schemas.chats import ChatClearData, ChatClearRequest, ChatListRequest, ChatMessageItem, ChatSendRequest
+from app.schemas.chats import (
+    ChatClearData,
+    ChatClearRequest,
+    ChatListRequest,
+    ChatMessageItem,
+    ChatSendRequest,
+    ChatThreadListRequest,
+    ChatThreadTurnItem,
+    ChatSessionCreateData,
+    ChatSessionCreateRequest,
+    ChatSessionDeleteData,
+    ChatSessionDeleteRequest,
+    ChatSessionItem,
+    ChatSessionListRequest,
+)
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.services.chats_service import chat_stream, clear_chat_history, list_chat_history
+from app.services.chats_service import (
+    chat_stream,
+    clear_chat_history,
+    create_session,
+    delete_session,
+    list_chat_history,
+    list_chat_threads,
+    list_chat_sessions,
+)
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
@@ -37,8 +59,10 @@ async def send_chat(
             request,
             session,
             subject=normalized_subject,
+            session_id=body.session_id,
             question=body.question,
             source=body.source,
+            anchor_id=body.anchor_id,
             selected_context=body.selected_context,
             source_chunk_id=body.source_chunk_id,
         ),
@@ -70,6 +94,7 @@ async def list_chat_api(
             subject=normalized_subject,
             page=body.page,
             size=body.size,
+            session_id=body.session_id,
         )
     )
 
@@ -82,9 +107,106 @@ async def list_chat_api(
 )
 async def clear_chat_api(
     subject: str = Path(...),
-    _: ChatClearRequest = Body(default=ChatClearRequest()),
+    body: ChatClearRequest = Body(default=ChatClearRequest()),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatClearData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    return ok_response(clear_chat_history(session, subject=normalized_subject))
+    return ok_response(
+        clear_chat_history(
+            session,
+            subject=normalized_subject,
+            session_id=body.session_id,
+        )
+    )
+
+
+@router.post(
+    "/sessions/list",
+    response_model=ApiResponse[PaginatedData[ChatSessionItem]],
+    summary="会话列表",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def list_chat_sessions_api(
+    subject: str = Path(...),
+    body: ChatSessionListRequest = Body(default=ChatSessionListRequest()),
+    session: Session = Depends(get_db),
+) -> ApiResponse[PaginatedData[ChatSessionItem]]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(
+        list_chat_sessions(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+        )
+    )
+
+
+@router.post(
+    "/threads/list",
+    response_model=ApiResponse[PaginatedData[ChatThreadTurnItem]],
+    summary="划词问答轮次列表",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def list_chat_threads_api(
+    subject: str = Path(...),
+    body: ChatThreadListRequest = Body(default=ChatThreadListRequest()),
+    session: Session = Depends(get_db),
+) -> ApiResponse[PaginatedData[ChatThreadTurnItem]]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(
+        list_chat_threads(
+            session,
+            subject=normalized_subject,
+            page=body.page,
+            size=body.size,
+            source=body.source,
+        )
+    )
+
+
+@router.post(
+    "/sessions/create",
+    response_model=ApiResponse[ChatSessionCreateData],
+    summary="创建会话",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def create_chat_session_api(
+    subject: str = Path(...),
+    body: ChatSessionCreateRequest = Body(default=ChatSessionCreateRequest()),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ChatSessionCreateData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    created = create_session(
+        session,
+        subject=normalized_subject,
+        title=body.title,
+        source=body.source,
+    )
+    return ok_response(ChatSessionCreateData(session=created))
+
+
+@router.post(
+    "/sessions/delete",
+    response_model=ApiResponse[ChatSessionDeleteData],
+    summary="删除会话",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def delete_chat_session_api(
+    subject: str = Path(...),
+    body: ChatSessionDeleteRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ChatSessionDeleteData]:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    return ok_response(
+        delete_session(
+            session,
+            subject=normalized_subject,
+            session_id=body.session_id,
+        )
+    )
