@@ -49,10 +49,10 @@ interface ApiResponse<T> {
 }
 
 interface DocGenBuildData {
-  job_id: number;
   accepted_file_ids: number[];
   prompt: string | null;
   ready_file_count: number;
+  requested_at: string;
 }
 
 async function fetchFiles(subject: string): Promise<FileItem[]> {
@@ -103,7 +103,7 @@ async function triggerDocGenBuild(
 ): Promise<DocGenBuildData> {
   const res = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/docgen/build`,
+    url: `/api/v1/subjects/${subject}/knowledge/build`,
     data: {
       prompt,
     },
@@ -243,7 +243,9 @@ export function UploadPage() {
         docPrompt.trim() || undefined,
       ),
     onSuccess: (data) => {
-      navigate(`/subject/${subjectId}/doc?job_id=${data.job_id}`);
+      navigate(
+        `/subject/${subjectId}/doc?requested_at=${encodeURIComponent(data.requested_at)}`,
+      );
     },
   });
 

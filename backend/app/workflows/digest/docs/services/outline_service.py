@@ -68,6 +68,23 @@ def _split_content_batches(content: str, batch_count: int) -> list[str]:
     return batches or [content]
 
 
+def _partition_items(items: list[str], bucket_count: int) -> list[list[str]]:
+    if not items:
+        return []
+
+    normalized_bucket_count = max(1, min(bucket_count, len(items)))
+    base_size, remainder = divmod(len(items), normalized_bucket_count)
+    groups: list[list[str]] = []
+    cursor = 0
+    for bucket_index in range(normalized_bucket_count):
+        take = base_size + (1 if bucket_index < remainder else 0)
+        group = items[cursor: cursor + take]
+        cursor += take
+        if group:
+            groups.append(group)
+    return groups
+
+
 def _clean_title(title: str) -> str:
     title = title.strip().strip("-").strip(":：").strip()
     title = _SPACE_PAT.sub(" ", title)
@@ -179,6 +196,145 @@ def extract_formula_candidates(content: str, *, limit: int = 8) -> list[str]:
     return _dedupe_formula_refs(formulas, limit=limit)
 
 
+def _estimate_single_chunk_chapter_count(content: str, titles: list[str]) -> int:
+    title_count = len(titles)
+    content_length = len(content.strip())
+
+    if title_count >= 8:
+        return 4
+    if title_count >= 5:
+        return 3
+    if title_count >= 2:
+        return 2
+    if content_length >= 6000:
+        return 4
+    if content_length >= 3200:
+        return 3
+    if content_length >= 900:
+        return 2
+    return 1
+
+
+def _build_outline_sections(titles: list[str], *, source_chunk_index: int) -> list[dict]:
+    normalized_titles = _dedupe_titles(titles, limit=4)
+    section_titles = normalized_titles or ["核心内容"]
+    return [
+        {
+            "title": title,
+            "source_chunk_indices": [source_chunk_index],
+        }
+        for title in section_titles
+    ]
+
+
+def _build_single_chunk_outline(chunk: dict, local_outline: dict | None) -> dict:
+    source_filename = str(chunk.get("source_filename", "未命名主题"))
+    content = str(chunk.get("content", ""))
+    local_titles = _dedupe_titles(list((local_outline or {}).get("titles", [])), limit=12)
+    desired_chapter_count = _estimate_single_chunk_chapter_count(content, local_titles)
+
+    if desired_chapter_count <= 1:
+        chapter_title = local_titles[0] if local_titles else infer_outline_candidates(
+            content,
+            source_filename=source_filename,
+        )[0]
+        section_titles = local_titles[1:4] or infer_outline_candidates(
+            content,
+            source_filename=source_filename,
+        )[1:4]
+        return {
+            "chapters": [
+                {
+                    "chapter_index": 1,
+                    "title": chapter_title,
+                    "sections": _build_outline_sections(section_titles, source_chunk_index=0),
+                }
+            ]
+        }
+
+    content_batches = _split_content_batches(content, desired_chapter_count)
+    grouped_titles = _partition_items(local_titles, len(content_batches))
+    chapters: list[dict] = []
+
+    for chapter_index, batch in enumerate(content_batches, start=1):
+        title_group = grouped_titles[chapter_index - 1] if chapter_index - 1 < len(grouped_titles) else []
+        batch_titles = infer_outline_candidates(batch, source_filename=source_filename)
+        chapter_title = (
+            title_group[0]
+            if title_group
+            else batch_titles[0]
+            if batch_titles
+            else f"{Path(source_filename).stem or '知识主题'} 第{chapter_index}部分"
+        )
+        section_titles = title_group[1:] or batch_titles[1:4]
+        chapters.append(
+            {
+                "chapter_index": chapter_index,
+                "title": chapter_title,
+                "sections": _build_outline_sections(section_titles, source_chunk_index=0),
+            }
+        )
+
+    return {"chapters": chapters}
+
+
+def build_fallback_outline_tree(clean_chunks: list[dict], local_outlines: list[dict]) -> dict:
+    """Build a deterministic multi-chapter fallback outline."""
+
+    if not clean_chunks:
+        return {"chapters": []}
+
+    if len(clean_chunks) == 1:
+        local_outline = local_outlines[0] if local_outlines else {}
+        return _build_single_chunk_outline(clean_chunks[0], local_outline)
+
+    chapters: list[dict] = []
+    for index, chunk in enumerate(clean_chunks):
+        local_outline = local_outlines[index] if index < len(local_outlines) else {}
+        local_titles = _dedupe_titles(list(local_outline.get("titles", [])), limit=8)
+        inferred_titles = infer_outline_candidates(
+            str(chunk.get("content", "")),
+            source_filename=str(chunk.get("source_filename", f"chunk_{index}")),
+        )
+        titles = local_titles or inferred_titles
+        chapter_title = titles[0] if titles else f"第{index + 1}章"
+        section_titles = titles[1:4] or inferred_titles[1:4]
+        chapters.append(
+            {
+                "chapter_index": index + 1,
+                "title": chapter_title,
+                "sections": _build_outline_sections(section_titles, source_chunk_index=index),
+            }
+        )
+
+    return {"chapters": chapters}
+
+
+def ensure_multi_chapter_outline(
+    outline_tree: dict,
+    clean_chunks: list[dict],
+    local_outlines: list[dict],
+) -> dict:
+    """Prevent a single large source from collapsing back into one published chapter."""
+
+    chapters = outline_tree.get("chapters", [])
+    if not clean_chunks:
+        return {"chapters": []}
+
+    fallback_tree = build_fallback_outline_tree(clean_chunks, local_outlines)
+    fallback_chapters = fallback_tree.get("chapters", [])
+    if not chapters:
+        return fallback_tree
+
+    if len(chapters) >= 2:
+        return outline_tree
+
+    if len(fallback_chapters) >= 2:
+        return fallback_tree
+
+    return outline_tree
+
+
 async def generate_local_titles(content: str) -> list[str]:
     """LLM 生成局部子标题。保留为兜底能力。"""
 
@@ -234,23 +390,52 @@ def build_chapter_assignments(
     chapters = outline_tree.get("chapters", [])
     assignments: list[dict] = []
 
+    chapter_source_sets: list[set[int]] = []
     for chapter in chapters:
+        source_indices: set[int] = set()
+        for section in chapter.get("sections", []):
+            for idx in section.get("source_chunk_indices", []):
+                if 0 <= idx < len(clean_chunks):
+                    source_indices.add(idx)
+        chapter_source_sets.append(source_indices)
+
+    chapter_specific_batches: dict[int, str] = {}
+    chunk_to_chapter_positions: dict[int, list[int]] = {}
+    for chapter_position, source_indices in enumerate(chapter_source_sets):
+        if len(source_indices) != 1:
+            continue
+        chunk_index = next(iter(source_indices))
+        chunk_to_chapter_positions.setdefault(chunk_index, []).append(chapter_position)
+
+    for chunk_index, chapter_positions in chunk_to_chapter_positions.items():
+        if len(chapter_positions) <= 1:
+            continue
+        if any(chapter_source_sets[position] != {chunk_index} for position in chapter_positions):
+            continue
+
+        chunk_content = str(clean_chunks[chunk_index]["content"])
+        split_batches = _split_content_batches(chunk_content, len(chapter_positions))
+        if len(split_batches) <= 1:
+            continue
+
+        for chapter_position, batch in zip(chapter_positions, split_batches):
+            chapter_specific_batches[chapter_position] = batch
+
+    for chapter_position, chapter in enumerate(chapters):
         ch_index = chapter.get("chapter_index", 0)
         ch_title = chapter.get("title", f"第{ch_index}章")
         sections = chapter.get("sections", [])
 
-        source_indices: set[int] = set()
-        for section in sections:
-            for idx in section.get("source_chunk_indices", []):
-                if 0 <= idx < len(clean_chunks):
-                    source_indices.add(idx)
-
-        sorted_indices = sorted(source_indices)
+        sorted_indices = sorted(chapter_source_sets[chapter_position])
         source_chunks = [clean_chunks[idx] for idx in sorted_indices]
-        source_contents = [chunk["content"] for chunk in source_chunks]
         source_file_ids = [chunk.get("file_id", 0) for chunk in source_chunks]
         source_filenames = [str(chunk.get("source_filename", "")) for chunk in source_chunks]
         section_titles = [str(section.get("title", "")).strip() for section in sections if str(section.get("title", "")).strip()]
+        assigned_batch = chapter_specific_batches.get(chapter_position)
+        if assigned_batch is not None:
+            source_contents = [assigned_batch]
+        else:
+            source_contents = [chunk["content"] for chunk in source_chunks]
         use_section_batches = len(source_contents) == 1 and len(sections) > 1
         section_batches = _split_content_batches(source_contents[0], len(sections)) if use_section_batches else []
 
@@ -284,10 +469,16 @@ def build_chapter_assignments(
         formula_refs = _dedupe_formula_refs(formula_refs, limit=10)
 
         brief_lines: list[str] = []
-        for idx, chunk in zip(sorted_indices, source_chunks):
-            preview = build_chunk_preview(chunk["content"], max_chars=180)
-            filename = str(chunk.get("source_filename", f"chunk_{idx}"))
+        if assigned_batch is not None and sorted_indices:
+            idx = sorted_indices[0]
+            filename = str(source_chunks[0].get("source_filename", f"chunk_{idx}"))
+            preview = build_chunk_preview(assigned_batch, max_chars=180)
             brief_lines.append(f"- 材料块 {idx} / {filename}: {preview}")
+        else:
+            for idx, chunk in zip(sorted_indices, source_chunks):
+                preview = build_chunk_preview(chunk["content"], max_chars=180)
+                filename = str(chunk.get("source_filename", f"chunk_{idx}"))
+                brief_lines.append(f"- 材料块 {idx} / {filename}: {preview}")
 
         assignments.append({
             "chapter_index": ch_index,

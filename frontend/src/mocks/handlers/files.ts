@@ -18,11 +18,16 @@ type MockFile = {
   created_at: string;
 };
 
+type PendingKnowledgeBuild = {
+  requested_at: string;
+  source_file_ids: number[];
+  prompt: string | null;
+  poll_count: number;
+};
+
 const now = () => new Date().toISOString();
 
 let nextFileId = 4;
-let nextDocgenJobId = 1;
-
 const filePollTicks = new Map<number, number>();
 
 const mockFiles: MockFile[] = [
@@ -81,39 +86,85 @@ const mockFiles: MockFile[] = [
 
 filePollTicks.set(2, 0);
 
-let docgenState: {
-  exists: boolean;
-  markdown: string;
-  merged_path: string | null;
-  updated_at: string | null;
-  job: {
-    id: number;
-    subject: string;
-    status: string;
-    progress: number;
-    current_step: string | null;
-    total_chapters: number;
-    completed_chapters: number;
-    error_message: string | null;
-    created_at: string;
-    updated_at: string;
-  } | null;
-  source_file_ids: number[];
-  prompt: string | null;
-  poll_count: number;
-} = {
+let publishedDoc = {
   exists: false,
   markdown: "",
-  merged_path: null,
-  updated_at: null,
-  job: null,
-  source_file_ids: [],
-  prompt: null,
-  poll_count: 0,
+  updated_at: null as string | null,
+  source_file_ids: [] as number[],
+  prompt: null as string | null,
 };
 
+let pendingKnowledgeBuild: PendingKnowledgeBuild | null = null;
+
 function getMockMarkdown(file: MockFile): string {
-  return `# ${file.filename}\n\n这是 ${file.filename} 的 mock 解析结果。\n\n- 文件类型：${file.filetype}\n- 解析状态：${file.markdown_ready ? "已生成 Markdown" : file.status}\n- 语言：${file.detected_language ?? "未知"}\n\n## 核心内容\n\n这里模拟展示 ingest 产出的 Markdown 内容，方便前端联调预览。`;
+  return `# ${file.filename}
+
+这是 ${file.filename} 的 mock 解析结果。
+
+- 文件类型：${file.filetype}
+- 解析状态：${file.markdown_ready ? "已生成 Markdown" : file.status}
+- 语言：${file.detected_language ?? "未知"}
+
+## 核心内容
+
+这里模拟展示 ingest 产出的 Markdown 内容，便于前端联调预览。`;
+}
+
+function buildMockKnowledgeMarkdown(sourceFileIds: number[], prompt: string | null): string {
+  return `# 知识文档总览
+
+## 目录
+
+- 第一章 核心概念
+- 第二章 方法与公式
+- 第三章 复习与易错点
+
+---
+
+# 第一章 核心概念
+
+> 📌 本章概要：先搭起整体主线，再把关键概念讲清楚。
+
+## 基础定义
+
+这里是 mock 生成的章节正文，用来模拟多章节知识文档的最终发布效果。
+
+📊 本章标签：#核心概念 #基础定义
+
+---
+
+# 第二章 方法与公式
+
+> 📌 本章概要：本章聚焦常用方法、关键公式与典型用法。
+
+## 关键公式
+
+- 公式 A
+- 公式 B
+
+📊 本章标签：#公式 #方法
+
+---
+
+# 第三章 复习与易错点
+
+> 📌 本章概要：最后集中整理复习抓手、典型误区和答题提醒。
+
+## 复习建议
+
+- 回看定义边界
+- 对照例题检查思路
+- 重点核对易错点
+
+## 来源文件
+
+${sourceFileIds.map((fileId) => `- 文件 ${fileId}`).join("\n")}
+
+## 用户要求
+
+${prompt ?? "按章节归纳重点、公式和易错点。"}
+
+📊 本章标签：#复习 #易错点`;
 }
 
 function advanceFileParsing() {
@@ -141,42 +192,27 @@ function advanceFileParsing() {
   }
 }
 
-function advanceDocgen() {
-  if (!docgenState.job || docgenState.exists) {
+function advanceKnowledgeBuild() {
+  if (!pendingKnowledgeBuild) {
     return;
   }
 
-  docgenState.poll_count += 1;
-
-  if (docgenState.poll_count === 1) {
-    docgenState.job.status = "processing";
-    docgenState.job.progress = 24;
-    docgenState.job.current_step = "outlining";
-    docgenState.job.updated_at = now();
+  pendingKnowledgeBuild.poll_count += 1;
+  if (pendingKnowledgeBuild.poll_count < 3) {
     return;
   }
 
-  if (docgenState.poll_count === 2) {
-    docgenState.job.status = "processing";
-    docgenState.job.progress = 68;
-    docgenState.job.current_step = "drafting";
-    docgenState.job.completed_chapters = 2;
-    docgenState.job.updated_at = now();
-    return;
-  }
-
-  docgenState.exists = true;
-  docgenState.updated_at = now();
-  docgenState.merged_path = "data/mock-subject/knowledge_docs/merged_knowledge_base.md";
-  docgenState.markdown = `# 知识文档总览\n\n这是根据已解析资料自动生成的 mock 知识文档。\n\n## 资料来源\n\n${docgenState.source_file_ids.map((fileId) => `- 文件 ${fileId}`).join("\n")}\n\n## 使用建议\n\n${docgenState.prompt ?? "按章节复习核心概念、公式与题型。"}\n\n## 当前结论\n\n- 上传即解析已经打通\n- 文档页改为直接读取 \`docgen/get\`\n- merged 文档生成后会自动展示正文`;
-  docgenState.job = {
-    ...docgenState.job,
-    status: "completed",
-    progress: 100,
-    current_step: "done",
-    completed_chapters: 3,
-    updated_at: docgenState.updated_at,
+  publishedDoc = {
+    exists: true,
+    markdown: buildMockKnowledgeMarkdown(
+      pendingKnowledgeBuild.source_file_ids,
+      pendingKnowledgeBuild.prompt,
+    ),
+    updated_at: pendingKnowledgeBuild.requested_at,
+    source_file_ids: pendingKnowledgeBuild.source_file_ids,
+    prompt: pendingKnowledgeBuild.prompt,
   };
+  pendingKnowledgeBuild = null;
 }
 
 export const fileHandlers = [
@@ -199,7 +235,7 @@ export const fileHandlers = [
     const createdAt = now();
 
     const newItems = uploads.map((entry, index) => {
-      const filename = entry instanceof File ? entry.name : `新文件-${nextFileId + index}.txt`;
+      const filename = entry instanceof File ? entry.name : `新文件${nextFileId + index}.txt`;
       const filetype = filename.split(".").pop()?.toLowerCase() ?? "txt";
       const fileId = nextFileId + index;
       const item: MockFile = {
@@ -339,7 +375,7 @@ export const fileHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/docgen/build", async ({ params, request }) => {
+  http.post("/api/v1/subjects/:subject/knowledge/build", async ({ params, request }) => {
     const body = (await request.json()) as {
       file_ids?: number[];
       prompt?: string | null;
@@ -360,55 +396,48 @@ export const fileHandlers = [
       );
     }
 
-    const createdAt = now();
-    docgenState = {
-      exists: false,
-      markdown: "",
-      merged_path: "data/mock-subject/knowledge_docs/merged_knowledge_base.md",
-      updated_at: null,
-      job: {
-        id: nextDocgenJobId,
-        subject: String(params.subject),
-        status: "pending",
-        progress: 0,
-        current_step: "prepare",
-        total_chapters: 3,
-        completed_chapters: 0,
-        error_message: null,
-        created_at: createdAt,
-        updated_at: createdAt,
-      },
+    if (pendingKnowledgeBuild) {
+      return HttpResponse.json(
+        {
+          code: 409,
+          message: `学科 ${params.subject} 正在构建中，请稍后重试。`,
+          error_code: "SUBJECT_BUILD_LOCK_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+
+    const requestedAt = now();
+    pendingKnowledgeBuild = {
+      requested_at: requestedAt,
       source_file_ids: acceptedFileIds,
       prompt: body.prompt?.trim() || null,
       poll_count: 0,
     };
-    nextDocgenJobId += 1;
-    const job = docgenState.job;
 
     return HttpResponse.json({
       code: 0,
       data: {
-        job_id: job ? job.id : nextDocgenJobId,
         accepted_file_ids: acceptedFileIds,
-        prompt: docgenState.prompt,
+        prompt: pendingKnowledgeBuild.prompt,
         ready_file_count: readyFileIds.length,
+        requested_at: requestedAt,
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/docgen/get", () => {
-    advanceDocgen();
+  http.post("/api/v1/subjects/:subject/knowledge/docs", () => {
+    advanceKnowledgeBuild();
     return HttpResponse.json({
       code: 0,
       data: {
-        exists: docgenState.exists,
-        markdown: docgenState.markdown,
-        merged_path: docgenState.merged_path,
-        updated_at: docgenState.updated_at,
-        job: docgenState.job,
-        source_file_ids: docgenState.source_file_ids,
-        prompt: docgenState.prompt,
+        exists: publishedDoc.exists,
+        markdown: publishedDoc.markdown,
+        updated_at: publishedDoc.updated_at,
+        source_file_ids: publishedDoc.source_file_ids,
+        prompt: publishedDoc.prompt,
       },
     });
   }),
 ];
+

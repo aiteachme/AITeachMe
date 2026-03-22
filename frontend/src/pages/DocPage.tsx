@@ -19,7 +19,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TopBar } from "../components/layout/TopBar";
 import { getApiErrorMessage, postSseJson } from "../api/client";
@@ -129,25 +129,10 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
-interface DocGenJobResponse {
-  id: number;
-  subject: string;
-  status: string;
-  progress: number;
-  current_step?: string | null;
-  total_chapters?: number;
-  completed_chapters?: number;
-  error_message?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 interface DocGenGetResponse {
   exists: boolean;
   markdown?: string;
-  merged_path?: string | null;
   updated_at?: string | null;
-  job?: DocGenJobResponse | null;
   source_file_ids?: number[];
   prompt?: string | null;
 }
@@ -177,6 +162,12 @@ function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseIsoTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 const COMPACT_PANEL_BREAKPOINT = 1536;
@@ -427,10 +418,42 @@ const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: st
   );
 });
 
-function DocGeneratingState({
+function DocBuildProgress({
+  progress,
+  statusText,
   isFetching,
 }: {
+  progress: number;
+  statusText: string;
   isFetching: boolean;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          <span>{statusText}</span>
+        </div>
+        <span>{Math.round(progress)}%</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
+          style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}
+        />
+      </div>
+    </>
+  );
+}
+
+function DocGeneratingState({
+  isFetching,
+  progress,
+  statusText,
+}: {
+  isFetching: boolean;
+  progress: number;
+  statusText: string;
 }) {
   return (
     <section className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white via-slate-50 to-blue-50/40 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(15,23,42,0.45)]">
@@ -440,7 +463,7 @@ function DocGeneratingState({
         </div>
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-slate-900">知识文档正在生成中</h2>
-          <p className="text-sm text-slate-600">系统正在整理章节和结构化内容，完成后会自动展示在这里。</p>
+          <p className="text-sm text-slate-600">前端会维持本地进度条，并轮询已发布文档；一旦新版本发布，这里会自动切换。</p>
         </div>
       </div>
       <div className="mt-7 grid gap-3">
@@ -449,10 +472,51 @@ function DocGeneratingState({
         <div className="h-3 w-9/12 animate-pulse rounded-full bg-slate-200 [animation-delay:220ms]" />
         <div className="h-3 w-8/12 animate-pulse rounded-full bg-slate-200 [animation-delay:320ms]" />
       </div>
-      <div className="mt-8 flex items-center gap-2 text-xs text-slate-500">
-        <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-        会在下一次拉取后自动刷新
+      <div className="mt-8">
+        <DocBuildProgress
+          progress={progress}
+          statusText={statusText}
+          isFetching={isFetching}
+        />
       </div>
+    </section>
+  );
+}
+
+function DocUpdatingBanner({
+  progress,
+  statusText,
+  isFetching,
+}: {
+  progress: number;
+  statusText: string;
+  isFetching: boolean;
+}) {
+  return (
+    <section className="mb-5 rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 shadow-sm">
+      <p className="text-sm font-medium text-slate-900">正在更新知识文档</p>
+      <p className="mt-1 text-xs text-slate-600">旧版本会继续显示，等新一轮 merged 文档发布后这里会自动刷新。</p>
+      <div className="mt-3">
+        <DocBuildProgress
+          progress={progress}
+          statusText={statusText}
+          isFetching={isFetching}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DocEmptyState() {
+  return (
+    <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-7 text-center shadow-sm">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+        <FileText className="h-6 w-6" />
+      </div>
+      <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600">
+        先回到上传页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
+      </p>
     </section>
   );
 }
@@ -592,7 +656,7 @@ function CommentThread({
             title="在 AI 面板继续对话"
           >
             <ExternalLink className="h-2.5 w-2.5" />
-            AI面板
+            AI 面板
           </button>
           <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
             {comments.length}
@@ -659,38 +723,98 @@ function CommentThread({
 export function DocPage() {
   const { openAssistant } = useSubjectAiAssistant();
   const { subjectId } = useParams<{ subjectId: string }>();
+  const location = useLocation();
+  const requestedAt = useMemo(
+    () => new URLSearchParams(location.search).get("requested_at"),
+    [location.search],
+  );
+  const requestedAtMs = useMemo(
+    () => parseIsoTimestamp(requestedAt),
+    [requestedAt],
+  );
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [buildStatusText, setBuildStatusText] = useState("正在整理知识文档...");
   const docMarkdownQuery = useQuery({
-    queryKey: ["docgen-content", subjectId],
+    queryKey: ["docgen-content", subjectId, requestedAt],
     queryFn: async () => {
       if (!subjectId) {
         throw new Error("缺少学科 ID，无法加载知识文档。");
       }
       const response = await apiClient<ApiResponse<DocGenGetResponse>>({
         method: "POST",
-        url: `/api/v1/subjects/${subjectId}/knowledge/docgen/get`,
+        url: `/api/v1/subjects/${subjectId}/knowledge/docs`,
       });
       return response.data;
     },
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data) {
-        return 2500;
-      }
-      const job = data.job;
-      const isTerminalFailure = job?.status === "failed" || job?.current_step === "cancelled";
-      if (isTerminalFailure) {
+      if (requestedAtMs === null) {
         return false;
       }
-      return data.exists && (data.markdown ?? "").trim().length > 0 ? false : 2500;
+      const data = query.state.data;
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at);
+      const isReady =
+        Boolean(data?.exists) &&
+        updatedAtMs !== null &&
+        updatedAtMs >= requestedAtMs;
+      return isReady ? false : 2500;
     },
   });
   const markdown = docMarkdownQuery.data?.markdown ?? "";
   const hasDocMarkdown = Boolean(docMarkdownQuery.data?.exists && markdown.trim().length > 0);
-  const docgenJob = docMarkdownQuery.data?.job ?? null;
-  const docgenFailed = docgenJob?.status === "failed" || docgenJob?.current_step === "cancelled";
-  const docgenFailureMessage = docgenJob?.error_message?.trim() || "知识文档生成失败，请重试。";
-  const showDocGeneratingState = !docMarkdownQuery.isError && !docgenFailed && !hasDocMarkdown;
+  const publishedUpdatedAtMs = useMemo(
+    () => parseIsoTimestamp(docMarkdownQuery.data?.updated_at),
+    [docMarkdownQuery.data?.updated_at],
+  );
+  const isRequestedBuildReady =
+    requestedAtMs !== null &&
+    publishedUpdatedAtMs !== null &&
+    publishedUpdatedAtMs >= requestedAtMs;
+  const isWaitingForRequestedBuild =
+    requestedAtMs !== null && !isRequestedBuildReady;
+  const showDocGeneratingState =
+    !docMarkdownQuery.isError && !hasDocMarkdown && isWaitingForRequestedBuild;
+  const showDocEmptyState =
+    !docMarkdownQuery.isError && !hasDocMarkdown && !isWaitingForRequestedBuild;
+  const showDocUpdatingBanner = hasDocMarkdown && isWaitingForRequestedBuild;
+
+  useEffect(() => {
+    if (isRequestedBuildReady) {
+      setBuildProgress(100);
+      setBuildStatusText("最新知识文档已发布");
+      return;
+    }
+
+    if (!isWaitingForRequestedBuild) {
+      setBuildProgress(0);
+      setBuildStatusText("等待发起新的知识文档构建");
+      return;
+    }
+
+    setBuildStatusText(hasDocMarkdown ? "正在发布更新后的知识文档..." : "正在生成知识文档...");
+    setBuildProgress((prev) => (prev > 0 ? prev : 10));
+
+    const timer = window.setInterval(() => {
+      setBuildProgress((prev) => {
+        if (prev >= 90) {
+          return 90;
+        }
+        if (prev < 20) {
+          return Math.min(90, prev + 6);
+        }
+        if (prev < 50) {
+          return Math.min(90, prev + 4);
+        }
+        if (prev < 75) {
+          return Math.min(90, prev + 2.5);
+        }
+        return Math.min(90, prev + 1.2);
+      });
+    }, 600);
+
+    return () => window.clearInterval(timer);
+  }, [hasDocMarkdown, isRequestedBuildReady, isWaitingForRequestedBuild]);
+
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
@@ -891,7 +1015,7 @@ export function DocPage() {
     };
   }, [subjectId]);
 
-  // Track active heading on scroll — uses the single scroll container
+  // Track active heading on scroll using the single scroll container
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
@@ -1944,7 +2068,7 @@ export function DocPage() {
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-slate-500">
             {commentThreads.length} 个片段
-            {activeStreamingCount > 0 ? ` · ${activeStreamingCount} 条回复中` : ""}
+            {activeStreamingCount > 0 ? `，${activeStreamingCount} 条回复中` : ""}
           </span>
           <button
             onClick={() => jumpCommentThread(-1)}
@@ -2326,17 +2450,25 @@ export function DocPage() {
                         void docMarkdownQuery.refetch();
                       }}
                     />
-                  ) : docgenFailed ? (
-                    <DocLoadErrorState
-                      message={docgenFailureMessage}
-                      onRetry={() => {
-                        void docMarkdownQuery.refetch();
-                      }}
-                    />
                   ) : showDocGeneratingState ? (
-                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} />
+                    <DocGeneratingState
+                      isFetching={docMarkdownQuery.isFetching}
+                      progress={buildProgress}
+                      statusText={buildStatusText}
+                    />
+                  ) : showDocEmptyState ? (
+                    <DocEmptyState />
                   ) : (
-                    <DocMarkdown content={markdown} />
+                    <>
+                      {showDocUpdatingBanner && (
+                        <DocUpdatingBanner
+                          progress={buildProgress}
+                          statusText={buildStatusText}
+                          isFetching={docMarkdownQuery.isFetching}
+                        />
+                      )}
+                      <DocMarkdown content={markdown} />
+                    </>
                   )}
                 </article>
                 {!isCompactPanels && !isCommentCollapsed && (
@@ -2414,3 +2546,4 @@ export function DocPage() {
     </div>
   );
 }
+

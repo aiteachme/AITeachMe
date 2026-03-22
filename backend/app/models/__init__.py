@@ -53,7 +53,6 @@ from app.models.knowledge import (
     DocumentChunk,
 )
 from app.models.knowledge_doc import (
-    DocGenJob,
     KnowledgeDoc,
 )
 from app.models.knowledge_graph import (
@@ -79,7 +78,6 @@ __all__ = [
     "CurriculumSnapshot",
     "Difficulty",
     "DigestStep",
-    "DocGenJob",
     "DocGenStep",
     "Document",
     "DocumentChunk",

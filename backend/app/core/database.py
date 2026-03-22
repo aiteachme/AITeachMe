@@ -201,20 +201,6 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
-    "docgen_job": {
-        "id",
-        "subject",
-        "status",
-        "progress",
-        "current_step",
-        "total_chapters",
-        "completed_chapters",
-        "error_message",
-        "input_file_ids_json",
-        "user_prompt",
-        "created_at",
-        "updated_at",
-    },
 }
 
 _ASSESSMENT_TABLES: set[str] = {

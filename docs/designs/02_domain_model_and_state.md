@@ -1,36 +1,36 @@
 # 02. 领域模型与状态
 
-## 1. 目标与职责
+## 1. 文档目标
 
-本文档用于说明 AITeachMe 当前真正重要的领域对象、状态对象和过渡关系，重点回答：
+本文档用于说明 AITeachMe 当前真正重要的领域对象、状态对象和它们之间的边界。
 
-- 当前数据库里有哪些核心对象
-- 哪些对象是知识真相层，哪些是学习者状态层
-- 哪些对象是 legacy，哪些已经迁移到 workflow-backed 新模型
-- 哪些状态同时体现在数据库和本地文件系统中
+这份文档重点回答 4 个问题：
+
+- 系统里哪些对象是稳定的业务实体。
+- 哪些对象只是工作流状态，不应该暴露成长期协议。
+- 知识图谱、课程结构、知识文档各自处在什么层。
+- 数据库与本地文件分别承担什么职责。
 
 ---
 
-## 2. 领域分层总览
+## 2. 边界总览
 
-当前系统最适合按 bounded context 来理解，而不是按单个表零散理解。
-
-| 边界 | 主要对象 | 当前状态 |
+| 边界 | 核心对象 | 当前定位 |
 | --- | --- | --- |
-| 工作空间与接入 | `Subject`、`RawFile` | 当前主路径 |
+| 工作空间 | `Subject`、`RawFile` | 当前主路径 |
 | 材料层 | `Document`、`DocumentChunk`、`chunk_embeddings` | 当前主路径 |
-| 对话层 | `ChatMessage` | 当前主路径 |
-| 知识图谱层 | `KnowledgeNode`、`KnowledgeEdge`、`KnowledgeRevision`、`EdgeRevision`、`EvidenceLink`、`GraphDigestJob`、`SubjectBuildLock` | 当前主路径 |
-| 课程结构层 | `CurriculumDeriveJob`、`TeachingUnit*`、`TaxonomyAnchor`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot` | 当前主路径 |
-| 知识文档层 | `DocGenJob`、`KnowledgeDoc` | 当前主路径 |
-| legacy exam/profile | `Exam`、`Question`、`ExamSubmission`、`AnswerRecord`、`Mistake`、`UserProfile` | 仍在线的旧路径 |
-| workflow-backed assessment/profile | `QuestionBuildJob`、`QuestionTemplate*`、`ExamGenerateJob`、`ExamPaper*`、`ExamGradeJob`、`UserAnswerAttempt`、`UserKnowledgeState`、`ReviewTask` | 当前演进主方向 |
+| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`EvidenceLink`、`GraphDigestJob`、`SubjectBuildLock` | 当前主路径 |
+| 课程结构层 | `TeachingUnit*`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot`、`CurriculumDeriveJob` | 当前主路径 |
+| 知识文档层 | `KnowledgeDoc` | 当前主路径 |
+| 交互层 | `ChatMessage` | 当前主路径 |
+| 测评与学习状态 | `QuestionBuildJob`、`ExamGenerateJob`、`ExamGradeJob`、`UserKnowledgeState`、`ReviewTask` | 演进主方向 |
+| 旧测评层 | `Exam`、`Question`、`ExamSubmission`、`AnswerRecord`、`Mistake`、`UserProfile` | 仍在兼容期 |
 
-这意味着系统现在不是单一世界，而是：
+关键更新：
 
-- 一条稳定的 ingest / digest / interact 主链路
-- 一条仍在服务前端的 legacy exam/profile 链路
-- 一条已经落地到数据库的新 assessment/profile 工作流链路
+- 知识文档链路已经不再使用 `DocGenJob`。
+- 知识文档的外部协议中不再有 `job_id`、`status`、`progress`、`current_step`。
+- 知识文档构建状态只存在于内部文件锁和工作流阶段日志中。
 
 ---
 
@@ -38,306 +38,201 @@
 
 ### 3.1 Subject
 
-`Subject` 是当前系统的一等实体，承担三类边界：
+`Subject` 是顶层工作空间边界，同时决定：
 
-- API 路由边界
-- 数据库查询边界
-- 本地文件目录边界
-
-它不是简单标签，而是顶层工作空间对象。
+- API 路由边界。
+- 本地运行时目录边界。
+- 后端多条工作流的隔离范围。
 
 ### 3.2 RawFile
 
-`RawFile` 表示接入层材料对象，负责记录：
+`RawFile` 代表接入层文件对象，负责表达：
 
-- 原始文件身份
-- 文件路径与类型
-- 解析状态
-- Markdown 路径与资产目录
-- 内容哈希、大小、估计页数、检测语言等元信息
+- 原始文件身份。
+- 文件路径与类型。
+- 解析状态。
+- Markdown 产物与资源目录。
 
-`RawFile` 代表“资料进入系统”这件事，而不是知识内容本身。
+它回答的是“资料是否已经进入系统并可被 Digest 消费”。
 
 ### 3.3 Document / DocumentChunk / chunk_embeddings
 
-这是当前最重要的材料桥接层：
+这三者是材料层桥接对象：
 
-- `Document`
-  表示 Digest 可消费的文档级材料。
-- `DocumentChunk`
-  表示检索、证据引用、图谱抽取使用的块级材料。
-- `chunk_embeddings`
-  是与 `DocumentChunk` 同步维护的向量索引虚表。
+- `Document` 表示 Digest 可消费的文档级材料。
+- `DocumentChunk` 表示检索、证据引用、图谱抽取使用的块级材料。
+- `chunk_embeddings` 是与 `DocumentChunk` 同步维护的向量索引。
 
-当前 Ingest 的正式产出不是只停在 Markdown 文件，而是最终要稳定桥接到这一层。
+它们是 Ingest、Digest、Interact 共同依赖的稳定材料层。
 
 ### 3.4 Knowledge Graph
 
-知识图谱层由以下对象组成：
+知识层当前由下列对象组成：
 
 - `KnowledgeNode` / `KnowledgeEdge`
-  稳定身份对象。
 - `KnowledgeRevision` / `EdgeRevision`
-  内容修订对象。
 - `EvidenceLink`
-  证据链对象，把节点、边与 `DocumentChunk` 关联起来。
 - `KnowledgeAlias`
-  规范名与别名关系。
 - `GraphDigestJob`
-  图谱构建作业状态对象。
 - `SubjectBuildLock`
-  学科级构建互斥锁对象。
 
-这层回答的是“学科知识世界长什么样”。
+这层回答“学科知识世界本身是什么样”。
 
-### 3.5 TeachingUnit / ThemeTree / PrereqDag / CurriculumSnapshot
+### 3.5 Curriculum
 
-课程结构层把知识图谱转成教学视图：
+课程结构层负责把知识图谱转换为教学组织视图，核心对象包括：
 
 - `TeachingUnit`
-  面向教学组织的稳定中间粒度。
-- `TeachingUnitRevision` / `TeachingUnitMembership`
-  单元版本与成员关系。
-- `TaxonomyAnchor`
-  树形挂载锚点。
-- `ThemeTreeVersion` / `ThemeTreeNode` / `UnitTreeMembership`
-  面向展示与章节组织的主题树。
-- `PrereqDagVersion` / `UnitDependency`
-  面向学习顺序的先修 DAG。
+- `TeachingUnitRevision`
+- `TeachingUnitMembership`
+- `ThemeTreeVersion`
+- `ThemeTreeNode`
+- `UnitTreeMembership`
+- `PrereqDagVersion`
+- `UnitDependency`
 - `CurriculumSnapshot`
-  面向消费侧的已发布课程快照。
+- `CurriculumDeriveJob`
 
-这层回答的是“这些知识该怎么教、怎么展示、怎么排序”。
+这层回答“这些知识应该怎么组织、怎么展示、怎么安排学习顺序”。
 
-### 3.6 KnowledgeDoc / DocGenJob
+### 3.6 KnowledgeDoc
 
-知识文档层提供面向用户的可读产物：
+知识文档层现在只有一个长期业务对象：`KnowledgeDoc`。
 
-- `DocGenJob`
-  文档生成任务。
-- `KnowledgeDoc`
-  每章知识文档的数据库记录。
+它对应的是已经发布的知识文档章节记录，而不是构建任务。
 
-它与 `knowledge_docs/`、`docgen_intermediate/` 本地目录协同工作：数据库保存结构化索引与正文，本地文件保存 Markdown 文档和中间产物。
+知识文档的发布形态明确为两层：
+
+- 多个章节文档：`chapter_XX_*.md`
+- 一个最终合并文档：`merged_knowledge_base.md`
+
+知识文档层的重要结论：
+
+- `KnowledgeDoc` 承载的是已发布章节。
+- `merged_knowledge_base.md` 是面向阅读页的统一入口。
+- 不再引入 `DocGenJob` 作为外部状态对象。
+- 构建中的状态由 `.build.lock` 与 `_building/` staging 目录表达。
+- 最近一版发布元信息由 `manifest.json` 表达。
 
 ### 3.7 ChatMessage
 
-`ChatMessage` 是当前对话真相表，记录：
+`ChatMessage` 表达对话真相，主要记录：
 
-- 用户与助手消息
-- turn 对
-- 引用 contexts JSON
-- 创建时间
+- 用户与助手消息。
+- turn 对。
+- 检索上下文。
+- 创建时间。
 
-它消费 `DocumentChunk` 检索结果，但不直接修改知识结构对象。
-
-### 3.8 legacy exam/profile 对象
-
-当前仍在线的旧测评与画像对象包括：
-
-- `Exam`
-- `Question`
-- `ExamSubmission`
-- `AnswerRecord`
-- `Mistake`
-- `UserProfile`
-
-这套模型主要由 `exams_service`、`profile_service` 和旧 API 路径消费。
-
-### 3.9 workflow-backed assessment/profile 对象
-
-新测评与学习状态层主要对象包括：
-
-- 出题与题库：
-  `QuestionBuildJob`、`QuestionTemplate`、`QuestionTemplateNodeLink`
-- 组卷：
-  `ExamGenerateJob`、`ExamPaper`、`ExamPaperItem`、`ExamPaperGenerationContext`
-- 判卷：
-  `ExamGradeJob`、`UserAnswerAttempt`
-- 掌握度与复习：
-  `UserKnowledgeState`、`ReviewTask`
-
-这套模型由 `assessment_service`、`workflows/examine/*` 和 `workflows/profile/*` 消费，代表当前演进方向。
+它消费知识文档或 chunk 检索结果，但不反向承担知识真相层职责。
 
 ---
 
-## 4. 主关系链路
+## 4. 状态对象
 
-### 4.1 资料与知识链路
+### 4.1 保留为显式作业状态的对象
 
-`Subject -> RawFile -> Document -> DocumentChunk -> KnowledgeNode / KnowledgeEdge -> TeachingUnit -> ThemeTree / PrereqDag -> CurriculumSnapshot`
+当前仍保留显式 job 状态的链路只有：
 
-### 4.2 对话链路
+- `GraphDigestJob`
+- `CurriculumDeriveJob`
+- 测评相关 jobs
 
-`Subject -> DocumentChunk -> 检索结果 -> ChatMessage`
+这些对象适用于需要精确恢复、补偿、清理和串联后续任务的后台流程。
 
-### 4.3 legacy 测评链路
+### 4.2 不再对外暴露作业状态的对象
 
-`Subject -> Exam -> Question -> ExamSubmission -> AnswerRecord -> Mistake -> UserProfile`
+知识文档 Docs 链路已经明确改为“去 job 化”：
 
-### 4.4 workflow-backed 测评链路
+- 没有 `DocGenJob`
+- 没有 `job_id`
+- 没有后端 `status/progress/current_step` 协议
+- 没有查询任务状态的 API
 
-`CurriculumSnapshot -> QuestionTemplate -> ExamPaper -> ExamPaperItem -> UserAnswerAttempt -> UserKnowledgeState -> ReviewTask`
+### 4.3 Knowledge Docs 的内部状态表达
 
-当前开发必须明确自己改的是哪条链路，不能把两套模型混在一起理解。
+知识文档构建当前通过 3 类内部对象表达状态：
 
----
+- `.build.lock`
+  表示同一 subject 下当前已有一轮知识文档构建在进行。
+- `_building/`
+  表示 staging 目录，先写新章节和新 merged，再一次性发布。
+- `manifest.json`
+  表示最近一次已发布版本的元信息。
 
-## 5. 状态对象
-
-### 5.1 接入状态
-
-`RawFile` 是当前最重要的接入状态对象，主要体现：
-
-- 上传成功
-- 待解析
-- 解析中
-- 解析完成
-- 解析失败
-- ready for digest
-
-同时它还关联本地正式产物路径：
-
-- `file_path`
-- `markdown_path`
-- `asset_dir`
-
-### 5.2 图谱构建状态
-
-`GraphDigestJob` 负责表达图谱构建过程状态：
-
-- `status`
-- `progress`
-- `current_step`
-- `input_file_ids_json`
-- `input_chunk_count`
-- `error_message`
-
-### 5.3 课程派生状态
-
-`CurriculumDeriveJob` 负责表达主题树、先修图和快照派生状态。
-
-### 5.4 文档生成状态
-
-`DocGenJob` 负责表达知识文档构建状态，并与本地 `docgen_intermediate/` 中间文件协同。
-
-### 5.5 对话状态
-
-对话当前没有单独作业表，状态主要体现在：
-
-- SSE 流式过程
-- `ChatMessage` 成对落库结果
-
-### 5.6 legacy exam/profile 状态
-
-legacy 链路主要通过：
-
-- `ExamSubmission`
-- `AnswerRecord`
-- `Mistake`
-- `UserProfile`
-
-表达测评结果和掌握度。
-
-### 5.7 workflow-backed assessment/profile 状态
-
-新链路使用显式作业表和状态表：
-
-- `QuestionBuildJob`
-- `ExamGenerateJob`
-- `ExamGradeJob`
-- `UserKnowledgeState`
-- `ReviewTask`
-
-这套设计比旧链路更适合长流程、幂等和可恢复任务。
+这些状态是内部实现细节，不应再扩散到公开 API。
 
 ---
 
-## 6. 建模原则
+## 5. 知识文档发布模型
 
-### 6.1 材料层是所有下游能力的桥
+### 5.1 发布单元
 
-`Document` / `DocumentChunk` 不是临时中间结果，而是 Ingest、Digest、Interact 共用的材料桥接层。
+一次知识文档发布包含：
 
-### 6.2 身份对象与内容对象分离
+- 若干章节 Markdown 文件
+- 一个 merged Markdown 文件
+- 一份 manifest
+- 一组 `KnowledgeDoc` 章节记录
 
-如果对象需要长期被引用和演进，就优先拆成稳定身份 + 修订内容，而不是直接覆盖更新。
+### 5.2 构建与发布的边界
 
-### 6.3 知识层与学习者状态层分离
+知识文档链路采用 staging 发布：
 
-图谱、课程结构描述知识本身；聊天、测评、掌握度、复习任务描述学习者与知识的关系。两层必须通过稳定锚点关联，而不是直接混成一张状态表。
+1. 先生成 `_building/chapter_XX_*.md`
+2. 再生成 `_building/merged_knowledge_base.md`
+3. 全部成功后覆盖正式目录
+4. 同步覆盖 `manifest.json`
+5. 同步重建 `KnowledgeDoc` published 记录
 
-### 6.4 派生视图不替代真相层
+这保证了：
 
-Theme Tree、Prereq DAG、KnowledgeDoc 都是消费友好的派生视图，但不能反向替代图谱和材料层的真相角色。
-
-### 6.5 必须显式承认双轨现状
-
-当前 exam/profile 不是“一套旧模型已经没用了”，而是：
-
-- 旧模型仍在线
-- 新模型已落地
-- 两套都必须在设计文档中被准确描述
+- 构建失败时旧版文档仍可读。
+- 前端轮询 `knowledge/docs` 时只会看到已发布版本。
+- 多章节和 merged 始终保持同一发布批次。
 
 ---
 
-## 7. 存储边界
+## 6. 存储边界
 
-### 7.1 数据库保存什么
+### 6.1 数据库存什么
 
 数据库保存：
 
 - 工作空间实体
-- 资料元信息
-- 文档与 chunk
-- 向量对应关系
-- 图谱与课程结构
-- 聊天历史
-- legacy exam/profile 数据
-- workflow-backed assessment/profile 数据
-- 各类作业状态
+- 原始文件元数据
+- 材料层对象
+- 知识图谱与课程结构
+- 对话与测评结构化数据
+- `KnowledgeDoc` 已发布章节记录
 
-### 7.2 本地文件保存什么
+### 6.2 本地文件存什么
 
 本地文件系统保存：
 
 - 原始二进制文件
 - Markdown 解析结果
 - 图片与附件资源
-- 知识文档 Markdown
-- 文档生成中间产物
-- 开发期调试摘要
+- 已发布知识文档 Markdown
+- 构建中的 staging 产物
+- docgen 中间文件
 
-### 7.3 向量索引保存什么
+### 6.3 谁是 canonical truth
 
-`chunk_embeddings` 只保存 `DocumentChunk` 的向量表示，不承担业务元数据主存储职责。
+对知识文档链路来说：
 
----
+- 已发布章节的业务索引真相在数据库 `KnowledgeDoc`
+- 已发布正文真相在 `knowledge_docs/*.md`
+- 最近一版发布时间和来源元信息真相在 `manifest.json`
 
-## 8. 当前开发关注点
-
-### 8.1 不要再把 07/08 文档写成单一旧模型
-
-exam/profile 的文档和代码都必须显式标明 legacy 与 workflow-backed 两套模型。
-
-### 8.2 UserProfile 不是唯一画像对象
-
-当前更值得持续投资的是 `UserKnowledgeState` + `ReviewTask` 这套结构化学习状态层。
-
-### 8.3 chunk_embeddings 是虚拟表，不是普通 ORM 表
-
-它依赖 sqlite-vec，调试和迁移时必须单独考虑。
+也就是说，这条链路是“数据库索引 + 本地 Markdown 正文 + manifest 元信息”的联合真相，而不是 `DocGenJob`。
 
 ---
 
-## 9. 总结
+## 7. 当前结论
 
-AITeachMe 当前的领域模型已经形成清晰骨架：
+当前 Docs 链路的领域边界已经明确：
 
-- `Subject` 管工作空间
-- `RawFile / Document / DocumentChunk` 管材料
-- 图谱与课程结构对象管知识和教学组织
-- `ChatMessage` 管对话过程
-- legacy exam/profile 与新 assessment/profile 并存，处于显式双轨期
-
-后续开发的关键不是再发明更多对象，而是把这套对象的边界、状态语义和持久化职责保持清晰、稳定、可迁移。
+- `KnowledgeDoc` 是业务对象。
+- `.build.lock`、`_building/`、`manifest.json` 是内部运行时状态。
+- 前端进度条是前端自己的体验层协议，不再依赖后端状态对象。
+- Graph / Curriculum 仍保留 job 体系，不与 Docs 混淆。

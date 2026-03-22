@@ -46,13 +46,12 @@ from app.services.knowledge.curriculum_service import (
     manage_taxonomy_anchors,
 )
 from app.services.knowledge.digest_service import (
-    ensure_docgen_started,
     get_digest_status,
     get_docgen_result,
     run_graph_digest_background,
+    run_docgen_background,
     trigger_digest_build,
     trigger_docgen_build,
-    run_docgen_background,
 )
 from app.services.knowledge.graph_query_service import (
     get_evidence_context,
@@ -194,12 +193,12 @@ async def digest_status(
 
 
 @router.post(
-    "/docgen/build",
+    "/build",
     response_model=ApiResponse[DocGenBuildData],
     summary="触发知识文档生成",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
-async def docgen_build(
+async def knowledge_build(
     background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: DocGenBuildRequest = Body(...),
@@ -216,31 +215,25 @@ async def docgen_build(
     background_tasks.add_task(
         run_docgen_background,
         subject=normalized,
-        job_id=data.job_id,
+        file_ids=data.accepted_file_ids,
+        prompt=data.prompt,
+        requested_at=data.requested_at,
     )
     return ok_response(data)
 
 
 @router.post(
-    "/docgen/get",
+    "/docs",
     response_model=ApiResponse[DocGenGetResponse],
     summary="查询知识文档最终内容与最近生成状态",
     responses=build_error_responses([400, 404, 500]),
 )
-async def docgen_get(
-    background_tasks: BackgroundTasks,
+async def knowledge_docs(
     subject: str = Path(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    data = ensure_docgen_started(session, subject=normalized)
-    if data is not None:
-        background_tasks.add_task(
-            run_docgen_background,
-            subject=normalized,
-            job_id=data.job_id,
-        )
     return ok_response(get_docgen_result(session, subject=normalized))
 
 @router.post(

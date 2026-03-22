@@ -88,21 +88,9 @@ class DocGenExecutionStrategy:
         if chunk_count <= 0:
             return OutlineExecutionPlan(mode="fallback", reason="empty_chunks")
 
-        outline_title_count = sum(len(list(item.get("titles", []))) for item in local_outlines)
-        prompt_present = bool(user_prompt and user_prompt.strip())
-        if (
-            chunk_count <= self.outline_fast_path_max_chunks
-            and outline_title_count >= 2
-            and not prompt_present
-        ):
-            return OutlineExecutionPlan(
-                mode="local_fast_path",
-                reason="small_input_with_dense_local_outline",
-            )
-
         return OutlineExecutionPlan(
             mode="global_llm",
-            reason="needs_global_coordination",
+            reason="docs_require_explicit_chapter_planning",
         )
 
     def plan_review(

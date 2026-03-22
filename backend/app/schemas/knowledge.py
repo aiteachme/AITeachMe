@@ -102,41 +102,22 @@ class CurriculumJobResponse(BaseModel):
 
 
 class DocGenBuildData(BaseModel):
-    """触发文档生成返回数据。"""
+    """Knowledge docs build response data."""
 
-    job_id: int = Field(description="DocGenJob ID。")
-    accepted_file_ids: list[int] = Field(default_factory=list, description="本次用于文档生成的文件 ID。")
-    prompt: str | None = Field(default=None, description="用户提供的生成要求。")
-    ready_file_count: int = Field(default=0, description="当前可用的 ready 文件数量。")
-
-
-class DocGenJobResponse(BaseModel):
-    """DocGenJob 状态。"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    subject: str
-    status: str
-    progress: int
-    current_step: str | None = None
-    total_chapters: int = 0
-    completed_chapters: int = 0
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    accepted_file_ids: list[int] = Field(default_factory=list, description="Accepted ready raw file IDs.")
+    prompt: str | None = Field(default=None, description="User prompt for the docs build.")
+    ready_file_count: int = Field(default=0, description="Current ready file count for this subject.")
+    requested_at: datetime = Field(description="Build request timestamp.")
 
 
 class DocGenGetResponse(BaseModel):
-    """知识文档聚合查询响应。"""
+    """Knowledge docs get response."""
 
-    exists: bool = Field(description="最终 merged 文档是否已存在。")
-    markdown: str = Field(default="", description="合并后的最终 Markdown 内容。")
-    merged_path: str | None = Field(default=None, description="最终 merged Markdown 本地路径。")
-    updated_at: datetime | None = Field(default=None, description="最终 merged 文档最近更新时间。")
-    job: DocGenJobResponse | None = Field(default=None, description="最近一次 DocGen 任务状态。")
-    source_file_ids: list[int] = Field(default_factory=list, description="最终文档或当前任务关联的文件 ID。")
-    prompt: str | None = Field(default=None, description="用户提供的生成要求。")
+    exists: bool = Field(description="Whether a merged knowledge document exists.")
+    markdown: str = Field(default="", description="Merged markdown content.")
+    updated_at: datetime | None = Field(default=None, description="Last updated time of the merged markdown.")
+    source_file_ids: list[int] = Field(default_factory=list, description="Source raw file IDs used by the published docs.")
+    prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
 
 
 class DigestStatusResponse(BaseModel):

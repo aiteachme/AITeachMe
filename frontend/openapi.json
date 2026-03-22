@@ -1406,13 +1406,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docgen/build": {
+    "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
           "knowledge"
         ],
         "summary": "触发知识文档生成",
-        "operationId": "docgen_build_api_v1_subjects__subject__knowledge_docgen_build_post",
+        "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
             "name": "subject",
@@ -1465,6 +1465,16 @@
               }
             }
           },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -1488,13 +1498,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docgen/get": {
+    "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
           "knowledge"
         ],
         "summary": "查询知识文档最终内容与最近生成状态",
-        "operationId": "docgen_get_api_v1_subjects__subject__knowledge_docgen_get_post",
+        "operationId": "knowledge_docs_api_v1_subjects__subject__knowledge_docs_post",
         "parameters": [
           {
             "name": "subject",
@@ -7791,18 +7801,13 @@
       },
       "DocGenBuildData": {
         "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "DocGenJob ID。"
-          },
           "accepted_file_ids": {
             "items": {
               "type": "integer"
             },
             "type": "array",
             "title": "Accepted File Ids",
-            "description": "本次用于文档生成的文件 ID。"
+            "description": "Accepted ready raw file IDs."
           },
           "prompt": {
             "anyOf": [
@@ -7814,21 +7819,27 @@
               }
             ],
             "title": "Prompt",
-            "description": "用户提供的生成要求。"
+            "description": "User prompt for the docs build."
           },
           "ready_file_count": {
             "type": "integer",
             "title": "Ready File Count",
-            "description": "当前可用的 ready 文件数量。",
+            "description": "Current ready file count for this subject.",
             "default": 0
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "Build request timestamp."
           }
         },
         "type": "object",
         "required": [
-          "job_id"
+          "requested_at"
         ],
         "title": "DocGenBuildData",
-        "description": "触发文档生成返回数据。"
+        "description": "Knowledge docs build response data."
       },
       "DocGenBuildRequest": {
         "properties": {
@@ -7876,25 +7887,13 @@
           "exists": {
             "type": "boolean",
             "title": "Exists",
-            "description": "最终 merged 文档是否已存在。"
+            "description": "Whether a merged knowledge document exists."
           },
           "markdown": {
             "type": "string",
             "title": "Markdown",
-            "description": "合并后的最终 Markdown 内容。",
+            "description": "Merged markdown content.",
             "default": ""
-          },
-          "merged_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Merged Path",
-            "description": "最终 merged Markdown 本地路径。"
           },
           "updated_at": {
             "anyOf": [
@@ -7907,18 +7906,7 @@
               }
             ],
             "title": "Updated At",
-            "description": "最终 merged 文档最近更新时间。"
-          },
-          "job": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DocGenJobResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "最近一次 DocGen 任务状态。"
+            "description": "Last updated time of the merged markdown."
           },
           "source_file_ids": {
             "items": {
@@ -7926,7 +7914,7 @@
             },
             "type": "array",
             "title": "Source File Ids",
-            "description": "最终文档或当前任务关联的文件 ID。"
+            "description": "Source raw file IDs used by the published docs."
           },
           "prompt": {
             "anyOf": [
@@ -7938,7 +7926,7 @@
               }
             ],
             "title": "Prompt",
-            "description": "用户提供的生成要求。"
+            "description": "User prompt used for the published docs."
           }
         },
         "type": "object",
@@ -7946,80 +7934,7 @@
           "exists"
         ],
         "title": "DocGenGetResponse",
-        "description": "知识文档聚合查询响应。"
-      },
-      "DocGenJobResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "progress": {
-            "type": "integer",
-            "title": "Progress"
-          },
-          "current_step": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Step"
-          },
-          "total_chapters": {
-            "type": "integer",
-            "title": "Total Chapters",
-            "default": 0
-          },
-          "completed_chapters": {
-            "type": "integer",
-            "title": "Completed Chapters",
-            "default": 0
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "status",
-          "progress",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "DocGenJobResponse",
-        "description": "DocGenJob 状态。"
+        "description": "Knowledge docs get response."
       },
       "ErrorResponse": {
         "properties": {
