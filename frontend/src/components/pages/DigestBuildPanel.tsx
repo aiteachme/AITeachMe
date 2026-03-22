@@ -11,7 +11,7 @@ import {
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
 import { Modal } from "../ui/Modal";
-import { apiClient } from "../../api/client";
+import { apiClient, getApiErrorMessage } from "../../api/client";
 import {
   triggerDigestBuild,
   fetchDigestStatus,
@@ -352,7 +352,7 @@ export function DigestBuildButton() {
 
           {buildMutation.isError && (
             <p className="text-xs text-red-500">
-              {(buildMutation.error as any)?.response?.data?.detail ?? "构建请求失败"}
+              {getApiErrorMessage(buildMutation.error, "构建请求失败")}
             </p>
           )}
         </div>

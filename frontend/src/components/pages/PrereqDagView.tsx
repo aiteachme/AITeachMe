@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BookOpen,
 } from "lucide-react";
+import { getApiErrorMessage } from "../../api/client";
 import { fetchPrereqDag, fetchTeachingUnits, type UnitDependencyItem } from "../../api/graphApi";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -87,7 +88,7 @@ const DEP_TYPE_LABEL: Record<string, { label: string; color: string }> = {
 
 import type { PrereqDagResponse } from "../../api/graphApi";
 
-function NoDependenciesView({ subject, dagData }: { subject: string; dagData: PrereqDagResponse | undefined }) {
+function NoDependenciesView({ subject, dagData }: { subject: string; dagData: PrereqDagResponse | null | undefined }) {
   const { data: unitsData } = useQuery({
     queryKey: ["teaching-units-dag", subject],
     queryFn: () => fetchTeachingUnits(subject),
@@ -184,12 +185,12 @@ export function PrereqDagView({ subject }: { subject: string }) {
   }
 
   if (isError) {
-    const msg = (error as any)?.response?.data?.detail ?? "暂无先修 DAG 数据";
+    const msg = getApiErrorMessage(error, "加载先修关系失败");
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
         <p className="text-sm">{msg}</p>
-        <p className="text-xs mt-1">请先上传资料并触发知识图谱构建</p>
+        <p className="text-xs mt-1">请稍后重试，或先确认学科与构建状态</p>
       </div>
     );
   }

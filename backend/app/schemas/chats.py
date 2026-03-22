@@ -1,4 +1,4 @@
-"""聊天接口 schema。"""
+"""Chat API schemas."""
 
 from __future__ import annotations
 
@@ -10,8 +10,18 @@ from app.schemas.common import PageParams
 from app.schemas.enums import ChatRoleValue
 
 
+class ChatContextItem(BaseModel):
+    """One retrieval citation attached to an assistant message."""
+
+    chunk_id: int = Field(description="Knowledge chunk ID.")
+    document_id: int = Field(description="Document ID.")
+    title: str = Field(description="Chunk title.")
+    header_path: str = Field(description="Chunk header path.")
+    score: float = Field(description="Retrieval score.")
+
+
 class ChatSendRequest(BaseModel):
-    """发送消息请求。"""
+    """Request body for sending one chat message."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -24,55 +34,55 @@ class ChatSendRequest(BaseModel):
         }
     )
 
-    question: str = Field(description="当前问题。")
-    source: str | None = Field(default=None, description="消息来源标识；有值时走直连大模型模式。")
-    selected_context: str | None = Field(default=None, description="用户划词上下文。")
-    source_chunk_id: int | None = Field(default=None, description="划词来源块 ID。")
+    question: str = Field(description="Current user question.")
+    source: str | None = Field(default=None, description="Optional source tag that enables direct chat mode.")
+    selected_context: str | None = Field(default=None, description="Optional highlighted context.")
+    source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
 
 
 class ChatListRequest(PageParams):
-    """聊天分页请求。"""
+    """Pagination request for chat history."""
 
 
 class ChatClearRequest(BaseModel):
-    """清空聊天记录请求。"""
+    """Request body for clearing chat history."""
 
     model_config = ConfigDict(json_schema_extra={"example": {}})
 
 
 class ChatClearData(BaseModel):
-    """清空聊天记录结果。"""
+    """Result payload for clearing chat history."""
 
-    cleared: bool = Field(description="是否清空成功。")
-    deleted_count: int = Field(description="删除消息条数。", ge=0)
+    cleared: bool = Field(description="Whether the history was cleared.")
+    deleted_count: int = Field(description="Deleted message count.", ge=0)
 
 
 class SSETokenEvent(BaseModel):
-    """SSE token 事件。"""
+    """SSE token event payload."""
 
-    content: str = Field(description="增量文本。")
+    content: str = Field(description="Incremental assistant text.")
 
 
 class SSEDoneEvent(BaseModel):
-    """SSE done 事件。"""
+    """SSE done event payload."""
 
-    turn_id: str = Field(description="对话轮次 ID。")
-    contexts: list[dict] | None = Field(default=None, description="命中的上下文列表。")
+    turn_id: str = Field(description="Persisted turn ID.")
+    contexts: list[ChatContextItem] | None = Field(default=None, description="Retrieved citation list.")
 
 
 class SSEErrorEvent(BaseModel):
-    """SSE error 事件。"""
+    """SSE error event payload."""
 
-    detail: str = Field(description="错误原因。")
-    error_code: str = Field(description="错误码。")
+    detail: str = Field(description="Error detail.")
+    error_code: str = Field(description="Stable error code.")
 
 
 class ChatMessageItem(BaseModel):
-    """聊天记录项。"""
+    """One persisted chat message."""
 
-    id: int = Field(description="消息 ID。")
-    turn_id: str = Field(description="轮次 ID。")
-    role: ChatRoleValue = Field(description="消息角色。")
-    content: str = Field(description="消息内容。")
-    contexts: list[dict] | None = Field(default=None, description="关联上下文。")
-    created_at: datetime = Field(description="创建时间。")
+    id: int = Field(description="Message ID.")
+    turn_id: str = Field(description="Conversation turn ID.")
+    role: ChatRoleValue = Field(description="Message role.")
+    content: str = Field(description="Message content.")
+    contexts: list[ChatContextItem] | None = Field(default=None, description="Assistant citation list.")
+    created_at: datetime = Field(description="Created time.")

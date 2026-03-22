@@ -18,6 +18,7 @@ import {
   fetchGraphNodeDetail,
   type KnowledgeNodeResponse,
 } from "../../api/graphApi";
+import { getApiErrorMessage } from "../../api/client";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -238,12 +239,12 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
   }
 
   if (isError) {
-    const msg = (error as any)?.response?.data?.detail ?? "暂无知识图谱数据";
+    const msg = getApiErrorMessage(error, "加载知识图谱失败");
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
         <p className="text-sm">{msg}</p>
-        <p className="text-xs mt-1">请先上传资料并触发知识图谱构建</p>
+        <p className="text-xs mt-1">请稍后重试，或先确认学科与构建状态</p>
       </div>
     );
   }

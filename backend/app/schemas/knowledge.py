@@ -31,6 +31,22 @@ class DigestStatusRequest(BaseModel):
     job_id: int = Field(description="GraphDigestJob ID。")
 
 
+class DocGenBuildRequest(BaseModel):
+    """触发知识文档生成请求。"""
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"file_ids": [1, 2]}}
+    )
+
+    file_ids: list[int] = Field(min_length=1, description="参与生成的已解析文件 ID。")
+
+
+class DocGenStatusRequest(BaseModel):
+    """查询知识文档生成状态请求。"""
+
+    job_id: int = Field(description="DocGenJob ID。")
+
+
 class GraphNodesQueryRequest(PageParams):
     """分页查询知识节点请求。"""
 
@@ -90,6 +106,41 @@ class CurriculumJobResponse(BaseModel):
     updated_at: datetime
 
 
+class DocGenBuildData(BaseModel):
+    """触发文档生成返回数据。"""
+
+    job_id: int = Field(description="DocGenJob ID。")
+
+
+class DocGenJobResponse(BaseModel):
+    """DocGenJob 状态。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    subject: str
+    status: str
+    progress: int
+    current_step: str | None = None
+    total_chapters: int = 0
+    completed_chapters: int = 0
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocGenStatusResponse(BaseModel):
+    """知识文档生成状态响应。"""
+
+    job: DocGenJobResponse
+
+
+class DocGenContentResponse(BaseModel):
+    """知识文档生成产物响应。"""
+
+    markdown: str = Field(description="合并后的最终 Markdown 内容。")
+
+
 class DigestStatusResponse(BaseModel):
     """增量构建聚合状态：graph_job + curriculum_job + 当前快照。"""
 
@@ -142,6 +193,23 @@ class EvidenceContextResponse(BaseModel):
     quote_text: str
     highlight_start: int | None = None
     highlight_end: int | None = None
+
+
+class ChunkContextRequest(BaseModel):
+    """Chat chunk context request."""
+
+    chunk_id: int = Field(description="Document chunk ID.")
+
+
+class ChunkContextResponse(BaseModel):
+    """Chat chunk context response."""
+
+    chunk_id: int
+    document_id: int
+    document_title: str
+    chunk_title: str
+    chunk_header_path: str
+    chunk_content: str
 
 
 class AliasItem(BaseModel):

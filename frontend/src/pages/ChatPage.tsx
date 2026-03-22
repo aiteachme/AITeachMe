@@ -1,283 +1,196 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Plus, Trash2, Menu, X, MessageSquare, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  BookOpenText,
+  Loader2,
+  MessageSquareText,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useParams } from "react-router-dom";
+import { ChatCitationModal } from "../components/chat/ChatCitationModal";
+import { ChatComposer } from "../components/chat/ChatComposer";
+import { ChatTranscript } from "../components/chat/ChatTranscript";
 import { Button } from "../components/ui/Button";
-import { MarkdownViewer } from "../components/ui/MarkdownViewer";
-import { cn } from "../lib/utils";
-import { apiClient } from "../api/client";
+import { Card, CardContent } from "../components/ui/Card";
+import { useChatSession } from "../hooks/useChatSession";
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
-
-interface ChatHistoryItem {
-  id: number;
-  turn_id: string;
-  role: "user" | "assistant";
-  content: string;
-  created_at: string;
-}
-
-interface ApiResponse<T> { code: number; data: T; }
-interface PaginatedData<T> { items: T[]; total: number; }
-
-async function fetchHistory(subject: string): Promise<ChatHistoryItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<ChatHistoryItem>>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/chat/list`,
-    data: { page: 1, size: 100 },
-  });
-  return res.data.items;
-}
-
-async function clearHistory(subject: string): Promise<void> {
-  await apiClient({ method: "POST", url: `/api/v1/subjects/${subject}/chat/clear`, data: {} });
-}
+const SUGGESTIONS = [
+  "请帮我先概括这份资料的核心结构",
+  "这部分内容我不太懂，请你一步一步讲清楚",
+  "请结合资料说明这个概念和它的应用场景",
+];
 
 export function ChatPage() {
   const { subjectId = "" } = useParams();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  // 加载历史记录
-  useEffect(() => {
-    if (!subjectId) return;
-    fetchHistory(subjectId).then((items) => {
-      const msgs: Message[] = items.map((item) => ({
-        id: String(item.id),
-        role: item.role,
-        content: item.content,
-      }));
-      setMessages(msgs);
-      setHistoryLoaded(true);
-    }).catch(() => setHistoryLoaded(true));
-  }, [subjectId]);
+  const [draft, setDraft] = useState("");
+  const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const { messages, historyLoaded, historyError, isStreaming, sendMessage, abortStream, clearHistory } =
+    useChatSession(subjectId);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
+  async function handleSend() {
+    const result = await sendMessage({ question: draft });
+    if (result.accepted) {
+      setDraft("");
     }
-  }, [input]);
+  }
 
-  const handleSend = useCallback(async () => {
-    const question = input.trim();
-    if (!question || isStreaming || !subjectId) return;
+  function handleSuggestionClick(text: string) {
+    setDraft(text);
+  }
 
-    const userMsg: Message = { id: Date.now().toString(), role: "user", content: question };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setIsStreaming(true);
-
-    const assistantId = (Date.now() + 1).toString();
-    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "";
-      const response = await fetch(`${baseUrl}/api/v1/subjects/${subjectId}/chat/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok || !response.body) throw new Error("请求失败");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const raw = line.slice(5).trim();
-          if (!raw || raw === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(raw);
-            if (parsed.content !== undefined) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: m.content + parsed.content } : m
-                )
-              );
-            }
-          } catch { /* ignore malformed */ }
-        }
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name !== "AbortError") {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: "请求失败，请重试。" } : m
-          )
-        );
-      }
-    } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
-    }
-  }, [input, isStreaming, subjectId]);
-
-  const handleClear = async () => {
-    if (!subjectId) return;
-    await clearHistory(subjectId);
-    setMessages([]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-screen bg-gradient-to-b from-white to-slate-50/30 -m-6 lg:-m-8 relative">
-      {/* Mobile Header */}
-      <div className="lg:hidden absolute top-0 left-0 right-0 h-14 bg-white/80 backdrop-blur-md border-b border-slate-200/60 flex items-center px-4 z-10">
-        <button onClick={() => setIsMobileSidebarOpen(true)} className="p-2 hover:bg-slate-100 rounded-lg -ml-2">
-          <Menu className="w-5 h-5 text-slate-700" />
-        </button>
-        <div className="flex-1 text-center">
-          <h1 className="text-sm font-medium text-slate-900">AI 对话</h1>
-        </div>
-        <div className="w-9" />
-      </div>
+    <>
+      <div className="-m-6 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(103,232,249,0.14),_transparent_34%),linear-gradient(180deg,_#f8fbff_0%,_#f8fafc_58%,_#eef4ff_100%)] px-4 py-6 lg:-m-8 lg:px-8 lg:py-8">
+        <div className="grid min-h-[calc(100vh-7rem)] gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="space-y-4">
+            <Card className="overflow-hidden border-0 bg-slate-900 text-white shadow-[0_24px_80px_-40px_rgba(15,23,42,0.8)]">
+              <CardContent className="space-y-4 p-6">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">教学对话</h1>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    先做可用版的赛博私教。现在已经支持流式回答、基于知识切块的引用来源，以及引用原文查看。
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-      {isMobileSidebarOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40" onClick={() => setIsMobileSidebarOpen(false)} />
-      )}
+            <Card className="border-white/70 bg-white/85 shadow-[0_20px_70px_-45px_rgba(15,23,42,0.55)]">
+              <CardContent className="space-y-3 p-5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <BookOpenText className="h-4 w-4 text-sky-600" />
+                  现在能做什么
+                </div>
+                <ul className="space-y-2 text-sm leading-6 text-slate-600">
+                  <li>结合当前学科材料做解释型回答</li>
+                  <li>流式输出，避免长时间空白等待</li>
+                  <li>展示引用切块，并可点开查看原文</li>
+                </ul>
+              </CardContent>
+            </Card>
 
-      {/* Sidebar: actions */}
-      <div className={cn(
-        "w-56 border-r border-slate-200/60 flex flex-col bg-white/50 backdrop-blur-sm transition-transform duration-300",
-        "lg:relative lg:translate-x-0 fixed inset-y-0 left-0 z-50",
-        isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="lg:hidden flex items-center justify-between p-4 border-b border-slate-200/60">
-          <h2 className="text-sm font-semibold text-slate-900">操作</h2>
-          <button onClick={() => setIsMobileSidebarOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-4 h-4 text-slate-600" />
-          </button>
-        </div>
-        <div className="p-3 space-y-2">
-          <Button onClick={() => { setMessages([]); setIsMobileSidebarOpen(false); }} className="w-full justify-start gap-2 bg-slate-900 hover:bg-slate-800 text-white">
-            <Plus className="w-4 h-4" />
-            新建对话
-          </Button>
-          <Button onClick={handleClear} variant="outline" className="w-full justify-start gap-2 text-red-500 hover:text-red-600 hover:border-red-300">
-            <Trash2 className="w-4 h-4" />
-            清空记录
-          </Button>
-        </div>
-      </div>
+            <Card className="border-white/70 bg-white/85 shadow-[0_20px_70px_-45px_rgba(15,23,42,0.55)]">
+              <CardContent className="space-y-3 p-5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <MessageSquareText className="h-4 w-4 text-emerald-600" />
+                  快速开始
+                </div>
+                <div className="space-y-2">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm leading-6 text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-slate-800"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
 
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col lg:mt-0 mt-14 min-w-0">
-        {!historyLoaded ? (
-          <div className="flex-1 flex items-center justify-center text-slate-400">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" />加载中...
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center px-4 pb-32">
-            <div className="text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 mb-6 shadow-lg">
-                <MessageSquare className="w-8 h-8 text-white" />
+          <section className="flex min-h-0 flex-col overflow-hidden rounded-[32px] border border-white/80 bg-white/75 shadow-[0_24px_90px_-48px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4 xl:px-8">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
+                  Interact
+                </div>
+                <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                  学习对话工作流
+                </h2>
               </div>
-              <h2 className="text-2xl font-semibold text-slate-900 mb-2">开始对话</h2>
-              <p className="text-slate-500">向 AI 提问，获得即时解答</p>
+
+              <div className="flex items-center gap-2">
+                {isStreaming ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={abortStream}
+                    className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    停止回答
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearHistory}
+                  className="border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  清空记录
+                </Button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-4 py-8">
-              {messages.map((message) => (
-                <div key={message.id} className={cn(
-                  "flex gap-4 mb-6",
-                  message.role === "assistant" && "bg-slate-50/50 -mx-4 px-4 py-6 rounded-2xl"
-                )}>
-                  <div className={cn(
-                    "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-sm",
-                    message.role === "user" ? "bg-slate-900" : "bg-gradient-to-br from-blue-500 to-indigo-600"
-                  )}>
-                    {message.role === "user" ? "U" : "AI"}
-                  </div>
-                  <div className="flex-1 min-w-0 pt-1.5">
-                    {message.role === "assistant" ? (
-                      <div className="text-[15px] leading-7 text-slate-800 [&_.katex-display]:my-2">
-                        <MarkdownViewer content={message.content} />
-                        {isStreaming && message.id === messages[messages.length - 1]?.id && (
-                          <span className="inline-block w-0.5 h-4 bg-slate-600 ml-0.5 animate-pulse" />
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-[15px] leading-7 whitespace-pre-wrap text-slate-800">
-                        {message.content}
-                      </p>
-                    )}
+
+            {historyError ? (
+              <div className="border-b border-rose-100 bg-rose-50/80 px-5 py-3 text-sm text-rose-600 xl:px-8">
+                {historyError}
+              </div>
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {!historyLoaded ? (
+                <div className="flex h-full items-center justify-center text-slate-500">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  正在加载聊天记录...
+                </div>
+              ) : hasMessages ? (
+                <>
+                  <ChatTranscript
+                    messages={messages}
+                    onOpenCitation={(chunkId) => setSelectedChunkId(chunkId)}
+                  />
+                  <div ref={scrollAnchorRef} />
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center px-4 py-10">
+                  <div className="max-w-xl text-center">
+                    <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-[24px] bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 text-white shadow-lg">
+                      <MessageSquareText className="h-8 w-8" />
+                    </div>
+                    <h3 className="mt-6 text-2xl font-semibold tracking-tight text-slate-900">
+                      开始第一轮教学对话
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-500">
+                      你可以直接提问，也可以让我先概括材料、解释某个知识点，或者按步骤带你一起推导。
+                    </p>
                   </div>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Input */}
-        <div className="border-t border-slate-200/60 bg-white/80 backdrop-blur-md">
-          <div className="max-w-3xl mx-auto px-4 py-4">
-            <div className="relative bg-white border border-slate-300 rounded-2xl shadow-sm hover:shadow-md focus-within:border-slate-400 transition-all">
-              <div className="flex items-end gap-2 p-3">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="输入消息..."
-                  rows={1}
-                  disabled={isStreaming}
-                  className="flex-1 px-2 py-2 resize-none focus:outline-none text-[15px] text-slate-900 placeholder:text-slate-400 bg-transparent disabled:opacity-50"
-                  style={{ maxHeight: "200px" }}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim() || isStreaming}
-                  className={cn(
-                    "p-2.5 rounded-xl transition-all flex-shrink-0",
-                    input.trim() && !isStreaming
-                      ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm"
-                      : "bg-slate-100 text-slate-300 cursor-not-allowed"
-                  )}
-                >
-                  {isStreaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 text-center mt-3">AI 可能会出错，请核实重要信息</p>
-          </div>
+            <ChatComposer
+              value={draft}
+              onChange={setDraft}
+              onSend={handleSend}
+              onAbort={abortStream}
+              isStreaming={isStreaming}
+              disabled={!subjectId}
+            />
+          </section>
         </div>
       </div>
-    </div>
+
+      <ChatCitationModal
+        open={selectedChunkId !== null}
+        onClose={() => setSelectedChunkId(null)}
+        subject={subjectId}
+        chunkId={selectedChunkId}
+      />
+    </>
   );
 }

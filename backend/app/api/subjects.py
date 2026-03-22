@@ -1,5 +1,3 @@
-"""学科接口。"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends
@@ -11,6 +9,8 @@ from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.subject import (
     SubjectCreateRequest,
     SubjectDeleteData,
+    SubjectDeletePreviewData,
+    SubjectDeletePreviewRequest,
     SubjectDeleteRequest,
     SubjectDetailRequest,
     SubjectItem,
@@ -22,6 +22,7 @@ from app.services.subject_service import (
     delete_subject_record,
     get_subject_detail,
     list_subject_records,
+    preview_subject_delete,
     update_subject_record,
 )
 
@@ -41,7 +42,6 @@ async def create_subject_api(
     return ok_response(
         create_subject_record(
             session,
-            slug=body.subject,
             name=body.name,
             description=body.description,
         )
@@ -71,7 +71,7 @@ async def get_subject_detail_api(
     body: SubjectDetailRequest = Body(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
-    return ok_response(get_subject_detail(session, body.subject))
+    return ok_response(get_subject_detail(session, body.subject_id))
 
 
 @router.post(
@@ -87,11 +87,24 @@ async def update_subject_api(
     return ok_response(
         update_subject_record(
             session,
-            slug=body.subject,
+            subject_id=body.subject_id,
             name=body.name,
             description=body.description,
         )
     )
+
+
+@router.post(
+    "/delete/preview",
+    response_model=ApiResponse[SubjectDeletePreviewData],
+    summary="删除学科预览",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def preview_delete_subject_api(
+    body: SubjectDeletePreviewRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[SubjectDeletePreviewData]:
+    return ok_response(preview_subject_delete(session, subject_id=body.subject_id))
 
 
 @router.post(
@@ -104,4 +117,10 @@ async def delete_subject_api(
     body: SubjectDeleteRequest = Body(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectDeleteData]:
-    return ok_response(delete_subject_record(session, slug=body.subject))
+    return ok_response(
+        delete_subject_record(
+            session,
+            subject_id=body.subject_id,
+            force=body.force,
+        )
+    )

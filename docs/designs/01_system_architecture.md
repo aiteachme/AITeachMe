@@ -36,6 +36,7 @@ AITeachMe 当前是一个本地优先的教学型 AI 系统，由四层组成：
 
 - `HomePage`
 - `UploadPage`
+- `KnowledgeDocsPage`
 - `SummaryPage`
 - `ChatPage`
 - `ExamPage`
@@ -44,7 +45,8 @@ AITeachMe 当前是一个本地优先的教学型 AI 系统，由四层组成：
 页面闭环对应五大引擎：
 
 - `UploadPage` 对应 Ingest
-- `SummaryPage` 对应 Digest
+- `KnowledgeDocsPage` 对应 Digest（知识文档阅读与交互，用户日常学习主阵地）
+- `SummaryPage` 对应 Digest（知识图谱、课程结构可视化）
 - `ChatPage` 对应 Interact
 - `ExamPage` 对应 Examine
 - `AnalysisPage` 对应 Profile
@@ -82,9 +84,9 @@ AITeachMe 当前是一个本地优先的教学型 AI 系统，由四层组成：
 - `app/api/`
   路由层，负责请求入口、参数校验、响应包装。
 - `app/services/`
-  业务编排层，负责把多个 repository、agent 串成完整用例。
+  业务编排层，负责把多个 repository、agent 串成完整用例。其中 `services/knowledge/` 子模块聚合了知识构建、图谱查询、课程派生三个服务。
 - `app/repositories/`
-  数据访问层，负责 SQLModel / SQL / sqlite-vec 访问。
+  数据访问层，负责 SQLModel / SQL / sqlite-vec 访问。其中 `repositories/knowledge/` 子模块聚合了知识图谱、文档、课程三个 repo。
 - `app/agents/`
   AI 与知识处理层，负责解析、抽取、对话、出题、报告等能力。
 - `app/models/`
@@ -163,6 +165,8 @@ AITeachMe 当前是一个本地优先的教学型 AI 系统，由四层组成：
   保存向量索引，服务于 RAG 和部分语义处理。
 - 本地文件系统
   保存原始文件、解析后的 Markdown、附件资源。
+
+如果需要从仓库结构角度理解这些内容分别落在哪些目录，以及哪些属于源码、生成物或运行时数据，可继续阅读 `10_repo_structure_and_runtime_files.md`。
 
 ### 6.2 异步与长流程
 

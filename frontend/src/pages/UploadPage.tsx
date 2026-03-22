@@ -92,6 +92,9 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "解析失败",
 };
 
+const ACTIVE_FILE_STATUSES = new Set(["pending", "running", "processing"]);
+const DONE_FILE_STATUSES = new Set(["done", "completed"]);
+
 export function UploadPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
@@ -105,7 +108,7 @@ export function UploadPage() {
     enabled: !!subjectId,
     refetchInterval: (query) => {
       const items = query.state.data ?? [];
-      return items.some((f) => f.status === "running" || f.status === "pending") ? 3000 : false;
+      return items.some((file) => ACTIVE_FILE_STATUSES.has(file.status)) ? 3000 : false;
     },
   });
 
@@ -181,12 +184,12 @@ export function UploadPage() {
             <p className="text-sm text-slate-600 mb-2">
               {uploadMutation.isPending ? "上传中..." : "点击或拖拽文件到此处上传"}
             </p>
-            <p className="text-xs text-slate-400">支持 PDF, DOCX, PNG, JPG 格式</p>
+            <p className="text-xs text-slate-400">支持 PDF, DOCX, Markdown, TXT, PNG, JPG 格式</p>
             <input
               ref={inputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.doc,.png,.jpg,.jpeg"
+              accept=".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg"
               multiple
               onChange={handleFileChange}
             />
@@ -227,7 +230,7 @@ export function UploadPage() {
           )}
           <div className="space-y-3">
             {files.map((file) => {
-              const isDone = file.status === "done" || file.status === "completed";
+              const isDone = DONE_FILE_STATUSES.has(file.status) || file.markdown_ready;
               return (
                 <div
                   key={file.id}

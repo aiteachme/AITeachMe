@@ -34,12 +34,27 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-v3"
     data_dir: str = "./data"
     max_upload_size_mb: int = 50
+    ingest_parse_concurrency: int = 2
+    ingest_parser_timeout_s: int = 90
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3
     chat_history_turns: int = 10
     app_mode: str = "local"
     auth_enabled: bool = False
     app_version: str = "0.2.0"
+
+    # ── AI 基础设施配置 ──
+    model_overrides: dict[str, str] = {}
+    llm_observability_enabled: bool = True
+    tracing_enabled: bool = True
+    guardrails_enabled: bool = True
+    llm_cache_enabled: bool = False
+    llm_cache_ttl_s: int = 3600
+    llm_cache_max_entries: int = 1000
+    llm_concurrency_limit: int = 10
+    embedding_batch_size: int = 20
+    embedding_batch_delay_s: float = 0.1
+    default_token_budget: int = 4000
 
     @property
     def embedding_dim(self) -> int:

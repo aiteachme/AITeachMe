@@ -3,7 +3,7 @@
 推荐用法：
 
 ```python
-from app.agents.interact.prompts import SYSTEM_PROMPT_TUTOR
+from app.workflows.interact.prompts import SYSTEM_PROMPT_TUTOR
 from app.core.prompt_loader import populate_prompt
 
 prompt = populate_prompt(

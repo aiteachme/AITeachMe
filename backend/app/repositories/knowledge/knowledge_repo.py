@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import sqlalchemy as sa
+import structlog
 from sqlmodel import Session, func, select
 
 from app.core.database import require_vec_ready
@@ -13,6 +14,8 @@ from app.models import (
     DocumentChunk,
 )
 from app.utils.time import utcnow
+
+logger = structlog.get_logger()
 
 
 def bulk_create_documents(session: Session, documents: list[Document]) -> list[Document]:
@@ -106,16 +109,45 @@ def bulk_insert_embeddings(
     """批量写入向量表。"""
 
     require_vec_ready()
-    conn = session.connection()
-    for chunk_id, embedding in zip(chunk_ids, embeddings):
-        conn.execute(
-            sa.text(
-                "INSERT OR REPLACE INTO chunk_embeddings(chunk_id, embedding) "
-                "VALUES (:chunk_id, :embedding)"
-            ),
-            {"chunk_id": chunk_id, "embedding": str(embedding)},
+    if not chunk_ids or not embeddings:
+        return
+    if len(chunk_ids) != len(embeddings):
+        raise ValueError(
+            "chunk_ids and embeddings must have the same length. "
+            f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
-    session.commit()
+
+    conn = session.connection()
+    try:
+        params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
+        placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
+        conn.execute(
+            sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
+            params,
+        )
+        for chunk_id, embedding in zip(chunk_ids, embeddings):
+            conn.execute(
+                sa.text(
+                    "INSERT INTO chunk_embeddings(chunk_id, embedding) "
+                    "VALUES (:chunk_id, :embedding)"
+                ),
+                {"chunk_id": chunk_id, "embedding": str(embedding)},
+            )
+        session.commit()
+        logger.info(
+            "bulk_insert_embeddings_completed",
+            chunk_count=len(chunk_ids),
+            embedding_dim=len(embeddings[0]) if embeddings else 0,
+        )
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "bulk_insert_embeddings_failed",
+            chunk_count=len(chunk_ids),
+            embedding_dim=len(embeddings[0]) if embeddings else 0,
+            chunk_ids_preview=chunk_ids[:5],
+        )
+        raise
 
 
 def delete_embeddings_by_chunk_ids(session: Session, chunk_ids: list[int]) -> None:
@@ -154,28 +186,43 @@ def vector_search(
     """执行 sqlite-vec 检索。"""
 
     require_vec_ready()
+    if top_k <= 0:
+        return []
+
     conn = session.connection()
-    rows = conn.execute(
-        sa.text(
-            """
-            SELECT
-                ce.chunk_id,
-                ce.distance
-            FROM chunk_embeddings ce
-            JOIN document_chunk c ON c.id = ce.chunk_id
-            JOIN document d ON d.id = c.document_id
-            WHERE d.subject = :subject
-              AND ce.embedding MATCH :query_embedding
-            ORDER BY ce.distance
-            LIMIT :top_k
-            """
-        ),
-        {
-            "subject": subject,
-            "query_embedding": str(query_embedding),
-            "top_k": top_k,
-        },
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            sa.text(
+                """
+                SELECT
+                    ce.chunk_id,
+                    ce.distance
+                FROM chunk_embeddings ce
+                WHERE ce.chunk_id IN (
+                    SELECT c.id
+                    FROM document_chunk c
+                    JOIN document d ON d.id = c.document_id
+                    WHERE d.subject = :subject
+                )
+                  AND ce.embedding MATCH :query_embedding
+                  AND k = :top_k
+                ORDER BY ce.distance
+                """
+            ),
+            {
+                "subject": subject,
+                "query_embedding": str(query_embedding),
+                "top_k": top_k,
+            },
+        ).fetchall()
+    except Exception:
+        logger.exception(
+            "vector_search_failed",
+            subject=subject,
+            top_k=top_k,
+            embedding_dim=len(query_embedding),
+        )
+        raise
 
     results: list[ChunkSearchResult] = []
     for row in rows:

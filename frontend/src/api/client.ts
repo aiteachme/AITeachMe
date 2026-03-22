@@ -5,6 +5,22 @@ const instance = axios.create({
     timeout: 10000,
 });
 
+export interface ApiErrorPayload {
+    code?: number | string;
+    error_code?: string;
+    message?: string;
+    detail?: string;
+    data?: unknown;
+}
+
+type ApiErrorShape = {
+    message?: string;
+    response?: {
+        status?: number;
+        data?: ApiErrorPayload;
+    };
+};
+
 
 instance.interceptors.request.use((config) => {
     const token = localStorage.getItem("token");
@@ -61,3 +77,39 @@ export const apiClient = async <T>(
 
     return res.data;
 };
+
+export function getApiErrorMessage(
+    error: unknown,
+    fallback = "请求失败，请稍后重试"
+): string {
+    const apiError = error as ApiErrorShape;
+    const message =
+        apiError.response?.data?.message ??
+        apiError.response?.data?.detail ??
+        apiError.message;
+
+    if (typeof message === "string" && message.trim()) {
+        return message;
+    }
+
+    return fallback;
+}
+
+export function isApiErrorStatus(
+    error: unknown,
+    status: number,
+    errorCode?: string
+): boolean {
+    const apiError = error as ApiErrorShape;
+    const response = apiError.response;
+
+    if (response?.status !== status) {
+        return false;
+    }
+
+    if (!errorCode) {
+        return true;
+    }
+
+    return response.data?.error_code === errorCode;
+}

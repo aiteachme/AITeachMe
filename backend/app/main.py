@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -71,7 +75,12 @@ def _register_exception_handlers(app: FastAPI) -> None:
         del request
         return JSONResponse(
             status_code=exc.status_code,
-            content={"code": exc.status_code, "message": exc.detail, "data": None},
+            content={
+                "code": exc.status_code,
+                "error_code": exc.error_code,
+                "message": exc.detail,
+                "data": None,
+            },
         )
 
     @app.exception_handler(Exception)
@@ -79,11 +88,17 @@ def _register_exception_handlers(app: FastAPI) -> None:
         logger.exception("unhandled_error", path=request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"code": 500, "message": "服务内部异常。", "data": None},
+            content={
+                "code": 500,
+                "error_code": "INTERNAL_SERVER_ERROR",
+                "message": "服务内部异常。",
+                "data": None,
+            },
         )
 
 
 def _register_routers(app: FastAPI) -> None:
+    from app.api.assessment import router as assessment_router
     from app.api.auth import router as auth_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
@@ -103,6 +118,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)
+    app.include_router(assessment_router)
 
 
 def create_app() -> FastAPI:

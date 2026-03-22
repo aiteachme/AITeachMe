@@ -5,12 +5,17 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.core.exceptions import EvidenceNotFoundError, KnowledgeNodeNotFoundError
+from app.core.exceptions import (
+    EvidenceNotFoundError,
+    KnowledgeChunkNotFoundError,
+    KnowledgeNodeNotFoundError,
+)
 from app.models.knowledge_graph import KnowledgeNode
 from app.repositories import kg_repo, knowledge_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     AliasItem,
+    ChunkContextResponse,
     EvidenceContextResponse,
     EvidenceSummary,
     FullGraphResponse,
@@ -222,4 +227,30 @@ def get_evidence_context(
         quote_text=ev.quote_text,
         highlight_start=highlight_start,
         highlight_end=highlight_end,
+    )
+
+
+def get_chunk_context(
+    session: Session,
+    *,
+    subject: str,
+    chunk_id: int,
+) -> ChunkContextResponse:
+    """Return raw chunk context for one chat citation."""
+
+    chunk = knowledge_repo.get_chunk_by_id(session, chunk_id)
+    if chunk is None:
+        raise KnowledgeChunkNotFoundError(chunk_id)
+
+    document = knowledge_repo.get_document_by_id(session, chunk.document_id)
+    if document is None or document.subject != subject:
+        raise KnowledgeChunkNotFoundError(chunk_id)
+
+    return ChunkContextResponse(
+        chunk_id=chunk.id,  # type: ignore[arg-type]
+        document_id=document.id,  # type: ignore[arg-type]
+        document_title=document.title,
+        chunk_title=chunk.title,
+        chunk_header_path=chunk.header_path,
+        chunk_content=chunk.content,
     )

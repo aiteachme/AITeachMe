@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.agents.examine.generator import generate_exam
-from app.agents.examine.grader import grade_exam
+from app.workflows.examine import generate_exam, grade_exam
 from app.core.exceptions import ExamNotFoundError
 from app.models import AnswerRecord, Exam, ExamSubmission, Mistake, Question
 from app.repositories.exams_repo import (

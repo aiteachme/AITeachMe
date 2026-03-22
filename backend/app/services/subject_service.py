@@ -1,35 +1,37 @@
-"""学科服务层。"""
-
 from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.exceptions import SubjectAlreadyExistsError, SubjectInUseError, SubjectRegistryNotFoundError
+from app.core.exceptions import SubjectInUseError, SubjectRegistryNotFoundError
 from app.models import Subject
 from app.repositories.subject_repo import (
     create_subject,
     delete_subject,
     get_subject_by_slug,
     list_subjects,
-    subject_has_content,
     update_subject,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
-from app.schemas.subject import SubjectDeleteData, SubjectItem
+from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData, SubjectItem
+from app.services.subject_deletion_service import (
+    build_subject_delete_preview,
+    delete_subject_with_all_content,
+)
 from app.services.presenters import require_id
-from app.utils.subject import validate_subject
+from app.utils.subject import generate_subject_id, validate_subject_id
 
 
-def normalize_subject_slug(subject: str) -> str:
-    """统一处理学科标识。"""
-
-    return validate_subject(subject)
+def _create_unique_subject_id(session: Session) -> str:
+    while True:
+        subject_id = generate_subject_id()
+        if get_subject_by_slug(session, subject_id) is None:
+            return subject_id
 
 
 def _to_subject_item(subject: Subject) -> SubjectItem:
     return SubjectItem(
         id=require_id(subject.id, "Subject.id"),
-        subject=subject.slug,
+        subject_id=subject.slug,
         name=subject.name,
         description=subject.description,
         created_at=subject.created_at,
@@ -40,41 +42,30 @@ def _to_subject_item(subject: Subject) -> SubjectItem:
 def create_subject_record(
     session: Session,
     *,
-    slug: str,
     name: str,
     description: str = "",
 ) -> SubjectItem:
-    """创建学科。"""
-
-    normalized_slug = normalize_subject_slug(slug)
-    if get_subject_by_slug(session, normalized_slug) is not None:
-        raise SubjectAlreadyExistsError(normalized_slug)
-
     subject = create_subject(
         session,
         Subject(
-            slug=normalized_slug,
-            name=name.strip() or normalized_slug,
+            slug=_create_unique_subject_id(session),
+            name=name.strip() or "Untitled Subject",
             description=description.strip(),
         ),
     )
     return _to_subject_item(subject)
 
 
-def get_subject_record(session: Session, slug: str) -> Subject:
-    """读取学科原始模型。"""
-
-    normalized_slug = normalize_subject_slug(slug)
-    subject = get_subject_by_slug(session, normalized_slug)
+def get_subject_record(session: Session, subject_id: str) -> Subject:
+    normalized_subject_id = validate_subject_id(subject_id)
+    subject = get_subject_by_slug(session, normalized_subject_id)
     if subject is None:
-        raise SubjectRegistryNotFoundError(normalized_slug)
+        raise SubjectRegistryNotFoundError(normalized_subject_id)
     return subject
 
 
-def get_subject_detail(session: Session, slug: str) -> SubjectItem:
-    """读取学科详情。"""
-
-    return _to_subject_item(get_subject_record(session, slug))
+def get_subject_detail(session: Session, subject_id: str) -> SubjectItem:
+    return _to_subject_item(get_subject_record(session, subject_id))
 
 
 def list_subject_records(
@@ -83,8 +74,6 @@ def list_subject_records(
     page: int,
     size: int,
 ) -> PaginatedData[SubjectItem]:
-    """分页读取学科列表。"""
-
     items, total = list_subjects(session, limit=size, offset=(page - 1) * size)
     return build_paginated_data(
         items=[_to_subject_item(item) for item in items],
@@ -97,13 +86,11 @@ def list_subject_records(
 def update_subject_record(
     session: Session,
     *,
-    slug: str,
+    subject_id: str,
     name: str,
     description: str = "",
 ) -> SubjectItem:
-    """更新学科。"""
-
-    subject = get_subject_record(session, slug)
+    subject = get_subject_record(session, subject_id)
     updated = update_subject(
         session,
         subject,
@@ -113,11 +100,33 @@ def update_subject_record(
     return _to_subject_item(updated)
 
 
-def delete_subject_record(session: Session, *, slug: str) -> SubjectDeleteData:
-    """删除学科。"""
+def preview_subject_delete(session: Session, *, subject_id: str) -> SubjectDeletePreviewData:
+    subject = get_subject_record(session, subject_id)
+    return build_subject_delete_preview(session, subject=subject)
 
-    subject = get_subject_record(session, slug)
-    if subject_has_content(session, subject.slug):
+
+def delete_subject_record(
+    session: Session,
+    *,
+    subject_id: str,
+    force: bool = False,
+) -> SubjectDeleteData:
+    subject = get_subject_record(session, subject_id)
+    preview = build_subject_delete_preview(session, subject=subject)
+    if preview.has_content and not force:
         raise SubjectInUseError(subject.slug)
+    deleted_counts = (
+        delete_subject_with_all_content(session, subject=subject)
+        if force
+        else _delete_empty_subject(session, subject)
+    )
+    return SubjectDeleteData(
+        deleted=True,
+        subject_id=subject.slug,
+        deleted_counts=deleted_counts,
+    )
+
+
+def _delete_empty_subject(session: Session, subject: Subject) -> dict[str, int]:
     delete_subject(session, subject)
-    return SubjectDeleteData(deleted=True, subject=subject.slug)
+    return {"subject": 1}
