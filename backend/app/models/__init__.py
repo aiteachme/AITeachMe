@@ -1,8 +1,6 @@
 """模型统一导出。"""
 
 from app.models.assessment import (
-    ExamGenerateJob,
-    ExamGradeJob,
     ExamPaper,
     ExamPaperGenerationContext,
     ExamPaperItem,
@@ -84,8 +82,6 @@ __all__ = [
     "EvidenceLink",
     "ErrorCauseLabel",
     "Exam",
-    "ExamGenerateJob",
-    "ExamGradeJob",
     "ExamMode",
     "ExamPaper",
     "ExamPaperGenerationContext",

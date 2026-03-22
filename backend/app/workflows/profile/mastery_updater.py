@@ -274,22 +274,12 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
     """根据试卷作答结果更新双粒度掌握度。
 
     幂等语义：
-    - 若该试卷最近判卷任务 ExamGradeJob.mastery_consumed=True，则直接返回，不重复入账。
-    - 成功入账后将 mastery_consumed 置 True。
+    - 若试卷已经是 graded 状态，则不重复入账。
     """
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
     if exam_paper is None:
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
-
-    grade_job = assessment_repo.find_latest_grade_job_by_paper(session, exam_paper_id)
-    if grade_job is not None and grade_job.mastery_consumed:
-        return MasteryUpdateResult(
-            exam_paper_id=exam_paper_id,
-            states_updated=0,
-            updated_state_ids=[],
-            already_consumed=True,
-        )
 
     items = list(
         session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id == exam_paper_id)).all()
@@ -353,16 +343,6 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
         )
         if persisted is not None and persisted.id is not None:
             updated_state_ids.append(persisted.id)
-
-    if grade_job is not None:
-        grade_job.mastery_consumed = True
-        grade_job.states_updated = max(grade_job.states_updated, len(set(updated_state_ids)))
-        grade_job.updated_at = now
-        session.add(grade_job)
-        session.commit()
-        session.refresh(grade_job)
-    else:
-        logger.warning("mastery_update_without_grade_job", exam_paper_id=exam_paper_id)
 
     return MasteryUpdateResult(
         exam_paper_id=exam_paper_id,

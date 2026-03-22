@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Clock, FileQuestion, Loader2, Trash2, XCircle } from "lucide-react";
+
 import { apiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
@@ -20,7 +21,7 @@ interface PaginatedData<T> {
   size: number;
 }
 
-interface JobStatus {
+interface JobResult {
   id: number;
   status: string;
   error_message?: string | null;
@@ -28,7 +29,7 @@ interface JobStatus {
   updated_at: string;
 }
 
-interface ExamGenerateJob extends JobStatus {
+interface ExamGenerateResult extends JobResult {
   subject?: string;
   user_id?: string;
   exam_mode?: string;
@@ -36,7 +37,7 @@ interface ExamGenerateJob extends JobStatus {
   exam_paper_id: number | null;
 }
 
-interface ExamGradeJob extends JobStatus {}
+interface ExamGradeResult extends JobResult {}
 
 interface ExamPaperItem {
   id: number;
@@ -93,8 +94,6 @@ interface QuestionBankItem {
 type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
 
 const EXAM_REQUEST_TIMEOUT_MS = 120000;
-const EXAM_JOB_POLL_INTERVAL_MS = 1000;
-const EXAM_JOB_MAX_POLLS = 180;
 
 const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string }> = [
   { value: "diagnostic", label: "诊断模式" },
@@ -103,10 +102,6 @@ const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string }> = [
   { value: "review", label: "复习模式" },
   { value: "mock_final", label: "模拟考试" },
 ];
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function toGenerateStatusLabel(status: string): string {
   if (status === "pending") return "任务排队中...";
@@ -152,36 +147,16 @@ function toMessage(error: unknown): string {
 }
 
 async function fetchExamDetail(subject: string, examPaperId: number): Promise<ExamPaperDetail> {
-  const res = await apiClient<ApiResponse<ExamPaperDetail>>({
-    method: "GET",
-    url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
-  return res.data;
-}
-
-async function waitGenerateJobDone(
-  subject: string,
-  jobId: number,
-  onStatus?: (status: string) => void,
-): Promise<ExamGenerateJob> {
-  for (let i = 0; i < EXAM_JOB_MAX_POLLS; i += 1) {
-    const res = await apiClient<ApiResponse<ExamGenerateJob>>({
+  const res = await apiClient<ApiResponse<ExamPaperDetail>>(
+    {
       method: "GET",
-      url: `/api/v1/subjects/${subject}/exam/generate-jobs/${jobId}`,
-    }, {
+      url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+    },
+    {
       timeout: EXAM_REQUEST_TIMEOUT_MS,
-    });
-    const job = res.data;
-    onStatus?.(job.status);
-    if (job.status === "completed" && job.exam_paper_id) return job;
-    if (job.status === "failed") {
-      throw new Error(job.error_message ?? "试卷生成失败");
-    }
-    await sleep(EXAM_JOB_POLL_INTERVAL_MS);
-  }
-  throw new Error("试卷生成超时，请稍后重试");
+    },
+  );
+  return res.data;
 }
 
 async function generateExamPaper(
@@ -193,44 +168,29 @@ async function generateExamPaper(
     exam_mode: options.examMode,
   };
   const prompt = options.userPrompt.trim();
-  if (prompt) {
-    body.user_prompt = prompt;
+  if (prompt) body.user_prompt = prompt;
+
+  const res = await apiClient<ApiResponse<ExamGenerateResult>>(
+    {
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/exam/generate`,
+      data: body,
+    },
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
+
+  const result = res.data;
+  onStatus?.(result.status);
+
+  if (result.status !== "completed") {
+    throw new Error(result.error_message ?? "试卷生成失败");
   }
-
-  const res = await apiClient<ApiResponse<ExamGenerateJob>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/generate`,
-    data: body,
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
-
-  let job = res.data;
-  onStatus?.(job.status);
-
-  if (job.status !== "completed" || !job.exam_paper_id) {
-    job = await waitGenerateJobDone(subject, job.id, onStatus);
-  }
-  if (!job.exam_paper_id) {
+  if (!result.exam_paper_id) {
     throw new Error("试卷生成完成但未返回试卷 ID");
   }
-  return fetchExamDetail(subject, job.exam_paper_id);
-}
-
-async function waitGradeJobDone(subject: string, jobId: number): Promise<ExamGradeJob> {
-  for (let i = 0; i < EXAM_JOB_MAX_POLLS; i += 1) {
-    const res = await apiClient<ApiResponse<ExamGradeJob>>({
-      method: "GET",
-      url: `/api/v1/subjects/${subject}/exam/grade-jobs/${jobId}`,
-    }, {
-      timeout: EXAM_REQUEST_TIMEOUT_MS,
-    });
-    const job = res.data;
-    if (job.status === "completed") return job;
-    if (job.status === "failed") throw new Error(job.error_message ?? "判分失败");
-    await sleep(EXAM_JOB_POLL_INTERVAL_MS);
-  }
-  throw new Error("判分超时，请稍后重试");
+  return fetchExamDetail(subject, result.exam_paper_id);
 }
 
 async function submitAndGradeExam(
@@ -238,65 +198,78 @@ async function submitAndGradeExam(
   examPaperId: number,
   answers: Record<number, string>,
 ): Promise<ExamPaperDetail> {
-  await apiClient<ApiResponse<ExamPaperDetail>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/${examPaperId}/submit`,
-    data: {
-      answers: Object.entries(answers).map(([exam_paper_item_id, answer]) => ({
-        exam_paper_item_id: Number(exam_paper_item_id),
-        answer,
-      })),
+  await apiClient<ApiResponse<ExamPaperDetail>>(
+    {
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/exam/${examPaperId}/submit`,
+      data: {
+        answers: Object.entries(answers).map(([exam_paper_item_id, answer]) => ({
+          exam_paper_item_id: Number(exam_paper_item_id),
+          answer,
+        })),
+      },
     },
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
 
-  const gradeRes = await apiClient<ApiResponse<ExamGradeJob>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/exam/${examPaperId}/grade`,
-    params: { regrade: false },
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
+  const gradeRes = await apiClient<ApiResponse<ExamGradeResult>>(
+    {
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/exam/${examPaperId}/grade`,
+      params: { regrade: false },
+    },
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
 
-  let gradeJob = gradeRes.data;
-  if (gradeJob.status !== "completed") {
-    gradeJob = await waitGradeJobDone(subject, gradeJob.id);
+  const gradeResult = gradeRes.data;
+  if (gradeResult.status !== "completed") {
+    throw new Error(gradeResult.error_message ?? "判分失败");
   }
-  if (gradeJob.status !== "completed") {
-    throw new Error("判分任务未完成");
-  }
+
   return fetchExamDetail(subject, examPaperId);
 }
 
 async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
-  const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>({
-    method: "GET",
-    url: `/api/v1/subjects/${subject}/exam/history`,
-    params: { page: 1, size: 50 },
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
+  const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>(
+    {
+      method: "GET",
+      url: `/api/v1/subjects/${subject}/exam/history`,
+      params: { page: 1, size: 50 },
+    },
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
   return res.data.items;
 }
 
 async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
-  const res = await apiClient<ApiResponse<QuestionBankItem[]>>({
-    method: "GET",
-    url: `/api/v1/subjects/${subject}/exam/question-bank`,
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
+  const res = await apiClient<ApiResponse<QuestionBankItem[]>>(
+    {
+      method: "GET",
+      url: `/api/v1/subjects/${subject}/exam/question-bank`,
+    },
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
   return res.data;
 }
 
 async function deleteExamPaper(subject: string, examPaperId: number): Promise<DeleteExamResult> {
-  const res = await apiClient<ApiResponse<DeleteExamResult>>({
-    method: "DELETE",
-    url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
-  }, {
-    timeout: EXAM_REQUEST_TIMEOUT_MS,
-  });
+  const res = await apiClient<ApiResponse<DeleteExamResult>>(
+    {
+      method: "DELETE",
+      url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+    },
+    {
+      timeout: EXAM_REQUEST_TIMEOUT_MS,
+    },
+  );
   return res.data;
 }
 
@@ -341,14 +314,10 @@ export function ExamPage() {
 
   const generateMutation = useMutation({
     mutationFn: () =>
-      generateExamPaper(
-        subjectId,
-        { examMode, userPrompt },
-        (status) => {
-          setGenerateStatusText(toGenerateStatusLabel(status));
-          if (status === "completed") setGenerateProgress(100);
-        },
-      ),
+      generateExamPaper(subjectId, { examMode, userPrompt }, (status) => {
+        setGenerateStatusText(toGenerateStatusLabel(status));
+        if (status === "completed") setGenerateProgress(100);
+      }),
     onMutate: () => {
       setNotice("");
       setGenerateProgress(8);
@@ -524,7 +493,7 @@ export function ExamPage() {
                   </div>
                 ) : (
                   <textarea
-                    className="w-full resize-none rounded-lg border border-slate-200 p-3 text-sm focus:outline-none focus:border-slate-400"
+                    className="w-full resize-none rounded-lg border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none"
                     rows={4}
                     placeholder="请输入答案..."
                     value={answers[item.id] ?? ""}
@@ -538,11 +507,7 @@ export function ExamPage() {
         </div>
 
         {!isReadOnlyPaper && (
-          <Button
-            className="w-full"
-            disabled={submitMutation.isPending}
-            onClick={() => submitMutation.mutate()}
-          >
+          <Button className="w-full" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
             {submitMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -577,7 +542,9 @@ export function ExamPage() {
             <CardTitle>
               得分：{gradedPaper.score_obtained ?? 0} / {gradedPaper.total_score ?? gradedPaper.total_items}
             </CardTitle>
-            <CardDescription>试卷 #{gradedPaper.id} · {toModeLabel(gradedPaper.exam_mode)}</CardDescription>
+            <CardDescription>
+              试卷 #{gradedPaper.id} · {toModeLabel(gradedPaper.exam_mode)}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {gradedPaper.items.map((item) => (
@@ -589,15 +556,15 @@ export function ExamPage() {
                 )}
                 <div className="space-y-1 text-sm text-slate-700">
                   <div className="font-medium text-slate-900">
-                    第 {item.item_order} 题 · {toQuestionTypeLabel(item.question_type)}
+                    第{item.item_order} 题 · {toQuestionTypeLabel(item.question_type)}
                   </div>
-                  <div>你的答案：<MarkdownViewer content={item.user_answer ?? "（未作答）"} /></div>
+                  <div>
+                    你的答案：<MarkdownViewer content={item.user_answer ?? "（未作答）"} />
+                  </div>
                   <div className="text-xs text-slate-500">
                     解析：<MarkdownViewer content={item.explanation} />
                   </div>
-                  {item.error_cause_label && (
-                    <div className="text-xs text-orange-500">错因：{item.error_cause_label}</div>
-                  )}
+                  {item.error_cause_label && <div className="text-xs text-orange-500">错因：{item.error_cause_label}</div>}
                 </div>
               </div>
             ))}
@@ -615,10 +582,7 @@ export function ExamPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant={activeView === "papers" ? "default" : "outline"}
-          onClick={() => setActiveView("papers")}
-        >
+        <Button variant={activeView === "papers" ? "default" : "outline"} onClick={() => setActiveView("papers")}>
           试卷视图
         </Button>
         <Button
@@ -637,7 +601,7 @@ export function ExamPage() {
           <Card>
             <CardHeader>
               <CardTitle>生成新试卷</CardTitle>
-              <CardDescription>只需选择考试模式和你的偏好，系统会自动构题并组卷。</CardDescription>
+              <CardDescription>选择考试模式和偏好后，系统将自动构题并组卷。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <label className="block text-sm text-slate-700">
@@ -660,19 +624,15 @@ export function ExamPage() {
                 用户提示（可选）
                 <textarea
                   rows={3}
-                  className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-slate-400"
-                  placeholder="例如：这次多一点简答题，偏重函数与导数，整体难度中等。"
+                  className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                  placeholder="例如：多一点简答题，偏重函数与导数，整体难度中等。"
                   value={userPrompt}
                   disabled={generateMutation.isPending}
                   onChange={(e) => setUserPrompt(e.target.value)}
                 />
               </label>
 
-              <Button
-                className="w-full sm:w-auto"
-                disabled={generateMutation.isPending}
-                onClick={() => generateMutation.mutate()}
-              >
+              <Button className="w-full sm:w-auto" disabled={generateMutation.isPending} onClick={() => generateMutation.mutate()}>
                 {generateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -703,7 +663,7 @@ export function ExamPage() {
           <Card>
             <CardHeader>
               <CardTitle>已生成试卷</CardTitle>
-              <CardDescription>可以多次打开试卷继续答题或查看结果。</CardDescription>
+              <CardDescription>可多次打开继续答题，或查看判分结果。</CardDescription>
             </CardHeader>
             <CardContent>
               {historyLoading && (
@@ -713,9 +673,7 @@ export function ExamPage() {
                 </div>
               )}
 
-              {!historyLoading && history.length === 0 && (
-                <p className="py-8 text-center text-sm text-slate-400">暂无试卷记录</p>
-              )}
+              {!historyLoading && history.length === 0 && <p className="py-8 text-center text-sm text-slate-400">暂无试卷记录</p>}
 
               <div className="space-y-3">
                 {history.map((item) => (
@@ -795,7 +753,7 @@ export function ExamPage() {
         <Card>
           <CardHeader>
             <CardTitle>题库视图</CardTitle>
-            <CardDescription>这里展示已经在试卷中出现过的所有题目。</CardDescription>
+            <CardDescription>展示已经在试卷中出现过的题目。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-end">

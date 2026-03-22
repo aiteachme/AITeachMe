@@ -19,7 +19,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
 from app.core.database import managed_session
-from app.models import ExamGradeJob, ExamPaper, ExamPaperStatus, validate_status_transition
+from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
@@ -55,16 +55,9 @@ async def grade_answers_node(
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
-            job = session.get(ExamGradeJob, state["job_id"])
-            if job is None:
-                return {**state, "error": f"exam_grade_job_not_found: {state['job_id']}"}
             paper = session.get(ExamPaper, state["exam_paper_id"])
             if paper is None:
                 return {**state, "error": f"exam_paper_not_found: {state['exam_paper_id']}"}
-
-            job.status = "running"
-            job.updated_at = utcnow()
-            session.add(job)
 
             if paper.status == ExamPaperStatus.SUBMITTED.value:
                 validate_status_transition(ExamPaperStatus.SUBMITTED, ExamPaperStatus.GRADING)
@@ -152,9 +145,6 @@ async def finalize_grade_node(
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
-            job = session.get(ExamGradeJob, state["job_id"])
-            if job is None:
-                return {**state, "error": f"exam_grade_job_not_found: {state['job_id']}"}
             paper = session.get(ExamPaper, state["exam_paper_id"])
             if paper is None:
                 return {**state, "error": f"exam_paper_not_found: {state['exam_paper_id']}"}
@@ -170,21 +160,13 @@ async def finalize_grade_node(
             mastery_result = state.get("mastery_result")
             review_tasks = state.get("review_tasks", [])
 
-            job.status = "completed"
-            job.score = float(grade_result.score if grade_result is not None else 0.0)
-            job.states_updated = int(mastery_result.states_updated if mastery_result is not None else 0)
-            job.tasks_created = len(review_tasks)
-            job.error_message = None
-            job.updated_at = utcnow()
-            session.add(job)
             session.commit()
-            session.refresh(job)
 
             workflow_logger.info(
                 "exam_finalize_grade_complete",
-                score=job.score,
-                states_updated=job.states_updated,
-                tasks_created=job.tasks_created,
+                score=float(grade_result.score if grade_result is not None else 0.0),
+                states_updated=int(mastery_result.states_updated if mastery_result is not None else 0),
+                tasks_created=len(review_tasks),
             )
             return {**state, "error": None}
         except Exception as exc:  # noqa: BLE001
@@ -203,12 +185,11 @@ async def fail_grade_node(
         workflow_logger = _workflow_logger(state)
         try:
             error_message = str(state.get("error", "unknown_error"))
-            job = session.get(ExamGradeJob, state["job_id"])
-            if job is not None:
-                job.status = "failed"
-                job.error_message = error_message
-                job.updated_at = utcnow()
-                session.add(job)
+            paper = session.get(ExamPaper, state["exam_paper_id"])
+            if paper is not None and paper.status == ExamPaperStatus.GRADING.value:
+                paper.status = ExamPaperStatus.SUBMITTED.value
+                paper.updated_at = utcnow()
+                session.add(paper)
             session.commit()
 
             workflow_logger.error("exam_grade_failed", error=error_message)
