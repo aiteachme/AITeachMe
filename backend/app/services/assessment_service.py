@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Coroutine
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 
 import structlog
@@ -36,6 +36,7 @@ from app.workflows.examine.paper_assembler import assemble_paper
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow
 
 logger = structlog.get_logger()
+_STALE_GENERATE_JOB_TIMEOUT = timedelta(minutes=6)
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,75 @@ def _raise_conflict(detail: str, *, error_code: str = "CONFLICT") -> None:
         status_code=HTTPStatus.CONFLICT,
         error_code=error_code,
     )
+
+
+def _to_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _is_stale_generate_job(job: ExamGenerateJob) -> bool:
+    if job.status not in {"pending", "running"}:
+        return False
+    updated_at = job.updated_at or job.created_at
+    if updated_at is None:
+        return False
+    return (utcnow() - _to_utc(updated_at)) > _STALE_GENERATE_JOB_TIMEOUT
+
+
+def _mark_stale_generate_job_failed(
+    session: Session,
+    *,
+    job: ExamGenerateJob,
+    reason: str,
+) -> ExamGenerateJob:
+    if not _is_stale_generate_job(job):
+        return job
+    if job.status not in {"pending", "running"}:
+        return job
+
+    job.status = "failed"
+    job.error_message = (
+        "组卷任务超时未完成，通常是服务重启或上游模型调用超时导致。"
+        f"已自动终止（{reason}），请重新发起。"
+    )
+    job.updated_at = utcnow()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    logger.warning(
+        "exam_generate_job_marked_stale_failed",
+        job_id=job.id,
+        subject=job.subject,
+        user_id=job.user_id,
+        reason=reason,
+    )
+    return job
+
+
+def _find_active_generate_job(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    stale_reason: str,
+) -> ExamGenerateJob | None:
+    active_job = assessment_repo.find_active_generate_job(
+        session,
+        subject=subject,
+        user_id=user_id,
+    )
+    if active_job is None:
+        return None
+    refreshed = _mark_stale_generate_job_failed(
+        session,
+        job=active_job,
+        reason=stale_reason,
+    )
+    if refreshed.status in {"pending", "running"}:
+        return refreshed
+    return None
 
 
 def _normalize_answers_payload(
@@ -280,18 +350,36 @@ async def _run_exam_generate_job(
             session.add(job)
             session.commit()
 
-            build_job = await trigger_question_build(
+            required_template_count = max(1, int(resolved_num_questions))
+            build_job: QuestionBuildJob | None = None
+            template_count_before = assessment_repo.count_active_question_templates(
                 session,
                 subject=subject,
-                unit_ids=build_unit_ids,
-                questions_per_unit=questions_per_unit,
+                question_types=set(preferred_question_types) if preferred_question_types else None,
             )
+            if template_count_before < required_template_count:
+                build_job = await trigger_question_build(
+                    session,
+                    subject=subject,
+                    unit_ids=build_unit_ids,
+                    questions_per_unit=questions_per_unit,
+                )
+            else:
+                logger.info(
+                    "exam_generate_skip_question_build",
+                    job_id=job_id,
+                    subject=subject,
+                    user_id=user_id,
+                    template_count=template_count_before,
+                    required_template_count=required_template_count,
+                )
+
             template_count = assessment_repo.count_active_question_templates(
                 session,
                 subject=subject,
                 question_types=set(preferred_question_types) if preferred_question_types else None,
             )
-            if template_count <= 0 and build_job.status == "failed":
+            if template_count <= 0 and build_job is not None and build_job.status == "failed":
                 raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
             if template_count <= 0:
                 raise ValueError("自动构题后仍没有可用题模板。")
@@ -409,10 +497,11 @@ async def trigger_exam_generate(
     )
     preferred_question_types = _choose_preferred_question_types(mode, user_prompt)
 
-    active_job = assessment_repo.find_active_generate_job(
+    active_job = _find_active_generate_job(
         session,
         subject=subject,
         user_id=user_id,
+        stale_reason="pre_create_check",
     )
     if active_job is not None:
         _raise_conflict(
@@ -422,10 +511,11 @@ async def trigger_exam_generate(
 
     lock = await _acquire_exam_generate_lock(subject=subject, user_id=user_id)
     try:
-        active_job = assessment_repo.find_active_generate_job(
+        active_job = _find_active_generate_job(
             session,
             subject=subject,
             user_id=user_id,
+            stale_reason="within_lock_check",
         )
         if active_job is not None:
             _raise_conflict(
@@ -511,7 +601,11 @@ async def get_exam_generate_job_status(
             f"组卷任务 `{job_id}` 不存在。",
             error_code="EXAM_GENERATE_JOB_NOT_FOUND",
         )
-    return job
+    return _mark_stale_generate_job_failed(
+        session,
+        job=job,
+        reason="status_polling_check",
+    )
 
 
 async def submit_exam_answers(
