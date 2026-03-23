@@ -20,7 +20,7 @@ class FileAssetItem(BaseModel):
 class FileRecord(BaseModel):
     """Unified file record for list, preview, and upload responses."""
 
-    id: int = Field(description="File ID.")
+    uid: str = Field(description="Stable public file UID.")
     filename: str = Field(description="Filename.")
     filetype: str = Field(description="File extension.")
     status: TaskStatusValue = Field(description="Task status.")
@@ -57,27 +57,26 @@ class FilesUploadData(BaseModel):
     subject: str = Field(description="Subject slug.")
     filenames: list[str] = Field(description="Uploaded filenames.")
     uploaded_items: list[FileRecord] = Field(default_factory=list, description="Uploaded file records.")
-    accepted_parse_file_ids: list[int] = Field(default_factory=list, description="Auto-started parse file IDs.")
     started_parse_count: int = Field(default=0, description="Count of auto-started parse files.")
 
 
 class FileDeleteRequest(BaseModel):
     """Delete request."""
 
-    file_id: int | None = Field(default=None, description="Single file ID.")
-    file_ids: list[int] | None = Field(default=None, description="Multiple file IDs.")
+    file_uid: str | None = Field(default=None, description="Single public file UID.")
+    file_uids: list[str] | None = Field(default=None, description="Multiple public file UIDs.")
 
     @model_validator(mode="after")
     def validate_ids(self) -> "FileDeleteRequest":
-        if self.file_id is None and not self.file_ids:
-            raise ValueError("file_id or file_ids is required.")
+        if self.file_uid is None and not self.file_uids:
+            raise ValueError("file_uid or file_uids is required.")
         return self
 
 
 class FileDeleteData(BaseModel):
     """Delete result."""
 
-    deleted_file_ids: list[int] = Field(description="Deleted file IDs.")
+    deleted_file_uids: list[str] = Field(default_factory=list, description="Deleted public file UIDs.")
 
 
 FilesUploadData.model_rebuild()

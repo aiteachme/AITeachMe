@@ -7,6 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
@@ -17,9 +20,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
 import { Button } from "../components/ui/Button";
@@ -33,8 +33,8 @@ interface ApiResponse<T> {
   data: T;
 }
 
-interface DocGenBuildData {
-  accepted_file_ids: number[];
+interface KnowledgeBuildData {
+  accepted_file_uids: string[];
   prompt: string | null;
   ready_file_count: number;
   requested_at: string;
@@ -66,21 +66,19 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   return response.data;
 }
 
-async function deleteFile(subject: string, fileId: number): Promise<void> {
-  await apiClient<ApiResponse<{ deleted_file_ids: number[] }>>({
+async function deleteFile(subject: string, fileUid: string): Promise<void> {
+  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/delete`,
-    data: { file_id: fileId },
+    data: { file_uid: fileUid },
   });
 }
 
-async function triggerDocGenBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
-  const response = await apiClient<ApiResponse<DocGenBuildData>>({
+async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<KnowledgeBuildData> {
+  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: {
-      prompt,
-    },
+    data: { prompt },
   });
   return response.data;
 }
@@ -131,13 +129,13 @@ export function UploadPage() {
   const state = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
 
   const [docPrompt, setDocPrompt] = useState(state?.initialPrompt ?? "");
-  const [previewFileId, setPreviewFileId] = useState<number | null>(null);
+  const [previewFileUid, setPreviewFileUid] = useState<string | null>(null);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
 
   const { data: filesData, isLoading } = useQuery({
     queryKey: ["files", subjectId],
     queryFn: () => fetchFiles(subjectId),
-    enabled: !!subjectId,
+    enabled: Boolean(subjectId),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
       return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 2500 : false;
@@ -147,8 +145,8 @@ export function UploadPage() {
   const files = filesData?.items ?? [];
   const readyFiles = useMemo(() => files.filter((file) => file.markdown_ready), [files]);
   const previewFile = useMemo(
-    () => files.find((file) => file.id === previewFileId) ?? null,
-    [files, previewFileId],
+    () => files.find((file) => file.uid === previewFileUid) ?? null,
+    [files, previewFileUid],
   );
 
   const uploadMutation = useMutation({
@@ -157,14 +155,15 @@ export function UploadPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (fileId: number) => deleteFile(subjectId, fileId),
+    mutationFn: (fileUid: string) => deleteFile(subjectId, fileUid),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
   const buildMutation = useMutation({
-    mutationFn: () => triggerDocGenBuild(subjectId, docPrompt.trim() || undefined),
-    onSuccess: (data) =>
-      navigate(`/subject/${subjectId}/docs?requested_at=${encodeURIComponent(data.requested_at)}`),
+    mutationFn: () => triggerKnowledgeBuild(subjectId, docPrompt.trim() || undefined),
+    onSuccess: (data) => {
+      navigate(`/subject/${subjectId}/docs?requested_at=${encodeURIComponent(data.requested_at)}`);
+    },
   });
 
   const handleUpload = useCallback(
@@ -186,10 +185,10 @@ export function UploadPage() {
   }, [handleUpload, hasAutoUploaded, location.pathname, navigate, state, subjectId]);
 
   useEffect(() => {
-    if (previewFileId !== null && !files.some((file) => file.id === previewFileId)) {
-      setPreviewFileId(null);
+    if (previewFileUid !== null && !files.some((file) => file.uid === previewFileUid)) {
+      setPreviewFileUid(null);
     }
-  }, [files, previewFileId]);
+  }, [files, previewFileUid]);
 
   const handleFileInputChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -210,7 +209,7 @@ export function UploadPage() {
   );
 
   return (
-    <div className="flex-1 w-full flex flex-col items-center px-4 pt-10 md:pt-16 pb-16 relative overflow-x-hidden">
+    <div className="relative flex w-full flex-1 flex-col items-center overflow-x-hidden px-4 pb-16 pt-10 md:pt-16">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           className="absolute left-1/4 top-10 h-[400px] w-[400px] animate-pulse rounded-full bg-sky-400/10 blur-3xl"
@@ -231,13 +230,13 @@ export function UploadPage() {
         <div className="mb-10 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 shadow-sm backdrop-blur">
             <Sparkles className="h-3.5 w-3.5" />
-            上传资料 自动解析
+            上传资料，自动解析
           </div>
           <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
-            为专属学习构建语料
+            为你的学科生成知识文档与知识图谱
           </h1>
           <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">
-            支持拖拽或选择文件上传。资料一旦上传系统便会自动开始多模态解析并为你构建私有知识库。
+            上传完成后系统会自动解析文件。点击开始构建后，后端会同时构建知识文档和知识总结页使用的知识图谱。
           </p>
         </div>
 
@@ -250,7 +249,7 @@ export function UploadPage() {
             value={docPrompt}
             onChange={(event) => setDocPrompt(event.target.value)}
             disabled={buildMutation.isPending}
-            placeholder="可选：一句话描述你期望生成的知识文档大纲结构或侧重点..."
+            placeholder="可选：补充一句你希望这次知识构建更偏重什么，比如复习提纲、概念梳理或考试导向。"
             className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
@@ -266,7 +265,7 @@ export function UploadPage() {
                     const meta = getFileStatusMeta(file);
                     return (
                       <motion.div
-                        key={file.id}
+                        key={file.uid}
                         layout
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -283,7 +282,7 @@ export function UploadPage() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setPreviewFileId(file.id);
+                              setPreviewFileUid(file.uid);
                             }}
                             className="ml-1 p-0.5 opacity-60 transition-opacity hover:text-indigo-600 hover:opacity-100"
                             title="预览"
@@ -295,7 +294,7 @@ export function UploadPage() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            deleteMutation.mutate(file.id);
+                            deleteMutation.mutate(file.uid);
                           }}
                           className="ml-0.5 p-0.5 opacity-60 transition-opacity hover:text-red-500 hover:opacity-100"
                           title="删除"
@@ -347,7 +346,7 @@ export function UploadPage() {
                 {buildMutation.isError ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {getApiErrorMessage(buildMutation.error, "知识文档构建失败")}
+                    {getApiErrorMessage(buildMutation.error, "知识构建失败")}
                   </span>
                 ) : null}
               </div>
@@ -366,11 +365,11 @@ export function UploadPage() {
                 {buildMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    正在生成知识文档...
+                    正在提交构建...
                   </>
                 ) : (
                   <>
-                    开始生成知识文档
+                    开始构建
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </>
                 )}
@@ -381,18 +380,18 @@ export function UploadPage() {
 
         <div className="mt-6 flex flex-col items-center justify-center gap-2">
           {isLoading && files.length === 0 ? (
-             <div className="flex items-center gap-1.5 text-sm text-slate-400">
-               <Loader2 className="h-4 w-4 animate-spin" />
-               正在加载文件...
-             </div>
+            <div className="flex items-center gap-1.5 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在加载文件...
+            </div>
           ) : files.length === 0 ? (
-             <div className="flex items-center gap-1.5 text-sm text-slate-400">
-               暂无文件。请将文件拖拽至上方白框或使用添加文件按钮。
+            <div className="flex items-center gap-1.5 text-sm text-slate-400">
+              暂无文件。请拖拽文件到上方区域，或点击“添加文件”开始上传。
             </div>
           ) : (
             <div className="text-sm text-slate-400">
-              总计 <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span>，
-              已就绪 <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span>
+              共 <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span> 份文件，
+              已就绪 <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span> 份
             </div>
           )}
         </div>
@@ -400,8 +399,8 @@ export function UploadPage() {
 
       <Modal
         open={previewFile !== null}
-        onClose={() => setPreviewFileId(null)}
-        title={previewFile?.filename ?? "预览"}
+        onClose={() => setPreviewFileUid(null)}
+        title={previewFile?.filename ?? "文件预览"}
         className="max-w-4xl"
       >
         <div className="space-y-4">
@@ -411,7 +410,7 @@ export function UploadPage() {
                 格式：{formatFileType(previewFile)}
               </span>
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                状态：{previewFile.markdown_ready ? "Markdown 转换成功" : previewFile.status}
+                状态：{previewFile.markdown_ready ? "Markdown 已就绪" : previewFile.status}
               </span>
               {previewFile.parser_used ? (
                 <span className="rounded-full bg-slate-100 px-2.5 py-1">
@@ -430,7 +429,7 @@ export function UploadPage() {
             </article>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-              Markdown 尚未就绪，请稍后。
+              Markdown 尚未准备好，请稍后再看。
             </div>
           )}
         </div>

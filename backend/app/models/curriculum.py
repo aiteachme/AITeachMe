@@ -19,7 +19,7 @@ class CurriculumDeriveJob(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    graph_job_id: int = Field(foreign_key="graph_digest_job.id")
+    graph_job_id: int
     status: str = Field(default="pending")  # DigestJobStatus
     progress: int = Field(default=0)
     current_step: str | None = Field(default=None)

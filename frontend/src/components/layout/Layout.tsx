@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 
 /** Pages that manage their own header + layout (no shared TopBar / padding) */
-const FULL_BLEED_SUFFIXES = ["/doc", "/upload"];
+const FULL_BLEED_SUFFIXES = ["/docs", "/upload"];
 
 export function Layout() {
   const { pathname } = useLocation();

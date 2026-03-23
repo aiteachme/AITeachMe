@@ -3,7 +3,8 @@ import { http, HttpResponse } from "msw";
 import type { FileAssetItem, FileRecord, FilesData } from "../../types/files";
 
 type MockFile = {
-  id: number;
+  internal_id: number;
+  uid: string;
   filename: string;
   filetype: string;
   status: string;
@@ -24,7 +25,7 @@ type MockFile = {
 
 type PendingKnowledgeBuild = {
   requested_at: string;
-  source_file_ids: number[];
+  source_file_uids: string[];
   prompt: string | null;
   poll_count: number;
 };
@@ -32,15 +33,19 @@ type PendingKnowledgeBuild = {
 const now = () => new Date().toISOString();
 const SVG_ASSET_NAME = "figure-1.svg";
 
-let nextFileId = 4;
-const filePollTicks = new Map<number, number>();
+let nextInternalFileId = 4;
+const filePollTicks = new Map<string, number>();
 
-function buildAssetBaseUrl(subject: string, fileId: number): string {
-  return `/_assets/${subject}/assets/${fileId}`;
+function buildFileUid(seed: number): string {
+  return `file_mock_${seed.toString().padStart(4, "0")}`;
 }
 
-function buildFileAssets(subject: string, fileId: number): FileAssetItem[] {
-  const assetBaseUrl = buildAssetBaseUrl(subject, fileId);
+function buildAssetBaseUrl(subject: string, fileUid: string): string {
+  return `/_assets/${subject}/assets/${fileUid}`;
+}
+
+function buildFileAssets(subject: string, fileUid: string): FileAssetItem[] {
+  const assetBaseUrl = buildAssetBaseUrl(subject, fileUid);
   return [
     {
       name: SVG_ASSET_NAME,
@@ -54,21 +59,21 @@ function buildReadyMarkdown(filename: string): string {
   return [
     `# ${filename}`,
     "",
-    "This is a mock parse result used to verify the unified files response.",
+    "这是一个用于本地联调的模拟解析结果。",
     "",
-    "## Notes",
+    "## 说明",
     "",
-    "- Preview reads Markdown directly from `GET /files`.",
-    "- Images use relative paths and are resolved by `assetBaseUrl` in `MarkdownViewer`.",
+    "- 文档页直接读取统一文件接口中的 Markdown 内容。",
+    "- 图片通过 `assetBaseUrl` 和 `MarkdownViewer` 进行解析。",
     "",
     `![Preview image](${SVG_ASSET_NAME})`,
   ].join("\n");
 }
 
 function serializeFile(subject: string, file: MockFile): FileRecord {
-  const assetBaseUrl = buildAssetBaseUrl(subject, file.id);
+  const assetBaseUrl = buildAssetBaseUrl(subject, file.uid);
   return {
-    id: file.id,
+    uid: file.uid,
     filename: file.filename,
     filetype: file.filetype,
     status: file.status,
@@ -106,7 +111,8 @@ function buildFilesResponse(subject: string): FilesData {
 
 const mockFiles: MockFile[] = [
   {
-    id: 1,
+    internal_id: 1,
+    uid: buildFileUid(1),
     filename: "calculus-final.pdf",
     filetype: "pdf",
     status: "completed",
@@ -122,10 +128,11 @@ const mockFiles: MockFile[] = [
     latest_updated_at: "2026-03-22T10:00:00Z",
     created_at: "2026-03-22T09:58:00Z",
     markdown_content: buildReadyMarkdown("calculus-final.pdf"),
-    assets: buildFileAssets("mock-subject", 1),
+    assets: buildFileAssets("mock-subject", buildFileUid(1)),
   },
   {
-    id: 2,
+    internal_id: 2,
+    uid: buildFileUid(2),
     filename: "discrete-notes.docx",
     filetype: "docx",
     status: "processing",
@@ -144,7 +151,8 @@ const mockFiles: MockFile[] = [
     assets: [],
   },
   {
-    id: 3,
+    internal_id: 3,
+    uid: buildFileUid(3),
     filename: "algorithms-exercises.pdf",
     filetype: "pdf",
     status: "failed",
@@ -164,13 +172,13 @@ const mockFiles: MockFile[] = [
   },
 ];
 
-filePollTicks.set(2, 0);
+filePollTicks.set(buildFileUid(2), 0);
 
 let publishedDoc = {
   exists: false,
   markdown: "",
   updated_at: null as string | null,
-  source_file_ids: [] as number[],
+  source_file_uids: [] as string[],
   prompt: null as string | null,
 };
 
@@ -182,8 +190,8 @@ function advanceFileParsing(subject: string) {
       continue;
     }
 
-    const nextTick = (filePollTicks.get(file.id) ?? 0) + 1;
-    filePollTicks.set(file.id, nextTick);
+    const nextTick = (filePollTicks.get(file.uid) ?? 0) + 1;
+    filePollTicks.set(file.uid, nextTick);
 
     if (nextTick < 2) {
       file.status = "processing";
@@ -199,7 +207,7 @@ function advanceFileParsing(subject: string) {
     file.image_count = 1;
     file.parser_used = file.parser_used ?? "markitdown";
     file.markdown_content = buildReadyMarkdown(file.filename);
-    file.assets = buildFileAssets(subject, file.id);
+    file.assets = buildFileAssets(subject, file.uid);
     file.latest_updated_at = now();
   }
 }
@@ -217,7 +225,7 @@ function advanceKnowledgeBuild() {
   publishedDoc = {
     exists: true,
     updated_at: now(),
-    source_file_ids: [...pendingKnowledgeBuild.source_file_ids],
+    source_file_uids: [...pendingKnowledgeBuild.source_file_uids],
     prompt: pendingKnowledgeBuild.prompt,
     markdown: [
       "# 知识文档总览",
@@ -232,38 +240,38 @@ function advanceKnowledgeBuild() {
       "",
       "# 第一章 核心概念梳理",
       "",
-      "> 📌 本章概要：本章先整理核心概念与基本定义，帮助你快速建立统一的知识框架。",
+      "> 本章先整理核心概念与基本定义，帮助快速建立统一的知识框架。",
       "",
       "## 关键主题",
       "",
-      ...pendingKnowledgeBuild.source_file_ids.map((fileId) => `- 来自文件 ${fileId} 的重点内容`),
+      ...pendingKnowledgeBuild.source_file_uids.map((fileUid) => `- 来自文件 ${fileUid} 的重点内容`),
       "",
-      "📊 本章标签：#概念 #主线",
+      "标签：#概念 #主线",
       "",
       "---",
       "",
       "# 第二章 方法与例题",
       "",
-      "> 📌 本章概要：本章围绕常见方法、公式和典型题型展开，方便继续练习和迁移应用。",
+      "> 本章围绕常见方法、公式和典型题型展开，便于继续练习与迁移。",
       "",
       "## 方法提示",
       "",
-      pendingKnowledgeBuild.prompt ?? "未提供额外生成提示，本章按默认教学结构组织。",
+      pendingKnowledgeBuild.prompt ?? "未提供额外提示，本章按照默认教学结构组织。",
       "",
-      "📊 本章标签：#方法 #例题",
+      "标签：#方法 #例题",
       "",
       "---",
       "",
       "# 第三章 复习抓手",
       "",
-      "> 📌 本章概要：最后一章汇总复习顺序、常见误区和二次回看建议，便于考前快速过一遍。",
+      "> 最后一章总结复习顺序、易错点和二次回看建议，方便考前快速过一遍。",
       "",
       "## 复习建议",
       "",
-      "- 先回顾目录，再逐章定位薄弱点。",
-      "- 结合原始资料复核公式、定义和图示。",
+      "- 先回看目录，再逐章定位薄弱点。",
+      "- 对照原始资料复核定义、公式和图示。",
       "",
-      "📊 本章标签：#复习 #总结",
+      "标签：#复习 #总结",
     ].join("\n"),
   };
   pendingKnowledgeBuild = null;
@@ -297,11 +305,13 @@ export const fileHandlers = [
     const createdAt = now();
 
     const newItems = uploads.map((entry, index) => {
-      const filename = entry instanceof File ? entry.name : `mock-file-${nextFileId + index}.txt`;
+      const internalId = nextInternalFileId + index;
+      const uid = buildFileUid(internalId);
+      const filename = entry instanceof File ? entry.name : `mock-file-${internalId}.txt`;
       const filetype = filename.split(".").pop()?.toLowerCase() ?? "txt";
-      const fileId = nextFileId + index;
       const item: MockFile = {
-        id: fileId,
+        internal_id: internalId,
+        uid,
         filename,
         filetype,
         status: "processing",
@@ -319,12 +329,12 @@ export const fileHandlers = [
         markdown_content: "",
         assets: [],
       };
-      filePollTicks.set(fileId, 0);
+      filePollTicks.set(uid, 0);
       mockFiles.unshift(item);
       return item;
     });
 
-    nextFileId += uploads.length;
+    nextInternalFileId += uploads.length;
 
     return HttpResponse.json({
       code: 0,
@@ -332,36 +342,35 @@ export const fileHandlers = [
         subject,
         filenames: newItems.map((item) => item.filename),
         uploaded_items: newItems.map((item) => serializeFile(subject, item)),
-        accepted_parse_file_ids: newItems.map((item) => item.id),
         started_parse_count: newItems.length,
       },
     });
   }),
 
   http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
-    const body = (await request.json()) as { file_id?: number; file_ids?: number[] };
-    const candidateIds = body.file_ids?.length ? body.file_ids : body.file_id ? [body.file_id] : [];
-    const deletedIds: number[] = [];
+    const body = (await request.json()) as { file_uid?: string; file_uids?: string[] };
+    const candidateUids = body.file_uids?.length ? body.file_uids : body.file_uid ? [body.file_uid] : [];
+    const deletedUids: string[] = [];
 
-    for (const fileId of candidateIds) {
-      const index = mockFiles.findIndex((item) => item.id === fileId);
+    for (const fileUid of candidateUids) {
+      const index = mockFiles.findIndex((item) => item.uid === fileUid);
       if (index >= 0) {
         mockFiles.splice(index, 1);
-        filePollTicks.delete(fileId);
-        deletedIds.push(fileId);
+        filePollTicks.delete(fileUid);
+        deletedUids.push(fileUid);
       }
     }
 
     return HttpResponse.json({
       code: 0,
-      data: { deleted_file_ids: deletedIds },
+      data: { deleted_file_uids: deletedUids },
     });
   }),
 
-  http.get("/_assets/:subject/assets/:fileId/:assetName", ({ params }) => {
-    const fileId = Number(params.fileId);
+  http.get("/_assets/:subject/assets/:fileUid/:assetName", ({ params }) => {
+    const fileUid = String(params.fileUid);
     const assetName = String(params.assetName);
-    const file = mockFiles.find((item) => item.id === fileId);
+    const file = mockFiles.find((item) => item.uid === fileUid);
     const asset = file?.assets.find((item) => item.name === assetName);
 
     if (!file || !asset) {
@@ -383,14 +392,18 @@ export const fileHandlers = [
   }),
 
   http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {
-    const body = (await request.json()) as { prompt?: string | null };
-    const readyFileIds = mockFiles.filter((item) => item.markdown_ready).map((item) => item.id);
+    const body = (await request.json()) as { file_uids?: string[]; prompt?: string | null };
+    const requestedUids = body.file_uids?.length ? body.file_uids : null;
+    const readyFileUids = mockFiles.filter((item) => item.markdown_ready).map((item) => item.uid);
+    const acceptedFileUids = requestedUids
+      ? requestedUids.filter((uid) => readyFileUids.includes(uid))
+      : readyFileUids;
 
-    if (!readyFileIds.length) {
+    if (!acceptedFileUids.length) {
       return HttpResponse.json(
         {
           code: 422,
-          message: "No ready files are available for document generation",
+          message: "No ready files are available for knowledge build",
           error_code: "NO_READY_FILES_FOR_DOCGEN",
         },
         { status: 422 },
@@ -411,7 +424,7 @@ export const fileHandlers = [
     const requestedAt = now();
     pendingKnowledgeBuild = {
       requested_at: requestedAt,
-      source_file_ids: readyFileIds,
+      source_file_uids: acceptedFileUids,
       prompt: body.prompt?.trim() || null,
       poll_count: 0,
     };
@@ -419,9 +432,9 @@ export const fileHandlers = [
     return HttpResponse.json({
       code: 0,
       data: {
-        accepted_file_ids: readyFileIds,
+        accepted_file_uids: acceptedFileUids,
         prompt: pendingKnowledgeBuild.prompt,
-        ready_file_count: readyFileIds.length,
+        ready_file_count: readyFileUids.length,
         requested_at: requestedAt,
       },
     });
@@ -435,10 +448,9 @@ export const fileHandlers = [
         exists: publishedDoc.exists,
         markdown: publishedDoc.markdown,
         updated_at: publishedDoc.updated_at,
-        source_file_ids: publishedDoc.source_file_ids,
+        source_file_uids: publishedDoc.source_file_uids,
         prompt: publishedDoc.prompt,
       },
     });
   }),
 ];
-

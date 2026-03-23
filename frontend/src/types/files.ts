@@ -5,7 +5,7 @@ export interface FileAssetItem {
 }
 
 export interface FileRecord {
-  id: number;
+  uid: string;
   filename: string;
   filetype: string;
   status: string;
@@ -38,6 +38,5 @@ export interface FilesUploadData {
   subject: string;
   filenames: string[];
   uploaded_items: FileRecord[];
-  accepted_parse_file_ids: number[];
   started_parse_count: number;
 }

@@ -1,18 +1,26 @@
-"""服务层通用辅助函数。"""
+"""Shared presenter-layer helpers."""
 
 from __future__ import annotations
 
 
 def require_id(value: int | None, field_name: str) -> int:
-    """确保数据库主键已经存在。"""
+    """Ensure a persisted integer primary key exists."""
 
     if value is None:
-        raise ValueError(f"{field_name} 持久化后不应为空。")
+        raise ValueError(f"{field_name} must not be empty after persistence.")
+    return value
+
+
+def require_uid(value: str | None, field_name: str) -> str:
+    """Ensure a persisted public UID exists."""
+
+    if value is None or not value.strip():
+        raise ValueError(f"{field_name} must not be empty after persistence.")
     return value
 
 
 def mastery_to_text(mastery: float | None) -> str:
-    """把掌握度转换为展示文本。"""
+    """Convert mastery ratio to display text."""
 
     if mastery is None:
         return "暂无数据"

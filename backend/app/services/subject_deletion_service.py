@@ -18,7 +18,6 @@ from app.models import (
     EvidenceLink,
     Exam,
     ExamSubmission,
-    GraphDigestJob,
     KnowledgeAlias,
     KnowledgeEdge,
     KnowledgeNode,
@@ -28,7 +27,6 @@ from app.models import (
     Question,
     RawFile,
     Subject,
-    SubjectBuildLock,
     TaxonomyAnchor,
     TeachingUnit,
     TeachingUnitMembership,
@@ -56,13 +54,11 @@ _KNOWLEDGE_KEYS = [
     "curriculum_snapshot",
     "edge_revision",
     "evidence_link",
-    "graph_digest_job",
     "knowledge_alias",
     "knowledge_edge",
     "knowledge_node",
     "knowledge_revision",
     "prereq_dag_version",
-    "subject_build_lock",
     "taxonomy_anchor",
     "teaching_unit",
     "teaching_unit_membership",
@@ -151,16 +147,10 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             session, CurriculumSnapshot, CurriculumSnapshot.subject == subject
         ),
         "evidence_link": _count_rows(session, EvidenceLink, EvidenceLink.subject == subject),
-        "graph_digest_job": _count_rows(
-            session, GraphDigestJob, GraphDigestJob.subject == subject
-        ),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
         "prereq_dag_version": _count_rows(
             session, PrereqDagVersion, PrereqDagVersion.subject == subject
-        ),
-        "subject_build_lock": _count_rows(
-            session, SubjectBuildLock, SubjectBuildLock.subject == subject
         ),
         "taxonomy_anchor": _count_rows(
             session, TaxonomyAnchor, TaxonomyAnchor.subject == subject

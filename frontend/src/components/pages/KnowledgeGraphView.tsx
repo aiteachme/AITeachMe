@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
-  AlertCircle,
   Network,
   ChevronRight,
   X,
@@ -15,18 +14,17 @@ import {
 } from "lucide-react";
 import {
   graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
-  graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost,
 } from "../../api/generated/knowledge";
-import type { KnowledgeNodeResponse } from "../../api/generated/model";
-import { getApiErrorMessage } from "../../api/client";
+import type {
+  KnowledgeOverviewGraph as FullGraphResponse,
+  KnowledgeOverviewNode as KnowledgeNodeResponse,
+} from "../../api/knowledgeOverview";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
-
-/* ---------- 节点类型配色 ---------- */
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   Topic: { label: "主题", color: "bg-blue-50 text-blue-600" },
@@ -45,8 +43,6 @@ const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
 };
 
-/* ---------- 节点详情面板 ---------- */
-
 function NodeDetailPanel({
   subject,
   nodeId,
@@ -58,7 +54,7 @@ function NodeDetailPanel({
   nodeId: number;
   onClose: () => void;
   onNavigate: (id: number) => void;
-  onEvidenceClick: (evidenceId: number) => void;
+  onEvidenceClick: (chunkId: number, quoteText: string) => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["graph-node-detail", subject, nodeId],
@@ -85,36 +81,28 @@ function NodeDetailPanel({
     label: data.node_type,
     color: "bg-slate-100 text-slate-600",
   };
+
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
 
   return (
     <div className="space-y-4">
-      {/* 头部 */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-lg font-semibold text-slate-800">
               <MarkdownViewer content={data.canonical_name} />
             </h3>
-            <span className={`text-xs px-1.5 py-0.5 rounded ${typeStyle.color}`}>
-              {typeStyle.label}
-            </span>
+            <span className={`text-xs px-1.5 py-0.5 rounded ${typeStyle.color}`}>{typeStyle.label}</span>
           </div>
-          <p className="text-xs text-slate-400">
-            置信度 {Math.round(data.confidence * 100)}%
-          </p>
+          <p className="text-xs text-slate-400">置信度 {Math.round(data.confidence * 100)}%</p>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-        >
+        <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      {/* 修订内容 */}
       {data.current_revision && (
         <div className="space-y-2">
           {data.current_revision.summary && (
@@ -130,30 +118,26 @@ function NodeDetailPanel({
         </div>
       )}
 
-      {/* 别名 */}
       {aliases.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
             <Tag className="w-3 h-3" />别名
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
+            {aliases.map((alias: { id: number; is_primary: boolean; alias: string }) => (
               <span
-                key={a.id}
+                key={alias.id}
                 className={`text-xs px-2 py-0.5 rounded-full ${
-                  a.is_primary
-                    ? "bg-slate-800 text-white"
-                    : "bg-slate-100 text-slate-600"
+                  alias.is_primary ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {a.alias}
+                {alias.alias}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* 关联边 */}
       {incidentEdges.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
@@ -166,12 +150,8 @@ function NodeDetailPanel({
                 onClick={() => onNavigate(edge.other_node_id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-slate-50 transition-colors"
               >
-                <span className="text-slate-400">
-                  {edge.direction === "outgoing" ? "→" : "←"}
-                </span>
-                <span className="text-slate-700 truncate flex-1">
-                  {edge.other_node_name}
-                </span>
+                <span className="text-slate-400">{edge.direction === "outgoing" ? "→" : "←"}</span>
+                <span className="text-slate-700 truncate flex-1">{edge.other_node_name}</span>
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="w-3 h-3 text-slate-300" />
               </button>
@@ -180,17 +160,16 @@ function NodeDetailPanel({
         </div>
       )}
 
-      {/* 证据 */}
       {evidenceList.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
             <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {evidenceList.map((ev: { id: number; quote_text: string; evidence_role: string; confidence: number }) => (
+            {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button
                 key={ev.id}
-                onClick={() => onEvidenceClick(ev.id)}
+                onClick={() => onEvidenceClick(ev.chunk_id, ev.quote_text)}
                 className="w-full text-left text-xs text-slate-600 bg-slate-50 rounded p-2 border-l-2 border-slate-300 hover:border-amber-400 hover:bg-amber-50/50 transition-colors cursor-pointer group"
               >
                 <p className="line-clamp-3">{ev.quote_text}</p>
@@ -209,8 +188,6 @@ function NodeDetailPanel({
   );
 }
 
-/* ---------- 节点类型过滤 ---------- */
-
 const NODE_TYPES = [
   { value: undefined, label: "全部" },
   { value: "Topic", label: "主题" },
@@ -220,54 +197,47 @@ const NODE_TYPES = [
   { value: "Example", label: "示例" },
 ];
 
-/* ---------- 主组件 ---------- */
-
 type ViewMode = "list" | "graph";
 
-export function KnowledgeGraphView({ subject }: { subject: string }) {
+export function KnowledgeGraphView({
+  subject,
+  overviewGraph,
+}: {
+  subject: string;
+  overviewGraph: FullGraphResponse | null;
+}) {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [evidenceModalId, setEvidenceModalId] = useState<number | null>(null);
+  const [evidenceModalState, setEvidenceModalState] = useState<{ chunkId: number; quoteText: string } | null>(null);
   const pageSize = 30;
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["graph-nodes", subject, nodeType, page],
-    queryFn: async () =>
-      unwrapOrvalResponse(
-        await graphNodesQueryApiV1SubjectsSubjectKnowledgeGraphNodesQueryPost(subject, {
-          node_type: nodeType,
-          page,
-          size: pageSize,
-        }),
-      ) ?? null,
-    enabled: !!subject,
-    retry: false,
-  });
+  const localListData = useMemo(() => {
+    if (!overviewGraph) return null;
 
-  if (isLoading && !data) {
-    return (
-      <div className="flex items-center justify-center py-16 text-slate-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />加载知识节点...
-      </div>
-    );
-  }
+    const allNodes = overviewGraph?.nodes ?? [];
+    const filtered = nodeType
+      ? allNodes.filter((node) => node.node_type.toLowerCase() === nodeType.toLowerCase())
+      : allNodes;
 
-  if (isError) {
-    const msg = getApiErrorMessage(error, "加载知识图谱失败");
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-        <AlertCircle className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">{msg}</p>
-        <p className="text-xs mt-1">请稍后重试，或先确认学科与构建状态</p>
-      </div>
-    );
-  }
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, pages);
+    const start = (safePage - 1) * pageSize;
 
-  const nodes = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / pageSize);
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total,
+      pages,
+      page: safePage,
+    };
+  }, [overviewGraph, nodeType, page]);
+
+  const nodes = localListData?.items ?? [];
+  const total = localListData?.total ?? 0;
+  const totalPages = localListData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
+  const displayPage = localListData?.page ?? page;
 
   if (total === 0 && !nodeType) {
     return (
@@ -306,28 +276,28 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
 
   return (
     <div className="space-y-4">
-      {/* 力导向图模式 */}
       {viewMode === "graph" && (
         <ForceGraphView
           subject={subject}
           toolbar={viewToggle}
-          onEvidenceClick={(id) => setEvidenceModalId(id)}
+          onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
+          fullGraphData={overviewGraph}
         />
       )}
 
-      {/* 列表模式（原有） */}
       {viewMode === "list" && (
         <div className="flex gap-4">
-          {/* 左侧：节点列表 */}
           <div className={`${selectedNodeId ? "w-1/2" : "w-full"} space-y-4 transition-all`}>
-            {/* 视图切换 + 类型过滤 */}
             <div className="flex items-center gap-3 flex-wrap">
               {viewToggle}
               <div className="flex flex-wrap gap-1.5 items-center">
                 {NODE_TYPES.map((t) => (
                   <button
                     key={t.label}
-                    onClick={() => { setNodeType(t.value); setPage(1); }}
+                    onClick={() => {
+                      setNodeType(t.value);
+                      setPage(1);
+                    }}
                     className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
                       nodeType === t.value
                         ? "bg-slate-800 text-white"
@@ -337,13 +307,10 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
                     {t.label}
                   </button>
                 ))}
-                <span className="text-xs text-slate-400 ml-2">
-                  共 {total} 个节点
-                </span>
+                <span className="text-xs text-slate-400 ml-2">共 {total} 个节点</span>
               </div>
             </div>
 
-            {/* 节点网格 */}
             <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
               {nodes.map((node: KnowledgeNodeResponse) => {
                 const typeStyle = NODE_TYPE_STYLE[node.node_type] ?? {
@@ -369,41 +336,27 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
                         {typeStyle.label}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-1">
-                      置信度 {Math.round(node.confidence * 100)}%
-                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">置信度 {Math.round(node.confidence * 100)}%</div>
                   </button>
                 );
               })}
             </div>
 
-            {/* 分页 */}
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
+                <Button variant="outline" size="sm" disabled={displayPage <= 1} onClick={() => setPage((p) => p - 1)}>
                   上一页
                 </Button>
                 <span className="text-xs text-slate-500">
-                  {page} / {totalPages}
+                  {displayPage} / {totalPages}
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
+                <Button variant="outline" size="sm" disabled={displayPage >= totalPages} onClick={() => setPage((p) => p + 1)}>
                   下一页
                 </Button>
               </div>
             )}
           </div>
 
-          {/* 右侧：节点详情 */}
           {selectedNodeId && (
             <div className="w-1/2">
               <Card>
@@ -413,7 +366,7 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
                     nodeId={selectedNodeId}
                     onClose={() => setSelectedNodeId(null)}
                     onNavigate={(id) => setSelectedNodeId(id)}
-                    onEvidenceClick={(id) => setEvidenceModalId(id)}
+                    onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
                   />
                 </CardContent>
               </Card>
@@ -422,12 +375,12 @@ export function KnowledgeGraphView({ subject }: { subject: string }) {
         </div>
       )}
 
-      {/* 证据原文弹窗 */}
       <EvidenceContextModal
-        open={!!evidenceModalId}
-        onClose={() => setEvidenceModalId(null)}
+        open={!!evidenceModalState}
+        onClose={() => setEvidenceModalState(null)}
         subject={subject}
-        evidenceId={evidenceModalId}
+        chunkId={evidenceModalState?.chunkId ?? null}
+        quoteText={evidenceModalState?.quoteText}
       />
     </div>
   );

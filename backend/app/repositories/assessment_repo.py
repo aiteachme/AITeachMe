@@ -9,8 +9,6 @@ from sqlmodel import Session, func, select
 
 from app.models import (
     CurriculumSnapshot,
-    ExamGenerateJob,
-    ExamGradeJob,
     ExamPaper,
     ExamPaperGenerationContext,
     ExamPaperItem,
@@ -299,18 +297,6 @@ def delete_exam_paper_cascade(
         ).all()
     )
     for item in generation_contexts:
-        session.delete(item)
-
-    grade_jobs = list(
-        session.exec(select(ExamGradeJob).where(ExamGradeJob.exam_paper_id == paper_id)).all()
-    )
-    for item in grade_jobs:
-        session.delete(item)
-
-    generate_jobs = list(
-        session.exec(select(ExamGenerateJob).where(ExamGenerateJob.exam_paper_id == paper_id)).all()
-    )
-    for item in generate_jobs:
         session.delete(item)
 
     review_tasks = list(
@@ -631,22 +617,16 @@ def create_question_build_job(session: Session, job: QuestionBuildJob) -> Questi
     return job
 
 
-def create_exam_generate_job(session: Session, job: ExamGenerateJob) -> ExamGenerateJob:
-    """创建组卷任务。"""
-
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+def create_exam_generate_job(session: Session, job: object) -> None:
+    """Compatibility shim after exam_generate_job table removal."""
+    del session, job
+    return None
 
 
-def create_exam_grade_job(session: Session, job: ExamGradeJob) -> ExamGradeJob:
-    """创建判卷任务。"""
-
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+def create_exam_grade_job(session: Session, job: object) -> None:
+    """Compatibility shim after exam_grade_job table removal."""
+    del session, job
+    return None
 
 
 def get_question_build_job(session: Session, job_id: int) -> QuestionBuildJob | None:
@@ -655,10 +635,10 @@ def get_question_build_job(session: Session, job_id: int) -> QuestionBuildJob | 
     return session.get(QuestionBuildJob, job_id)
 
 
-def get_exam_generate_job(session: Session, job_id: int) -> ExamGenerateJob | None:
-    """查询组卷任务。"""
-
-    return session.get(ExamGenerateJob, job_id)
+def get_exam_generate_job(session: Session, job_id: int) -> None:
+    """Compatibility shim after exam_generate_job table removal."""
+    del session, job_id
+    return None
 
 
 def find_active_generate_job(
@@ -666,56 +646,34 @@ def find_active_generate_job(
     *,
     subject: str,
     user_id: str,
-) -> ExamGenerateJob | None:
-    """查询用户当前是否存在进行中的组卷任务。"""
-
-    stmt = (
-        select(ExamGenerateJob)
-        .where(
-            ExamGenerateJob.subject == subject,
-            ExamGenerateJob.user_id == user_id,
-            ExamGenerateJob.status.in_(["pending", "running"]),  # type: ignore[union-attr]
-        )
-        .order_by(ExamGenerateJob.created_at.desc(), ExamGenerateJob.id.desc())  # type: ignore[union-attr]
-    )
-    return session.exec(stmt).first()
+) -> None:
+    """Compatibility shim after exam_generate_job table removal."""
+    del session, subject, user_id
+    return None
 
 
-def get_exam_grade_job(session: Session, job_id: int) -> ExamGradeJob | None:
-    """查询判卷任务。"""
-
-    return session.get(ExamGradeJob, job_id)
+def get_exam_grade_job(session: Session, job_id: int) -> None:
+    """Compatibility shim after exam_grade_job table removal."""
+    del session, job_id
+    return None
 
 
 def find_active_grade_job(
     session: Session,
     exam_paper_id: int,
-) -> ExamGradeJob | None:
-    """查询试卷上的活跃判卷任务（pending/running）。"""
-
-    stmt = (
-        select(ExamGradeJob)
-        .where(
-            ExamGradeJob.exam_paper_id == exam_paper_id,
-            ExamGradeJob.status.in_(["pending", "running"]),  # type: ignore[union-attr]
-        )
-        .order_by(ExamGradeJob.created_at.desc())  # type: ignore[union-attr]
-    )
-    return session.exec(stmt).first()
+) -> None:
+    """Compatibility shim after exam_grade_job table removal."""
+    del session, exam_paper_id
+    return None
 
 
 def find_latest_grade_job_by_paper(
     session: Session,
     exam_paper_id: int,
-) -> ExamGradeJob | None:
-    """查询试卷最近一次判卷任务（任意状态）。"""
-
-    stmt = (
-        select(ExamGradeJob)
-        .where(ExamGradeJob.exam_paper_id == exam_paper_id)
-        .order_by(ExamGradeJob.created_at.desc(), ExamGradeJob.id.desc())  # type: ignore[union-attr]
-    )
-    return session.exec(stmt).first()
+) -> None:
+    """Compatibility shim after exam_grade_job table removal."""
+    del session, exam_paper_id
+    return None
 
 
 # ---------------------------------------------------------------------------

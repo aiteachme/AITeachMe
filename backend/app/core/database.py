@@ -147,6 +147,7 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
     },
     "raw_file": {
         "id",
+        "uid",
         "subject",
         "filename",
         "filetype",
@@ -177,19 +178,6 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
-    "graph_digest_job": {
-        "id",
-        "subject",
-        "idempotency_key",
-        "status",
-        "progress",
-        "current_step",
-        "input_file_ids_json",
-        "input_chunk_count",
-        "error_message",
-        "created_at",
-        "updated_at",
-    },
     "curriculum_derive_job": {
         "id",
         "subject",
@@ -213,8 +201,6 @@ _ASSESSMENT_TABLES: set[str] = {
     "review_task",
     "exam_paper_generation_context",
     "question_build_job",
-    "exam_generate_job",
-    "exam_grade_job",
 }
 
 _ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS: tuple[str, ...] = (
@@ -223,11 +209,14 @@ _ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS: tuple[str, ...] = (
         "ON review_task (user_id, subject, target_id, target_granularity) "
         "WHERE status = 'pending'"
     ),
-    (
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_grade_job_active "
-        "ON exam_grade_job (exam_paper_id) "
-        "WHERE status IN ('pending', 'running')"
-    ),
+)
+
+_LEGACY_DROP_DDLS: tuple[str, ...] = (
+    "DROP TABLE IF EXISTS graph_digest_job",
+    "DROP TABLE IF EXISTS subject_build_lock",
+    "DROP TABLE IF EXISTS exam_generate_job",
+    "DROP TABLE IF EXISTS exam_grade_job",
+    "DROP INDEX IF EXISTS uq_grade_job_active",
 )
 
 
@@ -338,6 +327,16 @@ def _table_exists(conn, table_name: str) -> bool:
     return row is not None
 
 
+def _drop_legacy_tables(engine) -> None:
+    """Drop legacy job tables/indexes that were removed from the runtime schema."""
+
+    with engine.begin() as conn:
+        conn.execute(sa.text("PRAGMA foreign_keys=OFF"))
+        for ddl in _LEGACY_DROP_DDLS:
+            conn.execute(sa.text(ddl))
+        conn.execute(sa.text("PRAGMA foreign_keys=ON"))
+
+
 def _validate_runtime_schema(engine) -> None:
     """开发阶段直接校验 schema，不再兼容旧库自动迁移。"""
 
@@ -410,12 +409,13 @@ def _ensure_assessment_schema_integrity(engine) -> None:
         logger.info(
             "assessment_schema_ready",
             table_count=len(_ASSESSMENT_TABLES),
-            ensured_indexes=["uq_review_task_pending", "uq_grade_job_active"],
+            ensured_indexes=["uq_review_task_pending"],
         )
 
 
 def _init_db_once(engine, settings) -> None:
     SQLModel.metadata.create_all(engine)
+    _drop_legacy_tables(engine)
     _validate_runtime_schema(engine)
     _ensure_assessment_schema_integrity(engine)
 

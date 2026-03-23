@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -14,6 +14,8 @@ from app.services.upload_support import (
     build_knowledge_docs_build_dir,
     build_knowledge_manifest_path,
 )
+
+STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
 
 
 class KnowledgeDocsManifest(BaseModel):
@@ -34,11 +36,31 @@ class KnowledgeBuildLock(BaseModel):
     prompt: str | None = None
 
 
+def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
+    if not path.exists():
+        return None
+    try:
+        return KnowledgeBuildLock.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def read_knowledge_build_lock(subject: str) -> KnowledgeBuildLock | None:
+    """Read the subject-level build lock, if present."""
+
+    return _read_build_lock_path(build_knowledge_build_lock_path(subject))
+
+
 def acquire_knowledge_build_lock(subject: str, lock: KnowledgeBuildLock) -> bool:
     """Create a subject-level build lock atomically."""
 
     path = build_knowledge_build_lock_path(subject)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = _read_build_lock_path(path)
+    if existing is not None and datetime.now(existing.requested_at.tzinfo) - existing.requested_at > STALE_BUILD_LOCK_TTL:
+        path.unlink(missing_ok=True)
+
     try:
         with path.open("x", encoding="utf-8") as handle:
             handle.write(lock.model_dump_json(indent=2))

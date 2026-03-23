@@ -1,8 +1,6 @@
 """模型统一导出。"""
 
 from app.models.assessment import (
-    ExamGenerateJob,
-    ExamGradeJob,
     ExamPaper,
     ExamPaperGenerationContext,
     ExamPaperItem,
@@ -58,12 +56,10 @@ from app.models.knowledge_doc import (
 from app.models.knowledge_graph import (
     EdgeRevision,
     EvidenceLink,
-    GraphDigestJob,
     KnowledgeAlias,
     KnowledgeEdge,
     KnowledgeNode,
     KnowledgeRevision,
-    SubjectBuildLock,
 )
 from app.models.profile import UserProfile
 from app.models.raw_file import RawFile
@@ -85,15 +81,12 @@ __all__ = [
     "EvidenceLink",
     "ErrorCauseLabel",
     "Exam",
-    "ExamGenerateJob",
-    "ExamGradeJob",
     "ExamMode",
     "ExamPaper",
     "ExamPaperGenerationContext",
     "ExamPaperItem",
     "ExamPaperStatus",
     "ExamSubmission",
-    "GraphDigestJob",
     "IngestStatus",
     "KnowledgeAlias",
     "KnowledgeDoc",
@@ -115,7 +108,6 @@ __all__ = [
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Subject",
-    "SubjectBuildLock",
     "TaskStatus",
     "TaxonomyAnchor",
     "TeachingUnit",

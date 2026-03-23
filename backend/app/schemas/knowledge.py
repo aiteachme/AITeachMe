@@ -1,4 +1,4 @@
-"""知识图谱增量构建 API Schema（Phase 1）。"""
+"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -9,102 +9,81 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.common import PageParams
 
 
-# ── 请求 ──
-
-
-class DigestBuildRequest(BaseModel):
-    """触发增量构建请求。"""
-
-    model_config = ConfigDict(
-        json_schema_extra={"example": {"file_ids": [1, 2], "idempotency_key": "abc123"}}
-    )
-
-    file_ids: list[int] = Field(min_length=1, description="参与构建的已解析文件 ID。")
-    idempotency_key: str | None = Field(
-        default=None, description="幂等键，为空时由服务端生成。",
-    )
-
-
-class DigestStatusRequest(BaseModel):
-    """查询增量构建状态请求。"""
-
-    job_id: int = Field(description="GraphDigestJob ID。")
-
-
 class DocGenBuildRequest(BaseModel):
-    """触发知识文档生成请求。"""
+    """Trigger knowledge-doc generation."""
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"file_ids": [1, 2], "prompt": "请整理成适合复习的知识文档"}}
+        json_schema_extra={"example": {"file_uids": ["file_xxx", "file_yyy"], "prompt": "Generate review-oriented notes"}}
     )
 
-    file_ids: list[int] | None = Field(default=None, description="参与生成的已解析文件 ID；为空时自动选择当前 subject 下全部可用文件。")
-    prompt: str | None = Field(default=None, description="用户提供的知识文档用途说明与生成要求。")
+    file_uids: list[str] | None = Field(
+        default=None,
+        description="Optional parsed raw file UIDs; omitted means auto-pick all available files for the subject.",
+    )
+    prompt: str | None = Field(default=None, description="Optional user instruction for doc generation.")
 
 
 class GraphNodesQueryRequest(PageParams):
-    """分页查询知识节点请求。"""
+    """Paginated graph node query."""
 
-    node_type: str | None = Field(default=None, description="按节点类型过滤。")
+    node_type: str | None = Field(default=None, description="Optional node type filter.")
 
 
 class GraphNodeDetailRequest(BaseModel):
-    """知识节点详情请求。"""
+    """Node detail query."""
 
-    node_id: int = Field(description="知识节点 ID。")
-
-
-# ── 响应 ──
+    node_id: int = Field(description="Knowledge node ID.")
 
 
-class DigestBuildData(BaseModel):
-    """触发增量构建返回数据。"""
+class KnowledgeOverviewRequest(BaseModel):
+    """Aggregated knowledge overview query."""
 
-    job_id: int = Field(description="GraphDigestJob ID。")
-    is_existing: bool = Field(default=False, description="是否命中幂等键返回已有 job。")
-
-
-class GraphDigestJobResponse(BaseModel):
-    """GraphDigestJob 状态。"""
-
-    id: int
-    subject: str
-    status: str
-    progress: int
-    current_step: str | None = None
-    input_chunk_count: int = 0
-    nodes_added: int = 0
-    nodes_updated: int = 0
-    nodes_merged: int = 0
-    edges_added: int = 0
-    edges_updated: int = 0
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    include: list[str] | None = Field(
+        default=None,
+        description="Optional sections to include. Omit for default full payload.",
+    )
+    full: bool = Field(
+        default=True,
+        description="Whether to return full payload. Current implementation favors full payload.",
+    )
 
 
-class CurriculumJobResponse(BaseModel):
-    """CurriculumDeriveJob 状态。"""
+class ChunkContextRequest(BaseModel):
+    """Chat chunk context query."""
 
-    id: int
-    subject: str
-    graph_job_id: int
-    status: str
-    progress: int
-    current_step: str | None = None
-    units_added: int = 0
-    units_updated: int = 0
-    theme_tree_version_id: int | None = None
-    prereq_dag_version_id: int | None = None
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    chunk_id: int = Field(description="Document chunk ID.")
+
+
+class UnitsQueryRequest(PageParams):
+    """Paginated teaching-unit query."""
+
+    status: str | None = Field(default=None, description="Optional status filter; defaults to active.")
+
+
+class UnitDetailRequest(BaseModel):
+    """Teaching-unit detail query."""
+
+    unit_id: int = Field(description="Teaching unit ID.")
+
+
+class AnchorManageRequest(BaseModel):
+    """Taxonomy anchor management request."""
+
+    action: str = Field(description="list / create / update / delete")
+    anchor_id: int | None = Field(default=None, description="Anchor ID for update/delete.")
+    title: str | None = Field(default=None, description="Anchor title for create/update.")
+    anchor_type: str | None = Field(
+        default=None,
+        description="teacher_defined / syllabus / textbook_toc / graph_discovered",
+    )
+    parent_anchor_id: int | None = Field(default=None, description="Parent anchor ID.")
+    order_index: int | None = Field(default=None, description="Order index.")
 
 
 class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 
-    accepted_file_ids: list[int] = Field(default_factory=list, description="Accepted ready raw file IDs.")
+    accepted_file_uids: list[str] = Field(default_factory=list, description="Accepted ready raw file UIDs.")
     prompt: str | None = Field(default=None, description="User prompt for the docs build.")
     ready_file_count: int = Field(default=0, description="Current ready file count for this subject.")
     requested_at: datetime = Field(description="Build request timestamp.")
@@ -116,20 +95,12 @@ class DocGenGetResponse(BaseModel):
     exists: bool = Field(description="Whether a merged knowledge document exists.")
     markdown: str = Field(default="", description="Merged markdown content.")
     updated_at: datetime | None = Field(default=None, description="Last updated time of the merged markdown.")
-    source_file_ids: list[int] = Field(default_factory=list, description="Source raw file IDs used by the published docs.")
+    source_file_uids: list[str] = Field(default_factory=list, description="Source raw file UIDs used by the published docs.")
     prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
 
 
-class DigestStatusResponse(BaseModel):
-    """增量构建聚合状态：graph_job + curriculum_job + 当前快照。"""
-
-    graph_job: GraphDigestJobResponse
-    curriculum_job: CurriculumJobResponse | None = None
-    current_curriculum_snapshot_id: int | None = None
-
-
 class KnowledgeNodeResponse(BaseModel):
-    """知识节点列表项。"""
+    """Knowledge node list item."""
 
     id: int
     subject: str
@@ -142,7 +113,7 @@ class KnowledgeNodeResponse(BaseModel):
 
 
 class EvidenceSummary(BaseModel):
-    """证据摘要（用于节点详情）。"""
+    """Evidence summary used in node detail."""
 
     id: int
     document_id: int
@@ -151,33 +122,6 @@ class EvidenceSummary(BaseModel):
     evidence_role: str
     field_scope: str
     confidence: float
-
-
-class EvidenceContextRequest(BaseModel):
-    """证据上下文请求。"""
-
-    evidence_id: int = Field(description="EvidenceLink ID。")
-
-
-class EvidenceContextResponse(BaseModel):
-    """证据上下文响应：chunk markdown + 高亮位置。"""
-
-    evidence_id: int
-    document_id: int
-    document_title: str
-    chunk_id: int
-    chunk_title: str
-    chunk_header_path: str
-    chunk_content: str
-    quote_text: str
-    highlight_start: int | None = None
-    highlight_end: int | None = None
-
-
-class ChunkContextRequest(BaseModel):
-    """Chat chunk context request."""
-
-    chunk_id: int = Field(description="Document chunk ID.")
 
 
 class ChunkContextResponse(BaseModel):
@@ -192,7 +136,7 @@ class ChunkContextResponse(BaseModel):
 
 
 class AliasItem(BaseModel):
-    """别名项。"""
+    """Node alias item."""
 
     id: int
     alias: str
@@ -203,11 +147,11 @@ class AliasItem(BaseModel):
 
 
 class IncidentEdgeItem(BaseModel):
-    """关联边项。"""
+    """Incident edge item."""
 
     id: int
     edge_type: str
-    direction: str = Field(description="outgoing 或 incoming。")
+    direction: str = Field(description="outgoing or incoming.")
     other_node_id: int
     other_node_name: str
     other_node_type: str
@@ -215,7 +159,7 @@ class IncidentEdgeItem(BaseModel):
 
 
 class NodeRevisionItem(BaseModel):
-    """节点当前修订。"""
+    """Current revision content for a knowledge node."""
 
     title: str
     summary: str
@@ -223,7 +167,7 @@ class NodeRevisionItem(BaseModel):
 
 
 class KnowledgeNodeDetailResponse(BaseModel):
-    """知识节点详情。"""
+    """Knowledge node detail response."""
 
     id: int
     subject: str
@@ -240,23 +184,8 @@ class KnowledgeNodeDetailResponse(BaseModel):
     updated_at: datetime
 
 
-# ── Phase 2: 教学单元 ──
-
-
-class UnitsQueryRequest(PageParams):
-    """分页查询教学单元请求。"""
-
-    status: str | None = Field(default=None, description="按状态过滤（默认仅 active）。")
-
-
-class UnitDetailRequest(BaseModel):
-    """教学单元详情请求。"""
-
-    unit_id: int = Field(description="教学单元 ID。")
-
-
 class UnitMembershipItem(BaseModel):
-    """教学单元成员节点。"""
+    """Teaching-unit membership item."""
 
     id: int
     knowledge_node_id: int
@@ -267,7 +196,7 @@ class UnitMembershipItem(BaseModel):
 
 
 class UnitRevisionItem(BaseModel):
-    """教学单元当前修订。"""
+    """Current revision for a teaching unit."""
 
     title: str
     summary: str
@@ -275,7 +204,7 @@ class UnitRevisionItem(BaseModel):
 
 
 class TeachingUnitResponse(BaseModel):
-    """教学单元列表项。"""
+    """Teaching-unit list item."""
 
     id: int
     subject: str
@@ -287,7 +216,7 @@ class TeachingUnitResponse(BaseModel):
 
 
 class TeachingUnitDetailResponse(BaseModel):
-    """教学单元详情。"""
+    """Teaching-unit detail response."""
 
     id: int
     subject: str
@@ -302,25 +231,8 @@ class TeachingUnitDetailResponse(BaseModel):
     updated_at: datetime
 
 
-# ── Phase 3: 主题树 ──
-
-
-class AnchorManageRequest(BaseModel):
-    """锚点管理请求。"""
-
-    action: str = Field(description="操作类型：list / create / update / delete。")
-    anchor_id: int | None = Field(default=None, description="锚点 ID（update/delete 时必填）。")
-    title: str | None = Field(default=None, description="锚点标题（create/update 时使用）。")
-    anchor_type: str | None = Field(
-        default=None,
-        description="锚点类型：teacher_defined / syllabus / textbook_toc / graph_discovered。",
-    )
-    parent_anchor_id: int | None = Field(default=None, description="父锚点 ID。")
-    order_index: int | None = Field(default=None, description="排序索引。")
-
-
 class TaxonomyAnchorResponse(BaseModel):
-    """分类锚点响应。"""
+    """Taxonomy anchor response."""
 
     id: int
     subject: str
@@ -336,7 +248,7 @@ class TaxonomyAnchorResponse(BaseModel):
 
 
 class ThemeTreeNodeResponse(BaseModel):
-    """主题树节点响应。"""
+    """Theme-tree node response."""
 
     id: int
     tree_version_id: int
@@ -351,7 +263,7 @@ class ThemeTreeNodeResponse(BaseModel):
 
 
 class TreeUnitItem(BaseModel):
-    """主题树中挂载的教学单元。"""
+    """Teaching-unit mount info in theme tree."""
 
     teaching_unit_id: int
     canonical_name: str
@@ -361,7 +273,7 @@ class TreeUnitItem(BaseModel):
 
 
 class ThemeTreeResponse(BaseModel):
-    """当前主题树响应。"""
+    """Current published theme tree response."""
 
     version_id: int
     version_no: int
@@ -372,7 +284,7 @@ class ThemeTreeResponse(BaseModel):
 
 
 class CurriculumSnapshotResponse(BaseModel):
-    """课程快照响应。"""
+    """Current curriculum snapshot response."""
 
     id: int
     subject: str
@@ -384,11 +296,8 @@ class CurriculumSnapshotResponse(BaseModel):
     created_at: datetime
 
 
-# ── Phase 4: 先修 DAG ──
-
-
 class UnitDependencyItem(BaseModel):
-    """先修 DAG 中的依赖边。"""
+    """Dependency edge item in prereq DAG."""
 
     id: int
     source_unit_id: int
@@ -401,7 +310,7 @@ class UnitDependencyItem(BaseModel):
 
 
 class PrereqDagResponse(BaseModel):
-    """当前先修 DAG 响应。"""
+    """Current published prereq DAG response."""
 
     version_id: int
     version_no: int
@@ -412,7 +321,7 @@ class PrereqDagResponse(BaseModel):
 
 
 class GraphEdgeResponse(BaseModel):
-    """知识边列表项（用于全图查询）。"""
+    """Graph edge item used by full-graph query."""
 
     id: int
     source_node_id: int
@@ -423,18 +332,40 @@ class GraphEdgeResponse(BaseModel):
 
 
 class FullGraphResponse(BaseModel):
-    """完整知识图谱（节点 + 边），用于力导向图可视化。"""
+    """Full graph payload for force-graph visualization."""
 
     nodes: list[KnowledgeNodeResponse] = Field(default_factory=list)
     edges: list[GraphEdgeResponse] = Field(default_factory=list)
 
 
+class KnowledgeOverviewStats(BaseModel):
+    """Knowledge overview stats."""
+
+    node_count: int = 0
+    edge_count: int = 0
+    unit_count: int = 0
+    theme_node_count: int = 0
+    dependency_count: int = 0
+
+
+class KnowledgeOverviewResponse(BaseModel):
+    """Knowledge overview aggregated payload for summary tabs."""
+
+    subject: str
+    generated_at: datetime
+    snapshot: CurriculumSnapshotResponse | None = None
+    theme_tree: ThemeTreeResponse | None = None
+    prereq_dag: PrereqDagResponse | None = None
+    graph: FullGraphResponse | None = None
+    units: list[TeachingUnitResponse] = Field(default_factory=list)
+    stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
+
+
 class ClearKnowledgeResponse(BaseModel):
-    """清空知识数据响应。"""
+    """Knowledge clear response."""
 
     subject: str
     deleted_counts: dict[str, int] = Field(default_factory=dict)
 
 
-# Rebuild forward refs for recursive model
 ThemeTreeNodeResponse.model_rebuild()

@@ -92,6 +92,7 @@ def build_finalize_graph_node(
                 )
                 return {**state, "error": None}
             except Exception as exc:
+                session.rollback()
                 digest_logger.error("kg_workflow_finalize_failed", error=str(exc), exc_info=True)
                 return {**state, "error": f"finalize_failed: {exc}"}
 

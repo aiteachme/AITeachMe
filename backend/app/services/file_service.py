@@ -26,8 +26,10 @@ from app.repositories.files_repo import (
     create_raw_file,
     delete_raw_file,
     get_raw_file_by_id,
+    get_raw_file_by_uid,
     list_raw_files_by_ids,
     list_raw_files_by_subject,
+    list_raw_files_by_uids,
     update_raw_file,
 )
 from app.schemas.files import (
@@ -37,7 +39,7 @@ from app.schemas.files import (
     FilesData,
     FilesUploadData,
 )
-from app.services.presenters import require_id
+from app.services.presenters import require_id, require_uid
 from app.services.upload_support import build_raw_file_path, build_temp_dir
 from app.utils.subject import validate_subject
 from app.workflows.ingest import run_parse_file_workflow
@@ -59,19 +61,21 @@ def _asset_ready(path_value: str | None) -> bool:
 def _extract_parser_used(parse_metadata: str | None) -> str | None:
     if not parse_metadata:
         return None
+
     try:
         payload = json.loads(parse_metadata)
     except json.JSONDecodeError:
         return None
+
     parser_used = payload.get("parser_used")
     return str(parser_used) if parser_used else None
 
 
-def _build_asset_base_url(*, subject: str, file_id: int) -> str:
-    return f"/_assets/{subject}/assets/{file_id}"
+def _build_asset_base_url(*, subject: str, file_uid: str) -> str:
+    return f"/api/v1/subjects/{subject}/files/assets/{file_uid}"
 
 
-def _build_asset_items(*, subject: str, file_id: int, asset_dir_value: str | None) -> list[FileAssetItem]:
+def _build_asset_items(*, subject: str, file_uid: str, asset_dir_value: str | None) -> list[FileAssetItem]:
     if not asset_dir_value:
         return []
 
@@ -79,7 +83,7 @@ def _build_asset_items(*, subject: str, file_id: int, asset_dir_value: str | Non
     if not asset_dir.exists():
         return []
 
-    base_url = _build_asset_base_url(subject=subject, file_id=file_id)
+    base_url = _build_asset_base_url(subject=subject, file_uid=file_uid)
     return [
         FileAssetItem(
             name=path.name,
@@ -94,19 +98,46 @@ def _build_asset_items(*, subject: str, file_id: int, asset_dir_value: str | Non
 def _read_markdown(markdown_path_value: str | None) -> str:
     if not markdown_path_value:
         return ""
+
     markdown_path = Path(markdown_path_value)
     if not markdown_path.exists():
         return ""
+
     return markdown_path.read_text(encoding="utf-8")
+
+
+def _generate_file_uid() -> str:
+    return f"file_{uuid.uuid4().hex}"
+
+
+def _build_upload_data(*, subject: str, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
+    return FilesUploadData(
+        subject=subject,
+        filenames=[item.filename for item in raw_files],
+        uploaded_items=[build_file_record(item) for item in raw_files],
+        started_parse_count=started_parse_count,
+    )
+
+
+async def _save_uploaded_raw_files(
+    session: Session,
+    *,
+    subject: str,
+    files: list[UploadFile],
+) -> list[RawFile]:
+    saved: list[RawFile] = []
+    for file in files:
+        saved.append(await save_uploaded_file(session, subject=subject, file=file))
+    return saved
 
 
 def build_file_record(raw_file: RawFile) -> FileRecord:
     """Serialize a raw file into the unified file record."""
 
-    file_id = require_id(raw_file.id, "RawFile.id")
-    asset_base_url = _build_asset_base_url(subject=raw_file.subject, file_id=file_id)
+    file_uid = require_uid(raw_file.uid, "RawFile.uid")
+    asset_base_url = _build_asset_base_url(subject=raw_file.subject, file_uid=file_uid)
     return FileRecord(
-        id=require_id(raw_file.id, "RawFile.id"),
+        uid=file_uid,
         filename=raw_file.filename,
         filetype=raw_file.filetype,
         status=raw_file.status,
@@ -120,10 +151,10 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         image_count=raw_file.image_count,
         parser_used=_extract_parser_used(raw_file.parse_metadata),
         markdown_content=_read_markdown(raw_file.markdown_path),
-        asset_base_url=asset_base_url if _asset_ready(raw_file.asset_dir) else asset_base_url,
+        asset_base_url=asset_base_url,
         assets=_build_asset_items(
             subject=raw_file.subject,
-            file_id=file_id,
+            file_uid=file_uid,
             asset_dir_value=raw_file.asset_dir,
         ),
         latest_updated_at=raw_file.updated_at,
@@ -156,6 +187,7 @@ async def save_uploaded_file(
     raw_file = create_raw_file(
         session,
         RawFile(
+            uid=_generate_file_uid(),
             subject=normalized_subject,
             filename=filename,
             filetype=extension.lstrip("."),
@@ -188,16 +220,8 @@ async def save_uploaded_files(
 ) -> FilesUploadData:
     """Save multiple uploaded raw files."""
 
-    saved: list[RawFile] = []
-    for file in files:
-        saved.append(await save_uploaded_file(session, subject=subject, file=file))
-    return FilesUploadData(
-        subject=subject,
-        filenames=[item.filename for item in saved],
-        uploaded_items=[build_file_record(item) for item in saved],
-        accepted_parse_file_ids=[],
-        started_parse_count=0,
-    )
+    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    return _build_upload_data(subject=subject, raw_files=saved, started_parse_count=0)
 
 
 async def save_uploaded_files_and_request_parse(
@@ -205,27 +229,34 @@ async def save_uploaded_files_and_request_parse(
     *,
     subject: str,
     files: list[UploadFile],
-) -> FilesUploadData:
+) -> tuple[FilesUploadData, list[int]]:
     """Save files and immediately enqueue ingest parsing in the same request."""
 
-    upload_data = await save_uploaded_files(session, subject=subject, files=files)
-    file_ids = [item.id for item in upload_data.uploaded_items]
+    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    file_ids = [require_id(item.id, "RawFile.id") for item in saved]
     refreshed_items = _start_parse_for_files(session, subject=subject, file_ids=file_ids)
-    return FilesUploadData(
+    return _build_upload_data(
         subject=subject,
-        filenames=upload_data.filenames,
-        uploaded_items=[build_file_record(item) for item in refreshed_items],
-        accepted_parse_file_ids=file_ids,
+        raw_files=refreshed_items,
         started_parse_count=len(file_ids),
-    )
+    ), file_ids
 
 
 def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -> RawFile:
-    """Load one file by subject or raise."""
+    """Load one file by subject or raise using internal ID."""
 
     raw_file = get_raw_file_by_id(session, file_id)
     if raw_file is None or raw_file.subject != subject:
         raise RawFileNotFoundError(file_id)
+    return raw_file
+
+
+def get_subject_file_by_uid_or_raise(session: Session, *, subject: str, file_uid: str) -> RawFile:
+    """Load one file by subject or raise using public UID."""
+
+    raw_file = get_raw_file_by_uid(session, file_uid)
+    if raw_file is None or raw_file.subject != subject:
+        raise RawFileNotFoundError(file_uid)
     return raw_file
 
 
@@ -235,15 +266,34 @@ def get_subject_files_or_raise(
     subject: str,
     file_ids: list[int],
 ) -> list[RawFile]:
-    """Load multiple files by subject or raise."""
+    """Load multiple files by subject or raise using internal IDs."""
 
     items = list_raw_files_by_ids(session, subject, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
         raise RawFileNotFoundError(missing[0])
+
     order = {file_id: index for index, file_id in enumerate(file_ids)}
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
+
+
+def get_subject_files_by_uid_or_raise(
+    session: Session,
+    *,
+    subject: str,
+    file_uids: list[str],
+) -> list[RawFile]:
+    """Load multiple files by subject or raise using public UIDs."""
+
+    items = list_raw_files_by_uids(session, subject, file_uids)
+    found_uids = {require_uid(item.uid, "RawFile.uid") for item in items}
+    missing = [file_uid for file_uid in file_uids if file_uid not in found_uids]
+    if missing:
+        raise RawFileNotFoundError(missing[0])
+
+    order = {file_uid: index for index, file_uid in enumerate(file_uids)}
+    return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
 
 
 def _start_parse_for_files(
@@ -262,6 +312,7 @@ def _start_parse_for_files(
         raw_file_states=[
             {
                 "file_id": require_id(item.id, "RawFile.id"),
+                "file_uid": require_uid(item.uid, "RawFile.uid"),
                 "status": item.status,
                 "markdown_ready": bool(item.markdown_path),
                 "filename": item.filename,
@@ -269,10 +320,13 @@ def _start_parse_for_files(
             for item in raw_files
         ],
     )
+
     for raw_file in raw_files:
         raw_file_id = require_id(raw_file.id, "RawFile.id")
+        raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
         if raw_file.status != TaskStatus.PENDING.value:
-            raise InvalidRawFileStateError(raw_file_id, raw_file.status, TaskStatus.PENDING.value)
+            raise InvalidRawFileStateError(raw_file_uid or raw_file_id, raw_file.status, TaskStatus.PENDING.value)
+
         update_raw_file(
             session,
             raw_file,
@@ -280,10 +334,12 @@ def _start_parse_for_files(
             error_message=None,
             ingest_status=IngestStatus.CLASSIFYING.value,
         )
+
     logger.info(
         "file_parse_state_transition_completed",
         subject=subject,
         accepted_file_ids=file_ids,
+        accepted_file_uids=[require_uid(item.uid, "RawFile.uid") for item in raw_files],
         accepted_count=len(file_ids),
     )
     return get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
@@ -351,7 +407,9 @@ def list_subject_files(
         subject=subject,
         total=total,
         ready_count=sum(1 for item in records if item.markdown_ready),
-        processing_count=sum(1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value),
+        processing_count=sum(
+            1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value
+        ),
         failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
         items=records,
     )
@@ -361,14 +419,15 @@ def delete_files(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int],
+    file_uids: list[str],
 ) -> FileDeleteData:
     """Delete files and local artifacts."""
 
-    raw_files = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
-    deleted_ids: list[int] = []
+    raw_files = get_subject_files_by_uid_or_raise(session, subject=subject, file_uids=file_uids)
+    deleted_uids: list[str] = []
+
     for raw_file in raw_files:
-        raw_file_id = require_id(raw_file.id, "RawFile.id")
+        raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
 
         for path_value in [raw_file.file_path, raw_file.markdown_path]:
             if path_value:
@@ -377,6 +436,25 @@ def delete_files(
             shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
 
         delete_raw_file(session, raw_file)
-        deleted_ids.append(raw_file_id)
+        deleted_uids.append(raw_file_uid)
 
-    return FileDeleteData(deleted_file_ids=deleted_ids)
+    return FileDeleteData(deleted_file_uids=deleted_uids)
+
+
+def resolve_subject_asset_path(
+    session: Session,
+    *,
+    subject: str,
+    file_uid: str,
+    asset_name: str,
+) -> Path:
+    """Resolve one asset path by public file UID."""
+
+    raw_file = get_subject_file_by_uid_or_raise(session, subject=subject, file_uid=file_uid)
+    if not raw_file.asset_dir:
+        raise RawFileNotFoundError(file_uid)
+
+    asset_path = Path(raw_file.asset_dir) / asset_name
+    if not asset_path.exists() or not asset_path.is_file():
+        raise RawFileNotFoundError(file_uid)
+    return asset_path

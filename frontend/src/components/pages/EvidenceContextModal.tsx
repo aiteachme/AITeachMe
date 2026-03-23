@@ -1,37 +1,38 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, FileText, MapPin } from "lucide-react";
-import { evidenceContextApiV1SubjectsSubjectKnowledgeGraphEvidenceContextPost } from "../../api/generated/knowledge";
+import { chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
 /**
- * 证据原文上下文弹窗：显示 chunk 的完整 markdown，
- * 并高亮引用段落，自动滚动到高亮位置。
+ * 证据原文上下文弹窗：显示 chunk 的完整 markdown。
  */
 export function EvidenceContextModal({
   open,
   onClose,
   subject,
-  evidenceId,
+  chunkId,
+  quoteText,
 }: {
   open: boolean;
   onClose: () => void;
   subject: string;
-  evidenceId: number | null;
+  chunkId: number | null;
+  quoteText?: string;
 }) {
   const highlightRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["evidence-context", subject, evidenceId],
+    queryKey: ["chunk-context", subject, chunkId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await evidenceContextApiV1SubjectsSubjectKnowledgeGraphEvidenceContextPost(subject, {
-          evidence_id: evidenceId!,
+        await chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost(subject, {
+          chunk_id: chunkId!,
         }),
       ) ?? null,
-    enabled: open && !!evidenceId,
+    enabled: open && !!chunkId,
   });
 
   // 自动滚动到高亮位置
@@ -48,48 +49,13 @@ export function EvidenceContextModal({
   const renderContent = () => {
     if (!data) return null;
 
-    const { chunk_content, highlight_start, highlight_end, quote_text } = data;
+    const { chunk_content } = data;
 
-    // 如果有高亮位置，拆分内容
-    if (
-      highlight_start != null &&
-      highlight_end != null &&
-      highlight_start < highlight_end
-    ) {
-      const before = chunk_content.slice(0, highlight_start);
-      const highlighted = chunk_content.slice(highlight_start, highlight_end);
-      const after = chunk_content.slice(highlight_end);
-
-      return (
-        <div className="text-sm leading-relaxed">
-          {before && (
-            <div className="mb-2 opacity-70">
-              <MarkdownViewer content={before} />
-            </div>
-          )}
-          <div
-            ref={highlightRef}
-            className="bg-amber-50 border-l-4 border-amber-400 px-4 py-3 rounded-r-lg my-3 relative"
-          >
-            <div className="absolute -left-0.5 top-2 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center">
-              <MapPin className="w-3 h-3 text-white" />
-            </div>
-            <MarkdownViewer content={highlighted} />
-          </div>
-          {after && (
-            <div className="mt-2 opacity-70">
-              <MarkdownViewer content={after} />
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // 没有精确位置，尝试文本匹配高亮
-    if (quote_text && chunk_content.includes(quote_text)) {
-      const idx = chunk_content.indexOf(quote_text);
+    // 如果有 quoteText，尝试文本匹配高亮
+    if (quoteText && chunk_content.includes(quoteText)) {
+      const idx = chunk_content.indexOf(quoteText);
       const before = chunk_content.slice(0, idx);
-      const after = chunk_content.slice(idx + quote_text.length);
+      const after = chunk_content.slice(idx + quoteText.length);
 
       return (
         <div className="text-sm leading-relaxed">
@@ -105,7 +71,7 @@ export function EvidenceContextModal({
             <div className="absolute -left-0.5 top-2 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center">
               <MapPin className="w-3 h-3 text-white" />
             </div>
-            <MarkdownViewer content={quote_text} />
+            <MarkdownViewer content={quoteText} />
           </div>
           {after && (
             <div className="mt-2 opacity-70">

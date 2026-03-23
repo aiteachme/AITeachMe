@@ -132,7 +132,7 @@ interface DocGenGetResponse {
   exists: boolean;
   markdown?: string;
   updated_at?: string | null;
-  source_file_ids?: number[];
+  source_file_uids?: string[];
   prompt?: string | null;
 }
 

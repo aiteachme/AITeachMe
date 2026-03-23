@@ -37,7 +37,7 @@ const MODULES = [
   { id: "summary", name: "知识总结", icon: <BookOpen className="w-4 h-4" /> },
   { id: "exam", name: "考题预测", icon: <FileText className="w-4 h-4" /> },
   { id: "analysis", name: "学习分析", icon: <BarChart3 className="w-4 h-4" /> },
-  { id: "doc", name: "文档", icon: <FileEdit className="w-4 h-4" /> },
+  { id: "docs", name: "文档", icon: <FileEdit className="w-4 h-4" /> },
 ];
 
 const NewSubjectForm = memo(function NewSubjectForm({

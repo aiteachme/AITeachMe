@@ -973,13 +973,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/digest/build": {
-      "post": {
+    "/api/v1/subjects/{subject}/files/assets/{file_uid}/{asset_name}": {
+      "get": {
         "tags": [
-          "knowledge"
+          "files"
         ],
-        "summary": "触发增量构建",
-        "operationId": "digest_build_api_v1_subjects__subject__knowledge_digest_build_post",
+        "summary": "Get one extracted asset by file UID",
+        "operationId": "get_file_asset_api_v1_subjects__subject__files_assets__file_uid___asset_name__get",
         "parameters": [
           {
             "name": "subject",
@@ -989,118 +989,32 @@
               "type": "string",
               "title": "Subject"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DigestBuildRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DigestBuildData_"
-                }
-              }
-            }
           },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/digest/status": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "查询增量构建聚合状态",
-        "operationId": "digest_status_api_v1_subjects__subject__knowledge_digest_status_post",
-        "parameters": [
           {
-            "name": "subject",
+            "name": "file_uid",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "File Uid"
+            }
+          },
+          {
+            "name": "asset_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Name"
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DigestStatusRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DigestStatusResponse_"
-                }
+                "schema": {}
               }
             }
           },
@@ -1152,7 +1066,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "触发知识文档生成",
+        "summary": "触发知识文档与知识图谱构建",
         "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
@@ -1216,8 +1130,8 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "422": {
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1226,12 +1140,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1244,7 +1158,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "查询知识文档最终内容与最近生成状态",
+        "summary": "查询知识文档结果",
         "operationId": "knowledge_docs_api_v1_subjects__subject__knowledge_docs_post",
         "parameters": [
           {
@@ -1311,13 +1225,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/nodes/query": {
+    "/api/v1/subjects/{subject}/knowledge/overview": {
       "post": {
         "tags": [
           "knowledge"
         ],
-        "summary": "分页查询知识节点",
-        "operationId": "graph_nodes_query_api_v1_subjects__subject__knowledge_graph_nodes_query_post",
+        "summary": "知识总结页聚合数据",
+        "operationId": "knowledge_overview_api_v1_subjects__subject__knowledge_overview_post",
         "parameters": [
           {
             "name": "subject",
@@ -1333,10 +1247,9 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GraphNodesQueryRequest",
+                "$ref": "#/components/schemas/KnowledgeOverviewRequest",
                 "default": {
-                  "page": 1,
-                  "size": 20
+                  "full": true
                 }
               }
             }
@@ -1348,7 +1261,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_KnowledgeNodeResponse__"
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeOverviewResponse_"
                 }
               }
             }
@@ -1478,160 +1391,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/full": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "获取完整知识图谱（节点+边）",
-        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_FullGraphResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/graph/evidence/context": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "获取证据原文上下文",
-        "operationId": "evidence_context_api_v1_subjects__subject__knowledge_graph_evidence_context_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EvidenceContextRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_EvidenceContextResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/chunks/context": {
       "post": {
         "tags": [
@@ -1667,91 +1426,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_ChunkContextResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/units/query": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "分页查询教学单元",
-        "operationId": "units_query_api_v1_subjects__subject__knowledge_units_query_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnitsQueryRequest",
-                "default": {
-                  "page": 1,
-                  "size": 20
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_TeachingUnitResponse__"
                 }
               }
             }
@@ -1881,78 +1555,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/theme-tree/current": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "当前主题树",
-        "operationId": "theme_tree_current_api_v1_subjects__subject__knowledge_theme_tree_current_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ThemeTreeResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
@@ -2035,156 +1637,12 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/prereq-dag/current": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "当前先修 DAG",
-        "operationId": "prereq_dag_current_api_v1_subjects__subject__knowledge_prereq_dag_current_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PrereqDagResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/curriculum/current": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "当前课程快照",
-        "operationId": "curriculum_current_api_v1_subjects__subject__knowledge_curriculum_current_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_CurriculumSnapshotResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
           "knowledge"
         ],
-        "summary": "清空学科所有知识数据",
+        "summary": "清空学科知识数据",
         "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
         "parameters": [
           {
@@ -4726,14 +4184,14 @@
           "is_primary"
         ],
         "title": "AliasItem",
-        "description": "别名项。"
+        "description": "Node alias item."
       },
       "AnchorManageRequest": {
         "properties": {
           "action": {
             "type": "string",
             "title": "Action",
-            "description": "操作类型：list / create / update / delete。"
+            "description": "list / create / update / delete"
           },
           "anchor_id": {
             "anyOf": [
@@ -4745,7 +4203,7 @@
               }
             ],
             "title": "Anchor Id",
-            "description": "锚点 ID（update/delete 时必填）。"
+            "description": "Anchor ID for update/delete."
           },
           "title": {
             "anyOf": [
@@ -4757,7 +4215,7 @@
               }
             ],
             "title": "Title",
-            "description": "锚点标题（create/update 时使用）。"
+            "description": "Anchor title for create/update."
           },
           "anchor_type": {
             "anyOf": [
@@ -4769,7 +4227,7 @@
               }
             ],
             "title": "Anchor Type",
-            "description": "锚点类型：teacher_defined / syllabus / textbook_toc / graph_discovered。"
+            "description": "teacher_defined / syllabus / textbook_toc / graph_discovered"
           },
           "parent_anchor_id": {
             "anyOf": [
@@ -4781,7 +4239,7 @@
               }
             ],
             "title": "Parent Anchor Id",
-            "description": "父锚点 ID。"
+            "description": "Parent anchor ID."
           },
           "order_index": {
             "anyOf": [
@@ -4793,7 +4251,7 @@
               }
             ],
             "title": "Order Index",
-            "description": "排序索引。"
+            "description": "Order index."
           }
         },
         "type": "object",
@@ -4801,7 +4259,7 @@
           "action"
         ],
         "title": "AnchorManageRequest",
-        "description": "锚点管理请求。"
+        "description": "Taxonomy anchor management request."
       },
       "AnswerItem": {
         "properties": {
@@ -5079,108 +4537,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_CurriculumSnapshotResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CurriculumSnapshotResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[CurriculumSnapshotResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_DigestBuildData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DigestBuildData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[DigestBuildData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_DigestStatusResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DigestStatusResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[DigestStatusResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_DocGenBuildData_": {
         "properties": {
           "code": {
@@ -5243,40 +4599,6 @@
         },
         "type": "object",
         "title": "ApiResponse[DocGenGetResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_EvidenceContextResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EvidenceContextResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[EvidenceContextResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5589,40 +4911,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_FullGraphResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FullGraphResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[FullGraphResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_HealthData_": {
         "properties": {
           "code": {
@@ -5719,6 +5007,40 @@
         },
         "type": "object",
         "title": "ApiResponse[KnowledgeNodeDetailResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeOverviewResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeOverviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeOverviewResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5895,40 +5217,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_PaginatedData_KnowledgeNodeResponse__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_KnowledgeNodeResponse_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[KnowledgeNodeResponse]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_PaginatedData_MistakeItem__": {
         "properties": {
           "code": {
@@ -6025,74 +5313,6 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[SubjectItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_PaginatedData_TeachingUnitResponse__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_TeachingUnitResponse_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[TeachingUnitResponse]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_PrereqDagResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PrereqDagResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PrereqDagResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -6331,40 +5551,6 @@
         },
         "type": "object",
         "title": "ApiResponse[TeachingUnitDetailResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_ThemeTreeResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ThemeTreeResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ThemeTreeResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -7124,7 +6310,7 @@
           "chunk_id"
         ],
         "title": "ChunkContextRequest",
-        "description": "Chat chunk context request."
+        "description": "Chat chunk context query."
       },
       "ChunkContextResponse": {
         "properties": {
@@ -7184,107 +6370,7 @@
           "subject"
         ],
         "title": "ClearKnowledgeResponse",
-        "description": "清空知识数据响应。"
-      },
-      "CurriculumJobResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "graph_job_id": {
-            "type": "integer",
-            "title": "Graph Job Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "progress": {
-            "type": "integer",
-            "title": "Progress"
-          },
-          "current_step": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Step"
-          },
-          "units_added": {
-            "type": "integer",
-            "title": "Units Added",
-            "default": 0
-          },
-          "units_updated": {
-            "type": "integer",
-            "title": "Units Updated",
-            "default": 0
-          },
-          "theme_tree_version_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Version Id"
-          },
-          "prereq_dag_version_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prereq Dag Version Id"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "graph_job_id",
-          "status",
-          "progress",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "CurriculumJobResponse",
-        "description": "CurriculumDeriveJob 状态。"
+        "description": "Knowledge clear response."
       },
       "CurriculumSnapshotResponse": {
         "properties": {
@@ -7352,7 +6438,7 @@
           "created_at"
         ],
         "title": "CurriculumSnapshotResponse",
-        "description": "课程快照响应。"
+        "description": "Current curriculum snapshot response."
       },
       "DifficultyValue": {
         "type": "string",
@@ -7364,123 +6450,15 @@
         "title": "DifficultyValue",
         "description": "题目难度。"
       },
-      "DigestBuildData": {
-        "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "GraphDigestJob ID。"
-          },
-          "is_existing": {
-            "type": "boolean",
-            "title": "Is Existing",
-            "description": "是否命中幂等键返回已有 job。",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id"
-        ],
-        "title": "DigestBuildData",
-        "description": "触发增量构建返回数据。"
-      },
-      "DigestBuildRequest": {
-        "properties": {
-          "file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "File Ids",
-            "description": "参与构建的已解析文件 ID。"
-          },
-          "idempotency_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idempotency Key",
-            "description": "幂等键，为空时由服务端生成。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_ids"
-        ],
-        "title": "DigestBuildRequest",
-        "description": "触发增量构建请求。",
-        "example": {
-          "file_ids": [
-            1,
-            2
-          ],
-          "idempotency_key": "abc123"
-        }
-      },
-      "DigestStatusRequest": {
-        "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "GraphDigestJob ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id"
-        ],
-        "title": "DigestStatusRequest",
-        "description": "查询增量构建状态请求。"
-      },
-      "DigestStatusResponse": {
-        "properties": {
-          "graph_job": {
-            "$ref": "#/components/schemas/GraphDigestJobResponse"
-          },
-          "curriculum_job": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CurriculumJobResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_curriculum_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Curriculum Snapshot Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "graph_job"
-        ],
-        "title": "DigestStatusResponse",
-        "description": "增量构建聚合状态：graph_job + curriculum_job + 当前快照。"
-      },
       "DocGenBuildData": {
         "properties": {
-          "accepted_file_ids": {
+          "accepted_file_uids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
-            "title": "Accepted File Ids",
-            "description": "Accepted ready raw file IDs."
+            "title": "Accepted File Uids",
+            "description": "Accepted ready raw file UIDs."
           },
           "prompt": {
             "anyOf": [
@@ -7516,11 +6494,11 @@
       },
       "DocGenBuildRequest": {
         "properties": {
-          "file_ids": {
+          "file_uids": {
             "anyOf": [
               {
                 "items": {
-                  "type": "integer"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -7528,8 +6506,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Ids",
-            "description": "参与生成的已解析文件 ID；为空时自动选择当前 subject 下全部可用文件。"
+            "title": "File Uids",
+            "description": "Optional parsed raw file UIDs; omitted means auto-pick all available files for the subject."
           },
           "prompt": {
             "anyOf": [
@@ -7541,18 +6519,18 @@
               }
             ],
             "title": "Prompt",
-            "description": "用户提供的知识文档用途说明与生成要求。"
+            "description": "Optional user instruction for doc generation."
           }
         },
         "type": "object",
         "title": "DocGenBuildRequest",
-        "description": "触发知识文档生成请求。",
+        "description": "Trigger knowledge-doc generation.",
         "example": {
-          "file_ids": [
-            1,
-            2
+          "file_uids": [
+            "file_xxx",
+            "file_yyy"
           ],
-          "prompt": "请整理成适合复习的知识文档"
+          "prompt": "Generate review-oriented notes"
         }
       },
       "DocGenGetResponse": {
@@ -7581,13 +6559,13 @@
             "title": "Updated At",
             "description": "Last updated time of the merged markdown."
           },
-          "source_file_ids": {
+          "source_file_uids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
-            "title": "Source File Ids",
-            "description": "Source raw file IDs used by the published docs."
+            "title": "Source File Uids",
+            "description": "Source raw file UIDs used by the published docs."
           },
           "prompt": {
             "anyOf": [
@@ -7637,92 +6615,6 @@
           "message": "资源不存在"
         }
       },
-      "EvidenceContextRequest": {
-        "properties": {
-          "evidence_id": {
-            "type": "integer",
-            "title": "Evidence Id",
-            "description": "EvidenceLink ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "evidence_id"
-        ],
-        "title": "EvidenceContextRequest",
-        "description": "证据上下文请求。"
-      },
-      "EvidenceContextResponse": {
-        "properties": {
-          "evidence_id": {
-            "type": "integer",
-            "title": "Evidence Id"
-          },
-          "document_id": {
-            "type": "integer",
-            "title": "Document Id"
-          },
-          "document_title": {
-            "type": "string",
-            "title": "Document Title"
-          },
-          "chunk_id": {
-            "type": "integer",
-            "title": "Chunk Id"
-          },
-          "chunk_title": {
-            "type": "string",
-            "title": "Chunk Title"
-          },
-          "chunk_header_path": {
-            "type": "string",
-            "title": "Chunk Header Path"
-          },
-          "chunk_content": {
-            "type": "string",
-            "title": "Chunk Content"
-          },
-          "quote_text": {
-            "type": "string",
-            "title": "Quote Text"
-          },
-          "highlight_start": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Highlight Start"
-          },
-          "highlight_end": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Highlight End"
-          }
-        },
-        "type": "object",
-        "required": [
-          "evidence_id",
-          "document_id",
-          "document_title",
-          "chunk_id",
-          "chunk_title",
-          "chunk_header_path",
-          "chunk_content",
-          "quote_text"
-        ],
-        "title": "EvidenceContextResponse",
-        "description": "证据上下文响应：chunk markdown + 高亮位置。"
-      },
       "EvidenceSummary": {
         "properties": {
           "id": {
@@ -7765,7 +6657,7 @@
           "confidence"
         ],
         "title": "EvidenceSummary",
-        "description": "证据摘要（用于节点详情）。"
+        "description": "Evidence summary used in node detail."
       },
       "ExamData": {
         "properties": {
@@ -8434,41 +7326,38 @@
       },
       "FileDeleteData": {
         "properties": {
-          "deleted_file_ids": {
+          "deleted_file_uids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
-            "title": "Deleted File Ids",
-            "description": "Deleted file IDs."
+            "title": "Deleted File Uids",
+            "description": "Deleted public file UIDs."
           }
         },
         "type": "object",
-        "required": [
-          "deleted_file_ids"
-        ],
         "title": "FileDeleteData",
         "description": "Delete result."
       },
       "FileDeleteRequest": {
         "properties": {
-          "file_id": {
+          "file_uid": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "File Id",
-            "description": "Single file ID."
+            "title": "File Uid",
+            "description": "Single public file UID."
           },
-          "file_ids": {
+          "file_uids": {
             "anyOf": [
               {
                 "items": {
-                  "type": "integer"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -8476,8 +7365,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Ids",
-            "description": "Multiple file IDs."
+            "title": "File Uids",
+            "description": "Multiple public file UIDs."
           }
         },
         "type": "object",
@@ -8486,10 +7375,10 @@
       },
       "FileRecord": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id",
-            "description": "File ID."
+          "uid": {
+            "type": "string",
+            "title": "Uid",
+            "description": "Stable public file UID."
           },
           "filename": {
             "type": "string",
@@ -8633,7 +7522,7 @@
         },
         "type": "object",
         "required": [
-          "id",
+          "uid",
           "filename",
           "filetype",
           "status",
@@ -8716,14 +7605,6 @@
             "title": "Uploaded Items",
             "description": "Uploaded file records."
           },
-          "accepted_parse_file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Accepted Parse File Ids",
-            "description": "Auto-started parse file IDs."
-          },
           "started_parse_count": {
             "type": "integer",
             "title": "Started Parse Count",
@@ -8758,100 +7639,7 @@
         },
         "type": "object",
         "title": "FullGraphResponse",
-        "description": "完整知识图谱（节点 + 边），用于力导向图可视化。"
-      },
-      "GraphDigestJobResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "progress": {
-            "type": "integer",
-            "title": "Progress"
-          },
-          "current_step": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Step"
-          },
-          "input_chunk_count": {
-            "type": "integer",
-            "title": "Input Chunk Count",
-            "default": 0
-          },
-          "nodes_added": {
-            "type": "integer",
-            "title": "Nodes Added",
-            "default": 0
-          },
-          "nodes_updated": {
-            "type": "integer",
-            "title": "Nodes Updated",
-            "default": 0
-          },
-          "nodes_merged": {
-            "type": "integer",
-            "title": "Nodes Merged",
-            "default": 0
-          },
-          "edges_added": {
-            "type": "integer",
-            "title": "Edges Added",
-            "default": 0
-          },
-          "edges_updated": {
-            "type": "integer",
-            "title": "Edges Updated",
-            "default": 0
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "status",
-          "progress",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "GraphDigestJobResponse",
-        "description": "GraphDigestJob 状态。"
+        "description": "Full graph payload for force-graph visualization."
       },
       "GraphEdgeResponse": {
         "properties": {
@@ -8890,14 +7678,14 @@
           "confidence"
         ],
         "title": "GraphEdgeResponse",
-        "description": "知识边列表项（用于全图查询）。"
+        "description": "Graph edge item used by full-graph query."
       },
       "GraphNodeDetailRequest": {
         "properties": {
           "node_id": {
             "type": "integer",
             "title": "Node Id",
-            "description": "知识节点 ID。"
+            "description": "Knowledge node ID."
           }
         },
         "type": "object",
@@ -8905,45 +7693,7 @@
           "node_id"
         ],
         "title": "GraphNodeDetailRequest",
-        "description": "知识节点详情请求。"
-      },
-      "GraphNodesQueryRequest": {
-        "properties": {
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "页码，从 1 开始。",
-            "default": 1
-          },
-          "size": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。",
-            "default": 20
-          },
-          "node_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Node Type",
-            "description": "按节点类型过滤。"
-          }
-        },
-        "type": "object",
-        "title": "GraphNodesQueryRequest",
-        "description": "分页查询知识节点请求。",
-        "example": {
-          "page": 1,
-          "size": 20
-        }
+        "description": "Node detail query."
       },
       "HTTPValidationError": {
         "properties": {
@@ -8984,7 +7734,7 @@
           "direction": {
             "type": "string",
             "title": "Direction",
-            "description": "outgoing 或 incoming。"
+            "description": "outgoing or incoming."
           },
           "other_node_id": {
             "type": "integer",
@@ -9014,7 +7764,7 @@
           "confidence"
         ],
         "title": "IncidentEdgeItem",
-        "description": "关联边项。"
+        "description": "Incident edge item."
       },
       "InitData": {
         "properties": {
@@ -9161,7 +7911,7 @@
           "updated_at"
         ],
         "title": "KnowledgeNodeDetailResponse",
-        "description": "知识节点详情。"
+        "description": "Knowledge node detail response."
       },
       "KnowledgeNodeResponse": {
         "properties": {
@@ -9212,7 +7962,137 @@
           "updated_at"
         ],
         "title": "KnowledgeNodeResponse",
-        "description": "知识节点列表项。"
+        "description": "Knowledge node list item."
+      },
+      "KnowledgeOverviewRequest": {
+        "properties": {
+          "include": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include",
+            "description": "Optional sections to include. Omit for default full payload."
+          },
+          "full": {
+            "type": "boolean",
+            "title": "Full",
+            "description": "Whether to return full payload. Current implementation favors full payload.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeOverviewRequest",
+        "description": "Aggregated knowledge overview query."
+      },
+      "KnowledgeOverviewResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurriculumSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "theme_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThemeTreeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prereq_dag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrereqDagResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FullGraphResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingUnitResponse"
+            },
+            "type": "array",
+            "title": "Units"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/KnowledgeOverviewStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "generated_at"
+        ],
+        "title": "KnowledgeOverviewResponse",
+        "description": "Knowledge overview aggregated payload for summary tabs."
+      },
+      "KnowledgeOverviewStats": {
+        "properties": {
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count",
+            "default": 0
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          },
+          "unit_count": {
+            "type": "integer",
+            "title": "Unit Count",
+            "default": 0
+          },
+          "theme_node_count": {
+            "type": "integer",
+            "title": "Theme Node Count",
+            "default": 0
+          },
+          "dependency_count": {
+            "type": "integer",
+            "title": "Dependency Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeOverviewStats",
+        "description": "Knowledge overview stats."
       },
       "LoginRequest": {
         "properties": {
@@ -9455,7 +8335,7 @@
           "body"
         ],
         "title": "NodeRevisionItem",
-        "description": "节点当前修订。"
+        "description": "Current revision content for a knowledge node."
       },
       "PaginatedData_ChatMessageItem_": {
         "properties": {
@@ -9589,50 +8469,6 @@
         ],
         "title": "PaginatedData[ChatThreadTurnItem]"
       },
-      "PaginatedData_KnowledgeNodeResponse_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/KnowledgeNodeResponse"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[KnowledgeNodeResponse]"
-      },
       "PaginatedData_MistakeItem_": {
         "properties": {
           "items": {
@@ -9765,50 +8601,6 @@
         ],
         "title": "PaginatedData[SubjectItem]"
       },
-      "PaginatedData_TeachingUnitResponse_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/TeachingUnitResponse"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[TeachingUnitResponse]"
-      },
       "PrereqDagResponse": {
         "properties": {
           "version_id": {
@@ -9849,7 +8641,7 @@
           "created_at"
         ],
         "title": "PrereqDagResponse",
-        "description": "当前先修 DAG 响应。"
+        "description": "Current published prereq DAG response."
       },
       "ProfileItem": {
         "properties": {
@@ -10684,7 +9476,7 @@
           "updated_at"
         ],
         "title": "TaxonomyAnchorResponse",
-        "description": "分类锚点响应。"
+        "description": "Taxonomy anchor response."
       },
       "TeachingUnitDetailResponse": {
         "properties": {
@@ -10757,7 +9549,7 @@
           "updated_at"
         ],
         "title": "TeachingUnitDetailResponse",
-        "description": "教学单元详情。"
+        "description": "Teaching-unit detail response."
       },
       "TeachingUnitResponse": {
         "properties": {
@@ -10803,7 +9595,7 @@
           "updated_at"
         ],
         "title": "TeachingUnitResponse",
-        "description": "教学单元列表项。"
+        "description": "Teaching-unit list item."
       },
       "ThemeTreeNodeResponse": {
         "properties": {
@@ -10878,7 +9670,7 @@
           "summary"
         ],
         "title": "ThemeTreeNodeResponse",
-        "description": "主题树节点响应。"
+        "description": "Theme-tree node response."
       },
       "ThemeTreeResponse": {
         "properties": {
@@ -10920,7 +9712,7 @@
           "created_at"
         ],
         "title": "ThemeTreeResponse",
-        "description": "当前主题树响应。"
+        "description": "Current published theme tree response."
       },
       "TreeUnitItem": {
         "properties": {
@@ -10954,7 +9746,7 @@
           "score"
         ],
         "title": "TreeUnitItem",
-        "description": "主题树中挂载的教学单元。"
+        "description": "Teaching-unit mount info in theme tree."
       },
       "UnitDependencyItem": {
         "properties": {
@@ -11003,14 +9795,14 @@
           "supporting_edge_count"
         ],
         "title": "UnitDependencyItem",
-        "description": "先修 DAG 中的依赖边。"
+        "description": "Dependency edge item in prereq DAG."
       },
       "UnitDetailRequest": {
         "properties": {
           "unit_id": {
             "type": "integer",
             "title": "Unit Id",
-            "description": "教学单元 ID。"
+            "description": "Teaching unit ID."
           }
         },
         "type": "object",
@@ -11018,7 +9810,7 @@
           "unit_id"
         ],
         "title": "UnitDetailRequest",
-        "description": "教学单元详情请求。"
+        "description": "Teaching-unit detail query."
       },
       "UnitMembershipItem": {
         "properties": {
@@ -11057,7 +9849,7 @@
           "score"
         ],
         "title": "UnitMembershipItem",
-        "description": "教学单元成员节点。"
+        "description": "Teaching-unit membership item."
       },
       "UnitRevisionItem": {
         "properties": {
@@ -11083,45 +9875,7 @@
           "summary"
         ],
         "title": "UnitRevisionItem",
-        "description": "教学单元当前修订。"
-      },
-      "UnitsQueryRequest": {
-        "properties": {
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "页码，从 1 开始。",
-            "default": 1
-          },
-          "size": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。",
-            "default": 20
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status",
-            "description": "按状态过滤（默认仅 active）。"
-          }
-        },
-        "type": "object",
-        "title": "UnitsQueryRequest",
-        "description": "分页查询教学单元请求。",
-        "example": {
-          "page": 1,
-          "size": 20
-        }
+        "description": "Current revision for a teaching unit."
       },
       "ValidationError": {
         "properties": {

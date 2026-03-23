@@ -68,6 +68,7 @@
 | `09_ai_stack_and_refactor_guide.md` | AI 技术栈、工程化方法与重构指导 |
 | `10_repo_structure_and_runtime_files.md` | 仓库目录、生成物、运行时目录、本地调试产物 |
 | `11_database_and_storage_architecture.md` | 数据库、向量索引、本地文件、对象存储与迁移路线 |
+| `12_api_refactor_plan.md` | API 接口收敛、全量返回、知识图谱三 Tab 单接口重构计划 |
 
 ---
 

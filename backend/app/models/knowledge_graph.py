@@ -1,4 +1,4 @@
-"""知识图谱数据模型：节点、边、修订、证据、构建任务与构建锁。"""
+"""知识图谱数据模型：节点、边、修订、证据。"""
 
 from __future__ import annotations
 
@@ -32,9 +32,7 @@ class KnowledgeNode(SQLModel, table=True):
     merged_into_node_id: int | None = Field(
         default=None, foreign_key="knowledge_node.id",
     )
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id", index=True,
-    )
+    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -59,9 +57,7 @@ class KnowledgeAlias(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     is_primary: bool = Field(default=False)
     status: str = Field(default="active")  # AliasStatus
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id", index=True,
-    )
+    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -86,9 +82,7 @@ class KnowledgeEdge(SQLModel, table=True):
     confidence: float = Field(default=0.5)
     status: str = Field(default="pending")  # KGEdgeStatus
     current_revision_id: int | None = Field(default=None)
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id", index=True,
-    )
+    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -109,9 +103,7 @@ class KnowledgeRevision(SQLModel, table=True):
     summary: str = ""
     body: str = ""
     revision_reason: str  # RevisionReason
-    digest_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id",
-    )
+    digest_job_id: int | None = Field(default=None, index=True)
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -132,9 +124,7 @@ class EdgeRevision(SQLModel, table=True):
     weight: float
     confidence: float
     revision_reason: str  # RevisionReason
-    digest_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id",
-    )
+    digest_job_id: int | None = Field(default=None, index=True)
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -163,50 +153,5 @@ class EvidenceLink(SQLModel, table=True):
     field_scope: str = Field(default="summary")  # FieldScope
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id", index=True,
-    )
+    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
-
-
-class GraphDigestJob(SQLModel, table=True):
-    """图谱增量构建任务。"""
-
-    __tablename__ = "graph_digest_job"
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    idempotency_key: str = Field(index=True, unique=True)
-    status: str = Field(default="pending")  # DigestJobStatus
-    progress: int = Field(default=0)
-    current_step: str | None = Field(default=None)
-    input_file_ids_json: str = Field(default="[]")
-    input_chunk_count: int = Field(default=0)
-    extractor_version: str = Field(default="v1")
-    embedding_model_version: str = Field(default="")
-    nodes_added: int = Field(default=0)
-    nodes_updated: int = Field(default=0)
-    nodes_merged: int = Field(default=0)
-    edges_added: int = Field(default=0)
-    edges_updated: int = Field(default=0)
-    curriculum_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id",
-    )
-    retry_of_job_id: int | None = Field(
-        default=None, foreign_key="graph_digest_job.id",
-    )
-    error_message: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
-
-
-class SubjectBuildLock(SQLModel, table=True):
-    """学科级构建锁，防止同一学科并发构建。"""
-
-    __tablename__ = "subject_build_lock"
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(unique=True)
-    job_id: int | None = Field(default=None)
-    locked_at: datetime = Field(default_factory=utcnow)
-    expires_at: datetime | None = Field(default=None)
