@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib import import_module
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -11,23 +12,43 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.workflows.common.graph_export import WorkflowGraphExport
-from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
-from app.workflows.examine.exports import WORKFLOW_EXPORTS as EXAMINE_WORKFLOW_EXPORTS
-from app.workflows.ingest.exports import WORKFLOW_EXPORTS as INGEST_WORKFLOW_EXPORTS
-from app.workflows.interact.exports import WORKFLOW_EXPORTS as INTERACT_WORKFLOW_EXPORTS
-from app.workflows.profile.exports import WORKFLOW_EXPORTS as PROFILE_WORKFLOW_EXPORTS
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / ".generated_workflow_diagrams"
-WORKFLOW_REGISTRY = {
-    export.key: export
-    for export in (
-        *INGEST_WORKFLOW_EXPORTS,
-        *DIGEST_WORKFLOW_EXPORTS,
-        *EXAMINE_WORKFLOW_EXPORTS,
-        *INTERACT_WORKFLOW_EXPORTS,
-        *PROFILE_WORKFLOW_EXPORTS,
-    )
-}
+WORKFLOWS_DIR = BACKEND_DIR / "app" / "workflows"
+
+
+def discover_workflow_exports() -> tuple[WorkflowGraphExport, ...]:
+    exports: list[WorkflowGraphExport] = []
+
+    for module_dir in sorted(WORKFLOWS_DIR.iterdir(), key=lambda path: path.name):
+        if not module_dir.is_dir():
+            continue
+        if module_dir.name.startswith("_") or module_dir.name == "common":
+            continue
+        if not (module_dir / "exports.py").exists():
+            continue
+
+        module_name = f"app.workflows.{module_dir.name}.exports"
+        try:
+            module = import_module(module_name)
+        except Exception as exc:  # pragma: no cover - surfaced in CLI output
+            raise RuntimeError(f"Failed to import workflow exports from {module_name}: {exc}") from exc
+
+        module_exports = getattr(module, "WORKFLOW_EXPORTS", None)
+        if module_exports is None:
+            continue
+
+        exports.extend(module_exports)
+
+    return tuple(exports)
+
+
+DISCOVERED_WORKFLOW_EXPORTS = discover_workflow_exports()
+WORKFLOW_REGISTRY = {export.key: export for export in DISCOVERED_WORKFLOW_EXPORTS}
+
+duplicate_keys = len(DISCOVERED_WORKFLOW_EXPORTS) - len(WORKFLOW_REGISTRY)
+if duplicate_keys:
+    raise RuntimeError("Duplicate workflow export keys detected while building workflow registry.")
 
 
 def parse_args() -> argparse.Namespace:
