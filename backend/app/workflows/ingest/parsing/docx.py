@@ -68,6 +68,7 @@ def _parse_docx_with_markitdown_sync(path: Path, asset_dir: Path, options: Parse
             asset_dir,
             max_images=options.asset_image_limit,
             workers=options.parser_parallelism,
+            asset_name_prefix=options.asset_name_prefix,
         )
     return result.text_content
 
@@ -112,6 +113,7 @@ def _parse_docx_with_python_docx_sync(path: Path, asset_dir: Path, options: Pars
                 image_ext=image_ext,
                 asset_dir=asset_dir,
                 image_count=image_count + 1,
+                asset_name_prefix=options.asset_name_prefix,
             )
             if not filename:
                 continue
@@ -151,6 +153,7 @@ def _parse_docx_with_archive_sync(path: Path, asset_dir: Path, options: ParserRu
                 image_ext=Path(image.internal_path).suffix or ".png",
                 asset_dir=asset_dir,
                 image_count=image_count + 1,
+                asset_name_prefix=options.asset_name_prefix,
             )
             if not filename:
                 continue
@@ -161,11 +164,24 @@ def _parse_docx_with_archive_sync(path: Path, asset_dir: Path, options: ParserRu
     return _finalize_native_docx_result(path=path, sections=sections, image_count=image_count)
 
 
-def supplement_docx_images(file_path: Path, asset_dir: Path, *, max_images: int, workers: int) -> None:
+def supplement_docx_images(
+    file_path: Path,
+    asset_dir: Path,
+    *,
+    max_images: int,
+    workers: int,
+    asset_name_prefix: str,
+) -> None:
     """Extract document images even when markdown came from MarkItDown."""
 
     if Document is None:
-        _supplement_docx_images_from_archive(file_path, asset_dir, max_images=max_images, workers=workers)
+        _supplement_docx_images_from_archive(
+            file_path,
+            asset_dir,
+            max_images=max_images,
+            workers=workers,
+            asset_name_prefix=asset_name_prefix,
+        )
         return
 
     document = Document(str(file_path))
@@ -187,7 +203,12 @@ def supplement_docx_images(file_path: Path, asset_dir: Path, *, max_images: int,
         ext = Path(target_ref).suffix or ".png"
         extracted_images.append((image_bytes, ext, f"doc_img{len(extracted_images) + 1}"))
 
-    saved_count = _save_docx_supplement_images(extracted_images, asset_dir, workers=workers)
+    saved_count = _save_docx_supplement_images(
+        extracted_images,
+        asset_dir,
+        workers=workers,
+        asset_name_prefix=asset_name_prefix,
+    )
     if saved_count:
         logger.info("docx_images_supplemented", filename=file_path.name, count=saved_count)
 
@@ -198,6 +219,7 @@ def _supplement_docx_images_from_archive(
     *,
     max_images: int,
     workers: int,
+    asset_name_prefix: str,
 ) -> None:
     document = load_docx_archive(file_path)
     extracted_images: list[tuple[bytes, str, str]] = []
@@ -215,7 +237,12 @@ def _supplement_docx_images_from_archive(
             )
         )
 
-    saved_count = _save_docx_supplement_images(extracted_images, asset_dir, workers=workers)
+    saved_count = _save_docx_supplement_images(
+        extracted_images,
+        asset_dir,
+        workers=workers,
+        asset_name_prefix=asset_name_prefix,
+    )
     if saved_count:
         logger.info("docx_images_supplemented", filename=file_path.name, count=saved_count)
 
@@ -226,6 +253,7 @@ def _save_docx_image(
     image_ext: str,
     asset_dir: Path,
     image_count: int,
+    asset_name_prefix: str,
 ) -> str | None:
     if len(image_bytes) < 1024:
         return None
@@ -234,6 +262,7 @@ def _save_docx_image(
         asset_dir,
         name_hint=f"doc_img{image_count}",
         ext=image_ext,
+        name_prefix=asset_name_prefix,
     )
 
 
@@ -242,6 +271,7 @@ def _save_docx_supplement_images(
     asset_dir: Path,
     *,
     workers: int,
+    asset_name_prefix: str,
 ) -> int:
     if not images:
         return 0
@@ -249,12 +279,18 @@ def _save_docx_supplement_images(
     max_workers = min(max(workers, 1), 10)
     if max_workers == 1:
         for image_bytes, image_ext, hint in images:
-            save_image_bytes(image_bytes, asset_dir, name_hint=hint, ext=image_ext)
+            save_image_bytes(
+                image_bytes,
+                asset_dir,
+                name_hint=hint,
+                ext=image_ext,
+                name_prefix=asset_name_prefix,
+            )
         return len(images)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(save_image_bytes, image_bytes, asset_dir, hint, image_ext)
+            executor.submit(save_image_bytes, image_bytes, asset_dir, hint, image_ext, asset_name_prefix)
             for image_bytes, image_ext, hint in images
         ]
         for future in futures:

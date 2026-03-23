@@ -1,8 +1,10 @@
 """Resolve-phase nodes for the digest graph workflow.
 
 Reads DB: existing graph entities, revisions, aliases, evidence, and prepared chunks.
-Writes DB: ``knowledge_node`` / ``knowledge_edge`` revisions, aliases, evidence links,
-and ``graph_digest_job`` progress.
+Writes DB: ``knowledge_node``, ``knowledge_revision``, ``knowledge_alias``,
+``knowledge_edge``, ``edge_revision``, ``evidence_link``.
+Writes DB (compatibility no-op): graph progress helpers still run, but no dedicated
+``graph_digest_job`` table is persisted now.
 Writes FS: none.
 Idempotency: reruns reconcile candidates against the same graph identity layer and append
 only the needed revisions / evidence for the active job.

@@ -2,7 +2,7 @@
 
 Reads DB: ``raw_file``.
 Writes DB: ``raw_file`` classification / ingest-prep metadata.
-Writes FS: reads the persisted raw file path and derives deterministic markdown/assets paths.
+Writes FS: reads the persisted raw file path and derives deterministic ``raw_markdown/`` and shared ``assets/`` paths.
 Idempotency: reruns refresh metadata for the same ``raw_file`` and reuse the same output paths.
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import build_asset_dir, build_markdown_path
+from app.services.upload_support import build_asset_dir, build_asset_name_prefix, build_markdown_path
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileClassifiedEvent
@@ -41,6 +41,11 @@ def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "file_path": raw_file.file_path,
             "markdown_path": str(build_markdown_path(raw_file.subject, file_id)),
             "asset_dir": str(build_asset_dir(raw_file.subject, file_id)),
+            "asset_name_prefix": build_asset_name_prefix(
+                filename=raw_file.filename,
+                file_uid=raw_file.uid,
+                file_id=file_id,
+            ),
             "error": None,
         }
 
@@ -59,6 +64,7 @@ def build_load_raw_file_node(*, context: WorkflowContext):
             file_path=next_state["file_path"],
             markdown_path=next_state["markdown_path"],
             asset_dir=next_state["asset_dir"],
+            asset_name_prefix=next_state["asset_name_prefix"],
         )
         return next_state
 
@@ -154,6 +160,7 @@ def build_plan_parse_node(*, context: WorkflowContext):
                 file_size_bytes=state.get("file_size_bytes"),
                 classification=state.get("classification"),
             )
+            parse_plan.options.asset_name_prefix = state.get("asset_name_prefix", "")
             logger.info(
                 "ingest_parse_plan_built",
                 mode=parse_plan.mode,
@@ -162,7 +169,10 @@ def build_plan_parse_node(*, context: WorkflowContext):
                 timeout_s=parse_plan.options.timeout_s,
                 asset_image_limit=parse_plan.options.asset_image_limit,
                 skip_image_supplement=parse_plan.options.skip_image_supplement,
+                asset_name_prefix=parse_plan.options.asset_name_prefix,
                 parser_parallelism=parse_plan.options.parser_parallelism,
+                enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr,
+                asset_vision_ocr_limit=parse_plan.options.asset_vision_ocr_limit,
                 llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
                 ocr_page_limit=parse_plan.options.ocr_page_limit,
                 ocr_text_char_threshold=parse_plan.options.ocr_text_char_threshold,

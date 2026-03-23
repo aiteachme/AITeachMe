@@ -13,7 +13,7 @@ class FileAssetItem(BaseModel):
     """Public asset descriptor for one extracted file asset."""
 
     name: str = Field(description="Asset filename.")
-    url: str = Field(description="Public asset URL.")
+    url: str = Field(description="Runtime static URL for this asset.")
     mime_type: str | None = Field(default=None, description="Asset mime type.")
 
 
@@ -34,7 +34,7 @@ class FileRecord(BaseModel):
     image_count: int | None = Field(default=None, description="Extracted image count.")
     parser_used: str | None = Field(default=None, description="Parser used.")
     markdown_content: str = Field(default="", description="Parsed markdown content.")
-    asset_base_url: str | None = Field(default=None, description="Base URL for assets of this file.")
+    asset_base_url: str | None = Field(default=None, description="Runtime static base URL for this file's assets.")
     assets: list[FileAssetItem] = Field(default_factory=list, description="Extracted assets.")
     latest_updated_at: datetime = Field(description="Last updated time.")
     created_at: datetime = Field(description="Created time.")

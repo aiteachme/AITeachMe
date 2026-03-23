@@ -2,7 +2,7 @@
 
 Reads DB: ``raw_file`` lookup during parse result persistence.
 Writes DB: ``raw_file`` ingest status transitions and parse metadata.
-Writes FS: overwrites ``markdown/<raw_file_id>.md`` and files under ``assets/<raw_file_id>/``.
+Writes FS: overwrites ``raw_markdown/<raw_file_id>.md`` and matching files under shared ``assets/``.
 Idempotency: reruns replace markdown/assets for the same file and refresh metadata in place.
 """
 
@@ -15,6 +15,7 @@ import time
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
+from app.services.upload_support import list_asset_files
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileParsedEvent
@@ -39,6 +40,9 @@ def build_parse_file_node(*, context: WorkflowContext):
             parse_mode=parse_plan.mode if parse_plan else None,
             parser_chain=parse_plan.parser_chain if parse_plan else None,
             parser_parallelism=parse_plan.options.parser_parallelism if parse_plan else None,
+            asset_name_prefix=parse_plan.options.asset_name_prefix if parse_plan else None,
+            enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr if parse_plan else None,
+            asset_vision_ocr_limit=parse_plan.options.asset_vision_ocr_limit if parse_plan else None,
             llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency if parse_plan else None,
             ocr_language_mode=parse_plan.options.ocr_language_mode if parse_plan else None,
         )
@@ -50,7 +54,12 @@ def build_parse_file_node(*, context: WorkflowContext):
                 parse_plan=parse_plan,
             )
             markdown_path.write_text(parse_result.markdown, encoding="utf-8")
-            image_count = len(list(asset_dir.glob("*"))) if asset_dir.exists() else 0
+            image_count = len(
+                list_asset_files(
+                    asset_dir,
+                    asset_name_prefix=state.get("asset_name_prefix"),
+                )
+            )
             elapsed = round(time.monotonic() - started_at, 2)
             classification = state.get("classification")
             parse_metadata = json.dumps(
@@ -77,6 +86,8 @@ def build_parse_file_node(*, context: WorkflowContext):
                     "rewritten_image_refs": parse_result.rewritten_image_refs,
                     "extracted_data_images": parse_result.extracted_data_images,
                     "appended_asset_images": parse_result.appended_asset_images,
+                    "asset_ocr_images": parse_result.asset_ocr_images,
+                    "asset_ocr_replacements": parse_result.asset_ocr_replacements,
                 },
                 ensure_ascii=False,
             )
@@ -113,6 +124,8 @@ def build_parse_file_node(*, context: WorkflowContext):
                 rewritten_image_refs=parse_result.rewritten_image_refs,
                 extracted_data_images=parse_result.extracted_data_images,
                 appended_asset_images=parse_result.appended_asset_images,
+                asset_ocr_images=parse_result.asset_ocr_images,
+                asset_ocr_replacements=parse_result.asset_ocr_replacements,
             )
             return {
                 **state,
@@ -125,6 +138,8 @@ def build_parse_file_node(*, context: WorkflowContext):
                 "rewritten_image_refs": parse_result.rewritten_image_refs,
                 "extracted_data_images": parse_result.extracted_data_images,
                 "appended_asset_images": parse_result.appended_asset_images,
+                "asset_ocr_images": parse_result.asset_ocr_images,
+                "asset_ocr_replacements": parse_result.asset_ocr_replacements,
                 "error": None,
             }
         except Exception as exc:

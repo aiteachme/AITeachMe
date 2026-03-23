@@ -25,13 +25,6 @@ def get_raw_file_by_id(session: Session, raw_file_id: int) -> RawFile | None:
     return session.get(RawFile, raw_file_id)
 
 
-def get_raw_file_by_uid(session: Session, raw_file_uid: str) -> RawFile | None:
-    """Load one raw file by public UID."""
-
-    stmt = select(RawFile).where(RawFile.uid == raw_file_uid)
-    return session.exec(stmt).first()
-
-
 def list_raw_files_by_ids(
     session: Session,
     subject: str,

@@ -15,6 +15,7 @@
 
 - Removed the separate parse trigger from the public files API.
 - Removed the separate retry trigger from the public files API.
+- Removed the legacy asset proxy route and standardized asset delivery on `/_assets/...` runtime static URLs.
 - Merged list and detail preview needs into the unified files query response.
 - Standardized frontend preview to consume Markdown content and asset URLs from the same payload.
 - Reduced delete behavior to one endpoint for both single-file and batch deletion.

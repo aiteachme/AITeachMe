@@ -35,6 +35,7 @@ async def parse_image_with_llm_vision(
         asset_dir,
         name_hint=f"original_{path.stem}",
         ext=path.suffix,
+        name_prefix=options.asset_name_prefix,
     )
 
     try:

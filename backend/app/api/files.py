@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Path, UploadFile
-from fastapi.responses import FileResponse
 from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
@@ -13,7 +12,6 @@ from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, File
 from app.services.file_service import (
     delete_files,
     list_subject_files,
-    resolve_subject_asset_path,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
 )
@@ -90,24 +88,3 @@ async def delete_files_api(
         )
     )
 
-
-@router.get(
-    "/assets/{file_uid}/{asset_name:path}",
-    summary="Get one extracted asset by file UID",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def get_file_asset(
-    subject: str = Path(...),
-    file_uid: str = Path(...),
-    asset_name: str = Path(...),
-    session: Session = Depends(get_db),
-) -> FileResponse:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    asset_path = resolve_subject_asset_path(
-        session,
-        subject=normalized_subject,
-        file_uid=file_uid,
-        asset_name=asset_name,
-    )
-    return FileResponse(asset_path)

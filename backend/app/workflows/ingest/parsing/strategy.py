@@ -92,6 +92,7 @@ def build_parse_plan(
         file_mb=file_mb,
         estimated_pages=estimated_pages,
         classification=classification,
+        llm_enabled=allow_llm_vision,
         options=options,
     )
     return ParsePlan(
@@ -164,6 +165,7 @@ def _decide_mode_and_options(
     file_mb: float,
     estimated_pages: int,
     classification: ClassificationResult | None,
+    llm_enabled: bool,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
     if is_image_extension(extension):
@@ -188,34 +190,58 @@ def _decide_mode_and_options(
             options.ocr_page_limit = 18
             options.timeout_s = max(options.timeout_s, 140)
             options.enable_page_vision_ocr = True
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 12
             return "fast_scanned_pdf", "Scanned PDF enables page-level OCR with parallel extraction."
+        if classification and classification.file_category == "complex_pdf":
+            options.asset_image_limit = max(options.asset_image_limit, 24)
+            options.timeout_s = max(options.timeout_s, 120)
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 16
+            return "quality_complex_pdf", "Complex PDF enables larger asset extraction and vision OCR budget."
         if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
             options.asset_image_limit = 12
             options.skip_image_supplement = True
             options.timeout_s = max(options.timeout_s, 120)
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 10 if classification and classification.has_formulas else 6
             return "fast_large_pdf", "Large PDF uses faster parser order and caps image extraction."
         if estimated_pages >= _MEDIUM_DOC_PAGES:
             options.asset_image_limit = 16
             options.ocr_page_limit = 10
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 16 if classification and classification.has_formulas else 8
             return "balanced_medium_pdf", "Medium PDF keeps balanced extraction with moderate asset budget."
+        options.enable_asset_vision_ocr = llm_enabled
+        options.asset_vision_ocr_limit = 16 if classification and classification.has_formulas else 8
         return "quality_pdf", "Text-heavy PDF keeps quality-first parser ordering."
 
     if extension == ".docx":
         if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
             options.asset_image_limit = 10
             options.skip_image_supplement = True
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 6
             return "fast_docx", "Large DOCX prefers native parsing and skips secondary image sweep."
+        options.enable_asset_vision_ocr = llm_enabled
+        options.asset_vision_ocr_limit = 8
         return "balanced_docx", "DOCX uses balanced parser ordering."
 
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             options.asset_image_limit = 10
             options.skip_image_supplement = True
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 6
             return "fast_pptx", "Large slide deck prefers native parsing and skips secondary image sweep."
+        options.enable_asset_vision_ocr = llm_enabled
+        options.asset_vision_ocr_limit = 8
         return "balanced_pptx", "Slide deck uses balanced parser ordering."
 
     if is_markitdown_generic_extension(extension):
         options.asset_image_limit = 12
+        options.enable_asset_vision_ocr = llm_enabled
+        options.asset_vision_ocr_limit = 6
         return "generic_markitdown", "Generic document format routed to MarkItDown parser."
 
     return "balanced_default", "Default parser chain selected."

@@ -1,8 +1,10 @@
 """Preparation-phase nodes for the digest graph workflow.
 
-Reads DB: ``graph_digest_job``, ``raw_file``, ``document``, ``document_chunk``.
-Writes DB: ``graph_digest_job`` progress, ``subject_build_lock``, and materialized
-``document`` / ``document_chunk`` / ``chunk_embeddings`` rows when missing.
+Reads DB: ``raw_file``, ``document``, ``document_chunk``.
+Writes DB: materialized ``document`` / ``document_chunk`` rows and ``chunk_embeddings``
+when digest-ready chunks are missing.
+Writes DB (compatibility no-op): graph progress / lock helpers remain callable, but no
+dedicated ``graph_digest_job`` or ``subject_build_lock`` table is persisted now.
 Writes FS: reads cleaned markdown from the ingest output paths.
 Idempotency: chunk materialization reuses existing documents/chunks when already present.
 """

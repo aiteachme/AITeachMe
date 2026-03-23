@@ -10,9 +10,12 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.core.exceptions import UnsupportedFileTypeError
+from app.services.upload_support import list_asset_files
+from app.workflows.ingest.parsing.asset_ocr import enhance_markdown_with_asset_ocr
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
+from app.workflows.ingest.parsing.pdf_page_fallback import enhance_pdf_markdown_with_page_fallback
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 
 logger = structlog.get_logger()
@@ -28,6 +31,8 @@ class ParseExecutionResult(BaseModel):
     rewritten_image_refs: int = 0
     extracted_data_images: int = 0
     appended_asset_images: int = 0
+    asset_ocr_images: int = 0
+    asset_ocr_replacements: int = 0
 
 
 async def parse_file(
@@ -73,6 +78,9 @@ async def parse_file(
         llm_ocr_page_concurrency=plan.options.llm_ocr_page_concurrency,
         ocr_page_limit=plan.options.ocr_page_limit,
         asset_gallery_limit=plan.options.asset_gallery_limit,
+        enable_asset_vision_ocr=plan.options.enable_asset_vision_ocr,
+        asset_vision_ocr_limit=plan.options.asset_vision_ocr_limit,
+        asset_name_prefix=plan.options.asset_name_prefix,
         ocr_language_mode=plan.options.ocr_language_mode,
     )
 
@@ -89,18 +97,51 @@ async def parse_file(
             canonical_result = canonicalize_markdown(
                 raw_markdown,
                 asset_dir=assets,
-                asset_link_prefix=f"../assets/{assets.name}",
-                asset_gallery_limit=plan.options.asset_gallery_limit,
+                asset_link_prefix="../assets",
+                asset_name_prefix=plan.options.asset_name_prefix,
+                asset_gallery_limit=0
+                if plan.options.enable_asset_vision_ocr
+                else plan.options.asset_gallery_limit,
             )
+            enhanced_result = await enhance_markdown_with_asset_ocr(
+                canonical_result.markdown,
+                asset_dir=assets,
+                asset_link_prefix="../assets",
+                asset_name_prefix=plan.options.asset_name_prefix,
+                enabled=plan.options.enable_asset_vision_ocr,
+                limit=plan.options.asset_vision_ocr_limit,
+                language_mode=plan.options.ocr_language_mode,
+                concurrency=plan.options.llm_ocr_page_concurrency,
+            )
+            if extension == ".pdf":
+                page_fallback_result = await enhance_pdf_markdown_with_page_fallback(
+                    enhanced_result.markdown,
+                    pdf_path=path,
+                    asset_dir=assets,
+                    asset_link_prefix="../assets",
+                    asset_name_prefix=plan.options.asset_name_prefix,
+                    enabled=plan.options.enable_asset_vision_ocr,
+                    language_mode=plan.options.ocr_language_mode,
+                    concurrency=plan.options.llm_ocr_page_concurrency,
+                    max_pages=plan.options.ocr_page_limit,
+                )
+                enhanced_result.markdown = page_fallback_result.markdown
+                enhanced_result.ocr_image_count += page_fallback_result.page_image_count
+                enhanced_result.placeholder_replacements += page_fallback_result.placeholder_replacements
             elapsed = round(time.monotonic() - started_at, 2)
-            image_count = len(list(assets.glob("*"))) if assets.exists() else 0
+            image_count = len(
+                list_asset_files(
+                    assets,
+                    asset_name_prefix=plan.options.asset_name_prefix,
+                )
+            )
             logger.info(
                 "parse_file_completed",
                 filename=path.name,
                 parser=parser_name,
                 parse_mode=plan.mode,
                 raw_chars=len(raw_markdown),
-                final_chars=len(canonical_result.markdown),
+                final_chars=len(enhanced_result.markdown),
                 images_extracted=image_count,
                 elapsed_s=elapsed,
                 attempted_parsers=attempted_parsers,
@@ -108,15 +149,19 @@ async def parse_file(
                 rewritten_image_refs=canonical_result.rewritten_image_refs,
                 extracted_data_images=canonical_result.extracted_data_images,
                 appended_asset_images=canonical_result.appended_asset_images,
+                asset_ocr_images=enhanced_result.ocr_image_count,
+                asset_ocr_replacements=enhanced_result.placeholder_replacements,
             )
             return ParseExecutionResult(
-                markdown=canonical_result.markdown,
+                markdown=enhanced_result.markdown,
                 parser_used=parser_name,
                 attempted_parsers=attempted_parsers,
                 parser_elapsed_s=parser_elapsed_s,
                 rewritten_image_refs=canonical_result.rewritten_image_refs,
                 extracted_data_images=canonical_result.extracted_data_images,
                 appended_asset_images=canonical_result.appended_asset_images,
+                asset_ocr_images=enhanced_result.ocr_image_count,
+                asset_ocr_replacements=enhanced_result.placeholder_replacements,
             )
         except asyncio.TimeoutError as exc:
             parser_elapsed_s[parser_name] = round(time.monotonic() - parser_started_at, 2)

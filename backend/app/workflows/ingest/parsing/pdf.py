@@ -11,6 +11,7 @@ import structlog
 
 from app.core.exceptions import FileParseError
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
+from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import save_image_bytes
 
@@ -51,6 +52,7 @@ class _PDFImageCandidate(BaseModel):
     image_index: int
     image_bytes: bytes
     image_ext: str
+    name_hint: str
 
 
 async def parse_pdf_with_pymupdf4llm(
@@ -162,21 +164,22 @@ def _build_pdf_ocr_pages(path: Path, asset_dir: Path, options: ParserRunOptions)
         page = document[page_index]
         page_number = page_index + 1
         base_text = (page.get_text("text") or "").strip()
-        has_image = bool(page.get_images(full=True))
+        has_visual = bool(page.get_images(full=True)) or _page_has_meaningful_drawing_clusters(page)
         should_ocr = (
             options.enable_page_vision_ocr
             and ocr_pages < options.ocr_page_limit
-            and has_image
+            and has_visual
             and len(base_text) < min_text_chars
         )
         if not should_ocr:
-            if has_image and len(base_text) < min_text_chars and captured_pages < options.asset_image_limit:
+            if has_visual and len(base_text) < min_text_chars and captured_pages < options.asset_image_limit:
                 page_bytes = _render_page_png(page)
                 filename = save_image_bytes(
                     page_bytes,
                     asset_dir,
                     name_hint=f"page{page_number}_img",
                     ext=".png",
+                    name_prefix=options.asset_name_prefix,
                 )
                 pages.append(
                     _PDFOCRPage(
@@ -196,6 +199,7 @@ def _build_pdf_ocr_pages(path: Path, asset_dir: Path, options: ParserRunOptions)
             asset_dir,
             name_hint=f"page{page_number}_ocr",
             ext=".png",
+            name_prefix=options.asset_name_prefix,
         )
         pages.append(
             _PDFOCRPage(
@@ -217,7 +221,7 @@ def _parse_pdf_with_pymupdf4llm_sync(path: Path, asset_dir: Path, options: Parse
         raise FileParseError(path.name, reason="pymupdf4llm is not available.")
 
     logger.info("parse_pdf_pymupdf4llm_start", filename=path.name, parser_parallelism=options.parser_parallelism)
-    text = pymupdf4llm.to_markdown(str(path))
+    text = _render_pymupdf4llm_markdown(path)
     if not text or not text.strip():
         raise FileParseError(path.name, reason="pymupdf4llm returned empty markdown.")
 
@@ -227,8 +231,34 @@ def _parse_pdf_with_pymupdf4llm_sync(path: Path, asset_dir: Path, options: Parse
             asset_dir,
             max_images=options.asset_image_limit,
             workers=options.parser_parallelism,
+            asset_name_prefix=options.asset_name_prefix,
         )
     return text
+
+
+def _render_pymupdf4llm_markdown(path: Path) -> str:
+    """Request page chunks so downstream placeholder recovery can stay page-aware."""
+
+    chunked_result = pymupdf4llm.to_markdown(str(path), page_chunks=True)
+    if isinstance(chunked_result, list):
+        sections: list[MarkdownPageSection] = []
+        for index, chunk in enumerate(chunked_result, start=1):
+            metadata = chunk.get("metadata", {})
+            page_number = int(metadata.get("page_number") or index)
+            text = str(chunk.get("text") or "").strip()
+            sections.append(
+                MarkdownPageSection(
+                    page_number=page_number,
+                    marker=f"<!-- page:{page_number} -->",
+                    body=text,
+                )
+            )
+        rendered = join_markdown_pages(sections)
+        if rendered.strip():
+            return rendered
+
+    fallback_text = pymupdf4llm.to_markdown(str(path))
+    return fallback_text.strip()
 
 
 def _parse_pdf_with_markitdown_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
@@ -246,6 +276,7 @@ def _parse_pdf_with_markitdown_sync(path: Path, asset_dir: Path, options: Parser
             asset_dir,
             max_images=options.asset_image_limit,
             workers=options.parser_parallelism,
+            asset_name_prefix=options.asset_name_prefix,
         )
     return result.text_content
 
@@ -269,27 +300,20 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
         if text and text.strip():
             sections.append(text.strip())
 
-        for image_index, image_info in enumerate(page.get_images(full=True), start=1):
-            if len(image_candidates) >= options.asset_image_limit:
-                break
-            xref = int(image_info[0])
-            if xref in seen_xref:
-                continue
-            seen_xref.add(xref)
-            base_image = _extract_pdf_image(document, xref)
-            if base_image is None:
-                continue
-            image_bytes, image_ext = base_image
-            if len(image_bytes) < 2048:
-                continue
-            image_candidates.append(
-                _PDFImageCandidate(
-                    page_number=page_number,
-                    image_index=image_index,
-                    image_bytes=image_bytes,
-                    image_ext=image_ext,
-                )
-            )
+        _append_pdf_image_candidates(
+            document,
+            page,
+            page_number=page_number,
+            max_images=options.asset_image_limit,
+            candidates=image_candidates,
+            seen_xref=seen_xref,
+        )
+        _append_pdf_drawing_candidates(
+            page,
+            page_number=page_number,
+            max_images=options.asset_image_limit,
+            candidates=image_candidates,
+        )
         sections.append("")
         if len(image_candidates) >= options.asset_image_limit:
             logger.info(
@@ -300,7 +324,12 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
             break
 
     document.close()
-    image_names = _save_pdf_images_parallel(image_candidates, asset_dir, workers=options.parser_parallelism)
+    image_names = _save_pdf_images_parallel(
+        image_candidates,
+        asset_dir,
+        workers=options.parser_parallelism,
+        asset_name_prefix=options.asset_name_prefix,
+    )
     for index, image_name in enumerate(image_names, start=1):
         if not image_name:
             continue
@@ -320,6 +349,7 @@ def supplement_pdf_images(
     *,
     max_images: int,
     workers: int,
+    asset_name_prefix: str,
 ) -> None:
     """Extract images when markdown came from a non-native parser."""
 
@@ -331,35 +361,38 @@ def supplement_pdf_images(
     candidates: list[_PDFImageCandidate] = []
     for page_index in range(len(document)):
         page = document[page_index]
-        for image_index, image_info in enumerate(page.get_images(full=True), start=1):
-            if len(candidates) >= max_images:
-                document.close()
-                _save_pdf_images_parallel(candidates, asset_dir, workers=workers)
-                logger.info("pdf_images_supplement_limited", filename=file_path.name, limit=max_images)
-                return
-
-            xref = int(image_info[0])
-            if xref in seen_xref:
-                continue
-            seen_xref.add(xref)
-
-            base_image = _extract_pdf_image(document, xref)
-            if base_image is None:
-                continue
-            image_bytes, image_ext = base_image
-            if len(image_bytes) < 2048:
-                continue
-            candidates.append(
-                _PDFImageCandidate(
-                    page_number=page_index + 1,
-                    image_index=image_index,
-                    image_bytes=image_bytes,
-                    image_ext=image_ext,
-                )
+        _append_pdf_image_candidates(
+            document,
+            page,
+            page_number=page_index + 1,
+            max_images=max_images,
+            candidates=candidates,
+            seen_xref=seen_xref,
+        )
+        _append_pdf_drawing_candidates(
+            page,
+            page_number=page_index + 1,
+            max_images=max_images,
+            candidates=candidates,
+        )
+        if len(candidates) >= max_images:
+            document.close()
+            _save_pdf_images_parallel(
+                candidates,
+                asset_dir,
+                workers=workers,
+                asset_name_prefix=asset_name_prefix,
             )
+            logger.info("pdf_images_supplement_limited", filename=file_path.name, limit=max_images)
+            return
 
     document.close()
-    names = _save_pdf_images_parallel(candidates, asset_dir, workers=workers)
+    names = _save_pdf_images_parallel(
+        candidates,
+        asset_dir,
+        workers=workers,
+        asset_name_prefix=asset_name_prefix,
+    )
     if names:
         logger.info("pdf_images_supplemented", filename=file_path.name, count=len([name for name in names if name]))
 
@@ -369,25 +402,30 @@ def _save_pdf_images_parallel(
     asset_dir: Path,
     *,
     workers: int,
+    asset_name_prefix: str,
 ) -> list[str]:
     if not candidates:
         return []
 
     max_workers = min(max(workers, 1), 10)
     if max_workers == 1:
-        return [_save_pdf_candidate(candidate, asset_dir) for candidate in candidates]
+        return [_save_pdf_candidate(candidate, asset_dir, asset_name_prefix) for candidate in candidates]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_save_pdf_candidate, candidate, asset_dir) for candidate in candidates]
+        futures = [
+            executor.submit(_save_pdf_candidate, candidate, asset_dir, asset_name_prefix)
+            for candidate in candidates
+        ]
         return [future.result() for future in futures]
 
 
-def _save_pdf_candidate(candidate: _PDFImageCandidate, asset_dir: Path) -> str:
+def _save_pdf_candidate(candidate: _PDFImageCandidate, asset_dir: Path, asset_name_prefix: str) -> str:
     return save_image_bytes(
         candidate.image_bytes,
         asset_dir,
-        name_hint=f"p{candidate.page_number}_img{candidate.image_index}",
+        name_hint=candidate.name_hint,
         ext=f".{candidate.image_ext}",
+        name_prefix=asset_name_prefix,
     )
 
 
@@ -407,3 +445,88 @@ def _extract_pdf_image(document: object, xref: int) -> tuple[bytes, str] | None:
     if base_image is None:
         return None
     return base_image["image"], base_image.get("ext", "png")
+
+
+def _append_pdf_image_candidates(
+    document: object,
+    page: object,
+    *,
+    page_number: int,
+    max_images: int,
+    candidates: list[_PDFImageCandidate],
+    seen_xref: set[int],
+) -> None:
+    for image_index, image_info in enumerate(page.get_images(full=True), start=1):
+        if len(candidates) >= max_images:
+            return
+        xref = int(image_info[0])
+        if xref in seen_xref:
+            continue
+        seen_xref.add(xref)
+        base_image = _extract_pdf_image(document, xref)
+        if base_image is None:
+            continue
+        image_bytes, image_ext = base_image
+        if len(image_bytes) < 2048:
+            continue
+        candidates.append(
+            _PDFImageCandidate(
+                page_number=page_number,
+                image_index=image_index,
+                image_bytes=image_bytes,
+                image_ext=image_ext,
+                name_hint=f"p{page_number}_img{image_index}",
+            )
+        )
+
+
+def _append_pdf_drawing_candidates(
+    page: object,
+    *,
+    page_number: int,
+    max_images: int,
+    candidates: list[_PDFImageCandidate],
+) -> None:
+    for drawing_index, rect in enumerate(page.cluster_drawings(), start=1):
+        if len(candidates) >= max_images:
+            return
+        if not _is_meaningful_drawing_rect(rect):
+            continue
+        image_bytes = _render_rect_png(page, rect)
+        if len(image_bytes) < 2048:
+            continue
+        candidates.append(
+            _PDFImageCandidate(
+                page_number=page_number,
+                image_index=drawing_index,
+                image_bytes=image_bytes,
+                image_ext="png",
+                name_hint=f"p{page_number}_draw{drawing_index}",
+            )
+        )
+
+
+def _page_has_meaningful_drawing_clusters(page: object) -> bool:
+    return any(_is_meaningful_drawing_rect(rect) for rect in page.cluster_drawings())
+
+
+def _is_meaningful_drawing_rect(rect: object) -> bool:
+    width = float(rect.width)
+    height = float(rect.height)
+    area = width * height
+    return width >= 40 and height >= 10 and area >= 1500
+
+
+def _render_rect_png(page: object, rect: object) -> bytes:
+    if fitz is None:
+        return b""
+
+    padding = 6
+    clip = fitz.Rect(
+        max(page.rect.x0, rect.x0 - padding),
+        max(page.rect.y0, rect.y0 - padding),
+        min(page.rect.x1, rect.x1 + padding),
+        min(page.rect.y1, rect.y1 + padding),
+    )
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0), clip=clip, alpha=False)
+    return pixmap.tobytes("png")

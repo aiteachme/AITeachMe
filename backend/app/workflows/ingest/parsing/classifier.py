@@ -47,6 +47,8 @@ _HEADING_LIKE_RE = re.compile(
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 _TABLE_LIKE_RE = re.compile(r"\|.*\|.*\||\+[-=]+\+", re.MULTILINE)
 _FORMULA_RE = re.compile(r"(?:\\frac|\\sum|\\int|\\sqrt|∑|∫|≤|≥)")
+
+
 class ClassificationResult(BaseModel):
     """Classification output consumed by the ingest workflow."""
 
@@ -113,6 +115,7 @@ def _classify_pdf(path: Path) -> ClassificationResult:
 
     total_chars = 0
     image_heavy_pages = 0
+    drawing_heavy_pages = 0
     all_text_parts: list[str] = []
 
     for page_index in range(sample_pages):
@@ -125,6 +128,8 @@ def _classify_pdf(path: Path) -> ClassificationResult:
         large_images = [image for image in images if _is_large_image(document, image[0])]
         if char_count < 50 and large_images:
             image_heavy_pages += 1
+        if _has_meaningful_drawing_clusters(page):
+            drawing_heavy_pages += 1
 
         all_text_parts.append(text)
 
@@ -133,16 +138,17 @@ def _classify_pdf(path: Path) -> ClassificationResult:
     all_text = "".join(all_text_parts)
     avg_density = total_chars / sample_pages if sample_pages else 0
     image_ratio = image_heavy_pages / sample_pages if sample_pages else 0
+    drawing_ratio = drawing_heavy_pages / sample_pages if sample_pages else 0
     detected_language = _detect_language(all_text[:5000])
     heading_count = len(_HEADING_LIKE_RE.findall(all_text[:10000]))
     has_tables = bool(_TABLE_LIKE_RE.search(all_text[:10000]))
-    has_formulas = bool(_FORMULA_RE.search(all_text[:10000]))
+    has_formulas = bool(_FORMULA_RE.search(all_text[:10000])) or drawing_ratio > 0.3
 
     if avg_density < 30:
         file_category = "scanned_pdf"
         recommended_parser = "pymupdf_native"
         fallback_parsers = ["markitdown"]
-    elif image_ratio > 0.5:
+    elif image_ratio > 0.5 or drawing_ratio > 0.3:
         file_category = "complex_pdf"
         recommended_parser = "pymupdf4llm"
         fallback_parsers = ["pymupdf_native", "markitdown"]
@@ -171,6 +177,7 @@ def _classify_pdf(path: Path) -> ClassificationResult:
         pages=result.estimated_pages,
         avg_density=result.text_density,
         image_ratio=result.image_page_ratio,
+        drawing_ratio=round(drawing_ratio, 2),
         language=result.detected_language,
     )
     return result
@@ -184,6 +191,15 @@ def _is_large_image(document: Any, xref: int) -> bool:
     if image is None:
         return False
     return len(image["image"]) > 5000
+
+
+def _has_meaningful_drawing_clusters(page: Any) -> bool:
+    for rect in page.cluster_drawings():
+        width = float(rect.width)
+        height = float(rect.height)
+        if width >= 40 and height >= 10 and width * height >= 1500:
+            return True
+    return False
 
 
 def _classify_pptx(path: Path) -> ClassificationResult:

@@ -51,7 +51,7 @@ from app.schemas.subject import (
 )
 from app.services.knowledge.curriculum_service import clear_subject_knowledge
 from app.repositories.knowledge import knowledge_repo
-from app.services.upload_support import build_subject_dir
+from app.services.upload_support import build_asset_name_prefix, build_subject_dir, delete_asset_files
 
 logger = structlog.get_logger()
 
@@ -525,8 +525,14 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
         for path_value in [raw_file.file_path, raw_file.markdown_path]:
             if path_value:
                 Path(path_value).unlink(missing_ok=True)
-        if raw_file.asset_dir:
-            shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
+        delete_asset_files(
+            raw_file.asset_dir,
+            asset_name_prefix=build_asset_name_prefix(
+                filename=raw_file.filename,
+                file_uid=raw_file.uid,
+                file_id=raw_file.id,
+            ),
+        )
         session.delete(raw_file)
     session.commit()
 
@@ -535,5 +541,4 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
-
 

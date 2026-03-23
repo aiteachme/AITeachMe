@@ -16,6 +16,7 @@ class IngestParseState(TypedDict, total=False):
     file_path: str
     markdown_path: str
     asset_dir: str
+    asset_name_prefix: str
     content_hash: str | None
     file_size_bytes: int | None
     classification: ClassificationResult | None
@@ -33,4 +34,6 @@ class IngestParseState(TypedDict, total=False):
     rewritten_image_refs: int
     extracted_data_images: int
     appended_asset_images: int
+    asset_ocr_images: int
+    asset_ocr_replacements: int
     error: str | None

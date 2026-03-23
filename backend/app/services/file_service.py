@@ -9,6 +9,7 @@ import mimetypes
 import shutil
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 import structlog
 from fastapi import UploadFile
@@ -26,7 +27,6 @@ from app.repositories.files_repo import (
     create_raw_file,
     delete_raw_file,
     get_raw_file_by_id,
-    get_raw_file_by_uid,
     list_raw_files_by_ids,
     list_raw_files_by_subject,
     list_raw_files_by_uids,
@@ -40,7 +40,14 @@ from app.schemas.files import (
     FilesUploadData,
 )
 from app.services.presenters import require_id, require_uid
-from app.services.upload_support import build_raw_file_path, build_temp_dir
+from app.services.upload_support import (
+    build_asset_name_prefix,
+    build_raw_file_path,
+    build_temp_dir,
+    delete_asset_files,
+    get_data_dir,
+    list_asset_files,
+)
 from app.utils.subject import validate_subject
 from app.workflows.ingest import run_parse_file_workflow
 
@@ -51,11 +58,12 @@ def _path_exists(path_value: str | None) -> bool:
     return bool(path_value and Path(path_value).exists())
 
 
-def _asset_ready(path_value: str | None) -> bool:
-    if not path_value:
-        return False
-    path = Path(path_value)
-    return path.exists() and path.is_dir()
+def _build_asset_name_prefix_for_raw_file(raw_file: RawFile) -> str:
+    return build_asset_name_prefix(
+        filename=raw_file.filename,
+        file_uid=require_uid(raw_file.uid, "RawFile.uid"),
+        file_id=require_id(raw_file.id, "RawFile.id"),
+    )
 
 
 def _extract_parser_used(parse_metadata: str | None) -> str | None:
@@ -71,28 +79,36 @@ def _extract_parser_used(parse_metadata: str | None) -> str | None:
     return str(parser_used) if parser_used else None
 
 
-def _build_asset_base_url(*, subject: str, file_uid: str) -> str:
-    return f"/api/v1/subjects/{subject}/files/assets/{file_uid}"
+def _build_runtime_asset_url(path_value: str | Path | None) -> str | None:
+    if not path_value:
+        return None
+
+    asset_path = Path(path_value).resolve()
+    data_dir = get_data_dir().resolve()
+    try:
+        relative_path = asset_path.relative_to(data_dir)
+    except ValueError:
+        return None
+
+    encoded_parts = [quote(part) for part in relative_path.parts]
+    return f"/_assets/{'/'.join(encoded_parts)}"
 
 
-def _build_asset_items(*, subject: str, file_uid: str, asset_dir_value: str | None) -> list[FileAssetItem]:
-    if not asset_dir_value:
-        return []
+def _build_asset_items(*, asset_dir_value: str | None, asset_name_prefix: str) -> list[FileAssetItem]:
+    assets: list[FileAssetItem] = []
+    for path in list_asset_files(asset_dir_value, asset_name_prefix=asset_name_prefix):
+        asset_url = _build_runtime_asset_url(path)
+        if not asset_url:
+            continue
 
-    asset_dir = Path(asset_dir_value)
-    if not asset_dir.exists():
-        return []
-
-    base_url = _build_asset_base_url(subject=subject, file_uid=file_uid)
-    return [
-        FileAssetItem(
-            name=path.name,
-            url=f"{base_url}/{path.name}",
-            mime_type=mimetypes.guess_type(path.name)[0],
+        assets.append(
+            FileAssetItem(
+                name=path.name,
+                url=asset_url,
+                mime_type=mimetypes.guess_type(path.name)[0],
+            )
         )
-        for path in sorted(asset_dir.iterdir())
-        if path.is_file()
-    ]
+    return assets
 
 
 def _read_markdown(markdown_path_value: str | None) -> str:
@@ -135,7 +151,12 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     """Serialize a raw file into the unified file record."""
 
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
-    asset_base_url = _build_asset_base_url(subject=raw_file.subject, file_uid=file_uid)
+    asset_name_prefix = _build_asset_name_prefix_for_raw_file(raw_file)
+    assets = _build_asset_items(
+        asset_dir_value=raw_file.asset_dir,
+        asset_name_prefix=asset_name_prefix,
+    )
+    asset_base_url = _build_runtime_asset_url(raw_file.asset_dir) if assets else None
     return FileRecord(
         uid=file_uid,
         filename=raw_file.filename,
@@ -143,7 +164,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         status=raw_file.status,
         ingest_status=raw_file.ingest_status,
         markdown_ready=_path_exists(raw_file.markdown_path),
-        asset_ready=_asset_ready(raw_file.asset_dir),
+        asset_ready=bool(assets),
         error_message=raw_file.error_message,
         file_size_bytes=raw_file.file_size_bytes,
         detected_language=raw_file.detected_language,
@@ -152,11 +173,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         parser_used=_extract_parser_used(raw_file.parse_metadata),
         markdown_content=_read_markdown(raw_file.markdown_path),
         asset_base_url=asset_base_url,
-        assets=_build_asset_items(
-            subject=raw_file.subject,
-            file_uid=file_uid,
-            asset_dir_value=raw_file.asset_dir,
-        ),
+        assets=assets,
         latest_updated_at=raw_file.updated_at,
         created_at=raw_file.created_at,
     )
@@ -248,15 +265,6 @@ def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -
     raw_file = get_raw_file_by_id(session, file_id)
     if raw_file is None or raw_file.subject != subject:
         raise RawFileNotFoundError(file_id)
-    return raw_file
-
-
-def get_subject_file_by_uid_or_raise(session: Session, *, subject: str, file_uid: str) -> RawFile:
-    """Load one file by subject or raise using public UID."""
-
-    raw_file = get_raw_file_by_uid(session, file_uid)
-    if raw_file is None or raw_file.subject != subject:
-        raise RawFileNotFoundError(file_uid)
     return raw_file
 
 
@@ -432,29 +440,12 @@ def delete_files(
         for path_value in [raw_file.file_path, raw_file.markdown_path]:
             if path_value:
                 Path(path_value).unlink(missing_ok=True)
-        if raw_file.asset_dir:
-            shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
+        delete_asset_files(
+            raw_file.asset_dir,
+            asset_name_prefix=_build_asset_name_prefix_for_raw_file(raw_file),
+        )
 
         delete_raw_file(session, raw_file)
         deleted_uids.append(raw_file_uid)
 
     return FileDeleteData(deleted_file_uids=deleted_uids)
-
-
-def resolve_subject_asset_path(
-    session: Session,
-    *,
-    subject: str,
-    file_uid: str,
-    asset_name: str,
-) -> Path:
-    """Resolve one asset path by public file UID."""
-
-    raw_file = get_subject_file_by_uid_or_raise(session, subject=subject, file_uid=file_uid)
-    if not raw_file.asset_dir:
-        raise RawFileNotFoundError(file_uid)
-
-    asset_path = Path(raw_file.asset_dir) / asset_name
-    if not asset_path.exists() or not asset_path.is_file():
-        raise RawFileNotFoundError(file_uid)
-    return asset_path

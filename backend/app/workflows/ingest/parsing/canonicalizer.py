@@ -16,6 +16,7 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s*(.*)", re.MULTILINE)
 _FENCED_BLOCK_RE = re.compile(r"(^(`{3,})[^\n]*\n.*?^\2[ \t]*$)", re.MULTILINE | re.DOTALL)
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target>[^)]+)\)")
 _HTML_IMAGE_RE = re.compile(r'(<img\b[^>]*?\bsrc=["\'])(?P<src>[^"\']+)(["\'])', re.IGNORECASE)
+_OMITTED_PLACEHOLDER_RE = re.compile(r"(?:picture|image)\s*\[[^\]]+\]\s*intentionally omitted", re.IGNORECASE)
 
 
 class CanonicalMarkdownResult(BaseModel):
@@ -32,6 +33,7 @@ def canonicalize_markdown(
     *,
     asset_dir: Path | None = None,
     asset_link_prefix: str | None = None,
+    asset_name_prefix: str | None = None,
     asset_gallery_limit: int = 16,
 ) -> CanonicalMarkdownResult:
     """Normalize markdown into a stable downstream format."""
@@ -58,6 +60,7 @@ def canonicalize_markdown(
             normalized,
             asset_dir=asset_dir,
             asset_link_prefix=asset_link_prefix,
+            asset_name_prefix=asset_name_prefix,
             asset_gallery_limit=asset_gallery_limit,
         )
     else:
@@ -124,11 +127,12 @@ def _canonicalize_assets(
     *,
     asset_dir: Path,
     asset_link_prefix: str | None,
+    asset_name_prefix: str | None,
     asset_gallery_limit: int,
 ) -> CanonicalMarkdownResult:
-    prefix = asset_link_prefix or f"../assets/{asset_dir.name}"
+    prefix = asset_link_prefix or "../assets"
     asset_dir.mkdir(parents=True, exist_ok=True)
-    asset_lookup = _build_asset_lookup(asset_dir)
+    asset_lookup = _build_asset_lookup(asset_dir, asset_name_prefix=asset_name_prefix)
     rewritten = 0
     extracted_data_images = 0
 
@@ -138,7 +142,13 @@ def _canonicalize_assets(
         alt = match.group("alt")
         target = match.group("target")
         path, suffix = _split_markdown_target(target)
-        resolved = _resolve_asset_target(path, asset_lookup=asset_lookup, asset_dir=asset_dir, prefix=prefix)
+        resolved = _resolve_asset_target(
+            path,
+            asset_lookup=asset_lookup,
+            asset_dir=asset_dir,
+            prefix=prefix,
+            asset_name_prefix=asset_name_prefix,
+        )
         if resolved is None:
             return match.group(0)
         if resolved.extracted_data_image:
@@ -153,7 +163,13 @@ def _canonicalize_assets(
         nonlocal rewritten
         nonlocal extracted_data_images
         src = match.group("src")
-        resolved = _resolve_asset_target(src, asset_lookup=asset_lookup, asset_dir=asset_dir, prefix=prefix)
+        resolved = _resolve_asset_target(
+            src,
+            asset_lookup=asset_lookup,
+            asset_dir=asset_dir,
+            prefix=prefix,
+            asset_name_prefix=asset_name_prefix,
+        )
         if resolved is None:
             return match.group(0)
         if resolved.extracted_data_image:
@@ -165,7 +181,8 @@ def _canonicalize_assets(
     rewritten_markdown = _HTML_IMAGE_RE.sub(_replace_html_image, rewritten_markdown)
 
     appended_asset_images = 0
-    if asset_lookup and f"{prefix}/" not in rewritten_markdown:
+    has_omitted_placeholders = bool(_OMITTED_PLACEHOLDER_RE.search(rewritten_markdown))
+    if asset_lookup and f"{prefix}/" not in rewritten_markdown and not has_omitted_placeholders:
         sorted_assets = sorted(asset_lookup.values())[: max(asset_gallery_limit, 0)]
         gallery = "\n".join(
             f"![Extracted image {index}]({prefix}/{name})"
@@ -189,12 +206,19 @@ class _ResolvedAssetPath(BaseModel):
     extracted_data_image: bool = False
 
 
-def _build_asset_lookup(asset_dir: Path) -> dict[str, str]:
-    return {
-        item.name.lower(): item.name
-        for item in asset_dir.iterdir()
-        if item.is_file()
-    }
+def _build_asset_lookup(asset_dir: Path, *, asset_name_prefix: str | None = None) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for item in asset_dir.iterdir():
+        if not item.is_file():
+            continue
+        if asset_name_prefix and not item.name.startswith(asset_name_prefix):
+            continue
+        lookup[item.name.lower()] = item.name
+        if asset_name_prefix and item.name.startswith(asset_name_prefix):
+            stripped_name = item.name[len(asset_name_prefix) :]
+            if stripped_name:
+                lookup.setdefault(stripped_name.lower(), item.name)
+    return lookup
 
 
 def _split_markdown_target(target: str) -> tuple[str, str]:
@@ -214,6 +238,7 @@ def _resolve_asset_target(
     asset_lookup: dict[str, str],
     asset_dir: Path,
     prefix: str,
+    asset_name_prefix: str | None = None,
 ) -> _ResolvedAssetPath | None:
     path = target.strip()
     if not path:
@@ -224,7 +249,11 @@ def _resolve_asset_target(
         return None
 
     if lowered.startswith("data:image/"):
-        extracted = _extract_data_uri_image(path, asset_dir)
+        extracted = _extract_data_uri_image(
+            path,
+            asset_dir,
+            asset_name_prefix=asset_name_prefix,
+        )
         if extracted is None:
             return None
         return _ResolvedAssetPath(
@@ -233,7 +262,7 @@ def _resolve_asset_target(
             extracted_data_image=True,
         )
 
-    if lowered.startswith("../assets/"):
+    if lowered.startswith(("../assets/", "../../assets/", "/_assets/")):
         return None
 
     filename = asset_lookup.get(Path(unquote(path)).name.lower())
@@ -242,7 +271,12 @@ def _resolve_asset_target(
     return _ResolvedAssetPath(url=f"{prefix}/{filename}", asset_name=filename)
 
 
-def _extract_data_uri_image(data_uri: str, asset_dir: Path) -> str | None:
+def _extract_data_uri_image(
+    data_uri: str,
+    asset_dir: Path,
+    *,
+    asset_name_prefix: str | None = None,
+) -> str | None:
     if ";base64," not in data_uri:
         return None
     header, encoded = data_uri.split(";base64,", 1)
@@ -261,6 +295,7 @@ def _extract_data_uri_image(data_uri: str, asset_dir: Path) -> str | None:
         asset_dir,
         name_hint="embedded_img",
         ext=ext,
+        name_prefix=asset_name_prefix or "",
     )
 
 

@@ -1,8 +1,11 @@
 """Digest curriculum workflow nodes and routing.
 
-Reads DB: graph entities, prior curriculum versions, and the active derive job.
-Writes DB: ``curriculum_derive_job``, ``teaching_unit*``, ``theme_tree*``,
-``prereq_dag*``, ``curriculum_snapshot`` and version publish/archive flags.
+Reads DB: graph entities plus prior ``teaching_unit*``, ``theme_tree*``,
+``prereq_dag*`` and ``curriculum_snapshot`` versions.
+Writes DB: ``teaching_unit*``, ``taxonomy_anchor``, ``theme_tree*``,
+``prereq_dag*``, ``curriculum_snapshot`` and publish/archive status flips.
+Writes DB (compatibility no-op): curriculum progress helpers still run, but no dedicated
+``curriculum_derive_job`` table is persisted now.
 Writes FS: none.
 Idempotency: reruns target the same derive job and replace the active published versions
 through explicit publish/archive transitions.

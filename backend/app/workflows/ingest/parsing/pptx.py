@@ -68,6 +68,7 @@ def _parse_pptx_with_markitdown_sync(path: Path, asset_dir: Path, options: Parse
             asset_dir,
             max_images=options.asset_image_limit,
             workers=options.parser_parallelism,
+            asset_name_prefix=options.asset_name_prefix,
         )
     return result.text_content
 
@@ -112,6 +113,7 @@ def _parse_pptx_with_python_pptx_sync(path: Path, asset_dir: Path, options: Pars
                 asset_dir,
                 name_hint=f"slide{slide_index}_img{image_count}",
                 ext=f".{ext}",
+                name_prefix=options.asset_name_prefix,
             )
             sections.append(f"![Slide {slide_index} image {image_count}]({filename})")
 
@@ -127,7 +129,14 @@ def _parse_pptx_with_python_pptx_sync(path: Path, asset_dir: Path, options: Pars
     return result
 
 
-def supplement_pptx_images(file_path: Path, asset_dir: Path, *, max_images: int, workers: int) -> None:
+def supplement_pptx_images(
+    file_path: Path,
+    asset_dir: Path,
+    *,
+    max_images: int,
+    workers: int,
+    asset_name_prefix: str,
+) -> None:
     """Extract PPTX images when markdown came from MarkItDown."""
 
     if Presentation is None or MSO_SHAPE_TYPE is None:
@@ -156,7 +165,12 @@ def supplement_pptx_images(file_path: Path, asset_dir: Path, *, max_images: int,
             )
         if len(images) >= max_images:
             break
-    saved_count = _save_pptx_supplement_images(images, asset_dir, workers=workers)
+    saved_count = _save_pptx_supplement_images(
+        images,
+        asset_dir,
+        workers=workers,
+        asset_name_prefix=asset_name_prefix,
+    )
 
     if saved_count:
         logger.info("pptx_images_supplemented", filename=file_path.name, count=saved_count)
@@ -182,6 +196,7 @@ def _save_pptx_supplement_images(
     asset_dir: Path,
     *,
     workers: int,
+    asset_name_prefix: str,
 ) -> int:
     if not images:
         return 0
@@ -189,12 +204,18 @@ def _save_pptx_supplement_images(
     max_workers = min(max(workers, 1), 10)
     if max_workers == 1:
         for image_bytes, image_ext, hint in images:
-            save_image_bytes(image_bytes, asset_dir, name_hint=hint, ext=image_ext)
+            save_image_bytes(
+                image_bytes,
+                asset_dir,
+                name_hint=hint,
+                ext=image_ext,
+                name_prefix=asset_name_prefix,
+            )
         return len(images)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(save_image_bytes, image_bytes, asset_dir, hint, image_ext)
+            executor.submit(save_image_bytes, image_bytes, asset_dir, hint, image_ext, asset_name_prefix)
             for image_bytes, image_ext, hint in images
         ]
         for future in futures:

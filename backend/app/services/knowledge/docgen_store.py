@@ -102,12 +102,12 @@ def write_knowledge_manifest(subject: str, manifest: KnowledgeDocsManifest) -> P
 
 
 def clear_docgen_staging(subject: str) -> None:
-    """Remove staging and latest intermediate directories."""
+    """Remove the current knowledge-markdown build directory."""
 
-    for directory in (
+    for directory in {
         build_knowledge_docs_build_dir(subject),
         build_docgen_intermediate_latest_dir(subject),
-    ):
+    }:
         if directory.exists():
             shutil.rmtree(directory, ignore_errors=True)
 

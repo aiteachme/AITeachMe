@@ -1,8 +1,12 @@
 """Finalize and failure nodes for the digest graph workflow.
 
-Reads DB: ``graph_digest_job`` and pending graph entities for the active job.
-Writes DB: graph activation / cleanup, build-lock release, ``graph_digest_job`` final state,
-and the next ``curriculum_derive_job`` trigger row.
+Reads DB: pending graph entities for the active run and current curriculum structures used
+by downstream impact analysis.
+Writes DB: graph activation / cleanup on ``knowledge_node`` / ``knowledge_edge`` /
+revision / evidence tables.
+Writes DB (compatibility no-op): graph / curriculum job helpers and build-lock helpers remain
+callable, but no dedicated ``graph_digest_job`` / ``curriculum_derive_job`` / lock table is
+persisted now.
 Writes FS: none.
 Idempotency: finalize/fail rewrites the active job outcome and cleans the same pending rows.
 """
