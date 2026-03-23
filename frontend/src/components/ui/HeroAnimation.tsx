@@ -3,21 +3,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bot, GraduationCap, Sparkles, FileText, Database, Network } from "lucide-react";
 
 export function HeroAnimation() {
-  const [scene, setScene] = useState<"learning" | "transforming" | "teaching">("learning");
+  const [scene, setScene] = useState<"learning" | "teaching">("learning");
 
   useEffect(() => {
     let timers: ReturnType<typeof setTimeout>[] = [];
     
     const runCycle = () => {
       setScene("learning");
-      timers.push(setTimeout(() => setScene("transforming"), 4000));
-      timers.push(setTimeout(() => setScene("teaching"), 4600));
-      timers.push(setTimeout(() => runCycle(), 9500));
+      timers.push(setTimeout(() => setScene("teaching"), 4500));
+      timers.push(setTimeout(() => runCycle(), 9000));
     };
 
-    timers.push(setTimeout(() => setScene("transforming"), 4000));
-    timers.push(setTimeout(() => setScene("teaching"), 4600));
-    timers.push(setTimeout(() => runCycle(), 9500));
+    timers.push(setTimeout(() => setScene("teaching"), 4500));
+    timers.push(setTimeout(() => runCycle(), 9000));
 
     return () => timers.forEach(clearTimeout);
   }, []);
@@ -26,13 +24,22 @@ export function HeroAnimation() {
     <div className="relative w-[110px] h-[110px] flex items-center justify-center shrink-0">
       {/* Dynamic Background Glow */}
       <motion.div 
-        animate={{ 
-          scale: scene === "transforming" ? 1.5 : scene === "teaching" ? 1.2 : 1,
-          opacity: scene === "transforming" ? 0.9 : scene === "teaching" ? 0.4 : 0.2,
-          backgroundColor: scene === "teaching" ? "#3b82f6" : "#6366f1",
-          borderRadius: scene === "transforming" ? "30%" : "50%"
-        }}
-        transition={{ duration: 0.6, ease: "easeInOut" }}
+        animate={
+          scene === "teaching" 
+            ? {
+                scale: [1, 1.5, 1.2],
+                opacity: [0.2, 0.9, 0.4],
+                backgroundColor: ["#6366f1", "#4f46e5", "#3b82f6"],
+                borderRadius: ["50%", "30%", "50%"]
+              }
+            : {
+                scale: [1.2, 1.5, 1],
+                opacity: [0.4, 0.9, 0.2],
+                backgroundColor: ["#3b82f6", "#4f46e5", "#6366f1"],
+                borderRadius: ["50%", "30%", "50%"]
+              }
+        }
+        transition={{ duration: 1.0, times: [0, 0.5, 1], ease: "easeInOut" }}
         className="absolute inset-0 blur-xl pointer-events-none"
       />
       
