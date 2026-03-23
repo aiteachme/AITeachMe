@@ -12,6 +12,16 @@ interface MarkdownViewerProps {
   assetBaseUrl?: string;
 }
 
+export function preprocessLaTeX(content: string): string {
+  if (!content) return content;
+  let processed = typeof content === "string" ? content : String(content);
+  // Replace block LaTeX \[ ... \] with $$ ... $$
+  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+  // Replace inline LaTeX \( ... \) with $ ... $
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  return processed;
+}
+
 function isAbsoluteAssetUrl(value: string): boolean {
   return /^(https?:)?\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:");
 }
@@ -49,6 +59,7 @@ function resolveMarkdownImageSrc(src: string | undefined, assetBaseUrl?: string)
 }
 
 export function MarkdownViewer({ content, assetBaseUrl }: MarkdownViewerProps) {
+  const processedContent = preprocessLaTeX(content);
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
@@ -136,7 +147,7 @@ export function MarkdownViewer({ content, assetBaseUrl }: MarkdownViewerProps) {
         },
       }}
     >
-      {content}
+      {processedContent}
     </ReactMarkdown>
   );
 }
