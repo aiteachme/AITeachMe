@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T08:15:43.016438",
-  "total_commits_analyzed": 210,
+  "generated_at": "2026-03-23T08:35:48.888202",
+  "total_commits_analyzed": 212,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1681,6 +1681,22 @@
       "code_lines": 44399,
       "other_lines": 12551,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "586015a",
+      "total_lines": 56950,
+      "code_lines": 44399,
+      "other_lines": 12551,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "bf1b4ef",
+      "total_lines": 57104,
+      "code_lines": 44539,
+      "other_lines": 12565,
+      "message": "style: 添加css动画logo"
     }
   ]
 }
