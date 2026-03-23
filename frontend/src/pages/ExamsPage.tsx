@@ -303,7 +303,7 @@ async function deleteExamPaper(subject: string, examPaperId: number): Promise<De
   return res.data;
 }
 
-export function ExamPage() {
+export function ExamsPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
 
@@ -618,9 +618,9 @@ export function ExamPage() {
 
   return (
     <PageWrapper
-      title="模拟考试中心"
-      subtitle="自动构题、组卷、答题、判分，全链路智能复习体验"
-      badgeText="题海战术"
+      title="考试中心"
+      subtitle="自动构题、组卷、答题与判分，集中管理本学科的练习卷和考试记录。"
+      badgeText="Exams"
     >
       <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
         <Button

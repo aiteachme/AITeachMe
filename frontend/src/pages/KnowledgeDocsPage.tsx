@@ -514,7 +514,7 @@ function DocEmptyState() {
       </div>
       <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        先回到上传页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
+        先回到文件页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
       </p>
     </section>
   );
@@ -716,10 +716,10 @@ function CommentThread({
 }
 
 /* ------------------------------------------------------------------ */
-/*  DocPage                                                            */
+/*  KnowledgeDocsPage                                                  */
 /* ------------------------------------------------------------------ */
 
-export function DocPage() {
+export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
   const { subjectId } = useParams<{ subjectId: string }>();
   const location = useLocation();

@@ -142,7 +142,7 @@ async function fetchKnowledgeMappings(
   };
 }
 
-export function AnalysisPage() {
+export function ProfilePage() {
   const { subjectId = "" } = useParams();
 
   const {
@@ -150,7 +150,7 @@ export function AnalysisPage() {
     isLoading: masteryLoading,
     error: masteryError,
   } = useQuery({
-    queryKey: ["analysis-mastery-overview", subjectId],
+    queryKey: ["profile-mastery-overview", subjectId],
     queryFn: () => fetchMasteryOverview(subjectId),
     enabled: !!subjectId,
   });
@@ -160,13 +160,13 @@ export function AnalysisPage() {
     isLoading: tasksLoading,
     error: tasksError,
   } = useQuery({
-    queryKey: ["analysis-review-tasks", subjectId],
+    queryKey: ["profile-review-tasks", subjectId],
     queryFn: () => fetchReviewTasks(subjectId),
     enabled: !!subjectId,
   });
 
   const { data: knowledgeMappings } = useQuery({
-    queryKey: ["analysis-knowledge-mappings", subjectId],
+    queryKey: ["profile-knowledge-mappings", subjectId],
     queryFn: () => fetchKnowledgeMappings(subjectId),
     enabled: !!subjectId,
     retry: 0,
@@ -294,9 +294,9 @@ export function AnalysisPage() {
 
   return (
     <PageWrapper
-      title="数据分析引擎"
-      subtitle="基于微观作答记录与能力模型状态生成您的个性化学习画像"
-      badgeText="洞悉学习轨迹"
+      title="学习画像"
+      subtitle="基于作答记录、复习任务与掌握度状态，为当前学科生成更清晰的学习 Profile。"
+      badgeText="Profile"
     >
       <div className="space-y-8">
         {!!errorMessage && (

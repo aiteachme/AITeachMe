@@ -60,8 +60,8 @@ export function HomePage() {
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setError(null);
-      // Pass the uploaded files to the newly redesigned UploadPage
-      navigate(`/subject/${created.subject_id}/upload`, {
+      // Pass the uploaded files to the files workspace for parsing and review.
+      navigate(`/subject/${created.subject_id}/files`, {
         state: { 
           initialFiles: selectedFiles,
           initialPrompt: form.requirement 
@@ -306,7 +306,7 @@ export function HomePage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                     >
-                      <Link to={`/subject/${subject.subject_id}/chat`} className="block group">
+                      <Link to={`/subject/${subject.subject_id}/files`} className="block group">
                         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col group/card hover:-translate-y-1">
                           <div className="flex items-start justify-between mb-4">
                             <h3 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover/card:text-slate-700 transition-colors">

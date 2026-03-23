@@ -29,7 +29,7 @@ const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; d
   { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
 ];
 
-export function SummaryPage() {
+export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
 
@@ -62,8 +62,8 @@ export function SummaryPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">知识总结</h1>
-            <p className="mt-2 text-slate-500">这里展示知识图谱、主题树和先修依赖。点击开始知识构建会同时刷新文档与图谱。</p>
+            <h1 className="text-3xl font-bold text-slate-900">知识图谱</h1>
+            <p className="mt-2 text-slate-500">这里展示主题树、先修依赖和知识图谱视图。点击开始知识构建会同时刷新知识文档与图谱。</p>
           </div>
           <div className="flex items-center gap-2">
             <DigestBuildButton />
