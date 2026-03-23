@@ -19,6 +19,7 @@ import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddP
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
+import { HeroAnimation } from "../components/ui/HeroAnimation";
 
 // --- Form State ---
 interface FormState {
@@ -132,12 +133,10 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="flex items-center justify-center gap-3 mb-4"
+          className="flex items-center justify-center gap-1 mb-2"
         >
-          <div className="bg-slate-900 text-white p-2 rounded-xl shadow-lg">
-            <BookOpen className="w-8 h-8" />
-          </div>
-          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">AI 赛博私教</h1>
+          <HeroAnimation />
+          <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight">AI 赛博私教</h1>
         </motion.div>
 
         {/* ── Slogan ── */}
