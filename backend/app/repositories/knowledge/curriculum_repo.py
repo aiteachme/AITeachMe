@@ -11,7 +11,6 @@ from app.utils.time import utcnow
 
 from app.core.exceptions import DagVersionConflictError, TreeVersionConflictError
 from app.models.curriculum import (
-    CurriculumDeriveJob,
     CurriculumSnapshot,
     PrereqDagVersion,
     TaxonomyAnchor,
@@ -188,27 +187,24 @@ def find_unit_by_node(
 
 
 def create_curriculum_job(
-    session: Session, job: CurriculumDeriveJob
-) -> CurriculumDeriveJob:
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+    session: Session,
+    job: object,
+) -> None:
+    """Compatibility shim after curriculum_derive_job table removal."""
+
+    del session, job
+    return None
 
 
 def update_curriculum_job(
-    session: Session, job_id: int, **kwargs: object
-) -> CurriculumDeriveJob | None:
-    job = session.get(CurriculumDeriveJob, job_id)
-    if job is None:
-        return None
-    for key, value in kwargs.items():
-        setattr(job, key, value)
-    job.updated_at = utcnow()
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+    session: Session,
+    job_id: int,
+    **kwargs: object,
+) -> None:
+    """Compatibility shim after curriculum_derive_job table removal."""
+
+    del session, job_id, kwargs
+    return None
 
 
 # ---------------------------------------------------------------------------

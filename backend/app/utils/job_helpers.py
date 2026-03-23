@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Literal
 
 import structlog
 from sqlmodel import Session, select
 
 from app.models.curriculum import (
-    CurriculumDeriveJob,
     CurriculumSnapshot,
     PrereqDagVersion,
     TeachingUnit,
     TeachingUnitMembership,
+    TeachingUnitRevision,
     ThemeTreeNode,
     ThemeTreeVersion,
     UnitDependency,
@@ -40,7 +40,7 @@ def update_job_progress(
     progress: int,
     current_step: str,
 ) -> None:
-    """Compatibility shim after graph job table removal."""
+    """Compatibility shim after job-table removal."""
 
     del session, job_id, job_type, progress, current_step
 
@@ -50,71 +50,240 @@ def cleanup_pending_by_job(
     *,
     job_id: int,
     job_type: Literal["graph", "curriculum"],
+    subject: str | None = None,
 ) -> int:
-    """Cleanup pending rows that were created by a specific job id."""
+    """Backward-compatible API: cleanup now scopes by subject+status, not by job id."""
 
+    del job_id
+    if not subject:
+        return 0
+    return cleanup_pending_by_subject(session, subject=subject, job_type=job_type)
+
+
+def cleanup_pending_by_subject(
+    session: Session,
+    *,
+    subject: str,
+    job_type: Literal["graph", "curriculum"],
+) -> int:
     total = 0
     if job_type == "graph":
-        total += _delete_by_job(session, EvidenceLink, job_id)
-        total += _delete_by_job(session, KnowledgeAlias, job_id)
-        total += _delete_by_field(session, KnowledgeRevision, "digest_job_id", job_id)
-        total += _delete_by_field(session, EdgeRevision, "digest_job_id", job_id)
-        total += _delete_by_job(session, KnowledgeEdge, job_id, status_field="status", status_value="pending")
-        total += _delete_by_job(session, KnowledgeNode, job_id, status_field="status", status_value="pending")
+        total += _cleanup_graph_pending_by_subject(session, subject=subject)
     else:
-        total += _delete_by_job(session, UnitDependency, job_id)
-        total += _delete_by_job(session, UnitTreeMembership, job_id)
-        total += _delete_by_job(session, ThemeTreeNode, job_id)
-        total += _delete_by_job_with_status(session, PrereqDagVersion, job_id, "draft")
-        total += _delete_by_job_with_status(session, ThemeTreeVersion, job_id, "draft")
-        total += _delete_by_job_with_status(session, CurriculumSnapshot, job_id, "draft")
-        total += _delete_by_job(session, TeachingUnitMembership, job_id)
-        total += _delete_by_job(session, TeachingUnit, job_id, status_field="status", status_value="pending")
-
+        total += _cleanup_curriculum_pending_by_subject(session, subject=subject)
     session.commit()
-    logger.info("cleanup_pending_by_job", job_id=job_id, job_type=job_type, deleted=total)
+    logger.info("cleanup_pending_by_subject", subject=subject, job_type=job_type, deleted=total)
     return total
 
 
-def _delete_by_job(
-    session: Session,
-    model: type,
-    job_id: int,
-    *,
-    status_field: str | None = None,
-    status_value: str | None = None,
-) -> int:
-    stmt = select(model).where(model.created_by_job_id == job_id)  # type: ignore[attr-defined]
-    if status_field and status_value:
-        stmt = stmt.where(getattr(model, status_field) == status_value)
-    rows = session.exec(stmt).all()
-    for row in rows:
-        session.delete(row)
-    return len(rows)
+def _cleanup_graph_pending_by_subject(session: Session, *, subject: str) -> int:
+    total = 0
 
-
-def _delete_by_field(session: Session, model: type, field_name: str, job_id: int) -> int:
-    stmt = select(model).where(getattr(model, field_name) == job_id)
-    rows = session.exec(stmt).all()
-    for row in rows:
-        session.delete(row)
-    return len(rows)
-
-
-def _delete_by_job_with_status(
-    session: Session,
-    model: type,
-    job_id: int,
-    status_value: str,
-) -> int:
-    stmt = select(model).where(
-        model.created_by_job_id == job_id,  # type: ignore[attr-defined]
-        model.status == status_value,  # type: ignore[attr-defined]
+    pending_nodes = list(
+        session.exec(
+            select(KnowledgeNode).where(
+                KnowledgeNode.subject == subject,
+                KnowledgeNode.status == "pending",
+            )
+        ).all()
     )
-    rows = session.exec(stmt).all()
-    for row in rows:
+    pending_node_ids = {row.id for row in pending_nodes if row.id is not None}
+
+    pending_edges = list(
+        session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.subject == subject,
+                KnowledgeEdge.status == "pending",
+            )
+        ).all()
+    )
+    pending_edge_ids = {row.id for row in pending_edges if row.id is not None}
+
+    if pending_node_ids:
+        node_aliases = list(
+            session.exec(
+                select(KnowledgeAlias).where(
+                    KnowledgeAlias.node_id.in_(pending_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in node_aliases:
+            session.delete(row)
+        total += len(node_aliases)
+
+        node_revisions = list(
+            session.exec(
+                select(KnowledgeRevision).where(
+                    KnowledgeRevision.node_id.in_(pending_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in node_revisions:
+            session.delete(row)
+        total += len(node_revisions)
+
+        node_evidence = list(
+            session.exec(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject == subject,
+                    EvidenceLink.entity_type == "node",
+                    EvidenceLink.entity_id.in_(pending_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in node_evidence:
+            session.delete(row)
+        total += len(node_evidence)
+
+    if pending_edge_ids:
+        edge_revisions = list(
+            session.exec(
+                select(EdgeRevision).where(
+                    EdgeRevision.edge_id.in_(pending_edge_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in edge_revisions:
+            session.delete(row)
+        total += len(edge_revisions)
+
+        edge_evidence = list(
+            session.exec(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject == subject,
+                    EvidenceLink.entity_type == "edge",
+                    EvidenceLink.entity_id.in_(pending_edge_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in edge_evidence:
+            session.delete(row)
+        total += len(edge_evidence)
+
+    for row in pending_edges:
         session.delete(row)
-    return len(rows)
+    total += len(pending_edges)
+
+    for row in pending_nodes:
+        session.delete(row)
+    total += len(pending_nodes)
+
+    return total
+
+
+def _cleanup_curriculum_pending_by_subject(session: Session, *, subject: str) -> int:
+    total = 0
+
+    draft_snapshots = list(
+        session.exec(
+            select(CurriculumSnapshot).where(
+                CurriculumSnapshot.subject == subject,
+                CurriculumSnapshot.status == "draft",
+            )
+        ).all()
+    )
+    for row in draft_snapshots:
+        session.delete(row)
+    total += len(draft_snapshots)
+
+    draft_tree_versions = list(
+        session.exec(
+            select(ThemeTreeVersion).where(
+                ThemeTreeVersion.subject == subject,
+                ThemeTreeVersion.status == "draft",
+            )
+        ).all()
+    )
+    draft_tree_ids = {row.id for row in draft_tree_versions if row.id is not None}
+    if draft_tree_ids:
+        tree_memberships = list(
+            session.exec(
+                select(UnitTreeMembership).where(
+                    UnitTreeMembership.tree_version_id.in_(draft_tree_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in tree_memberships:
+            session.delete(row)
+        total += len(tree_memberships)
+
+        tree_nodes = list(
+            session.exec(
+                select(ThemeTreeNode).where(
+                    ThemeTreeNode.tree_version_id.in_(draft_tree_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in tree_nodes:
+            session.delete(row)
+        total += len(tree_nodes)
+
+    for row in draft_tree_versions:
+        session.delete(row)
+    total += len(draft_tree_versions)
+
+    draft_dag_versions = list(
+        session.exec(
+            select(PrereqDagVersion).where(
+                PrereqDagVersion.subject == subject,
+                PrereqDagVersion.status == "draft",
+            )
+        ).all()
+    )
+    draft_dag_ids = {row.id for row in draft_dag_versions if row.id is not None}
+    if draft_dag_ids:
+        deps = list(
+            session.exec(
+                select(UnitDependency).where(
+                    UnitDependency.dag_version_id.in_(draft_dag_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in deps:
+            session.delete(row)
+        total += len(deps)
+
+    for row in draft_dag_versions:
+        session.delete(row)
+    total += len(draft_dag_versions)
+
+    pending_units = list(
+        session.exec(
+            select(TeachingUnit).where(
+                TeachingUnit.subject == subject,
+                TeachingUnit.status == "pending",
+            )
+        ).all()
+    )
+    pending_unit_ids = {row.id for row in pending_units if row.id is not None}
+    if pending_unit_ids:
+        revisions = list(
+            session.exec(
+                select(TeachingUnitRevision).where(
+                    TeachingUnitRevision.unit_id.in_(pending_unit_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in revisions:
+            session.delete(row)
+        total += len(revisions)
+
+        memberships = list(
+            session.exec(
+                select(TeachingUnitMembership).where(
+                    TeachingUnitMembership.unit_id.in_(pending_unit_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in memberships:
+            session.delete(row)
+        total += len(memberships)
+
+    for row in pending_units:
+        session.delete(row)
+    total += len(pending_units)
+
+    return total
 
 
 def cleanup_orphan_pending_by_subject(
@@ -123,77 +292,130 @@ def cleanup_orphan_pending_by_subject(
     subject: str,
     ttl_hours: float = 1.0,
 ) -> int:
-    """Cleanup stale pending rows that are no longer part of active processing jobs."""
+    """Cleanup stale pending/draft rows by subject age."""
 
     cutoff = utcnow() - timedelta(hours=ttl_hours)
+    total = 0
 
-    processing_graph_ids: set[int] = set()
-    processing_curriculum_ids = {
-        j.id
-        for j in session.exec(
-            select(CurriculumDeriveJob).where(
-                CurriculumDeriveJob.subject == subject,
-                CurriculumDeriveJob.status == "processing",
+    stale_nodes = list(
+        session.exec(
+            select(KnowledgeNode).where(
+                KnowledgeNode.subject == subject,
+                KnowledgeNode.status == "pending",
+                KnowledgeNode.created_at < cutoff,
             )
         ).all()
-    }
+    )
+    stale_node_ids = {row.id for row in stale_nodes if row.id is not None}
 
-    total = 0
-    total += _delete_orphan_pending(session, KnowledgeNode, subject, cutoff, processing_graph_ids)
-    total += _delete_orphan_pending(session, KnowledgeEdge, subject, cutoff, processing_graph_ids)
-    total += _delete_orphan_pending(
-        session,
-        KnowledgeAlias,
-        subject,
-        cutoff,
-        processing_graph_ids,
-        subject_via_node=True,
+    if stale_node_ids:
+        stale_aliases = list(
+            session.exec(
+                select(KnowledgeAlias).where(
+                    KnowledgeAlias.node_id.in_(stale_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_aliases:
+            session.delete(row)
+        total += len(stale_aliases)
+
+        stale_node_revisions = list(
+            session.exec(
+                select(KnowledgeRevision).where(
+                    KnowledgeRevision.node_id.in_(stale_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_node_revisions:
+            session.delete(row)
+        total += len(stale_node_revisions)
+
+        stale_node_evidence = list(
+            session.exec(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject == subject,
+                    EvidenceLink.entity_type == "node",
+                    EvidenceLink.entity_id.in_(stale_node_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_node_evidence:
+            session.delete(row)
+        total += len(stale_node_evidence)
+
+    stale_edges = list(
+        session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.subject == subject,
+                KnowledgeEdge.status == "pending",
+                KnowledgeEdge.created_at < cutoff,
+            )
+        ).all()
     )
-    total += _delete_orphan_pending(session, EvidenceLink, subject, cutoff, processing_graph_ids)
-    total += _delete_orphan_pending(session, TeachingUnit, subject, cutoff, processing_curriculum_ids)
-    total += _delete_orphan_pending(
-        session,
-        TeachingUnitMembership,
-        subject,
-        cutoff,
-        processing_curriculum_ids,
-        subject_via_unit=True,
+    stale_edge_ids = {row.id for row in stale_edges if row.id is not None}
+    if stale_edge_ids:
+        stale_edge_revisions = list(
+            session.exec(
+                select(EdgeRevision).where(
+                    EdgeRevision.edge_id.in_(stale_edge_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_edge_revisions:
+            session.delete(row)
+        total += len(stale_edge_revisions)
+
+        stale_edge_evidence = list(
+            session.exec(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject == subject,
+                    EvidenceLink.entity_type == "edge",
+                    EvidenceLink.entity_id.in_(stale_edge_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_edge_evidence:
+            session.delete(row)
+        total += len(stale_edge_evidence)
+
+    for row in stale_edges:
+        session.delete(row)
+    total += len(stale_edges)
+
+    for row in stale_nodes:
+        session.delete(row)
+    total += len(stale_nodes)
+
+    stale_units = list(
+        session.exec(
+            select(TeachingUnit).where(
+                TeachingUnit.subject == subject,
+                TeachingUnit.status == "pending",
+                TeachingUnit.created_at < cutoff,
+            )
+        ).all()
     )
+    stale_unit_ids = {row.id for row in stale_units if row.id is not None}
+    for row in stale_units:
+        session.delete(row)
+    total += len(stale_units)
+
+    if stale_unit_ids:
+        stale_memberships = list(
+            session.exec(
+                select(TeachingUnitMembership).where(
+                    TeachingUnitMembership.unit_id.in_(stale_unit_ids),  # type: ignore[union-attr]
+                )
+            ).all()
+        )
+        for row in stale_memberships:
+            session.delete(row)
+        total += len(stale_memberships)
+
     session.commit()
     logger.info("cleanup_orphan_pending_by_subject", subject=subject, deleted=total)
     return total
-
-
-def _delete_orphan_pending(
-    session: Session,
-    model: type,
-    subject: str,
-    cutoff: datetime,
-    exclude_job_ids: set[int],
-    *,
-    subject_via_node: bool = False,
-    subject_via_unit: bool = False,
-) -> int:
-    if subject_via_node or subject_via_unit:
-        stmt = select(model).where(model.created_at < cutoff)  # type: ignore[attr-defined]
-    else:
-        stmt = select(model).where(
-            model.subject == subject,  # type: ignore[attr-defined]
-            model.created_at < cutoff,  # type: ignore[attr-defined]
-        )
-
-    if hasattr(model, "status"):
-        stmt = stmt.where(model.status.in_(["pending", "draft"]))  # type: ignore[attr-defined]
-
-    rows = session.exec(stmt).all()
-    count = 0
-    for row in rows:
-        job_id = getattr(row, "created_by_job_id", None)
-        if job_id in exclude_job_ids:
-            continue
-        session.delete(row)
-        count += 1
-    return count
 
 
 def publish_theme_tree_version(session: Session, *, version_id: int) -> None:
@@ -236,9 +458,9 @@ def archive_old_versions(
                 ThemeTreeVersion.id != current_tree_version_id,
             )
         ).all()
-        for v in old_trees:
-            v.status = "archived"
-            session.add(v)
+        for row in old_trees:
+            row.status = "archived"
+            session.add(row)
 
     if current_dag_version_id is not None:
         old_dags = session.exec(
@@ -248,9 +470,9 @@ def archive_old_versions(
                 PrereqDagVersion.id != current_dag_version_id,
             )
         ).all()
-        for v in old_dags:
-            v.status = "archived"
-            session.add(v)
+        for row in old_dags:
+            row.status = "archived"
+            session.add(row)
 
     if current_snapshot_id is not None:
         old_snapshots = session.exec(
@@ -260,63 +482,116 @@ def archive_old_versions(
                 CurriculumSnapshot.id != current_snapshot_id,
             )
         ).all()
-        for s in old_snapshots:
-            s.status = "archived"
-            session.add(s)
-
-
-def activate_graph_entities_by_job(session: Session, *, job_id: int) -> int:
-    total = 0
-    total += _activate_entities(session, KnowledgeNode, job_id)
-    total += _activate_entities(session, KnowledgeEdge, job_id)
-    total += _activate_aliases_by_job(session, job_id)
-    total += _activate_evidence_by_job(session, job_id)
-    session.commit()
-    logger.info("activate_graph_entities_by_job", job_id=job_id, activated=total)
-    return total
-
-
-def activate_curriculum_entities_by_job(session: Session, *, job_id: int) -> int:
-    total = 0
-    total += _activate_entities(session, TeachingUnit, job_id)
-    session.commit()
-    logger.info("activate_curriculum_entities_by_job", job_id=job_id, activated=total)
-    return total
-
-
-def _activate_entities(session: Session, model: type, job_id: int) -> int:
-    stmt = select(model).where(
-        model.created_by_job_id == job_id,  # type: ignore[attr-defined]
-        model.status == "pending",  # type: ignore[attr-defined]
-    )
-    rows = session.exec(stmt).all()
-    for row in rows:
-        row.status = "active"
-        if hasattr(row, "updated_at"):
-            row.updated_at = utcnow()
-        session.add(row)
-    return len(rows)
-
-
-def _activate_aliases_by_job(session: Session, job_id: int) -> int:
-    stmt = select(KnowledgeAlias).where(KnowledgeAlias.created_by_job_id == job_id)
-    rows = session.exec(stmt).all()
-    count = 0
-    for row in rows:
-        if row.status != "active":
-            row.status = "active"
+        for row in old_snapshots:
+            row.status = "archived"
             session.add(row)
-            count += 1
-    return count
 
 
-def _activate_evidence_by_job(session: Session, job_id: int) -> int:
-    stmt = select(EvidenceLink).where(
-        EvidenceLink.created_by_job_id == job_id,
-        EvidenceLink.is_active == False,  # noqa: E712
+def activate_graph_entities_by_job(
+    session: Session,
+    *,
+    job_id: int,
+    subject: str | None = None,
+) -> int:
+    """Backward-compatible API: activation now scopes by subject."""
+
+    del job_id
+    if not subject:
+        return 0
+    return activate_graph_entities_by_subject(session, subject=subject)
+
+
+def activate_graph_entities_by_subject(session: Session, *, subject: str) -> int:
+    total = 0
+
+    nodes = list(
+        session.exec(
+            select(KnowledgeNode).where(
+                KnowledgeNode.subject == subject,
+                KnowledgeNode.status == "pending",
+            )
+        ).all()
     )
-    rows = session.exec(stmt).all()
-    for row in rows:
+    for row in nodes:
+        row.status = "active"
+        row.updated_at = utcnow()
+        session.add(row)
+    total += len(nodes)
+
+    edges = list(
+        session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.subject == subject,
+                KnowledgeEdge.status == "pending",
+            )
+        ).all()
+    )
+    for row in edges:
+        row.status = "active"
+        row.updated_at = utcnow()
+        session.add(row)
+    total += len(edges)
+
+    aliases = list(
+        session.exec(
+            select(KnowledgeAlias)
+            .join(KnowledgeNode, KnowledgeAlias.node_id == KnowledgeNode.id)
+            .where(
+                KnowledgeNode.subject == subject,
+                KnowledgeAlias.status != "active",
+            )
+        ).all()
+    )
+    for row in aliases:
+        row.status = "active"
+        session.add(row)
+    total += len(aliases)
+
+    evidence = list(
+        session.exec(
+            select(EvidenceLink).where(
+                EvidenceLink.subject == subject,
+                EvidenceLink.is_active == False,  # noqa: E712
+            )
+        ).all()
+    )
+    for row in evidence:
         row.is_active = True
         session.add(row)
-    return len(rows)
+    total += len(evidence)
+
+    session.commit()
+    logger.info("activate_graph_entities_by_subject", subject=subject, activated=total)
+    return total
+
+
+def activate_curriculum_entities_by_job(
+    session: Session,
+    *,
+    job_id: int,
+    subject: str | None = None,
+) -> int:
+    """Backward-compatible API: activation now scopes by subject."""
+
+    del job_id
+    if not subject:
+        return 0
+    return activate_curriculum_entities_by_subject(session, subject=subject)
+
+
+def activate_curriculum_entities_by_subject(session: Session, *, subject: str) -> int:
+    units = list(
+        session.exec(
+            select(TeachingUnit).where(
+                TeachingUnit.subject == subject,
+                TeachingUnit.status == "pending",
+            )
+        ).all()
+    )
+    for row in units:
+        row.status = "active"
+        row.updated_at = utcnow()
+        session.add(row)
+    session.commit()
+    logger.info("activate_curriculum_entities_by_subject", subject=subject, activated=len(units))
+    return len(units)

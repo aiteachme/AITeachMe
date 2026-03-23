@@ -31,7 +31,6 @@ def create_new_node(
         canonical_name=representative.name,
         normalized_name=normalize_name(representative.name),
         status="pending",
-        created_by_job_id=job_id,
     )
     node = kg_repo.create_knowledge_node(session, node)
 
@@ -42,7 +41,6 @@ def create_new_node(
         summary=clustered_candidate.merged_summary,
         body="",
         revision_reason="new_evidence",
-        digest_job_id=job_id,
         is_current=True,
     )
     revision = kg_repo.create_knowledge_revision(session, revision)
@@ -56,7 +54,6 @@ def create_new_node(
         normalized_alias=normalize_name(representative.name),
         source="llm",
         is_primary=True,
-        created_by_job_id=job_id,
     )
     kg_repo.create_alias(session, alias)
     return node
@@ -89,7 +86,6 @@ def create_updated_revision(
         summary=merged_summary,
         body=current_revision.body,
         revision_reason="new_evidence",
-        digest_job_id=job_id,
         is_current=True,
     )
     revision = kg_repo.create_knowledge_revision(session, revision)
@@ -119,7 +115,6 @@ def create_alias_if_new(
             normalized_alias=normalized_alias,
             source="llm",
             is_primary=False,
-            created_by_job_id=job_id,
         ),
     )
 
@@ -147,7 +142,6 @@ def create_node_evidence(
             evidence_role="supports",
             extraction_method="llm",
             field_scope="summary",
-            created_by_job_id=job_id,
         ),
     )
 
@@ -175,7 +169,6 @@ def create_edge_evidence(
             evidence_role="supports",
             extraction_method="llm",
             field_scope="edge_description",
-            created_by_job_id=job_id,
         ),
     )
 

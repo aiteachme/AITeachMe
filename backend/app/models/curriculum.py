@@ -12,26 +12,6 @@ from app.utils.time import utcnow
 # ── 课程派生任务（需先于其他表定义，因为多表 FK 引用它） ──
 
 
-class CurriculumDeriveJob(SQLModel, table=True):
-    """课程结构派生任务（替代原 TreeDeriveJob）。"""
-
-    __tablename__ = "curriculum_derive_job"
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    graph_job_id: int
-    status: str = Field(default="pending")  # DigestJobStatus
-    progress: int = Field(default=0)
-    current_step: str | None = Field(default=None)
-    units_added: int = Field(default=0)
-    units_updated: int = Field(default=0)
-    theme_tree_version_id: int | None = Field(default=None)
-    prereq_dag_version_id: int | None = Field(default=None)
-    error_message: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
-
-
 # ── 教学单元 ──
 
 
@@ -54,9 +34,6 @@ class TeachingUnit(SQLModel, table=True):
     status: str = Field(default="pending")  # UnitStatus
     confidence: float = Field(default=1.0)
     current_revision_id: int | None = Field(default=None)
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -76,9 +53,6 @@ class TeachingUnitRevision(SQLModel, table=True):
     summary: str = ""
     learning_objectives_json: str = Field(default="[]")
     revision_reason: str  # RevisionReason
-    curriculum_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id",
-    )
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -99,9 +73,6 @@ class TeachingUnitMembership(SQLModel, table=True):
     knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     role: str  # UnitMemberRole
     score: float = Field(default=0.0)
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -147,12 +118,6 @@ class ThemeTreeVersion(SQLModel, table=True):
     subject: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")  # TreeVersionStatus
-    curriculum_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id",
-    )
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -173,9 +138,6 @@ class ThemeTreeNode(SQLModel, table=True):
     node_type: str  # ThemeTreeNodeType
     order_index: int = Field(default=0)
     summary: str = ""
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -197,9 +159,6 @@ class UnitTreeMembership(SQLModel, table=True):
     membership_role: str  # UnitTreeMembershipRole
     membership_source: str = Field(default="auto")  # MembershipSource
     score: float = Field(default=0.0)
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -221,12 +180,6 @@ class PrereqDagVersion(SQLModel, table=True):
     subject: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")  # TreeVersionStatus
-    curriculum_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id",
-    )
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -249,9 +202,6 @@ class UnitDependency(SQLModel, table=True):
     confidence: float = Field(default=0.5)
     supporting_edge_count: int = Field(default=0)
     derivation_metadata_json: str = Field(default="{}")
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -273,7 +223,6 @@ class CurriculumSnapshot(SQLModel, table=True):
     subject: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")  # TreeVersionStatus
-    curriculum_job_id: int = Field(foreign_key="curriculum_derive_job.id")
     theme_tree_version_id: int | None = Field(
         default=None, foreign_key="theme_tree_version.id",
     )
@@ -281,7 +230,4 @@ class CurriculumSnapshot(SQLModel, table=True):
         default=None, foreign_key="prereq_dag_version.id",
     )
     syllabus_version_id: int | None = Field(default=None)  # MVP-2 预留
-    created_by_job_id: int | None = Field(
-        default=None, foreign_key="curriculum_derive_job.id", index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)

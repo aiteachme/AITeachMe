@@ -13,7 +13,6 @@ from app.models import (
     ExamPaperGenerationContext,
     ExamPaperItem,
     PrereqDagVersion,
-    QuestionBuildJob,
     QuestionTemplate,
     QuestionTemplateNodeLink,
     ReviewTask,
@@ -608,13 +607,10 @@ def complete_review_task(
 # ---------------------------------------------------------------------------
 
 
-def create_question_build_job(session: Session, job: QuestionBuildJob) -> QuestionBuildJob:
-    """创建题目构建任务。"""
-
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+def create_question_build_job(session: Session, job: object) -> None:
+    """Compatibility shim after question_build_job table removal."""
+    del session, job
+    return None
 
 
 def create_exam_generate_job(session: Session, job: object) -> None:
@@ -629,10 +625,10 @@ def create_exam_grade_job(session: Session, job: object) -> None:
     return None
 
 
-def get_question_build_job(session: Session, job_id: int) -> QuestionBuildJob | None:
-    """查询题目构建任务。"""
-
-    return session.get(QuestionBuildJob, job_id)
+def get_question_build_job(session: Session, job_id: int) -> None:
+    """Compatibility shim after question_build_job table removal."""
+    del session, job_id
+    return None
 
 
 def get_exam_generate_job(session: Session, job_id: int) -> None:

@@ -188,7 +188,6 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     continue
 
                 if is_new:
-                    matched_edge.created_by_job_id = job_id
                     edge = kg_repo.create_knowledge_edge(session, matched_edge)
                     edge_id = edge.id  # type: ignore[assignment]
 
@@ -199,7 +198,6 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                         weight=edge.weight,
                         confidence=confidence,
                         revision_reason="new_evidence",
-                        digest_job_id=job_id,
                         is_current=True,
                     )
                     revision = kg_repo.create_edge_revision(session, revision)

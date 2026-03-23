@@ -18,7 +18,6 @@ from app.models import (
     ExamPaperItem,
     ExamPaperStatus,
     QuestionType,
-    QuestionBuildJob,
     ReviewTask,
     UserAnswerAttempt,
     UserKnowledgeState,
@@ -63,6 +62,18 @@ class QuestionBankItem:
     times_asked: int
     last_asked_at: datetime
     last_exam_paper_id: int
+
+
+@dataclass(frozen=True)
+class QuestionBuildResult:
+    id: int
+    subject: str
+    status: str
+    templates_created: int
+    warnings_json: str
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -238,40 +249,45 @@ async def trigger_question_build(
     subject: str,
     unit_ids: list[int],
     questions_per_unit: int,
-) -> QuestionBuildJob:
-    """创建 QuestionBuildJob 并执行 QuestionBuildWorkflow。"""
+) -> QuestionBuildResult:
+    """Run question build workflow and return an ephemeral runtime result."""
 
-    job = assessment_repo.create_question_build_job(
-        session,
-        QuestionBuildJob(
-            subject=subject,
-            target_unit_ids_json=json.dumps(sorted(set(unit_ids))),
-            questions_per_unit=max(1, int(questions_per_unit)),
-            status="pending",
-            progress=0,
-            templates_created=0,
-            warnings_json="[]",
-            created_at=utcnow(),
-            updated_at=utcnow(),
-        ),
-    )
+    runtime_job_id = _new_runtime_job_id()
+    created_at = utcnow()
+    resolved_questions_per_unit = max(1, int(questions_per_unit))
 
     try:
-        await QuestionBuildWorkflow.run(
+        state = await QuestionBuildWorkflow.run(
             subject=subject,
             unit_ids=unit_ids,
-            questions_per_unit=max(1, int(questions_per_unit)),
-            job_id=job.id or 0,
+            questions_per_unit=resolved_questions_per_unit,
+            job_id=runtime_job_id,
             session=session,
         )
+        error = state.get("error")
+        updated_at = utcnow()
+        return QuestionBuildResult(
+            id=runtime_job_id,
+            subject=subject,
+            status="failed" if error else "completed",
+            templates_created=int(state.get("templates_created", 0)),
+            warnings_json=json.dumps(state.get("warnings", []), ensure_ascii=False),
+            error_message=str(error) if error else None,
+            created_at=created_at,
+            updated_at=updated_at,
+        )
     except Exception as exc:  # noqa: BLE001
-        job.status = "failed"
-        job.error_message = str(exc)
-        job.updated_at = utcnow()
-        session.add(job)
-        session.commit()
-        session.refresh(job)
-    return job
+        updated_at = utcnow()
+        return QuestionBuildResult(
+            id=runtime_job_id,
+            subject=subject,
+            status="failed",
+            templates_created=0,
+            warnings_json="[]",
+            error_message=str(exc),
+            created_at=created_at,
+            updated_at=updated_at,
+        )
 
 
 async def get_question_build_job_status(
@@ -279,14 +295,12 @@ async def get_question_build_job_status(
     *,
     subject: str,
     job_id: int,
-) -> QuestionBuildJob:
-    job = assessment_repo.get_question_build_job(session, job_id)
-    if job is None or job.subject != subject:
-        _raise_not_found(
-            f"题库构建任务 `{job_id}` 不存在。",
-            error_code="QUESTION_BUILD_JOB_NOT_FOUND",
-        )
-    return job
+) -> QuestionBuildResult:
+    del session, subject
+    _raise_not_found(
+        f"题库构建任务 `{job_id}` 不存在（QuestionBuildJob 已移除）。",
+        error_code="QUESTION_BUILD_JOB_NOT_FOUND",
+    )
 
 
 def _resolve_auto_build_unit_ids(
@@ -362,7 +376,7 @@ async def trigger_exam_generate(
             )
 
         required_template_count = max(1, int(resolved_num_questions))
-        build_job: QuestionBuildJob | None = None
+        build_job: QuestionBuildResult | None = None
         template_count_before = assessment_repo.count_active_question_templates(
             session,
             subject=subject,

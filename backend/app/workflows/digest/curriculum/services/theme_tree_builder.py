@@ -10,7 +10,7 @@
 硬规则：
 - 禁止在 theme_tree_builder 内部调用任何 publish/archive helper
 - 只能创建 draft version + ThemeTreeNode + UnitTreeMembership
-- 所有新建记录设置 created_by_job_id
+- 新建记录不再写入任何 *_job_id 字段
 - 每个 ThemeTreeVersion 必须包含一个 UNCATEGORIZED 固定节点
 """
 
@@ -581,7 +581,6 @@ def _materialize_skeleton(
                 node_type=node_type,
                 order_index=idx,
                 summary="",
-                created_by_job_id=curriculum_job_id,
             ),
         )
 
@@ -689,9 +688,7 @@ async def derive_theme_tree(
         pending_for_gen, _ = curriculum_repo.list_units_by_subject(
             session, subject, status="pending", limit=10000, offset=0,
         )
-        units_for_gen = all_units_for_gen + [
-            u for u in pending_for_gen if u.created_by_job_id == curriculum_job_id
-        ]
+        units_for_gen = all_units_for_gen + pending_for_gen
 
         if units_for_gen:
             logger.info(
@@ -718,8 +715,6 @@ async def derive_theme_tree(
     tree_version = curriculum_repo.create_theme_tree_version_with_optimistic_lock(
         session, subject, expected_prev_version_no=prev_version_no,
     )
-    tree_version.curriculum_job_id = curriculum_job_id
-    tree_version.created_by_job_id = curriculum_job_id
     session.add(tree_version)
     session.commit()
     session.refresh(tree_version)
@@ -751,7 +746,7 @@ async def derive_theme_tree(
     pending_units, _ = curriculum_repo.list_units_by_subject(
         session, subject, status="pending", limit=10000, offset=0,
     )
-    all_units = all_units + [u for u in pending_units if u.created_by_job_id == curriculum_job_id]
+    all_units = all_units + pending_units
 
     if not all_units:
         logger.info("no_units_for_tree_derivation", subject=subject)
@@ -838,7 +833,6 @@ async def derive_theme_tree(
                 membership_role="primary",
                 membership_source=source,
                 score=score,
-                created_by_job_id=curriculum_job_id,
             ),
         )
 
@@ -876,7 +870,6 @@ def _ensure_uncategorized_node(
             node_type="uncategorized",
             order_index=9999,
             summary="",
-            created_by_job_id=curriculum_job_id,
         ),
     )
     # 追加到 mountable_nodes

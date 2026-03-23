@@ -4,7 +4,6 @@ from app.models.assessment import (
     ExamPaper,
     ExamPaperGenerationContext,
     ExamPaperItem,
-    QuestionBuildJob,
     QuestionTemplate,
     QuestionTemplateNodeLink,
     ReviewTask,
@@ -13,7 +12,6 @@ from app.models.assessment import (
 )
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
-    CurriculumDeriveJob,
     CurriculumSnapshot,
     PrereqDagVersion,
     TaxonomyAnchor,
@@ -70,7 +68,6 @@ __all__ = [
     "AsyncJobStatus",
     "ChatMessage",
     "ChatSession",
-    "CurriculumDeriveJob",
     "CurriculumSnapshot",
     "Difficulty",
     "DigestStep",
@@ -98,7 +95,6 @@ __all__ = [
     "Mistake",
     "PrereqDagVersion",
     "Question",
-    "QuestionBuildJob",
     "QuestionTemplate",
     "QuestionTemplateNodeLink",
     "QuestionTemplateStatus",

@@ -650,7 +650,6 @@ def _upsert_unit(
                 naming.learning_objectives, ensure_ascii=False,
             ),
             revision_reason="new_evidence",
-            curriculum_job_id=curriculum_job_id,
             is_current=True,
         )
         revision = curriculum_repo.create_unit_revision(session, revision)
@@ -671,7 +670,6 @@ def _upsert_unit(
         member_signature=signature,
         status="pending",
         confidence=1.0,
-        created_by_job_id=curriculum_job_id,
     )
     unit = curriculum_repo.create_teaching_unit(session, unit)
 
@@ -685,7 +683,6 @@ def _upsert_unit(
             naming.learning_objectives, ensure_ascii=False,
         ),
         revision_reason="new_evidence",
-        curriculum_job_id=curriculum_job_id,
         is_current=True,
     )
     revision = curriculum_repo.create_unit_revision(session, revision)
@@ -695,7 +692,7 @@ def _upsert_unit(
     session.refresh(unit)
 
     # 创建 memberships
-    _create_memberships(session, unit, candidate, curriculum_job_id)
+    _create_memberships(session, unit, candidate)
 
     logger.info("unit_created", unit_id=unit.id, title=naming.title)
     return unit
@@ -705,7 +702,6 @@ def _create_memberships(
     session: Session,
     unit: TeachingUnit,
     candidate: UnitCandidate,
-    curriculum_job_id: int,
 ) -> None:
     """为教学单元创建成员关系。"""
     role_map = [
@@ -721,7 +717,6 @@ def _create_memberships(
                 knowledge_node_id=nid,
                 role=role,
                 score=1.0 if role == "core" else 0.5,
-                created_by_job_id=curriculum_job_id,
             )
             curriculum_repo.create_unit_membership(session, membership)
 

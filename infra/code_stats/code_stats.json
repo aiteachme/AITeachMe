@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T04:15:57.107275",
-  "total_commits_analyzed": 198,
+  "generated_at": "2026-03-23T05:29:59.433929",
+  "total_commits_analyzed": 202,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1585,6 +1585,38 @@
       "code_lines": 43453,
       "other_lines": 12437,
       "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "8cb3fa8",
+      "total_lines": 54417,
+      "code_lines": 41751,
+      "other_lines": 12666,
+      "message": "Add knowledge graph diagram in Mermaid format to f"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "48e2607",
+      "total_lines": 55890,
+      "code_lines": 43453,
+      "other_lines": 12437,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "5cec78f",
+      "total_lines": 54592,
+      "code_lines": 41901,
+      "other_lines": 12691,
+      "message": "refactor: 去除job_id 字段"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "92f9c3a",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
     }
   ]
 }

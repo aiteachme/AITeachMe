@@ -178,17 +178,6 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
-    "curriculum_derive_job": {
-        "id",
-        "subject",
-        "graph_job_id",
-        "status",
-        "progress",
-        "current_step",
-        "error_message",
-        "created_at",
-        "updated_at",
-    },
 }
 
 _ASSESSMENT_TABLES: set[str] = {
@@ -200,7 +189,6 @@ _ASSESSMENT_TABLES: set[str] = {
     "user_knowledge_state",
     "review_task",
     "exam_paper_generation_context",
-    "question_build_job",
 }
 
 _ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS: tuple[str, ...] = (
@@ -214,10 +202,36 @@ _ASSESSMENT_PARTIAL_UNIQUE_INDEX_DDLS: tuple[str, ...] = (
 _LEGACY_DROP_DDLS: tuple[str, ...] = (
     "DROP TABLE IF EXISTS graph_digest_job",
     "DROP TABLE IF EXISTS subject_build_lock",
+    "DROP TABLE IF EXISTS curriculum_derive_job",
+    "DROP TABLE IF EXISTS question_build_job",
     "DROP TABLE IF EXISTS exam_generate_job",
     "DROP TABLE IF EXISTS exam_grade_job",
     "DROP INDEX IF EXISTS uq_grade_job_active",
 )
+
+_LEGACY_JOB_FK_TARGETS: set[str] = {
+    "curriculum_derive_job",
+    "question_build_job",
+}
+
+_FORBIDDEN_LEGACY_COLUMNS: dict[str, set[str]] = {
+    "knowledge_node": {"created_by_job_id"},
+    "knowledge_edge": {"created_by_job_id"},
+    "knowledge_alias": {"created_by_job_id"},
+    "knowledge_revision": {"digest_job_id"},
+    "edge_revision": {"digest_job_id"},
+    "evidence_link": {"created_by_job_id"},
+    "teaching_unit": {"created_by_job_id"},
+    "teaching_unit_revision": {"curriculum_job_id"},
+    "teaching_unit_membership": {"created_by_job_id"},
+    "theme_tree_version": {"curriculum_job_id", "created_by_job_id"},
+    "theme_tree_node": {"created_by_job_id"},
+    "unit_tree_membership": {"created_by_job_id"},
+    "prereq_dag_version": {"curriculum_job_id", "created_by_job_id"},
+    "unit_dependency": {"created_by_job_id"},
+    "curriculum_snapshot": {"curriculum_job_id", "created_by_job_id"},
+    "question_template": {"created_by_job_id"},
+}
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
@@ -327,6 +341,16 @@ def _table_exists(conn, table_name: str) -> bool:
     return row is not None
 
 
+def _get_legacy_job_fk_targets(conn, table_name: str) -> set[str]:
+    rows = conn.execute(sa.text(f"PRAGMA foreign_key_list('{table_name}')")).fetchall()
+    targets: set[str] = set()
+    for row in rows:
+        target = row[2]
+        if target in _LEGACY_JOB_FK_TARGETS:
+            targets.add(target)
+    return targets
+
+
 def _drop_legacy_tables(engine) -> None:
     """Drop legacy job tables/indexes that were removed from the runtime schema."""
 
@@ -360,6 +384,43 @@ def _validate_runtime_schema(engine) -> None:
             raise OutdatedSchemaError(
                 table_name=table_name,
                 missing_columns=missing_columns,
+                existing_columns=sorted(existing_columns),
+            )
+
+        table_rows = conn.execute(
+            sa.text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        ).fetchall()
+        for row in table_rows:
+            table_name = str(row[0])
+            legacy_targets = sorted(_get_legacy_job_fk_targets(conn, table_name))
+            if not legacy_targets:
+                continue
+            logger.error(
+                "database_schema_contains_legacy_job_fk",
+                table_name=table_name,
+                legacy_fk_targets=legacy_targets,
+            )
+            raise OutdatedSchemaError(
+                table_name=table_name,
+                missing_columns=[f"remove_fk_to:{target}" for target in legacy_targets],
+                existing_columns=sorted(_get_table_columns(conn, table_name)),
+            )
+
+        for table_name, forbidden_columns in _FORBIDDEN_LEGACY_COLUMNS.items():
+            if not _table_exists(conn, table_name):
+                continue
+            existing_columns = _get_table_columns(conn, table_name)
+            leftovers = sorted(existing_columns & forbidden_columns)
+            if not leftovers:
+                continue
+            logger.error(
+                "database_schema_contains_forbidden_legacy_columns",
+                table_name=table_name,
+                forbidden_columns=leftovers,
+            )
+            raise OutdatedSchemaError(
+                table_name=table_name,
+                missing_columns=[f"drop_column:{column}" for column in leftovers],
                 existing_columns=sorted(existing_columns),
             )
 
