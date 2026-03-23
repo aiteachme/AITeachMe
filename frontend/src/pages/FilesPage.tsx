@@ -376,7 +376,7 @@ export function FilesPage() {
       <PageWrapper
         title="文件工作台"
         subtitle="统一管理学科资料、查看解析进度、预览 Markdown 结果，并在解析完成后继续构建知识文档与知识图谱。"
-        badgeText="资料解析总览"
+        badgeText="Files"
       >
         <div
           className={cn(PAPER_CARD, "p-2 focus-within:border-slate-300 focus-within:shadow-md")}

@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  FileEdit,
   Loader2,
   Menu,
   Plus,
@@ -34,10 +33,9 @@ import { Button } from "../ui/Button";
 
 const MODULES = [
   { id: "files", name: "文件", icon: <Upload className="w-4 h-4" /> },
-  { id: "knowledge-graph", name: "知识图谱", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "knowledge-docs", name: "知识库", icon: <BookOpen className="w-4 h-4" /> },
   { id: "exams", name: "考试", icon: <FileText className="w-4 h-4" /> },
   { id: "profile", name: "学习画像", icon: <BarChart3 className="w-4 h-4" /> },
-  { id: "knowledge-docs", name: "知识文档", icon: <FileEdit className="w-4 h-4" /> },
 ];
 
 const NewSubjectForm = memo(function NewSubjectForm({
