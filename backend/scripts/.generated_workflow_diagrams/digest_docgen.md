@@ -1,36 +1,40 @@
 # Digest DocGen Workflow
 
-当前知识文档工作流已经去 `job_id` 化。
-
-外部接口只有：
-
-- `POST /api/v1/subjects/{subject}/knowledge/build`
-- `POST /api/v1/subjects/{subject}/knowledge/docs`
-
-内部用 subject 级锁、staging 目录和 manifest 管理构建与发布。
+Knowledge document generation workflow with Fan-Out parallelism.
 
 ```mermaid
-flowchart TD
-    A["POST /knowledge/build"] --> B{"创建 .build.lock"}
-    B -- "已存在" --> C["409 BUILD_IN_PROGRESS"]
-    B -- "成功" --> D["记录 requested_at"]
-    D --> E["load_files"]
-    E --> F["cleanse"]
-    F --> G["outline_map"]
-    G --> H["outline_reduce"]
-    H --> I["draft_chapter x N"]
-    I --> J["review_chapter x N"]
-    J --> K["extract_metadata x N"]
-    K --> L["写入 _building/chapter_XX_*.md"]
-    L --> M["生成 _building/merged_knowledge_base.md"]
-    M --> N["覆盖发布目录 knowledge_docs/"]
-    N --> O["写入 manifest.json"]
-    O --> P["重建 KnowledgeDoc published 记录"]
-    P --> Q["删除 .build.lock"]
-
-    R["前端本地进度条"] --> S["POST /knowledge/docs"]
-    S --> T["读取 merged_knowledge_base.md + manifest.json"]
-    T --> U{"updated_at >= requested_at ?"}
-    U -- "是" --> V["前端补到 100%"]
-    U -- "否" --> S
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__(<p>__start__</p>)
+	load_files(load_files)
+	cleanse(cleanse)
+	outline_map(outline_map)
+	outline_reduce(outline_reduce)
+	draft_chapter(draft_chapter)
+	collect_drafts(collect_drafts)
+	review_chapter(review_chapter)
+	collect_reviews(collect_reviews)
+	extract_metadata(extract_metadata)
+	finalize_assemble(finalize_assemble)
+	__end__(<p>__end__</p>)
+	__start__ --> load_files;
+	cleanse -. &nbsp;fail&nbsp; .-> __end__;
+	cleanse -. &nbsp;continue&nbsp; .-> outline_map;
+	load_files -. &nbsp;fail&nbsp; .-> __end__;
+	load_files -. &nbsp;continue&nbsp; .-> cleanse;
+	outline_map --> outline_reduce;
+	outline_reduce -. &nbsp;Send&nbsp;×N&nbsp; .-> draft_chapter;
+	draft_chapter --> collect_drafts;
+	collect_drafts -. &nbsp;Send&nbsp;×N&nbsp; .-> review_chapter;
+	review_chapter --> collect_reviews;
+	collect_reviews -. &nbsp;Send&nbsp;×N&nbsp; .-> extract_metadata;
+	extract_metadata --> finalize_assemble;
+	finalize_assemble --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
 ```

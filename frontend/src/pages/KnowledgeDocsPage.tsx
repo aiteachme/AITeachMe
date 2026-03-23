@@ -10,6 +10,7 @@ import "katex/dist/katex.min.css";
 import {
   FileText,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   Send,
@@ -24,6 +25,7 @@ import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { KnowledgeGraphSidePanel } from "../components/pages/KnowledgeGraphSidePanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -514,7 +516,7 @@ function DocEmptyState() {
       </div>
       <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        先回到上传页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
+        先回到文件页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
       </p>
     </section>
   );
@@ -716,10 +718,10 @@ function CommentThread({
 }
 
 /* ------------------------------------------------------------------ */
-/*  DocPage                                                            */
+/*  KnowledgeDocsPage                                                  */
 /* ------------------------------------------------------------------ */
 
-export function DocPage() {
+export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
   const { subjectId } = useParams<{ subjectId: string }>();
   const location = useLocation();
@@ -838,6 +840,9 @@ export function DocPage() {
     typeof window !== "undefined" ? window.innerWidth < COMPACT_PANEL_BREAKPOINT : false
   );
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+
+  type GraphViewMode = "hidden" | "split" | "full";
+  const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>("hidden");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -2288,7 +2293,17 @@ export function DocPage() {
   );
 
   return (
-    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-transparent flex flex-col">      {!isCompactPanels && (
+    <div className="relative flex-1 w-full min-h-full overflow-hidden bg-slate-50 flex flex-row">
+      
+      {/* Doc + AI Panel Wrapper */}
+      <div 
+        className={cn(
+          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
+          graphViewMode === "hidden" ? "w-full" : 
+          graphViewMode === "split" ? "w-1/2 border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
+        )}
+      >
+        {!isCompactPanels && (
         <div className="hidden lg:block absolute left-4 top-16 z-30">
           {isTocCollapsed ? (
             <aside className="w-11 h-11">
@@ -2537,6 +2552,54 @@ export function DocPage() {
 
         </div>
       </div>
+      </div>
+
+      {/* Unified Sliding Handle for All States */}
+      <div 
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 z-[70] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-center justify-center gap-[2px]",
+          graphViewMode === "hidden" ? "right-0 opacity-90 hover:opacity-100" : 
+          graphViewMode === "split" ? "left-1/2 -translate-x-1/2 opacity-60 hover:opacity-100" : 
+          "left-0 opacity-90 hover:opacity-100"
+        )}
+      >
+        {graphViewMode !== "full" && (
+          <button 
+            onClick={() => setGraphViewMode(graphViewMode === "hidden" ? "split" : "full")}
+            className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
+            title={graphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
+          >
+            <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
+          </button>
+        )}
+        
+        {graphViewMode !== "hidden" && (
+          <button 
+            onClick={() => setGraphViewMode(graphViewMode === "full" ? "split" : "hidden")}
+            className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
+            title={graphViewMode === "full" ? "分屏视图" : "收起图谱"}
+          >
+            <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Graph Area Wrapper */}
+      <div 
+        className={cn(
+          "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
+          graphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
+          graphViewMode === "split" ? "w-1/2" : "w-full"
+        )}
+      >
+        {subjectId && graphViewMode !== "hidden" && (
+          <KnowledgeGraphSidePanel 
+            subjectId={subjectId} 
+          />
+        )}
+      </div>
+
+
     </div>
   );
 }

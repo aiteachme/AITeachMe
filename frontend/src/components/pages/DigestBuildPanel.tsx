@@ -164,7 +164,7 @@ export function DigestBuildButton() {
       <Modal open={showFileSelect} onClose={closeModal} title="选择要纳入本次构建的文件">
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            这里选择的是本次知识构建要读取的已解析文件。提交后，知识文档和知识总结页的知识图谱会一起更新。
+            这里选择的是本次知识构建要读取的已解析文件。提交后，知识文档和知识图谱页会一起更新。
           </p>
 
           {filesLoading ? (

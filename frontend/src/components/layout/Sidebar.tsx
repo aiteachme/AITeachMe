@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  FileEdit,
   Loader2,
   Menu,
   Plus,
@@ -33,11 +32,10 @@ import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
 
 const MODULES = [
-  { id: "upload", name: "上传资料", icon: <Upload className="w-4 h-4" /> },
-  { id: "summary", name: "知识总结", icon: <BookOpen className="w-4 h-4" /> },
-  { id: "exam", name: "考题预测", icon: <FileText className="w-4 h-4" /> },
-  { id: "analysis", name: "学习分析", icon: <BarChart3 className="w-4 h-4" /> },
-  { id: "docs", name: "文档", icon: <FileEdit className="w-4 h-4" /> },
+  { id: "files", name: "文件", icon: <Upload className="w-4 h-4" /> },
+  { id: "knowledge-docs", name: "知识库", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "exams", name: "考试", icon: <FileText className="w-4 h-4" /> },
+  { id: "profile", name: "学习画像", icon: <BarChart3 className="w-4 h-4" /> },
 ];
 
 const NewSubjectForm = memo(function NewSubjectForm({
@@ -148,7 +146,7 @@ export function Sidebar() {
       setShowNewForm(false);
       setCreateError(undefined);
       setSubjectActionError(undefined);
-      navigate(`/subject/${created.subject_id}/upload`);
+      navigate(`/subject/${created.subject_id}/files`);
     },
     onError: (error: unknown) => {
       setCreateError(getApiErrorMessage(error, "创建失败，请重试"));

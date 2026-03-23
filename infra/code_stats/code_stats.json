@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T04:15:57.107275",
-  "total_commits_analyzed": 198,
+  "generated_at": "2026-03-23T08:15:43.016438",
+  "total_commits_analyzed": 210,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1585,6 +1585,102 @@
       "code_lines": 43453,
       "other_lines": 12437,
       "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "8cb3fa8",
+      "total_lines": 54417,
+      "code_lines": 41751,
+      "other_lines": 12666,
+      "message": "Add knowledge graph diagram in Mermaid format to f"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "48e2607",
+      "total_lines": 55890,
+      "code_lines": 43453,
+      "other_lines": 12437,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "5cec78f",
+      "total_lines": 54592,
+      "code_lines": 41901,
+      "other_lines": 12691,
+      "message": "refactor: 去除job_id 字段"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "92f9c3a",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "d604f7e",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "103db99",
+      "total_lines": 55890,
+      "code_lines": 43453,
+      "other_lines": 12437,
+      "message": "chore: 更新packagelock"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "fdc8e15",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "006ac20",
+      "total_lines": 56419,
+      "code_lines": 43915,
+      "other_lines": 12504,
+      "message": "更新命名"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "0edbebb",
+      "total_lines": 56419,
+      "code_lines": 43915,
+      "other_lines": 12504,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "852505c",
+      "total_lines": 56451,
+      "code_lines": 43943,
+      "other_lines": 12508,
+      "message": "style: 合并图谱和文档, fix langgraph图生成"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "687b11c",
+      "total_lines": 56950,
+      "code_lines": 44399,
+      "other_lines": 12551,
+      "message": "style: 合并图谱和文档"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "17bf5ae",
+      "total_lines": 56950,
+      "code_lines": 44399,
+      "other_lines": 12551,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
