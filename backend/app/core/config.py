@@ -51,10 +51,18 @@ class Settings(BaseSettings):
     llm_cache_enabled: bool = False
     llm_cache_ttl_s: int = 3600
     llm_cache_max_entries: int = 1000
-    llm_concurrency_limit: int = 10
+    llm_concurrency_limit: int = 20
     embedding_batch_size: int = 20
     embedding_batch_delay_s: float = 0.1
     default_token_budget: int = 4000
+    docgen_max_parallel_chapters: int = 20
+    docgen_io_parallelism: int = 20
+    docgen_outline_fast_path_max_chunks: int = 1
+    docgen_skip_llm_cleanse_for_clean_markdown: bool = True
+    docgen_skip_llm_review_for_single_chapter: bool = True
+    docgen_review_fast_path_max_chapters: int = 1
+    docgen_review_retry_mode: str = "targeted"
+    docgen_metadata_fallback_llm: bool = True
 
     @property
     def embedding_dim(self) -> int:

@@ -1,4 +1,4 @@
-"""原始文件数据访问层。"""
+"""Raw file data-access helpers."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ _UNSET = object()
 
 
 def create_raw_file(session: Session, raw_file: RawFile) -> RawFile:
-    """创建原始文件记录。"""
+    """Persist one raw file row."""
 
     session.add(raw_file)
     session.commit()
@@ -20,9 +20,16 @@ def create_raw_file(session: Session, raw_file: RawFile) -> RawFile:
 
 
 def get_raw_file_by_id(session: Session, raw_file_id: int) -> RawFile | None:
-    """按 ID 查询文件。"""
+    """Load one raw file by internal ID."""
 
     return session.get(RawFile, raw_file_id)
+
+
+def get_raw_file_by_uid(session: Session, raw_file_uid: str) -> RawFile | None:
+    """Load one raw file by public UID."""
+
+    stmt = select(RawFile).where(RawFile.uid == raw_file_uid)
+    return session.exec(stmt).first()
 
 
 def list_raw_files_by_ids(
@@ -30,7 +37,7 @@ def list_raw_files_by_ids(
     subject: str,
     file_ids: list[int],
 ) -> list[RawFile]:
-    """按 ID 列表批量查询文件。"""
+    """Batch load files by internal IDs."""
 
     if not file_ids:
         return []
@@ -38,6 +45,24 @@ def list_raw_files_by_ids(
     stmt = (
         select(RawFile)
         .where(RawFile.subject == subject, RawFile.id.in_(file_ids))  # type: ignore[union-attr]
+        .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
+    )
+    return list(session.exec(stmt).all())
+
+
+def list_raw_files_by_uids(
+    session: Session,
+    subject: str,
+    file_uids: list[str],
+) -> list[RawFile]:
+    """Batch load files by public UIDs."""
+
+    if not file_uids:
+        return []
+
+    stmt = (
+        select(RawFile)
+        .where(RawFile.subject == subject, RawFile.uid.in_(file_uids))  # type: ignore[union-attr]
         .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
     )
     return list(session.exec(stmt).all())
@@ -51,7 +76,7 @@ def list_raw_files_by_subject(
     offset: int,
     status: str | None = None,
 ) -> tuple[list[RawFile], int]:
-    """分页查询学科下的文件。"""
+    """Paginate files under one subject."""
 
     filters = [RawFile.subject == subject]
     if status:
@@ -69,7 +94,7 @@ def list_raw_files_by_subject(
 
 
 def list_all_raw_files_by_subject(session: Session, subject: str) -> list[RawFile]:
-    """查询学科下全部文件，按创建时间升序返回。"""
+    """Load every file under one subject."""
 
     stmt = (
         select(RawFile)
@@ -98,7 +123,7 @@ def update_raw_file(
     image_count: int | None | object = _UNSET,
     ingest_status: str | None | object = _UNSET,
 ) -> RawFile:
-    """更新原始文件记录。"""
+    """Update one raw file row."""
 
     if file_path is not _UNSET:
         raw_file.file_path = file_path
@@ -136,7 +161,7 @@ def update_raw_file(
 
 
 def delete_raw_file(session: Session, raw_file: RawFile) -> None:
-    """删除原始文件记录。"""
+    """Delete one raw file row."""
 
     session.delete(raw_file)
     session.commit()

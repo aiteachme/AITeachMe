@@ -1,7 +1,10 @@
 import { http, HttpResponse } from "msw";
 
+import type { FileAssetItem, FileRecord, FilesData } from "../../types/files";
+
 type MockFile = {
-  id: number;
+  internal_id: number;
+  uid: string;
   filename: string;
   filetype: string;
   status: string;
@@ -16,36 +19,121 @@ type MockFile = {
   parser_used: string | null;
   latest_updated_at: string;
   created_at: string;
+  markdown_content: string;
+  assets: FileAssetItem[];
+};
+
+type PendingKnowledgeBuild = {
+  requested_at: string;
+  source_file_uids: string[];
+  prompt: string | null;
+  poll_count: number;
 };
 
 const now = () => new Date().toISOString();
+const SVG_ASSET_NAME = "figure-1.svg";
 
-let nextFileId = 4;
-let nextDocgenJobId = 1;
+let nextInternalFileId = 4;
+const filePollTicks = new Map<string, number>();
 
-const filePollTicks = new Map<number, number>();
+function buildFileUid(seed: number): string {
+  return `file_mock_${seed.toString().padStart(4, "0")}`;
+}
+
+function buildAssetBaseUrl(subject: string, fileUid: string): string {
+  return `/_assets/${subject}/assets/${fileUid}`;
+}
+
+function buildFileAssets(subject: string, fileUid: string): FileAssetItem[] {
+  const assetBaseUrl = buildAssetBaseUrl(subject, fileUid);
+  return [
+    {
+      name: SVG_ASSET_NAME,
+      url: `${assetBaseUrl}/${SVG_ASSET_NAME}`,
+      mime_type: "image/svg+xml",
+    },
+  ];
+}
+
+function buildReadyMarkdown(filename: string): string {
+  return [
+    `# ${filename}`,
+    "",
+    "这是一个用于本地联调的模拟解析结果。",
+    "",
+    "## 说明",
+    "",
+    "- 文档页直接读取统一文件接口中的 Markdown 内容。",
+    "- 图片通过 `assetBaseUrl` 和 `MarkdownViewer` 进行解析。",
+    "",
+    `![Preview image](${SVG_ASSET_NAME})`,
+  ].join("\n");
+}
+
+function serializeFile(subject: string, file: MockFile): FileRecord {
+  const assetBaseUrl = buildAssetBaseUrl(subject, file.uid);
+  return {
+    uid: file.uid,
+    filename: file.filename,
+    filetype: file.filetype,
+    status: file.status,
+    ingest_status: file.ingest_status,
+    markdown_ready: file.markdown_ready,
+    asset_ready: file.asset_ready,
+    error_message: file.error_message,
+    file_size_bytes: file.file_size_bytes,
+    detected_language: file.detected_language,
+    estimated_pages: file.estimated_pages,
+    image_count: file.image_count,
+    parser_used: file.parser_used,
+    markdown_content: file.markdown_ready ? file.markdown_content : "",
+    asset_base_url: assetBaseUrl,
+    assets: file.assets,
+    latest_updated_at: file.latest_updated_at,
+    created_at: file.created_at,
+  };
+}
+
+function buildFilesResponse(subject: string): FilesData {
+  const items = [...mockFiles]
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .map((file) => serializeFile(subject, file));
+
+  return {
+    subject,
+    total: items.length,
+    ready_count: items.filter((item) => item.markdown_ready).length,
+    processing_count: items.filter((item) => !item.markdown_ready && item.status !== "failed").length,
+    failed_count: items.filter((item) => item.status === "failed").length,
+    items,
+  };
+}
 
 const mockFiles: MockFile[] = [
   {
-    id: 1,
-    filename: "高数第一章.pdf",
+    internal_id: 1,
+    uid: buildFileUid(1),
+    filename: "calculus-final.pdf",
     filetype: "pdf",
     status: "completed",
     ingest_status: "completed",
     markdown_ready: true,
-    asset_ready: false,
+    asset_ready: true,
     error_message: null,
     file_size_bytes: 248000,
     detected_language: "zh",
     estimated_pages: 12,
-    image_count: 0,
-    parser_used: "markitdown",
+    image_count: 1,
+    parser_used: "pdf_mixed",
     latest_updated_at: "2026-03-22T10:00:00Z",
     created_at: "2026-03-22T09:58:00Z",
+    markdown_content: buildReadyMarkdown("calculus-final.pdf"),
+    assets: buildFileAssets("mock-subject", buildFileUid(1)),
   },
   {
-    id: 2,
-    filename: "导数与微分笔记.docx",
+    internal_id: 2,
+    uid: buildFileUid(2),
+    filename: "discrete-notes.docx",
     filetype: "docx",
     status: "processing",
     ingest_status: "extracting",
@@ -59,16 +147,19 @@ const mockFiles: MockFile[] = [
     parser_used: null,
     latest_updated_at: "2026-03-22T10:03:00Z",
     created_at: "2026-03-22T10:02:00Z",
+    markdown_content: "",
+    assets: [],
   },
   {
-    id: 3,
-    filename: "积分练习题.pdf",
+    internal_id: 3,
+    uid: buildFileUid(3),
+    filename: "algorithms-exercises.pdf",
     filetype: "pdf",
     status: "failed",
     ingest_status: "failed",
     markdown_ready: false,
     asset_ready: false,
-    error_message: "Mock: PDF 解析超时，可直接重试",
+    error_message: "Mock: PDF parse failed",
     file_size_bytes: 156000,
     detected_language: "zh",
     estimated_pages: 6,
@@ -76,54 +167,31 @@ const mockFiles: MockFile[] = [
     parser_used: null,
     latest_updated_at: "2026-03-22T10:04:00Z",
     created_at: "2026-03-22T10:01:00Z",
+    markdown_content: "",
+    assets: [],
   },
 ];
 
-filePollTicks.set(2, 0);
+filePollTicks.set(buildFileUid(2), 0);
 
-let docgenState: {
-  exists: boolean;
-  markdown: string;
-  merged_path: string | null;
-  updated_at: string | null;
-  job: {
-    id: number;
-    subject: string;
-    status: string;
-    progress: number;
-    current_step: string | null;
-    total_chapters: number;
-    completed_chapters: number;
-    error_message: string | null;
-    created_at: string;
-    updated_at: string;
-  } | null;
-  source_file_ids: number[];
-  prompt: string | null;
-  poll_count: number;
-} = {
+let publishedDoc = {
   exists: false,
   markdown: "",
-  merged_path: null,
-  updated_at: null,
-  job: null,
-  source_file_ids: [],
-  prompt: null,
-  poll_count: 0,
+  updated_at: null as string | null,
+  source_file_uids: [] as string[],
+  prompt: null as string | null,
 };
 
-function getMockMarkdown(file: MockFile): string {
-  return `# ${file.filename}\n\n这是 ${file.filename} 的 mock 解析结果。\n\n- 文件类型：${file.filetype}\n- 解析状态：${file.markdown_ready ? "已生成 Markdown" : file.status}\n- 语言：${file.detected_language ?? "未知"}\n\n## 核心内容\n\n这里模拟展示 ingest 产出的 Markdown 内容，方便前端联调预览。`;
-}
+let pendingKnowledgeBuild: PendingKnowledgeBuild | null = null;
 
-function advanceFileParsing() {
+function advanceFileParsing(subject: string) {
   for (const file of mockFiles) {
     if (file.markdown_ready || file.status === "failed") {
       continue;
     }
 
-    const nextTick = (filePollTicks.get(file.id) ?? 0) + 1;
-    filePollTicks.set(file.id, nextTick);
+    const nextTick = (filePollTicks.get(file.uid) ?? 0) + 1;
+    filePollTicks.set(file.uid, nextTick);
 
     if (nextTick < 2) {
       file.status = "processing";
@@ -135,75 +203,115 @@ function advanceFileParsing() {
     file.status = "completed";
     file.ingest_status = "completed";
     file.markdown_ready = true;
-    file.asset_ready = false;
+    file.asset_ready = true;
+    file.image_count = 1;
     file.parser_used = file.parser_used ?? "markitdown";
+    file.markdown_content = buildReadyMarkdown(file.filename);
+    file.assets = buildFileAssets(subject, file.uid);
     file.latest_updated_at = now();
   }
 }
 
-function advanceDocgen() {
-  if (!docgenState.job || docgenState.exists) {
+function advanceKnowledgeBuild() {
+  if (!pendingKnowledgeBuild) {
     return;
   }
 
-  docgenState.poll_count += 1;
-
-  if (docgenState.poll_count === 1) {
-    docgenState.job.status = "processing";
-    docgenState.job.progress = 24;
-    docgenState.job.current_step = "outlining";
-    docgenState.job.updated_at = now();
+  pendingKnowledgeBuild.poll_count += 1;
+  if (pendingKnowledgeBuild.poll_count < 3) {
     return;
   }
 
-  if (docgenState.poll_count === 2) {
-    docgenState.job.status = "processing";
-    docgenState.job.progress = 68;
-    docgenState.job.current_step = "drafting";
-    docgenState.job.completed_chapters = 2;
-    docgenState.job.updated_at = now();
-    return;
-  }
-
-  docgenState.exists = true;
-  docgenState.updated_at = now();
-  docgenState.merged_path = "data/mock-subject/knowledge_docs/merged_knowledge_base.md";
-  docgenState.markdown = `# 知识文档总览\n\n这是根据已解析资料自动生成的 mock 知识文档。\n\n## 资料来源\n\n${docgenState.source_file_ids.map((fileId) => `- 文件 ${fileId}`).join("\n")}\n\n## 使用建议\n\n${docgenState.prompt ?? "按章节复习核心概念、公式与题型。"}\n\n## 当前结论\n\n- 上传即解析已经打通\n- 文档页改为直接读取 \`docgen/get\`\n- merged 文档生成后会自动展示正文`;
-  docgenState.job = {
-    ...docgenState.job,
-    status: "completed",
-    progress: 100,
-    current_step: "done",
-    completed_chapters: 3,
-    updated_at: docgenState.updated_at,
+  publishedDoc = {
+    exists: true,
+    updated_at: now(),
+    source_file_uids: [...pendingKnowledgeBuild.source_file_uids],
+    prompt: pendingKnowledgeBuild.prompt,
+    markdown: [
+      "# 知识文档总览",
+      "",
+      "## 目录",
+      "",
+      "- 第一章 核心概念梳理",
+      "- 第二章 方法与例题",
+      "- 第三章 复习抓手",
+      "",
+      "---",
+      "",
+      "# 第一章 核心概念梳理",
+      "",
+      "> 本章先整理核心概念与基本定义，帮助快速建立统一的知识框架。",
+      "",
+      "## 关键主题",
+      "",
+      ...pendingKnowledgeBuild.source_file_uids.map((fileUid) => `- 来自文件 ${fileUid} 的重点内容`),
+      "",
+      "标签：#概念 #主线",
+      "",
+      "---",
+      "",
+      "# 第二章 方法与例题",
+      "",
+      "> 本章围绕常见方法、公式和典型题型展开，便于继续练习与迁移。",
+      "",
+      "## 方法提示",
+      "",
+      pendingKnowledgeBuild.prompt ?? "未提供额外提示，本章按照默认教学结构组织。",
+      "",
+      "标签：#方法 #例题",
+      "",
+      "---",
+      "",
+      "# 第三章 复习抓手",
+      "",
+      "> 最后一章总结复习顺序、易错点和二次回看建议，方便考前快速过一遍。",
+      "",
+      "## 复习建议",
+      "",
+      "- 先回看目录，再逐章定位薄弱点。",
+      "- 对照原始资料复核定义、公式和图示。",
+      "",
+      "标签：#复习 #总结",
+    ].join("\n"),
   };
+  pendingKnowledgeBuild = null;
+}
+
+function buildMockSvg(label: string): string {
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`,
+    `<rect width="640" height="360" fill="#eff6ff" rx="24" ry="24"/>`,
+    `<rect x="40" y="48" width="560" height="264" fill="#ffffff" stroke="#93c5fd" stroke-width="4" rx="20" ry="20"/>`,
+    `<text x="320" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#1d4ed8">AITeachMe Asset Preview</text>`,
+    `<text x="320" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#475569">${label}</text>`,
+    `</svg>`,
+  ].join("");
 }
 
 export const fileHandlers = [
-  http.post("/api/v1/subjects/:subject/files/list", () => {
-    advanceFileParsing();
+  http.get("/api/v1/subjects/:subject/files", ({ params }) => {
+    const subject = String(params.subject);
+    advanceFileParsing(subject);
     return HttpResponse.json({
       code: 0,
-      data: {
-        items: [...mockFiles].sort((left, right) =>
-          right.created_at.localeCompare(left.created_at),
-        ),
-        total: mockFiles.length,
-      },
+      data: buildFilesResponse(subject),
     });
   }),
 
   http.post("/api/v1/subjects/:subject/files/upload", async ({ params, request }) => {
+    const subject = String(params.subject);
     const formData = await request.formData();
     const uploads = formData.getAll("files");
     const createdAt = now();
 
     const newItems = uploads.map((entry, index) => {
-      const filename = entry instanceof File ? entry.name : `新文件-${nextFileId + index}.txt`;
+      const internalId = nextInternalFileId + index;
+      const uid = buildFileUid(internalId);
+      const filename = entry instanceof File ? entry.name : `mock-file-${internalId}.txt`;
       const filetype = filename.split(".").pop()?.toLowerCase() ?? "txt";
-      const fileId = nextFileId + index;
       const item: MockFile = {
-        id: fileId,
+        internal_id: internalId,
+        uid,
         filename,
         filetype,
         status: "processing",
@@ -218,196 +326,130 @@ export const fileHandlers = [
         parser_used: null,
         latest_updated_at: createdAt,
         created_at: createdAt,
+        markdown_content: "",
+        assets: [],
       };
-      filePollTicks.set(fileId, 0);
+      filePollTicks.set(uid, 0);
       mockFiles.unshift(item);
       return item;
     });
 
-    nextFileId += uploads.length;
+    nextInternalFileId += uploads.length;
 
     return HttpResponse.json({
       code: 0,
       data: {
-        subject: params.subject,
+        subject,
         filenames: newItems.map((item) => item.filename),
-        uploaded_items: newItems,
-        accepted_parse_file_ids: newItems.map((item) => item.id),
+        uploaded_items: newItems.map((item) => serializeFile(subject, item)),
         started_parse_count: newItems.length,
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/get", async ({ request }) => {
-    advanceFileParsing();
-    const body = (await request.json()) as { file_id?: number };
-    const file = mockFiles.find((item) => item.id === body.file_id);
+  http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
+    const body = (await request.json()) as { file_uid?: string; file_uids?: string[] };
+    const candidateUids = body.file_uids?.length ? body.file_uids : body.file_uid ? [body.file_uid] : [];
+    const deletedUids: string[] = [];
 
-    if (!file) {
+    for (const fileUid of candidateUids) {
+      const index = mockFiles.findIndex((item) => item.uid === fileUid);
+      if (index >= 0) {
+        mockFiles.splice(index, 1);
+        filePollTicks.delete(fileUid);
+        deletedUids.push(fileUid);
+      }
+    }
+
+    return HttpResponse.json({
+      code: 0,
+      data: { deleted_file_uids: deletedUids },
+    });
+  }),
+
+  http.get("/_assets/:subject/assets/:fileUid/:assetName", ({ params }) => {
+    const fileUid = String(params.fileUid);
+    const assetName = String(params.assetName);
+    const file = mockFiles.find((item) => item.uid === fileUid);
+    const asset = file?.assets.find((item) => item.name === assetName);
+
+    if (!file || !asset) {
       return HttpResponse.json(
         {
           code: 404,
-          message: "文件不存在",
+          message: "Asset not found",
           error_code: "RAW_FILE_NOT_FOUND",
         },
         { status: 404 },
       );
     }
 
-    return HttpResponse.json({
-      code: 0,
-      data: {
-        file_id: file.id,
-        filename: file.filename,
-        filetype: file.filetype,
-        status: file.status,
-        ingest_status: file.ingest_status,
-        markdown_ready: file.markdown_ready,
-        asset_ready: file.asset_ready,
-        error_message: file.error_message,
-        file_size_bytes: file.file_size_bytes,
-        detected_language: file.detected_language,
-        estimated_pages: file.estimated_pages,
-        image_count: file.image_count,
-        parser_used: file.parser_used,
-        markdown_content: file.markdown_ready ? getMockMarkdown(file) : "",
-        assets: [],
-        latest_updated_at: file.latest_updated_at,
-        created_at: file.created_at,
+    return new HttpResponse(buildMockSvg(`${file.filename} / ${assetName}`), {
+      headers: {
+        "Content-Type": asset.mime_type ?? "image/svg+xml",
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/retry", async ({ request }) => {
-    const body = (await request.json()) as { file_id?: number };
-    const file = mockFiles.find((item) => item.id === body.file_id);
+  http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {
+    const body = (await request.json()) as { file_uids?: string[]; prompt?: string | null };
+    const requestedUids = body.file_uids?.length ? body.file_uids : null;
+    const readyFileUids = mockFiles.filter((item) => item.markdown_ready).map((item) => item.uid);
+    const acceptedFileUids = requestedUids
+      ? requestedUids.filter((uid) => readyFileUids.includes(uid))
+      : readyFileUids;
 
-    if (!file) {
-      return HttpResponse.json(
-        { code: 404, message: "文件不存在", error_code: "RAW_FILE_NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    file.status = "processing";
-    file.ingest_status = "classifying";
-    file.error_message = null;
-    file.markdown_ready = false;
-    file.latest_updated_at = now();
-    filePollTicks.set(file.id, 0);
-
-    return HttpResponse.json({
-      code: 0,
-      data: { accepted_file_ids: [file.id] },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
-    const body = (await request.json()) as { file_id?: number };
-    const fileId = body.file_id ?? 0;
-    const index = mockFiles.findIndex((item) => item.id === fileId);
-
-    if (index >= 0) {
-      mockFiles.splice(index, 1);
-      filePollTicks.delete(fileId);
-    }
-
-    return HttpResponse.json({
-      code: 0,
-      data: { deleted_file_ids: index >= 0 ? [fileId] : [] },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/files/parse", async ({ request }) => {
-    const body = (await request.json()) as { file_ids?: number[] };
-    const accepted = body.file_ids ?? [];
-    for (const fileId of accepted) {
-      const file = mockFiles.find((item) => item.id === fileId);
-      if (!file) {
-        continue;
-      }
-      file.status = "processing";
-      file.ingest_status = "classifying";
-      file.markdown_ready = false;
-      file.error_message = null;
-      file.latest_updated_at = now();
-      filePollTicks.set(fileId, 0);
-    }
-    return HttpResponse.json({
-      code: 0,
-      data: { accepted_file_ids: accepted },
-    });
-  }),
-
-  http.post("/api/v1/subjects/:subject/knowledge/docgen/build", async ({ params, request }) => {
-    const body = (await request.json()) as {
-      file_ids?: number[];
-      prompt?: string | null;
-    };
-    const readyFileIds = mockFiles
-      .filter((item) => item.markdown_ready)
-      .map((item) => item.id);
-    const acceptedFileIds = body.file_ids?.length ? body.file_ids : readyFileIds;
-
-    if (!acceptedFileIds.length) {
+    if (!acceptedFileUids.length) {
       return HttpResponse.json(
         {
           code: 422,
-          message: "当前没有可用于生成知识文档的已解析文件",
+          message: "No ready files are available for knowledge build",
           error_code: "NO_READY_FILES_FOR_DOCGEN",
         },
         { status: 422 },
       );
     }
 
-    const createdAt = now();
-    docgenState = {
-      exists: false,
-      markdown: "",
-      merged_path: "data/mock-subject/knowledge_docs/merged_knowledge_base.md",
-      updated_at: null,
-      job: {
-        id: nextDocgenJobId,
-        subject: String(params.subject),
-        status: "pending",
-        progress: 0,
-        current_step: "prepare",
-        total_chapters: 3,
-        completed_chapters: 0,
-        error_message: null,
-        created_at: createdAt,
-        updated_at: createdAt,
-      },
-      source_file_ids: acceptedFileIds,
+    if (pendingKnowledgeBuild) {
+      return HttpResponse.json(
+        {
+          code: 409,
+          message: "Knowledge build already in progress",
+          error_code: "BUILD_IN_PROGRESS",
+        },
+        { status: 409 },
+      );
+    }
+
+    const requestedAt = now();
+    pendingKnowledgeBuild = {
+      requested_at: requestedAt,
+      source_file_uids: acceptedFileUids,
       prompt: body.prompt?.trim() || null,
       poll_count: 0,
     };
-    nextDocgenJobId += 1;
-    const job = docgenState.job;
 
     return HttpResponse.json({
       code: 0,
       data: {
-        job_id: job ? job.id : nextDocgenJobId,
-        accepted_file_ids: acceptedFileIds,
-        prompt: docgenState.prompt,
-        ready_file_count: readyFileIds.length,
+        accepted_file_uids: acceptedFileUids,
+        prompt: pendingKnowledgeBuild.prompt,
+        ready_file_count: readyFileUids.length,
+        requested_at: requestedAt,
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/docgen/get", () => {
-    advanceDocgen();
+  http.post("/api/v1/subjects/:subject/knowledge/docs", () => {
+    advanceKnowledgeBuild();
     return HttpResponse.json({
       code: 0,
       data: {
-        exists: docgenState.exists,
-        markdown: docgenState.markdown,
-        merged_path: docgenState.merged_path,
-        updated_at: docgenState.updated_at,
-        job: docgenState.job,
-        source_file_ids: docgenState.source_file_ids,
-        prompt: docgenState.prompt,
+        exists: publishedDoc.exists,
+        markdown: publishedDoc.markdown,
+        updated_at: publishedDoc.updated_at,
+        source_file_uids: publishedDoc.source_file_uids,
+        prompt: publishedDoc.prompt,
       },
     });
   }),

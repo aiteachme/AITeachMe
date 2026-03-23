@@ -16,6 +16,7 @@ class RawFile(SQLModel, table=True):
     __tablename__ = "raw_file"
 
     id: int | None = Field(default=None, primary_key=True)
+    uid: str = Field(index=True, unique=True)
     subject: str = Field(index=True)
     filename: str
     filetype: str

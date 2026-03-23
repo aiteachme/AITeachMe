@@ -19,10 +19,11 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="subject/:subjectId/upload" element={<UploadPage />} />
             <Route path="subject/:subjectId/summary" element={<SummaryPage />} />
-            <Route path="subject/:subjectId/chat" element={<Navigate to="../doc" replace />} />
+            <Route path="subject/:subjectId/chat" element={<Navigate to="../docs" replace />} />
             <Route path="subject/:subjectId/exam" element={<ExamPage />} />
             <Route path="subject/:subjectId/analysis" element={<AnalysisPage />} />
-            <Route path="subject/:subjectId/doc" element={<DocPage />} />
+            <Route path="subject/:subjectId/doc" element={<Navigate to="../docs" replace />} />
+            <Route path="subject/:subjectId/docs" element={<DocPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

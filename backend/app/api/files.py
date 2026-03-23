@@ -1,31 +1,19 @@
-"""文件接口。"""
+"""File APIs."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Path, UploadFile
+from fastapi.responses import FileResponse
 from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.schemas.files import (
-    FileDeleteData,
-    FileDeleteRequest,
-    FileGetData,
-    FileGetRequest,
-    FileItem,
-    FileListRequest,
-    FileRetryRequest,
-    FilesParseData,
-    FilesParseRequest,
-    FilesUploadData,
-)
+from app.schemas.common import ApiResponse, ok_response
+from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.services.file_service import (
     delete_files,
-    get_file_result,
-    list_files,
-    request_files_parse,
-    retry_file_parse,
+    list_subject_files,
+    resolve_subject_asset_path,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
 )
@@ -37,7 +25,7 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
 @router.post(
     "/upload",
     response_model=ApiResponse[FilesUploadData],
-    summary="上传文件",
+    summary="Upload files and start parsing immediately",
     responses=build_error_responses([400, 404, 413, 422, 500]),
 )
 async def upload_files(
@@ -48,106 +36,39 @@ async def upload_files(
 ) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    data = await save_uploaded_files_and_request_parse(session, subject=normalized_subject, files=files)
-    if data.accepted_parse_file_ids:
+    data, parse_file_ids = await save_uploaded_files_and_request_parse(
+        session,
+        subject=normalized_subject,
+        files=files,
+    )
+    if parse_file_ids:
         background_tasks.add_task(
             run_parse_files_background,
             subject=normalized_subject,
-            file_ids=data.accepted_parse_file_ids,
+            file_ids=parse_file_ids,
         )
     return ok_response(data)
 
 
-@router.post(
-    "/parse",
-    response_model=ApiResponse[FilesParseData],
-    summary="解析文件",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def parse_uploaded_files(
-    background_tasks: BackgroundTasks,
-    subject: str = Path(...),
-    body: FilesParseRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[FilesParseData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    data = request_files_parse(session, subject=normalized_subject, file_ids=body.file_ids)
-    background_tasks.add_task(
-        run_parse_files_background,
-        subject=normalized_subject,
-        file_ids=data.accepted_file_ids,
-    )
-    return ok_response(data)
-
-
-@router.post(
-    "/retry",
-    response_model=ApiResponse[FilesParseData],
-    summary="重试解析",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def retry_uploaded_file(
-    background_tasks: BackgroundTasks,
-    subject: str = Path(...),
-    body: FileRetryRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[FilesParseData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    data = retry_file_parse(session, subject=normalized_subject, file_id=body.file_id)
-    background_tasks.add_task(
-        run_parse_files_background,
-        subject=normalized_subject,
-        file_ids=data.accepted_file_ids,
-    )
-    return ok_response(data)
-
-
-@router.post(
-    "/list",
-    response_model=ApiResponse[PaginatedData[FileItem]],
-    summary="文件列表",
+@router.get(
+    "",
+    response_model=ApiResponse[FilesData],
+    summary="Get all subject files with full data",
     responses=build_error_responses([400, 404, 500]),
 )
 async def list_files_api(
     subject: str = Path(...),
-    body: FileListRequest = Body(default=FileListRequest()),
     session: Session = Depends(get_db),
-) -> ApiResponse[PaginatedData[FileItem]]:
+) -> ApiResponse[FilesData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    return ok_response(
-        list_files(
-            session,
-            subject=normalized_subject,
-            page=body.page,
-            size=body.size,
-            status=body.status,
-        )
-    )
-
-
-@router.post(
-    "/get",
-    response_model=ApiResponse[FileGetData],
-    summary="文件解析结果",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def get_file_api(
-    subject: str = Path(...),
-    body: FileGetRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[FileGetData]:
-    normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    return ok_response(get_file_result(session, subject=normalized_subject, file_id=body.file_id))
+    return ok_response(list_subject_files(session, subject=normalized_subject))
 
 
 @router.post(
     "/delete",
     response_model=ApiResponse[FileDeleteData],
-    summary="删除文件",
+    summary="Delete files",
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
 async def delete_files_api(
@@ -157,8 +78,36 @@ async def delete_files_api(
 ) -> ApiResponse[FileDeleteData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject)
-    file_ids = [body.file_id] if body.file_id is not None else []
-    if body.file_ids:
-        file_ids.extend(body.file_ids)
-    unique_file_ids = list(dict.fromkeys(file_ids))
-    return ok_response(delete_files(session, subject=normalized_subject, file_ids=unique_file_ids))
+    file_uids = [body.file_uid] if body.file_uid is not None else []
+    if body.file_uids:
+        file_uids.extend(body.file_uids)
+    unique_file_uids = list(dict.fromkeys(file_uids))
+    return ok_response(
+        delete_files(
+            session,
+            subject=normalized_subject,
+            file_uids=unique_file_uids,
+        )
+    )
+
+
+@router.get(
+    "/assets/{file_uid}/{asset_name:path}",
+    summary="Get one extracted asset by file UID",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def get_file_asset(
+    subject: str = Path(...),
+    file_uid: str = Path(...),
+    asset_name: str = Path(...),
+    session: Session = Depends(get_db),
+) -> FileResponse:
+    normalized_subject = normalize_subject_slug(subject)
+    get_subject_record(session, normalized_subject)
+    asset_path = resolve_subject_asset_path(
+        session,
+        subject=normalized_subject,
+        file_uid=file_uid,
+        asset_name=asset_name,
+    )
+    return FileResponse(asset_path)

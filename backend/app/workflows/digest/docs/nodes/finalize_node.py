@@ -1,25 +1,28 @@
-"""节点：最终组装 — 合并章节、双轨落库。
-
-Reads DB: ``docgen_job``.
-Writes DB: ``knowledge_doc`` and final ``docgen_job`` state.
-Writes FS: writes chapter markdown files and the merged knowledge base under
-``knowledge_docs/``.
-Idempotency: reruns overwrite the same filesystem outputs and append/update job-linked
-knowledge-doc rows for the active build.
-"""
+"""Finalize, publish, and persist knowledge docs outputs."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import shutil
+from time import perf_counter
 
 import structlog
 
 from app.core.database import managed_session
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
+from app.services.knowledge.docgen_store import (
+    KnowledgeDocsManifest,
+    clear_published_knowledge_docs_files,
+    write_knowledge_manifest,
+)
 from app.services.upload_support import (
+    build_knowledge_doc_build_path,
     build_knowledge_doc_path,
+    build_knowledge_docs_build_dir,
     build_knowledge_docs_dir,
+    build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )
 from app.workflows.common.context import WorkflowContext
@@ -33,104 +36,144 @@ def _count_words(text: str) -> int:
 
 
 def _build_merged_markdown(chapters: list[dict]) -> str:
-    toc = ["# 📚 知识库目录\n"]
-    for ch in chapters:
-        title = ch.get("title", "")
-        idx = ch.get("chapter_index", 0)
-        anchor = title.lower().replace(" ", "-").replace(".", "")
-        toc.append(f"- [第{idx}章 {title}](#{anchor})")
+    toc = [
+        "# 知识文档总览",
+        "",
+        "## 目录",
+        "",
+    ]
+    for chapter in chapters:
+        title = chapter.get("title", "")
+        chapter_index = chapter.get("chapter_index", 0)
+        toc.append(f"- 第{chapter_index}章 {title}")
 
-    sep = "\n\n---\n\n"
-    body = [ch.get("markdown", "") for ch in chapters]
-    return "\n".join(toc) + sep + sep.join(body) + "\n"
+    separator = "\n\n---\n\n"
+    body = [chapter.get("markdown", "") for chapter in chapters]
+    return "\n".join(toc) + separator + separator.join(body) + "\n"
+
+
+def _publish_built_markdown(subject: str, built_paths: list[tuple[int, str]]) -> None:
+    published_dir = build_knowledge_docs_dir(subject)
+    published_dir.mkdir(parents=True, exist_ok=True)
+    clear_published_knowledge_docs_files(subject)
+    for chapter_index, title in built_paths:
+        build_path = build_knowledge_doc_build_path(subject, chapter_index, title)
+        final_path = build_knowledge_doc_path(subject, chapter_index, title)
+        shutil.move(str(build_path), str(final_path))
+
+    shutil.move(
+        str(build_merged_knowledge_base_build_path(subject)),
+        str(build_merged_knowledge_base_path(subject)),
+    )
 
 
 def build_finalize_assemble_node(*, context: WorkflowContext):
-    """构建最终组装节点。"""
+    """Build the final publish node."""
 
     async def finalize_assemble_node(state: DocGenState) -> dict:
+        started_at = perf_counter()
         node_logger = context.get_logger().bind(node="finalize_assemble")
-        node_logger.info("finalize_started")
-
         subject = state["subject"]
-        job_id = state["job_id"]
         chapter_metadatas = state.get("chapter_metadatas", [])
         chapter_assignments = state.get("chapter_assignments", [])
-
-        with managed_session() as session:
-            docgen_repo.update_docgen_job(
-                session, job_id, current_step="assembling", progress=85,
-            )
+        user_prompt = state.get("user_prompt")
+        requested_at = state["requested_at"]
 
         if not chapter_metadatas:
             return {"error": "没有章节数据，无法组装。"}
 
-        # 按 chapter_index 排序
-        sorted_chapters = sorted(chapter_metadatas, key=lambda c: c.get("chapter_index", 0))
+        sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+        build_dir = build_knowledge_docs_build_dir(subject)
+        build_dir.mkdir(parents=True, exist_ok=True)
 
-        docs_dir = build_knowledge_docs_dir(subject)
-        docs_dir.mkdir(parents=True, exist_ok=True)
+        node_logger.info(
+            "docgen_merging_docs",
+            chapter_count=len(sorted_chapters),
+            requested_at=requested_at.isoformat(),
+        )
 
-        doc_ids: list[int] = []
-        for i, ch in enumerate(sorted_chapters):
-            ch_index = ch.get("chapter_index", i + 1)
-            ch_title = ch.get("title", f"第{ch_index}章")
-            ch_markdown = ch.get("markdown", "")
-            summary = ch.get("summary", "")
-            tags = ch.get("tags", [])
+        docs_to_create: list[KnowledgeDoc] = []
+        chapter_write_tasks: list[asyncio.Task[None]] = []
+        built_paths: list[tuple[int, str]] = []
 
-            # 来源文件 ID
-            source_file_ids: list[int] = ch.get("source_file_ids", [])
-            if not source_file_ids and i < len(chapter_assignments):
-                source_file_ids = chapter_assignments[i].get("source_file_ids", [])
+        for index, chapter in enumerate(sorted_chapters):
+            chapter_index = chapter.get("chapter_index", index + 1)
+            chapter_title = chapter.get("title", f"第{chapter_index}章")
+            chapter_markdown = chapter.get("markdown", "")
+            summary = chapter.get("summary", "")
+            tags = chapter.get("tags", [])
+            source_file_ids = chapter.get("source_file_ids", [])
+            if not source_file_ids and index < len(chapter_assignments):
+                source_file_ids = chapter_assignments[index].get("source_file_ids", [])
 
-            # 写磁盘
-            doc_path = build_knowledge_doc_path(subject, ch_index, ch_title)
-            doc_path.write_text(ch_markdown, encoding="utf-8")
-
-            # 写 DB
-            word_count = _count_words(ch_markdown)
-            doc = KnowledgeDoc(
-                subject=subject,
-                chapter_index=ch_index,
-                title=ch_title,
-                summary=summary,
-                markdown_content=ch_markdown,
-                markdown_path=str(doc_path),
-                tags=json.dumps(tags, ensure_ascii=False),
-                source_file_ids=json.dumps(source_file_ids),
-                word_count=word_count,
-                status="published",
-            )
-            with managed_session() as session:
-                created = docgen_repo.bulk_create_knowledge_docs(session, [doc])
-                if created:
-                    doc_ids.append(created[0].id)  # type: ignore[arg-type]
-
-            node_logger.info("chapter_persisted", ch=ch_index, words=word_count)
-
-            with managed_session() as session:
-                progress = 85 + int(12 * (i + 1) / len(sorted_chapters))
-                docgen_repo.update_docgen_job(
-                    session, job_id, progress=progress, completed_chapters=i + 1,
+            build_path = build_knowledge_doc_build_path(subject, chapter_index, chapter_title)
+            chapter_write_tasks.append(
+                asyncio.create_task(
+                    asyncio.to_thread(build_path.write_text, chapter_markdown, encoding="utf-8")
                 )
-
-        # 合并
-        merged = _build_merged_markdown(sorted_chapters)
-        merged_path = build_merged_knowledge_base_path(subject)
-        merged_path.write_text(merged, encoding="utf-8")
-
-        # 完成
-        with managed_session() as session:
-            docgen_repo.update_docgen_job(
-                session, job_id, status="completed", progress=100, current_step="done",
+            )
+            built_paths.append((chapter_index, chapter_title))
+            docs_to_create.append(
+                KnowledgeDoc(
+                    subject=subject,
+                    chapter_index=chapter_index,
+                    title=chapter_title,
+                    summary=summary,
+                    markdown_content=chapter_markdown,
+                    markdown_path=str(build_knowledge_doc_path(subject, chapter_index, chapter_title)),
+                    tags=json.dumps(tags, ensure_ascii=False),
+                    source_file_ids=json.dumps(source_file_ids),
+                    word_count=_count_words(chapter_markdown),
+                    status="published",
+                )
             )
 
-        node_logger.info("finalize_done", docs=len(doc_ids), merged_chars=len(merged))
+        if chapter_write_tasks:
+            await asyncio.gather(*chapter_write_tasks)
+
+        merged_markdown = _build_merged_markdown(sorted_chapters)
+        build_merged_path = build_merged_knowledge_base_build_path(subject)
+        await asyncio.to_thread(build_merged_path.write_text, merged_markdown, encoding="utf-8")
+
+        node_logger.info(
+            "docgen_publishing_docs",
+            chapter_count=len(built_paths),
+            requested_at=requested_at.isoformat(),
+        )
+        _publish_built_markdown(subject, built_paths)
+
+        manifest = KnowledgeDocsManifest(
+            updated_at=requested_at,
+            source_file_ids=sorted(
+                {
+                    file_id
+                    for chapter in sorted_chapters
+                    for file_id in chapter.get("source_file_ids", [])
+                }
+            ),
+            prompt=user_prompt,
+            chapter_count=len(sorted_chapters),
+            chapter_titles=[str(chapter.get("title", "")) for chapter in sorted_chapters],
+        )
+        write_knowledge_manifest(subject, manifest)
+
+        with managed_session() as session:
+            docgen_repo.delete_docs_by_subject(session, subject)
+            created_docs = docgen_repo.bulk_create_knowledge_docs(session, docs_to_create)
+
+        finalize_ms = int((perf_counter() - started_at) * 1000)
+        node_logger.info(
+            "knowledge_build_completed",
+            chapter_count=len(created_docs),
+            merged_chars=len(merged_markdown),
+            finalize_ms=finalize_ms,
+            requested_at=requested_at.isoformat(),
+        )
         return {
-            "doc_ids": doc_ids,
-            "merged_markdown": merged,
-            "merged_path": str(merged_path),
+            "doc_ids": [doc.id for doc in created_docs if doc.id is not None],
+            "merged_markdown": merged_markdown,
+            "merged_path": str(build_merged_knowledge_base_path(subject)),
+            "finalize_ms": finalize_ms,
         }
 
     return finalize_assemble_node

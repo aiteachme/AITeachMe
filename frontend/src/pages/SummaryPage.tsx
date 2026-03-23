@@ -2,30 +2,31 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
+  AlertTriangle,
   FolderTree,
   GitBranch,
+  Loader2,
   Network,
   Trash2,
-  Loader2,
-  AlertTriangle,
-  AlertCircle,
 } from "lucide-react";
-import { Button } from "../components/ui/Button";
-import { Modal } from "../components/ui/Modal";
-import { ThemeTreeView } from "../components/pages/ThemeTreeView";
-import { PrereqDagView } from "../components/pages/PrereqDagView";
-import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
-import { DigestBuildProvider, DigestBuildButton } from "../components/pages/DigestBuildPanel";
+
 import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
 import { fetchKnowledgeOverview } from "../api/knowledgeOverview";
 import { getApiErrorMessage } from "../api/client";
+import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
+import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
+import { PrereqDagView } from "../components/pages/PrereqDagView";
+import { ThemeTreeView } from "../components/pages/ThemeTreeView";
+import { Button } from "../components/ui/Button";
+import { Modal } from "../components/ui/Modal";
 
 type KnowledgeViewTab = "theme-tree" | "prereq-dag" | "knowledge-graph";
 
 const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
-  { id: "theme-tree", label: "主题树", icon: <FolderTree className="w-4 h-4" />, desc: "层次化主题结构" },
-  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="w-4 h-4" />, desc: "学习路径依赖" },
-  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="w-4 h-4" />, desc: "底层知识节点" },
+  { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织的课程结构" },
+  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序和依赖关系" },
+  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
 ];
 
 export function SummaryPage() {
@@ -43,7 +44,7 @@ export function SummaryPage() {
   } = useQuery({
     queryKey: ["knowledge-overview", subjectId],
     queryFn: () => fetchKnowledgeOverview(subjectId),
-    enabled: !!subjectId,
+    enabled: Boolean(subjectId),
     retry: false,
   });
 
@@ -62,7 +63,7 @@ export function SummaryPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">知识总结</h1>
-            <p className="text-slate-500 mt-2">AI 生成的知识点总结和思维导图</p>
+            <p className="mt-2 text-slate-500">这里展示知识图谱、主题树和先修依赖。点击开始知识构建会同时刷新文档与图谱。</p>
           </div>
           <div className="flex items-center gap-2">
             <DigestBuildButton />
@@ -70,36 +71,39 @@ export function SummaryPage() {
               variant="outline"
               size="sm"
               onClick={() => setShowClearConfirm(true)}
-              className="text-red-500 hover:text-red-600 hover:bg-red-50"
+              className="text-red-500 hover:bg-red-50 hover:text-red-600"
             >
-              <Trash2 className="w-4 h-4 mr-1" />清空知识
+              <Trash2 className="mr-1 h-4 w-4" />
+              清空知识
             </Button>
           </div>
         </div>
 
-        {overviewLoading && (
+        {overviewLoading ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="w-4 h-4 animate-spin" />正在加载知识概览...
+            <Loader2 className="h-4 w-4 animate-spin" />
+            正在加载知识概览...
           </div>
-        )}
+        ) : null}
 
-        {overviewIsError && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-700 text-sm">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+        {overviewIsError ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             {getApiErrorMessage(overviewError, "知识概览加载失败")}
           </div>
-        )}
+        ) : null}
 
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+        <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
           {VIEW_TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all flex-1 justify-center ${
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-all ${
                 activeTab === tab.id
-                  ? "bg-white text-slate-900 shadow-sm font-medium"
+                  ? "bg-white font-medium text-slate-900 shadow-sm"
                   : "text-slate-500 hover:text-slate-700"
               }`}
+              title={tab.desc}
             >
               {tab.icon}
               <span>{tab.label}</span>
@@ -107,34 +111,28 @@ export function SummaryPage() {
           ))}
         </div>
 
-        {activeTab === "theme-tree" && (
-          <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
-        )}
+        {activeTab === "theme-tree" ? <ThemeTreeView overviewData={overview?.theme_tree ?? null} /> : null}
 
-        {activeTab === "prereq-dag" && (
-          <PrereqDagView
-            overviewDag={overview?.prereq_dag ?? null}
-            overviewUnits={overview?.units ?? []}
-          />
-        )}
+        {activeTab === "prereq-dag" ? (
+          <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+        ) : null}
 
-        {activeTab === "knowledge-graph" && (
+        {activeTab === "knowledge-graph" ? (
           <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
-        )}
+        ) : null}
 
         <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
           <div className="space-y-4">
-            <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
               <div className="text-sm text-red-700">
-                <p>此操作将清空该学科的所有知识数据，包括：</p>
-                <ul className="list-disc list-inside mt-2 space-y-1 text-red-600">
-                  <li>知识图谱（节点、边、证据）</li>
-                  <li>教学单元及修订</li>
-                  <li>主题树、先修图、课程快照</li>
-                  <li>构建任务记录</li>
+                <p>此操作会删除该学科下已经构建的知识数据，包括：</p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-red-600">
+                  <li>知识图谱节点、边和证据</li>
+                  <li>教学单元、主题树和先修图</li>
+                  <li>课程快照等派生知识结构</li>
                 </ul>
-                <p className="mt-2 font-medium">此操作不可撤销，已上传的文件不受影响。</p>
+                <p className="mt-2 font-medium">已上传的原始文件不会被删除。</p>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -144,15 +142,17 @@ export function SummaryPage() {
               <Button
                 onClick={() => clearMutation.mutate()}
                 disabled={clearMutation.isPending}
-                className="bg-red-500 hover:bg-red-600 text-white"
+                className="bg-red-500 text-white hover:bg-red-600"
               >
                 {clearMutation.isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-1" />清空中...
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    清空中...
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-4 h-4 mr-1" />确认清空
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    确认清空
                   </>
                 )}
               </Button>

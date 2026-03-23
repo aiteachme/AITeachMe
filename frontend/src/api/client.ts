@@ -27,13 +27,26 @@ function getAccessToken(): string | null {
   return localStorage.getItem("token");
 }
 
+function getApiBaseUrl(): string {
+  let base = API_BASE_URL;
+  try {
+    const stored = localStorage.getItem("app-settings");
+    if (stored) {
+      const { apiUrl } = JSON.parse(stored);
+      if (apiUrl) base = apiUrl;
+    }
+  } catch {}
+  return base;
+}
+
 function buildApiUrl(url: string): string {
-  if (/^https?:\/\//i.test(url) || !API_BASE_URL) {
+  const base = getApiBaseUrl();
+  if (/^https?:\/\//i.test(url) || !base) {
     return url;
   }
-  const base = API_BASE_URL.replace(/\/$/, "");
+  const cleanBase = base.replace(/\/$/, "");
   const path = url.startsWith("/") ? url : `/${url}`;
-  return `${base}${path}`;
+  return `${cleanBase}${path}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -277,6 +290,12 @@ instance.interceptors.request.use((config) => {
 
   if (token && config.headers) {
     config.headers.set("Authorization", `Bearer ${token}`);
+  }
+  
+  // Apply dynamic base URL from settings
+  const dynamicBaseUrl = getApiBaseUrl();
+  if (dynamicBaseUrl) {
+    config.baseURL = dynamicBaseUrl;
   }
 
   (config as { metadata?: { startTime: number } }).metadata = { startTime: Date.now() };

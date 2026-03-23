@@ -722,7 +722,7 @@
         "tags": [
           "files"
         ],
-        "summary": "上传文件",
+        "summary": "Upload files and start parsing immediately",
         "operationId": "upload_files_api_v1_subjects__subject__files_upload_post",
         "parameters": [
           {
@@ -809,13 +809,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/parse": {
-      "post": {
+    "/api/v1/subjects/{subject}/files": {
+      "get": {
         "tags": [
           "files"
         ],
-        "summary": "解析文件",
-        "operationId": "parse_uploaded_files_api_v1_subjects__subject__files_parse_post",
+        "summary": "Get all subject files with full data",
+        "operationId": "list_files_api_api_v1_subjects__subject__files_get",
         "parameters": [
           {
             "name": "subject",
@@ -827,272 +827,13 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FilesParseRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_FilesParseData_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "业务校验未通过。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/files/retry": {
-      "post": {
-        "tags": [
-          "files"
-        ],
-        "summary": "重试解析",
-        "operationId": "retry_uploaded_file_api_v1_subjects__subject__files_retry_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FileRetryRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_FilesParseData_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "业务校验未通过。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/files/list": {
-      "post": {
-        "tags": [
-          "files"
-        ],
-        "summary": "文件列表",
-        "operationId": "list_files_api_api_v1_subjects__subject__files_list_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FileListRequest",
-                "default": {
-                  "page": 1,
-                  "size": 20
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_FileItem__"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/files/get": {
-      "post": {
-        "tags": [
-          "files"
-        ],
-        "summary": "文件解析结果",
-        "operationId": "get_file_api_api_v1_subjects__subject__files_get_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FileGetRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_FileGetData_"
+                  "$ref": "#/components/schemas/ApiResponse_FilesData_"
                 }
               }
             }
@@ -1145,7 +886,7 @@
         "tags": [
           "files"
         ],
-        "summary": "删除文件",
+        "summary": "Delete files",
         "operationId": "delete_files_api_api_v1_subjects__subject__files_delete_post",
         "parameters": [
           {
@@ -1232,13 +973,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/digest/build": {
-      "post": {
+    "/api/v1/subjects/{subject}/files/assets/{file_uid}/{asset_name}": {
+      "get": {
         "tags": [
-          "knowledge"
+          "files"
         ],
-        "summary": "触发增量构建",
-        "operationId": "digest_build_api_v1_subjects__subject__knowledge_digest_build_post",
+        "summary": "Get one extracted asset by file UID",
+        "operationId": "get_file_asset_api_v1_subjects__subject__files_assets__file_uid___asset_name__get",
         "parameters": [
           {
             "name": "subject",
@@ -1248,26 +989,32 @@
               "type": "string",
               "title": "Subject"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DigestBuildRequest"
-              }
+          },
+          {
+            "name": "file_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Uid"
+            }
+          },
+          {
+            "name": "asset_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Name"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DigestBuildData_"
-                }
+                "schema": {}
               }
             }
           },
@@ -1283,16 +1030,6 @@
           },
           "404": {
             "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1324,13 +1061,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docgen/build": {
+    "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
           "knowledge"
         ],
-        "summary": "触发知识文档生成",
-        "operationId": "docgen_build_api_v1_subjects__subject__knowledge_docgen_build_post",
+        "summary": "触发知识文档与知识图谱构建",
+        "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
             "name": "subject",
@@ -1383,8 +1120,8 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1394,11 +1131,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1406,13 +1153,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docgen/get": {
+    "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
           "knowledge"
         ],
         "summary": "查询知识文档结果",
-        "operationId": "docgen_get_api_v1_subjects__subject__knowledge_docgen_get_post",
+        "operationId": "knowledge_docs_api_v1_subjects__subject__knowledge_docs_post",
         "parameters": [
           {
             "name": "subject",
@@ -4790,40 +4537,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_DigestBuildData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DigestBuildData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[DigestBuildData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_DocGenBuildData_": {
         "properties": {
           "code": {
@@ -5130,7 +4843,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_FileGetData_": {
+      "ApiResponse_FilesData_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -5147,7 +4860,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FileGetData"
+                "$ref": "#/components/schemas/FilesData"
               },
               {
                 "type": "null"
@@ -5157,41 +4870,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[FileGetData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_FilesParseData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FilesParseData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[FilesParseData]",
+        "title": "ApiResponse[FilesData]",
         "example": {
           "code": 0,
           "data": {},
@@ -5532,40 +5211,6 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[ChatThreadTurnItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_PaginatedData_FileItem__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_FileItem_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[FileItem]]",
         "example": {
           "code": 0,
           "data": {},
@@ -6805,73 +6450,15 @@
         "title": "DifficultyValue",
         "description": "题目难度。"
       },
-      "DigestBuildData": {
-        "properties": {
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "Build trigger confirmation message."
-          }
-        },
-        "type": "object",
-        "required": [
-          "message"
-        ],
-        "title": "DigestBuildData",
-        "description": "Digest build trigger response payload."
-      },
-      "DigestBuildRequest": {
-        "properties": {
-          "file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "File Ids",
-            "description": "Parsed raw file IDs for this build."
-          },
-          "idempotency_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idempotency Key",
-            "description": "Optional idempotency key; generated by backend when omitted."
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_ids"
-        ],
-        "title": "DigestBuildRequest",
-        "description": "Trigger incremental digest build.",
-        "example": {
-          "file_ids": [
-            1,
-            2
-          ],
-          "idempotency_key": "abc123"
-        }
-      },
       "DocGenBuildData": {
         "properties": {
-          "job_id": {
-            "type": "integer",
-            "title": "Job Id",
-            "description": "DocGenJob ID."
-          },
-          "accepted_file_ids": {
+          "accepted_file_uids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
-            "title": "Accepted File Ids",
-            "description": "Accepted raw file IDs."
+            "title": "Accepted File Uids",
+            "description": "Accepted ready raw file UIDs."
           },
           "prompt": {
             "anyOf": [
@@ -6883,29 +6470,35 @@
               }
             ],
             "title": "Prompt",
-            "description": "User prompt."
+            "description": "User prompt for the docs build."
           },
           "ready_file_count": {
             "type": "integer",
             "title": "Ready File Count",
-            "description": "Total available ready files at trigger time.",
+            "description": "Current ready file count for this subject.",
             "default": 0
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "Build request timestamp."
           }
         },
         "type": "object",
         "required": [
-          "job_id"
+          "requested_at"
         ],
         "title": "DocGenBuildData",
-        "description": "Doc-gen build trigger response payload."
+        "description": "Knowledge docs build response data."
       },
       "DocGenBuildRequest": {
         "properties": {
-          "file_ids": {
+          "file_uids": {
             "anyOf": [
               {
                 "items": {
-                  "type": "integer"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -6913,8 +6506,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Ids",
-            "description": "Optional parsed raw file IDs; omitted means auto-pick all available files for the subject."
+            "title": "File Uids",
+            "description": "Optional parsed raw file UIDs; omitted means auto-pick all available files for the subject."
           },
           "prompt": {
             "anyOf": [
@@ -6933,9 +6526,9 @@
         "title": "DocGenBuildRequest",
         "description": "Trigger knowledge-doc generation.",
         "example": {
-          "file_ids": [
-            1,
-            2
+          "file_uids": [
+            "file_xxx",
+            "file_yyy"
           ],
           "prompt": "Generate review-oriented notes"
         }
@@ -6945,25 +6538,13 @@
           "exists": {
             "type": "boolean",
             "title": "Exists",
-            "description": "Whether merged markdown exists."
+            "description": "Whether a merged knowledge document exists."
           },
           "markdown": {
             "type": "string",
             "title": "Markdown",
             "description": "Merged markdown content.",
             "default": ""
-          },
-          "merged_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Merged Path",
-            "description": "Local merged markdown path."
           },
           "updated_at": {
             "anyOf": [
@@ -6976,26 +6557,15 @@
               }
             ],
             "title": "Updated At",
-            "description": "Merged markdown mtime."
+            "description": "Last updated time of the merged markdown."
           },
-          "job": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DocGenJobResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Latest DocGen job."
-          },
-          "source_file_ids": {
+          "source_file_uids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
-            "title": "Source File Ids",
-            "description": "Source raw file IDs."
+            "title": "Source File Uids",
+            "description": "Source raw file UIDs used by the published docs."
           },
           "prompt": {
             "anyOf": [
@@ -7007,7 +6577,7 @@
               }
             ],
             "title": "Prompt",
-            "description": "User prompt."
+            "description": "User prompt used for the published docs."
           }
         },
         "type": "object",
@@ -7015,80 +6585,7 @@
           "exists"
         ],
         "title": "DocGenGetResponse",
-        "description": "Doc-gen aggregated response."
-      },
-      "DocGenJobResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "progress": {
-            "type": "integer",
-            "title": "Progress"
-          },
-          "current_step": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Step"
-          },
-          "total_chapters": {
-            "type": "integer",
-            "title": "Total Chapters",
-            "default": 0
-          },
-          "completed_chapters": {
-            "type": "integer",
-            "title": "Completed Chapters",
-            "default": 0
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "status",
-          "progress",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "DocGenJobResponse",
-        "description": "Doc-gen job status."
+        "description": "Knowledge docs get response."
       },
       "ErrorResponse": {
         "properties": {
@@ -7796,56 +7293,71 @@
       },
       "FileAssetItem": {
         "properties": {
-          "path": {
+          "name": {
             "type": "string",
-            "title": "Path",
-            "description": "资源路径。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "path"
-        ],
-        "title": "FileAssetItem",
-        "description": "资源文件项。"
-      },
-      "FileDeleteData": {
-        "properties": {
-          "deleted_file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Deleted File Ids",
-            "description": "已删除文件 ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "deleted_file_ids"
-        ],
-        "title": "FileDeleteData",
-        "description": "文件删除结果。"
-      },
-      "FileDeleteRequest": {
-        "properties": {
-          "file_id": {
+            "title": "Name",
+            "description": "Asset filename."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Public asset URL."
+          },
+          "mime_type": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "File Id",
-            "description": "单个文件 ID。"
+            "title": "Mime Type",
+            "description": "Asset mime type."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "FileAssetItem",
+        "description": "Public asset descriptor for one extracted file asset."
+      },
+      "FileDeleteData": {
+        "properties": {
+          "deleted_file_uids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deleted File Uids",
+            "description": "Deleted public file UIDs."
+          }
+        },
+        "type": "object",
+        "title": "FileDeleteData",
+        "description": "Delete result."
+      },
+      "FileDeleteRequest": {
+        "properties": {
+          "file_uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Uid",
+            "description": "Single public file UID."
           },
-          "file_ids": {
+          "file_uids": {
             "anyOf": [
               {
                 "items": {
-                  "type": "integer"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -7853,49 +7365,49 @@
                 "type": "null"
               }
             ],
-            "title": "File Ids",
-            "description": "多个文件 ID。"
+            "title": "File Uids",
+            "description": "Multiple public file UIDs."
           }
         },
         "type": "object",
         "title": "FileDeleteRequest",
-        "description": "文件删除请求。"
+        "description": "Delete request."
       },
-      "FileGetData": {
+      "FileRecord": {
         "properties": {
-          "file_id": {
-            "type": "integer",
-            "title": "File Id",
-            "description": "文件 ID。"
+          "uid": {
+            "type": "string",
+            "title": "Uid",
+            "description": "Stable public file UID."
           },
           "filename": {
             "type": "string",
             "title": "Filename",
-            "description": "文件名。"
+            "description": "Filename."
           },
           "filetype": {
             "type": "string",
             "title": "Filetype",
-            "description": "文件扩展名。"
+            "description": "File extension."
           },
           "status": {
             "$ref": "#/components/schemas/TaskStatusValue",
-            "description": "解析任务状态。"
+            "description": "Task status."
           },
           "ingest_status": {
             "type": "string",
             "title": "Ingest Status",
-            "description": "Ingest 流水线状态。"
+            "description": "Ingest workflow status."
           },
           "markdown_ready": {
             "type": "boolean",
             "title": "Markdown Ready",
-            "description": "Markdown 是否可用。"
+            "description": "Whether markdown is ready."
           },
           "asset_ready": {
             "type": "boolean",
             "title": "Asset Ready",
-            "description": "资源目录是否可用。"
+            "description": "Whether asset directory is ready."
           },
           "error_message": {
             "anyOf": [
@@ -7907,7 +7419,7 @@
               }
             ],
             "title": "Error Message",
-            "description": "失败原因。"
+            "description": "Failure reason."
           },
           "file_size_bytes": {
             "anyOf": [
@@ -7919,7 +7431,7 @@
               }
             ],
             "title": "File Size Bytes",
-            "description": "文件大小（字节）。"
+            "description": "File size in bytes."
           },
           "detected_language": {
             "anyOf": [
@@ -7931,7 +7443,7 @@
               }
             ],
             "title": "Detected Language",
-            "description": "检测到的语言。"
+            "description": "Detected language."
           },
           "estimated_pages": {
             "anyOf": [
@@ -7943,7 +7455,7 @@
               }
             ],
             "title": "Estimated Pages",
-            "description": "预估页数。"
+            "description": "Estimated pages."
           },
           "image_count": {
             "anyOf": [
@@ -7955,7 +7467,7 @@
               }
             ],
             "title": "Image Count",
-            "description": "提取图片数量。"
+            "description": "Extracted image count."
           },
           "parser_used": {
             "anyOf": [
@@ -7967,12 +7479,25 @@
               }
             ],
             "title": "Parser Used",
-            "description": "最终使用的解析器。"
+            "description": "Parser used."
           },
           "markdown_content": {
             "type": "string",
             "title": "Markdown Content",
-            "description": "解析后的 Markdown。"
+            "description": "Parsed markdown content.",
+            "default": ""
+          },
+          "asset_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Base Url",
+            "description": "Base URL for assets of this file."
           },
           "assets": {
             "items": {
@@ -7980,176 +7505,24 @@
             },
             "type": "array",
             "title": "Assets",
-            "description": "资源列表。"
+            "description": "Extracted assets."
           },
           "latest_updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Latest Updated At",
-            "description": "最近更新时间。"
+            "description": "Last updated time."
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "创建时间。"
+            "description": "Created time."
           }
         },
         "type": "object",
         "required": [
-          "file_id",
-          "filename",
-          "filetype",
-          "status",
-          "ingest_status",
-          "markdown_ready",
-          "asset_ready",
-          "markdown_content",
-          "latest_updated_at",
-          "created_at"
-        ],
-        "title": "FileGetData",
-        "description": "文件解析结果。"
-      },
-      "FileGetRequest": {
-        "properties": {
-          "file_id": {
-            "type": "integer",
-            "title": "File Id",
-            "description": "文件 ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_id"
-        ],
-        "title": "FileGetRequest",
-        "description": "单文件详情请求。"
-      },
-      "FileItem": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id",
-            "description": "文件 ID。"
-          },
-          "filename": {
-            "type": "string",
-            "title": "Filename",
-            "description": "文件名。"
-          },
-          "filetype": {
-            "type": "string",
-            "title": "Filetype",
-            "description": "文件扩展名。"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatusValue",
-            "description": "解析状态。"
-          },
-          "ingest_status": {
-            "type": "string",
-            "title": "Ingest Status",
-            "description": "Ingest 流水线状态。"
-          },
-          "markdown_ready": {
-            "type": "boolean",
-            "title": "Markdown Ready",
-            "description": "Markdown 是否已生成。"
-          },
-          "asset_ready": {
-            "type": "boolean",
-            "title": "Asset Ready",
-            "description": "资源目录是否可用。"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message",
-            "description": "失败原因。"
-          },
-          "file_size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "File Size Bytes",
-            "description": "文件大小（字节）。"
-          },
-          "detected_language": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detected Language",
-            "description": "检测到的语言。"
-          },
-          "estimated_pages": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Estimated Pages",
-            "description": "预估页数。"
-          },
-          "image_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Count",
-            "description": "提取图片数量。"
-          },
-          "parser_used": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parser Used",
-            "description": "最终使用的解析器。"
-          },
-          "latest_updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Latest Updated At",
-            "description": "最近更新时间。"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "创建时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
+          "uid",
           "filename",
           "filetype",
           "status",
@@ -8159,104 +7532,62 @@
           "latest_updated_at",
           "created_at"
         ],
-        "title": "FileItem",
-        "description": "文件列表项。"
+        "title": "FileRecord",
+        "description": "Unified file record for list, preview, and upload responses."
       },
-      "FileListRequest": {
+      "FilesData": {
         "properties": {
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "页码，从 1 开始。",
-            "default": 1
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "Subject slug."
           },
-          "size": {
+          "total": {
             "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。",
-            "default": 20
+            "title": "Total",
+            "description": "Total file count."
           },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TaskStatusValue"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "可选状态过滤。"
-          }
-        },
-        "type": "object",
-        "title": "FileListRequest",
-        "description": "文件列表请求。",
-        "example": {
-          "page": 1,
-          "size": 20
-        }
-      },
-      "FileRetryRequest": {
-        "properties": {
-          "file_id": {
+          "ready_count": {
             "type": "integer",
-            "title": "File Id",
-            "description": "文件 ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_id"
-        ],
-        "title": "FileRetryRequest",
-        "description": "文件重试请求。"
-      },
-      "FilesParseData": {
-        "properties": {
-          "accepted_file_ids": {
+            "title": "Ready Count",
+            "description": "Count of markdown-ready files."
+          },
+          "processing_count": {
+            "type": "integer",
+            "title": "Processing Count",
+            "description": "Count of files still processing."
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "description": "Count of failed files."
+          },
+          "items": {
             "items": {
-              "type": "integer"
+              "$ref": "#/components/schemas/FileRecord"
             },
             "type": "array",
-            "title": "Accepted File Ids",
-            "description": "已受理解析的文件 ID。"
+            "title": "Items",
+            "description": "Full file records."
           }
         },
         "type": "object",
         "required": [
-          "accepted_file_ids"
+          "subject",
+          "total",
+          "ready_count",
+          "processing_count",
+          "failed_count"
         ],
-        "title": "FilesParseData",
-        "description": "解析触发返回数据。"
-      },
-      "FilesParseRequest": {
-        "properties": {
-          "file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "File Ids",
-            "description": "待解析文件 ID 列表。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file_ids"
-        ],
-        "title": "FilesParseRequest",
-        "description": "批量解析文件请求。"
+        "title": "FilesData",
+        "description": "Aggregated subject files response."
       },
       "FilesUploadData": {
         "properties": {
           "subject": {
             "type": "string",
             "title": "Subject",
-            "description": "学科标识。"
+            "description": "Subject slug."
           },
           "filenames": {
             "items": {
@@ -8264,28 +7595,20 @@
             },
             "type": "array",
             "title": "Filenames",
-            "description": "原始文件名列表。"
+            "description": "Uploaded filenames."
           },
           "uploaded_items": {
             "items": {
-              "$ref": "#/components/schemas/FileItem"
+              "$ref": "#/components/schemas/FileRecord"
             },
             "type": "array",
             "title": "Uploaded Items",
-            "description": "上传后的文件项列表。"
-          },
-          "accepted_parse_file_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Accepted Parse File Ids",
-            "description": "已自动受理解析的文件 ID。"
+            "description": "Uploaded file records."
           },
           "started_parse_count": {
             "type": "integer",
             "title": "Started Parse Count",
-            "description": "自动触发解析的文件数量。",
+            "description": "Count of auto-started parse files.",
             "default": 0
           }
         },
@@ -8295,7 +7618,7 @@
           "filenames"
         ],
         "title": "FilesUploadData",
-        "description": "上传返回数据。"
+        "description": "Upload response."
       },
       "FullGraphResponse": {
         "properties": {
@@ -9145,50 +8468,6 @@
           "pages"
         ],
         "title": "PaginatedData[ChatThreadTurnItem]"
-      },
-      "PaginatedData_FileItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/FileItem"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[FileItem]"
       },
       "PaginatedData_MistakeItem_": {
         "properties": {

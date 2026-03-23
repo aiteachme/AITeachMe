@@ -24,6 +24,9 @@ def save_image_bytes(data: bytes, asset_dir: Path, name_hint: str, ext: str = ".
 
     content_hash = hashlib.md5(data).hexdigest()[:10]
     safe_hint = re.sub(r"[^\w\-]", "_", name_hint)[:40]
-    filename = f"{safe_hint}_{content_hash}{ext}"
-    (asset_dir / filename).write_bytes(data)
+    normalized_ext = ext if ext.startswith(".") else f".{ext}"
+    filename = f"{safe_hint}_{content_hash}{normalized_ext}"
+    path = asset_dir / filename
+    if not path.exists():
+        path.write_bytes(data)
     return filename

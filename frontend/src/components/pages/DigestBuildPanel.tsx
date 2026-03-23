@@ -1,46 +1,67 @@
-import { useState, createContext, useContext } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play, CheckCircle, FileText, Zap } from "lucide-react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, FileText, Loader2, Play, Sparkles } from "lucide-react";
+
+import { apiClient, getApiErrorMessage } from "../../api/client";
+import type { FileRecord } from "../../types/files";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
-import { getApiErrorMessage } from "../../api/client";
-import { digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost } from "../../api/generated/knowledge";
-import { listFilesApiApiV1SubjectsSubjectFilesListPost } from "../../api/generated/files";
-import type { FileItem } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 
-async function fetchCompletedFiles(subject: string): Promise<FileItem[]> {
-  return (
-    unwrapOrvalResponse(
-      await listFilesApiApiV1SubjectsSubjectFilesListPost(subject, {
-        page: 1,
-        size: 100,
-        status: "completed",
-      }),
-    )?.items ?? []
-  );
+interface ApiResponse<T> {
+  code: number;
+  data: T;
 }
 
-interface DigestBuildContext {
+interface DigestBuildContextValue {
   subject: string;
 }
 
-const DigestCtx = createContext<DigestBuildContext | null>(null);
+interface FilesData {
+  items: FileRecord[];
+}
+
+interface KnowledgeBuildData {
+  accepted_file_uids: string[];
+  prompt: string | null;
+  ready_file_count: number;
+  requested_at: string;
+}
+
+const DigestBuildContext = createContext<DigestBuildContextValue | null>(null);
+
+async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subject}/files`,
+  });
+  return (response.data.items ?? []).filter((file) => file.markdown_ready);
+}
+
+async function buildKnowledge(subject: string, fileUids: string[]): Promise<KnowledgeBuildData> {
+  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/build`,
+    data: { file_uids: fileUids },
+  });
+  return response.data;
+}
 
 export function DigestBuildProvider({
   subject,
   children,
 }: {
   subject: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  return <DigestCtx.Provider value={{ subject }}>{children}</DigestCtx.Provider>;
+  return <DigestBuildContext.Provider value={{ subject }}>{children}</DigestBuildContext.Provider>;
 }
 
 function useDigestBuild() {
-  const ctx = useContext(DigestCtx);
-  if (!ctx) throw new Error("useDigestBuild must be used inside DigestBuildProvider");
-  return ctx;
+  const context = useContext(DigestBuildContext);
+  if (!context) {
+    throw new Error("useDigestBuild must be used inside DigestBuildProvider");
+  }
+  return context;
 }
 
 export function DigestBuildProgress() {
@@ -52,131 +73,167 @@ export function DigestBuildButton() {
   const queryClient = useQueryClient();
 
   const [showFileSelect, setShowFileSelect] = useState(false);
-  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
-  const [lastBuildError, setLastBuildError] = useState<string>("");
-  const [lastBuildMessage, setLastBuildMessage] = useState<string>("");
+  const [selectedFileUids, setSelectedFileUids] = useState<Set<string>>(new Set());
+  const [lastBuildError, setLastBuildError] = useState("");
+  const [lastBuildMessage, setLastBuildMessage] = useState("");
 
-  const { data: files = [], isLoading: filesLoading } = useQuery({
-    queryKey: ["completed-files-digest", subject],
+  const { data: readyFiles = [], isLoading: filesLoading } = useQuery({
+    queryKey: ["digest-files", subject],
     queryFn: () => fetchCompletedFiles(subject),
-    enabled: showFileSelect && !!subject,
+    enabled: showFileSelect && Boolean(subject),
   });
+
+  useEffect(() => {
+    if (!showFileSelect || readyFiles.length === 0 || selectedFileUids.size > 0) {
+      return;
+    }
+    setSelectedFileUids(new Set(readyFiles.map((file) => file.uid)));
+  }, [readyFiles, selectedFileUids.size, showFileSelect]);
+
+  const selectedCount = selectedFileUids.size;
+  const hasReadyFiles = readyFiles.length > 0;
+
+  const selectedFiles = useMemo(
+    () => readyFiles.filter((file) => selectedFileUids.has(file.uid)),
+    [readyFiles, selectedFileUids],
+  );
 
   const buildMutation = useMutation({
-    mutationFn: async () => {
-      const result = unwrapOrvalResponse(
-        await digestBuildApiV1SubjectsSubjectKnowledgeDigestBuildPost(subject, {
-          file_ids: Array.from(selectedFileIds),
-        }),
-      );
-
-      if (!result) {
-        throw new Error("提交构建任务失败");
-      }
-
-      return result;
-    },
+    mutationFn: () => buildKnowledge(subject, Array.from(selectedFileUids)),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
-      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subject] });
+      queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
       setShowFileSelect(false);
-      setSelectedFileIds(new Set());
+      setSelectedFileUids(new Set());
       setLastBuildError("");
-      setLastBuildMessage((data as { message?: string }).message ?? "构建已触发，稍后可刷新查看结果");
+      setLastBuildMessage(
+        `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${data.accepted_file_uids.length} 份文件。`,
+      );
+    },
+    onError: (error) => {
+      setLastBuildMessage("");
+      setLastBuildError(getApiErrorMessage(error, "触发知识构建失败。"));
     },
   });
 
-  const isJobRunning = buildMutation.isPending;
+  const isBuilding = buildMutation.isPending;
 
-  const toggleFile = (id: number) => {
-    setSelectedFileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+  const toggleFile = (fileUid: string) => {
+    setSelectedFileUids((previous) => {
+      const next = new Set(previous);
+      if (next.has(fileUid)) {
+        next.delete(fileUid);
       } else {
-        next.add(id);
+        next.add(fileUid);
       }
       return next;
     });
   };
 
+  const openModal = () => {
+    setLastBuildError("");
+    setShowFileSelect(true);
+  };
+
+  const closeModal = () => {
+    if (isBuilding) {
+      return;
+    }
+    setShowFileSelect(false);
+  };
+
   return (
     <>
-      <Button onClick={() => setShowFileSelect(true)} variant="outline" size="sm" disabled={isJobRunning}>
-        {isJobRunning ? (
+      <Button onClick={openModal} variant="outline" size="sm" disabled={isBuilding}>
+        {isBuilding ? (
           <>
-            <Loader2 className="w-4 h-4 mr-1 animate-spin" />构建中
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            构建中
           </>
         ) : (
           <>
-            <Zap className="w-4 h-4 mr-1" />构建知识图谱
+            <Sparkles className="mr-1 h-4 w-4" />
+            开始知识构建
           </>
         )}
       </Button>
 
-      {!!lastBuildMessage && <p className="mt-2 text-xs text-emerald-600">{lastBuildMessage}</p>}
-      {!!lastBuildError && <p className="mt-2 text-xs text-red-500">{lastBuildError}</p>}
+      {lastBuildMessage ? <p className="mt-2 text-xs text-emerald-600">{lastBuildMessage}</p> : null}
+      {lastBuildError ? <p className="mt-2 text-xs text-red-500">{lastBuildError}</p> : null}
 
-      <Modal open={showFileSelect} onClose={() => setShowFileSelect(false)} title="选择文件构建知识图谱">
+      <Modal open={showFileSelect} onClose={closeModal} title="选择要纳入本次构建的文件">
         <div className="space-y-4">
-          <p className="text-sm text-slate-500">选择已解析完成的文件，系统将触发知识图谱构建并自动派生课程结构。</p>
+          <p className="text-sm text-slate-500">
+            这里选择的是本次知识构建要读取的已解析文件。提交后，知识文档和知识总结页的知识图谱会一起更新。
+          </p>
 
-          {filesLoading && (
-            <div className="flex items-center text-slate-400 text-sm py-4">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />加载文件列表...
+          {filesLoading ? (
+            <div className="flex items-center py-4 text-sm text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在加载可用文件...
             </div>
-          )}
+          ) : null}
 
-          {!filesLoading && files.length === 0 && (
-            <p className="text-sm text-slate-400 py-4">没有已解析完成的文件，请先上传并解析资料</p>
-          )}
+          {!filesLoading && !hasReadyFiles ? (
+            <p className="py-4 text-sm text-slate-400">当前还没有可用于构建的已解析文件，请先上传并等待解析完成。</p>
+          ) : null}
 
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {files.map((file) => (
-              <label
-                key={file.id}
-                className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                  selectedFileIds.has(file.id)
-                    ? "border-slate-400 bg-slate-50"
-                    : "border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedFileIds.has(file.id)}
-                  onChange={() => toggleFile(file.id)}
-                  className="rounded border-slate-300"
-                />
-                <FileText className="w-4 h-4 text-slate-400" />
-                <span className="text-sm text-slate-700 flex-1">{file.filename}</span>
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              </label>
-            ))}
-          </div>
+          {hasReadyFiles ? (
+            <>
+              <div className="max-h-60 space-y-2 overflow-y-auto">
+                {readyFiles.map((file) => {
+                  const checked = selectedFileUids.has(file.uid);
+                  return (
+                    <label
+                      key={file.uid}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                        checked ? "border-slate-400 bg-slate-50" : "border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleFile(file.uid)}
+                        className="rounded border-slate-300"
+                      />
+                      <FileText className="h-4 w-4 text-slate-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-slate-700">{file.filename}</p>
+                        <p className="text-xs text-slate-400">
+                          {file.filetype.toUpperCase()} · {file.status}
+                        </p>
+                      </div>
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                已选择 {selectedCount} 份文件
+                {selectedFiles.length > 0 ? "，将用于本次知识构建。" : "。"}
+              </div>
+            </>
+          ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowFileSelect(false)}>
+            <Button variant="outline" onClick={closeModal} disabled={isBuilding}>
               取消
             </Button>
-            <Button
-              onClick={() => buildMutation.mutate()}
-              disabled={selectedFileIds.size === 0 || buildMutation.isPending}
-            >
-              {buildMutation.isPending ? (
+            <Button onClick={() => buildMutation.mutate()} disabled={!selectedCount || isBuilding}>
+              {isBuilding ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-1" />提交中...
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  提交中...
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4 mr-1" />开始构建
+                  <Play className="mr-1 h-4 w-4" />
+                  开始构建
                 </>
               )}
             </Button>
           </div>
-
-          {buildMutation.isError && (
-            <p className="text-xs text-red-500">{getApiErrorMessage(buildMutation.error, "构建请求失败")}</p>
-          )}
         </div>
       </Modal>
     </>

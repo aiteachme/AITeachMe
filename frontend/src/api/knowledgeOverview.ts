@@ -1,20 +1,16 @@
-﻿import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "./generated/knowledge";
+import { apiClient } from "./client";
 import type {
   CurriculumSnapshotResponse,
   FullGraphResponse,
+  GraphEdgeResponse,
   KnowledgeNodeResponse,
-  KnowledgeOverviewRequest,
-  KnowledgeOverviewResponse as KnowledgeOverviewPayload,
-  KnowledgeOverviewStats as KnowledgeOverviewStatsModel,
   PrereqDagResponse,
   TeachingUnitResponse,
   ThemeTreeNodeResponse,
   ThemeTreeResponse,
   TreeUnitItem,
   UnitDependencyItem,
-  GraphEdgeResponse,
 } from "./generated/model";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 export type KnowledgeOverviewThemeUnit = TreeUnitItem;
 export type KnowledgeOverviewThemeNode = ThemeTreeNodeResponse;
@@ -26,7 +22,19 @@ export type KnowledgeOverviewEdge = GraphEdgeResponse;
 export type KnowledgeOverviewGraph = FullGraphResponse;
 export type KnowledgeOverviewUnit = TeachingUnitResponse;
 export type KnowledgeOverviewSnapshot = CurriculumSnapshotResponse;
-export type KnowledgeOverviewStats = KnowledgeOverviewStatsModel;
+
+interface KnowledgeOverviewRequest {
+  include?: string[];
+  full?: boolean;
+}
+
+export interface KnowledgeOverviewStats {
+  node_count: number;
+  edge_count: number;
+  unit_count: number;
+  theme_node_count: number;
+  dependency_count: number;
+}
 
 export interface KnowledgeOverviewResponse {
   subject: string;
@@ -37,6 +45,11 @@ export interface KnowledgeOverviewResponse {
   graph: KnowledgeOverviewGraph | null;
   units: KnowledgeOverviewUnit[];
   stats: KnowledgeOverviewStats;
+}
+
+interface ApiResponse<T> {
+  code: number;
+  data: T;
 }
 
 export interface FetchKnowledgeOverviewOptions {
@@ -56,12 +69,17 @@ export async function fetchKnowledgeOverview(
   subject: string,
   options?: FetchKnowledgeOverviewOptions,
 ): Promise<KnowledgeOverviewResponse> {
-  const req: KnowledgeOverviewRequest = {
-    full: options?.full ?? (options?.include ? false : true),
+  const request: KnowledgeOverviewRequest = {
+    full: options?.full ?? !options?.include,
     include: options?.include,
   };
-  const response = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subject, req);
-  const payload = unwrapOrvalResponse<KnowledgeOverviewPayload>(response);
+
+  const response = await apiClient<ApiResponse<KnowledgeOverviewResponse>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/overview`,
+    data: request,
+  });
+  const payload = response.data;
 
   if (!payload) {
     throw new Error("加载知识概览失败");

@@ -1,10 +1,7 @@
-"""Digest build and docgen services."""
+"""Digest build and knowledge-doc generation service helpers."""
 
 from __future__ import annotations
 
-import json
-import shutil
-import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -12,69 +9,85 @@ from pathlib import Path
 import structlog
 from sqlmodel import Session
 
-from app.core.database import managed_session
-from app.core.exceptions import NoReadyFilesForDocGenError, RawFileNotFoundError
-from app.models.raw_file import RawFile
-from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
-from app.repositories.knowledge import docgen_repo
-from app.schemas.knowledge import DigestBuildData, DocGenBuildData, DocGenGetResponse, DocGenJobResponse
-from app.services.upload_support import (
-    build_docgen_intermediate_dir,
-    build_knowledge_docs_dir,
-    build_merged_knowledge_base_path,
+from app.core.exceptions import (
+    NoReadyFilesForDocGenError,
+    RawFileNotFoundError,
+    SubjectBuildLockConflictError,
 )
-from app.workflows.digest import run_curriculum_derive_workflow, run_graph_digest_workflow
+from app.models.raw_file import RawFile
+from app.repositories.files_repo import (
+    list_all_raw_files_by_subject,
+    list_raw_files_by_ids,
+    list_raw_files_by_uids,
+)
+from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
+from app.services.knowledge.docgen_store import (
+    KnowledgeBuildLock,
+    acquire_knowledge_build_lock,
+    clear_docgen_staging,
+    read_knowledge_manifest,
+    release_knowledge_build_lock,
+)
+from app.services.presenters import require_id, require_uid
+from app.services.upload_support import build_merged_knowledge_base_path
+from app.utils.time import utcnow
+from app.workflows.digest import run_docgen_workflow, run_graph_digest_workflow
 
 logger = structlog.get_logger()
-
-
-def _parse_json_int_list(payload: str | None) -> list[int]:
-    if not payload:
-        return []
-    try:
-        raw = json.loads(payload)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(raw, list):
-        return []
-    return [int(item) for item in raw if isinstance(item, (int, str)) and str(item).isdigit()]
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
     return bool(raw_file.markdown_path and Path(raw_file.markdown_path).exists())
 
 
-def _build_docgen_job_response(job) -> DocGenJobResponse:
-    return DocGenJobResponse.model_validate(job)
+def _clean_prompt(prompt: str | None) -> str | None:
+    cleaned = (prompt or "").strip()
+    return cleaned or None
 
 
-def _collect_published_doc_source_ids(session: Session, subject: str) -> list[int]:
-    source_file_ids: set[int] = set()
-    for doc in docgen_repo.get_docs_by_subject(session, subject, status="published"):
-        source_file_ids.update(_parse_json_int_list(doc.source_file_ids))
-    return sorted(source_file_ids)
-
-
-def _select_ready_docgen_file_ids(
+def _resolve_requested_raw_files(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int] | None,
-) -> tuple[list[int], int]:
-    all_files = list_all_raw_files_by_subject(session, subject)
-    ready_file_ids = [raw_file.id for raw_file in all_files if raw_file.id is not None and _markdown_ready(raw_file)]
-    ready_file_count = len(ready_file_ids)
+    file_uids: list[str] | None,
+) -> list[RawFile]:
+    if not file_uids:
+        return []
 
-    if file_ids is None:
-        accepted = ready_file_ids
+    requested_items = list_raw_files_by_uids(session, subject, file_uids)
+    found_uids = {require_uid(item.uid, "RawFile.uid") for item in requested_items}
+    missing_uids = [file_uid for file_uid in file_uids if file_uid not in found_uids]
+    if missing_uids:
+        raise RawFileNotFoundError(missing_uids[0])
+
+    order = {file_uid: index for index, file_uid in enumerate(file_uids)}
+    return sorted(requested_items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
+
+
+def _select_ready_docgen_files(
+    session: Session,
+    *,
+    subject: str,
+    file_uids: list[str] | None,
+) -> tuple[list[RawFile], int]:
+    all_files = list_all_raw_files_by_subject(session, subject)
+    ready_files = [raw_file for raw_file in all_files if raw_file.id is not None and _markdown_ready(raw_file)]
+    ready_file_count = len(ready_files)
+
+    if file_uids:
+        requested_items = _resolve_requested_raw_files(
+            session,
+            subject=subject,
+            file_uids=file_uids,
+        )
+        ready_id_set = {require_id(item.id, "RawFile.id") for item in ready_files}
+        accepted = [
+            item
+            for item in requested_items
+            if item.id is not None and require_id(item.id, "RawFile.id") in ready_id_set
+        ]
     else:
-        requested_items = list_raw_files_by_ids(session, subject, file_ids)
-        found_ids = {item.id for item in requested_items if item.id is not None}
-        missing_ids = [file_id for file_id in file_ids if file_id not in found_ids]
-        if missing_ids:
-            raise RawFileNotFoundError(missing_ids[0])
-        ready_set = set(ready_file_ids)
-        accepted = [file_id for file_id in file_ids if file_id in ready_set]
+        accepted = ready_files
 
     if not accepted:
         raise NoReadyFilesForDocGenError(subject)
@@ -82,199 +95,163 @@ def _select_ready_docgen_file_ids(
     return accepted, ready_file_count
 
 
-def _reset_docgen_outputs(session: Session, *, subject: str) -> None:
-    docgen_repo.delete_docs_by_subject(session, subject)
-    for directory in (build_knowledge_docs_dir(subject), build_docgen_intermediate_dir(subject)):
-        if directory.exists():
-            shutil.rmtree(directory, ignore_errors=True)
+def _resolve_file_uids(raw_files: list[RawFile]) -> list[str]:
+    return [require_uid(item.uid, "RawFile.uid") for item in raw_files]
+
+
+def _resolve_file_ids(raw_files: list[RawFile]) -> list[int]:
+    return [require_id(item.id, "RawFile.id") for item in raw_files]
+
+
+def _resolve_file_uids_from_ids(session: Session, *, subject: str, file_ids: list[int]) -> list[str]:
+    if not file_ids:
+        return []
+
+    raw_files = list_raw_files_by_ids(session, subject, file_ids)
+    uid_by_id = {
+        require_id(item.id, "RawFile.id"): require_uid(item.uid, "RawFile.uid")
+        for item in raw_files
+        if item.id is not None
+    }
+    return [uid_by_id[file_id] for file_id in file_ids if file_id in uid_by_id]
 
 
 def _new_graph_run_id() -> int:
     return (uuid.uuid4().int % 2_000_000_000) + 1
 
 
-def trigger_digest_build(
-    session: Session,
-    *,
-    subject: str,
-    file_ids: list[int],
-    idempotency_key: str | None = None,
-) -> DigestBuildData:
-    """Trigger digest graph build without persisting graph job rows."""
-
-    del session, idempotency_key
-    logger.info("digest_build_requested", subject=subject, file_ids=file_ids)
-    return DigestBuildData(message="增量构建已触发")
-
-
-async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> None:
-    """Run graph digest workflow in background with an ephemeral run id."""
-
-    run_id = _new_graph_run_id()
-    digest_logger = logger.bind(subject=subject, run_id=run_id, file_ids=file_ids)
+def _clear_docgen_staging_safely(subject: str) -> None:
     try:
-        digest_logger.info("graph_digest_background_started")
-        result = await run_graph_digest_workflow(subject=subject, job_id=run_id, file_ids=file_ids)
-        if result.failed:
-            digest_logger.error(
-                "graph_digest_background_failed",
-                error=result.error.detail,
-            )
-            return
-        digest_logger.info("graph_digest_background_completed")
+        clear_docgen_staging(subject)
     except Exception:
-        digest_logger.exception("graph_digest_background_error")
-
-
-async def run_curriculum_derive_background(
-    *, subject: str, graph_job_id: int, curriculum_job_id: int
-) -> None:
-    """Run curriculum derive workflow."""
-
-    with managed_session():
-        try:
-            result = await run_curriculum_derive_workflow(
-                subject=subject,
-                graph_job_id=graph_job_id,
-                curriculum_job_id=curriculum_job_id,
-            )
-            if result.failed:
-                logger.error(
-                    "curriculum_derive_background_failed",
-                    curriculum_job_id=curriculum_job_id,
-                    error=result.error.detail,
-                )
-        except Exception:
-            logger.exception(
-                "curriculum_derive_background_error",
-                curriculum_job_id=curriculum_job_id,
-            )
-            logger.error(
-                "curriculum_derive_background_error_traceback",
-                curriculum_job_id=curriculum_job_id,
-                error=traceback.format_exc()[-500:],
-            )
+        logger.exception("knowledge_build_cleanup_failed", subject=subject)
 
 
 def trigger_docgen_build(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int] | None,
+    file_uids: list[str] | None,
     prompt: str | None,
-) -> DocGenBuildData:
-    """Create a docgen job and return accepted source info."""
+) -> tuple[DocGenBuildData, list[int]]:
+    """Acquire the build lock and return accepted source info for doc generation."""
 
-    from app.models.knowledge_doc import DocGenJob
-
-    accepted_file_ids, ready_file_count = _select_ready_docgen_file_ids(
+    accepted_files, ready_file_count = _select_ready_docgen_files(
         session,
         subject=subject,
-        file_ids=file_ids,
+        file_uids=file_uids,
     )
-    _reset_docgen_outputs(session, subject=subject)
-    job = docgen_repo.create_docgen_job(
-        session,
-        DocGenJob(
-            subject=subject,
-            status="pending",
-            input_file_ids_json=json.dumps(sorted(accepted_file_ids)),
-            user_prompt=(prompt or "").strip() or None,
-        ),
+    accepted_file_ids = _resolve_file_ids(accepted_files)
+    accepted_file_uids = _resolve_file_uids(accepted_files)
+    requested_at = utcnow()
+    cleaned_prompt = _clean_prompt(prompt)
+
+    lock = KnowledgeBuildLock(
+        requested_at=requested_at,
+        source_file_ids=accepted_file_ids,
+        prompt=cleaned_prompt,
     )
+    if not acquire_knowledge_build_lock(subject, lock):
+        raise SubjectBuildLockConflictError(subject)
+
+    clear_docgen_staging(subject)
     logger.info(
-        "docgen_build_triggered",
+        "knowledge_build_requested",
         subject=subject,
-        job_id=job.id,
-        accepted_file_ids=accepted_file_ids,
-        ready_file_count=ready_file_count,
-        has_prompt=bool(prompt and prompt.strip()),
-    )
-    return DocGenBuildData(
-        job_id=job.id,  # type: ignore[arg-type]
-        accepted_file_ids=accepted_file_ids,
-        prompt=(prompt or "").strip() or None,
-        ready_file_count=ready_file_count,
+        requested_at=requested_at.isoformat(),
+        file_count=len(accepted_file_ids),
     )
 
+    return (
+        DocGenBuildData(
+            accepted_file_uids=accepted_file_uids,
+            ready_file_count=ready_file_count,
+            prompt=cleaned_prompt,
+            requested_at=requested_at,
+        ),
+        accepted_file_ids,
+    )
 
-async def run_docgen_background(*, subject: str, job_id: int) -> None:
-    """Run docgen workflow in background."""
 
-    from app.models.knowledge_doc import DocGenJob
-    from app.workflows.digest import run_docgen_workflow
+async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> None:
+    """Run graph digest workflow in background with an ephemeral run id."""
 
-    with managed_session() as session:
-        try:
-            job = session.get(DocGenJob, job_id)
-            if job is None:
-                logger.error("docgen_job_not_found", job_id=job_id)
-                return
+    run_id = _new_graph_run_id()
+    digest_logger = logger.bind(subject=subject, run_id=run_id)
+    try:
+        digest_logger.info("graph_digest_background_started")
+        result = await run_graph_digest_workflow(subject=subject, job_id=run_id, file_ids=file_ids)
+        if result.failed:
+            digest_logger.error("graph_digest_background_failed", error=result.error.detail)
+            return
+        digest_logger.info("graph_digest_background_completed")
+    except Exception:
+        digest_logger.exception("graph_digest_background_error")
 
-            file_ids: list[int] = json.loads(job.input_file_ids_json or "[]")
-            docgen_logger = logger.bind(subject=subject, job_id=job_id, file_ids=file_ids)
-            docgen_logger.info("docgen_background_started")
 
-            docgen_repo.update_docgen_job(session, job_id, status="processing")
+async def run_docgen_background(
+    *,
+    subject: str,
+    file_ids: list[int],
+    prompt: str | None,
+    requested_at: datetime,
+) -> None:
+    """Run docgen workflow in background without any job row persistence."""
 
-            result = await run_docgen_workflow(
-                subject=subject,
-                job_id=job_id,
-                file_ids=file_ids,
-                user_prompt=job.user_prompt,
-            )
-            if result.failed:
-                docgen_repo.update_docgen_job(
-                    session,
-                    job_id,
-                    status="failed",
-                    error_message=result.error.detail[-500:],
-                )
-            docgen_logger.info("docgen_background_completed", success=result.ok)
+    build_logger = logger.bind(subject=subject, requested_at=requested_at.isoformat())
+    build_logger.info("knowledge_build_started")
 
-        except Exception:
-            logger.exception("docgen_background_error", subject=subject, job_id=job_id)
-            try:
-                docgen_repo.update_docgen_job(
-                    session,
-                    job_id,
-                    status="failed",
-                    error_message=traceback.format_exc()[-500:],
-                )
-            except Exception:
-                logger.exception("failed_to_mark_docgen_job_failed", job_id=job_id)
+    try:
+        result = await run_docgen_workflow(
+            subject=subject,
+            file_ids=file_ids,
+            user_prompt=prompt,
+            requested_at=requested_at,
+        )
+        if result.failed:
+            _clear_docgen_staging_safely(subject)
+            build_logger.error("knowledge_build_failed", error=result.error.detail)
+            return
+    except Exception:
+        _clear_docgen_staging_safely(subject)
+        build_logger.exception("knowledge_build_failed")
+        return
+    finally:
+        release_knowledge_build_lock(subject)
 
 
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
-    """Read merged markdown result and the latest docgen status."""
+    """Read the published merged markdown and manifest metadata."""
 
     merged_path = build_merged_knowledge_base_path(subject)
-    latest_job = docgen_repo.get_latest_docgen_job_by_subject(session, subject)
-    job_response = _build_docgen_job_response(latest_job) if latest_job is not None else None
-    prompt = latest_job.user_prompt if latest_job is not None else None
-    source_file_ids = (
-        _collect_published_doc_source_ids(session, subject)
-        if merged_path.exists()
-        else _parse_json_int_list(latest_job.input_file_ids_json if latest_job is not None else None)
-    )
+    manifest = read_knowledge_manifest(subject)
+    markdown = merged_path.read_text(encoding="utf-8") if merged_path.exists() else ""
 
-    if merged_path.exists():
-        return DocGenGetResponse(
-            exists=True,
-            markdown=merged_path.read_text(encoding="utf-8"),
-            merged_path=str(merged_path),
-            updated_at=datetime.fromtimestamp(merged_path.stat().st_mtime),
-            job=job_response,
-            source_file_ids=source_file_ids,
-            prompt=prompt,
+    updated_at: datetime | None = None
+    source_file_uids: list[str] = []
+
+    if manifest is not None:
+        updated_at = manifest.updated_at
+        source_file_uids = _resolve_file_uids_from_ids(
+            session,
+            subject=subject,
+            file_ids=manifest.source_file_ids,
         )
+    elif merged_path.exists():
+        updated_at = datetime.fromtimestamp(merged_path.stat().st_mtime)
 
     return DocGenGetResponse(
-        exists=False,
-        markdown="",
-        merged_path=str(merged_path),
-        updated_at=None,
-        job=job_response,
-        source_file_ids=source_file_ids,
-        prompt=prompt,
+        exists=bool(merged_path.exists() and markdown.strip()),
+        markdown=markdown,
+        updated_at=updated_at,
+        source_file_uids=source_file_uids,
+        prompt=manifest.prompt if manifest is not None else None,
     )
+
+
+__all__ = [
+    "get_docgen_result",
+    "run_docgen_background",
+    "run_graph_digest_background",
+    "trigger_docgen_build",
+]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.events import InProcessEventBus
 from app.workflows.common.result import WorkflowResult, err_result
@@ -18,8 +20,10 @@ from app.workflows.digest.events import (
 )
 from app.workflows.digest.graph import (
     build_curriculum_derive_graph,
+    build_docgen_graph,
     build_kg_digest_graph,
     create_curriculum_derive_initial_state,
+    create_docgen_initial_state,
     create_graph_digest_initial_state,
 )
 from app.workflows.digest.kg.finalize_nodes import trigger_curriculum_derive_safe
@@ -179,35 +183,30 @@ async def run_curriculum_derive_workflow(
 async def run_docgen_workflow(
     *,
     subject: str,
-    job_id: int,
     file_ids: list[int],
     user_prompt: str | None = None,
+    requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
 ) -> WorkflowResult[DocGenState]:
-    """运行 DocGen 知识文档生成工作流。"""
-
-    from app.workflows.digest.docs.graph import (
-        build_docgen_graph,
-        create_docgen_initial_state,
-    )
+    """Run the knowledge docs generation workflow."""
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(DocGenRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
+    await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
         workflow_name="digest.docgen",
         subject=subject,
         event_bus=bus,
-        metadata={"job_id": job_id},
+        metadata={"requested_at": requested_at.isoformat()},
     )
     result = await run_state_graph(
         workflow_name="digest.docgen",
         graph_builder=lambda: build_docgen_graph(context=context),
         initial_state=create_docgen_initial_state(
             subject=subject,
-            job_id=job_id,
             file_ids=file_ids,
             user_prompt=user_prompt,
+            requested_at=requested_at,
         ),
         context=context,
     )
@@ -215,7 +214,7 @@ async def run_docgen_workflow(
         await bus.publish(
             DocGenFailedEvent(
                 subject=subject,
-                job_id=job_id,
+                requested_at=requested_at,
                 error_message=result.error.detail,
             )
         )
@@ -227,20 +226,20 @@ async def run_docgen_workflow(
         await bus.publish(
             DocGenFailedEvent(
                 subject=subject,
-                job_id=job_id,
+                requested_at=requested_at,
                 error_message=error_message,
             )
         )
         return err_result(
             "digest_docgen_failed",
             error_message,
-            metadata={"job_id": job_id, "subject": subject},
+            metadata={"requested_at": requested_at.isoformat(), "subject": subject},
         )
 
     await bus.publish(
         DocGenCompletedEvent(
             subject=subject,
-            job_id=job_id,
+            requested_at=requested_at,
             doc_count=len(final_state.get("doc_ids", [])),
         )
     )

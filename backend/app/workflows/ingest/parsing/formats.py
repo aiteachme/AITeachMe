@@ -69,6 +69,25 @@ IMAGE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 )
 
+MARKITDOWN_GENERIC_EXTENSIONS = frozenset(
+    {
+        ".doc",
+        ".docm",
+        ".odt",
+        ".rtf",
+        ".epub",
+        ".xlsx",
+        ".xls",
+        ".xlsm",
+        ".ods",
+        ".odp",
+        ".ipynb",
+        ".msg",
+        ".eml",
+        ".mobi",
+    }
+)
+
 
 def normalize_extension(filetype: str) -> str:
     normalized = filetype.lower().strip()
@@ -91,6 +110,10 @@ def is_prose_text_extension(extension: str) -> bool:
 
 def is_image_extension(extension: str) -> bool:
     return normalize_extension(extension) in IMAGE_EXTENSIONS
+
+
+def is_markitdown_generic_extension(extension: str) -> bool:
+    return normalize_extension(extension) in MARKITDOWN_GENERIC_EXTENSIONS
 
 
 def get_text_language_hint(extension: str) -> str | None:

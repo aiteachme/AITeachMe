@@ -99,7 +99,7 @@ class RawFileNotFoundError(AITeachMeError):
     error_code = "RAW_FILE_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, file_id: int) -> None:
+    def __init__(self, file_id: int | str) -> None:
         super().__init__(detail=f"文件 `{file_id}` 不存在。")
 
 
@@ -107,7 +107,7 @@ class InvalidRawFileStateError(AITeachMeError):
     error_code = "INVALID_RAW_FILE_STATE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
-    def __init__(self, file_id: int, current_state: str, expected: str) -> None:
+    def __init__(self, file_id: int | str, current_state: str, expected: str) -> None:
         super().__init__(
             detail=f"文件 `{file_id}` 当前状态为 `{current_state}`，期望状态为 `{expected}`。"
         )
@@ -239,11 +239,11 @@ class NoReadyFilesForDocGenError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已解析完成的文件，无法生成知识文档。")
+        super().__init__(detail=f"学科 `{subject}` 暂无可用的已解析文件，无法开始知识构建。")
 
 
 class SubjectBuildLockConflictError(AITeachMeError):
-    error_code = "SUBJECT_BUILD_LOCK_CONFLICT"
+    error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:

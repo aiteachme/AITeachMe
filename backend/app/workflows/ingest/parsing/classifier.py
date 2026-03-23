@@ -13,6 +13,7 @@ from app.workflows.ingest.parsing.docx_archive import summarize_docx_archive
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     is_image_extension,
+    is_markitdown_generic_extension,
     is_text_extension,
     normalize_extension,
 )
@@ -79,6 +80,11 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
         return _classify_docx(path)
     if is_text_extension(extension):
         return _classify_text_file(path, extension)
+    if is_markitdown_generic_extension(extension):
+        return ClassificationResult(
+            file_category="markitdown_generic",
+            recommended_parser="markitdown_generic",
+        )
     if is_image_extension(extension):
         return ClassificationResult(
             file_category="image",

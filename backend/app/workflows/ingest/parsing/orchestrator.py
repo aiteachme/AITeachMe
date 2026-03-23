@@ -24,6 +24,10 @@ class ParseExecutionResult(BaseModel):
     markdown: str
     parser_used: str
     attempted_parsers: list[str] = Field(default_factory=list)
+    parser_elapsed_s: dict[str, float] = Field(default_factory=dict)
+    rewritten_image_refs: int = 0
+    extracted_data_images: int = 0
+    appended_asset_images: int = 0
 
 
 async def parse_file(
@@ -51,6 +55,7 @@ async def parse_file(
         classification=classification,
     )
     attempted_parsers: list[str] = []
+    parser_elapsed_s: dict[str, float] = {}
     last_error: Exception | None = None
     started_at = time.monotonic()
 
@@ -64,17 +69,29 @@ async def parse_file(
         recommended_parser=classification.recommended_parser if classification else None,
         decision_reason=plan.decision_reason,
         timeout_s=plan.options.timeout_s,
+        parser_parallelism=plan.options.parser_parallelism,
+        llm_ocr_page_concurrency=plan.options.llm_ocr_page_concurrency,
+        ocr_page_limit=plan.options.ocr_page_limit,
+        asset_gallery_limit=plan.options.asset_gallery_limit,
+        ocr_language_mode=plan.options.ocr_language_mode,
     )
 
     for parser_name in plan.parser_chain:
         parser = PARSER_REGISTRY[extension][parser_name]
         attempted_parsers.append(parser_name)
+        parser_started_at = time.monotonic()
         try:
             raw_markdown = await asyncio.wait_for(
                 parser(path, assets, plan.options),
                 timeout=plan.options.timeout_s,
             )
-            normalized_markdown = canonicalize_markdown(raw_markdown)
+            parser_elapsed_s[parser_name] = round(time.monotonic() - parser_started_at, 2)
+            canonical_result = canonicalize_markdown(
+                raw_markdown,
+                asset_dir=assets,
+                asset_link_prefix=f"../assets/{assets.name}",
+                asset_gallery_limit=plan.options.asset_gallery_limit,
+            )
             elapsed = round(time.monotonic() - started_at, 2)
             image_count = len(list(assets.glob("*"))) if assets.exists() else 0
             logger.info(
@@ -83,31 +100,43 @@ async def parse_file(
                 parser=parser_name,
                 parse_mode=plan.mode,
                 raw_chars=len(raw_markdown),
-                final_chars=len(normalized_markdown),
+                final_chars=len(canonical_result.markdown),
                 images_extracted=image_count,
                 elapsed_s=elapsed,
                 attempted_parsers=attempted_parsers,
+                parser_elapsed_s=parser_elapsed_s,
+                rewritten_image_refs=canonical_result.rewritten_image_refs,
+                extracted_data_images=canonical_result.extracted_data_images,
+                appended_asset_images=canonical_result.appended_asset_images,
             )
             return ParseExecutionResult(
-                markdown=normalized_markdown,
+                markdown=canonical_result.markdown,
                 parser_used=parser_name,
                 attempted_parsers=attempted_parsers,
+                parser_elapsed_s=parser_elapsed_s,
+                rewritten_image_refs=canonical_result.rewritten_image_refs,
+                extracted_data_images=canonical_result.extracted_data_images,
+                appended_asset_images=canonical_result.appended_asset_images,
             )
         except asyncio.TimeoutError as exc:
+            parser_elapsed_s[parser_name] = round(time.monotonic() - parser_started_at, 2)
             last_error = exc
             logger.warning(
                 "parse_file_attempt_timed_out",
                 filename=path.name,
                 parser=parser_name,
                 timeout_s=plan.options.timeout_s,
+                parser_elapsed_s=parser_elapsed_s[parser_name],
             )
         except Exception as exc:
+            parser_elapsed_s[parser_name] = round(time.monotonic() - parser_started_at, 2)
             last_error = exc
             logger.warning(
                 "parse_file_attempt_failed",
                 filename=path.name,
                 parser=parser_name,
                 error=str(exc),
+                parser_elapsed_s=parser_elapsed_s[parser_name],
             )
 
     if last_error is None:

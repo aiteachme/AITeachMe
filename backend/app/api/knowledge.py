@@ -13,8 +13,6 @@ from app.schemas.knowledge import (
     ChunkContextRequest,
     ChunkContextResponse,
     ClearKnowledgeResponse,
-    DigestBuildData,
-    DigestBuildRequest,
     DocGenBuildData,
     DocGenBuildRequest,
     DocGenGetResponse,
@@ -35,7 +33,6 @@ from app.services.knowledge.digest_service import (
     get_docgen_result,
     run_docgen_background,
     run_graph_digest_background,
-    trigger_digest_build,
     trigger_docgen_build,
 )
 from app.services.knowledge.graph_query_service import (
@@ -49,43 +46,12 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
 
 
 @router.post(
-    "/digest/build",
-    response_model=ApiResponse[DigestBuildData],
-    summary="触发增量构建",
-    responses=build_error_responses([400, 404, 409, 500]),
-)
-async def digest_build(
-    background_tasks: BackgroundTasks,
-    subject: str = Path(...),
-    body: DigestBuildRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[DigestBuildData]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-
-    data = trigger_digest_build(
-        session,
-        subject=normalized,
-        file_ids=body.file_ids,
-        idempotency_key=body.idempotency_key,
-    )
-    background_tasks.add_task(
-        run_graph_digest_background,
-        subject=normalized,
-        file_ids=body.file_ids,
-    )
-
-    return ok_response(data)
-
-
-
-@router.post(
-    "/docgen/build",
+    "/build",
     response_model=ApiResponse[DocGenBuildData],
-    summary="触发知识文档生成",
-    responses=build_error_responses([400, 404, 500]),
+    summary="触发知识文档与知识图谱构建",
+    responses=build_error_responses([400, 404, 409, 422, 500]),
 )
-async def docgen_build(
+async def knowledge_build(
     background_tasks: BackgroundTasks,
     subject: str = Path(...),
     body: DocGenBuildRequest = Body(...),
@@ -94,27 +60,34 @@ async def docgen_build(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
 
-    data = trigger_docgen_build(
+    data, accepted_file_ids = trigger_docgen_build(
         session,
         subject=normalized,
-        file_ids=body.file_ids,
+        file_uids=body.file_uids,
         prompt=body.prompt,
     )
     background_tasks.add_task(
         run_docgen_background,
         subject=normalized,
-        job_id=data.job_id,
+        file_ids=accepted_file_ids,
+        prompt=data.prompt,
+        requested_at=data.requested_at,
+    )
+    background_tasks.add_task(
+        run_graph_digest_background,
+        subject=normalized,
+        file_ids=accepted_file_ids,
     )
     return ok_response(data)
 
 
 @router.post(
-    "/docgen/get",
+    "/docs",
     response_model=ApiResponse[DocGenGetResponse],
     summary="查询知识文档结果",
     responses=build_error_responses([400, 404, 500]),
 )
-async def docgen_get(
+async def knowledge_docs(
     subject: str = Path(...),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:

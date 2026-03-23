@@ -11,13 +11,19 @@ from app.workflows.ingest.parsing.docx import (
     parse_docx_with_markitdown,
     parse_docx_with_native,
 )
-from app.workflows.ingest.parsing.formats import TEXT_EXTENSIONS, normalize_extension
+from app.workflows.ingest.parsing.formats import MARKITDOWN_GENERIC_EXTENSIONS, TEXT_EXTENSIONS, normalize_extension
+from app.workflows.ingest.parsing.generic import (
+    GENERIC_MARKITDOWN_AVAILABLE,
+    parse_with_markitdown_generic,
+)
 from app.workflows.ingest.parsing.image import parse_image_with_llm_vision
 from app.workflows.ingest.parsing.pdf import (
     PDF_MARKITDOWN_AVAILABLE,
+    PDF_PYMUPDF_OCR_VISION_AVAILABLE,
     PDF_PYMUPDF4LLM_AVAILABLE,
     PDF_PYMUPDF_NATIVE_AVAILABLE,
     parse_pdf_with_markitdown,
+    parse_pdf_with_pymupdf_ocr_vision,
     parse_pdf_with_pymupdf4llm,
     parse_pdf_with_pymupdf_native,
 )
@@ -50,8 +56,27 @@ def _build_text_parser_availability() -> dict[str, dict[str, bool]]:
     return {extension: {"text_native": TEXT_NATIVE_AVAILABLE} for extension in TEXT_EXTENSIONS}
 
 
+def _build_markitdown_generic_mapping() -> dict[str, dict[str, Parser]]:
+    return {
+        extension: {"markitdown_generic": parse_with_markitdown_generic}
+        for extension in MARKITDOWN_GENERIC_EXTENSIONS
+    }
+
+
+def _build_markitdown_generic_chain() -> dict[str, list[str]]:
+    return {extension: ["markitdown_generic"] for extension in MARKITDOWN_GENERIC_EXTENSIONS}
+
+
+def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
+    return {
+        extension: {"markitdown_generic": GENERIC_MARKITDOWN_AVAILABLE}
+        for extension in MARKITDOWN_GENERIC_EXTENSIONS
+    }
+
+
 PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".pdf": {
+        "pymupdf_ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
         "pymupdf4llm": parse_pdf_with_pymupdf4llm,
         "markitdown": parse_pdf_with_markitdown,
         "pymupdf_native": parse_pdf_with_pymupdf_native,
@@ -92,11 +117,12 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".tiff": {
         "llm_vision": parse_image_with_llm_vision,
     },
+    **_build_markitdown_generic_mapping(),
     **_build_text_parser_mapping(),
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
-    ".pdf": ["pymupdf4llm", "markitdown", "pymupdf_native"],
+    ".pdf": ["pymupdf4llm", "pymupdf_ocr_vision", "markitdown", "pymupdf_native"],
     ".docx": ["markitdown", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
@@ -108,11 +134,13 @@ DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     ".bmp": ["llm_vision"],
     ".tif": ["llm_vision"],
     ".tiff": ["llm_vision"],
+    **_build_markitdown_generic_chain(),
     **_build_text_parser_chain(),
 }
 
 _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     ".pdf": {
+        "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
         "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
         "markitdown": PDF_MARKITDOWN_AVAILABLE,
         "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
@@ -129,6 +157,7 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
     },
+    **_build_markitdown_generic_availability(),
     **_build_text_parser_availability(),
 }
 
@@ -152,7 +181,12 @@ def get_available_parsers(extension: str, *, allow_llm_vision: bool) -> list[str
     normalized = normalize_extension(extension)
     available = _PARSER_AVAILABILITY.get(normalized)
     if available is None:
-        return ["llm_vision"] if allow_llm_vision and normalized in PARSER_REGISTRY else []
+        parser_def = PARSER_REGISTRY.get(normalized, {})
+        return [
+            name
+            for name in parser_def
+            if name != "llm_vision" or allow_llm_vision
+        ]
 
     parser_names = [name for name, is_available in available.items() if is_available]
     if normalized in PARSER_REGISTRY and "llm_vision" in PARSER_REGISTRY[normalized] and allow_llm_vision:
