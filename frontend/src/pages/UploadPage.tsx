@@ -103,8 +103,8 @@ function getFileStatusMeta(file: FileRecord) {
   if (ACTIVE_FILE_STATUSES.has(file.status) || file.ingest_status !== "pending") {
     return {
       label: "解析中",
-      tone: "text-indigo-600 bg-indigo-50 border-indigo-200",
-      icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
+      tone: "text-slate-700 bg-slate-50 border-slate-200",
+      icon: <Loader2 className="h-4 w-4 animate-spin text-slate-500" />,
     };
   }
 
@@ -209,16 +209,10 @@ export function UploadPage() {
   );
 
   return (
-    <div className="relative flex w-full flex-1 flex-col items-center overflow-x-hidden px-4 pb-16 pt-10 md:pt-16">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute left-1/4 top-10 h-[400px] w-[400px] animate-pulse rounded-full bg-sky-400/10 blur-3xl"
-          style={{ animationDuration: "6s" }}
-        />
-        <div
-          className="absolute bottom-10 right-1/4 h-[400px] w-[400px] animate-pulse rounded-full bg-indigo-500/10 blur-3xl"
-          style={{ animationDuration: "8s" }}
-        />
+    <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none block">
+        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
+        <div className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl" style={{ animationDuration: "11s" }} />
       </div>
 
       <motion.div
@@ -228,7 +222,7 @@ export function UploadPage() {
         className="relative z-10 w-full max-w-4xl"
       >
         <div className="mb-10 text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200/60 bg-white/60 px-3 py-1 text-xs font-medium text-sky-700 shadow-sm backdrop-blur">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
             <Sparkles className="h-3.5 w-3.5" />
             上传资料，自动解析
           </div>
@@ -241,7 +235,7 @@ export function UploadPage() {
         </div>
 
         <div
-          className="rounded-3xl border border-slate-200/80 bg-white/80 p-2 shadow-xl shadow-indigo-100 backdrop-blur-xl transition-colors transition-shadow focus-within:shadow-2xl focus-within:shadow-indigo-500/10"
+          className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm transition-all focus-within:shadow-md focus-within:border-slate-300"
           onDrop={handleDrop}
           onDragOver={(event) => event.preventDefault()}
         >
@@ -330,7 +324,7 @@ export function UploadPage() {
                 </button>
 
                 {uploadMutation.isPending ? (
-                  <span className="flex items-center text-xs font-medium text-indigo-500">
+                  <span className="flex items-center text-xs font-medium text-slate-500">
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                     正在上传并启动解析...
                   </span>
@@ -356,9 +350,9 @@ export function UploadPage() {
                 onClick={() => buildMutation.mutate()}
                 disabled={readyFiles.length === 0 || buildMutation.isPending}
                 className={cn(
-                  "rounded-full px-6 shadow-md transition-all duration-300",
+                  "rounded-full px-6 shadow-sm transition-all duration-300",
                   readyFiles.length > 0 && !buildMutation.isPending
-                    ? "bg-indigo-600 text-white shadow-indigo-500/20 hover:-translate-y-0.5 hover:bg-indigo-500 hover:shadow-lg"
+                    ? "bg-slate-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-slate-800"
                     : "bg-slate-100 text-slate-400",
                 )}
               >

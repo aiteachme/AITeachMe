@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 
 /** Pages that manage their own header + layout (no shared TopBar / padding) */
-const FULL_BLEED_SUFFIXES = ["/docs", "/upload"];
+const FULL_BLEED_SUFFIXES = ["/doc", "/upload", "/exam", "/analysis", "/docs"];
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -19,12 +19,14 @@ export function Layout() {
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 relative">
           {/* Top Bar — ALWAYS SHOW on all tabs to ensure User / Github buttons are visible */}
-          <header className="flex-shrink-0 h-16 px-6 flex items-center justify-end z-40 w-full relative bg-transparent">
-            <TopBar />
+          <header className="absolute top-0 left-0 right-0 h-16 px-4 md:px-6 flex items-center justify-end z-40 pointer-events-none">
+            <div className="pointer-events-auto">
+              <TopBar />
+            </div>
           </header>
 
           {/* Main Content */}
-          <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-gradient-to-b from-slate-50 to-slate-200/40 flex flex-col">
+          <main className="flex-1 w-full overflow-x-hidden overflow-y-auto relative bg-slate-50 flex flex-col">
             <AnimatePresence mode="wait">
               {isFullBleed || isHome ? (
                 <motion.div
