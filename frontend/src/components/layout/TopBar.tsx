@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Github, MessageCircle, User, Settings, CreditCard, LogOut, LogIn, ChevronDown, Menu } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { SettingsModal } from "../settings/SettingsModal";
 
 interface TopBarProps {
   className?: string;
@@ -10,6 +11,7 @@ export function TopBar({ className }: TopBarProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(true); // Mock login state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -122,7 +124,10 @@ export function TopBar({ className }: TopBarProps) {
 
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                    onClick={() => setIsDropdownOpen(false)}
+                    onClick={() => {
+                      setIsDropdownOpen(false);
+                      setIsSettingsModalOpen(true);
+                    }}
                   >
                     <Settings className="w-4 h-4 text-slate-400" />
                     <span>设置</span>
@@ -203,7 +208,13 @@ export function TopBar({ className }: TopBarProps) {
                     </div>
                   </button>
 
-                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+                  <button 
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsSettingsModalOpen(true);
+                    }}
+                  >
                     <Settings className="w-4 h-4 text-slate-400" />
                     <span>设置</span>
                   </button>
@@ -254,6 +265,12 @@ export function TopBar({ className }: TopBarProps) {
           </div>
         )}
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={isSettingsModalOpen} 
+        onClose={() => setIsSettingsModalOpen(false)} 
+      />
     </div>
   );
 }
