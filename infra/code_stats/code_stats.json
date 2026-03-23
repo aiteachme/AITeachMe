@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T08:35:48.888202",
-  "total_commits_analyzed": 212,
+  "generated_at": "2026-03-23T08:52:29.668513",
+  "total_commits_analyzed": 217,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1697,6 +1697,46 @@
       "code_lines": 44539,
       "other_lines": 12565,
       "message": "style: 添加css动画logo"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "7105943",
+      "total_lines": 55743,
+      "code_lines": 43376,
+      "other_lines": 12367,
+      "message": "refactor: 重构考试和个人资料处理器，以标准化 API 端点并优化响应信息；更新题库和熟练度"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "4ebf938",
+      "total_lines": 56549,
+      "code_lines": 44108,
+      "other_lines": 12441,
+      "message": "Merge branch 'main' into dev_wzx"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "d9a97e4",
+      "total_lines": 57104,
+      "code_lines": 44539,
+      "other_lines": 12565,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "f8099a3",
+      "total_lines": 56549,
+      "code_lines": 44108,
+      "other_lines": 12441,
+      "message": "refactor: 将考试相关的 API 端点从 GET 方法更改为 POST 方法，以符合 RES"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "bc26a57",
+      "total_lines": 56703,
+      "code_lines": 44248,
+      "other_lines": 12455,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
