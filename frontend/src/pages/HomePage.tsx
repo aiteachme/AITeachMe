@@ -110,18 +110,12 @@ export function HomePage() {
 
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-200/50 flex flex-col items-center p-4 pt-16 md:p-8 md:pt-20 overflow-x-hidden relative">
+    <div className="min-h-[100dvh] w-full flex flex-col items-center p-4 pt-16 md:p-8 md:pt-24 overflow-x-hidden relative">
       
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: "5s" }}
-        />
-        <div
-          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: "7s" }}
-        />
+        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
+        <div className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl" style={{ animationDuration: "11s" }} />
       </div>
 
       <motion.div
@@ -163,7 +157,7 @@ export function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-xl shadow-slate-200/50 transition-shadow focus-within:shadow-2xl focus-within:shadow-indigo-500/10">
+          <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm transition-all focus-within:ring-4 focus-within:ring-slate-900/5 focus-within:border-slate-300 focus-within:shadow-md">
             {/* Greeting Bar equivalent (optional) */}
             <div className="relative z-20 flex items-start justify-between px-4 pt-4">
               <span className="text-sm font-semibold text-slate-700">你好，学习者 👋</span>
@@ -187,7 +181,7 @@ export function HomePage() {
                 <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-slate-100">
                   {selectedFiles.map((file, idx) => (
                     <div key={idx} className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg transition-colors group">
-                      <FileUp className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
+                      <FileUp className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
                       <span className="max-w-[140px] truncate font-medium">{file.name}</span>
                       <button 
                         onClick={() => removeFile(idx)}
@@ -221,7 +215,7 @@ export function HomePage() {
                     上传文件资料
                   </button>
                   {createMutation.isPending && (
-                    <span className="text-xs text-indigo-500 font-medium flex items-center ml-2">
+                    <span className="text-xs text-slate-500 font-medium flex items-center ml-2">
                       <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> 正在准备学习空间...
                     </span>
                   )}
@@ -234,7 +228,7 @@ export function HomePage() {
                   className={cn(
                     "shrink-0 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all px-5",
                     canGenerate && !createMutation.isPending
-                      ? "bg-indigo-600 text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+                      ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
                 >
@@ -313,13 +307,13 @@ export function HomePage() {
                       transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                     >
                       <Link to={`/subject/${subject.subject_id}/chat`} className="block group">
-                        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 h-full flex flex-col">
+                        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col group/card hover:-translate-y-1">
                           <div className="flex items-start justify-between mb-4">
-                            <h3 className="text-lg font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                            <h3 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover/card:text-slate-700 transition-colors">
                               {subject.name}
                             </h3>
-                            <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-indigo-50 transition-colors">
-                              <BookOpen className="w-5 h-5 text-slate-400 group-hover:text-indigo-500" />
+                            <div className="p-2 bg-slate-50 rounded-lg group-hover/card:bg-slate-100 transition-colors border border-transparent group-hover/card:border-slate-200">
+                              <BookOpen className="w-5 h-5 text-slate-400 group-hover/card:text-slate-700" />
                             </div>
                           </div>
                           <div className="mt-auto pt-4 flex items-center gap-3 border-t border-slate-50">

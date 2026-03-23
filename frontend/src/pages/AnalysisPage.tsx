@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Award, BookOpen, Loader2, Target, TrendingUp } from "lucide-react";
+import { Award, BookOpen, Loader2, Target, TrendingUp, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   apiGetMasteryOverviewApiV1SubjectsSubjectMasteryGet,
@@ -25,6 +26,32 @@ interface DisplayMasteryState extends MasteryStateResponse {
 }
 
 const WEAK_THRESHOLD = 0.8;
+
+const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
+
+function PageWrapper({ children, title, subtitle, badgeText }: { children: React.ReactNode, title: React.ReactNode, subtitle?: string, badgeText?: string }) {
+  return (
+    <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden min-h-[100dvh] bg-slate-50/50">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none block">
+        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
+        <div className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl" style={{ animationDuration: "11s" }} />
+      </div>
+      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="relative z-10 w-full max-w-5xl space-y-6">
+        <div className="mb-10 text-center">
+          {badgeText && (
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              {badgeText}
+            </div>
+          )}
+          <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
+          {subtitle && <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">{subtitle}</p>}
+        </div>
+        {children}
+      </motion.div>
+    </div>
+  );
+}
 
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -283,23 +310,23 @@ export function AnalysisPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">学习分析</h1>
-        <p className="mt-2 text-slate-500">基于作答记录与掌握度状态生成学习画像</p>
-      </div>
-
-      {!!errorMessage && (
-        <Card>
+    <PageWrapper
+      title="数据分析引擎"
+      subtitle="基于微观作答记录与能力模型状态生成您的个性化学习画像"
+      badgeText="洞悉学习轨迹"
+    >
+      <div className="space-y-8">
+        {!!errorMessage && (
+          <Card className={PAPER_CARD}>
           <CardContent className="pt-6">
             <p className="text-sm text-amber-700">{errorMessage}</p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-3">
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className={PAPER_CARD}>
+            <CardHeader className="pb-3">
             <CardDescription>总体掌握度</CardDescription>
           </CardHeader>
           <CardContent>
@@ -312,8 +339,8 @@ export function AnalysisPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
+          <Card className={PAPER_CARD}>
+            <CardHeader className="pb-3">
             <CardDescription>已覆盖知识点</CardDescription>
           </CardHeader>
           <CardContent>
@@ -327,8 +354,8 @@ export function AnalysisPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
+          <Card className={PAPER_CARD}>
+            <CardHeader className="pb-3">
             <CardDescription>薄弱知识点</CardDescription>
           </CardHeader>
           <CardContent>
@@ -343,9 +370,11 @@ export function AnalysisPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className={PAPER_CARD}>
+            <CardHeader>
             <CardTitle>知识点掌握度</CardTitle>
             <CardDescription>各知识点学习情况</CardDescription>
           </CardHeader>
@@ -377,9 +406,9 @@ export function AnalysisPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
+          <div className="space-y-6">
+            <Card className={PAPER_CARD}>
+              <CardHeader>
               <CardTitle>薄弱知识点</CardTitle>
               <CardDescription>需要加强练习的内容</CardDescription>
             </CardHeader>
@@ -403,8 +432,8 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+            <Card className={PAPER_CARD}>
+              <CardHeader>
               <CardTitle>复习建议</CardTitle>
             </CardHeader>
             <CardContent>
@@ -420,6 +449,6 @@ export function AnalysisPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageWrapper>
   );
 }

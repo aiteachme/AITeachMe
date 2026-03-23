@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Clock, FileQuestion, Loader2, Trash2, XCircle } from "lucide-react";
+import { CheckCircle, Clock, FileQuestion, Loader2, Trash2, XCircle, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 import { apiClient } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
@@ -103,6 +104,32 @@ const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string }> = [
   { value: "review", label: "复习模式" },
   { value: "mock_final", label: "模拟考试" },
 ];
+
+const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
+
+function PageWrapper({ children, title, subtitle, badgeText }: { children: React.ReactNode, title: React.ReactNode, subtitle?: string, badgeText?: string }) {
+  return (
+    <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden min-h-[100dvh] bg-slate-50/50">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none block">
+        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
+        <div className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl" style={{ animationDuration: "11s" }} />
+      </div>
+      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="relative z-10 w-full max-w-4xl space-y-6">
+        <div className="mb-10 text-center">
+          {badgeText && (
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              {badgeText}
+            </div>
+          )}
+          <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
+          {subtitle && <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">{subtitle}</p>}
+        </div>
+        {children}
+      </motion.div>
+    </div>
+  );
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -466,11 +493,14 @@ export function ExamPage() {
 
   if (activePaper && !gradedPaper) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-slate-900">答题中</h1>
+      <PageWrapper
+        title={`答题中 - 试卷 #${activePaper.id}`}
+        badgeText="全真模拟"
+      >
+        <div className="flex justify-end mb-4">
           <Button
             variant="ghost"
+            className="rounded-full shadow-sm bg-white/50 backdrop-blur border border-slate-200 hover:bg-white transition-colors"
             onClick={() => {
               setActivePaper(null);
               setAnswers({});
@@ -481,7 +511,7 @@ export function ExamPage() {
         </div>
 
         {isReadOnlyPaper && (
-          <Card>
+          <Card className={PAPER_CARD}>
             <CardContent className="pt-6">
               <p className="text-sm text-slate-600">该试卷已提交，当前为只读状态。</p>
             </CardContent>
@@ -490,7 +520,7 @@ export function ExamPage() {
 
         <div className="space-y-4">
           {activePaper.items.map((item, index) => (
-            <Card key={item.id}>
+            <Card key={item.id} className={PAPER_CARD}>
               <CardHeader>
                 <CardTitle className="text-base">
                   <span className="mr-1">{index + 1}.</span>
@@ -539,30 +569,35 @@ export function ExamPage() {
 
         {!isReadOnlyPaper && (
           <Button
-            className="w-full"
+            size="lg"
+            className="w-full rounded-2xl shadow-md text-base mt-8 transition-transform hover:-translate-y-1"
             disabled={submitMutation.isPending}
             onClick={() => submitMutation.mutate()}
           >
             {submitMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                提交并判分中...
+                提交并判卷中...
               </>
             ) : (
-              "提交并判分"
+              "提交并让大模型阅卷打分"
             )}
           </Button>
         )}
-      </div>
+      </PageWrapper>
     );
   }
 
   if (gradedPaper) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-slate-900">答题结果</h1>
+      <PageWrapper
+        title="答题结果"
+        badgeText="AI 智能判卷统分系统"
+      >
+        <div className="flex justify-end mb-4">
           <Button
+            variant="ghost"
+            className="rounded-full shadow-sm bg-white/50 backdrop-blur border border-slate-200 hover:bg-white transition-colors"
             onClick={() => {
               setGradedPaper(null);
               setAnswers({});
@@ -572,7 +607,7 @@ export function ExamPage() {
           </Button>
         </div>
 
-        <Card>
+        <Card className={PAPER_CARD}>
           <CardHeader>
             <CardTitle>
               得分：{gradedPaper.score_obtained ?? 0} / {gradedPaper.total_score ?? gradedPaper.total_items}
@@ -603,23 +638,23 @@ export function ExamPage() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">考试中心</h1>
-        <p className="mt-2 text-slate-500">自动构题、组卷、答题、判分</p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
+    <PageWrapper
+      title="模拟考试中心"
+      subtitle="自动构题、组卷、答题、判分，全链路智能复习体验"
+      badgeText="题海战术"
+    >
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
         <Button
           variant={activeView === "papers" ? "default" : "outline"}
           onClick={() => setActiveView("papers")}
+          className={`rounded-full px-6 shadow-sm border-slate-200 transition-all duration-300 min-w-32 ${activeView === "papers" ? "bg-slate-900 text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}
         >
-          试卷视图
+          试卷历史
         </Button>
         <Button
           variant={activeView === "bank" ? "default" : "outline"}
@@ -627,14 +662,15 @@ export function ExamPage() {
             setActiveView("bank");
             void refetchQuestionBank();
           }}
+          className={`rounded-full px-6 shadow-sm border-slate-200 transition-all duration-300 min-w-32 ${activeView === "bank" ? "bg-slate-900 text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}
         >
-          题库视图
+          我的题库
         </Button>
       </div>
 
       {activeView === "papers" && (
         <>
-          <Card>
+          <Card className={PAPER_CARD}>
             <CardHeader>
               <CardTitle>生成新试卷</CardTitle>
               <CardDescription>只需选择考试模式和你的偏好，系统会自动构题并组卷。</CardDescription>
@@ -700,7 +736,7 @@ export function ExamPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={PAPER_CARD}>
             <CardHeader>
               <CardTitle>已生成试卷</CardTitle>
               <CardDescription>可以多次打开试卷继续答题或查看结果。</CardDescription>
@@ -792,7 +828,7 @@ export function ExamPage() {
       )}
 
       {activeView === "bank" && (
-        <Card>
+        <Card className={PAPER_CARD}>
           <CardHeader>
             <CardTitle>题库视图</CardTitle>
             <CardDescription>这里展示已经在试卷中出现过的所有题目。</CardDescription>
@@ -844,12 +880,12 @@ export function ExamPage() {
       )}
 
       {!!notice && (
-        <Card>
+        <Card className={PAPER_CARD}>
           <CardContent className="pt-6">
             <p className="text-sm text-amber-700">{notice}</p>
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageWrapper>
   );
 }

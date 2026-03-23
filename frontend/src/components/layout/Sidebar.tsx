@@ -239,7 +239,7 @@ export function Sidebar() {
         animate={{ width: isCollapsed ? 76 : 280 }}
         transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white/95 backdrop-blur-md shadow-sm lg:static overflow-hidden shrink-0",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm lg:static overflow-hidden shrink-0",
           isMobileOpen ? "translate-x-0 w-[280px]" : "-translate-x-full lg:translate-x-0"
         )}
       >
@@ -324,7 +324,7 @@ export function Sidebar() {
                   title={isCollapsed ? subject.name : undefined}
                 >
                   {isCollapsed ? (
-                    <div className="w-6 h-6 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+                    <div className="w-6 h-6 rounded bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs">
                       {subject.name.charAt(0).toUpperCase()}
                     </div>
                   ) : (
@@ -369,11 +369,11 @@ export function Sidebar() {
                           className={cn(
                             "flex items-center rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                             isActive
-                              ? "bg-indigo-50 text-indigo-700 shadow-sm"
-                              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                              ? "bg-slate-100/80 text-slate-900 shadow-sm"
+                              : "text-slate-500 hover:bg-slate-100/50 hover:text-slate-900"
                           )}
                         >
-                          <span className={cn("mr-2", isActive ? "text-indigo-500" : "text-slate-400")}>
+                          <span className={cn("mr-2", isActive ? "text-slate-700" : "text-slate-400")}>
                             {moduleItem.icon}
                           </span>
                           {moduleItem.name}

@@ -116,7 +116,7 @@ export function TopBar({ className }: TopBarProps) {
                     <CreditCard className="w-4 h-4 text-slate-400" />
                     <div className="flex items-center justify-between flex-1">
                       <span>余额</span>
-                      <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
                         ¥100.00
                       </span>
                     </div>
