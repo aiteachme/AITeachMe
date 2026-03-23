@@ -1,4 +1,4 @@
-import { HttpResponse, http } from "msw";
+﻿import { HttpResponse, http } from "msw";
 
 type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
 type QuestionType = "single_choice" | "fill_blank" | "short_answer";
@@ -79,31 +79,21 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       id: 1001,
       question_type: "single_choice",
       difficulty: "easy",
-      stem: "函数 f(x)=x^2 在 x=2 处的导数是？",
+      stem: "f(x)=x^2 at x=2, derivative is?",
       options: ["2", "4", "6", "8"],
       answer: "4",
-      explanation: "f'(x)=2x，代入 x=2 得 4。",
+      explanation: "f'(x)=2x, so at x=2 it is 4.",
       teaching_unit_id: 101,
     },
     {
       id: 1002,
       question_type: "single_choice",
       difficulty: "medium",
-      stem: "下列函数在 x=0 处不可导的是？",
+      stem: "Which function is not differentiable at x=0?",
       options: ["x^2", "|x|", "sin x", "e^x"],
       answer: "|x|",
-      explanation: "|x| 在 0 点左右导数不相等。",
+      explanation: "|x| has different one-sided derivatives at 0.",
       teaching_unit_id: 101,
-    },
-    {
-      id: 1003,
-      question_type: "single_choice",
-      difficulty: "hard",
-      stem: "若 lim(x→0) sin(ax)/x = 2，则 a 等于？",
-      options: ["1", "2", "π", "1/2"],
-      answer: "2",
-      explanation: "极限值等于 a，因此 a=2。",
-      teaching_unit_id: 102,
     },
   ],
   fill_blank: [
@@ -111,31 +101,21 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       id: 2001,
       question_type: "fill_blank",
       difficulty: "easy",
-      stem: "已知 f(x)=3x+1，则 f(2)=____。",
+      stem: "If f(x)=3x+1, f(2)=____.",
       options: null,
       answer: "7",
-      explanation: "代入 x=2，得到 7。",
+      explanation: "Substitute x=2.",
       teaching_unit_id: 103,
     },
     {
       id: 2002,
       question_type: "fill_blank",
       difficulty: "medium",
-      stem: "若等差数列首项 a1=2，公差 d=3，则 a5=____。",
+      stem: "For arithmetic sequence a1=2, d=3, a5=____.",
       options: null,
       answer: "14",
-      explanation: "a5=a1+4d=2+12=14。",
+      explanation: "a5 = a1 + 4d = 14.",
       teaching_unit_id: 104,
-    },
-    {
-      id: 2003,
-      question_type: "fill_blank",
-      difficulty: "hard",
-      stem: "方程 x^2-5x+6=0 的两根之和为 ____。",
-      options: null,
-      answer: "5",
-      explanation: "韦达定理，根和为 5。",
-      teaching_unit_id: 102,
     },
   ],
   short_answer: [
@@ -143,30 +123,20 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       id: 3001,
       question_type: "short_answer",
       difficulty: "medium",
-      stem: "求函数 y=x^3-3x 的极值点。",
+      stem: "Find extreme points of y=x^3-3x.",
       options: null,
-      answer: "x=-1 和 x=1",
-      explanation: "令 y'=3x^2-3=0，可得 x=±1。",
+      answer: "x=-1 and x=1",
+      explanation: "y'=3x^2-3=0 gives x=±1.",
       teaching_unit_id: 105,
     },
     {
       id: 3002,
       question_type: "short_answer",
-      difficulty: "hard",
-      stem: "简述二次函数顶点式与一般式的关系。",
-      options: null,
-      answer: "配方可由一般式转顶点式",
-      explanation: "通过配方法可得到顶点坐标与开口方向。",
-      teaching_unit_id: 106,
-    },
-    {
-      id: 3003,
-      question_type: "short_answer",
       difficulty: "easy",
-      stem: "写出正弦函数 y=sin x 的周期。",
+      stem: "What is the period of y=sin x?",
       options: null,
-      answer: "2π",
-      explanation: "sin x 的最小正周期为 2π。",
+      answer: "2pi",
+      explanation: "The fundamental period of sin x is 2pi.",
       teaching_unit_id: 107,
     },
   ],
@@ -212,12 +182,7 @@ function chooseQuestionTypes(mode: ExamMode, prompt: string | undefined): Questi
   if (lowerPrompt.includes("填空") || lowerPrompt.includes("blank")) {
     picked.push("fill_blank");
   }
-  if (
-    lowerPrompt.includes("简答") ||
-    lowerPrompt.includes("问答") ||
-    lowerPrompt.includes("分析") ||
-    lowerPrompt.includes("essay")
-  ) {
+  if (lowerPrompt.includes("简答") || lowerPrompt.includes("问答") || lowerPrompt.includes("analysis") || lowerPrompt.includes("essay")) {
     picked.push("short_answer");
   }
   if (picked.length > 0) return [...new Set(picked)];
@@ -354,9 +319,7 @@ function buildQuestionBank(subject: string): Array<Record<string, unknown>> {
       }
     }
   }
-  return [...agg.values()].sort((a, b) =>
-    String(b.last_asked_at).localeCompare(String(a.last_asked_at)),
-  );
+  return [...agg.values()].sort((a, b) => String(b.last_asked_at).localeCompare(String(a.last_asked_at)));
 }
 
 const seededPaper: InternalPaper = {
@@ -416,7 +379,7 @@ const seededPaper: InternalPaper = {
       options: null,
       explanation: QUESTION_BANK.short_answer[0].explanation,
       teaching_unit_id: 105,
-      correct_answer: "x=-1 和 x=1",
+      correct_answer: "x=-1 and x=1",
       user_answer: "x=1",
       is_correct: false,
       score_obtained: 0,
@@ -428,11 +391,11 @@ const seededPaper: InternalPaper = {
 papers.set(seededPaper.id, seededPaper);
 
 export const examHandlers = [
-  http.post("/api/v1/subjects/:subject/exam/generate", async ({ params, request }) => {
+  http.post("/api/v1/subjects/:subject/exams/generate", async ({ params, request }) => {
     const subject = String(params.subject);
     if (activeGenerateSubject.has(subject)) {
       return HttpResponse.json(
-        { code: 409, message: "当前已有试卷生成任务进行中，请稍后再试。", data: null },
+        { code: 409, message: "A generation job is already running for this subject.", data: null },
         { status: 409 },
       );
     }
@@ -474,7 +437,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exam/generate-jobs/:jobId", ({ params }) => {
+  http.get("/api/v1/subjects/:subject/exams/generate-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = generateJobs.get(jobId);
     if (!job) {
@@ -483,7 +446,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exam/history", ({ params, request }) => {
+  http.get("/api/v1/subjects/:subject/exams/history", ({ params, request }) => {
     const subject = String(params.subject);
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
@@ -511,12 +474,12 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { items, total: all.length, page, size } });
   }),
 
-  http.get("/api/v1/subjects/:subject/exam/question-bank", ({ params }) => {
+  http.get("/api/v1/subjects/:subject/exams/question-bank", ({ params }) => {
     const subject = String(params.subject);
     return HttpResponse.json({ code: 0, data: buildQuestionBank(subject) });
   }),
 
-  http.get("/api/v1/subjects/:subject/exam/:examPaperId", ({ params }) => {
+  http.get("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -525,7 +488,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
   }),
 
-  http.delete("/api/v1/subjects/:subject/exam/:examPaperId", ({ params }) => {
+  http.delete("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
     if (!papers.has(paperId)) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
@@ -534,7 +497,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });
   }),
 
-  http.post("/api/v1/subjects/:subject/exam/:examPaperId/submit", async ({ params, request }) => {
+  http.post("/api/v1/subjects/:subject/exams/:examPaperId/submit", async ({ params, request }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -566,7 +529,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
   }),
 
-  http.post("/api/v1/subjects/:subject/exam/:examPaperId/grade", async ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/:examPaperId/grade", async ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -608,7 +571,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exam/grade-jobs/:jobId", ({ params }) => {
+  http.get("/api/v1/subjects/:subject/exams/grade-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = gradeJobs.get(jobId);
     if (!job) {

@@ -27,7 +27,7 @@ from app.models import (
     QuestionType,
     UserAnswerAttempt,
 )
-from app.repositories import assessment_repo
+from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER
 from app.utils.time import utcnow
 from app.workflows.examine.prompts import (
@@ -167,7 +167,7 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
     if exam_paper is None:
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
 
-    attempts = assessment_repo.list_attempts_by_paper(session, exam_paper_id)
+    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
     items = list(
         session.exec(
             select(ExamPaperItem).where(ExamPaperItem.exam_paper_id == exam_paper_id)

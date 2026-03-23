@@ -1,52 +1,52 @@
-import { http, HttpResponse } from "msw";
+﻿import { HttpResponse, http } from "msw";
 
 const nowIso = new Date().toISOString();
 
 const mockProfiles = [
-  { knowledge_point: "函数与极限", mastery: 0.95, attempts: 20, correct: 19 },
-  { knowledge_point: "导数与微分", mastery: 0.82, attempts: 15, correct: 12 },
-  { knowledge_point: "积分", mastery: 0.6, attempts: 10, correct: 6 },
-  { knowledge_point: "微分方程", mastery: 0.3, attempts: 5, correct: 1 },
-  { knowledge_point: "隐函数求导", mastery: 0.65, attempts: 8, correct: 5 },
+  { knowledge_point: "Limits", mastery: 0.95, attempts: 20, correct: 19 },
+  { knowledge_point: "Derivative", mastery: 0.82, attempts: 15, correct: 12 },
+  { knowledge_point: "Integral", mastery: 0.6, attempts: 10, correct: 6 },
+  { knowledge_point: "Differential Equation", mastery: 0.3, attempts: 5, correct: 1 },
+  { knowledge_point: "Implicit Function", mastery: 0.65, attempts: 8, correct: 5 },
 ];
 
 const mockReport = {
   overall_mastery: 0.67,
   weak_points_top5: [
-    { knowledge_point: "微分方程", mastery: 0.3, attempts: 5, correct: 1 },
-    { knowledge_point: "积分", mastery: 0.6, attempts: 10, correct: 6 },
-    { knowledge_point: "隐函数求导", mastery: 0.65, attempts: 8, correct: 5 },
+    { knowledge_point: "Differential Equation", mastery: 0.3, attempts: 5, correct: 1 },
+    { knowledge_point: "Integral", mastery: 0.6, attempts: 10, correct: 6 },
+    { knowledge_point: "Implicit Function", mastery: 0.65, attempts: 8, correct: 5 },
   ],
   suggestions: [
-    "建议重点复习微分方程的基本解法。",
-    "积分部分需要加强练习，尤其是换元积分法。",
+    "Review the core solving patterns of differential equations.",
+    "Strengthen substitution and integration by parts with focused drills.",
   ],
 };
 
 const mockMistakes = [
   {
     id: 1,
-    question_stem: "求函数 f(x) = x^3 - 3x + 2 的极值点",
+    question_stem: "Find extreme points of f(x)=x^3-3x+2",
     question_type: "short_answer",
     user_answer: "x=1",
-    correct_answer: "x=1 和 x=-1",
-    analysis: "漏掉了 x=-1 这个极大值点",
-    knowledge_point: "极值与最值",
+    correct_answer: "x=1 and x=-1",
+    analysis: "Missed one critical point.",
+    knowledge_point: "Extrema",
     created_at: "2026-03-14T10:00:00Z",
   },
 ];
 
 const mockKnowledgeNodes = [
-  { id: 101, subject: "mock", node_type: "Concept", canonical_name: "函数与极限", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 102, subject: "mock", node_type: "Concept", canonical_name: "导数与微分", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 103, subject: "mock", node_type: "Concept", canonical_name: "积分", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 104, subject: "mock", node_type: "Concept", canonical_name: "微分方程", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 105, subject: "mock", node_type: "Concept", canonical_name: "隐函数求导", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 101, subject: "mock", node_type: "Concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, subject: "mock", node_type: "Concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 103, subject: "mock", node_type: "Concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 104, subject: "mock", node_type: "Concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 105, subject: "mock", node_type: "Concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockUnitItems = [
-  { id: 201, subject: "mock", canonical_name: "函数与极限单元", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 202, subject: "mock", canonical_name: "导数单元", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 201, subject: "mock", canonical_name: "Limits Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 202, subject: "mock", canonical_name: "Derivative Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockMasteryOverview = {
@@ -196,11 +196,11 @@ export const profileHandlers = [
     });
   }),
 
-  http.get("/api/v1/subjects/:subject/mastery", () => {
+  http.get("/api/v1/subjects/:subject/profile/mastery", () => {
     return HttpResponse.json({ code: 0, data: mockMasteryOverview });
   }),
 
-  http.get("/api/v1/subjects/:subject/review/tasks", () => {
+  http.get("/api/v1/subjects/:subject/profile/review/tasks", () => {
     return HttpResponse.json({ code: 0, data: mockReviewTasks });
   }),
 

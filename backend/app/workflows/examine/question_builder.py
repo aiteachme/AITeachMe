@@ -23,7 +23,7 @@ from app.core.model_router import TaskType
 from app.core.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionTemplate, QuestionTemplateNodeLink, QuestionType
 from app.models.curriculum import TeachingUnitMembership
-from app.repositories import assessment_repo
+from app.repositories import exams_repo
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.schemas.llm import SYSTEM
 from app.utils.time import utcnow
@@ -285,7 +285,7 @@ async def build_question_templates(
                 continue
 
             stem_hash = _stem_hash(stem)
-            if assessment_repo.find_template_by_stem_hash(session, subject, unit_id, stem_hash) is not None:
+            if exams_repo.find_template_by_stem_hash(session, subject, unit_id, stem_hash) is not None:
                 logger.info("question_builder_skip_duplicate_stem_hash", unit_id=unit_id, stem_hash=stem_hash)
                 continue
 
@@ -303,7 +303,7 @@ async def build_question_templates(
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )
-            persisted = assessment_repo.create_question_template(session, template)
+            persisted = exams_repo.create_question_template(session, template)
             created_templates.append(persisted)
 
             fallback_node = node_contexts[idx % len(node_contexts)].node_id
@@ -319,6 +319,6 @@ async def build_question_templates(
             )
 
         if links_to_create:
-            assessment_repo.create_template_node_links(session, links_to_create)
+            exams_repo.create_template_node_links(session, links_to_create)
 
     return created_templates

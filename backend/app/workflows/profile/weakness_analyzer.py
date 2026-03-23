@@ -16,7 +16,7 @@ from datetime import timedelta
 from sqlmodel import Session, select
 
 from app.models import ExamPaper, ExamPaperItem, UnitDependency, UnitTreeMembership, UserAnswerAttempt, UserKnowledgeState, WeaknessReason
-from app.repositories import assessment_repo
+from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
 
@@ -74,7 +74,7 @@ def _exam_weight_by_unit(
     *,
     subject: str,
 ) -> dict[int, float]:
-    snapshot = assessment_repo.get_published_curriculum_snapshot(session, subject)
+    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
     if snapshot is None or snapshot.theme_tree_version_id is None:
         return {}
 
@@ -104,7 +104,7 @@ def _prereq_gap_units(
     subject: str,
     unit_states: dict[int, UserKnowledgeState],
 ) -> set[int]:
-    snapshot = assessment_repo.get_published_curriculum_snapshot(session, subject)
+    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
     if snapshot is None or snapshot.prereq_dag_version_id is None:
         return set()
 
@@ -165,7 +165,7 @@ def analyze_weakness(
 
     states = [
         item
-        for item in assessment_repo.list_knowledge_states(session, user_id=user_id, subject=subject, granularity="unit")
+        for item in profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, granularity="unit")
     ]
     if not states:
         return []

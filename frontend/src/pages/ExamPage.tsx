@@ -129,10 +129,6 @@ function PageWrapper({ children, title, subtitle, badgeText }: { children: React
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function toGenerateStatusLabel(status: string): string {
   if (status === "pending") return "任务排队中...";
   if (status === "running") return "正在自动构题并组卷...";
@@ -180,7 +176,7 @@ async function fetchExamDetail(subject: string, examPaperId: number): Promise<Ex
   const res = await apiClient<ApiResponse<ExamPaperDetail>>(
     {
       method: "GET",
-      url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+      url: `/api/v1/subjects/${subject}/exams/${examPaperId}`,
     },
     {
       timeout: EXAM_REQUEST_TIMEOUT_MS,
@@ -203,7 +199,7 @@ async function generateExamPaper(
   const res = await apiClient<ApiResponse<ExamGenerateResult>>(
     {
       method: "POST",
-      url: `/api/v1/subjects/${subject}/exam/generate`,
+      url: `/api/v1/subjects/${subject}/exams/generate`,
       data: body,
     },
     {
@@ -231,7 +227,7 @@ async function submitAndGradeExam(
   await apiClient<ApiResponse<ExamPaperDetail>>(
     {
       method: "POST",
-      url: `/api/v1/subjects/${subject}/exam/${examPaperId}/submit`,
+      url: `/api/v1/subjects/${subject}/exams/${examPaperId}/submit`,
       data: {
         answers: Object.entries(answers).map(([exam_paper_item_id, answer]) => ({
           exam_paper_item_id: Number(exam_paper_item_id),
@@ -247,7 +243,7 @@ async function submitAndGradeExam(
   const gradeRes = await apiClient<ApiResponse<ExamGradeResult>>(
     {
       method: "POST",
-      url: `/api/v1/subjects/${subject}/exam/${examPaperId}/grade`,
+      url: `/api/v1/subjects/${subject}/exams/${examPaperId}/grade`,
       params: { regrade: false },
     },
     {
@@ -267,7 +263,7 @@ async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
   const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>(
     {
       method: "GET",
-      url: `/api/v1/subjects/${subject}/exam/history`,
+      url: `/api/v1/subjects/${subject}/exams/history`,
       params: { page: 1, size: 50 },
     },
     {
@@ -281,7 +277,7 @@ async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
   const res = await apiClient<ApiResponse<QuestionBankItem[]>>(
     {
       method: "GET",
-      url: `/api/v1/subjects/${subject}/exam/question-bank`,
+      url: `/api/v1/subjects/${subject}/exams/question-bank`,
     },
     {
       timeout: EXAM_REQUEST_TIMEOUT_MS,
@@ -294,7 +290,7 @@ async function deleteExamPaper(subject: string, examPaperId: number): Promise<De
   const res = await apiClient<ApiResponse<DeleteExamResult>>(
     {
       method: "DELETE",
-      url: `/api/v1/subjects/${subject}/exam/${examPaperId}`,
+      url: `/api/v1/subjects/${subject}/exams/${examPaperId}`,
     },
     {
       timeout: EXAM_REQUEST_TIMEOUT_MS,

@@ -19,7 +19,7 @@ import structlog
 from sqlmodel import Session, select
 
 from app.models import ExamPaper, ExamPaperItem, UserKnowledgeState
-from app.repositories import assessment_repo
+from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -221,7 +221,7 @@ def _upsert_state_from_attempts(
     if not attempts:
         return None
 
-    existing = assessment_repo.get_knowledge_state(
+    existing = profile_repo.get_knowledge_state(
         session,
         user_id=user_id,
         subject=subject,
@@ -267,7 +267,7 @@ def _upsert_state_from_attempts(
         last_recomputed_at=now,
         updated_at=now,
     )
-    return assessment_repo.upsert_knowledge_state(session, state)
+    return profile_repo.upsert_knowledge_state(session, state)
 
 
 def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpdateResult:
@@ -285,7 +285,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
         session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id == exam_paper_id)).all()
     )
     item_by_id = {item.id: item for item in items if item.id is not None}
-    attempts = assessment_repo.list_attempts_by_paper(session, exam_paper_id)
+    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
 
     unit_attempts: dict[int, list[_WeightedAttempt]] = {}
     node_attempts: dict[int, list[_WeightedAttempt]] = {}

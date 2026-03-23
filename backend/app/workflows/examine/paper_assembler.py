@@ -34,7 +34,7 @@ from app.models import (
     UserKnowledgeState,
 )
 from app.models.curriculum import CurriculumSnapshot
-from app.repositories import assessment_repo
+from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -218,7 +218,7 @@ def _resolve_practice_units(
     if theme_tree_node_id is None:
         return set()
     return set(
-        assessment_repo.resolve_teaching_units_from_theme_tree_node(
+        exams_repo.resolve_teaching_units_from_theme_tree_node(
             session,
             theme_tree_node_id,
         )
@@ -273,7 +273,7 @@ def _build_mock_final_unit_allocation(
 
 
 def _snapshot_node_links_json(session: Session, template_id: int) -> str:
-    links = assessment_repo.find_node_links_by_template(session, template_id)
+    links = exams_repo.find_node_links_by_template(session, template_id)
     payload = [
         {
             "knowledge_node_id": link.knowledge_node_id,
@@ -303,12 +303,12 @@ def assemble_paper(
     now = as_of or utcnow()
     question_type_filter = set(item for item in (preferred_question_types or []) if item)
 
-    snapshot = assessment_repo.get_published_curriculum_snapshot(session, subject)
+    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
     if snapshot is None or snapshot.id is None:
         raise NoPublishedCurriculumSnapshotError(subject)
 
     excluded_ids = set(
-        assessment_repo.list_recent_exam_template_ids_for_user(
+        exams_repo.list_recent_exam_template_ids_for_user(
             session,
             user_id,
             subject,
@@ -350,7 +350,7 @@ def assemble_paper(
     elif mode == ExamMode.WEAKPOINT_BOOST.value:
         weak_states = [
             state
-            for state in assessment_repo.list_weak_knowledge_states(
+            for state in profile_repo.list_weak_knowledge_states(
                 session,
                 user_id=user_id,
                 subject=subject,
@@ -362,7 +362,7 @@ def assemble_paper(
         source_state_by_unit = {state.target_id: state.id for state in weak_states if state.id is not None}
         prereq_units: set[int] = set()
         for unit_id in weak_units:
-            prereq_units.update(assessment_repo.list_prereq_units(session, unit_id))
+            prereq_units.update(exams_repo.list_prereq_units(session, unit_id))
         transfer_units = set(
             uid
             for uid in _build_unit_template_pool(
@@ -429,7 +429,7 @@ def assemble_paper(
     elif mode == ExamMode.REVIEW.value:
         due_states = [
             state
-            for state in assessment_repo.list_due_knowledge_states(
+            for state in profile_repo.list_due_knowledge_states(
                 session,
                 user_id=user_id,
                 subject=subject,
@@ -455,7 +455,7 @@ def assemble_paper(
                 source_state_by_unit=source_state_by_unit,
             )
         )
-        pending_review_tasks = assessment_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
+        pending_review_tasks = profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
         context_payload["review_task_ids_json"] = [task.id for task in pending_review_tasks if task.id is not None]
     elif mode == ExamMode.MOCK_FINAL.value:
         allocation = _build_mock_final_unit_allocation(
@@ -552,7 +552,7 @@ def assemble_paper(
     if not selections:
         raise ValueError("当前科目暂无可用题目模板，系统自动构题失败，请稍后重试。")
 
-    paper = assessment_repo.create_exam_paper(
+    paper = exams_repo.create_exam_paper(
         session,
         ExamPaper(
             subject=subject,
@@ -608,7 +608,7 @@ def assemble_paper(
             )
         )
 
-    created_items = assessment_repo.create_exam_paper_items(session, items_to_create)
+    created_items = exams_repo.create_exam_paper_items(session, items_to_create)
     paper.total_items = len(created_items)
     paper.status = "ready"
     paper.updated_at = utcnow()
@@ -635,5 +635,5 @@ def assemble_paper(
         excluded_template_ids_json=json.dumps(context_payload["excluded_template_ids_json"], ensure_ascii=False),
         created_at=utcnow(),
     )
-    assessment_repo.create_generation_context(session, context)
+    exams_repo.create_generation_context(session, context)
     return paper

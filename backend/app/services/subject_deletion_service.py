@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -16,6 +16,9 @@ from app.models import (
     EdgeRevision,
     EvidenceLink,
     Exam,
+    ExamPaper,
+    ExamPaperGenerationContext,
+    ExamPaperItem,
     ExamSubmission,
     KnowledgeAlias,
     KnowledgeEdge,
@@ -24,7 +27,10 @@ from app.models import (
     Mistake,
     PrereqDagVersion,
     Question,
+    QuestionTemplate,
+    QuestionTemplateNodeLink,
     RawFile,
+    ReviewTask,
     Subject,
     TaxonomyAnchor,
     TeachingUnit,
@@ -34,6 +40,8 @@ from app.models import (
     ThemeTreeVersion,
     UnitDependency,
     UnitTreeMembership,
+    UserAnswerAttempt,
+    UserKnowledgeState,
     UserProfile,
 )
 from app.repositories.subject_repo import delete_subject
@@ -47,7 +55,20 @@ from app.services.upload_support import build_subject_dir
 
 logger = structlog.get_logger()
 
-_EXAM_KEYS = ["exam", "question", "exam_submission", "answer_record", "mistake"]
+_EXAM_KEYS = [
+    "exam",
+    "question",
+    "exam_submission",
+    "answer_record",
+    "mistake",
+    "question_template",
+    "question_template_node_link",
+    "exam_paper",
+    "exam_paper_item",
+    "user_answer_attempt",
+    "exam_paper_generation_context",
+]
+_PROFILE_KEYS = ["user_profile", "user_knowledge_state", "review_task"]
 _KNOWLEDGE_KEYS = [
     "curriculum_snapshot",
     "edge_revision",
@@ -130,6 +151,58 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             .join(ExamSubmission, AnswerRecord.submission_id == ExamSubmission.id)
             .join(Exam, ExamSubmission.exam_id == Exam.id)
             .where(Exam.subject == subject),
+        ),
+        "question_template": _count_rows(
+            session,
+            QuestionTemplate,
+            QuestionTemplate.subject == subject,
+        ),
+        "question_template_node_link": _count_query(
+            session,
+            select(func.count())
+            .select_from(QuestionTemplateNodeLink)
+            .join(
+                QuestionTemplate,
+                QuestionTemplateNodeLink.question_template_id == QuestionTemplate.id,
+            )
+            .where(QuestionTemplate.subject == subject),
+        ),
+        "exam_paper": _count_rows(
+            session,
+            ExamPaper,
+            ExamPaper.subject == subject,
+        ),
+        "exam_paper_item": _count_query(
+            session,
+            select(func.count())
+            .select_from(ExamPaperItem)
+            .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
+            .where(ExamPaper.subject == subject),
+        ),
+        "user_answer_attempt": _count_query(
+            session,
+            select(func.count())
+            .select_from(UserAnswerAttempt)
+            .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
+            .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
+            .where(ExamPaper.subject == subject),
+        ),
+        "exam_paper_generation_context": _count_query(
+            session,
+            select(func.count())
+            .select_from(ExamPaperGenerationContext)
+            .join(ExamPaper, ExamPaperGenerationContext.exam_paper_id == ExamPaper.id)
+            .where(ExamPaper.subject == subject),
+        ),
+        "user_knowledge_state": _count_rows(
+            session,
+            UserKnowledgeState,
+            UserKnowledgeState.subject == subject,
+        ),
+        "review_task": _count_rows(
+            session,
+            ReviewTask,
+            ReviewTask.subject == subject,
         ),
         "document_chunk": _count_query(
             session,
@@ -232,13 +305,13 @@ def build_subject_delete_preview(
             key="knowledge",
             label="知识图谱与课程结构",
             count=_sum_counts(detail_counts, _KNOWLEDGE_KEYS),
-            description="会删除知识点、边、证据、课程结构和构建任务等派生数据。",
+            description="会删除知识点、关系、证据、课程结构等派生数据。",
         ),
         SubjectDeleteImpactItem(
             key="exam",
-            label="试卷与作答记录",
+            label="考试与判题记录",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
-            description="会删除试卷、题目、提交记录、答案记录和错题分析。",
+            description="会删除旧 exam 链路和新 assessment 链路的出题、组卷、判题数据。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
@@ -249,8 +322,8 @@ def build_subject_delete_preview(
         SubjectDeleteImpactItem(
             key="profile",
             label="学习画像",
-            count=detail_counts["user_profile"],
-            description="会删除该学科下的掌握度与历史画像记录。",
+            count=_sum_counts(detail_counts, _PROFILE_KEYS),
+            description="会删除旧 profile 和新 mastery/review 相关记录。",
         ),
     ]
     return SubjectDeletePreviewData(
@@ -289,10 +362,65 @@ def delete_subject_with_all_content(
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
-    exams = list(session.exec(select(Exam).where(Exam.subject == subject)).all())
-    if not exams:
-        return
+    # New assessment chain
+    papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
+    paper_ids = [paper.id for paper in papers if paper.id is not None]
+    if paper_ids:
+        review_tasks = list(
+            session.exec(
+                select(ReviewTask).where(ReviewTask.source_exam_paper_id.in_(paper_ids))
+            ).all()
+        )
+        for task in review_tasks:
+            session.delete(task)
 
+        generation_contexts = list(
+            session.exec(
+                select(ExamPaperGenerationContext).where(
+                    ExamPaperGenerationContext.exam_paper_id.in_(paper_ids)
+                )
+            ).all()
+        )
+        for ctx in generation_contexts:
+            session.delete(ctx)
+
+        paper_items = list(
+            session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()
+        )
+        item_ids = [item.id for item in paper_items if item.id is not None]
+        if item_ids:
+            attempts = list(
+                session.exec(
+                    select(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(item_ids))
+                ).all()
+            )
+            for attempt in attempts:
+                session.delete(attempt)
+        for item in paper_items:
+            session.delete(item)
+
+    for paper in papers:
+        session.delete(paper)
+
+    templates = list(
+        session.exec(select(QuestionTemplate).where(QuestionTemplate.subject == subject)).all()
+    )
+    template_ids = [template.id for template in templates if template.id is not None]
+    if template_ids:
+        template_links = list(
+            session.exec(
+                select(QuestionTemplateNodeLink).where(
+                    QuestionTemplateNodeLink.question_template_id.in_(template_ids)
+                )
+            ).all()
+        )
+        for link in template_links:
+            session.delete(link)
+    for template in templates:
+        session.delete(template)
+
+    # Legacy exam chain
+    exams = list(session.exec(select(Exam).where(Exam.subject == subject)).all())
     exam_ids = [exam.id for exam in exams if exam.id is not None]
     if exam_ids:
         submissions = list(
@@ -345,11 +473,22 @@ def _delete_chat_messages(session: Session, *, subject: str) -> None:
 
 
 def _delete_profiles(session: Session, *, subject: str) -> None:
+    review_tasks = list(session.exec(select(ReviewTask).where(ReviewTask.subject == subject)).all())
+    for task in review_tasks:
+        session.delete(task)
+
+    knowledge_states = list(
+        session.exec(select(UserKnowledgeState).where(UserKnowledgeState.subject == subject)).all()
+    )
+    for state in knowledge_states:
+        session.delete(state)
+
     profiles = list(session.exec(select(UserProfile).where(UserProfile.subject == subject)).all())
-    if not profiles:
-        return
     for profile in profiles:
         session.delete(profile)
+
+    if not review_tasks and not knowledge_states and not profiles:
+        return
     session.commit()
 
 
@@ -396,3 +535,5 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
+
+

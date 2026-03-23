@@ -1,6 +1,6 @@
 """History-loading node builders for the interact workflow.
 
-Reads DB: ``chat_message`` plus legacy ``user_profile`` and ``mistake`` summaries.
+Reads DB: ``chat_message`` plus assessment mastery/attempt summaries (with legacy fallback).
 Writes DB: none.
 Writes FS: none.
 Idempotency: read-only node; repeated runs return the latest persisted history snapshot.
@@ -11,9 +11,10 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from app.core.config import get_settings
+from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
-from app.repositories.exams_repo import list_mistakes_by_subject
-from app.repositories.profile_repo import get_weak_points
+from app.repositories.exams_repo import list_mistakes_by_subject as list_legacy_mistakes_by_subject
+from app.repositories.profile_repo import get_weak_points as get_legacy_weak_points
 from app.services.presenters import mastery_to_text
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
@@ -40,23 +41,43 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session)
                 session_id=state.get("session_id"),
             )
         ]
-        weak_points = [
-            WeakPointSummary(
-                knowledge_point=item.knowledge_point,
-                mastery_text=mastery_to_text(item.mastery),
-            )
-            for item in get_weak_points(session, state["subject"], limit=10)
-        ]
-        recent_mistakes_raw, _ = list_mistakes_by_subject(
+        weak_points_from_assessment = profile_repo.list_weak_node_summaries(
             session,
-            state["subject"],
-            limit=5,
-            offset=0,
+            user_id="local",
+            subject=state["subject"],
+            limit=10,
         )
-        recent_mistakes = [
-            MistakeSummary.model_validate(item)
-            for item in recent_mistakes_raw
-        ]
+        if weak_points_from_assessment:
+            weak_points = [
+                WeakPointSummary(
+                    knowledge_point=name,
+                    mastery_text=mastery_to_text(mastery),
+                )
+                for name, mastery in weak_points_from_assessment
+            ]
+        else:
+            weak_points = [
+                WeakPointSummary(
+                    knowledge_point=item.knowledge_point,
+                    mastery_text=mastery_to_text(item.mastery),
+                )
+                for item in get_legacy_weak_points(session, state["subject"], limit=10)
+            ]
+
+        recent_mistakes_raw = profile_repo.list_recent_wrong_attempt_summaries(
+            session,
+            user_id="local",
+            subject=state["subject"],
+            limit=5,
+        )
+        if not recent_mistakes_raw:
+            recent_mistakes_raw, _ = list_legacy_mistakes_by_subject(
+                session,
+                state["subject"],
+                limit=5,
+                offset=0,
+            )
+        recent_mistakes = [MistakeSummary.model_validate(item) for item in recent_mistakes_raw]
         workflow_logger.info(
             "interact_history_loaded",
             recent_message_count=len(recent_messages),

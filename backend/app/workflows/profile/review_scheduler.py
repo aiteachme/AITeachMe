@@ -15,7 +15,7 @@ from datetime import timedelta
 from sqlmodel import Session
 
 from app.models import ReviewTask, UserKnowledgeState, WeaknessReason
-from app.repositories import assessment_repo
+from app.repositories import profile_repo
 from app.utils.time import utcnow
 
 
@@ -107,7 +107,7 @@ def _expire_outdated_pending_tasks(
 ) -> None:
     now = utcnow()
     changed = False
-    for task in assessment_repo.list_pending_reviews(session, user_id=user_id, subject=subject):
+    for task in profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject):
         if _as_utc(task.scheduled_at) + timedelta(days=7) <= now:
             task.status = "expired"
             task.expired_at = now
@@ -152,7 +152,7 @@ def schedule_reviews(
         if state.mastery_score >= 0.8:
             continue
 
-        existing_pending = assessment_repo.find_pending_review(
+        existing_pending = profile_repo.find_pending_review(
             session,
             user_id=user_id,
             subject=subject,
@@ -189,6 +189,6 @@ def schedule_reviews(
             source_state_id=state.id,
             source_exam_paper_id=None,
         )
-        persisted_tasks.append(assessment_repo.upsert_review_task(session, task))
+        persisted_tasks.append(profile_repo.upsert_review_task(session, task))
 
     return persisted_tasks
