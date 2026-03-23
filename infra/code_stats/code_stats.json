@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T01:59:01.827931",
-  "total_commits_analyzed": 184,
+  "generated_at": "2026-03-23T04:15:57.107275",
+  "total_commits_analyzed": 198,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1473,6 +1473,118 @@
       "code_lines": 41693,
       "other_lines": 12651,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "46475bf",
+      "total_lines": 54716,
+      "code_lines": 41984,
+      "other_lines": 12732,
+      "message": "chore: docgen优化，增加db文档"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "c186716",
+      "total_lines": 57276,
+      "code_lines": 44303,
+      "other_lines": 12973,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "1217270",
+      "total_lines": 54872,
+      "code_lines": 42127,
+      "other_lines": 12745,
+      "message": "feat(frontend): 重构网站首页实现类 OpenMAIC 的精美全屏入口体验"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "38898e1",
+      "total_lines": 55578,
+      "code_lines": 42728,
+      "other_lines": 12850,
+      "message": "feat: 增强ingest，增强ui"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "69f5bb8",
+      "total_lines": 55471,
+      "code_lines": 42636,
+      "other_lines": 12835,
+      "message": "chore: 暂存"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "ba7b493",
+      "total_lines": 55539,
+      "code_lines": 42730,
+      "other_lines": 12809,
+      "message": "refactor: files api 重构"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "ccd9ee8",
+      "total_lines": 55458,
+      "code_lines": 42664,
+      "other_lines": 12794,
+      "message": "style: 增加入口文件，优化ui"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "180191a",
+      "total_lines": 55738,
+      "code_lines": 43245,
+      "other_lines": 12493,
+      "message": "fix: 恢复知识文档多章节生成并清理文档页乱码"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "3817bf7",
+      "total_lines": 56445,
+      "code_lines": 43928,
+      "other_lines": 12517,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "ca749df",
+      "total_lines": 54344,
+      "code_lines": 41693,
+      "other_lines": 12651,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "83b0bee",
+      "total_lines": 56837,
+      "code_lines": 44287,
+      "other_lines": 12550,
+      "message": "feat: 添加设置页面"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "f0bb67d",
+      "total_lines": 56892,
+      "code_lines": 44339,
+      "other_lines": 12553,
+      "message": "style: 调整样式，添加设置页面"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "8abe45d",
+      "total_lines": 55433,
+      "code_lines": 43032,
+      "other_lines": 12401,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "0958839",
+      "total_lines": 55890,
+      "code_lines": 43453,
+      "other_lines": 12437,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
     }
   ]
 }
