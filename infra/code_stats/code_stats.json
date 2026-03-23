@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T05:29:59.433929",
-  "total_commits_analyzed": 202,
+  "generated_at": "2026-03-23T07:09:23.551488",
+  "total_commits_analyzed": 206,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1617,6 +1617,38 @@
       "code_lines": 43667,
       "other_lines": 12477,
       "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "d604f7e",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "103db99",
+      "total_lines": 55890,
+      "code_lines": 43453,
+      "other_lines": 12437,
+      "message": "chore: 更新packagelock"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "fdc8e15",
+      "total_lines": 56144,
+      "code_lines": 43667,
+      "other_lines": 12477,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "006ac20",
+      "total_lines": 56419,
+      "code_lines": 43915,
+      "other_lines": 12504,
+      "message": "更新命名"
     }
   ]
 }
