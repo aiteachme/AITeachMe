@@ -2405,12 +2405,12 @@
       }
     },
     "/api/v1/subjects/{subject}/exams/history": {
-      "get": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Paginated exam history",
-        "operationId": "api_get_exam_history_api_v1_subjects__subject__exams_history_get",
+        "operationId": "api_get_exam_history_api_v1_subjects__subject__exams_history_post",
         "parameters": [
           {
             "name": "subject",
@@ -2500,12 +2500,12 @@
       }
     },
     "/api/v1/subjects/{subject}/exams/generate-jobs/{job_id}": {
-      "get": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Exam generate job status",
-        "operationId": "api_get_generate_job_status_api_v1_subjects__subject__exams_generate_jobs__job_id__get",
+        "operationId": "api_get_generate_job_status_api_v1_subjects__subject__exams_generate_jobs__job_id__post",
         "parameters": [
           {
             "name": "subject",
@@ -2582,12 +2582,12 @@
       }
     },
     "/api/v1/subjects/{subject}/exams/grade-jobs/{job_id}": {
-      "get": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Exam grade job status",
-        "operationId": "api_get_grade_job_status_api_v1_subjects__subject__exams_grade_jobs__job_id__get",
+        "operationId": "api_get_grade_job_status_api_v1_subjects__subject__exams_grade_jobs__job_id__post",
         "parameters": [
           {
             "name": "subject",
@@ -2664,12 +2664,12 @@
       }
     },
     "/api/v1/subjects/{subject}/exams/question-bank": {
-      "get": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Question bank view",
-        "operationId": "api_get_question_bank_api_v1_subjects__subject__exams_question_bank_get",
+        "operationId": "api_get_question_bank_api_v1_subjects__subject__exams_question_bank_post",
         "parameters": [
           {
             "name": "subject",
@@ -2736,12 +2736,12 @@
       }
     },
     "/api/v1/subjects/{subject}/exams/{exam_paper_id}": {
-      "get": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Exam paper detail",
-        "operationId": "api_get_exam_detail_api_v1_subjects__subject__exams__exam_paper_id__get",
+        "operationId": "api_get_exam_detail_api_v1_subjects__subject__exams__exam_paper_id__post",
         "parameters": [
           {
             "name": "subject",
@@ -2815,13 +2815,15 @@
             }
           }
         }
-      },
-      "delete": {
+      }
+    },
+    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/delete": {
+      "post": {
         "tags": [
           "exams"
         ],
         "summary": "Delete exam paper",
-        "operationId": "api_delete_exam_api_v1_subjects__subject__exams__exam_paper_id__delete",
+        "operationId": "api_delete_exam_api_v1_subjects__subject__exams__exam_paper_id__delete_post",
         "parameters": [
           {
             "name": "subject",

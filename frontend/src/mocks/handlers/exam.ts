@@ -437,7 +437,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exams/generate-jobs/:jobId", ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/generate-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = generateJobs.get(jobId);
     if (!job) {
@@ -446,7 +446,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exams/history", ({ params, request }) => {
+  http.post("/api/v1/subjects/:subject/exams/history", ({ params, request }) => {
     const subject = String(params.subject);
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
@@ -474,12 +474,12 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { items, total: all.length, page, size } });
   }),
 
-  http.get("/api/v1/subjects/:subject/exams/question-bank", ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/question-bank", ({ params }) => {
     const subject = String(params.subject);
     return HttpResponse.json({ code: 0, data: buildQuestionBank(subject) });
   }),
 
-  http.get("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -488,7 +488,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
   }),
 
-  http.delete("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/:examPaperId/delete", ({ params }) => {
     const paperId = Number(params.examPaperId);
     if (!papers.has(paperId)) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
@@ -571,7 +571,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.get("/api/v1/subjects/:subject/exams/grade-jobs/:jobId", ({ params }) => {
+  http.post("/api/v1/subjects/:subject/exams/grade-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = gradeJobs.get(jobId);
     if (!job) {

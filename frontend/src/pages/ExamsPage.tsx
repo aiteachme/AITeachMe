@@ -175,7 +175,7 @@ function toMessage(error: unknown): string {
 async function fetchExamDetail(subject: string, examPaperId: number): Promise<ExamPaperDetail> {
   const res = await apiClient<ApiResponse<ExamPaperDetail>>(
     {
-      method: "GET",
+      method: "POST",
       url: `/api/v1/subjects/${subject}/exams/${examPaperId}`,
     },
     {
@@ -262,7 +262,7 @@ async function submitAndGradeExam(
 async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
   const res = await apiClient<ApiResponse<PaginatedData<ExamHistoryItem>>>(
     {
-      method: "GET",
+      method: "POST",
       url: `/api/v1/subjects/${subject}/exams/history`,
       params: { page: 1, size: 50 },
     },
@@ -276,7 +276,7 @@ async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
 async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
   const res = await apiClient<ApiResponse<QuestionBankItem[]>>(
     {
-      method: "GET",
+      method: "POST",
       url: `/api/v1/subjects/${subject}/exams/question-bank`,
     },
     {
@@ -289,8 +289,8 @@ async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
 async function deleteExamPaper(subject: string, examPaperId: number): Promise<DeleteExamResult> {
   const res = await apiClient<ApiResponse<DeleteExamResult>>(
     {
-      method: "DELETE",
-      url: `/api/v1/subjects/${subject}/exams/${examPaperId}`,
+      method: "POST",
+      url: `/api/v1/subjects/${subject}/exams/${examPaperId}/delete`,
     },
     {
       timeout: EXAM_REQUEST_TIMEOUT_MS,

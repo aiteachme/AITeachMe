@@ -179,7 +179,7 @@ async def api_trigger_exam_generate(
     return ok_response(_to_exam_generate_job_response(job))
 
 
-@router.get(
+@router.post(
     "/history",
     response_model=ApiResponse[PaginatedData[ExamHistoryItem]],
     summary="Paginated exam history",
@@ -211,7 +211,7 @@ async def api_get_exam_history(
     )
 
 
-@router.get(
+@router.post(
     "/generate-jobs/{job_id:int}",
     response_model=ApiResponse[ExamGenerateJobStatusResponse],
     summary="Exam generate job status",
@@ -234,7 +234,7 @@ async def api_get_generate_job_status(
     return ok_response(_to_exam_generate_job_response(job))
 
 
-@router.get(
+@router.post(
     "/grade-jobs/{job_id:int}",
     response_model=ApiResponse[ExamGradeJobStatusResponse],
     summary="Exam grade job status",
@@ -257,7 +257,7 @@ async def api_get_grade_job_status(
     return ok_response(_to_exam_grade_job_response(job))
 
 
-@router.get(
+@router.post(
     "/question-bank",
     response_model=ApiResponse[list[QuestionBankItemResponse]],
     summary="Question bank view",
@@ -274,7 +274,7 @@ async def api_get_question_bank(
     return ok_response([_to_question_bank_item_response(item) for item in items])
 
 
-@router.get(
+@router.post(
     "/{exam_paper_id:int}",
     response_model=ApiResponse[ExamPaperDetailResponse],
     summary="Exam paper detail",
@@ -297,8 +297,8 @@ async def api_get_exam_detail(
     return ok_response(_to_exam_paper_detail_response(detail))
 
 
-@router.delete(
-    "/{exam_paper_id:int}",
+@router.post(
+    "/{exam_paper_id:int}/delete",
     response_model=ApiResponse[ExamPaperDeleteResponse],
     summary="Delete exam paper",
     responses=build_error_responses([400, 404, 409, 500]),
