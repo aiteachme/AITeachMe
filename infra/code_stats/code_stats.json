@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T08:52:29.668513",
-  "total_commits_analyzed": 217,
+  "generated_at": "2026-03-23T12:09:25.964374",
+  "total_commits_analyzed": 219,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1737,6 +1737,22 @@
       "code_lines": 44248,
       "other_lines": 12455,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "71058e8",
+      "total_lines": 56703,
+      "code_lines": 44248,
+      "other_lines": 12455,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "7c4c72d",
+      "total_lines": 56693,
+      "code_lines": 44238,
+      "other_lines": 12455,
+      "message": "fix: 解决动画刷新两次的问题"
     }
   ]
 }
