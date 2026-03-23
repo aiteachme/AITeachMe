@@ -241,7 +241,6 @@ async def build_question_templates(
     subject: str,
     unit_ids: list[int],
     questions_per_unit: int = 9,
-    created_by_job_id: int | None = None,
 ) -> list[QuestionTemplate]:
     """Build question templates by teaching units."""
 
@@ -301,7 +300,6 @@ async def build_question_templates(
                 answer=answer,
                 explanation=explanation,
                 status="active",
-                created_by_job_id=created_by_job_id,
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )

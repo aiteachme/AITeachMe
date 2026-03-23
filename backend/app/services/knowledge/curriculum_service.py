@@ -14,7 +14,6 @@ from app.core.exceptions import (
     TeachingUnitNotFoundError,
 )
 from app.models.curriculum import (
-    CurriculumDeriveJob,
     CurriculumSnapshot,
     PrereqDagVersion,
     TaxonomyAnchor,
@@ -482,8 +481,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     _delete_all(TeachingUnit, "teaching_unit")
     session.commit()
 
-    # 5. CurriculumDeriveJob / TaxonomyAnchor
-    _delete_all(CurriculumDeriveJob, "curriculum_derive_job")
+    # 5. TaxonomyAnchor
     _delete_all(TaxonomyAnchor, "taxonomy_anchor")
     session.commit()
 

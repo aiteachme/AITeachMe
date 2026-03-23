@@ -10,7 +10,6 @@ from app.models import (
     AnswerRecord,
     ChatMessage,
     ChatSession,
-    CurriculumDeriveJob,
     CurriculumSnapshot,
     Document,
     DocumentChunk,
@@ -50,7 +49,6 @@ logger = structlog.get_logger()
 
 _EXAM_KEYS = ["exam", "question", "exam_submission", "answer_record", "mistake"]
 _KNOWLEDGE_KEYS = [
-    "curriculum_derive_job",
     "curriculum_snapshot",
     "edge_revision",
     "evidence_link",
@@ -139,9 +137,6 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             .select_from(DocumentChunk)
             .join(Document, DocumentChunk.document_id == Document.id)
             .where(Document.subject == subject),
-        ),
-        "curriculum_derive_job": _count_rows(
-            session, CurriculumDeriveJob, CurriculumDeriveJob.subject == subject
         ),
         "curriculum_snapshot": _count_rows(
             session, CurriculumSnapshot, CurriculumSnapshot.subject == subject

@@ -15,7 +15,6 @@ from sqlmodel import Session
 from app.core.database import managed_session
 from app.core.exceptions import NoReadyFilesForDocGenError, RawFileNotFoundError
 from app.models.raw_file import RawFile
-from app.repositories import curriculum_repo
 from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
 from app.repositories.knowledge import docgen_repo
 from app.schemas.knowledge import DigestBuildData, DocGenBuildData, DocGenGetResponse, DocGenJobResponse
@@ -130,9 +129,9 @@ async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> N
 async def run_curriculum_derive_background(
     *, subject: str, graph_job_id: int, curriculum_job_id: int
 ) -> None:
-    """Run curriculum derive workflow and keep failure fallback for existing table."""
+    """Run curriculum derive workflow."""
 
-    with managed_session() as session:
+    with managed_session():
         try:
             result = await run_curriculum_derive_workflow(
                 subject=subject,
@@ -140,26 +139,21 @@ async def run_curriculum_derive_background(
                 curriculum_job_id=curriculum_job_id,
             )
             if result.failed:
-                curriculum_repo.update_curriculum_job(
-                    session,
-                    curriculum_job_id,
-                    status="failed",
-                    error_message=result.error.detail[-500:],
+                logger.error(
+                    "curriculum_derive_background_failed",
+                    curriculum_job_id=curriculum_job_id,
+                    error=result.error.detail,
                 )
         except Exception:
             logger.exception(
                 "curriculum_derive_background_error",
                 curriculum_job_id=curriculum_job_id,
             )
-            try:
-                curriculum_repo.update_curriculum_job(
-                    session,
-                    curriculum_job_id,
-                    status="failed",
-                    error_message=traceback.format_exc()[-500:],
-                )
-            except Exception:
-                logger.exception("failed_to_mark_curriculum_job_failed")
+            logger.error(
+                "curriculum_derive_background_error_traceback",
+                curriculum_job_id=curriculum_job_id,
+                error=traceback.format_exc()[-500:],
+            )
 
 
 def trigger_docgen_build(
@@ -284,4 +278,3 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         source_file_ids=source_file_ids,
         prompt=prompt,
     )
-

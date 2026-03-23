@@ -37,11 +37,6 @@ class QuestionTemplate(SQLModel, table=True):
         foreign_key="curriculum_snapshot.id",
         index=True,
     )
-    created_by_job_id: int | None = Field(
-        default=None,
-        foreign_key="question_build_job.id",
-        index=True,
-    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -222,21 +217,3 @@ class ExamPaperGenerationContext(SQLModel, table=True):
     review_task_ids_json: str = Field(default="[]")
     excluded_template_ids_json: str = Field(default="[]")
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class QuestionBuildJob(SQLModel, table=True):
-    """Question template build job (still persisted)."""
-
-    __tablename__ = "question_build_job"
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    target_unit_ids_json: str = Field(default="[]")
-    questions_per_unit: int = Field(default=9, ge=1)
-    status: str = Field(default="pending", index=True)
-    progress: int = Field(default=0, ge=0, le=100)
-    templates_created: int = Field(default=0, ge=0)
-    warnings_json: str = Field(default="[]")
-    error_message: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)

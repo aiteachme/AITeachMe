@@ -10,7 +10,7 @@
 硬规则：
 - 先去环再约简（transitive reduction 定义基于 DAG，对含环图行为未定义）
 - 禁止调用任何 publish/archive helper；只能创建 draft version + UnitDependency
-- 所有新建记录设置 created_by_job_id
+- 新建记录不再写入任何 *_job_id 字段
 """
 
 from __future__ import annotations
@@ -512,12 +512,6 @@ async def derive_prereq_dag(
     dag_version = curriculum_repo.create_prereq_dag_version_with_optimistic_lock(
         session, subject, prev_version_no,
     )
-    dag_version.curriculum_job_id = curriculum_job_id
-    dag_version.created_by_job_id = curriculum_job_id
-    session.add(dag_version)
-    session.commit()
-    session.refresh(dag_version)
-
     # 写入 UnitDependency 记录
     for edge_cand in reduced_edges:
         # 构建 derivation_metadata
@@ -537,7 +531,6 @@ async def derive_prereq_dag(
             confidence=edge_cand.confidence,
             supporting_edge_count=edge_cand.supporting_edge_count,
             derivation_metadata_json=json.dumps(metadata, ensure_ascii=False),
-            created_by_job_id=curriculum_job_id,
         )
         curriculum_repo.create_unit_dependency(session, dep)
 

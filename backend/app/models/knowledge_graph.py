@@ -32,7 +32,6 @@ class KnowledgeNode(SQLModel, table=True):
     merged_into_node_id: int | None = Field(
         default=None, foreign_key="knowledge_node.id",
     )
-    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -57,7 +56,6 @@ class KnowledgeAlias(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     is_primary: bool = Field(default=False)
     status: str = Field(default="active")  # AliasStatus
-    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -82,7 +80,6 @@ class KnowledgeEdge(SQLModel, table=True):
     confidence: float = Field(default=0.5)
     status: str = Field(default="pending")  # KGEdgeStatus
     current_revision_id: int | None = Field(default=None)
-    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -103,7 +100,6 @@ class KnowledgeRevision(SQLModel, table=True):
     summary: str = ""
     body: str = ""
     revision_reason: str  # RevisionReason
-    digest_job_id: int | None = Field(default=None, index=True)
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -124,7 +120,6 @@ class EdgeRevision(SQLModel, table=True):
     weight: float
     confidence: float
     revision_reason: str  # RevisionReason
-    digest_job_id: int | None = Field(default=None, index=True)
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -153,5 +148,4 @@ class EvidenceLink(SQLModel, table=True):
     field_scope: str = Field(default="summary")  # FieldScope
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
-    created_by_job_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)

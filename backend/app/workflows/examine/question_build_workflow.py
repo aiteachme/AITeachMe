@@ -1,15 +1,12 @@
-"""QuestionBuildJob 工作流：基于 LangGraph 的题目模板构建状态机。
+"""Question build workflow based on LangGraph.
 
-Reads DB: ``question_build_job``, ``teaching_unit*`` and graph-backed teaching context.
-Writes DB: ``question_build_job`` progress/status and, via downstream builder calls,
-``question_template`` / ``question_template_node_link``.
+Reads DB: teaching units and graph-backed teaching context.
+Writes DB: question_template / question_template_node_link via downstream builder.
 Writes FS: none.
-Idempotency: reruns target the same build job and reuse its unit scope while refreshing progress.
 """
 
 from __future__ import annotations
 
-import json
 from contextlib import contextmanager
 from functools import partial
 from typing import Generator
@@ -19,9 +16,8 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.core.database import managed_session
-from app.models import QuestionBuildJob, QuestionTemplate, QuestionTemplateNodeLink
+from app.models import QuestionTemplate, QuestionTemplateNodeLink
 from app.repositories.knowledge import curriculum_repo, kg_repo
-from app.utils.time import utcnow
 from app.workflows.examine.question_builder import build_question_templates
 from app.workflows.examine.state import QuestionBuildState
 
@@ -50,23 +46,12 @@ async def load_units_node(
     *,
     session_override: Session | None = None,
 ) -> QuestionBuildState:
-    """加载可用教学单元（存在有效成员节点与修订）。"""
+    """Load valid teaching units with revision/member context."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
-            job = session.get(QuestionBuildJob, state["job_id"])
-            if job is None:
-                return {**state, "error": f"question_build_job_not_found: {state['job_id']}"}
-
-            if job.status == "pending":
-                job.status = "running"
-            job.progress = max(job.progress, 5)
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-
-            source_unit_ids = state.get("unit_ids") or json.loads(job.target_unit_ids_json or "[]")
+            source_unit_ids = state.get("unit_ids") or []
             warnings = list(state.get("warnings", []))
             valid_unit_ids: list[int] = []
 
@@ -94,12 +79,6 @@ async def load_units_node(
 
                 valid_unit_ids.append(int(unit_id))
 
-            job.warnings_json = json.dumps(warnings, ensure_ascii=False)
-            job.progress = max(job.progress, 10)
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-
             if not valid_unit_ids:
                 workflow_logger.warning("question_build_load_units_no_valid_units")
                 return {
@@ -126,20 +105,16 @@ async def generate_templates_node(
     *,
     session_override: Session | None = None,
 ) -> QuestionBuildState:
-    """逐单元调用 question_builder，单元失败时跳过并记录 warning。"""
+    """Generate templates unit-by-unit; keep warnings and continue on per-unit failures."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
-            job = session.get(QuestionBuildJob, state["job_id"])
-            if job is None:
-                return {**state, "error": f"question_build_job_not_found: {state['job_id']}"}
-
             unit_ids = state.get("unit_ids", [])
             warnings = list(state.get("warnings", []))
             created_template_ids: list[int] = list(state.get("created_template_ids", []))
             templates_created = int(state.get("templates_created", 0))
-            questions_per_unit = int(state.get("questions_per_unit", job.questions_per_unit))
+            questions_per_unit = int(state.get("questions_per_unit", 1))
 
             total_units = max(1, len(unit_ids))
             for idx, unit_id in enumerate(unit_ids, start=1):
@@ -149,7 +124,6 @@ async def generate_templates_node(
                         subject=state["subject"],
                         unit_ids=[unit_id],
                         questions_per_unit=questions_per_unit,
-                        created_by_job_id=state["job_id"],
                     )
                     templates_created += len(templates)
                     created_template_ids.extend([item.id for item in templates if item.id is not None])
@@ -163,13 +137,12 @@ async def generate_templates_node(
                         error=str(exc),
                     )
 
-                progress = 10 + int(80 * idx / total_units)
-                job.progress = max(job.progress, min(progress, 90))
-                job.templates_created = templates_created
-                job.warnings_json = json.dumps(warnings, ensure_ascii=False)
-                job.updated_at = utcnow()
-                session.add(job)
-                session.commit()
+                workflow_logger.debug(
+                    "question_build_unit_progress",
+                    processed_units=idx,
+                    total_units=total_units,
+                    templates_created=templates_created,
+                )
 
             workflow_logger.info(
                 "question_build_generate_complete",
@@ -194,28 +167,14 @@ async def finalize_build_node(
     *,
     session_override: Session | None = None,
 ) -> QuestionBuildState:
-    """完成 QuestionBuildJob。"""
+    """Finalize question build state."""
 
-    with _node_session(session_override) as session:
+    with _node_session(session_override):
         workflow_logger = _workflow_logger(state)
         try:
-            job = session.get(QuestionBuildJob, state["job_id"])
-            if job is None:
-                return {**state, "error": f"question_build_job_not_found: {state['job_id']}"}
-
-            job.status = "completed"
-            job.progress = 100
-            job.templates_created = int(state.get("templates_created", 0))
-            job.warnings_json = json.dumps(state.get("warnings", []), ensure_ascii=False)
-            job.error_message = None
-            job.updated_at = utcnow()
-            session.add(job)
-            session.commit()
-            session.refresh(job)
-
             workflow_logger.info(
                 "question_build_finalize_complete",
-                templates_created=job.templates_created,
+                templates_created=int(state.get("templates_created", 0)),
                 warning_count=len(state.get("warnings", [])),
             )
             return {**state, "error": None}
@@ -229,22 +188,25 @@ async def fail_build_node(
     *,
     session_override: Session | None = None,
 ) -> QuestionBuildState:
-    """失败处理：清理当前 job 产出的模板并标记 job 失败。"""
+    """Failure handler: cleanup templates created by current runtime job id."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
-            job_id = state["job_id"]
-            warnings = state.get("warnings", [])
             error_message = state.get("error", "unknown_error")
+            template_ids = [
+                int(item) for item in state.get("created_template_ids", []) if item is not None
+            ]
 
-            created_templates = list(
-                session.exec(
-                    select(QuestionTemplate).where(QuestionTemplate.created_by_job_id == job_id)
-                ).all()
-            )
-            template_ids = [item.id for item in created_templates if item.id is not None]
+            created_templates: list[QuestionTemplate] = []
             if template_ids:
+                created_templates = list(
+                    session.exec(
+                        select(QuestionTemplate).where(
+                            QuestionTemplate.id.in_(template_ids)  # type: ignore[union-attr]
+                        )
+                    ).all()
+                )
                 links = list(
                     session.exec(
                         select(QuestionTemplateNodeLink).where(
@@ -256,14 +218,6 @@ async def fail_build_node(
                     session.delete(link)
                 for template in created_templates:
                     session.delete(template)
-
-            job = session.get(QuestionBuildJob, job_id)
-            if job is not None:
-                job.status = "failed"
-                job.error_message = str(error_message)
-                job.warnings_json = json.dumps(warnings, ensure_ascii=False)
-                job.updated_at = utcnow()
-                session.add(job)
             session.commit()
 
             workflow_logger.error(
@@ -331,7 +285,7 @@ async def run_question_build_workflow(
 
 
 class QuestionBuildWorkflow:
-    """供服务层调用的轻量包装。"""
+    """Service-layer wrapper."""
 
     @staticmethod
     def build_graph(*, session: Session | None = None) -> StateGraph:

@@ -17,7 +17,7 @@ from app.workflows.digest.curriculum.services.prereq_dag_builder import derive_p
 from app.workflows.digest.curriculum.services.theme_tree_builder import derive_theme_tree
 from app.workflows.digest.curriculum.services.unit_builder import derive_teaching_units
 from app.core.database import managed_session
-from app.models.curriculum import CurriculumSnapshot, TeachingUnit
+from app.models.curriculum import CurriculumSnapshot, TeachingUnit, TeachingUnitRevision
 from app.repositories import curriculum_repo
 from app.utils.job_helpers import (
     activate_curriculum_entities_by_job,
@@ -206,7 +206,11 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
             theme_tree_version_id = state.get("theme_tree_version_id")
             prereq_dag_version_id = state.get("prereq_dag_version_id")
 
-            activated = activate_curriculum_entities_by_job(session, job_id=job_id)
+            activated = activate_curriculum_entities_by_job(
+                session,
+                job_id=job_id,
+                subject=subject,
+            )
             digest_logger.info("curriculum_activated", activated=activated)
 
             if theme_tree_version_id is not None:
@@ -230,10 +234,8 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
                         subject=subject,
                         version_no=(max_version_no or 0) + 1,
                         status="draft",
-                        curriculum_job_id=job_id,
                         theme_tree_version_id=theme_tree_version_id,
                         prereq_dag_version_id=prereq_dag_version_id,
-                        created_by_job_id=job_id,
                     ),
                 )
                 snapshot_id = snapshot.id
@@ -264,7 +266,14 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
             units_updated = 0
             for unit_id in state.get("derived_unit_ids", []):
                 unit = session.get(TeachingUnit, unit_id)
-                if unit and unit.created_by_job_id == job_id:
+                if unit is None:
+                    continue
+                revision = (
+                    session.get(TeachingUnitRevision, unit.current_revision_id)
+                    if unit.current_revision_id is not None
+                    else None
+                )
+                if revision is not None and revision.revision_no <= 1:
                     units_added += 1
                 else:
                     units_updated += 1
@@ -309,7 +318,12 @@ async def fail_curriculum_node(state: CurriculumDeriveState) -> CurriculumDerive
         try:
             job_id = state["curriculum_job_id"]
             error_message = state.get("error", "unknown_error")
-            cleanup_pending_by_job(session, job_id=job_id, job_type="curriculum")
+            cleanup_pending_by_job(
+                session,
+                job_id=job_id,
+                job_type="curriculum",
+                subject=state["subject"],
+            )
             curriculum_repo.update_curriculum_job(
                 session,
                 job_id,
