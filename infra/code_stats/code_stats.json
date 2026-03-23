@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T07:09:23.551488",
-  "total_commits_analyzed": 206,
+  "generated_at": "2026-03-23T08:15:43.016438",
+  "total_commits_analyzed": 210,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1649,6 +1649,38 @@
       "code_lines": 43915,
       "other_lines": 12504,
       "message": "更新命名"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "0edbebb",
+      "total_lines": 56419,
+      "code_lines": 43915,
+      "other_lines": 12504,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "852505c",
+      "total_lines": 56451,
+      "code_lines": 43943,
+      "other_lines": 12508,
+      "message": "style: 合并图谱和文档, fix langgraph图生成"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "687b11c",
+      "total_lines": 56950,
+      "code_lines": 44399,
+      "other_lines": 12551,
+      "message": "style: 合并图谱和文档"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "17bf5ae",
+      "total_lines": 56950,
+      "code_lines": 44399,
+      "other_lines": 12551,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
