@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-22T18:56:28.326973",
-  "total_commits_analyzed": 183,
+  "generated_at": "2026-03-23T01:59:01.827931",
+  "total_commits_analyzed": 184,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1465,6 +1465,14 @@
       "code_lines": 41693,
       "other_lines": 12651,
       "message": "refactor: 优化 ForceGraphView 组件，调整节点和边的样式，更新中文标签，简化"
+    },
+    {
+      "date": "2026-03-22",
+      "commit": "3429d38",
+      "total_lines": 54344,
+      "code_lines": 41693,
+      "other_lines": 12651,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
