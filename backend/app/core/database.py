@@ -178,6 +178,17 @@ _SCHEMA_REQUIREMENTS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
+    "document_chunk": {
+        "id",
+        "document_id",
+        "title",
+        "level",
+        "header_path",
+        "chunk_index",
+        "digest_chunk_uid",
+        "build_session_id",
+        "content",
+    },
 }
 
 _ASSESSMENT_TABLES: set[str] = {

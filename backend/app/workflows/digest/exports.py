@@ -10,10 +10,11 @@ from app.workflows.digest.graph import (
     build_docgen_graph,
     build_kg_digest_graph,
 )
+from app.workflows.digest.unified.graph import build_unified_digest_graph
 
 
 def _build_docgen_graph_for_export():
-    """为导出/图表生成包装 build_docgen_graph（提供默认 context）。"""
+    """Wrap the docs graph with a minimal export context."""
 
     ctx = WorkflowContext(
         workflow_name="digest.docgen",
@@ -23,18 +24,35 @@ def _build_docgen_graph_for_export():
     return build_docgen_graph(context=ctx)
 
 
-# Send 动态边 + Fan-Out 子节点下游边：draw_mermaid 无法自动导出
+def _build_unified_graph_for_export():
+    """Wrap the unified graph with a minimal export context."""
+
+    ctx = WorkflowContext(
+        workflow_name="digest.unified",
+        subject="__export__",
+        event_bus=InProcessEventBus(),
+    )
+    return build_unified_digest_graph(context=ctx)
+
+
 _DOCGEN_SEND_EDGES = (
-    "outline_reduce -. &nbsp;Send&nbsp;×N&nbsp; .-> draft_chapter",
+    "outline_reduce -. Send xN .-> draft_chapter",
     "draft_chapter --> collect_drafts",
-    "collect_drafts -. &nbsp;Send&nbsp;×N&nbsp; .-> review_chapter",
+    "collect_drafts -. Send xN .-> review_chapter",
     "review_chapter --> collect_reviews",
-    "collect_reviews -. &nbsp;Send&nbsp;×N&nbsp; .-> extract_metadata",
+    "collect_reviews -. Send xN .-> extract_metadata",
     "extract_metadata --> finalize_assemble",
     "finalize_assemble --> __end__",
 )
 
+
 WORKFLOW_EXPORTS = (
+    WorkflowGraphExport(
+        key="digest_unified",
+        title="Digest Unified Workflow",
+        description="Shared prepare, docs lane, graph lane, consistency, repair, and curriculum.",
+        build_graph=_build_unified_graph_for_export,
+    ),
     WorkflowGraphExport(
         key="digest_graph",
         title="Digest Graph Workflow",
@@ -50,7 +68,7 @@ WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="digest_docgen",
         title="Digest DocGen Workflow",
-        description="Knowledge document generation workflow with Fan-Out parallelism.",
+        description="Knowledge document generation workflow with fan-out parallelism.",
         build_graph=_build_docgen_graph_for_export,
         extra_edges=_DOCGEN_SEND_EDGES,
     ),

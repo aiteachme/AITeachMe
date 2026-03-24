@@ -19,8 +19,8 @@
 | --- | --- | --- |
 | 工作空间 | `Subject`、`RawFile` | 当前主路径 |
 | 材料层 | `Document`、`DocumentChunk`、`chunk_embeddings` | 当前主路径 |
-| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`EvidenceLink`、`GraphDigestJob`、`SubjectBuildLock` | 当前主路径 |
-| 课程结构层 | `TeachingUnit*`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot`、`CurriculumDeriveJob` | 当前主路径 |
+| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`EvidenceLink`、`KnowledgeAlias`、`KnowledgeRevision` | 当前主路径 |
+| 课程结构层 | `TeachingUnit*`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot` | 当前主路径 |
 | 知识文档层 | `KnowledgeDoc` | 当前主路径 |
 | 交互层 | `ChatMessage` | 当前主路径 |
 | 测评与学习状态 | `QuestionBuildJob`、`ExamGenerateJob`、`ExamGradeJob`、`UserKnowledgeState`、`ReviewTask` | 演进主方向 |
@@ -29,6 +29,7 @@
 关键更新：
 
 - 知识文档链路已经不再使用 `DocGenJob`。
+- Graph / Curriculum 的 `job_id` 当前更偏运行时语义，数据库真相已回到最终业务表。
 - 知识文档的外部协议中不再有 `job_id`、`status`、`progress`、`current_step`。
 - 知识文档构建状态只存在于内部文件锁和工作流阶段日志中。
 
@@ -73,8 +74,6 @@
 - `KnowledgeRevision` / `EdgeRevision`
 - `EvidenceLink`
 - `KnowledgeAlias`
-- `GraphDigestJob`
-- `SubjectBuildLock`
 
 这层回答“学科知识世界本身是什么样”。
 
@@ -91,7 +90,6 @@
 - `PrereqDagVersion`
 - `UnitDependency`
 - `CurriculumSnapshot`
-- `CurriculumDeriveJob`
 
 这层回答“这些知识应该怎么组织、怎么展示、怎么安排学习顺序”。
 
@@ -111,7 +109,7 @@
 - `KnowledgeDoc` 承载的是已发布章节。
 - `merged_knowledge_base.md` 是面向阅读页的统一入口。
 - 不再引入 `DocGenJob` 作为外部状态对象。
-- 构建中的状态由 `.build.lock` 与 `_building/` staging 目录表达。
+- 构建中的状态由 `.build.lock` 与 `_build/` staging 目录表达。
 - 最近一版发布元信息由 `manifest.json` 表达。
 
 ### 3.7 ChatMessage
@@ -129,15 +127,21 @@
 
 ## 4. 状态对象
 
-### 4.1 保留为显式作业状态的对象
+### 4.1 当前仍存在的运行时作业语义
 
-当前仍保留显式 job 状态的链路只有：
+当前 workflow 里仍会使用：
 
-- `GraphDigestJob`
-- `CurriculumDeriveJob`
-- 测评相关 jobs
+- `graph_job_id`
+- `curriculum_job_id`
+- assessment/profile 里的运行时任务标识
 
-这些对象适用于需要精确恢复、补偿、清理和串联后续任务的后台流程。
+但在知识域里，这些 ID 当前主要用于：
+
+- 日志绑定
+- workflow state 传递
+- 后续节点串联
+
+而不是单独的持久化业务对象。
 
 ### 4.2 不再对外暴露作业状态的对象
 
@@ -154,7 +158,7 @@
 
 - `.build.lock`
   表示同一 subject 下当前已有一轮知识文档构建在进行。
-- `_building/`
+- `_build/`
   表示 staging 目录，先写新章节和新 merged，再一次性发布。
 - `manifest.json`
   表示最近一次已发布版本的元信息。
@@ -178,8 +182,8 @@
 
 知识文档链路采用 staging 发布：
 
-1. 先生成 `_building/chapter_XX_*.md`
-2. 再生成 `_building/merged_knowledge_base.md`
+1. 先生成 `_build/chapter_XX_*.md`
+2. 再生成 `_build/merged_knowledge_base.md`
 3. 全部成功后覆盖正式目录
 4. 同步覆盖 `manifest.json`
 5. 同步重建 `KnowledgeDoc` published 记录
@@ -221,7 +225,7 @@
 对知识文档链路来说：
 
 - 已发布章节的业务索引真相在数据库 `KnowledgeDoc`
-- 已发布正文真相在 `knowledge_docs/*.md`
+- 已发布正文真相在 `knowledge_markdown/*.md`
 - 最近一版发布时间和来源元信息真相在 `manifest.json`
 
 也就是说，这条链路是“数据库索引 + 本地 Markdown 正文 + manifest 元信息”的联合真相，而不是 `DocGenJob`。
@@ -233,6 +237,6 @@
 当前 Docs 链路的领域边界已经明确：
 
 - `KnowledgeDoc` 是业务对象。
-- `.build.lock`、`_building/`、`manifest.json` 是内部运行时状态。
+- `.build.lock`、`_build/`、`manifest.json` 是内部运行时状态。
 - 前端进度条是前端自己的体验层协议，不再依赖后端状态对象。
-- Graph / Curriculum 仍保留 job 体系，不与 Docs 混淆。
+- Graph / Curriculum 仍保留运行时 job 语义，但数据库真相已经回到最终业务表。

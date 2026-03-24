@@ -300,6 +300,8 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
         if text and text.strip():
             sections.append(text.strip())
 
+        # 先提取 embedded images
+        page_image_start = len(image_candidates)
         _append_pdf_image_candidates(
             document,
             page,
@@ -308,12 +310,30 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
             candidates=image_candidates,
             seen_xref=seen_xref,
         )
+
+        # 再提取 drawings
+        page_drawing_start = len(image_candidates)
         _append_pdf_drawing_candidates(
             page,
             page_number=page_number,
             max_images=options.asset_image_limit,
             candidates=image_candidates,
         )
+
+        # 如果当前页有提取的图片，立即插入到该页内容后
+        page_images = image_candidates[page_image_start:]
+        if page_images:
+            # 保存并插入当前页的图片
+            page_image_names = _save_pdf_images_parallel(
+                page_images,
+                asset_dir,
+                workers=options.parser_parallelism,
+                asset_name_prefix=options.asset_name_prefix,
+            )
+            for idx, image_name in enumerate(page_image_names, start=1):
+                if image_name:
+                    sections.append(f"![Extracted image {idx}](../assets/{image_name})")
+
         sections.append("")
         if len(image_candidates) >= options.asset_image_limit:
             logger.info(
@@ -324,22 +344,18 @@ def _parse_pdf_with_pymupdf_native_sync(path: Path, asset_dir: Path, options: Pa
             break
 
     document.close()
-    image_names = _save_pdf_images_parallel(
-        image_candidates,
-        asset_dir,
-        workers=options.parser_parallelism,
-        asset_name_prefix=options.asset_name_prefix,
-    )
-    for index, image_name in enumerate(image_names, start=1):
-        if not image_name:
-            continue
-        sections.append(f"![Image {index}]({image_name})")
 
     result = "\n".join(sections).strip()
     if not result:
         raise FileParseError(path.name, reason="PyMuPDF returned empty markdown.")
 
-    logger.info("parse_pdf_native_done", filename=path.name, images=len([name for name in image_names if name]))
+    logger.info(
+        "parse_pdf_native_done",
+        filename=path.name,
+        total_images=len(image_candidates),
+        embedded_images=len([c for c in image_candidates if c.name_hint.startswith("p") and "_img" in c.name_hint]),
+        drawings=len([c for c in image_candidates if "_draw" in c.name_hint]),
+    )
     return result
 
 

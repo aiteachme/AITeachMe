@@ -2,12 +2,12 @@
 
 ## 1. 文档目标
 
-本文档说明：
+本文档说明两件事：
 
-- 仓库顶层目录各自承担什么职责。
-- 哪些文件是源码真相源。
-- 哪些文件是生成物。
-- 运行时数据在本地如何落盘。
+- 仓库里的源码真相源在哪里
+- `backend/data/` 里的运行时文件现在到底怎么落盘
+
+后续如果代码、数据库和本地目录发生冲突，以 `backend/app/*` 与 `backend/app/services/upload_support.py` 为准。
 
 ---
 
@@ -15,181 +15,222 @@
 
 | 目录 | 作用 |
 | --- | --- |
-| `frontend/` | React 前端、页面、组件、前端 API、MSW mock |
-| `backend/` | FastAPI 后端、service、workflow、repository、model |
-| `docs/` | 设计文档与协作文档 |
-| `backend/scripts/` | OpenAPI 导出、流程图生成等工程脚本 |
+| `frontend/` | React 页面、组件、前端 API、MSW mock |
+| `backend/` | FastAPI、service、workflow、repository、model |
+| `docs/` | 设计文档与协作说明 |
+| `backend/scripts/` | OpenAPI 导出、调试脚本、工程脚本 |
 
-真相源与生成物必须分开理解：
+真相源与生成物要分开看：
 
 - 真相源：`backend/app/*`、`frontend/src/*`、`docs/designs/*`
-- 生成物：`frontend/openapi.json`、`frontend/src/api/generated/*`、`backend/scripts/.generated_workflow_diagrams/*`
+- 生成物：`frontend/openapi.json`、`frontend/src/api/generated/*`
+- 运行时数据：`backend/data/*`
 
 ---
 
-## 3. 后端源码结构
+## 3. 后端源码主阅读顺序
 
-`backend/app/` 当前仍按这条链路阅读最稳：
+当前后端最稳的阅读顺序仍然是：
 
 `api -> services -> workflows -> repositories -> models`
 
 | 目录 | 作用 |
 | --- | --- |
-| `api/` | HTTP 路由与资源边界 |
+| `api/` | HTTP 资源边界 |
 | `services/` | 用例入口、聚合查询、后台任务触发 |
-| `workflows/` | 复杂业务工作流编排 |
-| `repositories/` | 数据访问与批量写入 |
-| `models/` | SQLModel 数据模型 |
+| `workflows/` | LangGraph 工作流编排 |
+| `repositories/` | SQLModel / sqlite-vec 数据访问 |
+| `models/` | 数据表定义 |
 | `schemas/` | API schema |
-| `core/` | 配置、数据库、LLM、日志、异常 |
+| `core/` | 配置、数据库、日志、LLM、异常 |
 
 ---
 
-## 4. 本地运行时数据布局
+## 4. 当前运行时数据根目录
 
 默认数据根目录：
 
 `backend/data/`
 
-每个学科一个子目录：
+其中：
 
-`backend/data/<subject>/`
-
-常见子目录如下：
-
-| 目录 | 作用 | 类型 |
-| --- | --- | --- |
-| `raw/` | 原始上传文件 | 正式业务产物 |
-| `markdown/` | 解析后的 Markdown | 正式业务产物 |
-| `assets/` | 文档图片和附件 | 正式业务产物 |
-| `knowledge_docs/` | 已发布知识文档 | 正式业务产物 |
-| `docgen_intermediate/` | 知识文档构建中间文件 | 调试友好产物 |
-| `debug/` | 其他 workflow 调试快照 | 调试产物 |
+- `backend/data/aiteachme.db` 是主 SQLite 数据库
+- `chunk_embeddings` 是 SQLite 里的 `sqlite-vec` 虚拟表
+- 每个学科一个独立目录：`backend/data/<subject>/`
 
 ---
 
-## 5. Knowledge Docs 目录约定
+## 5. 每个 Subject 的目录布局
 
-Docs workflow 现在使用固定 staging 布局，不再按 `job_id` 落目录。
+当前标准布局如下：
 
-### 5.1 正式目录
+```text
+backend/data/<subject>/
+├─ raw/
+├─ raw_markdown/
+├─ assets/
+├─ knowledge_markdown/
+│  └─ _build/
+├─ temp/
+└─ debug/
+```
 
-`backend/data/<subject>/knowledge_docs/`
+各目录职责：
 
-当前约定包含：
+| 目录 | 作用 | 类型 |
+| --- | --- | --- |
+| `raw/` | 用户上传的原始文件 | 正式业务产物 |
+| `raw_markdown/` | ingest 解析后的原始 Markdown | 正式业务产物 |
+| `assets/` | 当前 subject 下所有图片/附件的共享扁平目录 | 正式业务产物 |
+| `knowledge_markdown/` | 已发布知识文档 | 正式业务产物 |
+| `knowledge_markdown/_build/` | 知识文档构建中的 staging 与中间产物 | staging / 调试产物 |
+| `temp/` | 上传落地前的临时文件 | 临时目录 |
+| `debug/` | 其他 workflow 的调试快照 | 调试产物 |
 
-- `chapter_01_*.md`
-- `chapter_02_*.md`
-- `...`
+---
+
+## 6. Ingest 产物布局
+
+单个原始文件的正式落盘现在是：
+
+- `raw/<raw_file_id>.<ext>`
+- `raw_markdown/<raw_file_id>.md`
+- `assets/<asset_name_prefix>__*.png|jpg|...`
+
+这里有两个关键约束：
+
+1. `assets/` 不再是 `assets/<file_id>/` 多级目录，而是整个 subject 共享的一级目录
+2. 每个文件提取出的图片用 `asset_name_prefix` 做确定性前缀，避免不同文件的图片重名
+
+典型文件名示例：
+
+`math_exam__file_abcd1234__p3_img1_f81a7f4d3c.png`
+
+---
+
+## 7. Markdown 与图片引用规则
+
+当前约定：
+
+- `raw_markdown/*.md` 全部放在一级目录
+- `knowledge_markdown/*.md` 全部放在一级目录
+- 图片统一通过相对路径引用：
+
+`../assets/<flattened_asset_name>`
+
+这样做的原因是：
+
+- `raw_markdown/` 和 `knowledge_markdown/` 都是 `assets/` 的兄弟目录
+- 所有 Markdown 都能复用同一套相对路径
+- 后续如果数据库里直接保存 Markdown 正文，也可以把图片路径替换成绝对路径或对象存储 URI
+
+---
+
+## 8. Knowledge Docs 目录约定
+
+Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
+
+### 8.1 正式目录
+
+`backend/data/<subject>/knowledge_markdown/`
+
+其中包含：
+
+- `chapter_XX_*.md`
 - `merged_knowledge_base.md`
 - `manifest.json`
 - `.build.lock`
 
-### 5.2 staging 目录
+### 8.2 staging / 中间目录
 
-`backend/data/<subject>/knowledge_docs/_building/`
+`backend/data/<subject>/knowledge_markdown/_build/`
 
-构建中的新版本先写到这里：
+这里同时承担两类角色：
 
-- `_building/chapter_XX_*.md`
-- `_building/merged_knowledge_base.md`
+- 构建中的 staging 发布目录
+- docs workflow 的中间调试目录
 
-发布成功后再整体覆盖正式目录。
+常见文件包括：
 
-### 5.3 中间目录
-
-`backend/data/<subject>/docgen_intermediate/latest/`
-
-它用于保存：
-
-- 清洗后的文本
-- 大纲
-- 草稿
-- review / metadata 辅助结果
-
-它不是最终对外协议的一部分。
+- `chapter_XX_*.md`
+- `merged_knowledge_base.md`
+- `clean_*.md`
+- `outline_tree.json`
+- `chapter_assignments.json`
+- `draft_*.md`
 
 ---
 
-## 6. Docs 链路为什么不再使用 run_or_job_id 目录
+## 9. 典型生成链路
 
-Graph / Curriculum 仍可能使用：
-
-`data/<subject>/debug/<workflow>/<run_or_job_id>/`
-
-但 Docs 链路已经明确不再使用这种结构作为正式协议，原因是：
-
-- Docs 对外不再暴露 job 概念
-- 前端读取的是“已发布结果”而不是“某次任务状态”
-- staging 发布只需要固定 `_building/`
-- 最近一版发布信息只需要 `manifest.json`
-
----
-
-## 7. 典型文件生成链路
-
-### 7.1 Ingest 完成后
+### 9.1 上传并 ingest 解析后
 
 通常会得到：
 
-- `raw/<file>`
-- `markdown/<raw_file_id>.md`
-- `assets/<raw_file_id>/...`
+- `raw/<raw_file_id>.<ext>`
+- `raw_markdown/<raw_file_id>.md`
+- `assets/<asset_name_prefix>__*.png|jpg|...`
 
-### 7.2 Digest Docs 完成后
+### 9.2 构建知识文档后
 
 通常会得到：
 
-- `knowledge_docs/chapter_XX_*.md`
-- `knowledge_docs/merged_knowledge_base.md`
-- `knowledge_docs/manifest.json`
-- `docgen_intermediate/latest/*`
+- `knowledge_markdown/chapter_XX_*.md`
+- `knowledge_markdown/merged_knowledge_base.md`
+- `knowledge_markdown/manifest.json`
+- `knowledge_markdown/_build/*`
 
-### 7.3 Digest Graph / Curriculum 完成后
+### 9.3 Digest Graph / Curriculum 后
 
-主要结果仍在数据库中，必要时会写到：
+主要结果在数据库：
 
-- `debug/digest.graph/<job_id>/`
-- `debug/digest.curriculum/<job_id>/`
+- `document`
+- `document_chunk`
+- `chunk_embeddings`
+- `knowledge_*`
+- `teaching_unit*`
+- `theme_tree*`
+- `prereq_dag*`
+- `curriculum_snapshot`
+
+这些流程默认不再把“正式结果”写成新的本地 JSON 目录协议；本地 `debug/` 仅用于调试快照。
 
 ---
 
-## 8. 删除与重建约定
+## 10. 删除与重建约定
 
-### 8.1 可以安全重建
+### 10.1 可以安全重建
 
-- `docgen_intermediate/latest/`
-- `knowledge_docs/_building/`
+- `temp/`
 - `debug/`
+- `knowledge_markdown/_build/`
 
-### 8.2 谨慎删除
+### 10.2 谨慎删除
 
-- `knowledge_docs/chapter_XX_*.md`
-- `knowledge_docs/merged_knowledge_base.md`
-- `knowledge_docs/manifest.json`
+- `raw/`
+- `raw_markdown/`
+- `assets/`
+- `knowledge_markdown/chapter_XX_*.md`
+- `knowledge_markdown/merged_knowledge_base.md`
+- `knowledge_markdown/manifest.json`
 
-这些文件代表当前已发布知识文档版本。
+这些文件代表当前正式业务产物。
 
-### 8.3 非常谨慎删除
+### 10.3 重要实现细节
 
-- `backend/data/aiteachme.db`
-- 整个 `backend/data/<subject>/`
+因为 `assets/` 是共享目录：
 
-这通常等价于清空本地工作空间。
+- 删除单个 `RawFile` 时只能按 `asset_name_prefix` 删除匹配图片
+- 绝不能再直接删除整个 `assets/` 目录
 
 ---
 
-## 9. 当前结论
+## 11. 当前结论
 
-运行时文件布局现在已经明确区分了 3 类东西：
+运行时文件布局已经明确分成三层：
 
-- 正式产物
-- staging 产物
-- 调试产物
+- 数据库中的结构化真相
+- `raw/raw_markdown/assets/knowledge_markdown` 中的正式文件产物
+- `_build/debug/temp` 中的 staging 与调试文件
 
-尤其是 Docs 链路：
-
-- 正式文档在 `knowledge_docs/`
-- 构建中版本在 `_building/`
-- 最近一版元信息在 `manifest.json`
-- 构建互斥通过 `.build.lock`
+后续无论本地部署还是中心化部署，这三层边界都应继续保持稳定。

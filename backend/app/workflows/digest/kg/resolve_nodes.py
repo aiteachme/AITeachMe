@@ -1,25 +1,23 @@
-"""Resolve-phase nodes for the digest graph workflow.
-
-Reads DB: existing graph entities, revisions, aliases, evidence, and prepared chunks.
-Writes DB: ``knowledge_node``, ``knowledge_revision``, ``knowledge_alias``,
-``knowledge_edge``, ``edge_revision``, ``evidence_link``.
-Writes DB (compatibility no-op): graph progress helpers still run, but no dedicated
-``graph_digest_job`` table is persisted now.
-Writes FS: none.
-Idempotency: reruns reconcile candidates against the same graph identity layer and append
-only the needed revisions / evidence for the active job.
-"""
+"""Resolve and impact-analysis nodes for the graph lane."""
 
 from __future__ import annotations
 
-from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
-from app.workflows.digest.kg.services.impact_analyzer import analyze_impact
-from app.workflows.digest.kg.services.resolver import ResolveResult, resolve_edge, resolve_node
+from dataclasses import dataclass, field
+
+from sqlmodel import select
+
 from app.core.database import managed_session
 from app.core.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision
+from app.models.knowledge_graph import (
+    EdgeRevision,
+    KnowledgeAlias,
+    KnowledgeEdge,
+    KnowledgeNode,
+    KnowledgeRevision,
+)
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
+from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.kg.mutations import (
     create_alias_if_new,
@@ -28,8 +26,274 @@ from app.workflows.digest.kg.mutations import (
     create_node_evidence,
     create_updated_revision,
 )
+from app.workflows.digest.kg.services.impact_analyzer import analyze_impact
+from app.workflows.digest.kg.services.resolver import (
+    ResolveResult,
+    compute_edge_confidence,
+    resolve_edge,
+)
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
+
+_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
+_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_PRIMARY_SIMILARITY_THRESHOLD = 0.80
+_SECONDARY_SIMILARITY_THRESHOLD = 0.85
+
+
+@dataclass(slots=True)
+class ExistingNodeRecord:
+    node: KnowledgeNode
+    summary: str
+    embedding: list[float]
+
+
+@dataclass(slots=True)
+class ResolutionIndex:
+    subject: str
+    normalized_map: dict[tuple[str, str], ExistingNodeRecord] = field(default_factory=dict)
+    alias_map: dict[tuple[str, str], ExistingNodeRecord] = field(default_factory=dict)
+    records_by_type: dict[str, list[ExistingNodeRecord]] = field(default_factory=dict)
+    children_by_parent: dict[int, dict[str, list[ExistingNodeRecord]]] = field(default_factory=dict)
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _has_content_update(candidate_summary: str, existing_summary: str) -> bool:
+    if not candidate_summary.strip():
+        return False
+    if not existing_summary.strip():
+        return True
+    existing_chars = set(existing_summary)
+    new_chars = sum(1 for char in candidate_summary if char not in existing_chars)
+    return new_chars > len(candidate_summary) * 0.3
+
+
+async def _build_resolution_index(subject: str) -> ResolutionIndex:
+    with managed_session() as session:
+        nodes = list(
+            session.exec(
+                select(KnowledgeNode).where(
+                    KnowledgeNode.subject == subject,
+                    KnowledgeNode.status.in_(["active", "pending"]),
+                )
+            ).all()
+        )
+        if not nodes:
+            return ResolutionIndex(subject=subject)
+
+        node_ids = [node.id for node in nodes if node.id is not None]
+        revisions = list(
+            session.exec(
+                select(KnowledgeRevision).where(
+                    KnowledgeRevision.node_id.in_(node_ids),
+                    KnowledgeRevision.is_current == True,
+                )
+            ).all()
+        )
+        revision_by_node_id = {
+            revision.node_id: revision for revision in revisions if revision.node_id is not None
+        }
+        aliases = list(
+            session.exec(
+                select(KnowledgeAlias).where(
+                    KnowledgeAlias.node_id.in_(node_ids),
+                    KnowledgeAlias.status == "active",
+                )
+            ).all()
+        )
+        edges = list(
+            session.exec(
+                select(KnowledgeEdge).where(
+                    KnowledgeEdge.subject == subject,
+                    KnowledgeEdge.status.in_(["active", "pending"]),
+                )
+            ).all()
+        )
+
+    embedding_texts = [
+        f"{node.canonical_name}\n{revision_by_node_id.get(node.id).summary if node.id in revision_by_node_id else ''}".strip()
+        for node in nodes
+    ]
+    embeddings = await aembed_texts(embedding_texts) if embedding_texts else []
+    index = ResolutionIndex(subject=subject)
+    record_by_node_id: dict[int, ExistingNodeRecord] = {}
+
+    for node, embedding in zip(nodes, embeddings):
+        if node.id is None:
+            continue
+        summary = revision_by_node_id.get(node.id).summary if node.id in revision_by_node_id else ""
+        record = ExistingNodeRecord(node=node, summary=summary, embedding=embedding)
+        record_by_node_id[node.id] = record
+        index.normalized_map[(node.node_type, node.normalized_name)] = record
+        index.records_by_type.setdefault(node.node_type, []).append(record)
+
+    for alias in aliases:
+        if alias.node_id is None:
+            continue
+        record = record_by_node_id.get(alias.node_id)
+        if record is None:
+            continue
+        index.alias_map[(record.node.node_type, alias.normalized_alias)] = record
+
+    for edge in edges:
+        parent_id: int | None = None
+        child_id: int | None = None
+        child_type: str | None = None
+        if edge.edge_type == "defined_by":
+            parent_id = edge.source_node_id
+            child_id = edge.target_node_id
+            child_type = "Definition"
+        elif edge.edge_type == "illustrated_by":
+            parent_id = edge.source_node_id
+            child_id = edge.target_node_id
+            child_type = "Example"
+        elif edge.edge_type == "belongs_to_topic":
+            parent_id = edge.target_node_id
+            child_id = edge.source_node_id
+            child_type = "Example"
+
+        if parent_id is None or child_id is None or child_type is None:
+            continue
+        child_record = record_by_node_id.get(child_id)
+        if child_record is None or child_record.node.node_type != child_type:
+            continue
+        children_by_type = index.children_by_parent.setdefault(parent_id, {})
+        children_by_type.setdefault(child_type, []).append(child_record)
+
+    return index
+
+
+def _match_primary_candidate(
+    representative_name: str,
+    representative_type: str,
+    candidate_summary: str,
+    candidate_embedding: list[float],
+    index: ResolutionIndex,
+) -> ResolveResult:
+    normalized_name = normalize_name(representative_name)
+    exact_match = index.normalized_map.get((representative_type, normalized_name))
+    if exact_match is not None:
+        return ResolveResult(
+            decision="exact",
+            matched_node_id=exact_match.node.id,
+            is_content_update=_has_content_update(candidate_summary, exact_match.summary),
+        )
+
+    alias_match = index.alias_map.get((representative_type, normalized_name))
+    if alias_match is not None:
+        return ResolveResult(
+            decision="alias",
+            matched_node_id=alias_match.node.id,
+            is_content_update=_has_content_update(candidate_summary, alias_match.summary),
+            new_aliases=[representative_name],
+        )
+
+    if not candidate_embedding:
+        return ResolveResult(decision="no_match")
+
+    same_type_records = index.records_by_type.get(representative_type, [])
+    best_record: ExistingNodeRecord | None = None
+    best_similarity = 0.0
+    for record in same_type_records:
+        similarity = _cosine_similarity(candidate_embedding, record.embedding)
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_record = record
+
+    if best_record is None or best_similarity < _PRIMARY_SIMILARITY_THRESHOLD:
+        return ResolveResult(decision="no_match")
+
+    return ResolveResult(
+        decision="exact",
+        matched_node_id=best_record.node.id,
+        is_content_update=_has_content_update(candidate_summary, best_record.summary),
+    )
+
+
+def _resolve_parent_node_id(
+    parent_name: str,
+    candidate_name_to_resolved_node_id: dict[str, int],
+    index: ResolutionIndex,
+) -> int | None:
+    mapped_parent_id = candidate_name_to_resolved_node_id.get(parent_name)
+    if mapped_parent_id is not None:
+        return mapped_parent_id
+
+    normalized_parent = normalize_name(parent_name)
+    for parent_type in ("Topic", "Concept", "Method"):
+        record = index.normalized_map.get((parent_type, normalized_parent))
+        if record is not None:
+            return record.node.id
+        alias_record = index.alias_map.get((parent_type, normalized_parent))
+        if alias_record is not None:
+            return alias_record.node.id
+    return None
+
+
+def _match_secondary_candidate(
+    *,
+    representative_name: str,
+    representative_type: str,
+    parent_name: str | None,
+    candidate_summary: str,
+    candidate_embedding: list[float],
+    index: ResolutionIndex,
+    candidate_name_to_resolved_node_id: dict[str, int],
+) -> ResolveResult:
+    normalized_name = normalize_name(representative_name)
+    exact_match = index.normalized_map.get((representative_type, normalized_name))
+    if exact_match is not None:
+        return ResolveResult(
+            decision="exact",
+            matched_node_id=exact_match.node.id,
+            is_content_update=_has_content_update(candidate_summary, exact_match.summary),
+        )
+
+    alias_match = index.alias_map.get((representative_type, normalized_name))
+    if alias_match is not None:
+        return ResolveResult(
+            decision="alias",
+            matched_node_id=alias_match.node.id,
+            is_content_update=_has_content_update(candidate_summary, alias_match.summary),
+            new_aliases=[representative_name],
+        )
+
+    if not parent_name or not candidate_embedding:
+        return ResolveResult(decision="no_match")
+
+    parent_node_id = _resolve_parent_node_id(
+        parent_name,
+        candidate_name_to_resolved_node_id,
+        index,
+    )
+    if parent_node_id is None:
+        return ResolveResult(decision="no_match")
+
+    sibling_records = index.children_by_parent.get(parent_node_id, {}).get(representative_type, [])
+    best_record: ExistingNodeRecord | None = None
+    best_similarity = 0.0
+    for record in sibling_records:
+        similarity = _cosine_similarity(candidate_embedding, record.embedding)
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_record = record
+
+    if best_record is None or best_similarity < _SECONDARY_SIMILARITY_THRESHOLD:
+        return ResolveResult(decision="no_match")
+
+    return ResolveResult(
+        decision="exact",
+        matched_node_id=best_record.node.id,
+        is_content_update=_has_content_update(candidate_summary, best_record.summary),
+    )
 
 
 async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
@@ -38,36 +302,68 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
     with managed_session() as session:
         digest_logger = workflow_logger(state)
         try:
-            clustered_candidates: list[ClusteredCandidate] = state.get("clustered_candidates", [])
+            clustered_candidates = list(state.get("clustered_candidates", []))
             subject = state["subject"]
             job_id = state["job_id"]
+            resolution_index = await _build_resolution_index(subject)
+            digest_logger.info(
+                "kg_resolution_index_built",
+                cluster_count=len(clustered_candidates),
+                indexed_type_count=len(resolution_index.records_by_type),
+                indexed_node_count=sum(
+                    len(records) for records in resolution_index.records_by_type.values()
+                ),
+            )
 
             candidate_name_to_resolved_node_id: dict[str, int] = {}
             cluster_id_to_resolved_node_id: dict[int, int] = {}
             new_node_ids: list[int] = []
             updated_node_ids: list[int] = []
             merged_node_ids: list[int] = []
+            candidate_embeddings = (
+                await aembed_texts(
+                    [
+                        f"{candidate.representative.name}\n{candidate.merged_summary}".strip()
+                        for candidate in clustered_candidates
+                    ]
+                )
+                if clustered_candidates
+                else []
+            )
 
             for cluster_index, clustered_candidate in enumerate(clustered_candidates):
                 representative = clustered_candidate.representative
-                embedding_text = f"{representative.name}\n{clustered_candidate.merged_summary}"
-                embeddings = await aembed_texts([embedding_text])
-                candidate_embedding = embeddings[0] if embeddings else []
-
-                result: ResolveResult = await resolve_node(
-                    session,
-                    clustered_candidate,
-                    subject,
-                    candidate_embedding,
-                    candidate_name_to_resolved_node_id=candidate_name_to_resolved_node_id,
+                candidate_embedding = (
+                    candidate_embeddings[cluster_index]
+                    if cluster_index < len(candidate_embeddings)
+                    else []
                 )
+                if representative.node_type in _PRIMARY_NODE_TYPES:
+                    result = _match_primary_candidate(
+                        representative.name,
+                        representative.node_type,
+                        clustered_candidate.merged_summary,
+                        candidate_embedding,
+                        resolution_index,
+                    )
+                elif representative.node_type in _SECONDARY_NODE_TYPES:
+                    result = _match_secondary_candidate(
+                        representative_name=representative.name,
+                        representative_type=representative.node_type,
+                        parent_name=representative.parent_entity_name or representative.taxonomy_hint,
+                        candidate_summary=clustered_candidate.merged_summary,
+                        candidate_embedding=candidate_embedding,
+                        index=resolution_index,
+                        candidate_name_to_resolved_node_id=candidate_name_to_resolved_node_id,
+                    )
+                else:
+                    result = ResolveResult(decision="no_match")
 
                 if result.decision in {"exact", "alias"} and result.matched_node_id is not None:
                     node_id = result.matched_node_id
+                    cluster_id_to_resolved_node_id[cluster_index] = node_id
                     for member in clustered_candidate.members:
                         candidate_name_to_resolved_node_id[member.name] = node_id
-                    cluster_id_to_resolved_node_id[cluster_index] = node_id
-
                     for chunk_id in clustered_candidate.source_chunk_ids:
                         create_node_evidence(
                             session,
@@ -76,7 +372,6 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             chunk_id=chunk_id,
                             job_id=job_id,
                         )
-
                     for alias_name in result.new_aliases:
                         create_alias_if_new(
                             session,
@@ -84,7 +379,6 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             alias_name=alias_name,
                             job_id=job_id,
                         )
-
                     if result.is_content_update:
                         create_updated_revision(
                             session,
@@ -93,19 +387,19 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             job_id=job_id,
                         )
                         updated_node_ids.append(node_id)
-
-                elif result.decision == "no_match":
+                else:
                     node = create_new_node(
                         session,
                         subject=subject,
                         clustered_candidate=clustered_candidate,
                         job_id=job_id,
                     )
-                    node_id = node.id  # type: ignore[assignment]
+                    node_id = node.id
+                    if node_id is None:
+                        continue
+                    cluster_id_to_resolved_node_id[cluster_index] = node_id
                     for member in clustered_candidate.members:
                         candidate_name_to_resolved_node_id[member.name] = node_id
-                    cluster_id_to_resolved_node_id[cluster_index] = node_id
-
                     for chunk_id in clustered_candidate.source_chunk_ids:
                         create_node_evidence(
                             session,
@@ -116,6 +410,13 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         )
                     new_node_ids.append(node_id)
 
+                digest_logger.info(
+                    "resolve_node_complete",
+                    name=representative.name,
+                    node_type=representative.node_type,
+                    decision=result.decision,
+                    matched_node_id=result.matched_node_id,
+                )
                 if (cluster_index + 1) % 20 == 0:
                     progress = 50 + int(15 * (cluster_index + 1) / len(clustered_candidates))
                     update_job_progress(
@@ -133,7 +434,6 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 progress=65,
                 current_step="resolve_nodes",
             )
-
             kg_repo.update_digest_job(
                 session,
                 job_id,
@@ -141,7 +441,6 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 nodes_updated=len(updated_node_ids),
                 nodes_merged=len(merged_node_ids),
             )
-
             digest_logger.info(
                 "kg_workflow_resolve_nodes_complete",
                 new_nodes=len(new_node_ids),
@@ -173,7 +472,6 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
             candidate_name_to_resolved_node_id = state.get("candidate_name_to_resolved_node_id", {})
             candidate_name_to_cluster_id = state.get("candidate_name_to_cluster_id", {})
             cluster_id_to_resolved_node_id = state.get("cluster_id_to_resolved_node_id", {})
-
             new_edge_ids: list[int] = []
             updated_edge_ids: list[int] = []
 
@@ -191,8 +489,9 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
 
                 if is_new:
                     edge = kg_repo.create_knowledge_edge(session, matched_edge)
-                    edge_id = edge.id  # type: ignore[assignment]
-
+                    edge_id = edge.id
+                    if edge_id is None:
+                        continue
                     revision = EdgeRevision(
                         edge_id=edge_id,
                         revision_no=1,
@@ -207,7 +506,6 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     edge.confidence = confidence
                     session.add(edge)
                     session.commit()
-
                     create_edge_evidence(
                         session,
                         subject=subject,
@@ -218,7 +516,9 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     new_edge_ids.append(edge_id)
                     continue
 
-                edge_id = matched_edge.id  # type: ignore[assignment]
+                edge_id = matched_edge.id
+                if edge_id is None:
+                    continue
                 create_edge_evidence(
                     session,
                     subject=subject,
@@ -226,7 +526,8 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     chunk_id=chunk_id,
                     job_id=job_id,
                 )
-                matched_edge.confidence = confidence
+                active_evidence_count = kg_repo.count_active_evidence(session, "edge", edge_id)
+                matched_edge.confidence = compute_edge_confidence(active_evidence_count)
                 matched_edge.updated_at = utcnow()
                 session.add(matched_edge)
                 session.commit()
@@ -239,14 +540,12 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                 progress=75,
                 current_step="resolve_edges",
             )
-
             kg_repo.update_digest_job(
                 session,
                 job_id,
                 edges_added=len(new_edge_ids),
                 edges_updated=len(updated_edge_ids),
             )
-
             digest_logger.info(
                 "kg_workflow_resolve_edges_complete",
                 new_edges=len(new_edge_ids),

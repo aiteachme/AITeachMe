@@ -49,7 +49,7 @@
 - 关系数据：SQLite
 - 向量索引：sqlite-vec
 - 原始资料与调试产物：本地文件系统
-- 长流程：service 触发 + workflow 编排 + 作业状态表
+- 长流程：service 触发 + workflow 编排 + 最终业务表 / 文件锁 / 运行时状态
 
 ---
 
@@ -69,6 +69,7 @@
 | `10_repo_structure_and_runtime_files.md` | 仓库目录、生成物、运行时目录、本地调试产物 |
 | `11_database_and_storage_architecture.md` | 数据库、向量索引、本地文件、对象存储与迁移路线 |
 | `12_api_refactor_plan.md` | API 接口收敛、全量返回、知识图谱三 Tab 单接口重构计划 |
+| `13_database_schema_inventory.md` | 当前真实数据库表清单、workflow 写入地图、LangGraph 节点落表说明 |
 
 ---
 
@@ -79,18 +80,20 @@
 1. `01_system_architecture.md`
 2. `10_repo_structure_and_runtime_files.md`
 3. `11_database_and_storage_architecture.md`
-4. `02_domain_model_and_state.md`
-5. `03_api_contracts_and_dev_workflow.md`
-6. 再进入对应引擎文档
+4. `13_database_schema_inventory.md`
+5. `02_domain_model_and_state.md`
+6. `03_api_contracts_and_dev_workflow.md`
+7. 再进入对应引擎文档
 
 ### 5.2 后端开发
 
 1. `01_system_architecture.md`
 2. `11_database_and_storage_architecture.md`
-3. `02_domain_model_and_state.md`
-4. `10_repo_structure_and_runtime_files.md`
-5. `03_api_contracts_and_dev_workflow.md`
-6. `04` 到 `09`
+3. `13_database_schema_inventory.md`
+4. `02_domain_model_and_state.md`
+5. `10_repo_structure_and_runtime_files.md`
+6. `03_api_contracts_and_dev_workflow.md`
+7. `04` 到 `09`
 
 ### 5.3 前端开发
 

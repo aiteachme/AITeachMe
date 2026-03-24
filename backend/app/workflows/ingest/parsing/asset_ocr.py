@@ -202,6 +202,7 @@ def _replace_placeholder_lines(markdown: str, ocr_items: list[AssetOCRItem]) -> 
     if page_sections:
         return _replace_placeholder_lines_by_page(page_sections, ocr_items)
 
+    # 非分页模式：按顺序替换占位符
     replacement_index = 0
     lines: list[str] = []
     for line in markdown.splitlines():
@@ -210,7 +211,9 @@ def _replace_placeholder_lines(markdown: str, ocr_items: list[AssetOCRItem]) -> 
             replacement_index += 1
             continue
         lines.append(line)
-    return "\n".join(lines).strip(), replacement_index
+
+    result = "\n".join(lines).strip()
+    return result, replacement_index
 
 
 def _replace_placeholder_lines_by_page(
@@ -275,6 +278,6 @@ def _append_ocr_appendix(markdown: str, ocr_items: list[AssetOCRItem]) -> str:
 
 def _render_ocr_block(item: AssetOCRItem, index: int) -> str:
     parts = [f"![Extracted image {index}]({item.markdown_url})"]
-    if item.ocr_markdown:
-        parts.extend(["", item.ocr_markdown])
+    if item.ocr_markdown and item.ocr_markdown.strip() and item.ocr_markdown.strip() != "[unclear]":
+        parts.extend(["", "```markdown", item.ocr_markdown.strip(), "```"])
     return "\n".join(parts)

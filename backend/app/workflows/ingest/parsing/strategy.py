@@ -124,11 +124,16 @@ def _preferred_parser_order(
             if llm_enabled:
                 return ["pymupdf_ocr_vision", "pymupdf_native", "markitdown", "pymupdf4llm"]
             return ["pymupdf_native", "markitdown", "pymupdf4llm"]
+        if classification and classification.file_category == "formula_heavy_pdf":
+            # 数学试卷类：优先 native 提取 drawing，再用 vision OCR 补强
+            if llm_enabled:
+                return ["pymupdf_native", "pymupdf4llm", "markitdown"]
+            return ["pymupdf_native", "pymupdf4llm", "markitdown"]
         if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
             return ["pymupdf_native", "pymupdf4llm", "markitdown"]
         if classification and (classification.has_tables or classification.has_formulas):
             if llm_enabled:
-                return ["pymupdf4llm", "pymupdf_ocr_vision", "pymupdf_native", "markitdown"]
+                return ["pymupdf4llm", "pymupdf_native", "markitdown"]
             return ["pymupdf4llm", "pymupdf_native", "markitdown"]
         return _classification_first(classification, extension)
 
@@ -193,6 +198,16 @@ def _decide_mode_and_options(
             options.enable_asset_vision_ocr = llm_enabled
             options.asset_vision_ocr_limit = 12
             return "fast_scanned_pdf", "Scanned PDF enables page-level OCR with parallel extraction."
+        if classification and classification.file_category == "formula_heavy_pdf":
+            # 数学试卷类：大量提取 drawing，强化 vision OCR
+            options.asset_image_limit = 32
+            options.skip_image_supplement = False
+            options.timeout_s = max(options.timeout_s, 150)
+            options.enable_asset_vision_ocr = llm_enabled
+            options.asset_vision_ocr_limit = 24
+            options.ocr_page_limit = 6
+            options.enable_page_vision_ocr = False
+            return "formula_heavy_pdf", "Formula-heavy PDF maximizes drawing extraction with vision OCR."
         if classification and classification.file_category == "complex_pdf":
             options.asset_image_limit = max(options.asset_image_limit, 24)
             options.timeout_s = max(options.timeout_s, 120)

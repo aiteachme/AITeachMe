@@ -24,6 +24,8 @@ venv/
 *.egg-info/
 dist/
 build/
+!backend/app/workflows/digest/build/
+!backend/app/workflows/digest/build/*.py
 .hypothesis/
 .pytest_cache/
 

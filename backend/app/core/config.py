@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     llm_model: str = "qwen-plus"
+    ocr_model: str | None = None
+    ocr_api_key: str | None = None
+    ocr_base_url: str | None = None
     embedding_model: str = "text-embedding-v3"
     data_dir: str = "./data"
     max_upload_size_mb: int = 50
@@ -94,6 +97,20 @@ class Settings(BaseSettings):
         if not self.llm_api_key:
             raise MissingLLMApiKeyError()
         return self.llm_api_key
+
+    def get_ocr_config(self) -> tuple[str, str, str]:
+        """获取 OCR 配置（model, api_key, base_url）。
+
+        如果未单独配置 OCR，则回退到 LLM 配置。
+        """
+        ocr_model = self.ocr_model or self.llm_model
+        ocr_api_key = self.ocr_api_key or self.llm_api_key
+        ocr_base_url = self.ocr_base_url or self.llm_base_url
+
+        if not ocr_api_key:
+            raise MissingLLMApiKeyError()
+
+        return ocr_model, ocr_api_key, ocr_base_url
 
 
 @lru_cache

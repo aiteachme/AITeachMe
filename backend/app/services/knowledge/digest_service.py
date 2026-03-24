@@ -14,6 +14,7 @@ from app.core.exceptions import (
     RawFileNotFoundError,
     SubjectBuildLockConflictError,
 )
+from app.core.database import managed_session
 from app.models.raw_file import RawFile
 from app.repositories.files_repo import (
     list_all_raw_files_by_subject,
@@ -30,8 +31,10 @@ from app.services.knowledge.docgen_store import (
 )
 from app.services.presenters import require_id, require_uid
 from app.services.upload_support import build_merged_knowledge_base_path
+from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.time import utcnow
 from app.workflows.digest import run_docgen_workflow, run_graph_digest_workflow
+from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
 
@@ -127,6 +130,17 @@ def _clear_docgen_staging_safely(subject: str) -> None:
         logger.exception("knowledge_build_cleanup_failed", subject=subject)
 
 
+def _cleanup_pending_digest_outputs(subject: str) -> None:
+    """Drop stale pending graph/curriculum rows before a new unified build."""
+
+    try:
+        with managed_session() as session:
+            cleanup_pending_by_subject(session, subject=subject, job_type="graph")
+            cleanup_pending_by_subject(session, subject=subject, job_type="curriculum")
+    except Exception:
+        logger.exception("knowledge_pending_cleanup_failed", subject=subject)
+
+
 def trigger_docgen_build(
     session: Session,
     *,
@@ -220,6 +234,48 @@ async def run_docgen_background(
         release_knowledge_build_lock(subject)
 
 
+async def run_unified_build_background(
+    *,
+    subject: str,
+    file_ids: list[int],
+    prompt: str | None,
+    requested_at: datetime,
+) -> None:
+    """Run the unified digest build in background without introducing a new API."""
+
+    build_logger = logger.bind(subject=subject, requested_at=requested_at.isoformat())
+    build_logger.info("knowledge_unified_build_started", file_count=len(file_ids))
+
+    try:
+        _clear_docgen_staging_safely(subject)
+        _cleanup_pending_digest_outputs(subject)
+        result = await run_unified_digest_build(
+            subject=subject,
+            file_ids=file_ids,
+            user_prompt=prompt,
+            requested_at=requested_at,
+        )
+        if not result.success:
+            _clear_docgen_staging_safely(subject)
+            build_logger.error("knowledge_unified_build_failed", error=result.error)
+            return
+
+        build_logger.info(
+            "knowledge_unified_build_completed",
+            doc_count=result.doc_count,
+            chunk_count=result.chunk_count,
+            new_node_count=result.new_node_count,
+            new_edge_count=result.new_edge_count,
+            elapsed_ms=result.elapsed_ms,
+        )
+    except Exception:
+        _clear_docgen_staging_safely(subject)
+        build_logger.exception("knowledge_unified_build_failed")
+        return
+    finally:
+        release_knowledge_build_lock(subject)
+
+
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     """Read the published merged markdown and manifest metadata."""
 
@@ -253,5 +309,6 @@ __all__ = [
     "get_docgen_result",
     "run_docgen_background",
     "run_graph_digest_background",
+    "run_unified_build_background",
     "trigger_docgen_build",
 ]

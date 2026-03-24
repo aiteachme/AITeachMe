@@ -118,6 +118,7 @@ def _classify_pdf(path: Path) -> ClassificationResult:
     drawing_heavy_pages = 0
     all_text_parts: list[str] = []
 
+    formula_heavy_pages = 0
     for page_index in range(sample_pages):
         page = document[page_index]
         text = page.get_text("text") or ""
@@ -128,8 +129,14 @@ def _classify_pdf(path: Path) -> ClassificationResult:
         large_images = [image for image in images if _is_large_image(document, image[0])]
         if char_count < 50 and large_images:
             image_heavy_pages += 1
-        if _has_meaningful_drawing_clusters(page):
+
+        drawing_count = len([r for r in page.cluster_drawings() if _is_meaningful_drawing_rect(r)])
+        if drawing_count > 0:
             drawing_heavy_pages += 1
+
+        # 检测公式密集页：drawing 多 + 文字少
+        if drawing_count >= 3 and char_count < 500:
+            formula_heavy_pages += 1
 
         all_text_parts.append(text)
 
@@ -139,16 +146,24 @@ def _classify_pdf(path: Path) -> ClassificationResult:
     avg_density = total_chars / sample_pages if sample_pages else 0
     image_ratio = image_heavy_pages / sample_pages if sample_pages else 0
     drawing_ratio = drawing_heavy_pages / sample_pages if sample_pages else 0
+    formula_ratio = formula_heavy_pages / sample_pages if sample_pages else 0
     detected_language = _detect_language(all_text[:5000])
     heading_count = len(_HEADING_LIKE_RE.findall(all_text[:10000]))
     has_tables = bool(_TABLE_LIKE_RE.search(all_text[:10000]))
     has_formulas = bool(_FORMULA_RE.search(all_text[:10000])) or drawing_ratio > 0.3
 
+    # 优化分类逻辑：识别数学试卷类文档
     if avg_density < 30:
         file_category = "scanned_pdf"
+        recommended_parser = "pymupdf_ocr_vision"
+        fallback_parsers = ["pymupdf_native", "markitdown"]
+    elif formula_ratio > 0.5 and avg_density < 300:
+        # 数学试卷类：公式密集 + 文字适中
+        file_category = "formula_heavy_pdf"
         recommended_parser = "pymupdf_native"
-        fallback_parsers = ["markitdown"]
-    elif image_ratio > 0.5 or drawing_ratio > 0.3:
+        fallback_parsers = ["pymupdf4llm", "markitdown"]
+    elif image_ratio > 0.5 or (drawing_ratio > 0.6 and avg_density > 200):
+        # 图表密集 + 文字较多
         file_category = "complex_pdf"
         recommended_parser = "pymupdf4llm"
         fallback_parsers = ["pymupdf_native", "markitdown"]
@@ -178,6 +193,7 @@ def _classify_pdf(path: Path) -> ClassificationResult:
         avg_density=result.text_density,
         image_ratio=result.image_page_ratio,
         drawing_ratio=round(drawing_ratio, 2),
+        formula_ratio=round(formula_ratio, 2),
         language=result.detected_language,
     )
     return result
@@ -195,11 +211,16 @@ def _is_large_image(document: Any, xref: int) -> bool:
 
 def _has_meaningful_drawing_clusters(page: Any) -> bool:
     for rect in page.cluster_drawings():
-        width = float(rect.width)
-        height = float(rect.height)
-        if width >= 40 and height >= 10 and width * height >= 1500:
+        if _is_meaningful_drawing_rect(rect):
             return True
     return False
+
+
+def _is_meaningful_drawing_rect(rect: Any) -> bool:
+    width = float(rect.width)
+    height = float(rect.height)
+    area = width * height
+    return width >= 40 and height >= 10 and area >= 1500
 
 
 def _classify_pptx(path: Path) -> ClassificationResult:

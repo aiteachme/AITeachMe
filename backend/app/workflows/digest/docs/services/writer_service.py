@@ -1,4 +1,4 @@
-"""LLM-first chapter writing helpers for digest docs."""
+"""Pure helpers for writing, reviewing, and tagging docs chapters."""
 
 from __future__ import annotations
 
@@ -17,21 +17,15 @@ from app.workflows.digest.prompts.docgen_prompts import (
 
 logger = structlog.get_logger()
 
-SUMMARY_PATTERN = re.compile(
-    r"^>\s*(?:📌\s*)?本章(?:概要|导学)[:：]\s*(.+)$",
-    re.MULTILINE,
-)
-TAG_PATTERN = re.compile(
-    r"^(?:📊\s*)?本章标签[:：]\s*(.+)$",
-    re.MULTILINE,
-)
+SUMMARY_PATTERN = re.compile(r"^>\s*📌\s*本章概要[:：]\s*(.+)$", re.MULTILINE)
+TAG_PATTERN = re.compile(r"^📊\s*本章标签[:：]\s*(.+)$", re.MULTILINE)
 H1_PATTERN = re.compile(r"^\s*#\s+.+$", re.MULTILINE)
 H2_PATTERN = re.compile(r"^\s*##\s+(.+?)\s*$", re.MULTILINE)
 SPACE_PATTERN = re.compile(r"\s+")
 
 
 def analyze_chapter_structure(markdown: str) -> dict[str, bool]:
-    """Check whether a generated chapter has the expected teaching scaffold."""
+    """Check whether a generated chapter has the expected scaffold."""
 
     normalized = markdown.strip()
     return {
@@ -43,7 +37,7 @@ def analyze_chapter_structure(markdown: str) -> dict[str, bool]:
 
 
 def build_global_outline_summary(outline_tree: dict) -> str:
-    """Convert the outline tree into a readable chapter summary."""
+    """Convert an outline tree into readable summary text."""
 
     lines: list[str] = []
     for chapter in outline_tree.get("chapters", []):
@@ -63,8 +57,7 @@ def _clean_json_payload(payload: str) -> str:
 def _normalize_tags(tags: list[str]) -> list[str]:
     normalized: list[str] = []
     for tag in tags:
-        stripped = re.sub(r"\s+", "", tag)
-        stripped = stripped.lstrip("#")
+        stripped = re.sub(r"\s+", "", tag).lstrip("#")
         if not stripped:
             continue
         value = f"#{stripped[:16]}"
@@ -75,11 +68,7 @@ def _normalize_tags(tags: list[str]) -> list[str]:
     return normalized
 
 
-def _derive_summary(
-    chapter_title: str,
-    section_titles: list[str],
-    formula_refs: list[str],
-) -> str:
+def _derive_summary(chapter_title: str, section_titles: list[str], formula_refs: list[str]) -> str:
     if section_titles:
         preview = "、".join(title.strip() for title in section_titles[:3] if title.strip())
         return f"本章围绕{preview}展开，帮助你建立关于{chapter_title}的整体理解与复习抓手。"
@@ -166,7 +155,6 @@ def _normalize_markdown(
     lines = markdown.strip().splitlines()
     normalized_lines: list[str] = []
     seen_h1 = False
-
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("# "):
@@ -214,7 +202,7 @@ async def write_chapter(
     formula_refs: list[str],
     source_content: str,
 ) -> str:
-    """Write one chapter with the main docgen model."""
+    """Write one chapter with the main doc model."""
 
     truncated_source = source_content
     if len(truncated_source) > 18000:
@@ -256,12 +244,7 @@ async def write_chapter(
     )
 
 
-async def review_chapter(
-    markdown: str,
-    source_summary: str,
-    *,
-    user_prompt: str | None = None,
-) -> dict:
+async def review_chapter(markdown: str, source_summary: str, *, user_prompt: str | None = None) -> dict:
     """Run one review pass for a drafted chapter."""
 
     prompt = REVIEWER_PROMPT.format(
@@ -269,7 +252,6 @@ async def review_chapter(
         source_summary=source_summary[:2500],
         user_prompt=user_prompt or "（无额外要求）",
     )
-
     try:
         result = await acompletion(
             [{"role": "user", "content": prompt}],
@@ -292,7 +274,6 @@ def extract_metadata_rule_based(markdown: str) -> dict:
 
     summary_match = SUMMARY_PATTERN.search(markdown)
     tag_match = TAG_PATTERN.search(markdown)
-
     summary = summary_match.group(1).strip()[:200] if summary_match else ""
     tags = _normalize_tags(tag_match.group(1).split()) if tag_match else []
 
@@ -316,7 +297,7 @@ def extract_metadata_rule_based(markdown: str) -> dict:
 
 
 async def extract_metadata(markdown: str) -> dict:
-    """Use a light LLM call to extract summary and tags."""
+    """Use a light model to extract summary and tags."""
 
     prompt = METADATA_PROMPT.format(document=markdown[:4000])
     try:

@@ -40,12 +40,12 @@ function buildFileUid(seed: number): string {
   return `file_mock_${seed.toString().padStart(4, "0")}`;
 }
 
-function buildAssetBaseUrl(subject: string, fileUid: string): string {
-  return `/_assets/${subject}/assets/${fileUid}`;
+function buildAssetBaseUrl(subject: string, assetDirName: string | number): string {
+  return `/_assets/${subject}/assets/${assetDirName}`;
 }
 
-function buildFileAssets(subject: string, fileUid: string): FileAssetItem[] {
-  const assetBaseUrl = buildAssetBaseUrl(subject, fileUid);
+function buildFileAssets(subject: string, assetDirName: string | number): FileAssetItem[] {
+  const assetBaseUrl = buildAssetBaseUrl(subject, assetDirName);
   return [
     {
       name: SVG_ASSET_NAME,
@@ -71,7 +71,7 @@ function buildReadyMarkdown(filename: string): string {
 }
 
 function serializeFile(subject: string, file: MockFile): FileRecord {
-  const assetBaseUrl = buildAssetBaseUrl(subject, file.uid);
+  const assetBaseUrl = buildAssetBaseUrl(subject, file.internal_id);
   return {
     uid: file.uid,
     filename: file.filename,
@@ -128,7 +128,7 @@ const mockFiles: MockFile[] = [
     latest_updated_at: "2026-03-22T10:00:00Z",
     created_at: "2026-03-22T09:58:00Z",
     markdown_content: buildReadyMarkdown("calculus-final.pdf"),
-    assets: buildFileAssets("mock-subject", buildFileUid(1)),
+    assets: buildFileAssets("mock-subject", 1),
   },
   {
     internal_id: 2,
@@ -207,7 +207,7 @@ function advanceFileParsing(subject: string) {
     file.image_count = 1;
     file.parser_used = file.parser_used ?? "markitdown";
     file.markdown_content = buildReadyMarkdown(file.filename);
-    file.assets = buildFileAssets(subject, file.uid);
+    file.assets = buildFileAssets(subject, file.internal_id);
     file.latest_updated_at = now();
   }
 }
@@ -367,10 +367,10 @@ export const fileHandlers = [
     });
   }),
 
-  http.get("/_assets/:subject/assets/:fileUid/:assetName", ({ params }) => {
-    const fileUid = String(params.fileUid);
+  http.get("/_assets/:subject/assets/:assetDirName/:assetName", ({ params }) => {
+    const assetDirName = String(params.assetDirName);
     const assetName = String(params.assetName);
-    const file = mockFiles.find((item) => item.uid === fileUid);
+    const file = mockFiles.find((item) => String(item.internal_id) === assetDirName);
     const asset = file?.assets.find((item) => item.name === assetName);
 
     if (!file || !asset) {

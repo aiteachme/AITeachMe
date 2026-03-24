@@ -1,31 +1,56 @@
-"""Preparation-phase nodes for the digest graph workflow.
-
-Reads DB: ``raw_file``, ``document``, ``document_chunk``.
-Writes DB: materialized ``document`` / ``document_chunk`` rows and ``chunk_embeddings``
-when digest-ready chunks are missing.
-Writes DB (compatibility no-op): graph progress / lock helpers remain callable, but no
-dedicated ``graph_digest_job`` or ``subject_build_lock`` table is persisted now.
-Writes FS: reads cleaned markdown from the ingest output paths.
-Idempotency: chunk materialization reuses existing documents/chunks when already present.
-"""
+"""Preparation and extraction nodes for the graph lane."""
 
 from __future__ import annotations
 
+import asyncio
+
 from sqlmodel import select
 
+from app.core.config import get_settings
+from app.core.database import managed_session
+from app.models.knowledge import DocumentChunk
+from app.repositories import kg_repo
+from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.kg.services.clusterer import cluster_candidates
 from app.workflows.digest.kg.services.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,
 )
-from app.core.database import managed_session
-from app.models import RawFile
-from app.models.knowledge import DocumentChunk
-from app.repositories import kg_repo
-from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import prepare_chunk_ids_for_files, workflow_logger
+from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.unified.models import ChapterPriors
+from app.workflows.digest.unified.session import get_unified_build_session
+
+
+def _resolve_extract_parallelism() -> int:
+    settings = get_settings()
+    return max(1, min(10, settings.llm_concurrency_limit))
+
+
+def _build_taxonomy_hints(chapter_priors: ChapterPriors | None) -> set[str]:
+    if chapter_priors is None:
+        return set()
+
+    hints: set[str] = set()
+    for chapter in chapter_priors.chapters:
+        hints.add(chapter.title)
+        hints.update(chapter.section_titles)
+        hints.update(chapter.key_terms)
+    return {hint for hint in hints if hint}
+
+
+def _apply_taxonomy_hints(result: ChunkExtractionResult, taxonomy_hints: set[str]) -> None:
+    if not taxonomy_hints:
+        return
+
+    for node in result.nodes:
+        node_name_lower = node.name.lower()
+        for hint in taxonomy_hints:
+            hint_lower = hint.lower()
+            if hint_lower in node_name_lower or node_name_lower in hint_lower:
+                node.taxonomy_hint = hint
+                break
 
 
 async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
@@ -56,46 +81,21 @@ async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
 
 
 async def prepare_node(state: KGDigestState) -> KGDigestState:
-    """Load or materialize digest-ready chunks for the target files."""
+    """Load canonical chunk ids from the unified build session."""
 
     with managed_session() as session:
         digest_logger = workflow_logger(state)
         try:
-            file_ids = state["file_ids"]
-            digest_logger.info("kg_prepare_started")
-            raw_files = session.exec(
-                select(RawFile).where(
-                    RawFile.subject == state["subject"],
-                    RawFile.id.in_(file_ids),  # type: ignore[union-attr]
-                )
-            ).all()
-            document_ids, chunk_ids = await prepare_chunk_ids_for_files(
-                session,
-                raw_files=list(raw_files),
-                digest_logger=digest_logger,
-            )
+            build_session_id = state.get("build_session_id", "")
+            if not build_session_id:
+                return {**state, "error": "missing_build_session_id"}
+
+            unified_session = get_unified_build_session(build_session_id)
+            materialized = unified_session.materialized
+            chunk_ids = list(materialized.chunk_ids)
             if not chunk_ids:
-                digest_logger.warning(
-                    "kg_workflow_no_digest_inputs",
-                    raw_file_count=len(raw_files),
-                    raw_files=[
-                        {
-                            "file_id": raw_file.id,
-                            "status": raw_file.status,
-                            "ingest_status": raw_file.ingest_status,
-                            "markdown_ready": bool(raw_file.markdown_path),
-                            "filename": raw_file.filename,
-                        }
-                        for raw_file in raw_files
-                    ],
-                )
                 return {**state, "error": "no_ready_digest_inputs"}
 
-            kg_repo.update_digest_job(
-                session,
-                state["job_id"],
-                input_chunk_count=len(chunk_ids),
-            )
             update_job_progress(
                 session,
                 job_id=state["job_id"],
@@ -103,28 +103,47 @@ async def prepare_node(state: KGDigestState) -> KGDigestState:
                 progress=10,
                 current_step="prepare",
             )
-
             digest_logger.info(
                 "kg_workflow_prepare_complete",
-                document_ids=document_ids,
-                source_file_ids=[raw_file.id for raw_file in raw_files if raw_file.id is not None],
-                document_count=len(document_ids),
+                build_session_id=build_session_id,
+                document_count=len(materialized.document_ids),
                 chunk_count=len(chunk_ids),
+                source_file_ids=materialized.source_file_ids,
             )
-            return {**state, "chunk_ids": chunk_ids}
+            return {
+                **state,
+                "shared_inputs": unified_session.shared_inputs,
+                "chunk_ids": chunk_ids,
+                "chunk_uid_to_chunk_id": dict(materialized.chunk_uid_to_chunk_id),
+                "chunk_id_to_chunk_uid": dict(materialized.chunk_id_to_chunk_uid),
+            }
         except Exception as exc:
             digest_logger.error("kg_workflow_prepare_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"prepare_failed: {exc}"}
 
 
 async def extract_node(state: KGDigestState) -> KGDigestState:
-    """Extract candidate nodes and edges chunk by chunk."""
+    """Extract candidate nodes and edges chunk by chunk with controlled parallelism."""
 
     with managed_session() as session:
         digest_logger = workflow_logger(state)
         try:
-            chunk_ids = state.get("chunk_ids", [])
-            digest_logger.info("kg_extract_started", chunk_count=len(chunk_ids))
+            chunk_ids = list(state.get("chunk_ids", []))
+            extract_parallelism = min(_resolve_extract_parallelism(), max(1, len(chunk_ids)))
+            build_session_id = state.get("build_session_id", "")
+            chapter_priors: ChapterPriors | None = None
+            if build_session_id:
+                unified_session = get_unified_build_session(build_session_id)
+                chapter_priors = await unified_session.wait_for_chapter_priors(timeout_ms=300)
+
+            taxonomy_hints = _build_taxonomy_hints(chapter_priors)
+            digest_logger.info(
+                "kg_extract_started",
+                chunk_count=len(chunk_ids),
+                parallelism=extract_parallelism,
+                has_chapter_priors=chapter_priors is not None,
+                taxonomy_hint_count=len(taxonomy_hints),
+            )
             update_job_progress(
                 session,
                 job_id=state["job_id"],
@@ -132,6 +151,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 progress=15,
                 current_step="extract",
             )
+
             if not chunk_ids:
                 update_job_progress(
                     session,
@@ -146,48 +166,64 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                     "all_candidate_edges": [],
                 }
 
-            chunks = session.exec(
-                select(DocumentChunk).where(
-                    DocumentChunk.id.in_(chunk_ids),  # type: ignore[union-attr]
-                )
-            ).all()
-            chunk_map = {chunk.id: chunk for chunk in chunks}
-
-            all_results: list[ChunkExtractionResult] = []
+            chunk_rows = list(
+                session.exec(
+                    select(DocumentChunk).where(
+                        DocumentChunk.id.in_(chunk_ids),
+                    )
+                ).all()
+            )
+            chunk_map = {chunk.id: chunk for chunk in chunk_rows if chunk.id is not None}
+            ordered_results = [ChunkExtractionResult() for _ in chunk_ids]
             all_candidate_edges: list[tuple[CandidateEdge, int]] = []
             success_chunk_count = 0
             failed_chunk_count = 0
+            semaphore = asyncio.Semaphore(extract_parallelism)
 
-            for index, chunk_id in enumerate(chunk_ids):
+            async def _extract_single(index: int, chunk_id: int):
                 chunk = chunk_map.get(chunk_id)
                 if chunk is None:
-                    failed_chunk_count += 1
-                    all_results.append(ChunkExtractionResult())
-                    digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
-                    continue
+                    return index, chunk_id, ChunkExtractionResult(), [], "missing"
 
                 try:
-                    result = await extract_candidates(
-                        chunk_content=chunk.content,
-                        chunk_title=chunk.title,
-                        header_path=chunk.header_path,
-                    )
-                    all_results.append(result)
-                    success_chunk_count += 1
-                    for edge in result.edges:
-                        all_candidate_edges.append((edge, chunk_id))
+                    async with semaphore:
+                        result = await extract_candidates(
+                            chunk_content=chunk.content,
+                            chunk_title=chunk.title,
+                            header_path=chunk.header_path,
+                        )
+                    _apply_taxonomy_hints(result, taxonomy_hints)
+                    edge_payload = [(edge, chunk_id) for edge in result.edges]
+                    return index, chunk_id, result, edge_payload, None
                 except Exception as exc:
+                    return index, chunk_id, ChunkExtractionResult(), [], str(exc)
+
+            tasks = [
+                asyncio.create_task(_extract_single(index, chunk_id))
+                for index, chunk_id in enumerate(chunk_ids)
+            ]
+            completed_count = 0
+            for task in asyncio.as_completed(tasks):
+                index, chunk_id, result, edge_payload, error = await task
+                ordered_results[index] = result
+
+                if error == "missing":
                     failed_chunk_count += 1
-                    all_results.append(ChunkExtractionResult())
+                    digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
+                elif error is not None:
+                    failed_chunk_count += 1
                     digest_logger.warning(
                         "kg_extract_chunk_failed",
                         chunk_id=chunk_id,
-                        error=str(exc),
+                        error=error,
                     )
-                    continue
+                else:
+                    success_chunk_count += 1
+                    all_candidate_edges.extend(edge_payload)
 
-                if (index + 1) % 5 == 0 or index == len(chunk_ids) - 1:
-                    progress = 10 + int(30 * (index + 1) / len(chunk_ids))
+                completed_count += 1
+                if completed_count % 5 == 0 or completed_count == len(tasks):
+                    progress = 10 + int(30 * completed_count / len(tasks))
                     update_job_progress(
                         session,
                         job_id=state["job_id"],
@@ -203,19 +239,19 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 progress=40,
                 current_step="extract",
             )
-
             digest_logger.info(
                 "kg_workflow_extract_complete",
                 total_chunks=len(chunk_ids),
                 success_chunk_count=success_chunk_count,
                 failed_chunk_count=failed_chunk_count,
-                results_count=len(all_results),
-                total_nodes=sum(len(result.nodes) for result in all_results),
+                results_count=len(ordered_results),
+                total_nodes=sum(len(result.nodes) for result in ordered_results),
                 total_edges=len(all_candidate_edges),
+                parallelism=extract_parallelism,
             )
             return {
                 **state,
-                "candidates": all_results,
+                "candidates": ordered_results,
                 "all_candidate_edges": all_candidate_edges,
             }
         except Exception as exc:
@@ -237,16 +273,11 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 chunk_count=len(chunk_ids),
             )
 
-            all_pairs: list[tuple] = []
-            result_index = 0
-            for chunk_id in chunk_ids:
-                if result_index >= len(results):
-                    break
-                result = results[result_index]
-                for node in result.nodes:
-                    all_pairs.append((node, chunk_id))
-                result_index += 1
-
+            all_pairs = [
+                (node, chunk_id)
+                for chunk_id, result in zip(chunk_ids, results)
+                for node in result.nodes
+            ]
             if not all_pairs:
                 update_job_progress(
                     session,
@@ -269,7 +300,6 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 progress=50,
                 current_step="cluster",
             )
-
             digest_logger.info(
                 "kg_workflow_cluster_complete",
                 input_candidates=len(all_pairs),

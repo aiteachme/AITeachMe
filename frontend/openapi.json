@@ -973,94 +973,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/assets/{file_uid}/{asset_name}": {
-      "get": {
-        "tags": [
-          "files"
-        ],
-        "summary": "Get one extracted asset by file UID",
-        "operationId": "get_file_asset_api_v1_subjects__subject__files_assets__file_uid___asset_name__get",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "file_uid",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "File Uid"
-            }
-          },
-          {
-            "name": "asset_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Asset Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
@@ -6765,7 +6677,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Public asset URL."
+            "description": "Runtime static URL for this asset."
           },
           "mime_type": {
             "anyOf": [
@@ -6961,7 +6873,7 @@
               }
             ],
             "title": "Asset Base Url",
-            "description": "Base URL for assets of this file."
+            "description": "Runtime static base URL for this file's assets."
           },
           "assets": {
             "items": {

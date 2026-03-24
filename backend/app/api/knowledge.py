@@ -31,8 +31,7 @@ from app.services.knowledge.curriculum_service import (
 )
 from app.services.knowledge.digest_service import (
     get_docgen_result,
-    run_docgen_background,
-    run_graph_digest_background,
+    run_unified_build_background,
     trigger_docgen_build,
 )
 from app.services.knowledge.graph_query_service import (
@@ -67,16 +66,11 @@ async def knowledge_build(
         prompt=body.prompt,
     )
     background_tasks.add_task(
-        run_docgen_background,
+        run_unified_build_background,
         subject=normalized,
         file_ids=accepted_file_ids,
         prompt=data.prompt,
         requested_at=data.requested_at,
-    )
-    background_tasks.add_task(
-        run_graph_digest_background,
-        subject=normalized,
-        file_ids=accepted_file_ids,
     )
     return ok_response(data)
 

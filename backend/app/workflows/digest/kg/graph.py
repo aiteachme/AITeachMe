@@ -118,6 +118,7 @@ def create_graph_digest_initial_state(
     subject: str,
     file_ids: list[int],
     job_id: int,
+    build_session_id: str | None = None,
 ) -> KGDigestState:
     """Create the initial state for digest graph building."""
 
@@ -125,7 +126,11 @@ def create_graph_digest_initial_state(
         "subject": subject,
         "file_ids": file_ids,
         "job_id": job_id,
+        "build_session_id": build_session_id or "",
+        "shared_inputs": None,
         "chunk_ids": [],
+        "chunk_uid_to_chunk_id": {},
+        "chunk_id_to_chunk_uid": {},
         "candidates": [],
         "all_candidate_edges": [],
         "clustered_candidates": [],
@@ -138,6 +143,7 @@ def create_graph_digest_initial_state(
         "new_edge_ids": [],
         "updated_edge_ids": [],
         "impact_set": None,
+        "topic_anchor_snapshot": None,
         "lock_acquired": False,
         "error": None,
     }

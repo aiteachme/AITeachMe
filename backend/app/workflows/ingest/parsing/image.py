@@ -63,6 +63,14 @@ async def parse_image_bytes_with_llm_vision(
 ) -> str:
     """Run LLM vision parsing on image bytes and return markdown text."""
 
+    if not image_bytes or len(image_bytes) < 100:
+        logger.warning("parse_image_bytes_skipped", reason="image_bytes_too_small", size=len(image_bytes))
+        return "[unclear]"
+
+    from app.core.config import get_settings
+    settings = get_settings()
+    ocr_model, ocr_api_key, ocr_base_url = settings.get_ocr_config()
+
     encoded = base64.b64encode(image_bytes).decode("utf-8")
     prompt = populate_prompt(get_image_parse_prompt(language_mode))
     messages: list[ChatMessage] = [
@@ -77,7 +85,46 @@ async def parse_image_bytes_with_llm_vision(
             ],
         }
     ]
-    text = await acompletion(messages)
+
+    try:
+        from app.core.model_router import TaskType
+        # 使用 OCR 专用配置覆盖
+        import litellm
+        response = await litellm.acompletion(
+            model=f"openai/{ocr_model}",
+            messages=messages,
+            api_base=ocr_base_url,
+            api_key=ocr_api_key,
+            timeout=120,
+            temperature=0.3,
+        )
+        text = response.choices[0].message.content if response.choices else ""
+    except Exception as exc:
+        logger.error(
+            "parse_image_bytes_llm_failed",
+            error=str(exc),
+            mime_type=mime_type,
+            language_mode=language_mode,
+            ocr_model=ocr_model,
+            exc_info=True,
+        )
+        return "[unclear]"
+
     if not text or not text.strip():
-        raise FileParseError("image_bytes", reason="Image OCR returned empty markdown.")
+        logger.warning("parse_image_bytes_empty_response", mime_type=mime_type, ocr_model=ocr_model)
+        return "[unclear]"
+
+    # 检测拒绝响应
+    text_lower = text.lower().strip()
+    refuse_patterns = [
+        "请提供需要处理的图片",
+        "please provide",
+        "i cannot see",
+        "no image",
+        "unable to process",
+    ]
+    if any(pattern in text_lower for pattern in refuse_patterns):
+        logger.warning("parse_image_bytes_refused", response_preview=text[:100], ocr_model=ocr_model)
+        return "[unclear]"
+
     return text

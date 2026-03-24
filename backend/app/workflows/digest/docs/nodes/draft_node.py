@@ -1,4 +1,4 @@
-"""Draft one chapter of the knowledge docs."""
+"""Draft one chapter in the docs lane."""
 
 from __future__ import annotations
 
@@ -13,12 +13,13 @@ from app.workflows.digest.docs.services.writer_service import (
     write_chapter,
 )
 from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.shared.models import AssetItem, SharedInputs
 
 logger = structlog.get_logger()
 
 
 def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
-    """Build the fan-out chapter draft node."""
+    """Build the chapter draft node."""
 
     async def draft_chapter_node(state: dict) -> dict:
         started_at = perf_counter()
@@ -26,28 +27,30 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
 
         chapter = state["chapter"]
         outline_tree = state.get("outline_tree", {})
-        total_chapters = state.get("total_chapters", 1)
+        total_chapters = int(state.get("total_chapters", 1))
         user_prompt = state.get("user_prompt")
-        prev_summary = state.get("prev_summary", "")
-        next_preview = state.get("next_preview", "")
-        subject = state.get("subject", "")
+        prev_summary = str(state.get("prev_summary", ""))
+        next_preview = str(state.get("next_preview", ""))
+        subject = str(state.get("subject", ""))
+        shared_inputs: SharedInputs | None = state.get("shared_inputs")
 
-        chapter_index = chapter["chapter_index"]
-        chapter_title = chapter.get("title", f"第{chapter_index}章")
-        source_contents = chapter.get("source_contents", [])
+        chapter_index = int(chapter["chapter_index"])
+        chapter_title = str(chapter.get("title", f"Chapter {chapter_index}"))
+        source_contents = list(chapter.get("source_contents", []))
+        source_file_ids = list(chapter.get("source_file_ids", []))
         section_titles = list(chapter.get("section_titles", []))
         formula_refs = list(chapter.get("formula_refs", []))
         source_brief = str(chapter.get("source_brief", ""))
-        source_text = "\n\n---\n\n".join(source_contents) if source_contents else "（无原始素材）"
+        chunk_uids = list(chapter.get("chunk_uids", []))
+        source_text = "\n\n---\n\n".join(source_contents) if source_contents else "(no source content)"
+        image_hints, asset_count = build_image_hints(shared_inputs=shared_inputs, chapter=chapter)
 
-        node_logger.info(
-            "docgen_drafting_chapter",
-            chapter_index=chapter_index,
-            chapter_title=chapter_title,
-            total_chapters=total_chapters,
-            source_chunk_count=len(source_contents),
-            section_count=len(section_titles),
-        )
+        if asset_count:
+            node_logger.info(
+                "docgen_drafting_with_assets",
+                chapter_index=chapter_index,
+                asset_count=asset_count,
+            )
 
         global_outline_text = build_global_outline_summary(outline_tree)
         async with strategy.chapter_semaphore:
@@ -62,7 +65,7 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
                 next_preview=next_preview,
                 source_brief=source_brief,
                 formula_refs=formula_refs,
-                source_content=source_text,
+                source_content=f"{source_text}{image_hints}",
             )
 
         if subject:
@@ -78,7 +81,6 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
         node_logger.info(
             "docgen_drafting_chapter_completed",
             chapter_index=chapter_index,
-            chapter_title=chapter_title,
             chars=len(markdown),
             draft_ms=draft_ms,
         )
@@ -89,11 +91,14 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
                     "title": chapter_title,
                     "markdown": markdown,
                     "source_contents": source_contents,
+                    "source_file_ids": source_file_ids,
                     "section_titles": section_titles,
                     "formula_refs": formula_refs,
                     "source_brief": source_brief,
                     "prev_summary": prev_summary,
                     "next_preview": next_preview,
+                    "chunk_uids": chunk_uids,
+                    "image_refs": list(chapter.get("image_refs", [])),
                 }
             ],
             "draft_ms": draft_ms,
@@ -101,3 +106,45 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
         }
 
     return draft_chapter_node
+
+
+def build_image_hints(*, shared_inputs: SharedInputs | None, chapter: dict) -> tuple[str, int]:
+    """Build chapter-specific image hints from markdown-linked assets."""
+
+    if shared_inputs is None:
+        return "", 0
+
+    chunk_uids = set(chapter.get("chunk_uids", []))
+    if not chunk_uids:
+        return "", 0
+
+    section_by_uid = {
+        section.digest_chunk_uid: section for section in shared_inputs.section_packets
+    }
+    asset_metadata = {
+        (asset.file_id, asset.filename): asset for asset in shared_inputs.asset_registry.assets
+    }
+    related_assets: list[tuple[str, AssetItem | None]] = []
+    seen_assets: set[tuple[int, str]] = set()
+    for chunk_uid in chunk_uids:
+        section = section_by_uid.get(chunk_uid)
+        if section is None:
+            continue
+        for image_ref in section.image_refs:
+            asset_key = (section.source_file_id, image_ref)
+            if asset_key in seen_assets:
+                continue
+            seen_assets.add(asset_key)
+            related_assets.append((image_ref, asset_metadata.get(asset_key)))
+
+    if not related_assets:
+        return "", 0
+
+    lines = ["", "", "Available related assets:"]
+    for filename, asset in related_assets[:8]:
+        if asset is None:
+            lines.append(f"- {filename}")
+            continue
+        suffix = f" page {asset.page_number}" if asset.page_number is not None else ""
+        lines.append(f"- {filename} ({asset.asset_type}{suffix})")
+    return "\n".join(lines) + "\n", len(related_assets)

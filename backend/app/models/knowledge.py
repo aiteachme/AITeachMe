@@ -1,4 +1,4 @@
-"""知识构建相关模型定义。"""
+"""Knowledge document source models."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.utils.time import utcnow
 
 
 class Document(SQLModel, table=True):
-    """知识集合中的单篇文档。"""
+    """A source document materialized for digest processing."""
 
     __tablename__ = "document"
 
@@ -25,10 +25,13 @@ class Document(SQLModel, table=True):
 
 
 class DocumentChunk(SQLModel, table=True):
-    """文档切块。"""
+    """A canonical digest chunk derived from one shared section packet."""
 
     __tablename__ = "document_chunk"
-    __table_args__ = (UniqueConstraint("document_id", "chunk_index"),)
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index"),
+        UniqueConstraint("document_id", "digest_chunk_uid"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     document_id: int = Field(foreign_key="document.id", index=True)
@@ -36,7 +39,6 @@ class DocumentChunk(SQLModel, table=True):
     level: int
     header_path: str
     chunk_index: int
+    digest_chunk_uid: str = Field(index=True)
+    build_session_id: str = Field(index=True)
     content: str
-
-
-

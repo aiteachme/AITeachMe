@@ -1,22 +1,11 @@
-"""Finalize and failure nodes for the digest graph workflow.
-
-Reads DB: pending graph entities for the active run and current curriculum structures used
-by downstream impact analysis.
-Writes DB: graph activation / cleanup on ``knowledge_node`` / ``knowledge_edge`` /
-revision / evidence tables.
-Writes DB (compatibility no-op): graph / curriculum job helpers and build-lock helpers remain
-callable, but no dedicated ``graph_digest_job`` / ``curriculum_derive_job`` / lock table is
-persisted now.
-Writes FS: none.
-Idempotency: finalize/fail rewrites the active job outcome and cleans the same pending rows.
-"""
+"""Finalize and failure nodes for the graph lane."""
 
 from __future__ import annotations
 
 import asyncio
 import traceback
-from collections.abc import Awaitable, Callable
 import uuid
+from collections.abc import Awaitable, Callable
 
 from app.core.database import managed_session
 from app.repositories import kg_repo
@@ -28,10 +17,35 @@ from app.utils.job_helpers import (
 from app.workflows.common.result import WorkflowResult
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
+from app.workflows.digest.unified.session import get_unified_build_session
 
 
 def _new_runtime_job_id() -> int:
     return (uuid.uuid4().int % 2_000_000_000) + 1
+
+
+def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
+    chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
+    anchors: list[TopicAnchor] = []
+    for cluster in state.get("clustered_candidates", [])[:80]:
+        representative = cluster.representative
+        if not representative.name:
+            continue
+        chunk_uids = [
+            chunk_id_to_chunk_uid[chunk_id]
+            for chunk_id in cluster.source_chunk_ids
+            if chunk_id in chunk_id_to_chunk_uid
+        ]
+        anchors.append(
+            TopicAnchor(
+                topic_name=representative.name,
+                node_type=representative.node_type,
+                confidence=min(0.95, 0.55 + 0.08 * len(cluster.members)),
+                chunk_uids=list(dict.fromkeys(chunk_uids)),
+            )
+        )
+    return TopicAnchorSnapshot(anchors=anchors)
 
 
 def build_finalize_graph_node(
@@ -46,24 +60,19 @@ def build_finalize_graph_node(
             try:
                 job_id = state["job_id"]
                 subject = state["subject"]
-
+                build_session_id = state.get("build_session_id", "")
                 activated = activate_graph_entities_by_job(
                     session,
                     job_id=job_id,
                     subject=subject,
                 )
-                digest_logger.info(
-                    "kg_workflow_activated",
-                    activated=activated,
-                    chunk_count=len(state.get("chunk_ids", [])),
-                    candidate_result_count=len(state.get("candidates", [])),
-                    impact_available=state.get("impact_set") is not None,
-                )
+                topic_snapshot = _build_topic_snapshot(state)
+                if build_session_id:
+                    unified_session = get_unified_build_session(build_session_id)
+                    unified_session.publish_topic_anchor_snapshot(topic_snapshot)
 
                 kg_repo.release_subject_build_lock(session, subject)
-
                 curriculum_job_id = _new_runtime_job_id()
-
                 kg_repo.update_digest_job(
                     session,
                     job_id,
@@ -77,15 +86,12 @@ def build_finalize_graph_node(
                     progress=100,
                     current_step="finalize_graph",
                 )
-
                 digest_logger.info(
                     "kg_workflow_finalize_complete",
+                    activated=activated,
                     curriculum_job_id=curriculum_job_id,
-                    chunk_count=len(state.get("chunk_ids", [])),
-                    candidate_result_count=len(state.get("candidates", [])),
-                    edge_candidate_count=len(state.get("all_candidate_edges", [])),
+                    topic_anchor_count=len(topic_snapshot.anchors),
                 )
-
                 asyncio.create_task(
                     trigger_curriculum_derive(
                         subject=subject,
@@ -94,7 +100,11 @@ def build_finalize_graph_node(
                         impact_set=state.get("impact_set"),
                     )
                 )
-                return {**state, "error": None}
+                return {
+                    **state,
+                    "topic_anchor_snapshot": topic_snapshot,
+                    "error": None,
+                }
             except Exception as exc:
                 session.rollback()
                 digest_logger.error("kg_workflow_finalize_failed", error=str(exc), exc_info=True)
@@ -111,7 +121,6 @@ async def fail_node(state: KGDigestState) -> KGDigestState:
         try:
             job_id = state["job_id"]
             error_message = state.get("error", "unknown_error")
-
             cleanup_pending_by_job(
                 session,
                 job_id=job_id,

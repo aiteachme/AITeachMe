@@ -1,4 +1,4 @@
-"""Review one drafted chapter of the knowledge docs."""
+"""Review one drafted docs chapter."""
 
 from __future__ import annotations
 
@@ -13,12 +13,14 @@ from app.workflows.digest.docs.services.writer_service import (
     write_chapter,
 )
 from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.unified.models import TopicAnchorSnapshot
+from app.workflows.digest.unified.session import get_unified_build_session
 
 logger = structlog.get_logger()
 
 
 def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
-    """Build the fan-out chapter review node."""
+    """Build the docs chapter review node."""
 
     async def review_chapter_node(state: dict) -> dict:
         started_at = perf_counter()
@@ -28,38 +30,40 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
         outline_tree = state.get("outline_tree", {})
         total_chapters = int(state.get("total_chapters", 1))
         user_prompt = state.get("user_prompt")
+        build_session_id = str(state.get("build_session_id", ""))
 
-        chapter_index = draft["chapter_index"]
-        chapter_title = draft["title"]
-        markdown = draft["markdown"]
-        source_contents = draft.get("source_contents", [])
+        chapter_index = int(draft["chapter_index"])
+        chapter_title = str(draft["title"])
+        markdown = str(draft["markdown"])
+        source_contents = list(draft.get("source_contents", []))
         section_titles = list(draft.get("section_titles", []))
         formula_refs = list(draft.get("formula_refs", []))
         source_brief = str(draft.get("source_brief", ""))
         prev_summary = str(draft.get("prev_summary", ""))
         next_preview = str(draft.get("next_preview", ""))
+        chunk_uids = list(draft.get("chunk_uids", []))
         source_summary = "\n".join(content[:300] for content in source_contents[:3])
 
-        node_logger.info(
-            "docgen_reviewing_chapter",
-            chapter_index=chapter_index,
+        topic_snapshot = await _load_topic_anchor_snapshot(build_session_id)
+        coverage_hints = build_coverage_hints(
             chapter_title=chapter_title,
+            section_titles=section_titles,
+            chunk_uids=chunk_uids,
+            topic_snapshot=topic_snapshot,
         )
 
         async with strategy.chapter_semaphore:
-            review_result = await review_chapter(markdown, source_summary, user_prompt=user_prompt)
+            review_result = await review_chapter(
+                markdown,
+                source_summary + coverage_hints,
+                user_prompt=user_prompt,
+            )
+
         llm_calls_total = 1
         final_markdown = markdown
-
         if not review_result.get("passed", True):
-            node_logger.warning(
-                "docgen_reviewing_chapter_retry",
-                chapter_index=chapter_index,
-                chapter_title=chapter_title,
-                issues=review_result.get("issues", []),
-            )
             global_outline_text = build_global_outline_summary(outline_tree)
-            source_text = "\n\n---\n\n".join(source_contents) if source_contents else "（无原始素材）"
+            source_text = "\n\n---\n\n".join(source_contents) if source_contents else "(no source content)"
             async with strategy.chapter_semaphore:
                 final_markdown = await write_chapter(
                     chapter_title=chapter_title,
@@ -72,16 +76,19 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
                     next_preview=next_preview,
                     source_brief=source_brief,
                     formula_refs=formula_refs,
-                    source_content=source_text,
+                    source_content=source_text + coverage_hints,
                 )
-                review_result = await review_chapter(final_markdown, source_summary, user_prompt=user_prompt)
+                review_result = await review_chapter(
+                    final_markdown,
+                    source_summary + coverage_hints,
+                    user_prompt=user_prompt,
+                )
             llm_calls_total += 2
 
         review_ms = int((perf_counter() - started_at) * 1000)
         node_logger.info(
             "docgen_reviewing_chapter_completed",
             chapter_index=chapter_index,
-            chapter_title=chapter_title,
             passed=review_result.get("passed", True),
             review_ms=review_ms,
         )
@@ -95,6 +102,7 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
                     "source_contents": source_contents,
                     "section_titles": section_titles,
                     "formula_refs": formula_refs,
+                    "chunk_uids": chunk_uids,
                 }
             ],
             "review_ms": review_ms,
@@ -102,3 +110,46 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
         }
 
     return review_chapter_node
+
+
+async def _load_topic_anchor_snapshot(build_session_id: str) -> TopicAnchorSnapshot | None:
+    if not build_session_id:
+        return None
+    session = get_unified_build_session(build_session_id)
+    return await session.wait_for_topic_anchor_snapshot(timeout_ms=500)
+
+
+def build_coverage_hints(
+    *,
+    chapter_title: str,
+    section_titles: list[str],
+    chunk_uids: list[str],
+    topic_snapshot: TopicAnchorSnapshot | None,
+) -> str:
+    """Build soft review hints from graph anchors."""
+
+    if topic_snapshot is None or not topic_snapshot.anchors:
+        return ""
+
+    relevant_anchors = [
+        anchor
+        for anchor in topic_snapshot.anchors
+        if set(anchor.chunk_uids) & set(chunk_uids)
+    ]
+    if relevant_anchors:
+        anchor_names = ", ".join(anchor.topic_name for anchor in relevant_anchors[:6])
+        return f"\n\nGraph anchors for this chapter: {anchor_names}"
+
+    chapter_terms = {chapter_title.lower(), *[title.lower() for title in section_titles]}
+    missing_anchors = [
+        anchor.topic_name
+        for anchor in topic_snapshot.anchors[:20]
+        if anchor.confidence >= 0.7
+        and anchor.topic_name.lower() not in chapter_terms
+    ]
+    if not missing_anchors:
+        return ""
+    return (
+        "\n\nPotential missing graph anchors: "
+        + ", ".join(missing_anchors[:6])
+    )

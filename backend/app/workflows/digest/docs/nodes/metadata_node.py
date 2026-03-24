@@ -1,4 +1,4 @@
-"""Extract chapter metadata for the knowledge docs."""
+"""Extract chapter metadata for docs lane output."""
 
 from __future__ import annotations
 
@@ -17,22 +17,15 @@ logger = structlog.get_logger()
 
 
 def build_extract_metadata_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
-    """Build the fan-out metadata extraction node."""
+    """Build the metadata extraction node."""
 
     async def extract_metadata_node(state: dict) -> dict:
         started_at = perf_counter()
         node_logger = context.get_logger().bind(node="extract_metadata")
-
         reviewed = state["reviewed"]
-        chapter_index = reviewed["chapter_index"]
-        chapter_title = reviewed["title"]
-        markdown = reviewed["markdown"]
-
-        node_logger.info(
-            "docgen_extracting_metadata",
-            chapter_index=chapter_index,
-            chapter_title=chapter_title,
-        )
+        chapter_index = int(reviewed["chapter_index"])
+        chapter_title = str(reviewed["title"])
+        markdown = str(reviewed["markdown"])
 
         meta = extract_metadata_rule_based(markdown)
         llm_calls_total = 0
@@ -48,9 +41,8 @@ def build_extract_metadata_node(*, context: WorkflowContext, strategy: DocGenExe
         node_logger.info(
             "docgen_extracting_metadata_completed",
             chapter_index=chapter_index,
-            chapter_title=chapter_title,
-            metadata_ms=metadata_ms,
             tag_count=len(meta.get("tags", [])),
+            metadata_ms=metadata_ms,
         )
         return {
             "chapter_metadatas": [
@@ -61,6 +53,8 @@ def build_extract_metadata_node(*, context: WorkflowContext, strategy: DocGenExe
                     "summary": meta.get("summary", ""),
                     "tags": meta.get("tags", []),
                     "source_file_ids": reviewed.get("source_file_ids", []),
+                    "chunk_uids": reviewed.get("chunk_uids", []),
+                    "section_titles": reviewed.get("section_titles", []),
                 }
             ],
             "metadata_ms": metadata_ms,

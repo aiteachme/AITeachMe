@@ -1,7 +1,8 @@
-"""清洗阶段纯函数服务。"""
+"""Pure helpers for lightweight docs input cleaning."""
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 import structlog
@@ -12,8 +13,6 @@ from app.workflows.digest.prompts.docgen_prompts import CLEANSE_PROMPT
 
 logger = structlog.get_logger()
 
-# ── 正则 ──
-
 _PAGE_NUMBER_PATTERNS = [
     re.compile(r"^\s*-\s*\d+\s*-\s*$", re.MULTILINE),
     re.compile(r"^\s*第\s*\d+\s*页\s*$", re.MULTILINE),
@@ -22,52 +21,51 @@ _PAGE_NUMBER_PATTERNS = [
 ]
 _EXCESSIVE_NEWLINES = re.compile(r"\n{3,}")
 _INVISIBLE_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufeff]")
-_MARKDOWN_HEADER_PAT = re.compile(r"^\s{0,3}#{1,6}\s+\S+", re.MULTILINE)
-_TABLE_LINE_PAT = re.compile(r"^\|.+\|$", re.MULTILINE)
-_MOJIBAKE_CHARS = "�□◆◇■○●△▽※〓"
-
+_MARKDOWN_HEADER_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+\S+", re.MULTILINE)
+_TABLE_LINE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)
 _HEAL_CHUNK_SIZE = 2400
+_MOJIBAKE_HINTS = ("锟", "鈥", "鈩", "銆", "�")
 
 
 def rule_based_cleanse(text: str) -> str:
-    """规则降噪：页码、不可见字符、多余空行。"""
-    for pat in _PAGE_NUMBER_PATTERNS:
-        text = pat.sub("", text)
-    text = _INVISIBLE_CHARS.sub("", text)
-    text = _EXCESSIVE_NEWLINES.sub("\n\n", text)
-    return text.strip()
+    """Remove obvious page markers and invisible characters."""
+
+    cleaned = text
+    for pattern in _PAGE_NUMBER_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+    cleaned = _INVISIBLE_CHARS.sub("", cleaned)
+    cleaned = _EXCESSIVE_NEWLINES.sub("\n\n", cleaned)
+    return cleaned.strip()
 
 
 def stitch_sentences(text: str) -> str:
-    """边界缝合：断句检测，跨行合并。"""
+    """Merge hard-wrapped lines when they are likely one sentence."""
+
     lines = text.split("\n")
     stitched: list[str] = []
-    endings = {"。", "！", "？", "；", ".", "!", "?", ";", "：", ":"}
-
-    for i, line in enumerate(lines):
-        stripped = line.rstrip()
-        stitched.append(line)
-        if not stripped:
+    endings = {"。", "！", "？", ".", "!", "?", ";", "；", ":"}
+    for index, line in enumerate(lines):
+        current = line.rstrip()
+        if not current:
+            stitched.append("")
             continue
-        if i + 1 < len(lines):
-            nxt = lines[i + 1].strip()
-            if (
-                stripped[-1] not in endings
-                and nxt
-                and not nxt.startswith("#")
-                and not nxt.startswith("-")
-                and not nxt.startswith("*")
-                and not nxt.startswith(">")
-                and not re.match(r"^\d+\.", nxt)
-            ):
-                if stitched[-1].endswith("\n"):
-                    stitched[-1] = stitched[-1].rstrip("\n")
 
-    return "\n".join(stitched)
+        append_space = False
+        if index + 1 < len(lines):
+            next_line = lines[index + 1].strip()
+            append_space = (
+                current[-1] not in endings
+                and bool(next_line)
+                and not next_line.startswith(("#", "-", "*", ">", "|"))
+                and not re.match(r"^\d+[.)、]", next_line)
+            )
+        stitched.append(current + (" " if append_space else ""))
+    return "\n".join(stitched).strip()
 
 
 async def llm_heal_chunk(text: str) -> str:
-    """对单个文本块执行 LLM 语义自愈。"""
+    """Repair one chunk with the light doc model."""
+
     prompt = CLEANSE_PROMPT.format(text=text[:_HEAL_CHUNK_SIZE])
     try:
         result = await acompletion(
@@ -81,14 +79,14 @@ async def llm_heal_chunk(text: str) -> str:
 
 
 def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, object]:
-    """分析文本质量，判断是否适合跳过 LLM 自愈。"""
+    """Estimate whether the content needs LLM cleanup."""
 
     lowered = source_filename.lower()
     extension = lowered.rsplit(".", 1)[-1] if "." in lowered else ""
-    header_count = len(_MARKDOWN_HEADER_PAT.findall(content))
-    table_lines = len(_TABLE_LINE_PAT.findall(content))
+    header_count = len(_MARKDOWN_HEADER_PATTERN.findall(content))
+    table_lines = len(_TABLE_LINE_PATTERN.findall(content))
     invisible_count = len(_INVISIBLE_CHARS.findall(content))
-    mojibake_count = sum(content.count(ch) for ch in _MOJIBAKE_CHARS)
+    mojibake_count = sum(content.count(marker) for marker in _MOJIBAKE_HINTS)
     content_len = max(len(content), 1)
     noise_ratio = (invisible_count + mojibake_count) / content_len
     severe_noise = mojibake_count >= 6 or noise_ratio >= 0.006
@@ -99,12 +97,7 @@ def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, obje
         and noise_ratio < 0.002
         and table_lines < 50
     )
-
-    well_structured_text = (
-        header_count >= 3
-        and noise_ratio < 0.003
-        and table_lines < 80
-    )
+    well_structured_text = header_count >= 3 and noise_ratio < 0.003 and table_lines < 80
 
     if clean_markdown or well_structured_text:
         return {
@@ -114,7 +107,6 @@ def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, obje
             "noise_ratio": noise_ratio,
             "header_count": header_count,
         }
-
     if severe_noise:
         return {
             "force_llm": True,
@@ -123,7 +115,6 @@ def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, obje
             "noise_ratio": noise_ratio,
             "header_count": header_count,
         }
-
     if extension in {"pdf", "doc", "docx", "ppt", "pptx"} and moderate_noise and header_count == 0:
         return {
             "force_llm": True,
@@ -132,7 +123,6 @@ def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, obje
             "noise_ratio": noise_ratio,
             "header_count": header_count,
         }
-
     return {
         "force_llm": False,
         "clean_markdown": False,
@@ -143,23 +133,24 @@ def analyze_cleanliness(*, source_filename: str, content: str) -> dict[str, obje
 
 
 async def llm_heal_full(text: str) -> tuple[str, int]:
-    """将长文本按段落切块后逐块 LLM 自愈（用于单文件内部）。"""
+    """Heal long text by paragraph batches."""
+
     if len(text) <= _HEAL_CHUNK_SIZE:
         return await llm_heal_chunk(text), 1
 
     paragraphs = text.split("\n\n")
     chunks: list[str] = []
-    cur: list[str] = []
-    cur_size = 0
-    for para in paragraphs:
-        if cur_size + len(para) > _HEAL_CHUNK_SIZE and cur:
-            chunks.append("\n\n".join(cur))
-            cur, cur_size = [], 0
-        cur.append(para)
-        cur_size += len(para)
-    if cur:
-        chunks.append("\n\n".join(cur))
+    current: list[str] = []
+    current_size = 0
+    for paragraph in paragraphs:
+        if current_size + len(paragraph) > _HEAL_CHUNK_SIZE and current:
+            chunks.append("\n\n".join(current))
+            current = []
+            current_size = 0
+        current.append(paragraph)
+        current_size += len(paragraph)
+    if current:
+        chunks.append("\n\n".join(current))
 
-    import asyncio
-    healed = await asyncio.gather(*(llm_heal_chunk(c) for c in chunks))
+    healed = await asyncio.gather(*(llm_heal_chunk(chunk) for chunk in chunks))
     return "\n\n".join(healed), len(chunks)

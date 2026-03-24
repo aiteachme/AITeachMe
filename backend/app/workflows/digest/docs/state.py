@@ -1,4 +1,4 @@
-"""DocGen workflow state."""
+"""Typed state for the docs lane."""
 
 from __future__ import annotations
 
@@ -8,12 +8,14 @@ from typing import Annotated, Any, TypedDict
 
 
 class DocGenState(TypedDict, total=False):
-    """State for the knowledge docs generation workflow."""
+    """State carried by the docs generation graph."""
 
     subject: str
     file_ids: list[int]
     user_prompt: str | None
     requested_at: datetime
+    build_session_id: str
+    shared_inputs: Any
 
     raw_chunks: list[dict[str, Any]]
     clean_chunks: list[dict[str, Any]]
@@ -24,9 +26,11 @@ class DocGenState(TypedDict, total=False):
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     chapter_reviews: Annotated[list[dict[str, Any]], operator.add]
     chapter_metadatas: Annotated[list[dict[str, Any]], operator.add]
+
     draft_ms: Annotated[int, operator.add]
     review_ms: Annotated[int, operator.add]
     metadata_ms: Annotated[int, operator.add]
+    outline_ms: Annotated[int, operator.add]
     llm_calls_total: Annotated[int, operator.add]
     llm_calls_skipped: Annotated[int, operator.add]
 
@@ -35,9 +39,5 @@ class DocGenState(TypedDict, total=False):
     merged_path: str
     load_ms: int
     cleanse_ms: int
-    outline_ms: Annotated[int, operator.add]
     finalize_ms: int
     error: str | None
-
-
-__all__ = ["DocGenState"]

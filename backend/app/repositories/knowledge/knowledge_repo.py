@@ -1,4 +1,4 @@
-"""知识文档数据访问层。"""
+"""Repository helpers for source documents and embeddings."""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ from dataclasses import dataclass
 
 import sqlalchemy as sa
 import structlog
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
 from app.core.database import require_vec_ready
-from app.models import (
-    Document,
-    DocumentChunk,
-)
+from app.models import Document, DocumentChunk
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
 
 
 def bulk_create_documents(session: Session, documents: list[Document]) -> list[Document]:
-    """批量创建文档。"""
+    """Persist documents and refresh generated ids."""
 
     for document in documents:
         session.add(document)
@@ -30,9 +27,26 @@ def bulk_create_documents(session: Session, documents: list[Document]) -> list[D
 
 
 def get_document_by_id(session: Session, document_id: int) -> Document | None:
-    """按 ID 查询文档。"""
+    """Fetch a single document by id."""
 
     return session.get(Document, document_id)
+
+
+def get_documents_by_source_file_ids(
+    session: Session,
+    *,
+    subject: str,
+    source_file_ids: list[int],
+) -> list[Document]:
+    """Fetch documents for one subject and a set of raw files."""
+
+    if not source_file_ids:
+        return []
+    statement = select(Document).where(
+        Document.subject == subject,
+        Document.source_file_id.in_(source_file_ids),
+    )
+    return list(session.exec(statement).all())
 
 
 def update_document_content(
@@ -40,7 +54,7 @@ def update_document_content(
     document_id: int,
     markdown_content: str,
 ) -> Document | None:
-    """更新文档内容。"""
+    """Update the stored document markdown."""
 
     document = session.get(Document, document_id)
     if document is None:
@@ -58,7 +72,7 @@ def update_document_step(
     document_id: int,
     current_step: str | None,
 ) -> Document | None:
-    """更新文档处理步骤。"""
+    """Update the materialization step label."""
 
     document = session.get(Document, document_id)
     if document is None:
@@ -71,11 +85,8 @@ def update_document_step(
     return document
 
 
-def bulk_create_chunks(
-    session: Session,
-    chunks: list[DocumentChunk],
-) -> list[DocumentChunk]:
-    """批量创建切块。"""
+def bulk_create_chunks(session: Session, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
+    """Persist document chunks and refresh generated ids."""
 
     for chunk in chunks:
         session.add(chunk)
@@ -86,19 +97,78 @@ def bulk_create_chunks(
 
 
 def get_chunks_by_document_id(session: Session, document_id: int) -> list[DocumentChunk]:
-    """读取文档切块。"""
+    """Fetch chunks for one document ordered by chunk index."""
 
-    stmt = (
+    statement = (
         select(DocumentChunk)
         .where(DocumentChunk.document_id == document_id)
         .order_by(DocumentChunk.chunk_index)
     )
-    return list(session.exec(stmt).all())
+    return list(session.exec(statement).all())
+
+
+def get_chunks_by_document_ids(session: Session, document_ids: list[int]) -> list[DocumentChunk]:
+    """Fetch chunks for many documents."""
+
+    if not document_ids:
+        return []
+    statement = (
+        select(DocumentChunk)
+        .where(DocumentChunk.document_id.in_(document_ids))
+        .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
+    )
+    return list(session.exec(statement).all())
+
+
+def get_chunks_by_build_session(session: Session, build_session_id: str) -> list[DocumentChunk]:
+    """Fetch all chunks created in one unified build session."""
+
+    statement = (
+        select(DocumentChunk)
+        .where(DocumentChunk.build_session_id == build_session_id)
+        .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
+    )
+    return list(session.exec(statement).all())
 
 
 def get_chunk_by_id(session: Session, chunk_id: int) -> DocumentChunk | None:
-    """按 ID 获取单个切块。"""
+    """Fetch one chunk by id."""
+
     return session.get(DocumentChunk, chunk_id)
+
+
+def delete_chunks_by_document_ids(session: Session, document_ids: list[int]) -> int:
+    """Delete chunks and embeddings for a set of documents."""
+
+    chunks = get_chunks_by_document_ids(session, document_ids)
+    chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
+    if chunk_ids:
+        delete_embeddings_by_chunk_ids(session, chunk_ids)
+    for chunk in chunks:
+        session.delete(chunk)
+    session.commit()
+    return len(chunks)
+
+
+def delete_documents_by_source_file_ids(
+    session: Session,
+    *,
+    subject: str,
+    source_file_ids: list[int],
+) -> tuple[int, int]:
+    """Delete documents for selected raw files and all of their chunks."""
+
+    documents = get_documents_by_source_file_ids(
+        session,
+        subject=subject,
+        source_file_ids=source_file_ids,
+    )
+    document_ids = [document.id for document in documents if document.id is not None]
+    chunk_count = delete_chunks_by_document_ids(session, document_ids)
+    for document in documents:
+        session.delete(document)
+    session.commit()
+    return len(documents), chunk_count
 
 
 def bulk_insert_embeddings(
@@ -106,7 +176,7 @@ def bulk_insert_embeddings(
     chunk_ids: list[int],
     embeddings: list[list[float]],
 ) -> None:
-    """批量写入向量表。"""
+    """Replace embeddings for a set of chunk ids."""
 
     require_vec_ready()
     if not chunk_ids or not embeddings:
@@ -117,16 +187,16 @@ def bulk_insert_embeddings(
             f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
 
-    conn = session.connection()
+    connection = session.connection()
     try:
         params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
         placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
-        conn.execute(
+        connection.execute(
             sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
             params,
         )
         for chunk_id, embedding in zip(chunk_ids, embeddings):
-            conn.execute(
+            connection.execute(
                 sa.text(
                     "INSERT INTO chunk_embeddings(chunk_id, embedding) "
                     "VALUES (:chunk_id, :embedding)"
@@ -151,26 +221,28 @@ def bulk_insert_embeddings(
 
 
 def delete_embeddings_by_chunk_ids(session: Session, chunk_ids: list[int]) -> None:
-    """删除切块向量。"""
+    """Delete embeddings for the provided chunk ids."""
 
     if not chunk_ids:
         return
-    conn = session.connection()
+
+    connection = session.connection()
     params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
     placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
     try:
-        conn.execute(
+        connection.execute(
             sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
             params,
         )
         session.commit()
     except Exception:
         session.rollback()
+        raise
 
 
 @dataclass
 class ChunkSearchResult:
-    """向量检索结果。"""
+    """Vector search result item."""
 
     chunk: DocumentChunk
     score: float
@@ -183,46 +255,37 @@ def vector_search(
     *,
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
-    """执行 sqlite-vec 检索。"""
+    """Run sqlite-vec search against subject chunks."""
 
     require_vec_ready()
     if top_k <= 0:
         return []
 
-    conn = session.connection()
-    try:
-        rows = conn.execute(
-            sa.text(
-                """
-                SELECT
-                    ce.chunk_id,
-                    ce.distance
-                FROM chunk_embeddings ce
-                WHERE ce.chunk_id IN (
-                    SELECT c.id
-                    FROM document_chunk c
-                    JOIN document d ON d.id = c.document_id
-                    WHERE d.subject = :subject
-                )
-                  AND ce.embedding MATCH :query_embedding
-                  AND k = :top_k
-                ORDER BY ce.distance
-                """
-            ),
-            {
-                "subject": subject,
-                "query_embedding": str(query_embedding),
-                "top_k": top_k,
-            },
-        ).fetchall()
-    except Exception:
-        logger.exception(
-            "vector_search_failed",
-            subject=subject,
-            top_k=top_k,
-            embedding_dim=len(query_embedding),
-        )
-        raise
+    connection = session.connection()
+    rows = connection.execute(
+        sa.text(
+            """
+            SELECT
+                ce.chunk_id,
+                ce.distance
+            FROM chunk_embeddings ce
+            WHERE ce.chunk_id IN (
+                SELECT c.id
+                FROM document_chunk c
+                JOIN document d ON d.id = c.document_id
+                WHERE d.subject = :subject
+            )
+              AND ce.embedding MATCH :query_embedding
+              AND k = :top_k
+            ORDER BY ce.distance
+            """
+        ),
+        {
+            "subject": subject,
+            "query_embedding": str(query_embedding),
+            "top_k": top_k,
+        },
+    ).fetchall()
 
     results: list[ChunkSearchResult] = []
     for row in rows:

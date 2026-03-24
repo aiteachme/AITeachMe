@@ -2,335 +2,310 @@
 
 ## 1. 文档定位
 
-本文档描述 AITeachMe 当前目标形态下的数据库与运行时存储边界，用于指导后续重构。
+本文档描述当前代码已经落地的数据库与存储架构，并给出后续中心化部署的推荐方向。
 
-核心目标：
+重点回答四个问题：
 
-- 核心表数量尽量少
-- 支持本地与服务器双部署
-- 覆盖 Ingest / Digest / Interact / Examine / Profile
-- 保持长期稳定，不因实现细节频繁加表
-- 支持多章节知识文档与最终 merged 文档
-
----
-
-## 2. 核心原则
-
-1. 表表达业务语义，不表达短期实现细节
-2. 稳定对象与生成方法分离
-3. 数据库保存结构化真相
-4. 本地 Markdown 保存知识文档正文
-5. Docs 构建流程不依赖 `jobs` 表
+- 现在数据库里到底存什么
+- 现在本地文件系统里到底存什么
+- 本地部署推荐怎么配
+- 以后中心化部署推荐怎么演进
 
 ---
 
-## 3. 总体分层
+## 2. 当前真实存储边界
 
-| 层 | 核心对象 |
+AITeachMe 当前不是“纯数据库产品”，而是三层并存：
+
+1. 关系数据库  
+   `backend/data/aiteachme.db`，由 SQLite 承担主业务数据。
+2. 向量索引  
+   同一个 SQLite 文件中通过 `sqlite-vec` 的 `chunk_embeddings` 虚拟表承担。
+3. 本地文件系统  
+   `backend/data/<subject>/` 下保存原始文件、Markdown、图片、知识文档和调试产物。
+
+当前原则很明确：
+
+- 数据库保存结构化真相
+- 本地文件保存正式文本产物和调试友好产物
+- 开发阶段允许数据库与本地文件双写
+
+---
+
+## 3. 当前数据库里的表族
+
+### 3.1 工作空间与材料层
+
+| 表 | 作用 |
 | --- | --- |
-| 用户层 | `users` |
-| 材料层 | `documents` |
-| 知识层 | `knowledge_graph` |
-| 交互层 | `interactions` |
-| 状态层 | `user_states` |
-| 向量层 | `chunk_embeddings` |
-| 异步任务层 | `jobs` |
+| `subject` | 学科工作空间 |
+| `raw_file` | 上传文件、解析状态、文件路径、Markdown 路径、asset 目录 |
+| `document` | digest graph 可消费的标准文档 |
+| `document_chunk` | 文档切块 |
+| `chunk_embeddings` | `document_chunk` 的向量索引 |
+| `knowledge_doc` | 已发布知识文档章节索引 |
 
-需要特别说明：
+### 3.2 知识图谱层
 
-- `jobs` 仍可服务于解析、图谱、课程、测评等后台任务
-- 但知识文档 Docs 构建已经明确不走 `jobs` 表
+| 表 | 作用 |
+| --- | --- |
+| `knowledge_node` | 图谱节点身份层 |
+| `knowledge_revision` | 节点版本正文 |
+| `knowledge_alias` | 节点别名 |
+| `knowledge_edge` | 图谱边 |
+| `edge_revision` | 边版本 |
+| `evidence_link` | 节点/边到 `document_chunk` 的证据链 |
+
+### 3.3 课程结构层
+
+| 表 | 作用 |
+| --- | --- |
+| `teaching_unit` | 教学单元身份层 |
+| `teaching_unit_revision` | 教学单元版本 |
+| `teaching_unit_membership` | 知识点到教学单元的归属 |
+| `taxonomy_anchor` | 分类锚点 |
+| `theme_tree_version` | 主题树版本 |
+| `theme_tree_node` | 主题树节点 |
+| `unit_tree_membership` | 教学单元挂树关系 |
+| `prereq_dag_version` | 先修 DAG 版本 |
+| `unit_dependency` | 教学单元依赖 |
+| `curriculum_snapshot` | 当前课程视图快照 |
+
+### 3.4 对话、测评与学习状态
+
+| 表 | 作用 |
+| --- | --- |
+| `chat_session` / `chat_message` | 对话会话与消息 |
+| `question_template` / `question_template_node_link` | 题目模板与知识点映射 |
+| `exam_paper` / `exam_paper_item` | 新 assessment 试卷与题目快照 |
+| `user_answer_attempt` | 用户作答记录 |
+| `user_knowledge_state` | 掌握度状态 |
+| `review_task` | 复习调度任务 |
+| `exam_paper_generation_context` | 组卷上下文 |
+
+### 3.5 Legacy 兼容表
+
+当前代码里仍保留旧链路数据表：
+
+- `exam`
+- `question`
+- `exam_submission`
+- `answer_record`
+- `mistake`
+- `user_profile`
+
+这些表仍然可读写，但新功能优先走 workflow-backed 的 assessment / mastery 表。
 
 ---
 
-## 4. 核心表
+## 4. 当前本地文件系统里的正式产物
 
-| 表名 | 职责 | 备注 |
-| --- | --- | --- |
-| `users` | 用户身份与工作空间 | 稳定核心表 |
-| `documents` | 原始文件、解析结果、知识文档正文索引 | 同时承载 `raw_file` 与 `knowledge_doc` 语义 |
-| `knowledge_graph` | 图谱与课程结构聚合结果 | Digest 知识层 |
-| `interactions` | 对话与测评记录 | Interact / Examine |
-| `user_states` | 用户掌握度、复习任务、错题 | Profile |
-| `chunk_embeddings` | 向量索引 | 检索层 |
-| `jobs` | 非 Docs 的后台任务状态 | 可选但保留 |
+每个 subject 当前的正式产物布局：
 
----
-
-## 5. documents 表
-
-### 5.1 职责
-
-`documents` 统一管理：
-
-- 原始文件
-- 解析后的文档内容
-- 生成出来的知识文档
-
-### 5.2 推荐结构
-
-```sql
-CREATE TABLE documents (
-  id TEXT PRIMARY KEY,
-  subject TEXT NOT NULL,
-  doc_type TEXT NOT NULL,           -- 'raw_file' | 'knowledge_doc'
-
-  filename TEXT,
-  filetype TEXT,
-  storage_backend TEXT,
-  storage_uri TEXT,
-  content_hash TEXT,
-  file_size_bytes INTEGER,
-
-  parse_status TEXT,
-  parse_method TEXT,
-  parse_config_json TEXT,
-  parse_error TEXT,
-
-  title TEXT NOT NULL,
-  body_markdown TEXT,
-  body_hash TEXT,
-  language TEXT,
-
-  metadata_json TEXT,
-
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TIMESTAMP
-);
+```text
+backend/data/<subject>/
+├─ raw/
+├─ raw_markdown/
+├─ assets/
+└─ knowledge_markdown/
 ```
 
-### 5.3 Knowledge Docs 的层次表达
+含义分别是：
 
-知识文档必须支持“多个章节 + 一个 merged 文档”。
+- `raw/`：上传原文件
+- `raw_markdown/`：ingest 解析出的原始 Markdown
+- `assets/`：当前 subject 下的共享扁平图片/附件目录
+- `knowledge_markdown/`：已发布的知识文档
 
-如果知识文档落在 `documents` 表中，推荐通过 `metadata_json` 区分角色：
+另外：
 
-- 章节文档
-- merged 文档
-
-章节文档示例：
-
-```json
-{
-  "doc_role": "chapter",
-  "chapter_index": 1,
-  "slug": "linear-algebra-basics",
-  "summary": "本章介绍线性代数的基本概念。",
-  "tags": ["线性代数", "矩阵", "向量"],
-  "source_doc_ids": ["doc_uuid_1", "doc_uuid_2"],
-  "build_requested_at": "2026-03-23T16:40:00Z"
-}
-```
-
-merged 文档示例：
-
-```json
-{
-  "doc_role": "merged",
-  "chapter_count": 6,
-  "chapter_titles": [
-    "向量空间",
-    "矩阵运算",
-    "线性方程组"
-  ],
-  "source_doc_ids": ["doc_uuid_1", "doc_uuid_2"],
-  "build_requested_at": "2026-03-23T16:40:00Z"
-}
-```
-
-注意：
-
-- 不再使用 `docgen_job_id`
-- Docs 的发布批次只用 `build_requested_at` 与 manifest 对齐
+- `knowledge_markdown/_build/`：知识文档 staging / 中间产物
+- `debug/`：调试快照
+- `temp/`：临时上传文件
 
 ---
 
-## 6. Chunk 存储与向量索引
+## 5. 路径与 URI 的当前策略
 
-### 6.1 Chunk 存储原则
+### 5.1 本地部署
 
-Chunk 仍可直接存放在 `documents.chunks_json` 中，以减少表数量。
+当前数据库字段里保存的通常是绝对本地路径，例如：
 
-优点：
+- `raw_file.file_path`
+- `raw_file.markdown_path`
+- `raw_file.asset_dir`
+- `knowledge_doc.markdown_path`
 
-- 文档与 chunks 原子更新
-- 给定文档读取全部 chunks 成本低
-- 向量检索后可以通过 `doc_id + chunk_id` 回查
+这在当前本地优先阶段是合理的，因为：
 
-### 6.2 chunk_embeddings
+- 路径稳定
+- 调试方便
+- 前后端在同一台机器上开发时最省事
 
-`chunk_embeddings` 负责：
+### 5.2 Markdown 里的图片路径
 
-- 存储 embedding
-- 存储轻量 metadata
-- 支持按文档、章节、页码、时间过滤
+Markdown 正文里的图片引用统一约定为：
 
-推荐 metadata 字段：
-
-- `doc_id`
-- `doc_title`
-- `chunk_index`
-- `section`
-- `page_start`
-- `page_end`
-- `token_count`
-- `created_at`
-
-`chunk_id` 继续推荐 UUID v7。
-
----
-
-## 7. knowledge_graph 表
-
-`knowledge_graph` 负责聚合以下 JSON 结构：
-
-- `nodes_json`
-- `edges_json`
-- `evidence_json`
-- `teaching_units_json`
-- `theme_tree_json`
-- `prereq_dag_json`
-- `metadata_json`
-
-这张表的职责是承载知识真相与教学结构，而不是承载知识文档构建状态。
-
----
-
-## 8. interactions 与 user_states
-
-### 8.1 interactions
-
-统一存储：
-
-- 对话历史
-- 测评试卷
-- 作答结果
-- 判卷结果
-
-### 8.2 user_states
-
-统一存储：
-
-- 掌握度
-- 复习任务
-- 错题
-- 学习统计
-
----
-
-## 9. jobs 表的边界
-
-### 9.1 jobs 表保留的职责
-
-`jobs` 表可以继续服务于：
-
-- `parse`
-- `graph_digest`
-- `curriculum_derive`
-- `exam_generate`
-- `exam_grade`
-
-### 9.2 jobs 表不再承担的职责
-
-知识文档 Docs 构建不再依赖 `jobs` 表。
+`../assets/<flattened_asset_name>`
 
 原因：
 
-- Docs 对外不再查询任务状态
-- Docs 更关心“最近已发布版本”
-- Docs 已用文件锁和 manifest 替代 job 状态协议
+- `raw_markdown/` 与 `knowledge_markdown/` 都和 `assets/` 同级
+- 所有 Markdown 都可以复用同一套相对路径规则
 
-因此，`job_type='docgen'` 不再是目标设计的一部分。
+### 5.3 中心化部署时的演进方向
 
----
+以后上云时，数据库里不应再把“某台机器上的绝对路径”当作长期真相。
 
-## 10. 本地与服务器部署
+更推荐逐步演进为：
 
-| 组件 | 本地部署 | 服务器部署 |
-| --- | --- | --- |
-| 关系数据库 | SQLite | MySQL / PostgreSQL |
-| 向量索引 | sqlite-vec | pgvector / Milvus |
-| 文件存储 | 本地文件系统 | OSS / MinIO |
-| 知识文档正文 | 本地 Markdown | 对象存储或挂载卷 |
-
-统一路径抽象示例：
-
-- `local://data/math/raw/file.pdf`
-- `oss://bucket-name/math/raw/file.pdf`
+- `storage_backend`: `local` / `s3` / `oss` / `minio`
+- `storage_uri`: 对象存储 URI 或规范化 key
+- `local_cache_path`: 仅作为运行时缓存，不作为主真相
 
 ---
 
-## 11. Docs 链路的运行时文件
+## 6. 本地部署推荐方案
 
-Docs 发布相关文件固定放在：
+本地部署和单机部署的推荐组合就是：
 
-`data/<subject>/knowledge_docs/`
+- SQLite
+- sqlite-vec
+- 本地文件系统
 
-其中包括：
+具体建议：
 
-- `chapter_XX_*.md`
-- `merged_knowledge_base.md`
-- `manifest.json`
-- `.build.lock`
-- `_building/`
+| 能力 | 当前推荐 |
+| --- | --- |
+| 关系数据库 | SQLite |
+| 向量索引 | sqlite-vec |
+| 原始文件 / 图片 / Markdown | 本地文件系统 |
+| 调试快照 | 本地文件系统 |
 
-这些文件是 Docs 去 job 化之后的核心运行时状态。
+这套组合适合当前阶段的原因：
 
----
+- 安装简单
+- 同机调试效率高
+- 结构化数据和正式文本产物都可直接观察
+- 不需要先引入对象存储、消息队列、独立向量库
 
-## 12. 五大引擎覆盖
+结论上，本地部署现在就是：
 
-### 12.1 Ingest
-
-主要涉及：
-
-- `documents`
-- `chunk_embeddings`
-- `jobs`
-
-### 12.2 Digest
-
-主要涉及：
-
-- `documents`
-- `knowledge_graph`
-- `chunk_embeddings`
-- `jobs`（仅图谱 / 课程，不含 Docs）
-
-### 12.3 Interact
-
-主要涉及：
-
-- `chunk_embeddings`
-- `documents`
-- `interactions`
-
-### 12.4 Examine
-
-主要涉及：
-
-- `knowledge_graph`
-- `interactions`
-- `user_states`
-- `jobs`
-
-### 12.5 Profile
-
-主要涉及：
-
-- `user_states`
-- `knowledge_graph`
-- `interactions`
+`SQLite + sqlite-vec + 本地文件系统`
 
 ---
 
-## 13. 当前结论
+## 7. 中心化部署推荐方案
 
-这版设计在 Docs 链路上的关键变化已经明确：
+### 7.1 首选方案
 
-- 知识文档必须支持多章节与 merged
-- Docs 不再依赖 `DocGenJob`
-- Docs 不再依赖 `jobs` 表
-- Docs 的已发布元信息由 `manifest.json` 表达
-- 数据库与本地 Markdown 一起构成知识文档真相层
+以后做中心化部署，最推荐的主路径是：
+
+`PostgreSQL + pgvector + S3/OSS/MinIO`
+
+原因：
+
+- PostgreSQL 对关系查询、JSON、事务、并发写入更稳
+- pgvector 与当前 `chunk_embeddings` 迁移路径最自然
+- 对象存储天然适合 `raw/raw_markdown/assets/knowledge_markdown`
+- 后续多 worker / 多实例共享数据更容易
+
+### 7.2 `MySQL + OSS` 能不能做
+
+可以做，但不建议作为第一优先方案。
+
+原因：
+
+- MySQL 适合关系数据，但向量能力和检索生态不如 PostgreSQL + pgvector 顺手
+- 如果继续用 MySQL，通常还要额外接一个向量存储
+- 这样最终往往会演变成：
+
+`MySQL + OSS + Milvus/Qdrant/ES`
+
+这比 `PostgreSQL + pgvector + OSS` 更复杂。
+
+所以：
+
+- 如果已经有成熟 MySQL 基础设施，`MySQL + OSS + 独立向量库` 是可行方案
+- 如果从零设计，优先 `PostgreSQL + pgvector + OSS/MinIO`
+
+### 7.3 对象存储选择
+
+可以按环境选择：
+
+- 公有云：OSS / S3 / COS
+- 私有化：MinIO
+
+接口层只要尽早统一成“存储后端 + storage uri”抽象，底层就能替换。
+
+---
+
+## 8. 各引擎的数据与文件边界
+
+### 8.1 Ingest
+
+- DB：`raw_file`
+- FS：`raw/`、`raw_markdown/`、`assets/`
+
+### 8.2 Digest Docs
+
+- DB：`knowledge_doc`
+- FS：`knowledge_markdown/`、`knowledge_markdown/_build/`
+
+### 8.3 Digest Graph
+
+- DB：`document`、`document_chunk`、`chunk_embeddings`、`knowledge_*`、`evidence_link`
+- FS：读取 `raw_markdown/` 与 `assets/`
+
+### 8.4 Digest Curriculum
+
+- DB：`teaching_unit*`、`taxonomy_anchor`、`theme_tree*`、`prereq_dag*`、`curriculum_snapshot`
+- FS：默认无正式文件写入
+
+### 8.5 Interact / Examine / Profile
+
+- DB：聊天、assessment、mastery 相关表
+- FS：必要时读取知识文档或 markdown，但主真相仍在 DB
+
+---
+
+## 9. 当前没有单独持久化的“job 表”
+
+当前代码里：
+
+- Docs workflow 已明确不走 job 表
+- Graph / Curriculum 的“job_id / run_id”更多是运行时和日志语义
+- repository 里相关 `update_*_job()` 目前是兼容 shim，不再真正落表
+
+这意味着当前数据库设计要以“最终业务表”而不是“中间 job 表”为中心。
+
+如果以后需要中心化后台任务恢复能力，再单独引入统一 `workflow_run` / `task_run` 表会更干净。
+
+---
+
+## 10. 推荐迁移顺序
+
+从当前本地优先架构迁移到中心化部署，建议按下面顺序：
+
+1. 先稳定存储抽象  
+   把 `raw_file.file_path/markdown_path/asset_dir` 和 `knowledge_doc.markdown_path` 逐步抽象成 `storage_backend + storage_uri`
+2. 再切对象存储  
+   让 `raw/raw_markdown/assets/knowledge_markdown` 进入 OSS / S3 / MinIO
+3. 再切关系库  
+   SQLite 迁到 PostgreSQL
+4. 最后切向量层  
+   `sqlite-vec` 迁到 `pgvector`
+
+这样迁移成本最低，也最容易保持现有工作流代码稳定。
+
+---
+
+## 11. 当前结论
+
+当前最合理的结论是：
+
+- 本地开发与单机部署：`SQLite + sqlite-vec + 本地文件系统`
+- 中心化部署首选：`PostgreSQL + pgvector + OSS/MinIO`
+- `MySQL + OSS` 不是不能做，但通常要补一个独立向量库，因此不是首选主路径
+
+在这个基础上，数据库负责结构化真相，本地/对象存储负责正式文件产物，这个边界应继续保持不变。

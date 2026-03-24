@@ -1,8 +1,9 @@
-"""Digest workflow runtime entrypoints."""
+"""Runtime entrypoints for digest workflows."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Awaitable, Callable
 
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.events import InProcessEventBus
@@ -30,6 +31,8 @@ from app.workflows.digest.kg.finalize_nodes import trigger_curriculum_derive_saf
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
 from app.workflows.digest.state import CurriculumDeriveState, DocGenState, KGDigestState
 
+CurriculumTrigger = Callable[..., Awaitable[None]]
+
 
 async def run_graph_digest_workflow(
     *,
@@ -37,8 +40,10 @@ async def run_graph_digest_workflow(
     job_id: int,
     file_ids: list[int],
     event_bus: InProcessEventBus | None = None,
+    build_session_id: str | None = None,
+    trigger_curriculum_after_finalize: bool = True,
 ) -> WorkflowResult[KGDigestState]:
-    """Run the digest graph workflow."""
+    """Run the graph lane workflow."""
 
     bus = event_bus or InProcessEventBus()
     await bus.publish(DigestBuildRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
@@ -61,6 +66,9 @@ async def run_graph_digest_workflow(
             ),
         )
 
+    async def noop_curriculum_trigger(**_: object) -> None:
+        return None
+
     context = WorkflowContext(
         workflow_name="digest.graph",
         subject=subject,
@@ -70,9 +78,16 @@ async def run_graph_digest_workflow(
     result = await run_state_graph(
         workflow_name="digest.graph",
         graph_builder=lambda: build_kg_digest_graph(
-            trigger_curriculum_derive=trigger_curriculum_derive,
+            trigger_curriculum_derive=(
+                trigger_curriculum_derive if trigger_curriculum_after_finalize else noop_curriculum_trigger
+            ),
         ),
-        initial_state=create_graph_digest_initial_state(subject=subject, file_ids=file_ids, job_id=job_id),
+        initial_state=create_graph_digest_initial_state(
+            subject=subject,
+            file_ids=file_ids,
+            job_id=job_id,
+            build_session_id=build_session_id,
+        ),
         context=context,
     )
     if result.failed:
@@ -122,7 +137,7 @@ async def run_curriculum_derive_workflow(
     event_bus: InProcessEventBus | None = None,
     impact_set: ImpactSet | None = None,
 ) -> WorkflowResult[CurriculumDeriveState]:
-    """Run the digest curriculum workflow."""
+    """Run the curriculum derive workflow."""
 
     bus = event_bus or InProcessEventBus()
     context = WorkflowContext(
@@ -187,8 +202,9 @@ async def run_docgen_workflow(
     user_prompt: str | None = None,
     requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
+    build_session_id: str | None = None,
 ) -> WorkflowResult[DocGenState]:
-    """Run the knowledge docs generation workflow."""
+    """Run the docs lane workflow."""
 
     bus = event_bus or InProcessEventBus()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
@@ -207,6 +223,7 @@ async def run_docgen_workflow(
             file_ids=file_ids,
             user_prompt=user_prompt,
             requested_at=requested_at,
+            build_session_id=build_session_id,
         ),
         context=context,
     )

@@ -87,7 +87,7 @@ Knowledge Docs 已彻底切到无 job 协议。
 
 ```json
 {
-  "file_ids": [1, 2],
+  "file_uids": ["file_a", "file_b"],
   "prompt": "请整理成适合期末复习的知识文档"
 }
 ```
@@ -96,7 +96,7 @@ Knowledge Docs 已彻底切到无 job 协议。
 
 ```json
 {
-  "accepted_file_ids": [1, 2],
+  "accepted_file_uids": ["file_a", "file_b"],
   "ready_file_count": 2,
   "prompt": "请整理成适合期末复习的知识文档",
   "requested_at": "2026-03-23T16:40:00Z"
@@ -170,7 +170,8 @@ Knowledge Docs 已彻底切到无 job 协议。
 
 - 接受构建请求
 - 进行 subject 级互斥
-- 发布新的知识文档
+- 统一构建 docs / graph / curriculum
+- 在统一构建成功后发布新的知识文档
 - 提供已发布结果查询
 
 ### 6.3 有旧文档时的体验约定

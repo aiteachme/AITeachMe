@@ -1,6 +1,6 @@
 # Digest DocGen Workflow
 
-Knowledge document generation workflow with Fan-Out parallelism.
+Knowledge document generation workflow with fan-out parallelism.
 
 ```mermaid
 ---
@@ -27,11 +27,11 @@ graph TD;
 	load_files -. &nbsp;fail&nbsp; .-> __end__;
 	load_files -. &nbsp;continue&nbsp; .-> cleanse;
 	outline_map --> outline_reduce;
-	outline_reduce -. &nbsp;Send&nbsp;×N&nbsp; .-> draft_chapter;
+	outline_reduce -. Send xN .-> draft_chapter;
 	draft_chapter --> collect_drafts;
-	collect_drafts -. &nbsp;Send&nbsp;×N&nbsp; .-> review_chapter;
+	collect_drafts -. Send xN .-> review_chapter;
 	review_chapter --> collect_reviews;
-	collect_reviews -. &nbsp;Send&nbsp;×N&nbsp; .-> extract_metadata;
+	collect_reviews -. Send xN .-> extract_metadata;
 	extract_metadata --> finalize_assemble;
 	finalize_assemble --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2

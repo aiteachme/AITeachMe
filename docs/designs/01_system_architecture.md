@@ -200,7 +200,12 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - 知识构建：由 `knowledge` 资源组触发，Digest graph / curriculum / docs workflow 推进
 - 新测评链路：由 `assessment` 资源组触发，Examine / Profile workflow 推进
 
-这些长流程都应显式写入状态表，而不是只依赖内存态。
+这些长流程都应有稳定持久化锚点，而不是只依赖内存态。当前锚点可能是：
+
+- 最终业务表
+- 文件锁 / manifest
+- 本地正式产物
+- 必要的运行时日志 / workflow state
 
 ### 7.3 开发期双写策略
 
@@ -212,10 +217,10 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 当前已经存在的本地产物包括：
 
 - `raw/`
-- `markdown/`
+- `raw_markdown/`
 - `assets/`
-- `knowledge_docs/`
-- `docgen_intermediate/`
+- `knowledge_markdown/`
+- `knowledge_markdown/_build/`
 
 后续新增调试快照统一约定写入：
 
@@ -259,7 +264,7 @@ legacy exam/profile API 仍在线；新的 assessment/profile 工作流和数据
 
 ### 9.3 本地优先不等于未来不能中心化
 
-当前默认基础设施仍是 SQLite + sqlite-vec + 本地文件系统，但架构边界要为未来切换到 PostgreSQL + pgvector + 对象存储预留迁移空间。
+当前默认基础设施仍是 SQLite + sqlite-vec + 本地文件系统，但架构边界要为未来切换到 PostgreSQL + pgvector + OSS/MinIO 预留迁移空间。
 
 ---
 

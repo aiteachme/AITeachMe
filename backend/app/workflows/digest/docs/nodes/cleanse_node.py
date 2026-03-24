@@ -12,7 +12,6 @@ from app.services.upload_support import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.cleanse_service import (
     llm_heal_full,
-    rule_based_cleanse,
     stitch_sentences,
 )
 from app.workflows.digest.docs.state import DocGenState
@@ -22,7 +21,7 @@ logger = structlog.get_logger()
 
 
 def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStrategy):
-    """Build the cleanse node."""
+    """Build the cleanse node (simplified - shared layer already normalized)."""
 
     async def cleanse_node(state: DocGenState) -> dict:
         started_at = perf_counter()
@@ -35,10 +34,11 @@ def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStr
         )
 
         subject = state["subject"]
+        # 共享层已经做了基础规范化，这里只做教学性增强
         pre_healed = []
         for chunk in raw_chunks:
-            cleaned = rule_based_cleanse(chunk["content"])
-            cleaned = stitch_sentences(cleaned)
+            # 只做句子拼接（教学性增强）
+            cleaned = stitch_sentences(chunk["content"])
             pre_healed.append({**chunk, "content": cleaned})
 
         async def _heal(chunk: dict) -> dict:
