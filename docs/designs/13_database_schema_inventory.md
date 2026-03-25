@@ -11,6 +11,7 @@
 - 向量层只保留一张表：`chunk_embeddings`，但它服务统一检索分块 `retrieval_chunk`，而不是只服务原始资料。
 - 标题路径、章节名、主题词只作为弱元信息；统一检索层以语义内容、结构邻接、证据引用为主，不做关键词驱动设计。
 - 不再单独拆版本表、快照表、上下文表；能并回主表就并回主表。
+- `chat_session` / `chat_message` 保持当前已定稿结构，不在本轮改字段形态。
 
 ## 2. 顶层关系
 
@@ -94,13 +95,17 @@ user
 | `parsed_markdown` | 解析后的原始 Markdown 内容 |
 | `parser_used` | 实际使用的解析器 |
 | `parse_metadata_json` | 解析元信息 JSON |
+| `parse_error_message` | 解析失败原因，可空 |
 | `status` | 文件状态 |
 | `ingest_status` | ingest 状态 |
 | `size_bytes` | 文件大小 |
 | `checksum_sha256` | 文件哈希 |
 | `estimated_pages` | 页数/页片估计 |
 | `detected_language` | 检测语言 |
+| `classification_json` | 文件分类结果 JSON |
+| `quality_score` | 解析质量分 |
 | `image_count` | 提取图片数 |
+| `digest_current_step` | digest 当前处理阶段，可空 |
 | `created_at` | 创建时间 |
 | `updated_at` | 更新时间 |
 
@@ -136,8 +141,11 @@ user
 | `source_id` | 来源对象 ID |
 | `chunk_role` | `source_excerpt` / `knowledge_section` / `concept_card` / `relation_card` / `question_stem` / `question_explanation` |
 | `chunk_index` | 分块序号 |
+| `level` | 标题层级 / 结构层级 |
 | `title` | 分块标题 |
 | `header_path` | 标题路径 |
+| `digest_chunk_uid` | 稳定分块业务 ID |
+| `build_session_id` | 构建会话 ID |
 | `content` | 分块正文 |
 | `token_count` | token 数 |
 | `page_num` | 来源页码，可空 |
@@ -148,15 +156,12 @@ user
 ### `chunk_embeddings`
 
 - 用途：唯一向量表，服务统一检索分块 `retrieval_chunk`。
+- SQLite 本地模式下直接映射 `sqlite-vec` 虚拟表，保持极简结构，不额外塞关系型元字段。
 
 | 字段 | 说明 |
 | --- | --- |
-| `id` | 主键 |
-| `chunk_id` | `retrieval_chunk.id` |
-| `embedding_model` | 向量模型标识 |
-| `embedding_dim` | 向量维度 |
+| `chunk_id` | `retrieval_chunk.id`，同时作为主键 |
 | `embedding` | 向量值 |
-| `created_at` | 创建时间 |
 
 ### `knowledge_document`
 
@@ -175,7 +180,9 @@ user
 | `content_markdown` | 文档 Markdown 内容 |
 | `storage_backend` | 文档存储后端 |
 | `storage_key` | 文档存储 key |
+| `tags_json` | 章节标签 JSON |
 | `source_raw_file_ids_json` | 来源原始资料 ID 列表 |
+| `word_count` | 字数统计 |
 | `version_no` | 版本号 |
 | `status` | `draft` / `published` / `archived` |
 | `created_at` | 创建时间 |
@@ -225,6 +232,7 @@ user
 | 字段 | 说明 |
 | --- | --- |
 | `id` | 主键 |
+| `user_id` | 所属用户 |
 | `subject_id` | 所属学科 |
 | `source_node_id` | 起点节点 |
 | `target_node_id` | 终点节点 |
@@ -243,6 +251,7 @@ user
 | 字段 | 说明 |
 | --- | --- |
 | `id` | 主键 |
+| `user_id` | 所属用户 |
 | `subject_id` | 所属学科 |
 | `node_id` | 节点 ID，可空 |
 | `edge_id` | 边 ID，可空 |
@@ -313,10 +322,13 @@ user
 | `curriculum_version_id` | 所属课程版本 |
 | `parent_tree_node_id` | 父节点 |
 | `title` | 节点标题 |
+| `normalized_title` | 归一化标题 |
 | `node_type` | `chapter` / `section` / `theme` / `unit_bucket` |
 | `anchor_type` | 锚点类型 |
 | `order_index` | 排序 |
 | `summary` | 摘要 |
+| `confidence` | 置信度 |
+| `is_system` | 是否系统锚点 |
 | `created_at` | 创建时间 |
 
 ### `curriculum_unit_link`
@@ -504,7 +516,7 @@ user
 | 字段 | 说明 |
 | --- | --- |
 | `id` | 会话 ID |
-| `subject_id` | 学科 |
+| `subject` | 学科 slug |
 | `user_id` | 用户 |
 | `title` | 会话标题 |
 | `source` | 会话来源 |
@@ -520,7 +532,7 @@ user
 | 字段 | 说明 |
 | --- | --- |
 | `id` | 主键 |
-| `subject_id` | 学科 |
+| `subject` | 学科 slug |
 | `user_id` | 用户 |
 | `session_id` | 会话 ID |
 | `turn_id` | 轮次 ID |
@@ -530,10 +542,25 @@ user
 | `source_chunk_id` | 来源 chunk |
 | `role` | `user` / `assistant` |
 | `content` | 消息内容 |
-| `contexts_json` | 检索上下文 JSON |
+| `contexts` | 检索上下文 JSON |
 | `created_at` | 创建时间 |
 
-## 4. 直接结论
+## 4. 重构时不能丢的信息
+
+- `raw_file.file_path` 收敛为 `raw_file.storage_backend + storage_key`；`raw_file.markdown_path` 收敛为 `raw_file.parsed_markdown`；`raw_file.asset_dir` 收敛为 `raw_file_asset` 记录集合，不能把文件、Markdown、资源三条链路混没了。
+- `raw_file.error_message` 的语义并入 `raw_file.parse_error_message`，不能丢失败原因。
+- `raw_file.classification_result` 的语义并入 `raw_file.classification_json`，不能丢文件分类结论。
+- `raw_file.quality_score` 保留，后续 ingest 质量评估和重试策略要能继续用。
+- `document.source_file_id` / `title` / `markdown_content` / `current_step` 分别由 `raw_file.id` / `raw_file.original_filename` / `raw_file.parsed_markdown` / `raw_file.digest_current_step` 承担，不再单独保留 `document` 主表。
+- `document_chunk.level`、`digest_chunk_uid`、`build_session_id` 必须进入 `retrieval_chunk`，否则统一构建、引用定位、增量重建都会丢稳定标识。
+- `knowledge_doc.tags`、`source_file_ids`、`word_count`、`version` 对应保留到 `knowledge_document.tags_json`、`source_raw_file_ids_json`、`word_count`、`version_no`。
+- `knowledge_revision.title/summary/body` 直接并入 `knowledge_node.canonical_name`、`summary`、`body`；`edge_revision.description/weight/confidence` 直接并入 `knowledge_edge`。
+- `teaching_unit_revision.title/summary/learning_objectives_json` 直接并入 `teaching_unit`。
+- `taxonomy_anchor.normalized_title/confidence/is_system` 并入 `curriculum_tree_node`，不能只留一个 `anchor_type`。
+- `theme_tree_version`、`prereq_dag_version`、`curriculum_snapshot` 三层版本语义统一收敛到 `curriculum_version`，但树结构、依赖结构、发布态三类信息都必须保留。
+- `exam_paper_generation_context` 可以合并进 `exam_paper.metadata_json`，但 `selection_reason_json`、`target_theme_tree_node_id`、`weakness_state_ids_json`、`review_task_ids_json`、`excluded_template_ids_json` 这些键不能丢。
+
+## 5. 直接结论
 
 - 原始资料主表：`raw_file`
 - 知识文档主表：`knowledge_document`
