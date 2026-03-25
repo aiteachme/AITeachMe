@@ -32,7 +32,7 @@ def build_raw_markdown_dir(subject: str) -> Path:
     return build_subject_dir(subject) / "raw_markdowns"
 
 def build_assets_dir(subject: str) -> Path:
-    """Return the flattened extracted-asset directory."""
+    """Return the extracted-assets root directory."""
 
     return build_subject_dir(subject) / "assets"
 
@@ -63,10 +63,9 @@ def build_raw_markdown_path(subject: str, raw_file_id: int) -> Path:
 
 
 def build_asset_dir(subject: str, raw_file_id: int) -> Path:
-    """Return the shared flattened assets directory for a raw file."""
+    """Return the per-file assets directory."""
 
-    del raw_file_id
-    return build_assets_dir(subject)
+    return build_assets_dir(subject) / str(raw_file_id)
 
 
 def build_knowledge_markdown_dir(subject: str) -> Path:
@@ -146,7 +145,7 @@ def build_asset_name_prefix(
     file_uid: str | None = None,
     file_id: int | None = None,
 ) -> str:
-    """Build a deterministic flattened-asset filename prefix for one raw file."""
+    """Build a deterministic asset filename prefix for one raw file."""
 
     stem = Path(filename or "").stem or "file"
     safe_stem = _sanitize_storage_token(stem)[:24]
@@ -160,7 +159,7 @@ def list_asset_files(
     *,
     asset_name_prefix: str | None = None,
 ) -> list[Path]:
-    """List flattened asset files, optionally filtered to one raw file prefix."""
+    """List asset files, optionally filtered by filename prefix."""
 
     if not asset_dir:
         return []
@@ -181,7 +180,7 @@ def delete_asset_files(
     *,
     asset_name_prefix: str | None = None,
 ) -> int:
-    """Delete flattened asset files, optionally filtered to one raw file prefix."""
+    """Delete asset files, optionally filtered by filename prefix."""
 
     deleted = 0
     for item in list_asset_files(asset_dir, asset_name_prefix=asset_name_prefix):
@@ -206,3 +205,17 @@ def build_workflow_run_debug_dir(subject: str, workflow_name: str, run_or_job_id
     """Return the debug directory for one workflow run."""
 
     return build_workflow_debug_dir(subject, workflow_name) / _sanitize_debug_segment(str(run_or_job_id))
+
+
+def to_storage_key(path: str | Path) -> str:
+    """Convert an absolute runtime path into a local storage key."""
+
+    absolute_path = Path(path).resolve()
+    data_dir = get_data_dir()
+    return absolute_path.relative_to(data_dir).as_posix()
+
+
+def resolve_storage_key_path(storage_key: str) -> Path:
+    """Resolve a local storage key into an absolute runtime path."""
+
+    return (get_data_dir() / storage_key).resolve()

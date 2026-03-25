@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         TopicAnchor,
         TopicAnchorSnapshot,
     )
-    from app.workflows.digest.build.runtime import run_unified_digest_build
+    from app.workflows.digest.unified.runtime import run_unified_digest_build
     from app.workflows.digest.build.state import UnifiedBuildResult, UnifiedBuildState
 
 
@@ -45,7 +45,7 @@ def __getattr__(name: str):
         "CoverageReport": ("app.workflows.digest.build.models", "CoverageReport"),
         "TopicAnchor": ("app.workflows.digest.build.models", "TopicAnchor"),
         "TopicAnchorSnapshot": ("app.workflows.digest.build.models", "TopicAnchorSnapshot"),
-        "run_unified_digest_build": ("app.workflows.digest.build.runtime", "run_unified_digest_build"),
+        "run_unified_digest_build": ("app.workflows.digest.unified.runtime", "run_unified_digest_build"),
         "UnifiedBuildResult": ("app.workflows.digest.build.state", "UnifiedBuildResult"),
         "UnifiedBuildState": ("app.workflows.digest.build.state", "UnifiedBuildState"),
     }

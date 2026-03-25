@@ -7,11 +7,11 @@ import re
 from pathlib import Path
 
 import structlog
-from sqlmodel import select
 
 from app.core.database import managed_session
 from app.models import RawFile
-from app.services.upload_support import build_assets_dir
+from app.repositories.files_repo import list_raw_files_by_ids
+from app.services.upload_support import build_asset_dir, build_raw_markdown_path
 from app.workflows.digest.shared.asset_indexer import build_asset_registry
 from app.workflows.digest.shared.hint_extractor import extract_fast_topic_hints
 from app.workflows.digest.shared.models import ChunkIdentityMap, SharedInputs, SourcePacket
@@ -80,35 +80,36 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
 
 
 async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
-    """Load raw markdown once and normalize it into source packets."""
+    """Load parsed raw markdown and normalize it into source packets."""
 
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
-            session.exec(
-                select(RawFile).where(
-                    RawFile.subject == subject,
-                    RawFile.id.in_(file_ids),
-                )
-            ).all(),
-            key=lambda raw_file: requested_order.get(raw_file.id or 0, len(requested_order)),
+            list_raw_files_by_ids(session, subject, file_ids),
+            key=lambda raw_file: requested_order.get(int(raw_file.id or 0), len(requested_order)),
         )
 
     async def load_one(raw_file: RawFile) -> SourcePacket | None:
-        if raw_file.id is None or not raw_file.markdown_path:
+        if raw_file.id is None:
             return None
-        markdown_path = Path(raw_file.markdown_path)
-        if not markdown_path.exists():
+
+        markdown_path = build_raw_markdown_path(subject, int(raw_file.id))
+        content = ""
+        if markdown_path.exists():
+            content = await asyncio.to_thread(markdown_path.read_text, encoding="utf-8")
+        elif raw_file.parsed_markdown.strip():
+            content = raw_file.parsed_markdown
+        if not content.strip():
             return None
-        content = await asyncio.to_thread(markdown_path.read_text, encoding="utf-8")
+
         normalized_content = normalize_markdown_content(content)
         image_refs = extract_image_refs(normalized_content)
         return SourcePacket(
-            file_id=raw_file.id,
-            filename=raw_file.filename,
-            filetype=raw_file.filetype,
+            file_id=int(raw_file.id),
+            filename=raw_file.original_filename,
+            filetype=raw_file.file_ext,
             markdown_path=str(markdown_path),
-            asset_dir=_resolve_asset_dir(subject, raw_file),
+            asset_dir=str(build_asset_dir(subject, int(raw_file.id))),
             normalized_content=normalized_content,
             char_count=len(normalized_content),
             has_formulas=bool(INLINE_FORMULA_PATTERN.search(normalized_content)),
@@ -137,13 +138,6 @@ def normalize_markdown_content(content: str) -> str:
         blank_count = 0
         collapsed.append(line)
     return "\n".join(collapsed).strip()
-
-
-def _resolve_asset_dir(subject: str, raw_file: RawFile) -> str:
-    asset_dir = (raw_file.asset_dir or "").strip()
-    if asset_dir:
-        return str(Path(asset_dir))
-    return str(build_assets_dir(subject))
 
 
 def extract_image_refs(content: str) -> list[str]:

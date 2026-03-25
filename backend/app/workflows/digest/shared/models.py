@@ -28,6 +28,7 @@ class SectionPacket(BaseModel):
     source_file_id: int
     source_filename: str
     chunk_index: int
+    page_num: int | None = None
     title: str
     header_path: str
     level: int

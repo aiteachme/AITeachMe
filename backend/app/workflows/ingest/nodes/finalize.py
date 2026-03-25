@@ -8,41 +8,122 @@ Idempotency: success/failure finalization rewrites the same record for the same 
 
 from __future__ import annotations
 
+import mimetypes
+import re
+from pathlib import Path
+
 from app.core.database import managed_session
-from app.models import IngestStatus, TaskStatus
-from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
+from app.models import IngestStatus, RawFileAsset, TaskStatus
+from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
+from app.repositories.subject_repo import get_subject_by_slug
+from app.services.upload_support import to_storage_key
 from app.workflows.common.context import WorkflowContext
-from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileParseFailedEvent, IngestFileReadyForDigestEvent
+from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.state import IngestParseState
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+_PAGE_RE = re.compile(r"(?:page|p|slide|s)[_\-]?(\d{1,4})", re.IGNORECASE)
+
+
+def _guess_asset_kind(filename: str) -> str:
+    lowered = filename.lower()
+    if "formula" in lowered or "equation" in lowered or "latex" in lowered:
+        return "formula_image"
+    return "image"
+
+
+def _guess_page_num(filename: str) -> int | None:
+    match = _PAGE_RE.search(filename)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
+    if Image is None:
+        return None, None
+    try:
+        with Image.open(path) as image:
+            return image.width, image.height
+    except Exception:
+        return None, None
+
+
+def _build_asset_rows(*, raw_file_id: int, asset_dir: Path) -> list[RawFileAsset]:
+    rows: list[RawFileAsset] = []
+    if not asset_dir.exists():
+        return rows
+    for path in sorted(asset_dir.iterdir()):
+        if not path.is_file():
+            continue
+        width, height = _read_image_dimensions(path)
+        rows.append(
+            RawFileAsset(
+                raw_file_id=raw_file_id,
+                asset_name=path.name,
+                asset_kind=_guess_asset_kind(path.name),
+                storage_backend="local",
+                storage_key=to_storage_key(path),
+                mime_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                page_num=_guess_page_num(path.name),
+                width=width,
+                height=height,
+            )
+        )
+    return rows
 
 
 def build_finalize_success_node(*, context: WorkflowContext):
     async def finalize_success_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         try:
+            markdown_path = Path(state["markdown_path"])
+            asset_dir = Path(state["asset_dir"])
+            parsed_markdown = state.get("parsed_markdown")
+            if parsed_markdown is None and markdown_path.exists():
+                parsed_markdown = markdown_path.read_text(encoding="utf-8")
+
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                subject_record = get_subject_by_slug(session, state["subject"])
+                if (
+                    raw_file is None
+                    or subject_record is None
+                    or subject_record.id is None
+                    or raw_file.subject_id != int(subject_record.id)
+                ):
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",
                     }
+
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=asset_dir)
+                replace_raw_file_assets(session, raw_file_id=state["file_id"], assets=asset_rows)
                 update_raw_file(
                     session,
                     raw_file,
-                    markdown_path=state["markdown_path"],
-                    asset_dir=state["asset_dir"],
+                    parsed_markdown=parsed_markdown or "",
+                    parser_used=state.get("parser_used"),
+                    parse_metadata_json=state.get("parse_metadata") or "{}",
+                    parse_error_message=None,
+                    classification_json=state.get("classification_payload") or "{}",
+                    quality_score=None,
+                    image_count=len(asset_rows),
                     status=TaskStatus.COMPLETED.value,
-                    error_message=None,
-                    content_hash=state.get("content_hash"),
-                    file_size_bytes=state.get("file_size_bytes"),
+                    ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+                    digest_current_step="ingest.parse.completed",
+                    size_bytes=state.get("file_size_bytes"),
+                    checksum_sha256=state.get("content_hash"),
                     estimated_pages=state.get("estimated_pages"),
                     detected_language=state.get("detected_language"),
-                    classification_result=state.get("classification_payload"),
-                    parse_metadata=state.get("parse_metadata"),
-                    image_count=state.get("image_count"),
-                    ingest_status=IngestStatus.READY_FOR_DIGEST.value,
                 )
             await context.event_bus.publish(
                 IngestFileReadyForDigestEvent(
@@ -76,14 +157,20 @@ def build_finalize_failure_node(*, context: WorkflowContext):
         error_message = state.get("error", "unknown_error")
         with managed_session() as session:
             raw_file = get_raw_file_by_id(session, state["file_id"])
-            if raw_file is not None and raw_file.subject == state["subject"]:
+            subject_record = get_subject_by_slug(session, state["subject"])
+            if (
+                raw_file is not None
+                and subject_record is not None
+                and subject_record.id is not None
+                and raw_file.subject_id == int(subject_record.id)
+            ):
                 update_raw_file(
                     session,
                     raw_file,
-                    asset_dir=state.get("asset_dir"),
+                    parse_error_message=error_message,
                     status=TaskStatus.FAILED.value,
-                    error_message=error_message,
                     ingest_status=IngestStatus.FAILED.value,
+                    digest_current_step="ingest.parse.failed",
                 )
         await context.event_bus.publish(
             IngestFileParseFailedEvent(

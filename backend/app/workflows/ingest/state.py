@@ -26,6 +26,7 @@ class IngestParseState(TypedDict, total=False):
     parse_plan: ParsePlan | None
     parse_plan_payload: str | None
     parse_metadata: str | None
+    parsed_markdown: str | None
     parser_used: str | None
     attempted_parsers: list[str]
     parser_elapsed_s: dict[str, float]

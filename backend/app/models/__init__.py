@@ -1,8 +1,7 @@
-"""模型统一导出。"""
+"""Unified model exports."""
 
 from app.models.assessment import (
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
     QuestionTemplate,
     QuestionTemplateNodeLink,
@@ -12,16 +11,12 @@ from app.models.assessment import (
 )
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
-    CurriculumSnapshot,
-    PrereqDagVersion,
-    TaxonomyAnchor,
+    CurriculumDependency,
+    CurriculumTreeNode,
+    CurriculumUnitLink,
+    CurriculumVersion,
     TeachingUnit,
     TeachingUnitMembership,
-    TeachingUnitRevision,
-    ThemeTreeNode,
-    ThemeTreeVersion,
-    UnitDependency,
-    UnitTreeMembership,
 )
 from app.models.enums import (
     AsyncJobStatus,
@@ -43,80 +38,60 @@ from app.models.enums import (
     WeaknessReason,
     validate_status_transition,
 )
-from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
-from app.models.knowledge import (
-    Document,
-    DocumentChunk,
-)
-from app.models.knowledge_doc import (
-    KnowledgeDoc,
-)
+from app.models.knowledge import RetrievalChunk
+from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph import (
-    EdgeRevision,
-    EvidenceLink,
     KnowledgeAlias,
     KnowledgeEdge,
+    KnowledgeEvidence,
     KnowledgeNode,
-    KnowledgeRevision,
 )
-from app.models.profile import UserProfile
-from app.models.raw_file import RawFile
+from app.models.raw_file import RawFile, RawFileAsset
 from app.models.subject import Subject
+from app.models.user import User
 
 __all__ = [
-    "AnswerRecord",
     "AsyncJobStatus",
     "ChatMessage",
     "ChatSession",
-    "CurriculumSnapshot",
+    "CurriculumDependency",
+    "CurriculumTreeNode",
+    "CurriculumUnitLink",
+    "CurriculumVersion",
     "Difficulty",
     "DigestStep",
     "DocGenStep",
-    "Document",
-    "DocumentChunk",
-    "EdgeRevision",
-    "EvidenceLink",
     "ErrorCauseLabel",
-    "Exam",
     "ExamMode",
     "ExamPaper",
-    "ExamPaperGenerationContext",
     "ExamPaperItem",
     "ExamPaperStatus",
-    "ExamSubmission",
     "IngestStatus",
     "KnowledgeAlias",
-    "KnowledgeDoc",
     "KnowledgeDocStatus",
+    "KnowledgeDocument",
     "KnowledgeEdge",
+    "KnowledgeEvidence",
     "KnowledgeNode",
-    "KnowledgeRevision",
     "MasteryGranularity",
-    "Mistake",
-    "PrereqDagVersion",
-    "Question",
     "QuestionTemplate",
     "QuestionTemplateNodeLink",
     "QuestionTemplateStatus",
     "QuestionType",
     "RawFile",
+    "RawFileAsset",
+    "RetrievalChunk",
     "ReviewTask",
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Subject",
     "TaskStatus",
-    "TaxonomyAnchor",
     "TeachingUnit",
-    "TemplateNodeRole",
     "TeachingUnitMembership",
-    "TeachingUnitRevision",
-    "ThemeTreeNode",
-    "ThemeTreeVersion",
-    "UnitDependency",
-    "UnitTreeMembership",
+    "TemplateNodeRole",
+    "User",
     "UserAnswerAttempt",
     "UserKnowledgeState",
-    "UserProfile",
     "WeaknessReason",
     "validate_status_transition",
 ]

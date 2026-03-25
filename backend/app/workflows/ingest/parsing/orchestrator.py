@@ -41,6 +41,7 @@ async def parse_file(
     *,
     classification: ClassificationResult | None = None,
     parse_plan: ParsePlan | None = None,
+    asset_link_prefix: str = "../assets",
 ) -> ParseExecutionResult:
     """Parse a file using the classification-informed parser chain."""
 
@@ -97,7 +98,7 @@ async def parse_file(
             canonical_result = canonicalize_markdown(
                 raw_markdown,
                 asset_dir=assets,
-                asset_link_prefix="../assets",
+                asset_link_prefix=asset_link_prefix,
                 asset_name_prefix=plan.options.asset_name_prefix,
                 asset_gallery_limit=0
                 if plan.options.enable_asset_vision_ocr
@@ -106,7 +107,7 @@ async def parse_file(
             enhanced_result = await enhance_markdown_with_asset_ocr(
                 canonical_result.markdown,
                 asset_dir=assets,
-                asset_link_prefix="../assets",
+                asset_link_prefix=asset_link_prefix,
                 asset_name_prefix=plan.options.asset_name_prefix,
                 enabled=plan.options.enable_asset_vision_ocr,
                 limit=plan.options.asset_vision_ocr_limit,
@@ -118,7 +119,7 @@ async def parse_file(
                     enhanced_result.markdown,
                     pdf_path=path,
                     asset_dir=assets,
-                    asset_link_prefix="../assets",
+                    asset_link_prefix=asset_link_prefix,
                     asset_name_prefix=plan.options.asset_name_prefix,
                     enabled=plan.options.enable_asset_vision_ocr,
                     language_mode=plan.options.ocr_language_mode,

@@ -1,16 +1,23 @@
-"""图谱查询服务层：节点查询、节点详情、全图、证据上下文。"""
+"""Knowledge graph read services backed by the new schema."""
 
 from __future__ import annotations
 
-import structlog
-from sqlmodel import Session
+from sqlmodel import Session, or_, select
 
-from app.core.exceptions import (
-    KnowledgeChunkNotFoundError,
-    KnowledgeNodeNotFoundError,
+from app.core.exceptions import KnowledgeChunkNotFoundError, KnowledgeNodeNotFoundError
+from app.models import (
+    ExamPaperItem,
+    KnowledgeAlias,
+    KnowledgeDocument,
+    KnowledgeEdge,
+    KnowledgeEvidence,
+    KnowledgeNode,
+    QuestionTemplate,
+    RawFile,
+    RetrievalChunk,
+    Subject,
+    TeachingUnit,
 )
-from app.models.knowledge_graph import KnowledgeNode
-from app.repositories import kg_repo, knowledge_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     AliasItem,
@@ -24,7 +31,23 @@ from app.schemas.knowledge import (
     NodeRevisionItem,
 )
 
-logger = structlog.get_logger()
+
+def _get_subject_id(session: Session, subject: str) -> int | None:
+    record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    return record.id if record is not None else None
+
+
+def _build_node_response(subject: str, node: KnowledgeNode) -> KnowledgeNodeResponse:
+    return KnowledgeNodeResponse(
+        id=int(node.id or 0),
+        subject=subject,
+        node_type=node.node_type,
+        canonical_name=node.canonical_name,
+        status=node.status,
+        confidence=node.confidence,
+        created_at=node.created_at,
+        updated_at=node.updated_at,
+    )
 
 
 def get_graph_nodes(
@@ -35,111 +58,139 @@ def get_graph_nodes(
     page: int = 1,
     size: int = 20,
 ) -> PaginatedData[KnowledgeNodeResponse]:
-    """分页查询知识节点。"""
+    """Return paginated knowledge nodes for one subject."""
+
+    subject_id = _get_subject_id(session, subject)
+    if subject_id is None:
+        return build_paginated_data(items=[], page=page, size=size, total=0)
+
     offset = (page - 1) * size
-    nodes, total = kg_repo.list_nodes_by_subject(
-        session, subject, node_type=node_type, limit=size, offset=offset,
+    stmt = select(KnowledgeNode).where(KnowledgeNode.subject_id == subject_id)
+    count_stmt = select(KnowledgeNode).where(KnowledgeNode.subject_id == subject_id)
+    if node_type:
+        stmt = stmt.where(KnowledgeNode.node_type == node_type)
+        count_stmt = count_stmt.where(KnowledgeNode.node_type == node_type)
+
+    total = len(list(session.exec(count_stmt).all()))
+    rows = list(
+        session.exec(
+            stmt.order_by(KnowledgeNode.updated_at.desc()).offset(offset).limit(size)  # type: ignore[union-attr]
+        ).all()
     )
-    items = [
-        KnowledgeNodeResponse(
-            id=n.id,  # type: ignore[arg-type]
-            subject=n.subject,
-            node_type=n.node_type,
-            canonical_name=n.canonical_name,
-            status=n.status,
-            confidence=n.confidence,
-            created_at=n.created_at,
-            updated_at=n.updated_at,
-        )
-        for n in nodes
-    ]
-    return build_paginated_data(items=items, page=page, size=size, total=total)
-
-
-def get_graph_node_detail(
-    session: Session, *, subject: str, node_id: int
-) -> KnowledgeNodeDetailResponse:
-    """节点详情：base info + revision + aliases + evidence + incident edges。"""
-    result = kg_repo.get_node_with_current_revision(session, node_id)
-    if result is None:
-        raise KnowledgeNodeNotFoundError(node_id)
-
-    node, revision = result
-    if node.subject != subject:
-        raise KnowledgeNodeNotFoundError(node_id)
-
-    # 当前修订
-    current_rev = NodeRevisionItem(
-        title=revision.title,
-        summary=revision.summary,
-        body=revision.body,
+    return build_paginated_data(
+        items=[_build_node_response(subject, node) for node in rows],
+        page=page,
+        size=size,
+        total=total,
     )
 
-    # 别名
-    aliases_raw = kg_repo.list_aliases_by_node(session, node_id)
+
+def get_graph_node_detail(session: Session, *, subject: str, node_id: int) -> KnowledgeNodeDetailResponse:
+    """Return detail for one knowledge node."""
+
+    subject_id = _get_subject_id(session, subject)
+    node = session.get(KnowledgeNode, node_id)
+    if node is None or subject_id is None or node.subject_id != subject_id:
+        raise KnowledgeNodeNotFoundError(node_id)
+
+    aliases_raw = list(
+        session.exec(
+            select(KnowledgeAlias)
+            .where(KnowledgeAlias.node_id == node_id)
+            .order_by(KnowledgeAlias.is_primary.desc(), KnowledgeAlias.id.asc())  # type: ignore[union-attr]
+        ).all()
+    )
     aliases = [
         AliasItem(
-            id=a.id,  # type: ignore[arg-type]
-            alias=a.alias,
-            language=a.language,
-            source=a.source,
-            confidence=a.confidence,
-            is_primary=a.is_primary,
+            id=int(alias.id or 0),
+            alias=alias.alias,
+            language=alias.language,
+            source=alias.source,
+            confidence=alias.confidence,
+            is_primary=alias.is_primary,
         )
-        for a in aliases_raw
+        for alias in aliases_raw
     ]
 
-    # 活跃证据
-    evidence_raw = kg_repo.list_evidence_by_entity(session, "node", node_id)
+    evidence_raw = list(
+        session.exec(
+            select(KnowledgeEvidence)
+            .where(KnowledgeEvidence.node_id == node_id, KnowledgeEvidence.is_active.is_(True))
+            .order_by(KnowledgeEvidence.confidence.desc(), KnowledgeEvidence.id.asc())  # type: ignore[union-attr]
+        ).all()
+    )
+    retrieval_chunk_ids = [item.retrieval_chunk_id for item in evidence_raw]
+    chunks = {
+        int(chunk.id): chunk
+        for chunk in session.exec(
+            select(RetrievalChunk).where(RetrievalChunk.id.in_(retrieval_chunk_ids))  # type: ignore[union-attr]
+        ).all()
+        if chunk.id is not None
+    }
     evidence = [
         EvidenceSummary(
-            id=e.id,  # type: ignore[arg-type]
-            document_id=e.document_id,
-            chunk_id=e.chunk_id,
-            quote_text=e.quote_text,
-            evidence_role=e.evidence_role,
-            field_scope=e.field_scope,
-            confidence=e.confidence,
+            id=int(item.id or 0),
+            document_id=chunks[item.retrieval_chunk_id].source_id if item.retrieval_chunk_id in chunks else 0,
+            chunk_id=item.retrieval_chunk_id,
+            quote_text=item.quote_text,
+            evidence_role=item.evidence_role,
+            field_scope=item.field_scope,
+            confidence=item.confidence,
         )
-        for e in evidence_raw
+        for item in evidence_raw
     ]
 
-    # 关联边
-    edges_raw = kg_repo.list_edges_by_node(session, node_id)
+    edges_raw = list(
+        session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.subject_id == subject_id,
+                or_(
+                    KnowledgeEdge.source_node_id == node_id,
+                    KnowledgeEdge.target_node_id == node_id,
+                ),
+            )
+        ).all()
+    )
+    other_node_ids = {
+        edge.target_node_id if edge.source_node_id == node_id else edge.source_node_id
+        for edge in edges_raw
+    }
+    other_nodes = {
+        int(other.id): other
+        for other in session.exec(
+            select(KnowledgeNode).where(KnowledgeNode.id.in_(other_node_ids))  # type: ignore[union-attr]
+        ).all()
+        if other.id is not None
+    }
     incident_edges: list[IncidentEdgeItem] = []
     for edge in edges_raw:
-        if edge.source_node_id == node_id:
-            other_id = edge.target_node_id
-            direction = "outgoing"
-        else:
-            other_id = edge.source_node_id
-            direction = "incoming"
-
-        other_node = session.get(KnowledgeNode, other_id)
-        other_name = other_node.canonical_name if other_node else f"node#{other_id}"
-        other_type = other_node.node_type if other_node else "unknown"
-
+        other_id = edge.target_node_id if edge.source_node_id == node_id else edge.source_node_id
+        other_node = other_nodes.get(other_id)
         incident_edges.append(
             IncidentEdgeItem(
-                id=edge.id,  # type: ignore[arg-type]
+                id=int(edge.id or 0),
                 edge_type=edge.edge_type,
-                direction=direction,
+                direction="outgoing" if edge.source_node_id == node_id else "incoming",
                 other_node_id=other_id,
-                other_node_name=other_name,
-                other_node_type=other_type,
+                other_node_name=other_node.canonical_name if other_node is not None else f"node#{other_id}",
+                other_node_type=other_node.node_type if other_node is not None else "unknown",
                 confidence=edge.confidence,
             )
         )
 
     return KnowledgeNodeDetailResponse(
-        id=node.id,  # type: ignore[arg-type]
-        subject=node.subject,
+        id=int(node.id or 0),
+        subject=subject,
         node_type=node.node_type,
         canonical_name=node.canonical_name,
         normalized_name=node.normalized_name,
         status=node.status,
         confidence=node.confidence,
-        current_revision=current_rev,
+        current_revision=NodeRevisionItem(
+            title=node.canonical_name,
+            summary=node.summary,
+            body=node.body,
+        ),
         aliases=aliases,
         evidence=evidence,
         incident_edges=incident_edges,
@@ -148,40 +199,63 @@ def get_graph_node_detail(
     )
 
 
-def get_full_graph(
-    session: Session, *, subject: str
-) -> FullGraphResponse:
-    """返回学科下所有 active 节点 + 边，用于力导向图可视化。"""
-    nodes_raw, _ = kg_repo.list_nodes_by_subject(
-        session, subject, limit=5000, offset=0,
-    )
-    edges_raw = kg_repo.list_all_edges_by_subject(session, subject)
+def get_full_graph(session: Session, *, subject: str) -> FullGraphResponse:
+    """Return the full graph payload used by overview and graph pages."""
 
-    nodes = [
-        KnowledgeNodeResponse(
-            id=n.id,  # type: ignore[arg-type]
-            subject=n.subject,
-            node_type=n.node_type,
-            canonical_name=n.canonical_name,
-            status=n.status,
-            confidence=n.confidence,
-            created_at=n.created_at,
-            updated_at=n.updated_at,
-        )
-        for n in nodes_raw
-    ]
-    edges = [
-        GraphEdgeResponse(
-            id=e.id,  # type: ignore[arg-type]
-            source_node_id=e.source_node_id,
-            target_node_id=e.target_node_id,
-            edge_type=e.edge_type,
-            weight=e.weight,
-            confidence=e.confidence,
-        )
-        for e in edges_raw
-    ]
-    return FullGraphResponse(nodes=nodes, edges=edges)
+    subject_id = _get_subject_id(session, subject)
+    if subject_id is None:
+        return FullGraphResponse()
+
+    nodes_raw = list(
+        session.exec(
+            select(KnowledgeNode)
+            .where(KnowledgeNode.subject_id == subject_id)
+            .order_by(KnowledgeNode.updated_at.desc())  # type: ignore[union-attr]
+        ).all()
+    )
+    edges_raw = list(
+        session.exec(
+            select(KnowledgeEdge)
+            .where(KnowledgeEdge.subject_id == subject_id)
+            .order_by(KnowledgeEdge.id.asc())  # type: ignore[union-attr]
+        ).all()
+    )
+    return FullGraphResponse(
+        nodes=[_build_node_response(subject, node) for node in nodes_raw],
+        edges=[
+            GraphEdgeResponse(
+                id=int(edge.id or 0),
+                source_node_id=edge.source_node_id,
+                target_node_id=edge.target_node_id,
+                edge_type=edge.edge_type,
+                weight=edge.weight,
+                confidence=edge.confidence,
+            )
+            for edge in edges_raw
+        ],
+    )
+
+
+def _resolve_chunk_document_title(session: Session, chunk: RetrievalChunk) -> str:
+    if chunk.source_type == "raw_file":
+        raw_file = session.get(RawFile, chunk.source_id)
+        return raw_file.original_filename if raw_file is not None else f"raw_file#{chunk.source_id}"
+    if chunk.source_type == "knowledge_document":
+        document = session.get(KnowledgeDocument, chunk.source_id)
+        return document.title if document is not None else f"knowledge_document#{chunk.source_id}"
+    if chunk.source_type == "knowledge_node":
+        node = session.get(KnowledgeNode, chunk.source_id)
+        return node.canonical_name if node is not None else f"knowledge_node#{chunk.source_id}"
+    if chunk.source_type == "teaching_unit":
+        unit = session.get(TeachingUnit, chunk.source_id)
+        return unit.canonical_name if unit is not None else f"teaching_unit#{chunk.source_id}"
+    if chunk.source_type == "question_template":
+        template = session.get(QuestionTemplate, chunk.source_id)
+        return template.stem if template is not None else f"question_template#{chunk.source_id}"
+    if chunk.source_type == "exam_paper_item":
+        item = session.get(ExamPaperItem, chunk.source_id)
+        return item.snapshot_stem if item is not None else f"exam_paper_item#{chunk.source_id}"
+    return f"{chunk.source_type}#{chunk.source_id}"
 
 
 def get_chunk_context(
@@ -190,21 +264,26 @@ def get_chunk_context(
     subject: str,
     chunk_id: int,
 ) -> ChunkContextResponse:
-    """Return raw chunk context for one chat citation."""
+    """Return full chunk context for one citation."""
 
-    chunk = knowledge_repo.get_chunk_by_id(session, chunk_id)
-    if chunk is None:
-        raise KnowledgeChunkNotFoundError(chunk_id)
-
-    document = knowledge_repo.get_document_by_id(session, chunk.document_id)
-    if document is None or document.subject != subject:
+    subject_id = _get_subject_id(session, subject)
+    chunk = session.get(RetrievalChunk, chunk_id)
+    if chunk is None or subject_id is None or chunk.subject_id != subject_id:
         raise KnowledgeChunkNotFoundError(chunk_id)
 
     return ChunkContextResponse(
-        chunk_id=chunk.id,  # type: ignore[arg-type]
-        document_id=document.id,  # type: ignore[arg-type]
-        document_title=document.title,
+        chunk_id=int(chunk.id or 0),
+        document_id=chunk.source_id,
+        document_title=_resolve_chunk_document_title(session, chunk),
         chunk_title=chunk.title,
         chunk_header_path=chunk.header_path,
         chunk_content=chunk.content,
     )
+
+
+__all__ = [
+    "get_chunk_context",
+    "get_full_graph",
+    "get_graph_node_detail",
+    "get_graph_nodes",
+]

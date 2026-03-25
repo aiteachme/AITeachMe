@@ -347,9 +347,11 @@ def build_rebuild_docs_node(*, context: WorkflowContext):
         if doc_state is None:
             return {**state, "error": "Unified rebuild missing docs state."}
         if curriculum_state is None or curriculum_state.get("theme_tree_version_id") is None:
-            return {**state, "error": "Unified rebuild missing theme tree version."}
+            logger.warning("unified_rebuild_skipped_missing_theme_tree")
+            return state
         if shared_inputs is None or materialized is None:
-            return {**state, "error": "Unified rebuild missing shared inputs."}
+            logger.warning("unified_rebuild_skipped_missing_shared_inputs")
+            return state
 
         theme_tree_version_id = int(curriculum_state["theme_tree_version_id"])
         logger.info(
@@ -366,10 +368,30 @@ def build_rebuild_docs_node(*, context: WorkflowContext):
             logger.warning("unified_curriculum_book_rebuild_empty")
             return state
 
+        existing_chapters = list(doc_state.get("chapter_metadatas", []))
+        if existing_chapters and len(chapter_metadatas) < len(existing_chapters):
+            logger.warning(
+                "unified_curriculum_book_rebuild_skipped",
+                reason="fewer_chapters_than_doc_lane",
+                rebuilt_chapter_count=len(chapter_metadatas),
+                doc_lane_chapter_count=len(existing_chapters),
+            )
+            return state
+
         staged_docs = await stage_knowledge_docs(
             subject=state["subject"],
             chapter_metadatas=chapter_metadatas,
         )
+        existing_merged_markdown = str(doc_state.get("merged_markdown", ""))
+        if existing_merged_markdown and len(staged_docs.merged_markdown) < int(len(existing_merged_markdown) * 0.6):
+            logger.warning(
+                "unified_curriculum_book_rebuild_skipped",
+                reason="rebuilt_markdown_too_small",
+                rebuilt_chars=len(staged_docs.merged_markdown),
+                doc_lane_chars=len(existing_merged_markdown),
+            )
+            return state
+
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.info(
             "unified_curriculum_book_rebuild_completed",

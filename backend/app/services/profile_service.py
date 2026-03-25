@@ -1,4 +1,4 @@
-﻿"""Profile service layer."""
+"""Profile service layer."""
 
 from __future__ import annotations
 
@@ -20,8 +20,6 @@ from app.repositories.profile_repo import (
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.profile import MistakeItem, ProfileItem, ReportData
-from app.services.presenters import mastery_to_text
-from app.workflows.profile import generate_report_suggestions
 
 
 @dataclass(frozen=True)
@@ -42,6 +40,16 @@ def _raise_not_found(detail: str, *, error_code: str = "NOT_FOUND") -> None:
     )
 
 
+def _build_suggestions(weak_points: list[ProfileItem]) -> list[str]:
+    if not weak_points:
+        return ["当前没有明显薄弱点，可以继续做综合练习。"]
+    top = weak_points[0]
+    return [
+        f"优先复习 {top.knowledge_point}，先补核心概念再做针对题。",
+        "把最近错题按错因重新整理一遍，避免重复犯错。",
+    ]
+
+
 def list_profiles(
     session: Session,
     *,
@@ -55,55 +63,41 @@ def list_profiles(
         limit=size,
         offset=(page - 1) * size,
     )
-    return build_paginated_data(
-        items=[
-            ProfileItem(
-                knowledge_point=item.knowledge_point,
-                mastery=item.mastery,
-                attempts=item.attempts,
-                correct=item.correct,
-            )
-            for item in items
-        ],
-        page=page,
-        size=size,
-        total=total,
-    )
+    payload = [
+        ProfileItem(
+            knowledge_point=item.knowledge_point,
+            mastery=item.mastery,
+            attempts=item.attempts,
+            correct=item.correct,
+        )
+        for item in items
+    ]
+    return build_paginated_data(items=payload, page=page, size=size, total=total)
 
 
 async def get_report(session: Session, *, subject: str) -> ReportData:
     all_profiles, _ = list_profiles_by_subject(session, subject, limit=10000, offset=0)
-    tested_profiles = [item for item in all_profiles if item.mastery is not None and item.attempts > 0]
+    tested = [item for item in all_profiles if item.mastery is not None and item.attempts > 0]
     overall_mastery = None
-    if tested_profiles:
-        total_attempts = sum(item.attempts for item in tested_profiles)
+    if tested:
+        total_attempts = sum(item.attempts for item in tested)
         if total_attempts > 0:
-            overall_mastery = sum(item.correct for item in tested_profiles) / total_attempts
+            overall_mastery = sum(item.correct for item in tested) / total_attempts
 
     weak_profiles = get_weak_points(session, subject, limit=5)
-    suggestions = await generate_report_suggestions(
-        subject=subject,
-        overall_mastery=overall_mastery,
-        weak_points=[
-            {
-                "knowledge_point": item.knowledge_point,
-                "mastery_text": mastery_to_text(item.mastery),
-            }
-            for item in weak_profiles
-        ],
-    )
+    weak_payload = [
+        ProfileItem(
+            knowledge_point=item.knowledge_point,
+            mastery=item.mastery,
+            attempts=item.attempts,
+            correct=item.correct,
+        )
+        for item in weak_profiles
+    ]
     return ReportData(
         overall_mastery=overall_mastery,
-        weak_points_top5=[
-            ProfileItem(
-                knowledge_point=item.knowledge_point,
-                mastery=item.mastery,
-                attempts=item.attempts,
-                correct=item.correct,
-            )
-            for item in weak_profiles
-        ],
-        suggestions=suggestions,
+        weak_points_top5=weak_payload,
+        suggestions=_build_suggestions(weak_payload),
     )
 
 
@@ -120,24 +114,20 @@ def list_mistakes(
         limit=size,
         offset=(page - 1) * size,
     )
-    return build_paginated_data(
-        items=[
-            MistakeItem(
-                id=item["id"],
-                question_stem=item["question_stem"],
-                question_type=item["question_type"],
-                user_answer=item["user_answer"],
-                correct_answer=item["correct_answer"],
-                analysis=item["analysis"],
-                knowledge_point=item["knowledge_point"],
-                created_at=item["created_at"],
-            )
-            for item in items
-        ],
-        page=page,
-        size=size,
-        total=total,
-    )
+    payload = [
+        MistakeItem(
+            id=int(item["id"]),
+            question_stem=str(item["question_stem"]),
+            question_type=str(item["question_type"]),
+            user_answer=str(item["user_answer"]),
+            correct_answer=str(item["correct_answer"]),
+            analysis=str(item["analysis"]),
+            knowledge_point=str(item["knowledge_point"]),
+            created_at=item["created_at"],
+        )
+        for item in items
+    ]
+    return build_paginated_data(items=payload, page=page, size=size, total=total)
 
 
 async def get_mastery_overview(
@@ -166,7 +156,7 @@ async def get_mastery_detail(
     user_id: str,
     target_id: int,
     granularity: str,
-):
+) -> UserKnowledgeState:
     state = get_knowledge_state(
         session,
         user_id=user_id,

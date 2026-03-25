@@ -62,11 +62,11 @@ def _to_mastery_overview_response(overview) -> MasteryOverviewResponse:
     )
 
 
-def _to_review_task_response(task) -> ReviewTaskResponse:
+def _to_review_task_response(task, *, subject: str, user_id: str) -> ReviewTaskResponse:
     return ReviewTaskResponse(
         id=task.id or 0,
-        user_id=task.user_id,
-        subject=task.subject,
+        user_id=user_id,
+        subject=subject,
         task_type=task.task_type,
         target_id=task.target_id,
         target_granularity=task.target_granularity,
@@ -226,7 +226,7 @@ async def api_get_review_tasks(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
     tasks = await get_review_tasks(session, subject=normalized, user_id=user.user_id)
-    return ok_response([_to_review_task_response(item) for item in tasks])
+    return ok_response([_to_review_task_response(item, subject=normalized, user_id=user.user_id) for item in tasks])
 
 
 @router.post(
@@ -249,4 +249,4 @@ async def api_complete_review_task(
         task_id=task_id,
         user_id=user.user_id,
     )
-    return ok_response(_to_review_task_response(task))
+    return ok_response(_to_review_task_response(task, subject=normalized, user_id=user.user_id))

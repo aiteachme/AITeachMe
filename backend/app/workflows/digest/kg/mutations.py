@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
-from app.models.knowledge import DocumentChunk
-from app.models.knowledge_graph import (
-    EvidenceLink,
-    KnowledgeAlias,
-    KnowledgeNode,
-    KnowledgeRevision,
-)
-from app.repositories import kg_repo
+from app.models import KnowledgeAlias, KnowledgeEvidence, KnowledgeNode, RetrievalChunk, Subject
+from app.repositories.knowledge import kg_repo
 from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
+from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
+
+
+def _resolve_subject_owner(session: Session, subject: str) -> Subject:
+    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    if subject_row is None or subject_row.id is None:
+        raise ValueError(f"Unknown subject `{subject}`")
+    return subject_row
 
 
 def create_new_node(
@@ -24,38 +25,33 @@ def create_new_node(
     clustered_candidate: ClusteredCandidate,
     job_id: int,
 ) -> KnowledgeNode:
+    del job_id
     representative = clustered_candidate.representative
+    subject_row = _resolve_subject_owner(session, subject)
     node = KnowledgeNode(
-        subject=subject,
+        user_id=subject_row.user_id,
+        subject_id=int(subject_row.id),
         node_type=representative.node_type,
         canonical_name=representative.name,
         normalized_name=normalize_name(representative.name),
+        summary=clustered_candidate.merged_summary,
+        body=clustered_candidate.merged_summary,
         status="pending",
+        confidence=0.8,
     )
     node = kg_repo.create_knowledge_node(session, node)
-
-    revision = KnowledgeRevision(
-        node_id=node.id,  # type: ignore[arg-type]
-        revision_no=1,
-        title=representative.name,
-        summary=clustered_candidate.merged_summary,
-        body="",
-        revision_reason="new_evidence",
-        is_current=True,
+    kg_repo.create_alias(
+        session,
+        KnowledgeAlias(
+            node_id=int(node.id or 0),
+            alias=representative.name,
+            normalized_alias=normalize_name(representative.name),
+            source="llm",
+            confidence=0.9,
+            is_primary=True,
+            status="pending",
+        ),
     )
-    revision = kg_repo.create_knowledge_revision(session, revision)
-    node.current_revision_id = revision.id
-    session.add(node)
-    session.commit()
-
-    alias = KnowledgeAlias(
-        node_id=node.id,  # type: ignore[arg-type]
-        alias=representative.name,
-        normalized_alias=normalize_name(representative.name),
-        source="llm",
-        is_primary=True,
-    )
-    kg_repo.create_alias(session, alias)
     return node
 
 
@@ -66,30 +62,16 @@ def create_updated_revision(
     clustered_candidate: ClusteredCandidate,
     job_id: int,
 ) -> None:
-    result = kg_repo.get_node_with_current_revision(session, node_id)
-    if result is None:
+    del job_id
+    node = session.get(KnowledgeNode, node_id)
+    if node is None:
         return
 
-    node, current_revision = result
-    merged_summary = current_revision.summary
-    if (
-        clustered_candidate.merged_summary
-        and clustered_candidate.merged_summary not in merged_summary
-    ):
-        merged_summary = f"{merged_summary}\n{clustered_candidate.merged_summary}"
-
-    kg_repo.deactivate_old_revisions(session, node_id)
-    revision = KnowledgeRevision(
-        node_id=node_id,
-        revision_no=current_revision.revision_no + 1,
-        title=current_revision.title,
-        summary=merged_summary,
-        body=current_revision.body,
-        revision_reason="new_evidence",
-        is_current=True,
-    )
-    revision = kg_repo.create_knowledge_revision(session, revision)
-    node.current_revision_id = revision.id
+    merged_summary = (node.summary or "").strip()
+    candidate_summary = clustered_candidate.merged_summary.strip()
+    if candidate_summary and candidate_summary not in merged_summary:
+        node.summary = "\n".join(part for part in [merged_summary, candidate_summary] if part).strip()
+        node.body = "\n\n".join(part for part in [node.body.strip(), candidate_summary] if part).strip()
     node.updated_at = utcnow()
     session.add(node)
     session.commit()
@@ -102,6 +84,7 @@ def create_alias_if_new(
     alias_name: str,
     job_id: int,
 ) -> None:
+    del job_id
     normalized_alias = normalize_name(alias_name)
     existing_aliases = kg_repo.list_aliases_by_node(session, node_id)
     if any(alias.normalized_alias == normalized_alias for alias in existing_aliases):
@@ -114,9 +97,16 @@ def create_alias_if_new(
             alias=alias_name,
             normalized_alias=normalized_alias,
             source="llm",
+            confidence=0.8,
             is_primary=False,
+            status="pending",
         ),
     )
+
+
+def _build_quote_text(chunk: RetrievalChunk) -> str:
+    text = chunk.content.replace("\n", " ").strip()
+    return text[:240]
 
 
 def create_node_evidence(
@@ -127,21 +117,25 @@ def create_node_evidence(
     chunk_id: int,
     job_id: int,
 ) -> None:
-    chunk = session.get(DocumentChunk, chunk_id)
+    del subject, job_id
+    chunk = session.get(RetrievalChunk, chunk_id)
     if chunk is None:
         return
 
-    kg_repo.create_evidence_link(
+    kg_repo.create_knowledge_evidence(
         session,
-        EvidenceLink(
-            subject=subject,
-            entity_type="node",
-            entity_id=node_id,
-            document_id=chunk.document_id,
-            chunk_id=chunk_id,
-            evidence_role="supports",
+        KnowledgeEvidence(
+            user_id=chunk.user_id,
+            subject_id=chunk.subject_id,
+            node_id=node_id,
+            edge_id=None,
+            retrieval_chunk_id=chunk_id,
+            quote_text=_build_quote_text(chunk),
+            evidence_role="support",
             extraction_method="llm",
             field_scope="summary",
+            confidence=0.8,
+            is_active=False,
         ),
     )
 
@@ -154,21 +148,25 @@ def create_edge_evidence(
     chunk_id: int,
     job_id: int,
 ) -> None:
-    chunk = session.get(DocumentChunk, chunk_id)
+    del subject, job_id
+    chunk = session.get(RetrievalChunk, chunk_id)
     if chunk is None:
         return
 
-    kg_repo.create_evidence_link(
+    kg_repo.create_knowledge_evidence(
         session,
-        EvidenceLink(
-            subject=subject,
-            entity_type="edge",
-            entity_id=edge_id,
-            document_id=chunk.document_id,
-            chunk_id=chunk_id,
-            evidence_role="supports",
+        KnowledgeEvidence(
+            user_id=chunk.user_id,
+            subject_id=chunk.subject_id,
+            node_id=None,
+            edge_id=edge_id,
+            retrieval_chunk_id=chunk_id,
+            quote_text=_build_quote_text(chunk),
+            evidence_role="support",
             extraction_method="llm",
             field_scope="edge_description",
+            confidence=0.75,
+            is_active=False,
         ),
     )
 

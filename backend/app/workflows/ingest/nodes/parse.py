@@ -15,10 +15,11 @@ import time
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
+from app.repositories.subject_repo import get_subject_by_slug
 from app.services.upload_support import list_asset_files
 from app.workflows.common.context import WorkflowContext
-from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileParsedEvent
+from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.parsing.orchestrator import parse_file
 from app.workflows.ingest.state import IngestParseState
 
@@ -52,6 +53,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                 asset_dir,
                 classification=state.get("classification"),
                 parse_plan=parse_plan,
+                asset_link_prefix=f"../assets/{state['file_id']}",
             )
             markdown_path.write_text(parse_result.markdown, encoding="utf-8")
             image_count = len(
@@ -61,22 +63,20 @@ def build_parse_file_node(*, context: WorkflowContext):
                 )
             )
             elapsed = round(time.monotonic() - started_at, 2)
-            classification = state.get("classification")
             parse_metadata = json.dumps(
                 {
-                    "recommended_parser": classification.recommended_parser if classification else "",
+                    "provider_used": parse_result.parser_used,
+                    "provider_status": "completed",
                     "parser_used": parse_result.parser_used,
                     "attempted_parsers": parse_result.attempted_parsers,
-                    "fallbacks": classification.fallback_parsers if classification else [],
-                    "plan_mode": parse_plan.mode if parse_plan else "",
-                    "plan_reason": parse_plan.decision_reason if parse_plan else "",
-                    "timeout_s": parse_plan.options.timeout_s if parse_plan else None,
-                    "asset_image_limit": parse_plan.options.asset_image_limit if parse_plan else None,
-                    "skip_image_supplement": parse_plan.options.skip_image_supplement if parse_plan else None,
+                    "parse_mode": parse_plan.mode if parse_plan else "",
+                    "decision_reason": parse_plan.decision_reason if parse_plan else "",
+                    "parser_chain": parse_plan.parser_chain if parse_plan else [],
                     "parser_parallelism": parse_plan.options.parser_parallelism if parse_plan else None,
-                    "llm_ocr_page_concurrency": parse_plan.options.llm_ocr_page_concurrency if parse_plan else None,
+                    "llm_ocr_page_concurrency": (
+                        parse_plan.options.llm_ocr_page_concurrency if parse_plan else None
+                    ),
                     "ocr_page_limit": parse_plan.options.ocr_page_limit if parse_plan else None,
-                    "ocr_text_char_threshold": parse_plan.options.ocr_text_char_threshold if parse_plan else None,
                     "asset_gallery_limit": parse_plan.options.asset_gallery_limit if parse_plan else None,
                     "ocr_language_mode": parse_plan.options.ocr_language_mode if parse_plan else None,
                     "elapsed_s": elapsed,
@@ -93,7 +93,13 @@ def build_parse_file_node(*, context: WorkflowContext):
             )
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                subject_record = get_subject_by_slug(session, state["subject"])
+                if (
+                    raw_file is None
+                    or subject_record is None
+                    or subject_record.id is None
+                    or raw_file.subject_id != int(subject_record.id)
+                ):
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",
@@ -102,6 +108,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                     session,
                     raw_file,
                     ingest_status=IngestStatus.VALIDATING.value,
+                    digest_current_step="ingest.parse.validating",
                 )
             await context.event_bus.publish(
                 IngestFileParsedEvent(
@@ -130,6 +137,7 @@ def build_parse_file_node(*, context: WorkflowContext):
             return {
                 **state,
                 "parse_metadata": parse_metadata,
+                "parsed_markdown": parse_result.markdown,
                 "parser_used": parse_result.parser_used,
                 "attempted_parsers": parse_result.attempted_parsers,
                 "parser_elapsed_s": parse_result.parser_elapsed_s,

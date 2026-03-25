@@ -15,6 +15,11 @@ class FileAssetItem(BaseModel):
     name: str = Field(description="Asset filename.")
     url: str = Field(description="Runtime static URL for this asset.")
     mime_type: str | None = Field(default=None, description="Asset mime type.")
+    asset_kind: str | None = Field(default=None, description="Asset kind.")
+    page_num: int | None = Field(default=None, description="Source page number.")
+    width: int | None = Field(default=None, description="Asset width.")
+    height: int | None = Field(default=None, description="Asset height.")
+    ocr_text: str | None = Field(default=None, description="OCR text extracted from this asset.")
 
 
 class FileRecord(BaseModel):
@@ -36,6 +41,10 @@ class FileRecord(BaseModel):
     markdown_content: str = Field(default="", description="Parsed markdown content.")
     asset_base_url: str | None = Field(default=None, description="Runtime static base URL for this file's assets.")
     assets: list[FileAssetItem] = Field(default_factory=list, description="Extracted assets.")
+    classification_json: str | None = Field(default=None, description="Classification result JSON.")
+    quality_score: float | None = Field(default=None, description="Parse quality score.")
+    digest_current_step: str | None = Field(default=None, description="Current digest step.")
+    parse_metadata_json: str | None = Field(default=None, description="Parse metadata JSON.")
     latest_updated_at: datetime = Field(description="Last updated time.")
     created_at: datetime = Field(description="Created time.")
 

@@ -1,10 +1,10 @@
-"""课程结构服务层：教学单元、主题树、先修 DAG、锚点管理、清空知识。"""
+"""Curriculum read/write helpers backed by the new schema."""
 
 from __future__ import annotations
 
 import json
+import shutil
 
-import structlog
 from sqlmodel import Session, select
 
 from app.core.exceptions import (
@@ -13,28 +13,29 @@ from app.core.exceptions import (
     NoPublishedTreeError,
     TeachingUnitNotFoundError,
 )
-from app.models.curriculum import (
-    CurriculumSnapshot,
-    PrereqDagVersion,
-    TaxonomyAnchor,
+from app.models import (
+    CurriculumDependency,
+    CurriculumTreeNode,
+    CurriculumUnitLink,
+    CurriculumVersion,
+    ExamPaper,
+    ExamPaperItem,
+    KnowledgeAlias,
+    KnowledgeDocument,
+    KnowledgeEdge,
+    KnowledgeEvidence,
+    KnowledgeNode,
+    QuestionTemplate,
+    QuestionTemplateNodeLink,
+    RetrievalChunk,
+    ReviewTask,
+    Subject,
     TeachingUnit,
     TeachingUnitMembership,
-    TeachingUnitRevision,
-    ThemeTreeNode,
-    ThemeTreeVersion,
-    UnitDependency,
-    UnitTreeMembership,
+    UserAnswerAttempt,
+    UserKnowledgeState,
 )
-from app.models.knowledge import Document, DocumentChunk
-from app.models.knowledge_graph import (
-    EdgeRevision,
-    EvidenceLink,
-    KnowledgeAlias,
-    KnowledgeEdge,
-    KnowledgeNode,
-    KnowledgeRevision,
-)
-from app.repositories import curriculum_repo, knowledge_repo
+from app.repositories.knowledge.knowledge_repo import delete_embeddings_by_chunk_ids
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     CurriculumSnapshotResponse,
@@ -49,179 +50,386 @@ from app.schemas.knowledge import (
     UnitMembershipItem,
     UnitRevisionItem,
 )
-from app.utils.kg_helpers import normalize_name
+from app.services.knowledge.docgen_store import clear_docgen_staging, clear_published_knowledge_docs_files
+from app.services.upload_support import build_knowledge_markdown_dir
+from app.utils.time import utcnow
 
-logger = structlog.get_logger()
+
+def _parse_json_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(loaded, list):
+        return [str(item) for item in loaded]
+    return []
 
 
-# ---------------------------------------------------------------------------
-# 教学单元查询
-# ---------------------------------------------------------------------------
+def _parse_json_dict(value: str | None) -> dict[str, object]:
+    if not value:
+        return {}
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _get_subject_record(session: Session, subject: str) -> Subject | None:
+    return session.exec(select(Subject).where(Subject.slug == subject)).first()
+
+
+def _get_current_curriculum_version(
+    session: Session,
+    *,
+    subject_id: int,
+    status: str = "published",
+) -> CurriculumVersion | None:
+    return session.exec(
+        select(CurriculumVersion)
+        .where(CurriculumVersion.subject_id == subject_id, CurriculumVersion.status == status)
+        .order_by(CurriculumVersion.version_no.desc())  # type: ignore[union-attr]
+    ).first()
+
+
+def _get_or_create_draft_curriculum_version(
+    session: Session,
+    *,
+    subject_record: Subject,
+) -> CurriculumVersion:
+    subject_id = int(subject_record.id or 0)
+    draft = session.exec(
+        select(CurriculumVersion)
+        .where(CurriculumVersion.subject_id == subject_id, CurriculumVersion.status == "draft")
+        .order_by(CurriculumVersion.version_no.desc())  # type: ignore[union-attr]
+    ).first()
+    if draft is not None:
+        return draft
+
+    latest = session.exec(
+        select(CurriculumVersion)
+        .where(CurriculumVersion.subject_id == subject_id)
+        .order_by(CurriculumVersion.version_no.desc())  # type: ignore[union-attr]
+    ).first()
+    version = CurriculumVersion(
+        user_id=subject_record.user_id,
+        subject_id=subject_id,
+        version_no=(latest.version_no if latest is not None else 0) + 1,
+        status="draft",
+    )
+    session.add(version)
+    session.commit()
+    session.refresh(version)
+    return version
+
+
+def _build_teaching_unit_response(subject: str, unit: TeachingUnit) -> TeachingUnitResponse:
+    return TeachingUnitResponse(
+        id=int(unit.id or 0),
+        subject=subject,
+        canonical_name=unit.canonical_name,
+        status=unit.status,
+        confidence=unit.confidence,
+        created_at=unit.created_at,
+        updated_at=unit.updated_at,
+    )
 
 
 def get_teaching_units(
     session: Session,
     *,
     subject: str,
-    status: str | None = None,
+    status: str | None = "active",
     page: int = 1,
     size: int = 20,
 ) -> PaginatedData[TeachingUnitResponse]:
-    """分页查询教学单元。"""
+    """Return paginated teaching units."""
+
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        return build_paginated_data(items=[], page=page, size=size, total=0)
+
     offset = (page - 1) * size
-    units, total = curriculum_repo.list_units_by_subject(
-        session, subject, status=status or "active", limit=size, offset=offset,
+    stmt = select(TeachingUnit).where(TeachingUnit.subject_id == subject_record.id)
+    count_stmt = select(TeachingUnit).where(TeachingUnit.subject_id == subject_record.id)
+    if status is not None:
+        stmt = stmt.where(TeachingUnit.status == status)
+        count_stmt = count_stmt.where(TeachingUnit.status == status)
+
+    total = len(list(session.exec(count_stmt).all()))
+    rows = list(
+        session.exec(
+            stmt.order_by(TeachingUnit.updated_at.desc()).offset(offset).limit(size)  # type: ignore[union-attr]
+        ).all()
     )
-    items = [
-        TeachingUnitResponse(
-            id=u.id,  # type: ignore[arg-type]
-            subject=u.subject,
-            canonical_name=u.canonical_name,
-            status=u.status,
-            confidence=u.confidence,
-            created_at=u.created_at,
-            updated_at=u.updated_at,
-        )
-        for u in units
-    ]
-    return build_paginated_data(items=items, page=page, size=size, total=total)
+    return build_paginated_data(
+        items=[_build_teaching_unit_response(subject, unit) for unit in rows],
+        page=page,
+        size=size,
+        total=total,
+    )
 
 
 def get_teaching_unit_detail(
-    session: Session, *, subject: str, unit_id: int
+    session: Session,
+    *,
+    subject: str,
+    unit_id: int,
 ) -> TeachingUnitDetailResponse:
-    """教学单元详情：base info + revision + members。"""
-    unit = curriculum_repo.get_teaching_unit_by_id(session, unit_id)
-    if unit is None or unit.subject != subject:
+    """Return detail for one teaching unit."""
+
+    subject_record = _get_subject_record(session, subject)
+    unit = session.get(TeachingUnit, unit_id)
+    if subject_record is None or subject_record.id is None or unit is None or unit.subject_id != subject_record.id:
         raise TeachingUnitNotFoundError(unit_id)
 
-    # 当前修订
-    current_rev: UnitRevisionItem | None = None
-    if unit.current_revision_id is not None:
-        rev = session.get(TeachingUnitRevision, unit.current_revision_id)
-        if rev is not None:
-            try:
-                objectives = json.loads(rev.learning_objectives_json)
-            except (ValueError, TypeError):
-                objectives = []
-            current_rev = UnitRevisionItem(
-                title=rev.title,
-                summary=rev.summary,
-                learning_objectives=objectives,
-            )
-
-    # 成员节点
-    memberships = curriculum_repo.list_memberships_by_unit(session, unit_id)
-    members: list[UnitMembershipItem] = []
-    for m in memberships:
-        node = session.get(KnowledgeNode, m.knowledge_node_id)
-        members.append(
-            UnitMembershipItem(
-                id=m.id,  # type: ignore[arg-type]
-                knowledge_node_id=m.knowledge_node_id,
-                node_canonical_name=node.canonical_name if node else f"node#{m.knowledge_node_id}",
-                node_type=node.node_type if node else "unknown",
-                role=m.role,
-                score=m.score,
-            )
+    memberships = list(
+        session.exec(
+            select(TeachingUnitMembership)
+            .where(TeachingUnitMembership.unit_id == unit_id)
+            .order_by(TeachingUnitMembership.score.desc(), TeachingUnitMembership.id.asc())  # type: ignore[union-attr]
+        ).all()
+    )
+    node_ids = [membership.knowledge_node_id for membership in memberships]
+    node_map = {
+        int(node.id): node
+        for node in session.exec(
+            select(KnowledgeNode).where(KnowledgeNode.id.in_(node_ids))  # type: ignore[union-attr]
+        ).all()
+        if node.id is not None
+    }
+    members = [
+        UnitMembershipItem(
+            id=int(membership.id or 0),
+            knowledge_node_id=membership.knowledge_node_id,
+            node_canonical_name=node_map[membership.knowledge_node_id].canonical_name
+            if membership.knowledge_node_id in node_map
+            else f"node#{membership.knowledge_node_id}",
+            node_type=node_map[membership.knowledge_node_id].node_type
+            if membership.knowledge_node_id in node_map
+            else "unknown",
+            role=membership.role,
+            score=membership.score,
         )
+        for membership in memberships
+    ]
 
     return TeachingUnitDetailResponse(
-        id=unit.id,  # type: ignore[arg-type]
-        subject=unit.subject,
+        id=int(unit.id or 0),
+        subject=subject,
         canonical_name=unit.canonical_name,
         normalized_name=unit.normalized_name,
         member_signature=unit.member_signature,
         status=unit.status,
         confidence=unit.confidence,
-        current_revision=current_rev,
+        current_revision=UnitRevisionItem(
+            title=unit.canonical_name,
+            summary=unit.summary,
+            learning_objectives=_parse_json_list(unit.learning_objectives_json),
+        ),
         members=members,
         created_at=unit.created_at,
         updated_at=unit.updated_at,
     )
 
 
-# ---------------------------------------------------------------------------
-# 主题树查询
-# ---------------------------------------------------------------------------
-
-
-def get_current_theme_tree(
-    session: Session, *, subject: str
+def _build_theme_tree(
+    session: Session,
+    *,
+    subject: str,
+    version: CurriculumVersion,
 ) -> ThemeTreeResponse:
-    """获取当前已发布的主题树完整结构。"""
-    version = curriculum_repo.get_current_theme_tree_version(session, subject)
-    if version is None:
-        logger.warning("current_theme_tree_not_found", subject=subject)
-        raise NoPublishedTreeError(subject)
-
-    tree_nodes = curriculum_repo.list_tree_nodes_by_version(
-        session, version.id  # type: ignore[arg-type]
+    nodes = list(
+        session.exec(
+            select(CurriculumTreeNode)
+            .where(CurriculumTreeNode.curriculum_version_id == int(version.id or 0))
+            .order_by(CurriculumTreeNode.order_index.asc(), CurriculumTreeNode.id.asc())  # type: ignore[union-attr]
+        ).all()
     )
-    memberships = curriculum_repo.list_unit_memberships_by_version(
-        session, version.id  # type: ignore[arg-type]
+    links = list(
+        session.exec(
+            select(CurriculumUnitLink)
+            .where(CurriculumUnitLink.curriculum_version_id == int(version.id or 0))
+            .order_by(CurriculumUnitLink.score.desc(), CurriculumUnitLink.id.asc())  # type: ignore[union-attr]
+        ).all()
     )
-
-    # 按 tree_node_id 分组 memberships
-    node_units: dict[int, list[TreeUnitItem]] = {}
-    for m in memberships:
-        unit = curriculum_repo.get_teaching_unit_by_id(session, m.teaching_unit_id)
-        item = TreeUnitItem(
-            teaching_unit_id=m.teaching_unit_id,
-            canonical_name=unit.canonical_name if unit else f"unit#{m.teaching_unit_id}",
-            membership_role=m.membership_role,
-            membership_source=m.membership_source,
-            score=m.score,
-        )
-        node_units.setdefault(m.tree_node_id, []).append(item)
-
-    # 构建 node_id → response 映射
-    node_map: dict[int, ThemeTreeNodeResponse] = {}
-    for tn in tree_nodes:
-        node_map[tn.id] = ThemeTreeNodeResponse(  # type: ignore[arg-type]
-            id=tn.id,  # type: ignore[arg-type]
-            tree_version_id=tn.tree_version_id,
-            anchor_id=tn.anchor_id,
-            parent_tree_node_id=tn.parent_tree_node_id,
-            title=tn.title,
-            node_type=tn.node_type,
-            order_index=tn.order_index,
-            summary=tn.summary,
-            units=node_units.get(tn.id, []),  # type: ignore[arg-type]
+    unit_ids = [link.teaching_unit_id for link in links]
+    unit_map = {
+        int(unit.id): unit
+        for unit in session.exec(
+            select(TeachingUnit).where(TeachingUnit.id.in_(unit_ids))  # type: ignore[union-attr]
+        ).all()
+        if unit.id is not None
+    }
+    units_by_node: dict[int, list[TreeUnitItem]] = {}
+    for link in links:
+        unit = unit_map.get(link.teaching_unit_id)
+        if unit is None:
+            continue
+        units_by_node.setdefault(link.tree_node_id, []).append(
+            TreeUnitItem(
+                teaching_unit_id=link.teaching_unit_id,
+                canonical_name=unit.canonical_name,
+                membership_role=link.membership_role,
+                membership_source=link.membership_source,
+                score=link.score,
+            )
         )
 
-    # 组装树结构
+    payloads: dict[int, ThemeTreeNodeResponse] = {}
+    for node in nodes:
+        payloads[int(node.id or 0)] = ThemeTreeNodeResponse(
+            id=int(node.id or 0),
+            tree_version_id=int(version.id or 0),
+            anchor_id=int(node.id or 0),
+            parent_tree_node_id=node.parent_tree_node_id,
+            title=node.title,
+            node_type=node.node_type,
+            order_index=node.order_index,
+            summary=node.summary,
+            children=[],
+            units=units_by_node.get(int(node.id or 0), []),
+        )
+
     roots: list[ThemeTreeNodeResponse] = []
-    for tn in tree_nodes:
-        resp = node_map[tn.id]  # type: ignore[index]
-        if tn.parent_tree_node_id is not None and tn.parent_tree_node_id in node_map:
-            node_map[tn.parent_tree_node_id].children.append(resp)
+    for node in nodes:
+        payload = payloads[int(node.id or 0)]
+        if node.parent_tree_node_id and node.parent_tree_node_id in payloads:
+            payloads[node.parent_tree_node_id].children.append(payload)
         else:
-            roots.append(resp)
-
-    logger.info(
-        "current_theme_tree_loaded",
-        subject=subject,
-        version_id=version.id,
-        version_no=version.version_no,
-        tree_node_count=len(tree_nodes),
-        membership_count=len(memberships),
-        root_count=len(roots),
-    )
+            roots.append(payload)
 
     return ThemeTreeResponse(
-        version_id=version.id,  # type: ignore[arg-type]
+        version_id=int(version.id or 0),
         version_no=version.version_no,
-        subject=version.subject,
+        subject=subject,
         status=version.status,
         created_at=version.created_at,
         tree=roots,
     )
 
 
-# ---------------------------------------------------------------------------
-# 锚点管理
-# ---------------------------------------------------------------------------
+def get_current_theme_tree(session: Session, *, subject: str) -> ThemeTreeResponse:
+    """Return the current published curriculum tree."""
+
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        raise NoPublishedTreeError(subject)
+    version = _get_current_curriculum_version(session, subject_id=subject_record.id, status="published")
+    if version is None:
+        raise NoPublishedTreeError(subject)
+    return _build_theme_tree(session, subject=subject, version=version)
+
+
+def get_current_prereq_dag(session: Session, *, subject: str) -> PrereqDagResponse:
+    """Return dependencies from the current published curriculum version."""
+
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        raise NoPublishedDagError(subject)
+    version = _get_current_curriculum_version(session, subject_id=subject_record.id, status="published")
+    if version is None:
+        raise NoPublishedDagError(subject)
+
+    dependencies = list(
+        session.exec(
+            select(CurriculumDependency)
+            .where(CurriculumDependency.curriculum_version_id == int(version.id or 0))
+            .order_by(CurriculumDependency.id.asc())  # type: ignore[union-attr]
+        ).all()
+    )
+    unit_ids = {item.source_unit_id for item in dependencies} | {item.target_unit_id for item in dependencies}
+    unit_map = {
+        int(unit.id): unit
+        for unit in session.exec(
+            select(TeachingUnit).where(TeachingUnit.id.in_(unit_ids))  # type: ignore[union-attr]
+        ).all()
+        if unit.id is not None
+    }
+    return PrereqDagResponse(
+        version_id=int(version.id or 0),
+        version_no=version.version_no,
+        subject=subject,
+        status=version.status,
+        created_at=version.created_at,
+        dependencies=[
+            UnitDependencyItem(
+                id=int(item.id or 0),
+                source_unit_id=item.source_unit_id,
+                source_unit_name=unit_map[item.source_unit_id].canonical_name
+                if item.source_unit_id in unit_map
+                else f"unit#{item.source_unit_id}",
+                target_unit_id=item.target_unit_id,
+                target_unit_name=unit_map[item.target_unit_id].canonical_name
+                if item.target_unit_id in unit_map
+                else f"unit#{item.target_unit_id}",
+                dependency_type=item.dependency_type,
+                confidence=item.confidence,
+                supporting_edge_count=item.supporting_edge_count,
+            )
+            for item in dependencies
+        ],
+    )
+
+
+def get_current_curriculum_snapshot(session: Session, *, subject: str) -> CurriculumSnapshotResponse:
+    """Return the published curriculum version mapped into the snapshot schema."""
+
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        raise NoPublishedCurriculumSnapshotError(subject)
+    version = _get_current_curriculum_version(session, subject_id=subject_record.id, status="published")
+    if version is None:
+        raise NoPublishedCurriculumSnapshotError(subject)
+
+    metadata = _parse_json_dict(version.metadata_json)
+    syllabus_version_id = metadata.get("syllabus_version_id")
+    return CurriculumSnapshotResponse(
+        id=int(version.id or 0),
+        subject=subject,
+        version_no=version.version_no,
+        status=version.status,
+        theme_tree_version_id=int(version.id or 0),
+        prereq_dag_version_id=int(version.id or 0),
+        syllabus_version_id=int(syllabus_version_id) if isinstance(syllabus_version_id, int) else None,
+        created_at=version.created_at,
+    )
+
+
+def _build_anchor_response(
+    *,
+    subject: str,
+    version: CurriculumVersion,
+    node: CurriculumTreeNode,
+) -> TaxonomyAnchorResponse:
+    return TaxonomyAnchorResponse(
+        id=int(node.id or 0),
+        subject=subject,
+        anchor_type=node.anchor_type,
+        title=node.title,
+        parent_anchor_id=node.parent_tree_node_id,
+        order_index=node.order_index,
+        confidence=node.confidence,
+        is_system=node.is_system,
+        status=version.status,
+        created_at=node.created_at,
+        updated_at=node.updated_at,
+    )
+
+
+def _collect_subtree_ids(session: Session, *, root_id: int) -> list[int]:
+    pending = [root_id]
+    collected: list[int] = []
+    while pending:
+        current_id = pending.pop()
+        collected.append(current_id)
+        child_ids = list(
+            session.exec(select(CurriculumTreeNode.id).where(CurriculumTreeNode.parent_tree_node_id == current_id)).all()
+        )
+        pending.extend(int(child_id) for child_id in child_ids if child_id is not None)
+    return collected
 
 
 def manage_taxonomy_anchors(
@@ -235,341 +443,193 @@ def manage_taxonomy_anchors(
     parent_anchor_id: int | None = None,
     order_index: int | None = None,
 ) -> list[TaxonomyAnchorResponse]:
-    """锚点管理：list / create / update / delete。始终返回操作后的完整锚点列表。"""
+    """Manage anchor-like tree nodes using the unified curriculum tree table."""
 
-    if action == "create":
-        if not title:
-            raise ValueError("创建锚点需要 title 参数。")
-        anchor = TaxonomyAnchor(
-            subject=subject,
-            anchor_type=anchor_type or "teacher_defined",
-            title=title,
-            normalized_title=normalize_name(title),
-            parent_anchor_id=parent_anchor_id,
-            order_index=order_index or 0,
-            status="active",
-        )
-        curriculum_repo.create_taxonomy_anchor(session, anchor)
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        return []
 
-    elif action == "update":
-        if anchor_id is None:
-            raise ValueError("更新锚点需要 anchor_id 参数。")
-        updates: dict[str, object] = {}
-        if title is not None:
-            updates["title"] = title
-            updates["normalized_title"] = normalize_name(title)
-        if anchor_type is not None:
-            updates["anchor_type"] = anchor_type
-        if parent_anchor_id is not None:
-            updates["parent_anchor_id"] = parent_anchor_id
-        if order_index is not None:
-            updates["order_index"] = order_index
-        if updates:
-            curriculum_repo.update_taxonomy_anchor(session, anchor_id, **updates)
+    normalized_action = (action or "list").strip().lower()
+    version = _get_or_create_draft_curriculum_version(session, subject_record=subject_record)
 
-    elif action == "delete":
-        if anchor_id is None:
-            raise ValueError("删除锚点需要 anchor_id 参数。")
-        curriculum_repo.delete_taxonomy_anchor(session, anchor_id)
-
-    # action == "list" 或操作完成后，返回完整列表
-    anchors = curriculum_repo.list_anchors_by_subject(session, subject)
-    return [
-        TaxonomyAnchorResponse(
-            id=a.id,  # type: ignore[arg-type]
-            subject=a.subject,
-            anchor_type=a.anchor_type,
-            title=a.title,
-            parent_anchor_id=a.parent_anchor_id,
-            order_index=a.order_index,
-            confidence=a.confidence,
-            is_system=a.is_system,
-            status=a.status,
-            created_at=a.created_at,
-            updated_at=a.updated_at,
-        )
-        for a in anchors
-    ]
-
-
-# ---------------------------------------------------------------------------
-# 先修 DAG 查询
-# ---------------------------------------------------------------------------
-
-
-def get_current_prereq_dag(
-    session: Session, *, subject: str
-) -> PrereqDagResponse:
-    """获取当前已发布的先修 DAG 完整结构。"""
-    version = curriculum_repo.get_current_prereq_dag_version(session, subject)
-    if version is None:
-        logger.warning("current_prereq_dag_not_found", subject=subject)
-        raise NoPublishedDagError(subject)
-
-    deps = curriculum_repo.list_dependencies_by_version(
-        session, version.id  # type: ignore[arg-type]
-    )
-
-    items: list[UnitDependencyItem] = []
-    for d in deps:
-        src = curriculum_repo.get_teaching_unit_by_id(session, d.source_unit_id)
-        tgt = curriculum_repo.get_teaching_unit_by_id(session, d.target_unit_id)
-        items.append(
-            UnitDependencyItem(
-                id=d.id,  # type: ignore[arg-type]
-                source_unit_id=d.source_unit_id,
-                source_unit_name=src.canonical_name if src else f"unit#{d.source_unit_id}",
-                target_unit_id=d.target_unit_id,
-                target_unit_name=tgt.canonical_name if tgt else f"unit#{d.target_unit_id}",
-                dependency_type=d.dependency_type,
-                confidence=d.confidence,
-                supporting_edge_count=d.supporting_edge_count,
+    if normalized_action == "create":
+        if title:
+            session.add(
+                CurriculumTreeNode(
+                    curriculum_version_id=int(version.id or 0),
+                    parent_tree_node_id=parent_anchor_id,
+                    title=title,
+                    normalized_title=title.strip().lower(),
+                    node_type="theme",
+                    anchor_type=anchor_type or "teacher_defined",
+                    order_index=order_index or 0,
+                )
             )
+            session.commit()
+    elif normalized_action == "update" and anchor_id is not None:
+        node = session.get(CurriculumTreeNode, anchor_id)
+        if node is not None and node.curriculum_version_id == int(version.id or 0):
+            if title is not None:
+                node.title = title
+                node.normalized_title = title.strip().lower()
+            if anchor_type is not None:
+                node.anchor_type = anchor_type
+            node.parent_tree_node_id = parent_anchor_id
+            if order_index is not None:
+                node.order_index = order_index
+            node.updated_at = utcnow()
+            session.add(node)
+            session.commit()
+    elif normalized_action == "delete" and anchor_id is not None:
+        subtree_ids = _collect_subtree_ids(session, root_id=anchor_id)
+        links = list(
+            session.exec(
+                select(CurriculumUnitLink).where(CurriculumUnitLink.tree_node_id.in_(subtree_ids))  # type: ignore[union-attr]
+            ).all()
         )
+        for link in links:
+            session.delete(link)
+        nodes = list(
+            session.exec(
+                select(CurriculumTreeNode).where(CurriculumTreeNode.id.in_(subtree_ids))  # type: ignore[union-attr]
+            ).all()
+        )
+        for node in nodes:
+            session.delete(node)
+        session.commit()
 
-    logger.info(
-        "current_prereq_dag_loaded",
-        subject=subject,
-        version_id=version.id,
-        version_no=version.version_no,
-        dependency_count=len(items),
+    rows = list(
+        session.exec(
+            select(CurriculumTreeNode)
+            .where(CurriculumTreeNode.curriculum_version_id == int(version.id or 0))
+            .order_by(CurriculumTreeNode.order_index.asc(), CurriculumTreeNode.id.asc())  # type: ignore[union-attr]
+        ).all()
     )
-
-    return PrereqDagResponse(
-        version_id=version.id,  # type: ignore[arg-type]
-        version_no=version.version_no,
-        subject=version.subject,
-        status=version.status,
-        created_at=version.created_at,
-        dependencies=items,
-    )
-
-
-# ---------------------------------------------------------------------------
-# 课程快照查询
-# ---------------------------------------------------------------------------
-
-
-def get_current_curriculum_snapshot(
-    session: Session, *, subject: str
-) -> CurriculumSnapshotResponse:
-    """获取当前已发布的课程快照（tree + dag 组合版本）。"""
-    snapshot = curriculum_repo.get_current_curriculum_snapshot(session, subject)
-    if snapshot is None:
-        logger.warning("current_curriculum_snapshot_not_found", subject=subject)
-        raise NoPublishedCurriculumSnapshotError(subject)
-
-    logger.info(
-        "current_curriculum_snapshot_loaded",
-        subject=subject,
-        snapshot_id=snapshot.id,
-        version_no=snapshot.version_no,
-        theme_tree_version_id=snapshot.theme_tree_version_id,
-        prereq_dag_version_id=snapshot.prereq_dag_version_id,
-    )
-
-    return CurriculumSnapshotResponse(
-        id=snapshot.id,  # type: ignore[arg-type]
-        subject=snapshot.subject,
-        version_no=snapshot.version_no,
-        status=snapshot.status,
-        theme_tree_version_id=snapshot.theme_tree_version_id,
-        prereq_dag_version_id=snapshot.prereq_dag_version_id,
-        syllabus_version_id=snapshot.syllabus_version_id,
-        created_at=snapshot.created_at,
-    )
-
-
-# ---------------------------------------------------------------------------
-# 清空学科知识数据
-# ---------------------------------------------------------------------------
+    return [_build_anchor_response(subject=subject, version=version, node=row) for row in rows]
 
 
 def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]:
-    """清空指定学科的所有知识数据（图谱 + 课程结构 + 构建任务）。
+    """Delete derived knowledge data for one subject without touching raw uploads."""
 
-    删除顺序按外键依赖从叶到根。
-    """
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None or subject_record.id is None:
+        return {}
+
+    subject_id = int(subject_record.id)
+    chunk_ids = [
+        int(item.id)
+        for item in session.exec(select(RetrievalChunk.id).where(RetrievalChunk.subject_id == subject_id)).all()
+        if item is not None
+    ]
+    if chunk_ids:
+        delete_embeddings_by_chunk_ids(session, chunk_ids)
+
+    question_template_ids = [
+        int(item.id)
+        for item in session.exec(select(QuestionTemplate.id).where(QuestionTemplate.subject_id == subject_id)).all()
+        if item is not None
+    ]
+    exam_paper_ids = [
+        int(item.id)
+        for item in session.exec(select(ExamPaper.id).where(ExamPaper.subject_id == subject_id)).all()
+        if item is not None
+    ]
+    exam_item_ids = [
+        int(item.id)
+        for item in session.exec(
+            select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(exam_paper_ids))  # type: ignore[union-attr]
+        ).all()
+        if item is not None
+    ]
+    knowledge_node_ids = [
+        int(item.id)
+        for item in session.exec(select(KnowledgeNode.id).where(KnowledgeNode.subject_id == subject_id)).all()
+        if item is not None
+    ]
+    teaching_unit_ids = [
+        int(item.id)
+        for item in session.exec(select(TeachingUnit.id).where(TeachingUnit.subject_id == subject_id)).all()
+        if item is not None
+    ]
+    curriculum_version_ids = [
+        int(item.id)
+        for item in session.exec(select(CurriculumVersion.id).where(CurriculumVersion.subject_id == subject_id)).all()
+        if item is not None
+    ]
+
+    deletion_queries: list[tuple[str, object]] = [
+        (
+            "user_answer_attempt",
+            select(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(exam_item_ids)),  # type: ignore[union-attr]
+        ),
+        (
+            "exam_paper_item",
+            select(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(exam_paper_ids)),  # type: ignore[union-attr]
+        ),
+        ("exam_paper", select(ExamPaper).where(ExamPaper.subject_id == subject_id)),
+        ("review_task", select(ReviewTask).where(ReviewTask.subject_id == subject_id)),
+        ("user_knowledge_state", select(UserKnowledgeState).where(UserKnowledgeState.subject_id == subject_id)),
+        (
+            "question_template_node_link",
+            select(QuestionTemplateNodeLink).where(
+                QuestionTemplateNodeLink.question_template_id.in_(question_template_ids)  # type: ignore[union-attr]
+            ),
+        ),
+        ("question_template", select(QuestionTemplate).where(QuestionTemplate.subject_id == subject_id)),
+        ("knowledge_evidence", select(KnowledgeEvidence).where(KnowledgeEvidence.subject_id == subject_id)),
+        ("knowledge_edge", select(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id)),
+        ("knowledge_alias", select(KnowledgeAlias).where(KnowledgeAlias.node_id.in_(knowledge_node_ids))),  # type: ignore[union-attr]
+        (
+            "teaching_unit_membership",
+            select(TeachingUnitMembership).where(TeachingUnitMembership.unit_id.in_(teaching_unit_ids)),  # type: ignore[union-attr]
+        ),
+        (
+            "curriculum_unit_link",
+            select(CurriculumUnitLink).where(CurriculumUnitLink.curriculum_version_id.in_(curriculum_version_ids)),  # type: ignore[union-attr]
+        ),
+        (
+            "curriculum_dependency",
+            select(CurriculumDependency).where(
+                CurriculumDependency.curriculum_version_id.in_(curriculum_version_ids)  # type: ignore[union-attr]
+            ),
+        ),
+        (
+            "curriculum_tree_node",
+            select(CurriculumTreeNode).where(CurriculumTreeNode.curriculum_version_id.in_(curriculum_version_ids)),  # type: ignore[union-attr]
+        ),
+        ("curriculum_version", select(CurriculumVersion).where(CurriculumVersion.subject_id == subject_id)),
+        ("knowledge_node", select(KnowledgeNode).where(KnowledgeNode.subject_id == subject_id)),
+        ("teaching_unit", select(TeachingUnit).where(TeachingUnit.subject_id == subject_id)),
+        ("knowledge_document", select(KnowledgeDocument).where(KnowledgeDocument.subject_id == subject_id)),
+        ("retrieval_chunk", select(RetrievalChunk).where(RetrievalChunk.subject_id == subject_id)),
+    ]
+
     counts: dict[str, int] = {}
-
-    def _delete_all(model: type, label: str) -> None:
-        stmt = select(model).where(model.subject == subject)  # type: ignore[attr-defined]
+    for key, stmt in deletion_queries:
         rows = list(session.exec(stmt).all())
+        counts[key] = len(rows)
         for row in rows:
             session.delete(row)
-        counts[label] = len(rows)
-
-    # ── 课程结构（从叶到根） ──
-
-    # 1. UnitTreeMembership（通过 tree_version 关联 subject）
-    tree_version_ids = [
-        v.id for v in session.exec(
-            select(ThemeTreeVersion).where(ThemeTreeVersion.subject == subject)
-        ).all()
-    ]
-    if tree_version_ids:
-        utm_rows = list(session.exec(
-            select(UnitTreeMembership).where(
-                UnitTreeMembership.tree_version_id.in_(tree_version_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in utm_rows:
-            session.delete(r)
-        counts["unit_tree_membership"] = len(utm_rows)
-
-        # ThemeTreeNode
-        ttn_rows = list(session.exec(
-            select(ThemeTreeNode).where(
-                ThemeTreeNode.tree_version_id.in_(tree_version_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in ttn_rows:
-            session.delete(r)
-        counts["theme_tree_node"] = len(ttn_rows)
-
-    # 2. UnitDependency（通过 dag_version 关联 subject）
-    dag_version_ids = [
-        v.id for v in session.exec(
-            select(PrereqDagVersion).where(PrereqDagVersion.subject == subject)
-        ).all()
-    ]
-    if dag_version_ids:
-        ud_rows = list(session.exec(
-            select(UnitDependency).where(
-                UnitDependency.dag_version_id.in_(dag_version_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in ud_rows:
-            session.delete(r)
-        counts["unit_dependency"] = len(ud_rows)
-
     session.commit()
 
-    # 3. ThemeTreeVersion / PrereqDagVersion / CurriculumSnapshot
-    _delete_all(CurriculumSnapshot, "curriculum_snapshot")
-    _delete_all(ThemeTreeVersion, "theme_tree_version")
-    _delete_all(PrereqDagVersion, "prereq_dag_version")
-    session.commit()
+    clear_docgen_staging(subject)
+    clear_published_knowledge_docs_files(subject)
+    knowledge_dir = build_knowledge_markdown_dir(subject)
+    for extra_file in ("manifest.json", ".build.lock"):
+        (knowledge_dir / extra_file).unlink(missing_ok=True)
+    build_dir = knowledge_dir / "_build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir, ignore_errors=True)
 
-    # 4. TeachingUnitMembership / TeachingUnitRevision / TeachingUnit
-    unit_ids = [
-        u.id for u in session.exec(
-            select(TeachingUnit).where(TeachingUnit.subject == subject)
-        ).all()
-    ]
-    if unit_ids:
-        tum_rows = list(session.exec(
-            select(TeachingUnitMembership).where(
-                TeachingUnitMembership.unit_id.in_(unit_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in tum_rows:
-            session.delete(r)
-        counts["teaching_unit_membership"] = len(tum_rows)
-
-        tur_rows = list(session.exec(
-            select(TeachingUnitRevision).where(
-                TeachingUnitRevision.unit_id.in_(unit_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in tur_rows:
-            session.delete(r)
-        counts["teaching_unit_revision"] = len(tur_rows)
-
-    session.commit()
-
-    _delete_all(TeachingUnit, "teaching_unit")
-    session.commit()
-
-    # 5. TaxonomyAnchor
-    _delete_all(TaxonomyAnchor, "taxonomy_anchor")
-    session.commit()
-
-    # ── 知识图谱 ──
-
-    # 6. EvidenceLink（通过 subject 直接过滤）
-    _delete_all(EvidenceLink, "evidence_link")
-
-    # 7. EdgeRevision（通过 edge 关联 subject）
-    edge_ids = [
-        e.id for e in session.exec(
-            select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)
-        ).all()
-    ]
-    if edge_ids:
-        er_rows = list(session.exec(
-            select(EdgeRevision).where(
-                EdgeRevision.edge_id.in_(edge_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in er_rows:
-            session.delete(r)
-        counts["edge_revision"] = len(er_rows)
-
-    # 8. KnowledgeRevision（通过 node 关联 subject）
-    node_ids = [
-        n.id for n in session.exec(
-            select(KnowledgeNode).where(KnowledgeNode.subject == subject)
-        ).all()
-    ]
-    if node_ids:
-        kr_rows = list(session.exec(
-            select(KnowledgeRevision).where(
-                KnowledgeRevision.node_id.in_(node_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in kr_rows:
-            session.delete(r)
-        counts["knowledge_revision"] = len(kr_rows)
-
-        ka_rows = list(session.exec(
-            select(KnowledgeAlias).where(
-                KnowledgeAlias.node_id.in_(node_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        for r in ka_rows:
-            session.delete(r)
-        counts["knowledge_alias"] = len(ka_rows)
-
-    session.commit()
-
-    # 9. KnowledgeEdge / KnowledgeNode
-    _delete_all(KnowledgeEdge, "knowledge_edge")
-    _delete_all(KnowledgeNode, "knowledge_node")
-    session.commit()
-
-    # ── 文档与向量切块 ──
-    document_ids = [
-        d.id for d in session.exec(
-            select(Document).where(Document.subject == subject)
-        ).all()
-    ]
-    if document_ids:
-        chunk_rows = list(session.exec(
-            select(DocumentChunk).where(
-                DocumentChunk.document_id.in_(document_ids)  # type: ignore[union-attr]
-            )
-        ).all())
-        chunk_ids = [chunk.id for chunk in chunk_rows if chunk.id is not None]
-        if chunk_ids:
-            knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
-            counts["chunk_embeddings"] = len(chunk_ids)
-        for chunk in chunk_rows:
-            session.delete(chunk)
-        counts["document_chunk"] = len(chunk_rows)
-        session.commit()
-
-        document_rows = list(session.exec(
-            select(Document).where(Document.id.in_(document_ids))  # type: ignore[union-attr]
-        ).all())
-        for document in document_rows:
-            session.delete(document)
-        counts["document"] = len(document_rows)
-        session.commit()
-
-    logger.info(
-        "subject_knowledge_cleared",
-        subject=subject,
-        counts=counts,
-    )
     return counts
+
+
+__all__ = [
+    "clear_subject_knowledge",
+    "get_current_curriculum_snapshot",
+    "get_current_prereq_dag",
+    "get_current_theme_tree",
+    "get_teaching_unit_detail",
+    "get_teaching_units",
+    "manage_taxonomy_anchors",
+]

@@ -1,290 +1,152 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import structlog
-from sqlmodel import Session, func, select
+from sqlmodel import Session, delete, func, select
 
 from app.models import (
-    AnswerRecord,
     ChatMessage,
     ChatSession,
-    CurriculumSnapshot,
-    Document,
-    DocumentChunk,
-    EdgeRevision,
-    EvidenceLink,
-    Exam,
+    CurriculumDependency,
+    CurriculumTreeNode,
+    CurriculumUnitLink,
+    CurriculumVersion,
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
-    ExamSubmission,
     KnowledgeAlias,
+    KnowledgeDocument,
     KnowledgeEdge,
+    KnowledgeEvidence,
     KnowledgeNode,
-    KnowledgeRevision,
-    Mistake,
-    PrereqDagVersion,
-    Question,
     QuestionTemplate,
     QuestionTemplateNodeLink,
     RawFile,
+    RawFileAsset,
+    RetrievalChunk,
     ReviewTask,
     Subject,
-    TaxonomyAnchor,
     TeachingUnit,
     TeachingUnitMembership,
-    TeachingUnitRevision,
-    ThemeTreeNode,
-    ThemeTreeVersion,
-    UnitDependency,
-    UnitTreeMembership,
     UserAnswerAttempt,
     UserKnowledgeState,
-    UserProfile,
 )
 from app.repositories.subject_repo import delete_subject
-from app.schemas.subject import (
-    SubjectDeleteImpactItem,
-    SubjectDeletePreviewData,
-)
-from app.services.knowledge.curriculum_service import clear_subject_knowledge
-from app.repositories.knowledge import knowledge_repo
-from app.services.upload_support import build_asset_name_prefix, build_subject_dir, delete_asset_files
+from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
+from app.services.upload_support import build_subject_dir
 
 logger = structlog.get_logger()
 
-_EXAM_KEYS = [
-    "exam",
-    "question",
-    "exam_submission",
-    "answer_record",
-    "mistake",
-    "question_template",
-    "question_template_node_link",
-    "exam_paper",
-    "exam_paper_item",
-    "user_answer_attempt",
-    "exam_paper_generation_context",
-]
-_PROFILE_KEYS = ["user_profile", "user_knowledge_state", "review_task"]
-_KNOWLEDGE_KEYS = [
-    "curriculum_snapshot",
-    "edge_revision",
-    "evidence_link",
-    "knowledge_alias",
-    "knowledge_edge",
-    "knowledge_node",
-    "knowledge_revision",
-    "prereq_dag_version",
-    "taxonomy_anchor",
-    "teaching_unit",
-    "teaching_unit_membership",
-    "teaching_unit_revision",
-    "theme_tree_node",
-    "theme_tree_version",
-    "unit_dependency",
-    "unit_tree_membership",
-]
+
+def _count_model(session: Session, model, *conditions) -> int:
+    return int(session.exec(select(func.count()).select_from(model).where(*conditions)).one())
 
 
-def _count_query(session: Session, statement) -> int:
-    return int(session.exec(statement).one())
-
-
-def _count_rows(session: Session, model: type, *conditions: object) -> int:
-    return _count_query(session, select(func.count()).select_from(model).where(*conditions))
-
-
-def _sum_counts(counts: dict[str, int], keys: list[str]) -> int:
-    return sum(counts.get(key, 0) for key in keys)
-
-
-def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str, int]:
-    counts = {
-        "raw_file": _count_rows(session, RawFile, RawFile.subject == subject),
-        "document": _count_rows(session, Document, Document.subject == subject),
-        "chat_message": _count_query(
-            session,
-            select(func.count()).select_from(ChatMessage).where(ChatMessage.subject == subject),
-        ),
-        "chat_session": _count_query(
-            session,
-            select(func.count()).select_from(ChatSession).where(ChatSession.subject == subject),
-        ),
-        "user_profile": _count_query(
-            session,
-            select(func.count()).select_from(UserProfile).where(UserProfile.subject == subject),
-        ),
-        "exam": _count_query(
-            session,
-            select(func.count()).select_from(Exam).where(Exam.subject == subject),
-        ),
-        "question": _count_query(
-            session,
+def _count_raw_file_assets(session: Session, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(Question)
-            .join(Exam, Question.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "exam_submission": _count_query(
-            session,
+            .select_from(RawFileAsset)
+            .join(RawFile, RawFileAsset.raw_file_id == RawFile.id)
+            .where(RawFile.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_node(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(ExamSubmission)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "answer_record": _count_query(
-            session,
+            .select_from(model)
+            .join(KnowledgeNode, model.node_id == KnowledgeNode.id)
+            .where(KnowledgeNode.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_unit(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(AnswerRecord)
-            .join(ExamSubmission, AnswerRecord.submission_id == ExamSubmission.id)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "mistake": _count_query(
-            session,
+            .select_from(model)
+            .join(TeachingUnit, model.unit_id == TeachingUnit.id)
+            .where(TeachingUnit.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_curriculum(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(Mistake)
-            .join(AnswerRecord, Mistake.answer_record_id == AnswerRecord.id)
-            .join(ExamSubmission, AnswerRecord.submission_id == ExamSubmission.id)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "question_template": _count_rows(
-            session,
-            QuestionTemplate,
-            QuestionTemplate.subject == subject,
-        ),
-        "question_template_node_link": _count_query(
-            session,
+            .select_from(model)
+            .join(CurriculumVersion, model.curriculum_version_id == CurriculumVersion.id)
+            .where(CurriculumVersion.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_template(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(QuestionTemplateNodeLink)
-            .join(
-                QuestionTemplate,
-                QuestionTemplateNodeLink.question_template_id == QuestionTemplate.id,
-            )
-            .where(QuestionTemplate.subject == subject),
-        ),
-        "exam_paper": _count_rows(
-            session,
-            ExamPaper,
-            ExamPaper.subject == subject,
-        ),
-        "exam_paper_item": _count_query(
-            session,
+            .select_from(model)
+            .join(QuestionTemplate, model.question_template_id == QuestionTemplate.id)
+            .where(QuestionTemplate.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_exam_paper(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
             select(func.count())
-            .select_from(ExamPaperItem)
+            .select_from(model)
+            .join(ExamPaper, model.exam_paper_id == ExamPaper.id)
+            .where(ExamPaper.subject_id == subject_id)
+        ).one()
+    )
+
+
+def _count_by_exam_item(session: Session, model, *, subject_id: int) -> int:
+    return int(
+        session.exec(
+            select(func.count())
+            .select_from(model)
+            .join(ExamPaperItem, model.exam_paper_item_id == ExamPaperItem.id)
             .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject),
-        ),
-        "user_answer_attempt": _count_query(
-            session,
-            select(func.count())
-            .select_from(UserAnswerAttempt)
-            .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
-            .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject),
-        ),
-        "exam_paper_generation_context": _count_query(
-            session,
-            select(func.count())
-            .select_from(ExamPaperGenerationContext)
-            .join(ExamPaper, ExamPaperGenerationContext.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject),
-        ),
-        "user_knowledge_state": _count_rows(
-            session,
-            UserKnowledgeState,
-            UserKnowledgeState.subject == subject,
-        ),
-        "review_task": _count_rows(
-            session,
-            ReviewTask,
-            ReviewTask.subject == subject,
-        ),
-        "document_chunk": _count_query(
-            session,
-            select(func.count())
-            .select_from(DocumentChunk)
-            .join(Document, DocumentChunk.document_id == Document.id)
-            .where(Document.subject == subject),
-        ),
-        "curriculum_snapshot": _count_rows(
-            session, CurriculumSnapshot, CurriculumSnapshot.subject == subject
-        ),
-        "evidence_link": _count_rows(session, EvidenceLink, EvidenceLink.subject == subject),
-        "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
-        "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
-        "prereq_dag_version": _count_rows(
-            session, PrereqDagVersion, PrereqDagVersion.subject == subject
-        ),
-        "taxonomy_anchor": _count_rows(
-            session, TaxonomyAnchor, TaxonomyAnchor.subject == subject
-        ),
-        "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
-        "theme_tree_version": _count_rows(
-            session, ThemeTreeVersion, ThemeTreeVersion.subject == subject
-        ),
-        "knowledge_alias": _count_query(
-            session,
-            select(func.count())
-            .select_from(KnowledgeAlias)
-            .join(KnowledgeNode, KnowledgeAlias.node_id == KnowledgeNode.id)
-            .where(KnowledgeNode.subject == subject),
-        ),
-        "knowledge_revision": _count_query(
-            session,
-            select(func.count())
-            .select_from(KnowledgeRevision)
-            .join(KnowledgeNode, KnowledgeRevision.node_id == KnowledgeNode.id)
-            .where(KnowledgeNode.subject == subject),
-        ),
-        "edge_revision": _count_query(
-            session,
-            select(func.count())
-            .select_from(EdgeRevision)
-            .join(KnowledgeEdge, EdgeRevision.edge_id == KnowledgeEdge.id)
-            .where(KnowledgeEdge.subject == subject),
-        ),
-        "teaching_unit_revision": _count_query(
-            session,
-            select(func.count())
-            .select_from(TeachingUnitRevision)
-            .join(TeachingUnit, TeachingUnitRevision.unit_id == TeachingUnit.id)
-            .where(TeachingUnit.subject == subject),
-        ),
-        "teaching_unit_membership": _count_query(
-            session,
-            select(func.count())
-            .select_from(TeachingUnitMembership)
-            .join(TeachingUnit, TeachingUnitMembership.unit_id == TeachingUnit.id)
-            .where(TeachingUnit.subject == subject),
-        ),
-        "theme_tree_node": _count_query(
-            session,
-            select(func.count())
-            .select_from(ThemeTreeNode)
-            .join(ThemeTreeVersion, ThemeTreeNode.tree_version_id == ThemeTreeVersion.id)
-            .where(ThemeTreeVersion.subject == subject),
-        ),
-        "unit_tree_membership": _count_query(
-            session,
-            select(func.count())
-            .select_from(UnitTreeMembership)
-            .join(ThemeTreeVersion, UnitTreeMembership.tree_version_id == ThemeTreeVersion.id)
-            .where(ThemeTreeVersion.subject == subject),
-        ),
-        "unit_dependency": _count_query(
-            session,
-            select(func.count())
-            .select_from(UnitDependency)
-            .join(PrereqDagVersion, UnitDependency.dag_version_id == PrereqDagVersion.id)
-            .where(PrereqDagVersion.subject == subject),
-        ),
+            .where(ExamPaper.subject_id == subject_id)
+        ).one()
+    )
+
+
+def collect_subject_delete_counts(session: Session, *, subject: Subject) -> dict[str, int]:
+    subject_id = int(subject.id or 0)
+    return {
+        "raw_file": _count_model(session, RawFile, RawFile.subject_id == subject_id),
+        "raw_file_asset": _count_raw_file_assets(session, subject_id=subject_id),
+        "retrieval_chunk": _count_model(session, RetrievalChunk, RetrievalChunk.subject_id == subject_id),
+        "knowledge_document": _count_model(session, KnowledgeDocument, KnowledgeDocument.subject_id == subject_id),
+        "knowledge_node": _count_model(session, KnowledgeNode, KnowledgeNode.subject_id == subject_id),
+        "knowledge_alias": _count_by_node(session, KnowledgeAlias, subject_id=subject_id),
+        "knowledge_edge": _count_model(session, KnowledgeEdge, KnowledgeEdge.subject_id == subject_id),
+        "knowledge_evidence": _count_model(session, KnowledgeEvidence, KnowledgeEvidence.subject_id == subject_id),
+        "teaching_unit": _count_model(session, TeachingUnit, TeachingUnit.subject_id == subject_id),
+        "teaching_unit_membership": _count_by_unit(session, TeachingUnitMembership, subject_id=subject_id),
+        "curriculum_version": _count_model(session, CurriculumVersion, CurriculumVersion.subject_id == subject_id),
+        "curriculum_tree_node": _count_by_curriculum(session, CurriculumTreeNode, subject_id=subject_id),
+        "curriculum_unit_link": _count_by_curriculum(session, CurriculumUnitLink, subject_id=subject_id),
+        "curriculum_dependency": _count_by_curriculum(session, CurriculumDependency, subject_id=subject_id),
+        "question_template": _count_model(session, QuestionTemplate, QuestionTemplate.subject_id == subject_id),
+        "question_template_node_link": _count_by_template(session, QuestionTemplateNodeLink, subject_id=subject_id),
+        "exam_paper": _count_model(session, ExamPaper, ExamPaper.subject_id == subject_id),
+        "exam_paper_item": _count_by_exam_paper(session, ExamPaperItem, subject_id=subject_id),
+        "user_answer_attempt": _count_by_exam_item(session, UserAnswerAttempt, subject_id=subject_id),
+        "user_knowledge_state": _count_model(session, UserKnowledgeState, UserKnowledgeState.subject_id == subject_id),
+        "review_task": _count_model(session, ReviewTask, ReviewTask.subject_id == subject_id),
+        "chat_message": _count_model(session, ChatMessage, ChatMessage.subject == subject.slug),
+        "chat_session": _count_model(session, ChatSession, ChatSession.subject == subject.slug),
     }
-    return counts
 
 
 def build_subject_delete_preview(
@@ -292,38 +154,59 @@ def build_subject_delete_preview(
     *,
     subject: Subject,
 ) -> SubjectDeletePreviewData:
-    detail_counts = collect_subject_delete_counts(session, subject=subject.slug)
+    detail_counts = collect_subject_delete_counts(session, subject=subject)
     total_related_records = sum(detail_counts.values())
     impact_items = [
         SubjectDeleteImpactItem(
             key="files",
             label="上传文件与解析产物",
-            count=detail_counts["raw_file"] + detail_counts["document"] + detail_counts["document_chunk"],
-            description="会删除原始文件、解析后的文档和文档切块。",
+            count=detail_counts["raw_file"] + detail_counts["raw_file_asset"] + detail_counts["retrieval_chunk"],
+            description="会删除原始文件、提取资源和检索切块。",
         ),
         SubjectDeleteImpactItem(
             key="knowledge",
-            label="知识图谱与课程结构",
-            count=_sum_counts(detail_counts, _KNOWLEDGE_KEYS),
-            description="会删除知识点、关系、证据、课程结构等派生数据。",
+            label="知识文档与图谱",
+            count=(
+                detail_counts["knowledge_document"]
+                + detail_counts["knowledge_node"]
+                + detail_counts["knowledge_alias"]
+                + detail_counts["knowledge_edge"]
+                + detail_counts["knowledge_evidence"]
+            ),
+            description="会删除知识文档、知识点、关系和证据。",
         ),
         SubjectDeleteImpactItem(
-            key="exam",
-            label="考试与判题记录",
-            count=_sum_counts(detail_counts, _EXAM_KEYS),
-            description="会删除旧 exam 链路和新 assessment 链路的出题、组卷、判题数据。",
+            key="curriculum",
+            label="课程结构",
+            count=(
+                detail_counts["teaching_unit"]
+                + detail_counts["teaching_unit_membership"]
+                + detail_counts["curriculum_version"]
+                + detail_counts["curriculum_tree_node"]
+                + detail_counts["curriculum_unit_link"]
+                + detail_counts["curriculum_dependency"]
+            ),
+            description="会删除教学单元、主题树和先修依赖。",
+        ),
+        SubjectDeleteImpactItem(
+            key="assessment",
+            label="测评与学习状态",
+            count=(
+                detail_counts["question_template"]
+                + detail_counts["question_template_node_link"]
+                + detail_counts["exam_paper"]
+                + detail_counts["exam_paper_item"]
+                + detail_counts["user_answer_attempt"]
+                + detail_counts["user_knowledge_state"]
+                + detail_counts["review_task"]
+            ),
+            description="会删除题库、试卷、作答结果、掌握度和复习任务。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
             label="对话记录",
             count=detail_counts["chat_message"] + detail_counts["chat_session"],
-            description="会删除该学科下的会话和聊天消息。",
-        ),
-        SubjectDeleteImpactItem(
-            key="profile",
-            label="学习画像",
-            count=_sum_counts(detail_counts, _PROFILE_KEYS),
-            description="会删除旧 profile 和新 mastery/review 相关记录。",
+            description="会删除该学科下的聊天会话和消息。",
         ),
     ]
     return SubjectDeletePreviewData(
@@ -341,204 +224,66 @@ def delete_subject_with_all_content(
     *,
     subject: Subject,
 ) -> dict[str, int]:
-    counts = collect_subject_delete_counts(session, subject=subject.slug)
+    counts = collect_subject_delete_counts(session, subject=subject)
+    subject_id = int(subject.id or 0)
 
-    clear_subject_knowledge(session, subject=subject.slug)
-    _delete_exam_records(session, subject=subject.slug)
-    _delete_chat_messages(session, subject=subject.slug)
-    _delete_profiles(session, subject=subject.slug)
-    _delete_documents(session, subject=subject.slug)
-    _delete_raw_files_and_artifacts(session, subject=subject.slug)
-    _delete_subject_directory(subject.slug)
-    delete_subject(session, subject)
+    session.exec(delete(ChatMessage).where(ChatMessage.subject == subject.slug))
+    session.exec(delete(ChatSession).where(ChatSession.subject == subject.slug))
 
-    deleted_counts = {"subject": 1, **counts}
-    logger.info(
-        "subject_deleted_with_all_content",
-        subject=subject.slug,
-        deleted_counts=deleted_counts,
-    )
-    return deleted_counts
-
-
-def _delete_exam_records(session: Session, *, subject: str) -> None:
-    # New assessment chain
-    papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
-    paper_ids = [paper.id for paper in papers if paper.id is not None]
+    paper_ids = [int(item) for item in session.exec(select(ExamPaper.id).where(ExamPaper.subject_id == subject_id)).all() if item is not None]
     if paper_ids:
-        review_tasks = list(
-            session.exec(
-                select(ReviewTask).where(ReviewTask.source_exam_paper_id.in_(paper_ids))
-            ).all()
-        )
-        for task in review_tasks:
-            session.delete(task)
-
-        generation_contexts = list(
-            session.exec(
-                select(ExamPaperGenerationContext).where(
-                    ExamPaperGenerationContext.exam_paper_id.in_(paper_ids)
-                )
-            ).all()
-        )
-        for ctx in generation_contexts:
-            session.delete(ctx)
-
-        paper_items = list(
-            session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()
-        )
-        item_ids = [item.id for item in paper_items if item.id is not None]
+        item_ids = [int(item) for item in session.exec(select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all() if item is not None]  # type: ignore[union-attr]
         if item_ids:
-            attempts = list(
-                session.exec(
-                    select(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(item_ids))
-                ).all()
-            )
-            for attempt in attempts:
-                session.delete(attempt)
-        for item in paper_items:
-            session.delete(item)
+            session.exec(delete(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(item_ids)))  # type: ignore[union-attr]
+        session.exec(delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids)))  # type: ignore[union-attr]
+        session.exec(delete(ReviewTask).where(ReviewTask.source_exam_paper_id.in_(paper_ids)))  # type: ignore[union-attr]
 
-    for paper in papers:
-        session.delete(paper)
-
-    templates = list(
-        session.exec(select(QuestionTemplate).where(QuestionTemplate.subject == subject)).all()
-    )
-    template_ids = [template.id for template in templates if template.id is not None]
+    template_ids = [int(item) for item in session.exec(select(QuestionTemplate.id).where(QuestionTemplate.subject_id == subject_id)).all() if item is not None]
     if template_ids:
-        template_links = list(
-            session.exec(
-                select(QuestionTemplateNodeLink).where(
-                    QuestionTemplateNodeLink.question_template_id.in_(template_ids)
-                )
-            ).all()
-        )
-        for link in template_links:
-            session.delete(link)
-    for template in templates:
-        session.delete(template)
+        session.exec(delete(QuestionTemplateNodeLink).where(QuestionTemplateNodeLink.question_template_id.in_(template_ids)))  # type: ignore[union-attr]
 
-    # Legacy exam chain
-    exams = list(session.exec(select(Exam).where(Exam.subject == subject)).all())
-    exam_ids = [exam.id for exam in exams if exam.id is not None]
-    if exam_ids:
-        submissions = list(
-            session.exec(select(ExamSubmission).where(ExamSubmission.exam_id.in_(exam_ids))).all()
-        )
-        submission_ids = [submission.id for submission in submissions if submission.id is not None]
-        if submission_ids:
-            records = list(
-                session.exec(
-                    select(AnswerRecord).where(AnswerRecord.submission_id.in_(submission_ids))
-                ).all()
-            )
-            record_ids = [record.id for record in records if record.id is not None]
-            if record_ids:
-                mistakes = list(
-                    session.exec(
-                        select(Mistake).where(Mistake.answer_record_id.in_(record_ids))
-                    ).all()
-                )
-                for mistake in mistakes:
-                    session.delete(mistake)
-            for record in records:
-                session.delete(record)
-        for submission in submissions:
-            session.delete(submission)
+    raw_file_ids = [int(item) for item in session.exec(select(RawFile.id).where(RawFile.subject_id == subject_id)).all() if item is not None]
+    if raw_file_ids:
+        session.exec(delete(RawFileAsset).where(RawFileAsset.raw_file_id.in_(raw_file_ids)))  # type: ignore[union-attr]
 
-        questions = list(
-            session.exec(select(Question).where(Question.exam_id.in_(exam_ids))).all()
-        )
-        for question in questions:
-            session.delete(question)
+    unit_ids = [int(item) for item in session.exec(select(TeachingUnit.id).where(TeachingUnit.subject_id == subject_id)).all() if item is not None]
+    if unit_ids:
+        session.exec(delete(TeachingUnitMembership).where(TeachingUnitMembership.unit_id.in_(unit_ids)))  # type: ignore[union-attr]
 
-    for exam in exams:
-        session.delete(exam)
+    curriculum_ids = [int(item) for item in session.exec(select(CurriculumVersion.id).where(CurriculumVersion.subject_id == subject_id)).all() if item is not None]
+    if curriculum_ids:
+        session.exec(delete(CurriculumUnitLink).where(CurriculumUnitLink.curriculum_version_id.in_(curriculum_ids)))  # type: ignore[union-attr]
+        session.exec(delete(CurriculumDependency).where(CurriculumDependency.curriculum_version_id.in_(curriculum_ids)))  # type: ignore[union-attr]
+        session.exec(delete(CurriculumTreeNode).where(CurriculumTreeNode.curriculum_version_id.in_(curriculum_ids)))  # type: ignore[union-attr]
+
+    node_ids = [int(item) for item in session.exec(select(KnowledgeNode.id).where(KnowledgeNode.subject_id == subject_id)).all() if item is not None]
+    if node_ids:
+        session.exec(delete(KnowledgeAlias).where(KnowledgeAlias.node_id.in_(node_ids)))  # type: ignore[union-attr]
+
+    edge_ids = [int(item) for item in session.exec(select(KnowledgeEdge.id).where(KnowledgeEdge.subject_id == subject_id)).all() if item is not None]
+    if edge_ids:
+        session.exec(delete(KnowledgeEvidence).where(KnowledgeEvidence.edge_id.in_(edge_ids)))  # type: ignore[union-attr]
+    if node_ids:
+        session.exec(delete(KnowledgeEvidence).where(KnowledgeEvidence.node_id.in_(node_ids)))  # type: ignore[union-attr]
+
+    session.exec(delete(RetrievalChunk).where(RetrievalChunk.subject_id == subject_id))
+    session.exec(delete(KnowledgeDocument).where(KnowledgeDocument.subject_id == subject_id))
+    session.exec(delete(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id))
+    session.exec(delete(KnowledgeNode).where(KnowledgeNode.subject_id == subject_id))
+    session.exec(delete(CurriculumVersion).where(CurriculumVersion.subject_id == subject_id))
+    session.exec(delete(TeachingUnit).where(TeachingUnit.subject_id == subject_id))
+    session.exec(delete(QuestionTemplate).where(QuestionTemplate.subject_id == subject_id))
+    session.exec(delete(ExamPaper).where(ExamPaper.subject_id == subject_id))
+    session.exec(delete(UserKnowledgeState).where(UserKnowledgeState.subject_id == subject_id))
+    session.exec(delete(ReviewTask).where(ReviewTask.subject_id == subject_id))
+    session.exec(delete(RawFile).where(RawFile.subject_id == subject_id))
     session.commit()
 
-
-def _delete_chat_messages(session: Session, *, subject: str) -> None:
-    messages = list(session.exec(select(ChatMessage).where(ChatMessage.subject == subject)).all())
-    for message in messages:
-        session.delete(message)
-
-    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject)).all())
-    for item in sessions:
-        session.delete(item)
-
-    if not messages and not sessions:
-        return
-    session.commit()
-
-
-def _delete_profiles(session: Session, *, subject: str) -> None:
-    review_tasks = list(session.exec(select(ReviewTask).where(ReviewTask.subject == subject)).all())
-    for task in review_tasks:
-        session.delete(task)
-
-    knowledge_states = list(
-        session.exec(select(UserKnowledgeState).where(UserKnowledgeState.subject == subject)).all()
-    )
-    for state in knowledge_states:
-        session.delete(state)
-
-    profiles = list(session.exec(select(UserProfile).where(UserProfile.subject == subject)).all())
-    for profile in profiles:
-        session.delete(profile)
-
-    if not review_tasks and not knowledge_states and not profiles:
-        return
-    session.commit()
-
-
-def _delete_documents(session: Session, *, subject: str) -> None:
-    documents = list(session.exec(select(Document).where(Document.subject == subject)).all())
-    if not documents:
-        return
-
-    document_ids = [document.id for document in documents if document.id is not None]
-    if document_ids:
-        chunks = list(
-            session.exec(
-                select(DocumentChunk).where(DocumentChunk.document_id.in_(document_ids))
-            ).all()
-        )
-        chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
-        if chunk_ids:
-            knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
-        for chunk in chunks:
-            session.delete(chunk)
-        session.commit()
-
-    for document in documents:
-        session.delete(document)
-    session.commit()
-
-
-def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
-    raw_files = list(session.exec(select(RawFile).where(RawFile.subject == subject)).all())
-    if not raw_files:
-        return
-
-    for raw_file in raw_files:
-        for path_value in [raw_file.file_path, raw_file.markdown_path]:
-            if path_value:
-                Path(path_value).unlink(missing_ok=True)
-        delete_asset_files(
-            raw_file.asset_dir,
-            asset_name_prefix=build_asset_name_prefix(
-                filename=raw_file.filename,
-                file_uid=raw_file.uid,
-                file_id=raw_file.id,
-            ),
-        )
-        session.delete(raw_file)
-    session.commit()
-
-
-def _delete_subject_directory(subject: str) -> None:
-    subject_dir = build_subject_dir(subject)
+    subject_dir = build_subject_dir(subject.slug)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
 
+    delete_subject(session, subject)
+    deleted_counts = {"subject": 1, **counts}
+    logger.info("subject_deleted_with_all_content", subject=subject.slug, deleted_counts=deleted_counts)
+    return deleted_counts

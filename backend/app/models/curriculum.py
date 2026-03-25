@@ -1,233 +1,145 @@
-"""课程结构数据模型：教学单元、主题树、先修 DAG、课程快照与派生任务。"""
+"""Curriculum structure models."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlmodel import Field, SQLModel, UniqueConstraint
+from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
 from app.utils.time import utcnow
 
 
-# ── 课程派生任务（需先于其他表定义，因为多表 FK 引用它） ──
-
-
-# ── 教学单元 ──
-
-
 class TeachingUnit(SQLModel, table=True):
-    """教学单元：一组紧密相关的知识节点组成的最小可讲授单位（leaf-only）。"""
+    """Teaching unit as the main curriculum atom."""
 
     __tablename__ = "teaching_unit"
     __table_args__ = (
-        UniqueConstraint(
-            "subject", "member_signature",
-            name="uq_unit_subject_signature",
-        ),
+        UniqueConstraint("subject_id", "member_signature", name="uq_teaching_unit_signature"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    subject_id: int = Field(foreign_key="subject.id", index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
     member_signature: str = Field(index=True)
-    status: str = Field(default="pending")  # UnitStatus
+    summary: str = Field(default="")
+    learning_objectives_json: str = Field(default="[]")
+    status: str = Field(default="active", index=True)
     confidence: float = Field(default=1.0)
-    current_revision_id: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-class TeachingUnitRevision(SQLModel, table=True):
-    """教学单元的版本化修订记录。"""
-
-    __tablename__ = "teaching_unit_revision"
-    __table_args__ = (
-        UniqueConstraint("unit_id", "revision_no", name="uq_unit_revision_no"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
-    revision_no: int
-    title: str
-    summary: str = ""
-    learning_objectives_json: str = Field(default="[]")
-    revision_reason: str  # RevisionReason
-    is_current: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=utcnow)
-
-
 class TeachingUnitMembership(SQLModel, table=True):
-    """知识节点在教学单元中的归属。"""
+    """Knowledge node membership in a teaching unit."""
 
     __tablename__ = "teaching_unit_membership"
     __table_args__ = (
         UniqueConstraint(
-            "unit_id", "knowledge_node_id", "role",
-            name="uq_unit_node_role",
+            "unit_id",
+            "knowledge_node_id",
+            "role",
+            name="uq_teaching_unit_membership",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
-    role: str  # UnitMemberRole
+    role: str = Field(default="core")
     score: float = Field(default=0.0)
     created_at: datetime = Field(default_factory=utcnow)
 
 
-# ── 分类锚点 ──
+class CurriculumVersion(SQLModel, table=True):
+    """Published or draft curriculum snapshot root."""
 
-
-class TaxonomyAnchor(SQLModel, table=True):
-    """分类锚点，作为软约束骨架（不参与 cleanup_pending_by_job）。"""
-
-    __tablename__ = "taxonomy_anchor"
+    __tablename__ = "curriculum_version"
+    __table_args__ = (
+        UniqueConstraint("subject_id", "version_no", name="uq_curriculum_version_no"),
+        Index("ix_curriculum_version_subject_status", "subject_id", "status"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    anchor_type: str  # AnchorType
-    title: str
-    normalized_title: str = Field(index=True)
-    parent_anchor_id: int | None = Field(
-        default=None, foreign_key="taxonomy_anchor.id",
-    )
-    order_index: int = Field(default=0)
-    confidence: float = Field(default=1.0)
-    is_system: bool = Field(default=False)
-    status: str = Field(default="active")  # AnchorStatus
+    user_id: int = Field(foreign_key="user.id", index=True)
+    subject_id: int = Field(foreign_key="subject.id", index=True)
+    version_no: int = Field(ge=1)
+    status: str = Field(default="draft", index=True)
+    summary: str = Field(default="")
+    metadata_json: str = Field(default="{}")
+    published_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-# ── 主题树 ──
+class CurriculumTreeNode(SQLModel, table=True):
+    """Curriculum tree node merging theme tree and anchor semantics."""
 
-
-class ThemeTreeVersion(SQLModel, table=True):
-    """主题树版本化快照。"""
-
-    __tablename__ = "theme_tree_version"
+    __tablename__ = "curriculum_tree_node"
     __table_args__ = (
-        UniqueConstraint(
-            "subject", "version_no",
-            name="uq_theme_tree_subject_version",
-        ),
+        Index("ix_curriculum_tree_parent_order", "curriculum_version_id", "parent_tree_node_id", "order_index"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    version_no: int
-    status: str = Field(default="draft")  # TreeVersionStatus
-    created_at: datetime = Field(default_factory=utcnow)
-
-
-class ThemeTreeNode(SQLModel, table=True):
-    """主题树节点，负责全部层级结构（chapter → section → theme → unit_bucket）。"""
-
-    __tablename__ = "theme_tree_node"
-
-    id: int | None = Field(default=None, primary_key=True)
-    tree_version_id: int = Field(foreign_key="theme_tree_version.id", index=True)
-    anchor_id: int | None = Field(
-        default=None, foreign_key="taxonomy_anchor.id",
-    )
-    parent_tree_node_id: int | None = Field(
-        default=None, foreign_key="theme_tree_node.id",
-    )
+    curriculum_version_id: int = Field(foreign_key="curriculum_version.id", index=True)
+    parent_tree_node_id: int | None = Field(default=None, foreign_key="curriculum_tree_node.id", index=True)
     title: str
-    node_type: str  # ThemeTreeNodeType
+    normalized_title: str = Field(index=True)
+    node_type: str = Field(default="theme", index=True)
+    anchor_type: str = Field(default="system", index=True)
+    confidence: float = Field(default=1.0)
+    is_system: bool = Field(default=False)
     order_index: int = Field(default=0)
-    summary: str = ""
+    summary: str = Field(default="")
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
-class UnitTreeMembership(SQLModel, table=True):
-    """教学单元在主题树中的归属。挂载 TeachingUnit 而非 KnowledgeNode。"""
+class CurriculumUnitLink(SQLModel, table=True):
+    """Teaching unit mounted onto a curriculum tree node."""
 
-    __tablename__ = "unit_tree_membership"
+    __tablename__ = "curriculum_unit_link"
     __table_args__ = (
         UniqueConstraint(
-            "tree_version_id", "tree_node_id", "teaching_unit_id", "membership_role",
-            name="uq_tree_unit_role",
+            "curriculum_version_id",
+            "tree_node_id",
+            "teaching_unit_id",
+            "membership_role",
+            name="uq_curriculum_unit_link",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    tree_version_id: int = Field(foreign_key="theme_tree_version.id", index=True)
-    tree_node_id: int = Field(foreign_key="theme_tree_node.id", index=True)
+    curriculum_version_id: int = Field(foreign_key="curriculum_version.id", index=True)
+    tree_node_id: int = Field(foreign_key="curriculum_tree_node.id", index=True)
     teaching_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
-    membership_role: str  # UnitTreeMembershipRole
-    membership_source: str = Field(default="auto")  # MembershipSource
+    membership_role: str = Field(default="primary")
+    membership_source: str = Field(default="auto")
     score: float = Field(default=0.0)
     created_at: datetime = Field(default_factory=utcnow)
 
 
-# ── 先修 DAG ──
+class CurriculumDependency(SQLModel, table=True):
+    """Prerequisite or co-requisite dependency within one curriculum version."""
 
-
-class PrereqDagVersion(SQLModel, table=True):
-    """先修 DAG 版本化快照。"""
-
-    __tablename__ = "prereq_dag_version"
+    __tablename__ = "curriculum_dependency"
     __table_args__ = (
         UniqueConstraint(
-            "subject", "version_no",
-            name="uq_prereq_dag_subject_version",
+            "curriculum_version_id",
+            "source_unit_id",
+            "target_unit_id",
+            "dependency_type",
+            name="uq_curriculum_dependency",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    version_no: int
-    status: str = Field(default="draft")  # TreeVersionStatus
-    created_at: datetime = Field(default_factory=utcnow)
-
-
-class UnitDependency(SQLModel, table=True):
-    """教学单元之间的先修依赖边。"""
-
-    __tablename__ = "unit_dependency"
-    __table_args__ = (
-        UniqueConstraint(
-            "dag_version_id", "source_unit_id", "target_unit_id", "dependency_type",
-            name="uq_dag_dep",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    dag_version_id: int = Field(foreign_key="prereq_dag_version.id", index=True)
+    curriculum_version_id: int = Field(foreign_key="curriculum_version.id", index=True)
     source_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     target_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
-    dependency_type: str = Field(default="prerequisite")  # DependencyType
+    dependency_type: str = Field(default="prerequisite")
     confidence: float = Field(default=0.5)
-    supporting_edge_count: int = Field(default=0)
+    supporting_edge_count: int = Field(default=0, ge=0)
     derivation_metadata_json: str = Field(default="{}")
-    created_at: datetime = Field(default_factory=utcnow)
-
-
-# ── 课程快照 ──
-
-
-class CurriculumSnapshot(SQLModel, table=True):
-    """课程视图一致性快照：记录当前课程结构 = 哪个 tree version + 哪个 dag version 的组合。"""
-
-    __tablename__ = "curriculum_snapshot"
-    __table_args__ = (
-        UniqueConstraint(
-            "subject", "version_no",
-            name="uq_curriculum_snapshot_subject_version",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    version_no: int
-    status: str = Field(default="draft")  # TreeVersionStatus
-    theme_tree_version_id: int | None = Field(
-        default=None, foreign_key="theme_tree_version.id",
-    )
-    prereq_dag_version_id: int | None = Field(
-        default=None, foreign_key="prereq_dag_version.id",
-    )
-    syllabus_version_id: int | None = Field(default=None)  # MVP-2 预留
     created_at: datetime = Field(default_factory=utcnow)

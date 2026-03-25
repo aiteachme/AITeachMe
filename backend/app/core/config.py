@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-v3"
     data_dir: str = "./data"
     max_upload_size_mb: int = 50
-    ingest_parse_concurrency: int = 2
+    ingest_parse_concurrency: int = 5
     ingest_parser_timeout_s: int = 90
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3

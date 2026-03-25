@@ -8,10 +8,10 @@ import shutil
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+from sqlmodel import func, select
 
 from app.core.database import managed_session
-from app.models.knowledge_doc import KnowledgeDoc
-from app.repositories.knowledge import docgen_repo
+from app.models import KnowledgeDocument, Subject
 from app.services.knowledge.docgen_store import (
     KnowledgeDocsManifest,
     clear_published_knowledge_docs_files,
@@ -24,6 +24,7 @@ from app.services.upload_support import (
     build_knowledge_markdown_dir,
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
+    to_storage_key,
 )
 
 
@@ -176,33 +177,58 @@ def publish_staged_knowledge_docs(
     )
     write_knowledge_manifest(subject, manifest)
 
-    docs_to_create: list[KnowledgeDoc] = []
-    for index, chapter in enumerate(sorted_chapters):
-        chapter_index = int(chapter.get("chapter_index", index + 1))
-        chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
-        chapter_markdown = str(chapter.get("markdown", ""))
-        summary = str(chapter.get("summary", ""))
-        tags = chapter.get("tags", [])
-        source_file_ids = list(chapter.get("source_file_ids", []))
-        if not source_file_ids and index < len(chapter_assignments):
-            source_file_ids = list(chapter_assignments[index].get("source_file_ids", []))
+    with managed_session() as session:
+        subject_record = session.exec(select(Subject).where(Subject.slug == subject)).first()
+        if subject_record is None or subject_record.id is None:
+            raise ValueError(f"Unknown subject `{subject}`")
 
-        docs_to_create.append(
-            KnowledgeDoc(
-                subject=subject,
+        current_version = session.exec(
+            select(func.max(KnowledgeDocument.version_no)).where(
+                KnowledgeDocument.subject_id == int(subject_record.id)
+            )
+        ).one()
+        next_version = int(current_version or 0) + 1
+
+        old_docs = list(
+            session.exec(
+                select(KnowledgeDocument).where(KnowledgeDocument.subject_id == int(subject_record.id))
+            ).all()
+        )
+        for doc in old_docs:
+            session.delete(doc)
+        session.commit()
+
+        created_ids: list[int] = []
+        for index, chapter in enumerate(sorted_chapters):
+            chapter_index = int(chapter.get("chapter_index", index + 1))
+            chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
+            chapter_markdown = str(chapter.get("markdown", ""))
+            summary = str(chapter.get("summary", ""))
+            tags = chapter.get("tags", [])
+            source_file_ids = list(chapter.get("source_file_ids", []))
+            if not source_file_ids and index < len(chapter_assignments):
+                source_file_ids = list(chapter_assignments[index].get("source_file_ids", []))
+
+            path = build_knowledge_doc_path(subject, chapter_index, chapter_title)
+            doc = KnowledgeDocument(
+                user_id=subject_record.user_id,
+                subject_id=int(subject_record.id),
+                doc_type="chapter",
                 chapter_index=chapter_index,
                 title=chapter_title,
                 summary=summary,
-                markdown_content=chapter_markdown,
-                markdown_path=str(build_knowledge_doc_path(subject, chapter_index, chapter_title)),
-                tags=json.dumps(tags, ensure_ascii=False),
-                source_file_ids=json.dumps(source_file_ids),
+                content_markdown=chapter_markdown,
+                storage_backend="local",
+                storage_key=to_storage_key(path),
+                tags_json=json.dumps(tags, ensure_ascii=False),
+                source_raw_file_ids_json=json.dumps(source_file_ids, ensure_ascii=False),
                 word_count=count_words(chapter_markdown),
+                version_no=next_version,
                 status="published",
             )
-        )
-
-    with managed_session() as session:
-        docgen_repo.delete_docs_by_subject(session, subject)
-        created_docs = docgen_repo.bulk_create_knowledge_docs(session, docs_to_create)
-    return [doc.id for doc in created_docs if doc.id is not None]
+            session.add(doc)
+            session.commit()
+            session.refresh(doc)
+            if doc.id is not None:
+                created_ids.append(int(doc.id))
+        return created_ids

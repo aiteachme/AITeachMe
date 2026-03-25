@@ -1,17 +1,20 @@
-"""Knowledge graph repository helpers."""
+"""Knowledge graph repository helpers backed by the flattened schema."""
 
 from __future__ import annotations
 
 from sqlmodel import Session, func, or_, select
 
-from app.models.knowledge_graph import (
-    EdgeRevision,
-    EvidenceLink,
+from app.models import (
     KnowledgeAlias,
     KnowledgeEdge,
+    KnowledgeEvidence,
     KnowledgeNode,
-    KnowledgeRevision,
+    Subject,
 )
+
+
+def _subject_filters(subject: str):
+    return (Subject.slug == subject,)
 
 
 def acquire_subject_build_lock(
@@ -57,8 +60,9 @@ def find_node_by_normalized_name(
         allowed.append("pending")
     stmt = (
         select(KnowledgeNode)
+        .join(Subject, KnowledgeNode.subject_id == Subject.id)
         .where(
-            KnowledgeNode.subject == subject,
+            *_subject_filters(subject),
             KnowledgeNode.normalized_name == normalized_name,
             KnowledgeNode.node_type == node_type,
             KnowledgeNode.status.in_(allowed),  # type: ignore[union-attr]
@@ -75,9 +79,10 @@ def find_nodes_by_alias(
 ) -> list[KnowledgeNode]:
     stmt = (
         select(KnowledgeNode)
+        .join(Subject, KnowledgeNode.subject_id == Subject.id)
         .join(KnowledgeAlias, KnowledgeAlias.node_id == KnowledgeNode.id)
         .where(
-            KnowledgeNode.subject == subject,
+            *_subject_filters(subject),
             KnowledgeNode.node_type == node_type,
             KnowledgeAlias.normalized_alias == normalized_alias,
             KnowledgeAlias.status == "active",
@@ -96,8 +101,16 @@ def list_nodes_by_subject(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[KnowledgeNode], int]:
-    base = select(KnowledgeNode).where(KnowledgeNode.subject == subject)
-    count_base = select(func.count(KnowledgeNode.id)).where(KnowledgeNode.subject == subject)
+    base = (
+        select(KnowledgeNode)
+        .join(Subject, KnowledgeNode.subject_id == Subject.id)
+        .where(*_subject_filters(subject))
+    )
+    count_base = (
+        select(func.count(KnowledgeNode.id))
+        .join(Subject, KnowledgeNode.subject_id == Subject.id)
+        .where(*_subject_filters(subject))
+    )
 
     if status is not None:
         base = base.where(KnowledgeNode.status == status)
@@ -107,28 +120,10 @@ def list_nodes_by_subject(
         count_base = count_base.where(KnowledgeNode.node_type == node_type)
 
     total: int = session.exec(count_base).one()
-    rows = list(session.exec(base.offset(offset).limit(limit).order_by(KnowledgeNode.id)).all())
+    rows = list(
+        session.exec(base.offset(offset).limit(limit).order_by(KnowledgeNode.id.asc())).all()
+    )
     return rows, total
-
-
-def get_node_with_current_revision(
-    session: Session, node_id: int
-) -> tuple[KnowledgeNode, KnowledgeRevision] | None:
-    node = session.get(KnowledgeNode, node_id)
-    if node is None:
-        return None
-    if node.current_revision_id is None:
-        rev = session.exec(
-            select(KnowledgeRevision).where(
-                KnowledgeRevision.node_id == node_id,
-                KnowledgeRevision.is_current == True,  # noqa: E712
-            )
-        ).first()
-    else:
-        rev = session.get(KnowledgeRevision, node.current_revision_id)
-    if rev is None:
-        return None
-    return node, rev
 
 
 def create_alias(session: Session, alias: KnowledgeAlias) -> KnowledgeAlias:
@@ -142,8 +137,9 @@ def find_alias(session: Session, subject: str, normalized_alias: str) -> list[Kn
     stmt = (
         select(KnowledgeAlias)
         .join(KnowledgeNode, KnowledgeAlias.node_id == KnowledgeNode.id)
+        .join(Subject, KnowledgeNode.subject_id == Subject.id)
         .where(
-            KnowledgeNode.subject == subject,
+            *_subject_filters(subject),
             KnowledgeAlias.normalized_alias == normalized_alias,
             KnowledgeAlias.status == "active",
         )
@@ -201,9 +197,10 @@ def list_edges_by_type(
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
-    stmt = select(KnowledgeEdge).where(
-        KnowledgeEdge.subject == subject,
-        KnowledgeEdge.edge_type == edge_type,
+    stmt = (
+        select(KnowledgeEdge)
+        .join(Subject, KnowledgeEdge.subject_id == Subject.id)
+        .where(*_subject_filters(subject), KnowledgeEdge.edge_type == edge_type)
     )
     if status is not None:
         stmt = stmt.where(KnowledgeEdge.status == status)
@@ -216,53 +213,21 @@ def list_all_edges_by_subject(
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
-    stmt = select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)
+    stmt = (
+        select(KnowledgeEdge)
+        .join(Subject, KnowledgeEdge.subject_id == Subject.id)
+        .where(*_subject_filters(subject))
+    )
     if status is not None:
         stmt = stmt.where(KnowledgeEdge.status == status)
     return list(session.exec(stmt).all())
 
 
-def create_knowledge_revision(session: Session, revision: KnowledgeRevision) -> KnowledgeRevision:
-    session.add(revision)
+def create_knowledge_evidence(session: Session, evidence: KnowledgeEvidence) -> KnowledgeEvidence:
+    session.add(evidence)
     session.commit()
-    session.refresh(revision)
-    return revision
-
-
-def deactivate_old_revisions(session: Session, node_id: int) -> None:
-    stmt = select(KnowledgeRevision).where(
-        KnowledgeRevision.node_id == node_id,
-        KnowledgeRevision.is_current == True,  # noqa: E712
-    )
-    for rev in session.exec(stmt).all():
-        rev.is_current = False
-        session.add(rev)
-    session.commit()
-
-
-def create_edge_revision(session: Session, revision: EdgeRevision) -> EdgeRevision:
-    session.add(revision)
-    session.commit()
-    session.refresh(revision)
-    return revision
-
-
-def deactivate_old_edge_revisions(session: Session, edge_id: int) -> None:
-    stmt = select(EdgeRevision).where(
-        EdgeRevision.edge_id == edge_id,
-        EdgeRevision.is_current == True,  # noqa: E712
-    )
-    for rev in session.exec(stmt).all():
-        rev.is_current = False
-        session.add(rev)
-    session.commit()
-
-
-def create_evidence_link(session: Session, link: EvidenceLink) -> EvidenceLink:
-    session.add(link)
-    session.commit()
-    session.refresh(link)
-    return link
+    session.refresh(evidence)
+    return evidence
 
 
 def list_evidence_by_entity(
@@ -271,22 +236,24 @@ def list_evidence_by_entity(
     entity_id: int,
     *,
     is_active: bool | None = True,
-) -> list[EvidenceLink]:
-    stmt = select(EvidenceLink).where(
-        EvidenceLink.entity_type == entity_type,
-        EvidenceLink.entity_id == entity_id,
-    )
+) -> list[KnowledgeEvidence]:
+    stmt = select(KnowledgeEvidence)
+    if entity_type == "node":
+        stmt = stmt.where(KnowledgeEvidence.node_id == entity_id)
+    else:
+        stmt = stmt.where(KnowledgeEvidence.edge_id == entity_id)
     if is_active is not None:
-        stmt = stmt.where(EvidenceLink.is_active == is_active)
+        stmt = stmt.where(KnowledgeEvidence.is_active == is_active)
     return list(session.exec(stmt).all())
 
 
 def count_active_evidence(session: Session, entity_type: str, entity_id: int) -> int:
-    stmt = select(func.count(EvidenceLink.id)).where(
-        EvidenceLink.entity_type == entity_type,
-        EvidenceLink.entity_id == entity_id,
-        EvidenceLink.is_active == True,  # noqa: E712
-    )
+    stmt = select(func.count(KnowledgeEvidence.id))
+    if entity_type == "node":
+        stmt = stmt.where(KnowledgeEvidence.node_id == entity_id)
+    else:
+        stmt = stmt.where(KnowledgeEvidence.edge_id == entity_id)
+    stmt = stmt.where(KnowledgeEvidence.is_active == True)  # noqa: E712
     return session.exec(stmt).one()
 
 

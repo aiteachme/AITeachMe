@@ -83,17 +83,17 @@ def _to_exam_grade_job_response(job) -> ExamGradeJobStatusResponse:
 
 def _to_exam_history_item(paper) -> ExamHistoryItem:
     return ExamHistoryItem(
-        id=paper.id or 0,
-        subject=paper.subject,
-        user_id=paper.user_id,
-        exam_mode=paper.exam_mode,
-        status=paper.status,
-        total_items=paper.total_items,
-        score_obtained=paper.score_obtained,
-        total_score=paper.total_score,
-        created_at=paper.created_at,
-        submitted_at=paper.submitted_at,
-        graded_at=paper.graded_at,
+        id=int(paper["id"]),
+        subject=str(paper["subject"]),
+        user_id=str(paper["user_id"]),
+        exam_mode=str(paper["exam_mode"]),
+        status=str(paper["status"]),
+        total_items=int(paper["total_items"]),
+        score_obtained=paper.get("score_obtained"),
+        total_score=paper.get("total_score"),
+        created_at=paper["created_at"],
+        submitted_at=paper.get("submitted_at"),
+        graded_at=paper.get("graded_at"),
     )
 
 
@@ -101,40 +101,38 @@ def _to_exam_paper_detail_response(detail: ExamPaperDetail) -> ExamPaperDetailRe
     paper = detail.paper
     items: list[ExamPaperItemResponse] = []
     for item in detail.items:
-        options = _parse_json_list(item.snapshot_options)
-        attempts = detail.attempts_by_item_id.get(item.id or -1)
         items.append(
             ExamPaperItemResponse(
-                id=item.id or 0,
-                item_order=item.item_order,
-                question_template_id=item.question_template_id,
-                question_type=item.snapshot_question_type,
-                difficulty=item.snapshot_difficulty,
-                stem=item.snapshot_stem,
-                options=[str(option) for option in options] if options else None,
-                explanation=item.snapshot_explanation,
-                teaching_unit_id=item.snapshot_teaching_unit_id,
-                node_links=_parse_json_list(item.snapshot_node_links_json),
-                user_answer=(attempts.user_answer if attempts is not None else None),
-                is_correct=(attempts.is_correct if attempts is not None else None),
-                score_obtained=(attempts.score_obtained if attempts is not None else None),
-                score_max=(attempts.score_max if attempts is not None else None),
-                error_cause_label=(attempts.error_cause_label if attempts is not None else None),
+                id=int(item["id"]),
+                item_order=int(item["item_order"]),
+                question_template_id=int(item["question_template_id"]),
+                question_type=str(item["question_type"]),
+                difficulty=str(item["difficulty"]),
+                stem=str(item["stem"]),
+                options=item.get("options"),
+                explanation=str(item["explanation"]),
+                teaching_unit_id=int(item["teaching_unit_id"]),
+                node_links=item.get("node_links", []),
+                user_answer=item.get("user_answer"),
+                is_correct=item.get("is_correct"),
+                score_obtained=item.get("score_obtained"),
+                score_max=item.get("score_max"),
+                error_cause_label=item.get("error_cause_label"),
             )
         )
 
     return ExamPaperDetailResponse(
-        id=paper.id or 0,
-        subject=paper.subject,
-        user_id=paper.user_id,
-        exam_mode=paper.exam_mode,
-        status=paper.status,
-        total_items=paper.total_items,
-        score_obtained=paper.score_obtained,
-        total_score=paper.total_score,
-        submitted_at=paper.submitted_at,
-        graded_at=paper.graded_at,
-        created_at=paper.created_at,
+        id=int(paper["id"]),
+        subject=str(paper["subject"]),
+        user_id=str(paper["user_id"]),
+        exam_mode=str(paper["exam_mode"]),
+        status=str(paper["status"]),
+        total_items=int(paper["total_items"]),
+        score_obtained=paper.get("score_obtained"),
+        total_score=paper.get("total_score"),
+        submitted_at=paper.get("submitted_at"),
+        graded_at=paper.get("graded_at"),
+        created_at=paper["created_at"],
         items=items,
     )
 

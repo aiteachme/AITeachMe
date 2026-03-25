@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pathlib import Path
-
 import structlog
 from sqlmodel import Session
 
@@ -15,6 +13,7 @@ from app.core.exceptions import (
     SubjectBuildLockConflictError,
 )
 from app.core.database import managed_session
+from app.models import IngestStatus, TaskStatus
 from app.models.raw_file import RawFile
 from app.repositories.files_repo import (
     list_all_raw_files_by_subject,
@@ -33,14 +32,17 @@ from app.services.presenters import require_id, require_uid
 from app.services.upload_support import build_merged_knowledge_base_path
 from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.time import utcnow
-from app.workflows.digest import run_docgen_workflow, run_graph_digest_workflow
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
-    return bool(raw_file.markdown_path and Path(raw_file.markdown_path).exists())
+    return (
+        raw_file.status == TaskStatus.COMPLETED.value
+        and raw_file.ingest_status == IngestStatus.READY_FOR_DIGEST.value
+        and bool(raw_file.parsed_markdown.strip())
+    )
 
 
 def _clean_prompt(prompt: str | None) -> str | None:
@@ -190,6 +192,8 @@ def trigger_docgen_build(
 async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> None:
     """Run graph digest workflow in background with an ephemeral run id."""
 
+    from app.workflows.digest import run_graph_digest_workflow
+
     run_id = _new_graph_run_id()
     digest_logger = logger.bind(subject=subject, run_id=run_id)
     try:
@@ -211,6 +215,8 @@ async def run_docgen_background(
     requested_at: datetime,
 ) -> None:
     """Run docgen workflow in background without any job row persistence."""
+
+    from app.workflows.digest import run_docgen_workflow
 
     build_logger = logger.bind(subject=subject, requested_at=requested_at.isoformat())
     build_logger.info("knowledge_build_started")

@@ -15,34 +15,47 @@ from pathlib import Path
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import build_asset_dir, build_asset_name_prefix, build_raw_markdown_path
+from app.repositories.subject_repo import get_subject_by_slug
+from app.services.upload_support import (
+    build_asset_dir,
+    build_asset_name_prefix,
+    build_raw_markdown_path,
+    resolve_storage_key_path,
+)
 from app.workflows.common.context import WorkflowContext
-from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileClassifiedEvent
+from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.parsing.classifier import classify_file
-from app.workflows.ingest.state import IngestParseState
 from app.workflows.ingest.parsing.strategy import build_parse_plan
+from app.workflows.ingest.state import IngestParseState
 
 
 def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
     with managed_session() as session:
         raw_file = get_raw_file_by_id(session, state["file_id"])
-        if raw_file is None or raw_file.subject != state["subject"]:
+        subject_record = get_subject_by_slug(session, state["subject"])
+        if (
+            raw_file is None
+            or subject_record is None
+            or subject_record.id is None
+            or raw_file.subject_id != int(subject_record.id)
+        ):
             return {
                 **state,
                 "error": f"raw_file_not_found:{state['file_id']}",
             }
 
         file_id = state["file_id"]
+        file_path = resolve_storage_key_path(raw_file.storage_key)
         return {
             **state,
-            "filename": raw_file.filename,
-            "filetype": raw_file.filetype,
-            "file_path": raw_file.file_path,
-            "markdown_path": str(build_raw_markdown_path(raw_file.subject, file_id)),
-            "asset_dir": str(build_asset_dir(raw_file.subject, file_id)),
+            "filename": raw_file.original_filename,
+            "filetype": raw_file.file_ext,
+            "file_path": str(file_path),
+            "markdown_path": str(build_raw_markdown_path(state["subject"], file_id)),
+            "asset_dir": str(build_asset_dir(state["subject"], file_id)),
             "asset_name_prefix": build_asset_name_prefix(
-                filename=raw_file.filename,
+                filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
                 file_id=file_id,
             ),
@@ -103,7 +116,13 @@ def build_classify_file_node(*, context: WorkflowContext):
             classification_payload = json.dumps(classification.to_dict(), ensure_ascii=False)
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
-                if raw_file is None or raw_file.subject != state["subject"]:
+                subject_record = get_subject_by_slug(session, state["subject"])
+                if (
+                    raw_file is None
+                    or subject_record is None
+                    or subject_record.id is None
+                    or raw_file.subject_id != int(subject_record.id)
+                ):
                     return {
                         **state,
                         "error": f"raw_file_not_found:{state['file_id']}",
@@ -113,8 +132,9 @@ def build_classify_file_node(*, context: WorkflowContext):
                     raw_file,
                     estimated_pages=classification.estimated_pages,
                     detected_language=classification.detected_language,
-                    classification_result=classification_payload,
+                    classification_json=classification_payload,
                     ingest_status=IngestStatus.PARSING.value,
+                    digest_current_step="ingest.parse.running",
                 )
             await context.event_bus.publish(
                 IngestFileClassifiedEvent(
