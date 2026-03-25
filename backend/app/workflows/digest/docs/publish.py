@@ -20,8 +20,8 @@ from app.services.knowledge.docgen_store import (
 from app.services.upload_support import (
     build_knowledge_doc_build_path,
     build_knowledge_doc_path,
-    build_knowledge_docs_build_dir,
-    build_knowledge_docs_dir,
+    build_knowledge_markdown_build_dir,
+    build_knowledge_markdown_dir,
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )
@@ -105,7 +105,7 @@ async def stage_knowledge_docs(
         return StagedKnowledgeDocs()
 
     sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
-    build_dir = build_knowledge_docs_build_dir(subject)
+    build_dir = build_knowledge_markdown_build_dir(subject)
     build_dir.mkdir(parents=True, exist_ok=True)
 
     chapter_write_tasks: list[asyncio.Task[None]] = []
@@ -145,7 +145,7 @@ def publish_staged_knowledge_docs(
         return []
 
     sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
-    published_dir = build_knowledge_docs_dir(subject)
+    published_dir = build_knowledge_markdown_dir(subject)
     published_dir.mkdir(parents=True, exist_ok=True)
     clear_published_knowledge_docs_files(subject)
 

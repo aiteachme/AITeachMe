@@ -23,20 +23,13 @@ def build_subject_dir(subject: str) -> Path:
 def build_raw_dir(subject: str) -> Path:
     """Return the raw file directory."""
 
-    return build_subject_dir(subject) / "raw"
+    return build_subject_dir(subject) / "raw_files"
 
 
 def build_raw_markdown_dir(subject: str) -> Path:
     """Return the parsed raw-markdown directory."""
 
-    return build_subject_dir(subject) / "raw_markdown"
-
-
-def build_markdown_dir(subject: str) -> Path:
-    """Compatibility alias for the parsed raw-markdown directory."""
-
-    return build_raw_markdown_dir(subject)
-
+    return build_subject_dir(subject) / "raw_markdowns"
 
 def build_assets_dir(subject: str) -> Path:
     """Return the flattened extracted-asset directory."""
@@ -69,12 +62,6 @@ def build_raw_markdown_path(subject: str, raw_file_id: int) -> Path:
     return build_raw_markdown_dir(subject) / f"{raw_file_id}.md"
 
 
-def build_markdown_path(subject: str, raw_file_id: int) -> Path:
-    """Compatibility alias for the parsed raw-markdown path."""
-
-    return build_raw_markdown_path(subject, raw_file_id)
-
-
 def build_asset_dir(subject: str, raw_file_id: int) -> Path:
     """Return the shared flattened assets directory for a raw file."""
 
@@ -83,27 +70,15 @@ def build_asset_dir(subject: str, raw_file_id: int) -> Path:
 
 
 def build_knowledge_markdown_dir(subject: str) -> Path:
-    """Return the published knowledge-markdown directory."""
+    """Return the published knowledge-markdowns directory."""
 
-    return build_subject_dir(subject) / "knowledge_markdown"
-
-
-def build_knowledge_docs_dir(subject: str) -> Path:
-    """Compatibility alias for the published knowledge-markdown directory."""
-
-    return build_knowledge_markdown_dir(subject)
+    return build_subject_dir(subject) / "knowledge_markdowns"
 
 
 def build_knowledge_markdown_build_dir(subject: str) -> Path:
-    """Return the knowledge-markdown build/intermediate directory."""
+    """Return the knowledge-markdowns build/intermediate directory."""
 
     return build_knowledge_markdown_dir(subject) / "_build"
-
-
-def build_knowledge_docs_build_dir(subject: str) -> Path:
-    """Compatibility alias for the knowledge-markdown build directory."""
-
-    return build_knowledge_markdown_build_dir(subject)
 
 
 def _sanitize_doc_title(title: str) -> str:

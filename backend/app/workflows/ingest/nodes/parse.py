@@ -2,7 +2,7 @@
 
 Reads DB: ``raw_file`` lookup during parse result persistence.
 Writes DB: ``raw_file`` ingest status transitions and parse metadata.
-Writes FS: overwrites ``raw_markdown/<raw_file_id>.md`` and matching files under shared ``assets/``.
+Writes FS: overwrites ``raw_markdowns/<raw_file_id>.md`` and matching files under shared ``assets/``.
 Idempotency: reruns replace markdown/assets for the same file and refresh metadata in place.
 """
 

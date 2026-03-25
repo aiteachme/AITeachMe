@@ -15,7 +15,7 @@
 
 AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一个以 `Subject` 为工作空间边界的本地优先教学系统。主链路可以概括为：
 
-`RawFile -> Markdown / Assets -> Document / DocumentChunk -> Knowledge Graph -> Teaching Unit -> Theme Tree / Prereq DAG -> Chat / Exam / Profile`
+`RawFile -> Raw Markdown / Assets -> RetrievalChunk -> Knowledge Document / Knowledge Graph -> Teaching Unit / Curriculum -> Chat / Exam / Profile`
 
 按系统分层看，当前主要由五层组成：
 
@@ -40,21 +40,21 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 当前前端位于 `frontend/`，主要页面包括：
 
-- `UploadPage`
+- `FilesPage`
 - `KnowledgeDocsPage`
-- `SummaryPage`
+- `KnowledgeGraphPage`
 - `ChatPage`
-- `ExamPage`
-- `AnalysisPage`
+- `ExamsPage`
+- `ProfilePage`
 
 这些页面对应完整学习闭环：
 
-- `UploadPage`：资料进入系统
+- `FilesPage`：资料进入系统，并查看解析结果与解析元信息
 - `KnowledgeDocsPage`：阅读 AI 整理后的知识文档
-- `SummaryPage`：查看图谱、主题树、先修图等结构化视图
+- `KnowledgeGraphPage`：查看图谱、主题树、先修图等结构化视图
 - `ChatPage`：进行教学型对话
-- `ExamPage`：发起测评与查看试卷
-- `AnalysisPage`：查看掌握度、复习任务和薄弱点
+- `ExamsPage`：发起测评与查看试卷
+- `ProfilePage`：查看掌握度、复习任务和薄弱点
 
 ### 3.2 前端分层方式
 
@@ -118,7 +118,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 其中：
 
-- `exams` / `profile` 代表 legacy API 路径，当前仍在使用。
+- `exams` / `profile` 代表旧对外接口路径，当前仍在使用。
 - `assessment` 代表新的 assessment/profile 路径，已经落到新表与新 workflow 上。
 
 ### 4.3 workflows 的角色
@@ -148,20 +148,20 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 ### 5.3 Interact
 
-负责把 `DocumentChunk`、聊天历史、薄弱点、错题等上下文装配成教学型对话，并通过 SSE 流式返回结果。
+负责把 `retrieval_chunk`、聊天历史、薄弱点、错题等上下文装配成教学型对话，并通过 SSE 流式返回结果。
 
 ### 5.4 Examine
 
 负责测评蓝图、组卷、判卷、答题结果持久化。当前处于双轨期：
 
-- legacy：`exams_service` + `exam/question/...`
+- 旧对外接口：`exams_service` + `exam/question/...`
 - workflow-backed：`assessment_service` + `workflows/examine/*` + `exam_paper/...`
 
 ### 5.5 Profile
 
 负责学习状态沉淀、薄弱分析、复习任务与学习画像。当前同样处于双轨期：
 
-- legacy：`profile_service` + `user_profile/mistake`
+- 旧对外接口：`profile_service` + `user_profile/mistake`
 - workflow-backed：`workflows/profile/*` + `user_knowledge_state/review_task`
 
 ---
@@ -170,12 +170,12 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 | 页面 | 资源组 | 当前 service | 当前后端主链路 |
 | --- | --- | --- | --- |
-| `UploadPage` | `files` | `file_service` | `workflows/ingest/*` |
+| `FilesPage` | `files` | `file_service` | `workflows/ingest/*` |
 | `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service` | `workflows/digest/docs/*` |
-| `SummaryPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
+| `KnowledgeGraphPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
 | `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
-| `ExamPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | legacy exam API + workflow-backed assessment |
-| `AnalysisPage` | `profile`、`assessment` | `profile_service`、`assessment_service` | legacy profile API + workflow-backed mastery/review |
+| `ExamsPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | 旧 exam API + workflow-backed assessment |
+| `ProfilePage` | `profile`、`assessment` | `profile_service`、`assessment_service` | 旧 profile API + workflow-backed mastery/review |
 
 ---
 
@@ -216,11 +216,11 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 当前已经存在的本地产物包括：
 
-- `raw/`
-- `raw_markdown/`
+- `raw_files/`
+- `raw_markdowns/`
 - `assets/`
-- `knowledge_markdown/`
-- `knowledge_markdown/_build/`
+- `knowledge_markdowns/`
+- `knowledge_markdowns/_build/`
 
 后续新增调试快照统一约定写入：
 
@@ -250,6 +250,16 @@ service 不是最终流程容器，复杂业务要以 workflow 状态流为准�
 
 数据库承担结构化真相；本地文件承担原始材料、正式文档和调试摘要。教学系统需要两者同时存在，才能兼顾产品能力和研发可观察性。
 
+### 8.6 语义与证据优先，关键词只做弱提示
+
+章节名、标题路径、主题词、检索词都不应成为各模块的主驱动信号。更合理的主链路应该是：
+
+- 先看语义内容本身
+- 再看结构位置、上下文邻接和证据引用
+- 最后才把标题、章节名、关键词当作弱提示或导航信息
+
+只有像“第 X 章”“定义”“定理”“证明”这类显式结构锚点，才适合作为较强信号参与流程判断。
+
 ---
 
 ## 9. 当前开发关注点
@@ -260,7 +270,7 @@ service 不是最终流程容器，复杂业务要以 workflow 状态流为准�
 
 ### 9.2 assessment/profile 仍处于双轨期
 
-legacy exam/profile API 仍在线；新的 assessment/profile 工作流和数据表已经落地。任何新设计都必须显式说明自己面向哪条链路。
+旧 exam/profile API 仍在线；新的 assessment/profile 工作流和数据表已经落地。任何新设计都必须显式说明自己面向哪条链路。
 
 ### 9.3 本地优先不等于未来不能中心化
 

@@ -58,18 +58,18 @@
 | 文档 | 作用 |
 | --- | --- |
 | `01_system_architecture.md` | 系统分层、资源边界、页面与工作流映射 |
-| `02_domain_model_and_state.md` | 领域对象、状态对象、当前/旧版/过渡态模型 |
+| `02_domain_model_and_state.md` | 领域对象、状态对象、最新业务名与运行时边界 |
 | `03_api_contracts_and_dev_workflow.md` | API 契约、统一响应、联调与生成工作流 |
 | `04_ingest_engine.md` | 资料接入、解析、材料化、解析产物边界 |
 | `05_digest_engine.md` | 知识文档、图谱、课程结构、证据链与版本化 |
-| `06_interact_engine.md` | 教学对话、检索、流式输出、引用来源 |
+| `06_interact_engine.md` | 教学对话、语义召回、流式输出、引用来源 |
 | `07_examine_engine.md` | 测评蓝图、组卷、判卷、旧 exam 与新 assessment 双轨 |
 | `08_profile_engine.md` | 掌握度、复习调度、薄弱分析、旧 profile 与新状态层 |
 | `09_ai_stack_and_refactor_guide.md` | AI 技术栈、工程化方法与重构指导 |
 | `10_repo_structure_and_runtime_files.md` | 仓库目录、生成物、运行时目录、本地调试产物 |
-| `11_database_and_storage_architecture.md` | 数据库、向量索引、本地文件、对象存储与迁移路线 |
+| `11_database_and_storage_architecture.md` | 当前数据库与存储架构、向量索引、本地文件、对象存储迁移路线 |
 | `12_api_refactor_plan.md` | API 接口收敛、全量返回、知识图谱三 Tab 单接口重构计划 |
-| `13_database_schema_inventory.md` | 当前真实数据库表清单、workflow 写入地图、LangGraph 节点落表说明 |
+| `13_database_schema_inventory.md` | 目标态数据库结构方案、统一检索层与最新表结构 |
 
 ---
 
@@ -81,6 +81,7 @@
 2. `10_repo_structure_and_runtime_files.md`
 3. `11_database_and_storage_architecture.md`
 4. `13_database_schema_inventory.md`
+   想看当前真实存储边界先读 `11`，想看后续目标态数据库结构再读 `13`
 5. `02_domain_model_and_state.md`
 6. `03_api_contracts_and_dev_workflow.md`
 7. 再进入对应引擎文档
@@ -90,6 +91,7 @@
 1. `01_system_architecture.md`
 2. `11_database_and_storage_architecture.md`
 3. `13_database_schema_inventory.md`
+   `11` 负责当前真相，`13` 负责目标态方案
 4. `02_domain_model_and_state.md`
 5. `10_repo_structure_and_runtime_files.md`
 6. `03_api_contracts_and_dev_workflow.md`
@@ -111,12 +113,12 @@
 
 | 前端页面 | 主要资源组 | 当前主要 service | 当前主要 workflow / 后端主链路 |
 | --- | --- | --- | --- |
-| `UploadPage` | `files` | `file_service` | `workflows/ingest/*` |
+| `FilesPage` | `files` | `file_service` | `workflows/ingest/*` |
 | `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service`、`knowledge/curriculum_service` | `workflows/digest/docs/*`、`workflows/digest/kg/*`、`workflows/digest/curriculum/*` |
-| `SummaryPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 Digest 产出的图谱/课程快照 |
+| `KnowledgeGraphPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 Digest 产出的图谱/课程快照 |
 | `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
-| `ExamPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | 旧 exam API + 新 `workflows/examine/*` |
-| `AnalysisPage` | `profile`、`assessment` | `profile_service`、`assessment_service` | 旧 profile API + 新 `workflows/profile/*` |
+| `ExamsPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | 旧 exam API + 新 `workflows/examine/*` |
+| `ProfilePage` | `profile`、`assessment` | `profile_service`、`assessment_service` | 旧 profile API + 新 `workflows/profile/*` |
 
 其中 `exams/profile` 仍是当前对外可用接口的一部分，但 assessment/profile 新工作流和新数据表已经存在并在数据库中有真实数据，文档必须把这两套链路同时讲清楚。
 
@@ -130,7 +132,7 @@
 - 开发阶段允许“数据库写结构化真相 + 本地写正式产物/调试摘要”的双写策略。
 - 设计文档必须显式区分：
   - 当前稳定主路径
-  - 仍在线的 legacy 路径
+  - 仍在线的旧对外接口路径
   - 正在演进中的 workflow-backed 路径
 
 ---

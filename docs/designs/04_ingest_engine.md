@@ -12,7 +12,7 @@ Ingest 负责把原始资料转换成后续所有引擎都能稳定消费的“�
 - 提取图片 / 附件到共享 `assets/`
 - 对提取图片做 OCR / vision 补强
 - 把解析状态写回 `raw_file`
-- 为下游 `document / document_chunk / chunk_embeddings` 做好准备
+- 为下游 `retrieval_chunk / chunk_embeddings / knowledge_document` 做好准备
 
 Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料打磨到可消费状态。
 
@@ -22,7 +22,7 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 
 | 层 | 当前主模块 |
 | --- | --- |
-| 前端页面 | `frontend/src/pages/UploadPage.tsx` |
+| 前端页面 | `frontend/src/pages/FilesPage.tsx` |
 | API | `backend/app/api/files.py` |
 | service | `backend/app/services/file_service.py` |
 | workflow | `backend/app/workflows/ingest/*` |
@@ -38,9 +38,9 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 | 上传保存 | `file_service.save_uploaded_file()` | 无 | `raw_file` | `temp/`、`raw/` |
 | 自动触发解析 | `save_uploaded_files_and_request_parse()` | `raw_file` | `raw_file.status`、`raw_file.ingest_status` | 无 |
 | 加载文件与规划 | `workflows/ingest/nodes/file.py` | `raw_file` | `raw_file` 分类字段 | 无 |
-| 实际解析 | `workflows/ingest/nodes/parse.py` | `raw_file` | `raw_file.ingest_status=validating` | `raw_markdown/`、`assets/` |
+| 实际解析 | `workflows/ingest/nodes/parse.py` | `raw_file` | `raw_file.ingest_status=validating` | `raw_markdowns/`、`assets/` |
 | 成功/失败收尾 | `workflows/ingest/nodes/finalize.py` | `raw_file` | `raw_file` 最终字段 | 无 |
-| 下游材料化 | `workflows/digest/kg/support.py` | `raw_file` | `document`、`document_chunk`、`chunk_embeddings` | 读取 `raw_markdown/` |
+| 下游材料化 | `workflows/digest/kg/support.py` | `raw_file` | `retrieval_chunk`、`chunk_embeddings` | 读取 `raw_markdowns/` |
 
 ---
 
@@ -48,13 +48,13 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 
 单个原始文件解析完成后，会得到：
 
-- `data/<subject>/raw/<raw_file_id>.<ext>`
-- `data/<subject>/raw_markdown/<raw_file_id>.md`
+- `data/<subject>/raw_files/<raw_file_id>.<ext>`
+- `data/<subject>/raw_markdowns/<raw_file_id>.md`
 - `data/<subject>/assets/<asset_name_prefix>__*.png|jpg|...`
 
 这里最重要的变化是：
 
-1. `raw_markdown/` 取代旧 `markdown/`
+1. `raw_markdowns/` 取代旧 `markdown/`
 2. `assets/` 现在是整个 subject 共享的扁平目录，不再使用 `assets/<file_id>/`
 
 ---
@@ -73,7 +73,7 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 这样做的目的是：
 
 - 保持所有 Markdown 都是一级目录
-- 让 `raw_markdown/` 和 `knowledge_markdown/` 都能用同一套相对路径
+- 让 `raw_markdowns/` 和 `knowledge_markdowns/` 都能用同一套相对路径
 - 删除单个文件时可以按前缀清理本文件图片，而不会误删整科目 assets
 
 ---
@@ -86,10 +86,22 @@ Ingest 统一把 Markdown 里的图片引用规范成：
 
 这条规则同时适用于：
 
-- `raw_markdown/*.md`
-- `knowledge_markdown/*.md`
+- `raw_markdowns/*.md`
+- `knowledge_markdowns/*.md`
 
 当前所有 Markdown 文件都必须保持一级目录，避免多层目录导致图片相对路径混乱。
+
+---
+
+## 6.1 解析与分流原则
+
+Ingest 不应把“关键词命中”当成主流程。更合理的解析与分流顺序应该是：
+
+1. 先按文件格式和页面结构决定解析主链路
+2. 再按正文密度、版式复杂度、图片/公式占比决定是否追加 OCR / vision
+3. 最后才把标题、章节名、术语词面当成弱提示
+
+只有像“第 X 章”“定义”“定理”“证明”这类显式结构标记，才适合作为较强信号。
 
 ---
 
@@ -156,7 +168,7 @@ asset OCR 的效果包括：
 
 写文件：
 
-- `raw_markdown/<raw_file_id>.md`
+- `raw_markdowns/<raw_file_id>.md`
 - `assets/<asset_name_prefix>__*.png|jpg|...`
 
 解析元数据会进入 workflow state，并在 finalize 成功时统一写回 `raw_file.parse_metadata`。
@@ -200,7 +212,7 @@ asset OCR 的效果包括：
 
 Ingest 结束后，下游并不是直接消费 `raw_file` 本身，而是消费：
 
-`raw_file.markdown_path -> document -> document_chunk -> chunk_embeddings`
+`raw_file.parsed_markdown -> retrieval_chunk -> chunk_embeddings`
 
 这个桥接发生在：
 
@@ -208,7 +220,7 @@ Ingest 结束后，下游并不是直接消费 `raw_file` 本身，而是消费�
 
 所以当前的正式材料层应理解为：
 
-`RawFile -> raw_markdown / assets -> Document / DocumentChunk`
+`RawFile -> raw_markdowns / assets -> RetrievalChunk`
 
 ---
 
@@ -217,9 +229,11 @@ Ingest 结束后，下游并不是直接消费 `raw_file` 本身，而是消费�
 Ingest 现在最核心的价值不是“上传成功”，而是把资料稳稳转换成统一材料层：
 
 - `raw_file` 保存结构化解析状态
-- `raw/` 保存原始文件
-- `raw_markdown/` 保存正式解析正文
+- `raw_files/` 保存原始文件
+- `raw_markdowns/` 保存正式解析正文
 - `assets/` 保存共享扁平图片资产
 - OCR / vision 补强负责把图片里的信息真正带回 Markdown
+
+而且这层应坚持“语义与版式优先，关键词兜底”的策略：不要机械依赖章节名或词面匹配去决定解析流程。
 
 只要这层稳定，后面的知识图谱、知识文档、对话和测评都会明显更可靠。

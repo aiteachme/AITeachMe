@@ -6,7 +6,7 @@ Interact 负责把知识材料、学习者状态和教学策略组合成“会�
 
 当前目标包括：
 
-- 基于 `DocumentChunk` 检索回答问题
+- 基于 `RetrievalChunk` 做语义召回并回答问题
 - 结合聊天历史、薄弱点、错题做上下文装配
 - 通过 `POST + SSE` 流式返回回答
 - 在回答完成后保存可追踪消息记录和引用来源
@@ -31,9 +31,9 @@ Interact 负责把知识材料、学习者状态和教学策略组合成“会�
 | --- | --- | --- | --- |
 | 1. 请求接入 | `POST /api/v1/subjects/{subject}/chats/send` | `question`、可选 `selected_context`、`source_chunk_id` | 对话请求 |
 | 2. 历史与状态加载 | `nodes/history.py` | `subject` | 最近消息、弱项、错题摘要 |
-| 3. 检索上下文 | `nodes/retrieval.py` | `question`、`subject` | `document_chunk` 引用上下文 |
+| 3. 召回上下文 | `nodes/retrieval.py` | `question`、`subject` | `retrieval_chunk` 引用上下文 |
 | 4. 教学策略选择 | `nodes/strategy.py` | 问题、上下文、选段信息 | 当前回答策略 |
-| 5. Prompt 装配 | `nodes/prompt.py` | 历史、检索结果、策略 | LLM messages |
+| 5. Prompt 装配 | `nodes/prompt.py` | 历史、召回结果、策略 | LLM messages |
 | 6. 流式生成 | `nodes/stream.py` | messages | SSE token 流 |
 | 7. 结果持久化 | `nodes/persist.py` | 用户问题、助手回答、contexts | `chat_message` 成对记录 |
 | 8. 前端完成事件 | SSE done 事件 | `turn_id`、contexts | 页面级完成态 |
@@ -54,9 +54,19 @@ Interact 的价值在于：
 
 ### 4.2 对话必须绑定资料
 
-当前回答必须尽量基于当前 `Subject` 下的 `DocumentChunk`，而不是脱离资料开放发挥。
+当前回答必须尽量基于当前 `Subject` 下的 `RetrievalChunk`，而不是脱离资料开放发挥。
 
-### 4.3 学习者状态要进入上下文
+### 4.3 语义召回优先，而不是关键词命中优先
+
+更合理的主链路应该是：
+
+- 先理解问题意图和语义中心
+- 再做向量召回、结构邻域扩展、证据重排
+- 最后才把标题、章节名、术语词面当作弱提示
+
+只有像“第 X 章”“定义”“定理”“证明”这类显式结构锚点，才适合作为较强信号。
+
+### 4.4 学习者状态要进入上下文
 
 教学对话不仅看当前问题，还应该消化：
 
@@ -65,7 +75,7 @@ Interact 的价值在于：
 - 近期错题
 - 用户主动选中的片段上下文
 
-### 4.4 来源可解释性很重要
+### 4.5 来源可解释性很重要
 
 当前对话结果需要能够回到：
 
@@ -75,7 +85,7 @@ Interact 的价值在于：
 
 这样前端才能展示“引用来源卡片”和“查看原文”。
 
-### 4.5 流式输出是主通道
+### 4.6 流式输出是主通道
 
 Interact 当前以 `POST + SSE` 为主，而不是普通同步 JSON 返回。所有设计都要围绕“边生成边展示”展开。
 
@@ -136,16 +146,16 @@ Interact 当前不直接写图谱、课程、掌握度等知识层对象。
 
 | 节点 / 模块 | 读 DB | 写 DB | 写 FS |
 | --- | --- | --- | --- |
-| `nodes/history.py` | `chat_message`、legacy `user_profile`、legacy `mistake` | 无 | 无 |
-| `nodes/retrieval.py` | `document_chunk`、向量索引 | 无 | 无 |
+| `nodes/history.py` | `chat_message`、旧 `user_profile`、旧 `mistake` | 无 | 无 |
+| `nodes/retrieval.py` | `retrieval_chunk`、向量索引 | 无 | 无 |
 | `nodes/stream.py` | 无 | 无 | 无 |
 | `nodes/persist.py` | 无 | `chat_message` | 无 |
 
 补充说明：
 
-- 当前检索引用来自 `document_chunk`
+- 当前引用上下文来自 `retrieval_chunk`
 - 查看原文接口消费的是 `chunk_id`
-- 当前弱项和错题摘要仍主要来自 legacy profile/exam 查询链路
+- 当前弱项和错题摘要仍主要来自旧 profile/exam 查询链路
 
 ---
 
@@ -153,7 +163,7 @@ Interact 当前不直接写图谱、课程、掌握度等知识层对象。
 
 ### 9.1 当前 Interact 是 workflow-backed，但学习状态来源仍有旧链路成分
 
-历史、弱项、错题已经进入工作流上下文，但其中一部分仍通过 legacy repo 查询得到。后续演进时要显式说明自己依赖的是哪套状态层。
+历史、弱项、错题已经进入工作流上下文，但其中一部分仍通过旧 repo 查询得到。后续演进时要显式说明自己依赖的是哪套状态层。
 
 ### 9.2 前端应该把 contexts 用起来
 
@@ -169,7 +179,7 @@ Interact 当前不直接写图谱、课程、掌握度等知识层对象。
 
 Interact 当前已经形成清晰的工作流闭环：
 
-- 从 `DocumentChunk` 检索上下文
+- 从 `RetrievalChunk` 做语义召回、邻域扩展和证据重排
 - 结合历史、弱项和错题决定回答策略
 - 用 SSE 流式把答案推给前端
 - 把最终 turn 和引用来源落到 `chat_message`

@@ -6,7 +6,7 @@ Digest 负责把 ingest 已解析好的材料，统一构建为三类结果：
 
 - 面向用户的知识文档
 - 面向系统的知识图谱
-- 面向教学组织的 curriculum / theme tree / prereq DAG
+- 面向教学组织的 curriculum 结构与学习顺序视图
 
 当前对外已经不再把这三条链路暴露成多个入口，而是统一收口到一个 build。
 
@@ -18,7 +18,7 @@ Digest 负责把 ingest 已解析好的材料，统一构建为三类结果：
 | --- | --- |
 | `POST /knowledge/build` | 触发 unified digest build |
 | `POST /knowledge/docs` | 读取当前已发布知识文档 |
-| `POST /knowledge/overview` | 读取当前已发布 curriculum / theme tree / prereq DAG / 图谱聚合结果 |
+| `POST /knowledge/overview` | 读取当前已发布 curriculum 结构、依赖关系与图谱聚合结果 |
 
 接口约束：
 
@@ -77,6 +77,7 @@ Digest 现在的内部结构分成四层：
   - 文件存在性校验
   - `page_number` / `asset_type` / `file_size` 补充
 - shared prepare 不调 LLM，只做规则级处理和并发 I/O。
+- shared prepare 可以识别显式结构锚点，但不会把“章节名关键词命中”当成主流程。
 
 ---
 
@@ -97,14 +98,15 @@ Digest 现在的内部结构分成四层：
 
 ### 5.3 当前实现原则
 
-- `outline_reduce` 优先消费 KG lane 早期发布的 `TopicAnchorSnapshot`，先按语义锚点搭章节骨架。
-- 无 graph anchors 时，doc lane 先信任 LLM outline；基于关键词的 theme 命名只保留为最后兜底。
+- `outline_reduce` 优先消费 KG lane 早期发布的 `TopicAnchorSnapshot`，先按语义锚点和证据聚类搭章节骨架。
+- 无 graph anchors 时，doc lane 先信任语义 outline；标题词面、章节名、theme 关键词只保留为最后兜底。
 - 章节写作和审校允许并发。
 - 每章只引用命中的 `chunk_uids` 对应的图片，不再按整文件粗放塞图。
 - doc lane 自己不再负责 live publish。
 - doc lane 的 `finalize` 节点只做 staging，不做正式发布。
 - 最终对外发布的知识文档，不直接等于 doc lane 初稿；它会在 curriculum / theme tree 发布后，再重建成按教学主题组织的知识讲义。
 - 最终 docs 要和 theme tree / graph 对齐，但不能机械复刻树节点；它更像“老师整理后的章节讲义”，而不是树形节点清单。
+- 只有“第 X 章”“定义”“定理”“证明”这类显式结构标签，才适合作为较强章节组织信号。
 
 ---
 
@@ -112,18 +114,16 @@ Digest 现在的内部结构分成四层：
 
 ### 6.1 输入
 
-- unified materialize 后的 canonical `DocumentChunk`
+- unified materialize 后的 canonical `RetrievalChunk`
 - `digest_chunk_uid`
 - 可选的 `ChapterPriors`
 
 ### 6.2 产出
 
 - `knowledge_node`
-- `knowledge_revision`
 - `knowledge_alias`
 - `knowledge_edge`
-- `edge_revision`
-- `evidence_link`
+- `knowledge_evidence`
 - `TopicAnchorSnapshot`
 - `ImpactSet`
 
@@ -144,10 +144,12 @@ Digest 现在的内部结构分成四层：
 
 ### 7.2 产出
 
-- `teaching_unit*`
-- `theme_tree*`
-- `prereq_dag*`
-- `curriculum_snapshot`
+- `teaching_unit`
+- `teaching_unit_membership`
+- `curriculum_version`
+- `curriculum_tree_node`
+- `curriculum_unit_link`
+- `curriculum_dependency`
 
 ### 7.3 当前统一成功条件
 
@@ -155,8 +157,8 @@ Digest 现在的内部结构分成四层：
 
 - docs 已发布到 live
 - 图谱主结果已完成
-- `curriculum_snapshot` 已发布
-- `/knowledge/overview` 能读到当前 theme tree / prereq DAG / curriculum
+- `curriculum_version` 已发布
+- `/knowledge/overview` 能读到当前课程结构、依赖关系和图谱聚合结果
 - `/knowledge/docs` 返回的是 curriculum 对齐后的最终知识讲义，而不是 doc lane 中间稿
 
 如果只生成了文档，但 snapshot 没发布，则 unified build 应视为失败，不允许切 live。
@@ -171,10 +173,10 @@ Digest 现在的内部结构分成四层：
 - doc lane 只写 `_build/`
 - unified 在 curriculum 成功后统一执行 publish
 - publish 内容包括：
-  - `knowledge_markdown/chapter_*.md`
-  - `knowledge_markdown/merged_knowledge_base.md`
-  - `knowledge_markdown/manifest.json`
-  - `knowledge_doc` published 记录
+  - `knowledge_markdowns/chapter_*.md`
+  - `knowledge_markdowns/merged_knowledge_base.md`
+  - `knowledge_markdowns/manifest.json`
+  - `knowledge_document` published 记录
 
 这条规则的目标是避免出现“文档已经更新，但 overview 还是旧的或为空”的半成品状态。
 
@@ -188,6 +190,12 @@ Digest 当前默认采用异步并发，而不是单线程串行执行：
 - doc lane：章节 draft / review 并发
 - kg lane：chunk extract 并发
 - 全局 LLM 调用：统一走 semaphore 限流
+
+额外原则：
+
+- 语义聚合优先于关键词聚合
+- 章节名生成晚于结构分组，不先拿词面做硬切分
+- 检索块命中后应优先做邻近扩展和证据重排，而不是重复词面筛选
 
 说明：
 

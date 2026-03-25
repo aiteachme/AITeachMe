@@ -2,7 +2,7 @@
 
 Reads DB: ``raw_file``.
 Writes DB: ``raw_file`` classification / ingest-prep metadata.
-Writes FS: reads the persisted raw file path and derives deterministic ``raw_markdown/`` and shared ``assets/`` paths.
+Writes FS: reads the persisted raw file path and derives deterministic ``raw_markdowns/`` and shared ``assets/`` paths.
 Idempotency: reruns refresh metadata for the same ``raw_file`` and reuse the same output paths.
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import build_asset_dir, build_asset_name_prefix, build_markdown_path
+from app.services.upload_support import build_asset_dir, build_asset_name_prefix, build_raw_markdown_path
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileClassifiedEvent
@@ -39,7 +39,7 @@ def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "filename": raw_file.filename,
             "filetype": raw_file.filetype,
             "file_path": raw_file.file_path,
-            "markdown_path": str(build_markdown_path(raw_file.subject, file_id)),
+            "markdown_path": str(build_raw_markdown_path(raw_file.subject, file_id)),
             "asset_dir": str(build_asset_dir(raw_file.subject, file_id)),
             "asset_name_prefix": build_asset_name_prefix(
                 filename=raw_file.filename,

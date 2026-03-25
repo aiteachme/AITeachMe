@@ -4,6 +4,8 @@
 
 本文档用于说明 AITeachMe 当前真正重要的领域对象、状态对象和它们之间的边界。
 
+为减少术语漂移，本文统一使用最新业务名；如果要核对当前代码里的旧表名或历史落地细节，以 `11_database_and_storage_architecture.md` 为准。
+
 这份文档重点回答 4 个问题：
 
 - 系统里哪些对象是稳定的业务实体。
@@ -17,14 +19,13 @@
 
 | 边界 | 核心对象 | 当前定位 |
 | --- | --- | --- |
-| 工作空间 | `Subject`、`RawFile` | 当前主路径 |
-| 材料层 | `Document`、`DocumentChunk`、`chunk_embeddings` | 当前主路径 |
-| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`EvidenceLink`、`KnowledgeAlias`、`KnowledgeRevision` | 当前主路径 |
-| 课程结构层 | `TeachingUnit*`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot` | 当前主路径 |
-| 知识文档层 | `KnowledgeDoc` | 当前主路径 |
-| 交互层 | `ChatMessage` | 当前主路径 |
-| 测评与学习状态 | `QuestionBuildJob`、`ExamGenerateJob`、`ExamGradeJob`、`UserKnowledgeState`、`ReviewTask` | 演进主方向 |
-| 旧测评层 | `Exam`、`Question`、`ExamSubmission`、`AnswerRecord`、`Mistake`、`UserProfile` | 仍在兼容期 |
+| 工作空间 | `User`、`Subject` | 当前主路径 |
+| 接入材料层 | `RawFile`、`RawFileAsset` | 当前主路径 |
+| 统一检索层 | `RetrievalChunk`、`chunk_embeddings` | 当前主路径 |
+| 知识层 | `KnowledgeDocument`、`KnowledgeNode`、`KnowledgeEdge`、`KnowledgeEvidence`、`KnowledgeAlias` | 当前主路径 |
+| 课程结构层 | `TeachingUnit`、`CurriculumVersion`、`CurriculumTreeNode`、`CurriculumDependency` | 当前主路径 |
+| 交互层 | `ChatSession`、`ChatMessage` | 当前主路径 |
+| 测评与学习状态 | `QuestionTemplate`、`ExamPaper`、`UserAnswerAttempt`、`UserKnowledgeState`、`ReviewTask` | 当前主路径 |
 
 关键更新：
 
@@ -56,23 +57,36 @@
 
 它回答的是“资料是否已经进入系统并可被 Digest 消费”。
 
-### 3.3 Document / DocumentChunk / chunk_embeddings
+### 3.3 RetrievalChunk / chunk_embeddings
 
-这三者是材料层桥接对象：
+这两者是统一检索层桥接对象：
 
-- `Document` 表示 Digest 可消费的文档级材料。
-- `DocumentChunk` 表示检索、证据引用、图谱抽取使用的块级材料。
-- `chunk_embeddings` 是与 `DocumentChunk` 同步维护的向量索引。
+- `RetrievalChunk` 表示检索、证据引用、图谱抽取、题目解释和对话引用共用的统一语义分块。
+- `chunk_embeddings` 是与 `RetrievalChunk` 同步维护的统一向量索引。
 
-它们是 Ingest、Digest、Interact 共同依赖的稳定材料层。
+`RetrievalChunk` 的来源可以是：
+
+- `RawFile`
+- `KnowledgeDocument`
+- `KnowledgeNode`
+- `KnowledgeEdge`
+- `QuestionTemplate`
+- `ExamPaperItem`
+
+这层的重要原则不是“靠关键词命中”，而是：
+
+- 以正文语义为主信号
+- 以结构位置、邻近上下文、证据链为辅信号
+- 标题路径、章节名、术语标签只作为弱提示
+
+只有“第 X 章”“定义”“定理”“证明”这类显式结构锚点，才适合作为较强信号。
 
 ### 3.4 Knowledge Graph
 
 知识层当前由下列对象组成：
 
 - `KnowledgeNode` / `KnowledgeEdge`
-- `KnowledgeRevision` / `EdgeRevision`
-- `EvidenceLink`
+- `KnowledgeEvidence`
 - `KnowledgeAlias`
 
 这层回答“学科知识世界本身是什么样”。
@@ -82,20 +96,17 @@
 课程结构层负责把知识图谱转换为教学组织视图，核心对象包括：
 
 - `TeachingUnit`
-- `TeachingUnitRevision`
 - `TeachingUnitMembership`
-- `ThemeTreeVersion`
-- `ThemeTreeNode`
-- `UnitTreeMembership`
-- `PrereqDagVersion`
-- `UnitDependency`
-- `CurriculumSnapshot`
+- `CurriculumVersion`
+- `CurriculumTreeNode`
+- `CurriculumUnitLink`
+- `CurriculumDependency`
 
 这层回答“这些知识应该怎么组织、怎么展示、怎么安排学习顺序”。
 
-### 3.6 KnowledgeDoc
+### 3.6 KnowledgeDocument
 
-知识文档层现在只有一个长期业务对象：`KnowledgeDoc`。
+知识文档层现在只有一个长期业务对象：`KnowledgeDocument`。
 
 它对应的是已经发布的知识文档章节记录，而不是构建任务。
 
@@ -106,22 +117,22 @@
 
 知识文档层的重要结论：
 
-- `KnowledgeDoc` 承载的是已发布章节。
+- `KnowledgeDocument` 承载的是已发布知识文档。
 - `merged_knowledge_base.md` 是面向阅读页的统一入口。
 - 不再引入 `DocGenJob` 作为外部状态对象。
 - 构建中的状态由 `.build.lock` 与 `_build/` staging 目录表达。
 - 最近一版发布元信息由 `manifest.json` 表达。
 
-### 3.7 ChatMessage
+### 3.7 ChatSession / ChatMessage
 
-`ChatMessage` 表达对话真相，主要记录：
+`ChatSession` / `ChatMessage` 表达对话真相，主要记录：
 
 - 用户与助手消息。
 - turn 对。
-- 检索上下文。
+- 语义召回上下文。
 - 创建时间。
 
-它消费知识文档或 chunk 检索结果，但不反向承担知识真相层职责。
+它消费知识文档或 `RetrievalChunk` 结果，但不反向承担知识真相层职责。
 
 ---
 
@@ -176,7 +187,7 @@
 - 若干章节 Markdown 文件
 - 一个 merged Markdown 文件
 - 一份 manifest
-- 一组 `KnowledgeDoc` 章节记录
+- 一组 `KnowledgeDocument` 记录
 
 ### 5.2 构建与发布的边界
 
@@ -186,7 +197,7 @@
 2. 再生成 `_build/merged_knowledge_base.md`
 3. 全部成功后覆盖正式目录
 4. 同步覆盖 `manifest.json`
-5. 同步重建 `KnowledgeDoc` published 记录
+5. 同步重建 `KnowledgeDocument` published 记录
 
 这保证了：
 
@@ -204,10 +215,10 @@
 
 - 工作空间实体
 - 原始文件元数据
-- 材料层对象
+- 统一检索层对象
 - 知识图谱与课程结构
 - 对话与测评结构化数据
-- `KnowledgeDoc` 已发布章节记录
+- `KnowledgeDocument` 已发布记录
 
 ### 6.2 本地文件存什么
 
@@ -224,8 +235,8 @@
 
 对知识文档链路来说：
 
-- 已发布章节的业务索引真相在数据库 `KnowledgeDoc`
-- 已发布正文真相在 `knowledge_markdown/*.md`
+- 已发布知识文档的业务索引真相在数据库 `KnowledgeDocument`
+- 已发布正文真相在 `knowledge_markdowns/*.md`
 - 最近一版发布时间和来源元信息真相在 `manifest.json`
 
 也就是说，这条链路是“数据库索引 + 本地 Markdown 正文 + manifest 元信息”的联合真相，而不是 `DocGenJob`。
@@ -236,7 +247,7 @@
 
 当前 Docs 链路的领域边界已经明确：
 
-- `KnowledgeDoc` 是业务对象。
+- `KnowledgeDocument` 是业务对象。
 - `.build.lock`、`_build/`、`manifest.json` 是内部运行时状态。
 - 前端进度条是前端自己的体验层协议，不再依赖后端状态对象。
 - Graph / Curriculum 仍保留运行时 job 语义，但数据库真相已经回到最终业务表。

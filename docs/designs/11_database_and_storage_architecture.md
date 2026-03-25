@@ -4,6 +4,15 @@
 
 本文档描述当前代码已经落地的数据库与存储架构，并给出后续中心化部署的推荐方向。
 
+目标态数据库结构方案另见：
+
+- `13_database_schema_inventory.md`
+
+两份文档的分工如下：
+
+- `11` 讲当前真实存储边界与演进路线
+- `13` 讲后续希望收敛到的目标态数据库结构
+
 重点回答四个问题：
 
 - 现在数据库里到底存什么
@@ -29,6 +38,11 @@ AITeachMe 当前不是“纯数据库产品”，而是三层并存：
 - 数据库保存结构化真相
 - 本地文件保存正式文本产物和调试友好产物
 - 开发阶段允许数据库与本地文件双写
+
+补充说明：
+
+- 本文描述当前代码里的真实存储对象，因此仍会出现一些旧表名。
+- 跨文档讨论时，可以把当前的 `document_chunk` 理解为“共享检索层”的当前实现；目标态统一口径见 `13_database_schema_inventory.md` 中的 `retrieval_chunk`。
 
 ---
 
@@ -83,7 +97,7 @@ AITeachMe 当前不是“纯数据库产品”，而是三层并存：
 | `review_task` | 复习调度任务 |
 | `exam_paper_generation_context` | 组卷上下文 |
 
-### 3.5 Legacy 兼容表
+### 3.5 旧链路兼容表
 
 当前代码里仍保留旧链路数据表：
 
@@ -104,22 +118,22 @@ AITeachMe 当前不是“纯数据库产品”，而是三层并存：
 
 ```text
 backend/data/<subject>/
-├─ raw/
-├─ raw_markdown/
+├─ raw_files/
+├─ raw_markdowns/
 ├─ assets/
-└─ knowledge_markdown/
+└─ knowledge_markdowns/
 ```
 
 含义分别是：
 
-- `raw/`：上传原文件
-- `raw_markdown/`：ingest 解析出的原始 Markdown
+- `raw_files/`：上传原文件
+- `raw_markdowns/`：ingest 解析出的原始 Markdown
 - `assets/`：当前 subject 下的共享扁平图片/附件目录
-- `knowledge_markdown/`：已发布的知识文档
+- `knowledge_markdowns/`：已发布的知识文档
 
 另外：
 
-- `knowledge_markdown/_build/`：知识文档 staging / 中间产物
+- `knowledge_markdowns/_build/`：知识文档 staging / 中间产物
 - `debug/`：调试快照
 - `temp/`：临时上传文件
 
@@ -150,8 +164,13 @@ Markdown 正文里的图片引用统一约定为：
 
 原因：
 
-- `raw_markdown/` 与 `knowledge_markdown/` 都和 `assets/` 同级
+- `raw_markdowns/` 与 `knowledge_markdowns/` 都和 `assets/` 同级
 - 所有 Markdown 都可以复用同一套相对路径规则
+
+补充原则：
+
+- 标题路径、章节名和术语词面主要服务展示与导航，不应成为存储协议的一部分
+- 引用路径必须稳定、相对、可重放，不能依赖关键词拼接
 
 ### 5.3 中心化部署时的演进方向
 
@@ -160,8 +179,10 @@ Markdown 正文里的图片引用统一约定为：
 更推荐逐步演进为：
 
 - `storage_backend`: `local` / `s3` / `oss` / `minio`
-- `storage_uri`: 对象存储 URI 或规范化 key
+- `storage_key`: 对象存储 key 或规范化路径键
 - `local_cache_path`: 仅作为运行时缓存，不作为主真相
+
+详细目标态字段设计见 `13_database_schema_inventory.md`，本文不再展开具体表字段。
 
 ---
 
@@ -207,7 +228,7 @@ Markdown 正文里的图片引用统一约定为：
 
 - PostgreSQL 对关系查询、JSON、事务、并发写入更稳
 - pgvector 与当前 `chunk_embeddings` 迁移路径最自然
-- 对象存储天然适合 `raw/raw_markdown/assets/knowledge_markdown`
+- 对象存储天然适合 `raw_files/raw_markdowns/assets/knowledge_markdowns`
 - 后续多 worker / 多实例共享数据更容易
 
 ### 7.2 `MySQL + OSS` 能不能做
@@ -236,7 +257,7 @@ Markdown 正文里的图片引用统一约定为：
 - 公有云：OSS / S3 / COS
 - 私有化：MinIO
 
-接口层只要尽早统一成“存储后端 + storage uri”抽象，底层就能替换。
+接口层只要尽早统一成“存储后端 + storage_key”抽象，底层就能替换。
 
 ---
 
@@ -245,17 +266,17 @@ Markdown 正文里的图片引用统一约定为：
 ### 8.1 Ingest
 
 - DB：`raw_file`
-- FS：`raw/`、`raw_markdown/`、`assets/`
+- FS：`raw_files/`、`raw_markdowns/`、`assets/`
 
 ### 8.2 Digest Docs
 
 - DB：`knowledge_doc`
-- FS：`knowledge_markdown/`、`knowledge_markdown/_build/`
+- FS：`knowledge_markdowns/`、`knowledge_markdowns/_build/`
 
 ### 8.3 Digest Graph
 
 - DB：`document`、`document_chunk`、`chunk_embeddings`、`knowledge_*`、`evidence_link`
-- FS：读取 `raw_markdown/` 与 `assets/`
+- FS：读取 `raw_markdowns/` 与 `assets/`
 
 ### 8.4 Digest Curriculum
 
@@ -288,9 +309,9 @@ Markdown 正文里的图片引用统一约定为：
 从当前本地优先架构迁移到中心化部署，建议按下面顺序：
 
 1. 先稳定存储抽象  
-   把 `raw_file.file_path/markdown_path/asset_dir` 和 `knowledge_doc.markdown_path` 逐步抽象成 `storage_backend + storage_uri`
+   把 `raw_file.file_path/markdown_path/asset_dir` 和 `knowledge_doc.markdown_path` 逐步抽象成 `storage_backend + storage_key`
 2. 再切对象存储  
-   让 `raw/raw_markdown/assets/knowledge_markdown` 进入 OSS / S3 / MinIO
+   让 `raw_files/raw_markdowns/assets/knowledge_markdowns` 进入 OSS / S3 / MinIO
 3. 再切关系库  
    SQLite 迁到 PostgreSQL
 4. 最后切向量层  

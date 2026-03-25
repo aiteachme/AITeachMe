@@ -66,10 +66,10 @@
 
 ```text
 backend/data/<subject>/
-├─ raw/
-├─ raw_markdown/
+├─ raw_files/
+├─ raw_markdowns/
 ├─ assets/
-├─ knowledge_markdown/
+├─ knowledge_markdowns/
 │  └─ _build/
 ├─ temp/
 └─ debug/
@@ -79,11 +79,11 @@ backend/data/<subject>/
 
 | 目录 | 作用 | 类型 |
 | --- | --- | --- |
-| `raw/` | 用户上传的原始文件 | 正式业务产物 |
-| `raw_markdown/` | ingest 解析后的原始 Markdown | 正式业务产物 |
+| `raw_files/` | 用户上传的原始文件 | 正式业务产物 |
+| `raw_markdowns/` | ingest 解析后的原始 Markdown | 正式业务产物 |
 | `assets/` | 当前 subject 下所有图片/附件的共享扁平目录 | 正式业务产物 |
-| `knowledge_markdown/` | 已发布知识文档 | 正式业务产物 |
-| `knowledge_markdown/_build/` | 知识文档构建中的 staging 与中间产物 | staging / 调试产物 |
+| `knowledge_markdowns/` | 已发布知识文档 | 正式业务产物 |
+| `knowledge_markdowns/_build/` | 知识文档构建中的 staging 与中间产物 | staging / 调试产物 |
 | `temp/` | 上传落地前的临时文件 | 临时目录 |
 | `debug/` | 其他 workflow 的调试快照 | 调试产物 |
 
@@ -93,8 +93,8 @@ backend/data/<subject>/
 
 单个原始文件的正式落盘现在是：
 
-- `raw/<raw_file_id>.<ext>`
-- `raw_markdown/<raw_file_id>.md`
+- `raw_files/<raw_file_id>.<ext>`
+- `raw_markdowns/<raw_file_id>.md`
 - `assets/<asset_name_prefix>__*.png|jpg|...`
 
 这里有两个关键约束：
@@ -112,17 +112,22 @@ backend/data/<subject>/
 
 当前约定：
 
-- `raw_markdown/*.md` 全部放在一级目录
-- `knowledge_markdown/*.md` 全部放在一级目录
+- `raw_markdowns/*.md` 全部放在一级目录
+- `knowledge_markdowns/*.md` 全部放在一级目录
 - 图片统一通过相对路径引用：
 
 `../assets/<flattened_asset_name>`
 
 这样做的原因是：
 
-- `raw_markdown/` 和 `knowledge_markdown/` 都是 `assets/` 的兄弟目录
+- `raw_markdowns/` 和 `knowledge_markdowns/` 都是 `assets/` 的兄弟目录
 - 所有 Markdown 都能复用同一套相对路径
 - 后续如果数据库里直接保存 Markdown 正文，也可以把图片路径替换成绝对路径或对象存储 URI
+
+补充原则：
+
+- Markdown 里的标题路径主要服务展示和导航，不作为文件落盘协议的一部分
+- 图片引用必须稳定、相对、可重放，不能依赖关键词拼接路径
 
 ---
 
@@ -132,7 +137,7 @@ Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
 
 ### 8.1 正式目录
 
-`backend/data/<subject>/knowledge_markdown/`
+`backend/data/<subject>/knowledge_markdowns/`
 
 其中包含：
 
@@ -143,7 +148,7 @@ Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
 
 ### 8.2 staging / 中间目录
 
-`backend/data/<subject>/knowledge_markdown/_build/`
+`backend/data/<subject>/knowledge_markdowns/_build/`
 
 这里同时承担两类角色：
 
@@ -167,25 +172,24 @@ Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
 
 通常会得到：
 
-- `raw/<raw_file_id>.<ext>`
-- `raw_markdown/<raw_file_id>.md`
+- `raw_files/<raw_file_id>.<ext>`
+- `raw_markdowns/<raw_file_id>.md`
 - `assets/<asset_name_prefix>__*.png|jpg|...`
 
 ### 9.2 构建知识文档后
 
 通常会得到：
 
-- `knowledge_markdown/chapter_XX_*.md`
-- `knowledge_markdown/merged_knowledge_base.md`
-- `knowledge_markdown/manifest.json`
-- `knowledge_markdown/_build/*`
+- `knowledge_markdowns/chapter_XX_*.md`
+- `knowledge_markdowns/merged_knowledge_base.md`
+- `knowledge_markdowns/manifest.json`
+- `knowledge_markdowns/_build/*`
 
 ### 9.3 Digest Graph / Curriculum 后
 
 主要结果在数据库：
 
-- `document`
-- `document_chunk`
+- `retrieval_chunk`
 - `chunk_embeddings`
 - `knowledge_*`
 - `teaching_unit*`
@@ -203,16 +207,16 @@ Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
 
 - `temp/`
 - `debug/`
-- `knowledge_markdown/_build/`
+- `knowledge_markdowns/_build/`
 
 ### 10.2 谨慎删除
 
-- `raw/`
-- `raw_markdown/`
+- `raw_files/`
+- `raw_markdowns/`
 - `assets/`
-- `knowledge_markdown/chapter_XX_*.md`
-- `knowledge_markdown/merged_knowledge_base.md`
-- `knowledge_markdown/manifest.json`
+- `knowledge_markdowns/chapter_XX_*.md`
+- `knowledge_markdowns/merged_knowledge_base.md`
+- `knowledge_markdowns/manifest.json`
 
 这些文件代表当前正式业务产物。
 
@@ -230,7 +234,7 @@ Docs workflow 当前使用固定目录，不再使用 `job_id` 目录。
 运行时文件布局已经明确分成三层：
 
 - 数据库中的结构化真相
-- `raw/raw_markdown/assets/knowledge_markdown` 中的正式文件产物
+- `raw_files/raw_markdowns/assets/knowledge_markdowns` 中的正式文件产物
 - `_build/debug/temp` 中的 staging 与调试文件
 
 后续无论本地部署还是中心化部署，这三层边界都应继续保持稳定。

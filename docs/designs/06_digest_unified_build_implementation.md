@@ -96,9 +96,9 @@ backend/app/workflows/digest/
 - curriculum 完成后执行 `rebuild_docs`
 - unified 在 curriculum 成功后统一 publish
 - publish 同时更新：
-  - `knowledge_markdown/chapter_*.md`
-  - `knowledge_markdown/merged_knowledge_base.md`
-  - `knowledge_markdown/manifest.json`
+  - `knowledge_markdowns/chapter_*.md`
+  - `knowledge_markdowns/merged_knowledge_base.md`
+  - `knowledge_markdowns/manifest.json`
   - `knowledge_doc`
 
 ---
