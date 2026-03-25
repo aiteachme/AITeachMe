@@ -51,17 +51,36 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
             chunk_uids=chunk_uids,
             topic_snapshot=topic_snapshot,
         )
+        needs_anchor_rewrite = should_rewrite_for_anchor_alignment(
+            chapter_title=chapter_title,
+            markdown=markdown,
+            chunk_uids=chunk_uids,
+            topic_snapshot=topic_snapshot,
+        )
+
+        # Resolve subject context from shared inputs via unified session
+        subject_context = ""
+        teaching_style_hint = ""
+        if build_session_id:
+            try:
+                _session = get_unified_build_session(build_session_id)
+                if _session.shared_inputs and _session.shared_inputs.subject_profile:
+                    subject_context = _session.shared_inputs.subject_profile.build_context_string()
+                    teaching_style_hint = _session.shared_inputs.subject_profile.teaching_style_hint
+            except (KeyError, AttributeError):
+                pass
 
         async with strategy.chapter_semaphore:
             review_result = await review_chapter(
                 markdown,
                 source_summary + coverage_hints,
                 user_prompt=user_prompt,
+                subject_context=subject_context,
             )
 
         llm_calls_total = 1
         final_markdown = markdown
-        if not review_result.get("passed", True):
+        if needs_anchor_rewrite or not review_result.get("passed", True):
             global_outline_text = build_global_outline_summary(outline_tree)
             source_text = "\n\n---\n\n".join(source_contents) if source_contents else "(no source content)"
             async with strategy.chapter_semaphore:
@@ -77,11 +96,14 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
                     source_brief=source_brief,
                     formula_refs=formula_refs,
                     source_content=source_text + coverage_hints,
+                    subject_context=subject_context,
+                    teaching_style_hint=teaching_style_hint,
                 )
                 review_result = await review_chapter(
                     final_markdown,
                     source_summary + coverage_hints,
                     user_prompt=user_prompt,
+                    subject_context=subject_context,
                 )
             llm_calls_total += 2
 
@@ -89,6 +111,7 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
         node_logger.info(
             "docgen_reviewing_chapter_completed",
             chapter_index=chapter_index,
+            anchor_rewrite=needs_anchor_rewrite,
             passed=review_result.get("passed", True),
             review_ms=review_ms,
         )
@@ -153,3 +176,33 @@ def build_coverage_hints(
         "\n\nPotential missing graph anchors: "
         + ", ".join(missing_anchors[:6])
     )
+
+
+def should_rewrite_for_anchor_alignment(
+    *,
+    chapter_title: str,
+    markdown: str,
+    chunk_uids: list[str],
+    topic_snapshot: TopicAnchorSnapshot | None,
+) -> bool:
+    """Require one rewrite when graph anchors and docs wording clearly drift apart."""
+
+    if topic_snapshot is None or not topic_snapshot.anchors or not chunk_uids:
+        return False
+
+    relevant_anchor_names = [
+        anchor.topic_name.strip()
+        for anchor in topic_snapshot.anchors
+        if anchor.topic_name.strip() and set(anchor.chunk_uids) & set(chunk_uids)
+    ]
+    if not relevant_anchor_names:
+        return False
+
+    lowered_markdown = markdown.lower()
+    lowered_title = chapter_title.lower()
+    if any(
+        anchor_name.lower() in lowered_markdown or anchor_name.lower() in lowered_title
+        for anchor_name in relevant_anchor_names
+    ):
+        return False
+    return True

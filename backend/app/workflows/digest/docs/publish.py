@@ -40,6 +40,23 @@ def count_words(text: str) -> int:
     return len(text.replace(" ", "").replace("\n", ""))
 
 
+def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
+    lines: list[str] = []
+    for line in markdown.splitlines():
+        stripped = line.lstrip()
+        if not stripped.startswith("#"):
+            lines.append(line)
+            continue
+        prefix = line[: len(line) - len(stripped)]
+        hashes, _, title = stripped.partition(" ")
+        if not title:
+            lines.append(line)
+            continue
+        demoted_level = min(6, len(hashes) + levels)
+        lines.append(f"{prefix}{'#' * demoted_level} {title}")
+    return "\n".join(lines).strip()
+
+
 def build_merged_markdown(chapters: list[dict]) -> str:
     """Merge chapter markdown into the published knowledge-doc layout."""
 
@@ -53,9 +70,27 @@ def build_merged_markdown(chapters: list[dict]) -> str:
         title = chapter.get("title", "")
         chapter_index = chapter.get("chapter_index", 0)
         toc.append(f"- 第{chapter_index}章 {title}")
+        for section_title in chapter.get("section_titles", [])[:12]:
+            toc.append(f"  - {section_title}")
 
     separator = "\n\n---\n\n"
-    body = [chapter.get("markdown", "") for chapter in chapters]
+    body: list[str] = []
+    for chapter in chapters:
+        markdown = str(chapter.get("markdown", ""))
+        curriculum_path = list(chapter.get("curriculum_path", []))
+        if curriculum_path:
+            body.extend(
+                [
+                    f"{'#' * min(6, level + 2)} {title}"
+                    for level, title in enumerate(curriculum_path)
+                ]
+            )
+            body.append("")
+            body.append(
+                _demote_markdown_headings(markdown, levels=len(curriculum_path) + 1)
+            )
+        else:
+            body.append(markdown)
     return "\n".join(toc) + separator + separator.join(body) + "\n"
 
 

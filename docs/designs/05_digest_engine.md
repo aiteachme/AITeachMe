@@ -43,7 +43,7 @@ Digest 现在的内部结构分成四层：
 
 当前统一主干是：
 
-`shared prepare -> doc/kg 并行 -> consistency -> repair -> curriculum -> publish -> cleanup`
+`shared prepare -> doc/kg 并行 -> consistency -> repair -> curriculum -> rebuild docs -> publish -> cleanup`
 
 设计约束：
 
@@ -97,10 +97,14 @@ Digest 现在的内部结构分成四层：
 
 ### 5.3 当前实现原则
 
+- `outline_reduce` 优先消费 KG lane 早期发布的 `TopicAnchorSnapshot`，先按语义锚点搭章节骨架。
+- 无 graph anchors 时，doc lane 先信任 LLM outline；基于关键词的 theme 命名只保留为最后兜底。
 - 章节写作和审校允许并发。
 - 每章只引用命中的 `chunk_uids` 对应的图片，不再按整文件粗放塞图。
 - doc lane 自己不再负责 live publish。
 - doc lane 的 `finalize` 节点只做 staging，不做正式发布。
+- 最终对外发布的知识文档，不直接等于 doc lane 初稿；它会在 curriculum / theme tree 发布后，再重建成按教学主题组织的知识讲义。
+- 最终 docs 要和 theme tree / graph 对齐，但不能机械复刻树节点；它更像“老师整理后的章节讲义”，而不是树形节点清单。
 
 ---
 
@@ -153,6 +157,7 @@ Digest 现在的内部结构分成四层：
 - 图谱主结果已完成
 - `curriculum_snapshot` 已发布
 - `/knowledge/overview` 能读到当前 theme tree / prereq DAG / curriculum
+- `/knowledge/docs` 返回的是 curriculum 对齐后的最终知识讲义，而不是 doc lane 中间稿
 
 如果只生成了文档，但 snapshot 没发布，则 unified build 应视为失败，不允许切 live。
 

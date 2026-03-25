@@ -23,6 +23,7 @@ knowledge/build
   -> consistency
   -> bounded_repair
   -> derive_curriculum
+  -> rebuild_docs
   -> publish_outputs
   -> cleanup
 ```
@@ -30,6 +31,7 @@ knowledge/build
 说明：
 
 - `doc_lane` 和 `kg_lane` 都是 async 并发执行。
+- `rebuild_docs` 会在 curriculum 发布后，把最终 docs 重组为 curriculum-aligned teaching notes。
 - `publish_outputs` 必须晚于 curriculum snapshot 发布。
 - 失败时只回收 staging / session，不污染 live docs。
 
@@ -127,12 +129,15 @@ doc lane 的当前职责：
 - 并发审校章节
 - 提取 metadata
 - 把 chapter markdown 写到 staging
+- 为 curriculum 对齐后的最终知识讲义保留 chunk / image / section 级语义材料
 
 关键约束：
 
 - 每章图片提示来自该章命中的 `chunk_uids -> image_refs`
 - doc lane 只写 staging，不直接 publish
-- graph 提供的 `TopicAnchorSnapshot` 只作为 soft review hint
+- graph 提供的 `TopicAnchorSnapshot` 会优先参与 doc outline 与 review，保证章节结构和图谱 topic 尽量同构
+- 没拿到 graph anchors 时，doc lane 仍继续执行，但优先信任 LLM 大纲，关键词式 fallback 只用于兜底保活
+- doc lane 初稿不是最终对外文档；最终 docs 会在 curriculum 完成后重组为“老师式”知识讲义
 
 ---
 
@@ -154,6 +159,7 @@ kg lane 的当前职责：
 - extract 并发度受 `min(10, llm_concurrency_limit, chunk_count)` 限制
 - resolve 必须批量 embedding，不再逐候选串行调 embedding
 - finalize 使用 `ClusteredCandidate.representative`
+- cluster 完成后尽早发布 early `TopicAnchorSnapshot`，让 doc lane 能在同一轮 build 内拿来组织章节
 
 ---
 
@@ -166,6 +172,12 @@ curriculum 是 unified build 的硬收口条件，不再是“可有可无的后
 - curriculum 必须发布 `curriculum_snapshot`
 - 如果没有 snapshot，则 unified build 失败
 - `/knowledge/overview` 的可读性是 build 成功条件的一部分
+
+此外，curriculum 现在还承担最终 docs 结构对齐职责：
+
+- theme tree root chapter 驱动最终 docs 的章级结构
+- teaching unit 驱动最终 docs 的分主题讲解单元
+- 最终 docs 与 theme tree 对齐，但不是 1:1 树节点镜像
 
 ---
 
@@ -191,6 +203,12 @@ unified `publish_outputs` 负责：
 
 只有 curriculum 成功后，publish 才允许执行。
 
+在 publish 之前，还会经过一次 `rebuild_docs`：
+
+- 从已发布 curriculum / theme tree / teaching units 读取结构
+- 用同一批 `digest_chunk_uid`、evidence packets 和教学单元摘要重建最终知识文档
+- 让 `/knowledge/docs` 和 `/knowledge/overview` 在结构上天然对应
+
 ---
 
 ## 9. 并发设计
@@ -204,7 +222,7 @@ unified `publish_outputs` 负责：
 
 这意味着总耗时目标是：
 
-`shared_prepare + max(doc_lane, kg_lane) + curriculum + publish`
+`shared_prepare + max(doc_lane, kg_lane) + curriculum + rebuild_docs + publish`
 
 而不是：
 
@@ -218,5 +236,5 @@ unified `publish_outputs` 负责：
 
 1. markdown 图片引用是资产关联真源
 2. doc / kg 共享同一批 canonical chunks
-3. docs 必须先 staging，再统一 publish
+3. 最终 docs 必须先经过 curriculum 对齐重建，再统一 publish
 4. curriculum snapshot 是 build 成功的硬条件

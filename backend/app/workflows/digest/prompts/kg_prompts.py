@@ -55,6 +55,7 @@ USER_PROMPT_KG_EXTRACT = """
 - 标题：{{ chunk_title }}
 - 文档结构路径：{{ header_path }}
 {% if doc_source_type %}- 文档类型：{{ doc_source_type }}{% endif %}
+{% if subject_context %}- 学科背景：{{ subject_context }}{% endif %}
 
 ## 文本内容
 

@@ -10,15 +10,19 @@ import structlog
 from app.services.upload_support import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.outline_service import (
-    build_chapter_assignments,
+    build_anchor_outline_tree,
+    build_chapter_assignments_from_sections,
     build_fallback_outline_tree,
+    build_thematic_outline_summary,
+    build_thematic_outline_tree,
     ensure_multi_chapter_outline,
     generate_global_outline,
+    select_preferred_outline_tree,
 )
 from app.workflows.digest.docs.state import DocGenState
 from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
-from app.workflows.digest.shared.models import SectionPacket, SharedInputs
-from app.workflows.digest.unified.models import ChapterPrior, ChapterPriors
+from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.unified.models import ChapterPrior, ChapterPriors, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
 logger = structlog.get_logger()
@@ -66,7 +70,27 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
             )
             for item in local_outlines
         )
+        topic_snapshot = await _load_outline_topic_snapshot(build_session_id)
+        semantic_outline_tree = build_anchor_outline_tree(
+            shared_inputs.section_packets,
+            topic_snapshot=topic_snapshot,
+        )
+        fallback_outline_tree = build_thematic_outline_tree(
+            shared_inputs.section_packets,
+            fast_hints=shared_inputs.fast_hints,
+        )
+        preferred_seed_outline = semantic_outline_tree if semantic_outline_tree.get("chapters") else {}
+        seed_outline_text = (
+            build_thematic_outline_summary(preferred_seed_outline)
+            if preferred_seed_outline.get("chapters")
+            else ""
+        )
+
         outline_input = local_text
+        if seed_outline_text:
+            outline_input += (
+                "\n\nSemantic teaching plan from graph anchors:\n" + seed_outline_text
+            )
         if fast_hints_lines:
             outline_input += "\n\n" + "\n".join(fast_hints_lines)
 
@@ -78,21 +102,41 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         node_logger.info("docgen_outline_planning_started", mode=plan.mode, reason=plan.reason)
 
         try:
-            outline_tree = await generate_global_outline(
+            subject_context = shared_inputs.subject_profile.build_context_string()
+            llm_outline_tree = await generate_global_outline(
                 chunk_count=len(clean_chunks),
                 local_outlines_text=outline_input,
                 user_prompt=user_prompt,
+                subject_context=subject_context,
             )
             llm_calls_total = 1
         except Exception:
-            outline_tree = build_fallback_outline_tree(clean_chunks, local_outlines)
+            llm_outline_tree = build_fallback_outline_tree(clean_chunks, local_outlines)
             llm_calls_total = 0
             node_logger.warning("docgen_outline_fallback_used")
 
-        outline_tree = ensure_multi_chapter_outline(outline_tree, clean_chunks, local_outlines)
-        chapter_assignments = build_chapter_assignments(outline_tree, clean_chunks)
-        chapter_assignments = _enrich_chapter_assignments(
-            chapter_assignments=chapter_assignments,
+        llm_outline_tree = ensure_multi_chapter_outline(
+            llm_outline_tree,
+            clean_chunks,
+            local_outlines,
+        )
+        if semantic_outline_tree.get("chapters"):
+            outline_tree = select_preferred_outline_tree(
+                llm_outline_tree=llm_outline_tree,
+                thematic_outline_tree=semantic_outline_tree,
+                clean_chunks=clean_chunks,
+                section_packets=shared_inputs.section_packets,
+                prefer_thematic_alignment=True,
+            )
+        else:
+            outline_tree = (
+                llm_outline_tree
+                if llm_outline_tree.get("chapters")
+                else fallback_outline_tree
+            )
+        chapter_assignments = build_chapter_assignments_from_sections(
+            outline_tree,
+            clean_chunks=clean_chunks,
             section_packets=shared_inputs.section_packets,
         )
 
@@ -127,6 +171,14 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         node_logger.info(
             "docgen_outline_planning_completed",
             chapter_count=len(chapter_assignments),
+            semantic_anchor_count=len(topic_snapshot.anchors) if topic_snapshot else 0,
+            outline_source=(
+                "kg_semantic"
+                if semantic_outline_tree.get("chapters") and outline_tree == semantic_outline_tree
+                else "llm_primary"
+                if llm_outline_tree.get("chapters") and outline_tree == llm_outline_tree
+                else "fallback_structure"
+            ),
             outline_ms=outline_ms,
         )
         return {
@@ -139,63 +191,11 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
     return outline_reduce_node
 
 
-def _enrich_chapter_assignments(
-    *,
-    chapter_assignments: list[dict],
-    section_packets: list[SectionPacket],
-) -> list[dict]:
-    sections_by_file_id: dict[int, list[SectionPacket]] = {}
-    for packet in section_packets:
-        sections_by_file_id.setdefault(packet.source_file_id, []).append(packet)
-
-    enriched: list[dict] = []
-    for assignment in chapter_assignments:
-        matched_sections = _match_sections_for_assignment(assignment, sections_by_file_id)
-        chunk_uids = [packet.digest_chunk_uid for packet in matched_sections]
-        image_refs = list(dict.fromkeys(ref for packet in matched_sections for ref in packet.image_refs))
-        formula_refs = list(
-            dict.fromkeys(
-                [*assignment.get("formula_refs", []), *[ref for packet in matched_sections for ref in packet.formula_refs]]
-            )
-        )
-        enriched.append(
-            {
-                **assignment,
-                "chunk_uids": chunk_uids,
-                "image_refs": image_refs,
-                "formula_refs": formula_refs,
-            }
-        )
-    return enriched
-
-
-def _match_sections_for_assignment(
-    assignment: dict,
-    sections_by_file_id: dict[int, list[SectionPacket]],
-) -> list[SectionPacket]:
-    source_file_ids = set(assignment.get("source_file_ids", []))
-    section_titles = {
-        str(title).strip().lower() for title in assignment.get("section_titles", []) if str(title).strip()
-    }
-    matched_sections: list[SectionPacket] = []
-    for file_id in source_file_ids:
-        sections = sections_by_file_id.get(file_id, [])
-        direct_matches = [
-            packet
-            for packet in sections
-            if not section_titles
-            or packet.title.strip().lower() in section_titles
-            or any(section_title in packet.header_path.lower() for section_title in section_titles)
-        ]
-        matched_sections.extend(direct_matches or sections)
-    deduped: list[SectionPacket] = []
-    seen: set[str] = set()
-    for packet in matched_sections:
-        if packet.digest_chunk_uid in seen:
-            continue
-        seen.add(packet.digest_chunk_uid)
-        deduped.append(packet)
-    return deduped
+async def _load_outline_topic_snapshot(build_session_id: str) -> TopicAnchorSnapshot | None:
+    if not build_session_id:
+        return None
+    session = get_unified_build_session(build_session_id)
+    return await session.wait_for_topic_anchor_snapshot(timeout_ms=2200)
 
 
 def _build_key_terms(assignment: dict) -> list[str]:

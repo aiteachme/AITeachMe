@@ -16,6 +16,7 @@ from app.workflows.digest.shared.asset_indexer import build_asset_registry
 from app.workflows.digest.shared.hint_extractor import extract_fast_topic_hints
 from app.workflows.digest.shared.models import ChunkIdentityMap, SharedInputs, SourcePacket
 from app.workflows.digest.shared.section_splitter import split_into_sections
+from app.workflows.digest.shared.subject_recognizer import recognize_subject_profile
 
 logger = structlog.get_logger()
 
@@ -50,12 +51,20 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
             index: section.digest_chunk_uid for index, section in enumerate(section_packets)
         },
     )
+    fast_hints = extract_fast_topic_hints(section_packets)
+    subject_profile = recognize_subject_profile(
+        subject_slug=subject,
+        source_packets=source_packets,
+        section_packets=section_packets,
+        fast_hints=fast_hints,
+    )
     shared_inputs = SharedInputs(
         source_packets=source_packets,
         section_packets=section_packets,
         chunk_identity_map=chunk_identity_map,
-        fast_hints=extract_fast_topic_hints(section_packets),
+        fast_hints=fast_hints,
         asset_registry=build_asset_registry(subject, source_packets),
+        subject_profile=subject_profile,
     )
     logger.info(
         "shared_prepare_completed",
@@ -63,6 +72,9 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
         source_count=len(source_packets),
         section_count=len(section_packets),
         asset_count=len(shared_inputs.asset_registry.assets),
+        discipline=subject_profile.discipline,
+        sub_discipline=subject_profile.sub_discipline,
+        content_type=subject_profile.content_type,
     )
     return shared_inputs
 

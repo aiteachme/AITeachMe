@@ -135,6 +135,7 @@ Knowledge Docs 已彻底切到无 job 协议。
 - 这是纯查询接口。
 - 不会自动触发构建。
 - 只读取已发布的 merged 文档和 manifest。
+- 返回的是最终 live 版本的 curriculum-aligned knowledge book，不是 doc lane 中间稿。
 
 ### 5.3 已废弃并删除的旧接口
 
@@ -171,7 +172,9 @@ Knowledge Docs 已彻底切到无 job 协议。
 - 接受构建请求
 - 进行 subject 级互斥
 - 统一构建 docs / graph / curriculum
+- 在统一构建内部用 shared sections + graph anchors 协调文档与图谱的一致性
 - 在统一构建成功后发布新的知识文档
+- 在 curriculum/theme tree 发布后，把最终 docs 重建为 curriculum 对齐的知识讲义
 - 提供已发布结果查询
 
 ### 6.3 有旧文档时的体验约定

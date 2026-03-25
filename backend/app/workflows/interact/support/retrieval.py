@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
+from app.core.config import get_settings
 from app.core.embedding import aembed_texts
+from app.core.reranker import rerank_chunks
 from app.core.retrievers import RetrievalConfig, RetrievalPipeline, RetrievedChunk
 from app.repositories.knowledge.knowledge_repo import vector_search
 from app.services.presenters import require_id
@@ -27,24 +29,34 @@ async def retrieve_context(
 ) -> list[RetrievedContext]:
     """Retrieve prompt-ready context chunks for one chat question."""
 
+    settings = get_settings()
+    enable_rerank = bool(settings.rag_rerank_model)
+
     query_embedding = await build_query_embedding(query)
-    pipeline = RetrievalPipeline(vector_search_fn=lambda embedding, current_subject, current_top_k: _vector_search(
-        session=session,
-        query_embedding=embedding,
-        subject=current_subject,
-        top_k=current_top_k,
-    ))
+    pipeline = RetrievalPipeline(
+        vector_search_fn=lambda embedding, current_subject, current_top_k: _vector_search(
+            session=session,
+            query_embedding=embedding,
+            subject=current_subject,
+            top_k=current_top_k,
+        ),
+        rerank_fn=rerank_chunks if enable_rerank else None,
+    )
+    # When reranking, fetch more candidates for better recall
+    fetch_top_k = top_k * 3 if enable_rerank else top_k
     chunks = await pipeline.retrieve(
         query,
         subject,
         config=RetrievalConfig(
-            top_k=top_k,
+            top_k=fetch_top_k,
             similarity_threshold=similarity_threshold,
             enable_keyword=False,
-            enable_rerank=False,
+            enable_rerank=enable_rerank,
         ),
         query_embedding=query_embedding,
     )
+    # After rerank, trim to requested top_k
+    chunks = chunks[:top_k]
     return [
         RetrievedContext(
             chunk_id=chunk.chunk_id,

@@ -11,7 +11,13 @@ from langgraph.graph import END, StateGraph
 from app.core.config import get_settings
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult
-from app.workflows.digest.docs.publish import publish_staged_knowledge_docs
+from app.workflows.digest.docs.publish import (
+    publish_staged_knowledge_docs,
+    stage_knowledge_docs,
+)
+from app.workflows.digest.docs.services.curriculum_book import (
+    build_curriculum_aligned_book,
+)
 from app.workflows.digest.runtime import (
     run_curriculum_derive_workflow,
     run_docgen_workflow,
@@ -37,6 +43,7 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node("consistency_gate", build_consistency_node(context=context))
     workflow.add_node("bounded_repair", build_repair_node(context=context))
     workflow.add_node("derive_curriculum", build_derive_curriculum_node(context=context))
+    workflow.add_node("rebuild_docs", build_rebuild_docs_node(context=context))
     workflow.add_node("publish_outputs", build_publish_outputs_node(context=context))
     workflow.add_node("cleanup", build_cleanup_node(context=context))
     workflow.add_node("fail", build_fail_node(context=context))
@@ -64,6 +71,11 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "derive_curriculum",
+        route_after_step,
+        {"continue": "rebuild_docs", "fail": "fail"},
+    )
+    workflow.add_conditional_edges(
+        "rebuild_docs",
         route_after_step,
         {"continue": "publish_outputs", "fail": "fail"},
     )
@@ -320,6 +332,63 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
         }
 
     return derive_curriculum_node
+
+
+def build_rebuild_docs_node(*, context: WorkflowContext):
+    """Rebuild final docs from the published curriculum structure."""
+
+    async def rebuild_docs_node(state: UnifiedDigestState) -> UnifiedDigestState:
+        started_at = perf_counter()
+        logger = context.get_logger().bind(node="rebuild_docs")
+        doc_state = state.get("doc_state")
+        curriculum_state = state.get("curriculum_state")
+        shared_inputs = state.get("shared_inputs")
+        materialized = state.get("materialized")
+        if doc_state is None:
+            return {**state, "error": "Unified rebuild missing docs state."}
+        if curriculum_state is None or curriculum_state.get("theme_tree_version_id") is None:
+            return {**state, "error": "Unified rebuild missing theme tree version."}
+        if shared_inputs is None or materialized is None:
+            return {**state, "error": "Unified rebuild missing shared inputs."}
+
+        theme_tree_version_id = int(curriculum_state["theme_tree_version_id"])
+        logger.info(
+            "unified_curriculum_book_rebuild_started",
+            theme_tree_version_id=theme_tree_version_id,
+        )
+        chapter_metadatas, chapter_assignments = build_curriculum_aligned_book(
+            subject=state["subject"],
+            theme_tree_version_id=theme_tree_version_id,
+            shared_inputs=shared_inputs,
+            materialized=materialized,
+        )
+        if not chapter_metadatas:
+            logger.warning("unified_curriculum_book_rebuild_empty")
+            return state
+
+        staged_docs = await stage_knowledge_docs(
+            subject=state["subject"],
+            chapter_metadatas=chapter_metadatas,
+        )
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        logger.info(
+            "unified_curriculum_book_rebuild_completed",
+            chapter_count=len(chapter_metadatas),
+            merged_chars=len(staged_docs.merged_markdown),
+            elapsed_ms=elapsed_ms,
+        )
+        return {
+            **state,
+            "doc_state": {
+                **doc_state,
+                "chapter_metadatas": chapter_metadatas,
+                "chapter_assignments": chapter_assignments,
+                "merged_markdown": staged_docs.merged_markdown,
+                "built_paths": staged_docs.built_paths,
+            },
+        }
+
+    return rebuild_docs_node
 
 
 def build_publish_outputs_node(*, context: WorkflowContext):

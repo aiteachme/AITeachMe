@@ -46,6 +46,7 @@ knowledge/build
   -> consistency
   -> repair
   -> curriculum
+  -> rebuild docs
   -> publish outputs
 ```
 
@@ -53,6 +54,8 @@ knowledge/build
 
 - doc lane 只做 staging
 - curriculum 成功之后才 publish live docs
+- 文档章节默认优先对齐 graph anchors；只有 anchors 和 LLM outline 都不给力时，才会退回关键词式 fallback
+- 最终 `/knowledge/docs` 返回的是 curriculum 对齐后的知识讲义，不是 doc lane 的原始中间稿
 
 ---
 
@@ -75,6 +78,7 @@ print(len(shared.asset_registry.assets))
 
 - `shared_prepare_started`
 - `unified_parallel_lanes_started`
+- `docgen_outline_planning_completed`
 - `kg_extract_started`
 - `unified_curriculum_started`
 - `unified_publish_completed`
@@ -91,6 +95,22 @@ A:
 
 - doc lane 和 kg lane 虽然并行，但 kg lane 仍可能因为 extract / resolve 占主耗时。
 - 统一 build 的目标耗时是 `shared_prepare + max(doc, kg) + curriculum + publish`。
+
+### Q: 文档章节为什么不应该主要靠关键词来分？
+
+A:
+
+- 关键词容易被 OCR 噪声、题干碎片和跨学科术语带偏。
+- 当前实现里，关键词 theme 只保留为最后兜底，不作为主结构来源。
+- 正常路径应当优先使用 graph anchors、LLM 大纲和 curriculum/theme tree 来组织“老师式”的知识讲解结构。
+
+### Q: 为什么左侧知识文档不会和 theme tree 一模一样？
+
+A:
+
+- 最终 docs 会和 curriculum/theme tree 对齐，但它的目标是讲解，不是把树节点逐条抄出来。
+- docs 会按 theme root 和 teaching unit 重建成章节讲义，强调“怎么学、先学什么、原资料如何对应、典型题如何回看”。
+- 也就是说，它要和右侧结构能互相对应，但阅读体验必须更像老师整理后的知识笔记。
 
 ### Q: 为什么 markdown 图片已经有路径了，还要 asset registry？
 

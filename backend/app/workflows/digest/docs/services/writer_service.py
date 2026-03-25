@@ -201,6 +201,8 @@ async def write_chapter(
     source_brief: str,
     formula_refs: list[str],
     source_content: str,
+    subject_context: str = "",
+    teaching_style_hint: str = "",
 ) -> str:
     """Write one chapter with the main doc model."""
 
@@ -220,6 +222,8 @@ async def write_chapter(
         source_brief=source_brief or "（无额外导读）",
         formula_refs="\n".join(f"- {formula}" for formula in formula_refs[:8]) or "（本章未抽取到明确公式）",
         source_content=truncated_source,
+        subject_context=subject_context or "（未识别学科）",
+        teaching_style_hint=teaching_style_hint or "（无特殊风格要求）",
     )
 
     try:
@@ -244,13 +248,20 @@ async def write_chapter(
     )
 
 
-async def review_chapter(markdown: str, source_summary: str, *, user_prompt: str | None = None) -> dict:
+async def review_chapter(
+    markdown: str,
+    source_summary: str,
+    *,
+    user_prompt: str | None = None,
+    subject_context: str = "",
+) -> dict:
     """Run one review pass for a drafted chapter."""
 
     prompt = REVIEWER_PROMPT.format(
         document=markdown[:9000],
         source_summary=source_summary[:2500],
         user_prompt=user_prompt or "（无额外要求）",
+        subject_context=subject_context or "（未识别学科）",
     )
     try:
         result = await acompletion(

@@ -9,14 +9,11 @@
       "Bash(rm:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
-
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(npm create:*)",
       "Bash(npx:*)",
-
       "Bash(node:*)",
-
       "Bash(git init:*)",
       "Bash(git clone:*)",
       "Bash(git add:*)",
@@ -26,7 +23,6 @@
       "Bash(git push:*)",
       "Bash(git checkout:*)",
       "Bash(git branch:*)",
-
       "Bash(vite:*)",
       "Bash(pnpm:*)",
       "Bash(yarn:*)",
@@ -36,7 +32,9 @@
       "mcp__chrome-devtools__click",
       "mcp__chrome-devtools__emulate",
       "mcp__chrome-devtools__take_screenshot",
-      "mcp__chrome-devtools__fill"
+      "mcp__chrome-devtools__fill",
+      "Bash(D:/miniconda/envs/atm/python.exe -m py_compile app/workflows/digest/kg/services/extractor.py)",
+      "Bash(D:/miniconda/envs/atm/python.exe -m py_compile app/workflows/digest/kg/prepare_nodes.py)"
     ]
   }
 }

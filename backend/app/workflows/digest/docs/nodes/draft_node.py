@@ -40,7 +40,7 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
         source_file_ids = list(chapter.get("source_file_ids", []))
         section_titles = list(chapter.get("section_titles", []))
         formula_refs = list(chapter.get("formula_refs", []))
-        source_brief = str(chapter.get("source_brief", ""))
+        source_brief = build_teacher_source_brief(chapter)
         chunk_uids = list(chapter.get("chunk_uids", []))
         source_text = "\n\n---\n\n".join(source_contents) if source_contents else "(no source content)"
         image_hints, asset_count = build_image_hints(shared_inputs=shared_inputs, chapter=chapter)
@@ -53,6 +53,11 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
             )
 
         global_outline_text = build_global_outline_summary(outline_tree)
+        subject_context = ""
+        teaching_style_hint = ""
+        if shared_inputs and shared_inputs.subject_profile:
+            subject_context = shared_inputs.subject_profile.build_context_string()
+            teaching_style_hint = shared_inputs.subject_profile.teaching_style_hint
         async with strategy.chapter_semaphore:
             markdown = await write_chapter(
                 chapter_title=chapter_title,
@@ -66,6 +71,8 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
                 source_brief=source_brief,
                 formula_refs=formula_refs,
                 source_content=f"{source_text}{image_hints}",
+                subject_context=subject_context,
+                teaching_style_hint=teaching_style_hint,
             )
 
         if subject:
@@ -106,6 +113,31 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
         }
 
     return draft_chapter_node
+
+
+def build_teacher_source_brief(chapter: dict) -> str:
+    """Summarize the chapter inputs as a teacher-facing synthesis brief."""
+
+    base_brief = str(chapter.get("source_brief", "")).strip()
+    section_payloads = list(chapter.get("section_payloads", []))
+    if not section_payloads:
+        return base_brief
+
+    lines: list[str] = []
+    if base_brief:
+        lines.extend([base_brief, ""])
+    lines.append("Teaching synthesis focus:")
+    for payload in section_payloads[:8]:
+        title = str(payload.get("title", "")).strip() or "Unnamed section"
+        preview = str(payload.get("preview", "")).strip()
+        formula_refs = list(payload.get("formula_refs", []))
+        hint = f"- {title}"
+        if preview:
+            hint += f": {preview[:160]}"
+        lines.append(hint)
+        if formula_refs:
+            lines.append(f"  formulas: {', '.join(formula_refs[:3])}")
+    return "\n".join(lines).strip()
 
 
 def build_image_hints(*, shared_inputs: SharedInputs | None, chapter: dict) -> tuple[str, int]:

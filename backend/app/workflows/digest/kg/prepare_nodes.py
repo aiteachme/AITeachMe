@@ -19,7 +19,7 @@ from app.workflows.digest.kg.services.extractor import (
 )
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
-from app.workflows.digest.unified.models import ChapterPriors
+from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
 
@@ -51,6 +51,31 @@ def _apply_taxonomy_hints(result: ChunkExtractionResult, taxonomy_hints: set[str
             if hint_lower in node_name_lower or node_name_lower in hint_lower:
                 node.taxonomy_hint = hint
                 break
+
+
+def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> TopicAnchorSnapshot:
+    chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
+    anchors: list[TopicAnchor] = []
+    for cluster in clustered_candidates[:80]:
+        representative = cluster.representative
+        if not representative.name:
+            continue
+        chunk_uids = [
+            chunk_id_to_chunk_uid[chunk_id]
+            for chunk_id in cluster.source_chunk_ids
+            if chunk_id in chunk_id_to_chunk_uid
+        ]
+        if not chunk_uids:
+            continue
+        anchors.append(
+            TopicAnchor(
+                topic_name=representative.name,
+                node_type=representative.node_type,
+                confidence=min(0.9, 0.5 + 0.06 * len(cluster.members)),
+                chunk_uids=list(dict.fromkeys(chunk_uids)),
+            )
+        )
+    return TopicAnchorSnapshot(anchors=anchors)
 
 
 async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
@@ -132,9 +157,12 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             extract_parallelism = min(_resolve_extract_parallelism(), max(1, len(chunk_ids)))
             build_session_id = state.get("build_session_id", "")
             chapter_priors: ChapterPriors | None = None
+            subject_context = ""
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
                 chapter_priors = await unified_session.wait_for_chapter_priors(timeout_ms=300)
+                if unified_session.shared_inputs and unified_session.shared_inputs.subject_profile:
+                    subject_context = unified_session.shared_inputs.subject_profile.build_context_string()
 
             taxonomy_hints = _build_taxonomy_hints(chapter_priors)
             digest_logger.info(
@@ -191,6 +219,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             chunk_content=chunk.content,
                             chunk_title=chunk.title,
                             header_path=chunk.header_path,
+                            subject_context=subject_context,
                         )
                     _apply_taxonomy_hints(result, taxonomy_hints)
                     edge_payload = [(edge, chunk_id) for edge in result.edges]
@@ -293,6 +322,12 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 }
 
             clustered, name_to_cluster = await cluster_candidates(all_pairs)
+            build_session_id = state.get("build_session_id", "")
+            if build_session_id:
+                unified_session = get_unified_build_session(build_session_id)
+                early_snapshot = _build_early_topic_snapshot(state, clustered)
+                unified_session.publish_topic_anchor_snapshot(early_snapshot)
+
             update_job_progress(
                 session,
                 job_id=state["job_id"],
@@ -304,6 +339,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 "kg_workflow_cluster_complete",
                 input_candidates=len(all_pairs),
                 cluster_count=len(clustered),
+                early_topic_anchor_count=len(early_snapshot.anchors) if build_session_id else 0,
             )
             return {
                 **state,

@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     docgen_review_retry_mode: str = "targeted"
     docgen_metadata_fallback_llm: bool = True
 
+    # ── RAG 重排序配置 ──
+    rag_rerank_model: str | None = None
+    rag_rerank_api_key: str | None = None
+    rag_rerank_base_url: str | None = None
+    rag_rerank_top_k: int = 3
+
+    # ── Digest 模型分级配置 ──
+    llm_model_light: str | None = None  # 轻量任务（大纲、审阅、元数据）
+    llm_model_extract: str | None = None  # 抽取任务（KG 实体/关系）
+
     @property
     def embedding_dim(self) -> int:
         """根据 embedding 模型推导维度。"""

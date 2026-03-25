@@ -149,6 +149,7 @@ async def extract_candidates(
     chunk_title: str,
     header_path: str,
     doc_source_type: str | None = None,
+    subject_context: str | None = None,
 ) -> ChunkExtractionResult:
     """Extract candidate nodes and edges from one chunk."""
 
@@ -158,6 +159,7 @@ async def extract_candidates(
         chunk_title=chunk_title,
         header_path=header_path,
         doc_source_type=doc_source_type or "",
+        subject_context=subject_context or "",
     )
 
     messages: list[ChatMessage] = [

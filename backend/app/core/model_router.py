@@ -71,6 +71,13 @@ def get_task_profile(task_type: TaskType = TaskType.DEFAULT) -> TaskProfile:
     # 尝试 config override
     override_model = settings.model_overrides.get(task_type.value)
 
+    # 尝试分级模型配置
+    if not override_model:
+        if task_type in (TaskType.DOCGEN_LIGHT,) and settings.llm_model_light:
+            override_model = settings.llm_model_light
+        elif task_type == TaskType.EXTRACT and settings.llm_model_extract:
+            override_model = settings.llm_model_extract
+
     resolved_model = override_model or base.model or fallback_model
 
     return TaskProfile(
