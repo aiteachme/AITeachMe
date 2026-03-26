@@ -35,8 +35,12 @@ class QuestionTemplate(SQLModel, table=True):
     answer: str
     explanation: str = Field(default="")
     template_version: int = Field(default=1, ge=1)
-    status: str = Field(default="active", index=True)
-    metadata_json: str = Field(default="{}")
+    status: str = Field(default="active")
+    source_snapshot_id: int | None = Field(
+        default=None,
+        foreign_key="curriculum_snapshot.id",
+        index=True,
+    )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -199,3 +203,18 @@ class ReviewTask(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     completed_at: datetime | None = Field(default=None)
     expired_at: datetime | None = Field(default=None)
+
+
+class ExamPaperGenerationContext(SQLModel, table=True):
+    """Exam generation context payload."""
+
+    __tablename__ = "exam_paper_generation_context"
+
+    id: int | None = Field(default=None, primary_key=True)
+    exam_paper_id: int = Field(foreign_key="exam_paper.id", unique=True, index=True)
+    selection_reason_json: str = Field(default="{}")
+    target_theme_tree_node_id: int | None = Field(default=None, foreign_key="theme_tree_node.id")
+    weakness_state_ids_json: str = Field(default="[]")
+    review_task_ids_json: str = Field(default="[]")
+    excluded_template_ids_json: str = Field(default="[]")
+    created_at: datetime = Field(default_factory=utcnow)

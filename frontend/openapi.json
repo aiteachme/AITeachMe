@@ -423,148 +423,6 @@
         }
       }
     },
-    "/api/v1/subjects/get": {
-      "post": {
-        "tags": [
-          "subjects"
-        ],
-        "summary": "学科详情",
-        "operationId": "get_subject_detail_api_api_v1_subjects_get_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubjectDetailRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectItem_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/edit": {
-      "post": {
-        "tags": [
-          "subjects"
-        ],
-        "summary": "更新学科",
-        "operationId": "update_subject_api_api_v1_subjects_edit_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubjectUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectItem_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/delete/preview": {
       "post": {
         "tags": [
@@ -8730,20 +8588,6 @@
         ],
         "title": "SubjectDeleteRequest"
       },
-      "SubjectDetailRequest": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "学科外部标识。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id"
-        ],
-        "title": "SubjectDetailRequest"
-      },
       "SubjectItem": {
         "properties": {
           "id": {
@@ -8814,33 +8658,6 @@
           "page": 1,
           "size": 20
         }
-      },
-      "SubjectUpdateRequest": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "学科外部标识。"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Name",
-            "description": "展示名称。"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "学科描述。",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id",
-          "name"
-        ],
-        "title": "SubjectUpdateRequest"
       },
       "TaskStatusValue": {
         "type": "string",
