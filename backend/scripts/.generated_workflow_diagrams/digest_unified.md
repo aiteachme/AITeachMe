@@ -15,6 +15,8 @@ graph TD;
 	consistency_gate(consistency_gate)
 	bounded_repair(bounded_repair)
 	derive_curriculum(derive_curriculum)
+	rebuild_docs(rebuild_docs)
+	publish_outputs(publish_outputs)
 	cleanup(cleanup)
 	fail(fail)
 	__end__([<p>__end__</p>]):::last
@@ -23,10 +25,14 @@ graph TD;
 	bounded_repair -.-> fail;
 	consistency_gate -. &nbsp;continue&nbsp; .-> bounded_repair;
 	consistency_gate -.-> fail;
-	derive_curriculum -. &nbsp;continue&nbsp; .-> cleanup;
 	derive_curriculum -.-> fail;
+	derive_curriculum -. &nbsp;continue&nbsp; .-> rebuild_docs;
 	prepare_shared -.-> fail;
 	prepare_shared -. &nbsp;continue&nbsp; .-> run_parallel_lanes;
+	publish_outputs -. &nbsp;continue&nbsp; .-> cleanup;
+	publish_outputs -.-> fail;
+	rebuild_docs -.-> fail;
+	rebuild_docs -. &nbsp;continue&nbsp; .-> publish_outputs;
 	run_parallel_lanes -. &nbsp;continue&nbsp; .-> consistency_gate;
 	run_parallel_lanes -.-> fail;
 	cleanup --> __end__;

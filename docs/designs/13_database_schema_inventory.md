@@ -393,3 +393,111 @@
 - `knowledge_markdown/*.md` 文件
 
 后续如果继续扩架构，这条主线应继续保持稳定，不要再把临时 job 表重新变成系统真相源。
+
+---
+
+## 9. 完整 1:N 外键关系图
+
+### 材料层
+
+```
+raw_file ──(1:N)──> document                    [document.source_file_id → raw_file.id]
+document ──(1:N)──> document_chunk              [document_chunk.document_id → document.id]
+document_chunk ──(1:1)──> chunk_embeddings      [虚拟表, chunk_id → document_chunk.id]
+knowledge_doc                                    [孤岛表，source_file_ids 为 JSON 字符串]
+```
+
+### 知识图谱层
+
+```
+knowledge_node ──(1:N)──> knowledge_alias       [knowledge_alias.node_id → knowledge_node.id]
+knowledge_node ──(1:N)──> knowledge_revision    [knowledge_revision.node_id → knowledge_node.id]
+knowledge_node ──(self)──> knowledge_node       [merged_into_node_id → knowledge_node.id]
+knowledge_node ──(1:N src)──> knowledge_edge    [knowledge_edge.source_node_id → knowledge_node.id]
+knowledge_node ──(1:N tgt)──> knowledge_edge    [knowledge_edge.target_node_id → knowledge_node.id]
+knowledge_edge ──(1:N)──> edge_revision         [edge_revision.edge_id → knowledge_edge.id]
+document ──(1:N)──> evidence_link               [evidence_link.document_id → document.id]
+document_chunk ──(1:N)──> evidence_link         [evidence_link.chunk_id → document_chunk.id]
+evidence_link ──(poly)──> node | edge           [entity_type + entity_id，无 DB FK]
+```
+
+### 课程层
+
+```
+teaching_unit ──(1:N)──> teaching_unit_revision     [unit_id → teaching_unit.id]
+teaching_unit ──(1:N)──> teaching_unit_membership   [unit_id → teaching_unit.id]
+knowledge_node ──(1:N)──> teaching_unit_membership  [knowledge_node_id → knowledge_node.id]
+taxonomy_anchor ──(self)──> taxonomy_anchor          [parent_anchor_id → taxonomy_anchor.id]
+theme_tree_version ──(1:N)──> theme_tree_node       [tree_version_id → theme_tree_version.id]
+taxonomy_anchor ──(1:N)──> theme_tree_node          [anchor_id → taxonomy_anchor.id, nullable]
+theme_tree_node ──(self)──> theme_tree_node          [parent_tree_node_id → theme_tree_node.id]
+theme_tree_version ──(1:N)──> unit_tree_membership  [tree_version_id → theme_tree_version.id]
+theme_tree_node ──(1:N)──> unit_tree_membership     [tree_node_id → theme_tree_node.id]
+teaching_unit ──(1:N)──> unit_tree_membership       [teaching_unit_id → teaching_unit.id]
+prereq_dag_version ──(1:N)──> unit_dependency       [dag_version_id → prereq_dag_version.id]
+teaching_unit ──(1:N src)──> unit_dependency        [source_unit_id → teaching_unit.id]
+teaching_unit ──(1:N tgt)──> unit_dependency        [target_unit_id → teaching_unit.id]
+theme_tree_version ──(1:N)──> curriculum_snapshot   [theme_tree_version_id → theme_tree_version.id]
+prereq_dag_version ──(1:N)──> curriculum_snapshot   [prereq_dag_version_id → prereq_dag_version.id]
+```
+
+### 测评层
+
+```
+teaching_unit ──(1:N)──> question_template              [teaching_unit_id → teaching_unit.id]
+curriculum_snapshot ──(1:N)──> question_template         [source_snapshot_id → curriculum_snapshot.id, nullable]
+question_template ──(1:N)──> question_template_node_link [question_template_id → question_template.id]
+knowledge_node ──(1:N)──> question_template_node_link   [knowledge_node_id → knowledge_node.id]
+curriculum_snapshot ──(1:N)──> exam_paper                [curriculum_snapshot_id → curriculum_snapshot.id]
+exam_paper ──(1:N)──> exam_paper_item                   [exam_paper_id → exam_paper.id]
+question_template ──(1:N)──> exam_paper_item            [question_template_id → question_template.id]
+exam_paper_item ──(1:N)──> user_answer_attempt          [exam_paper_item_id → exam_paper_item.id]
+exam_paper ──(1:1)──> exam_paper_generation_context     [exam_paper_id → exam_paper.id, unique]
+theme_tree_node ──(1:N)──> exam_paper_generation_context [target_theme_tree_node_id, nullable]
+user_knowledge_state ──(1:N)──> review_task             [source_state_id → user_knowledge_state.id, nullable]
+exam_paper ──(1:N)──> review_task                       [source_exam_paper_id → exam_paper.id, nullable]
+user_knowledge_state ──(poly)──> teaching_unit | knowledge_node  [granularity + target_id，无 DB FK]
+review_task ──(poly)──> teaching_unit | knowledge_node           [target_granularity + target_id，无 DB FK]
+```
+
+### 对话层
+
+```
+chat_session ──(1:N)──> chat_message   [chat_message.session_id → chat_session.id]
+```
+
+### Legacy 层
+
+```
+exam ──(1:N)──> question                [question.exam_id → exam.id]
+exam ──(1:N)──> exam_submission         [exam_submission.exam_id → exam.id]
+exam_submission ──(1:N)──> answer_record  [answer_record.submission_id → exam_submission.id]
+question ──(1:N)──> answer_record       [answer_record.question_id → question.id]
+answer_record ──(1:N)──> mistake        [mistake.answer_record_id → answer_record.id]
+user_profile                             [孤岛表，无 FK]
+```
+
+---
+
+## 10. 已知设计取舍与待改进项
+
+### 已知取舍（当前可接受）
+
+| 取舍 | 原因 |
+| --- | --- |
+| `subject` 在所有表中为字符串而非 FK | 充当分区键，简化查询，避免 join；迁移 PostgreSQL 时再改为 FK |
+| `evidence_link` 多态 `entity_type + entity_id` | 避免为 node/edge 各建一张证据表；完整性由服务层保证 |
+| `user_knowledge_state` / `review_task` 多态 `target_id` | 同上，粒度为 unit 或 node 两种 |
+| 无 ORM `Relationship()` 声明 | 全项目统一手动 join，保持模型为纯数据类 |
+| `current_revision_id` 未声明为 FK | 避免 node ↔ revision 循环 FK 问题 |
+
+### 待改进项
+
+| 优先级 | 项目 | 说明 |
+| --- | --- | --- |
+| P1 | ~~`chat_message.session_id` 缺 FK~~ | 已修复，加 `foreign_key="chat_session.id"` |
+| P1 | ~~assessment 模型 `datetime.utcnow`~~ | 已修复，统一为 `utcnow` |
+| P2 | `knowledge_doc.source_file_ids` JSON 字符串 | 建议新增 `knowledge_doc_source` 联结表 |
+| P2 | 版本表可合并 | `theme_tree_version` + `prereq_dag_version` + `curriculum_snapshot` 可合为 `curriculum_version` |
+| P3 | Legacy 表清理 | 6 张遗留表待加入 `_LEGACY_DROP_DDLS` |
+| P3 | `subject` 改为 FK | 等 PostgreSQL 迁移时统一处理 |

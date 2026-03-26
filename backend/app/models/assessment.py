@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
+from app.utils.time import utcnow
+
 
 class QuestionTemplate(SQLModel, table=True):
     """Question template."""
@@ -37,8 +39,8 @@ class QuestionTemplate(SQLModel, table=True):
         foreign_key="curriculum_snapshot.id",
         index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class QuestionTemplateNodeLink(SQLModel, table=True):
@@ -58,7 +60,7 @@ class QuestionTemplateNodeLink(SQLModel, table=True):
     knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     coverage_weight: float = Field(default=1.0, ge=0.0)
     role: str = Field(default="primary")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class ExamPaper(SQLModel, table=True):
@@ -78,8 +80,8 @@ class ExamPaper(SQLModel, table=True):
     total_score: float | None = Field(default=None, ge=0.0)
     score_obtained: float | None = Field(default=None, ge=0.0)
     duration_seconds: int | None = Field(default=None, ge=0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class ExamPaperItem(SQLModel, table=True):
@@ -106,7 +108,7 @@ class ExamPaperItem(SQLModel, table=True):
     snapshot_node_links_json: str = Field(default="[]")
     snapshot_difficulty: str
     snapshot_question_type: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class UserAnswerAttempt(SQLModel, table=True):
@@ -134,7 +136,7 @@ class UserAnswerAttempt(SQLModel, table=True):
     hint_used: bool = Field(default=False)
     confidence_self_report: int | None = Field(default=None, ge=1, le=5)
     error_cause_label: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class UserKnowledgeState(SQLModel, table=True):
@@ -166,7 +168,7 @@ class UserKnowledgeState(SQLModel, table=True):
     last_attempt_at: datetime | None = Field(default=None)
     state_version: int = Field(default=1, ge=1)
     last_recomputed_at: datetime | None = Field(default=None)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class ReviewTask(SQLModel, table=True):
@@ -199,7 +201,7 @@ class ReviewTask(SQLModel, table=True):
     reason: str | None = Field(default=None)
     source_state_id: int | None = Field(default=None, foreign_key="user_knowledge_state.id", index=True)
     source_exam_paper_id: int | None = Field(default=None, foreign_key="exam_paper.id", index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     completed_at: datetime | None = Field(default=None)
     expired_at: datetime | None = Field(default=None)
 
@@ -216,4 +218,4 @@ class ExamPaperGenerationContext(SQLModel, table=True):
     weakness_state_ids_json: str = Field(default="[]")
     review_task_ids_json: str = Field(default="[]")
     excluded_template_ids_json: str = Field(default="[]")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)

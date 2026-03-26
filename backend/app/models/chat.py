@@ -19,7 +19,7 @@ class ChatMessage(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
-    session_id: str = Field(index=True)
+    session_id: str = Field(foreign_key="chat_session.id", index=True)
     turn_id: str = Field(index=True)
     source: str | None = Field(default=None, index=True)
     anchor_id: str | None = Field(default=None, index=True)

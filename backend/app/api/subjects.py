@@ -12,7 +12,6 @@ from app.schemas.subject import (
     SubjectDeletePreviewData,
     SubjectDeletePreviewRequest,
     SubjectDeleteRequest,
-    SubjectDetailRequest,
     SubjectItem,
     SubjectListRequest,
     SubjectUpdateRequest,
@@ -20,7 +19,6 @@ from app.schemas.subject import (
 from app.services.subject_service import (
     create_subject_record,
     delete_subject_record,
-    get_subject_detail,
     list_subject_records,
     preview_subject_delete,
     update_subject_record,
@@ -59,39 +57,6 @@ async def list_subjects_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[SubjectItem]]:
     return ok_response(list_subject_records(session, page=body.page, size=body.size))
-
-
-@router.post(
-    "/get",
-    response_model=ApiResponse[SubjectItem],
-    summary="学科详情",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def get_subject_detail_api(
-    body: SubjectDetailRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[SubjectItem]:
-    return ok_response(get_subject_detail(session, body.subject_id))
-
-
-@router.post(
-    "/edit",
-    response_model=ApiResponse[SubjectItem],
-    summary="更新学科",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def update_subject_api(
-    body: SubjectUpdateRequest = Body(...),
-    session: Session = Depends(get_db),
-) -> ApiResponse[SubjectItem]:
-    return ok_response(
-        update_subject_record(
-            session,
-            subject_id=body.subject_id,
-            name=body.name,
-            description=body.description,
-        )
-    )
 
 
 @router.post(
