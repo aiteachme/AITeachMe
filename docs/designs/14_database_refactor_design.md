@@ -92,3 +92,61 @@ knowledge_document         knowledge_node / knowledge_edge
           chat_session / chat_message
 ```
 
+---
+
+## 4. 完整 1:N 关系树
+
+```
+user
+  └─ 1:N subject
+        │
+        ├─ 1:N raw_file                          # 用户上传的原始文件（含解析后的 markdown）
+        │     ├─ 1:N raw_file_asset              # 从文件中提取的图片/资源
+        │     └─ 1:N source_chunk                # 文档切块（RAG + 图谱证据的基础单元）
+        │           └─ 1:1 chunk_embedding       # 向量索引（虚拟表）
+        │
+        ├─ 1:N knowledge_document                # 生成的知识文档章节
+        │
+        ├─ 1:N knowledge_node                    # 知识图谱节点（概念/知识点）
+        │     ├─ 1:N knowledge_alias             # 节点别名
+        │     ├─ 1:N knowledge_revision          # 节点内容版本
+        │     └─ 1:N knowledge_evidence          # 节点到源切块的证据链
+        │
+        ├─ 1:N knowledge_edge                    # 知识图谱边（节点间关系）
+        │     ├─ 1:N edge_revision               # 边的版本记录
+        │     └─ 1:N knowledge_evidence          # 边到源切块的证据链
+        │
+        ├─ 1:N teaching_unit                     # 教学单元（知识点聚合）
+        │     └─ 1:N teaching_unit_membership    # 知识点归属教学单元
+        │
+        ├─ 1:N taxonomy_anchor                   # 分类锚点（主题树骨架，自引用树）
+        │
+        ├─ 1:N curriculum_version                # 课程结构版本快照
+        │     ├─ 1:N curriculum_tree_node        # 主题树节点
+        │     ├─ 1:N curriculum_unit_link        # 教学单元挂载到树节点
+        │     └─ 1:N curriculum_dependency       # 教学单元间先修依赖
+        │
+        ├─ 1:N question_template                 # 题目模板
+        │     └─ 1:N question_template_node_link # 题目覆盖的知识点
+        │
+        ├─ 1:N exam_paper                        # 试卷
+        │     └─ 1:N exam_paper_item             # 试卷中的每道题（快照）
+        │           └─ 1:N user_answer_attempt   # 用户作答记录
+        │
+        ├─ 1:N user_knowledge_state              # 用户掌握度
+        │
+        ├─ 1:N review_task                       # 复习任务
+        │
+        └─ 1:N chat_session                      # 对话会话
+              └─ 1:N chat_message                # 对话消息
+```
+
+说明：
+- `raw_file` 合并了原来的 `document` 表（1:1 关系，没必要分开）
+- `source_chunk` 合并了原来的 `document_chunk`（直接挂在 raw_file 下）
+- `knowledge_evidence` 合并了原来的 `evidence_link`（去掉多态，node 和 edge 各自有证据）
+- `curriculum_version` 合并了原来的 `theme_tree_version` + `prereq_dag_version` + `curriculum_snapshot`
+- `curriculum_tree_node` 就是原来的 `theme_tree_node`，名字更直观
+- `curriculum_unit_link` 就是原来的 `unit_tree_membership`
+- `curriculum_dependency` 就是原来的 `unit_dependency`
+
