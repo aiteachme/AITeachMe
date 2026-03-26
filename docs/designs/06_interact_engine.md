@@ -6,7 +6,7 @@ Interact 负责把知识材料、学习者状态和教学策略组合成“会�
 
 当前目标包括：
 
-- 基于 `DocumentChunk` 检索回答问题
+- 基于 `retrieval_chunk` 检索回答问题
 - 结合聊天历史、薄弱点、错题做上下文装配
 - 通过 `POST + SSE` 流式返回回答
 - 在回答完成后保存可追踪消息记录和引用来源
@@ -31,7 +31,7 @@ Interact 负责把知识材料、学习者状态和教学策略组合成“会�
 | --- | --- | --- | --- |
 | 1. 请求接入 | `POST /api/v1/subjects/{subject}/chats/send` | `question`、可选 `selected_context`、`source_chunk_id` | 对话请求 |
 | 2. 历史与状态加载 | `nodes/history.py` | `subject` | 最近消息、弱项、错题摘要 |
-| 3. 检索上下文 | `nodes/retrieval.py` | `question`、`subject` | `document_chunk` 引用上下文 |
+| 3. 检索上下文 | `nodes/retrieval.py` | `question`、`subject` | `retrieval_chunk` 引用上下文 |
 | 4. 教学策略选择 | `nodes/strategy.py` | 问题、上下文、选段信息 | 当前回答策略 |
 | 5. Prompt 装配 | `nodes/prompt.py` | 历史、检索结果、策略 | LLM messages |
 | 6. 流式生成 | `nodes/stream.py` | messages | SSE token 流 |
@@ -54,7 +54,7 @@ Interact 的价值在于：
 
 ### 4.2 对话必须绑定资料
 
-当前回答必须尽量基于当前 `Subject` 下的 `DocumentChunk`，而不是脱离资料开放发挥。
+当前回答必须尽量基于当前 `Subject` 下的 `retrieval_chunk`，而不是脱离资料开放发挥。
 
 ### 4.3 学习者状态要进入上下文
 
@@ -136,24 +136,24 @@ Interact 当前不直接写图谱、课程、掌握度等知识层对象。
 
 | 节点 / 模块 | 读 DB | 写 DB | 写 FS |
 | --- | --- | --- | --- |
-| `nodes/history.py` | `chat_message`、legacy `user_profile`、legacy `mistake` | 无 | 无 |
-| `nodes/retrieval.py` | `document_chunk`、向量索引 | 无 | 无 |
+| `nodes/history.py` | `chat_message`、`user_knowledge_state`、`user_answer_attempt` 摘要 | 无 | 无 |
+| `nodes/retrieval.py` | `retrieval_chunk`、向量索引 | 无 | 无 |
 | `nodes/stream.py` | 无 | 无 | 无 |
 | `nodes/persist.py` | 无 | `chat_message` | 无 |
 
 补充说明：
 
-- 当前检索引用来自 `document_chunk`
+- 当前代码底层仍通过 `document_chunk` 过渡实现检索，但目标语义已经收口到 `retrieval_chunk`
 - 查看原文接口消费的是 `chunk_id`
-- 当前弱项和错题摘要仍主要来自 legacy profile/exam 查询链路
+- 当前弱项和错题摘要已经改为从新状态层派生
 
 ---
 
 ## 9. 开发关注点
 
-### 9.1 当前 Interact 是 workflow-backed，但学习状态来源仍有旧链路成分
+### 9.1 当前 Interact 的主要剩余历史包袱在检索层命名
 
-历史、弱项、错题已经进入工作流上下文，但其中一部分仍通过 legacy repo 查询得到。后续演进时要显式说明自己依赖的是哪套状态层。
+历史、弱项、错题上下文已经切到新状态层；当前主要剩余问题是底层检索仓储仍使用 `document_chunk` 等过渡命名。后续应继续把这一层收口到 `retrieval_chunk`。
 
 ### 9.2 前端应该把 contexts 用起来
 
@@ -169,7 +169,7 @@ Interact 当前不直接写图谱、课程、掌握度等知识层对象。
 
 Interact 当前已经形成清晰的工作流闭环：
 
-- 从 `DocumentChunk` 检索上下文
+- 从 `retrieval_chunk` 检索上下文
 - 结合历史、弱项和错题决定回答策略
 - 用 SSE 流式把答案推给前端
 - 把最终 turn 和引用来源落到 `chat_message`

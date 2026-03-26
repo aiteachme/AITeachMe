@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 import re
 
@@ -106,8 +107,17 @@ def build_knowledge_docs_build_dir(subject: str) -> Path:
     return build_knowledge_markdown_build_dir(subject)
 
 
+_INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\r\n\t]+')
+_WHITESPACE_RE = re.compile(r"\s+")
+_MULTI_UNDERSCORE_RE = re.compile(r"_+")
+
+
 def _sanitize_doc_title(title: str) -> str:
-    return title.replace("/", "_").replace("\\", "_").replace(" ", "_")[:50]
+    normalized = _WHITESPACE_RE.sub(" ", title).strip()
+    normalized = _INVALID_FILENAME_CHARS_RE.sub("_", normalized)
+    normalized = normalized.replace(".", "_")
+    normalized = _MULTI_UNDERSCORE_RE.sub("_", normalized).strip(" _.")
+    return (normalized or "untitled")[:50]
 
 
 def build_knowledge_doc_path(subject: str, chapter_index: int, title: str) -> Path:

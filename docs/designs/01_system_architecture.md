@@ -15,7 +15,7 @@
 
 AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一个以 `Subject` 为工作空间边界的本地优先教学系统。主链路可以概括为：
 
-`RawFile -> Markdown / Assets -> Document / DocumentChunk -> Knowledge Graph -> Teaching Unit -> Theme Tree / Prereq DAG -> Chat / Exam / Profile`
+`RawFile -> Markdown / Assets -> RetrievalChunk -> Knowledge Graph -> Teaching Unit -> Curriculum Version -> Chat / Exams / Profile`
 
 按系统分层看，当前主要由五层组成：
 
@@ -95,7 +95,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - `repositories/`
   数据访问层，负责 SQLModel 查询、批量写入、向量表操作等。
 - `models/`
-  关系模型定义，包括主业务表、图谱表、课程表、聊天表、assessment 表。
+  关系模型定义，包括主业务表、图谱表、课程表、聊天表、考试与画像表。
 - `schemas/`
   API 请求/响应模型和通用传输结构。
 - `core/`
@@ -114,12 +114,11 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - `chats`
 - `exams`
 - `profile`
-- `assessment`
 
 其中：
 
-- `exams` / `profile` 代表 legacy API 路径，当前仍在使用。
-- `assessment` 代表新的 assessment/profile 路径，已经落到新表与新 workflow 上。
+- `exams` / `profile` 是当前正式对外资源组。
+- 旧 exam/profile 表和过渡命名仍有代码残留，但不是新的接口收敛方向。
 
 ### 4.3 workflows 的角色
 
@@ -144,25 +143,27 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 负责两类结构化产出：
 
 - 面向用户的知识文档
-- 面向系统的知识图谱、Teaching Unit、Theme Tree、Prereq DAG、Curriculum Snapshot
+- 面向系统的知识图谱、Teaching Unit、Curriculum Blueprint、Curriculum Version
 
 ### 5.3 Interact
 
-负责把 `DocumentChunk`、聊天历史、薄弱点、错题等上下文装配成教学型对话，并通过 SSE 流式返回结果。
+负责把 `retrieval_chunk`、聊天历史、薄弱点、错题等上下文装配成教学型对话，并通过 SSE 流式返回结果。
 
 ### 5.4 Examine
 
-负责测评蓝图、组卷、判卷、答题结果持久化。当前处于双轨期：
+负责测评蓝图、组卷、判卷、答题结果持久化。当前正式主线已经收口到：
 
-- legacy：`exams_service` + `exam/question/...`
-- workflow-backed：`assessment_service` + `workflows/examine/*` + `exam_paper/...`
+- `exams_service`
+- `workflows/examine/*`
+- `question_template / exam_paper / exam_paper_item / user_answer_attempt`
 
 ### 5.5 Profile
 
-负责学习状态沉淀、薄弱分析、复习任务与学习画像。当前同样处于双轨期：
+负责学习状态沉淀、薄弱分析、复习任务与学习画像。当前正式主线已经收口到：
 
-- legacy：`profile_service` + `user_profile/mistake`
-- workflow-backed：`workflows/profile/*` + `user_knowledge_state/review_task`
+- `profile_service`
+- `workflows/profile/*`
+- `user_knowledge_state / review_task`
 
 ---
 
@@ -174,8 +175,8 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 | `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service` | `workflows/digest/docs/*` |
 | `SummaryPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
 | `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
-| `ExamPage` | `exams`、`assessment` | `exams_service`、`assessment_service` | legacy exam API + workflow-backed assessment |
-| `AnalysisPage` | `profile`、`assessment` | `profile_service`、`assessment_service` | legacy profile API + workflow-backed mastery/review |
+| `ExamPage` | `exams` | `exams_service` | `workflows/examine/*` |
+| `AnalysisPage` | `profile` | `profile_service` | `workflows/profile/*` |
 
 ---
 
@@ -186,7 +187,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 当前系统使用三类核心存储：
 
 - SQLite  
-  保存主业务数据、作业状态、聊天记录、图谱、课程结构、assessment 数据。
+  保存主业务数据、聊天记录、图谱、课程结构、考试与画像数据。
 - sqlite-vec  
   保存 `chunk_embeddings`，服务检索与召回。
 - 本地文件系统  
@@ -198,7 +199,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 - 文件解析：由 `files` 资源组触发，Ingest workflow 推进
 - 知识构建：由 `knowledge` 资源组触发，Digest graph / curriculum / docs workflow 推进
-- 新测评链路：由 `assessment` 资源组触发，Examine / Profile workflow 推进
+- 测评与状态回流：由 `exams` 触发 Examine workflow，由 `profile` 读取状态层
 
 这些长流程都应有稳定持久化锚点，而不是只依赖内存态。当前锚点可能是：
 
@@ -258,9 +259,9 @@ service 不是最终流程容器，复杂业务要以 workflow 状态流为准�
 
 当前仍存在旧 OpenAPI 产物、历史前端调用和旧文档口径，因此开发时必须优先核对后端源码。
 
-### 9.2 assessment/profile 仍处于双轨期
+### 9.2 exam/profile 域仍有旧表残留
 
-legacy exam/profile API 仍在线；新的 assessment/profile 工作流和数据表已经落地。任何新设计都必须显式说明自己面向哪条链路。
+对外资源组已经收口到 `exams / profile`，但仓库里仍有部分旧表、旧命名和过渡对象残留。任何新设计都应以 `12_api_refactor_plan.md` 和 `13_database_schema_inventory.md` 为准，不再新增新的双轨接口。
 
 ### 9.3 本地优先不等于未来不能中心化
 

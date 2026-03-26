@@ -6,7 +6,7 @@ from time import perf_counter
 
 import structlog
 
-from app.services.upload_support import build_docgen_intermediate_latest_dir
+from app.services.upload_support import build_docgen_intermediate_latest_dir, build_knowledge_doc_build_path
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.writer_service import (
     build_global_outline_summary,
@@ -78,8 +78,8 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
         if subject:
             intermediate_dir = build_docgen_intermediate_latest_dir(subject)
             intermediate_dir.mkdir(parents=True, exist_ok=True)
-            safe_title = chapter_title.replace("/", "_").replace("\\", "_")[:30]
-            (intermediate_dir / f"draft_{chapter_index:02d}_{safe_title}.md").write_text(
+            draft_path = build_knowledge_doc_build_path(subject, chapter_index, f"draft_{chapter_title}")
+            (intermediate_dir / draft_path.name).write_text(
                 markdown,
                 encoding="utf-8",
             )

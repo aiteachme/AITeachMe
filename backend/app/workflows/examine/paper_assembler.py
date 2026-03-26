@@ -95,7 +95,7 @@ def _normalize_exam_mode(exam_mode: ExamMode | str) -> str:
     return str(exam_mode).strip().lower()
 
 
-def _is_legacy_placeholder_template(template: QuestionTemplate) -> bool:
+def _is_placeholder_template(template: QuestionTemplate) -> bool:
     stem = (template.stem or "").strip()
     if not stem:
         return True
@@ -145,7 +145,7 @@ def _build_unit_template_pool(
             continue
         if item.id in excluded:
             continue
-        if _is_legacy_placeholder_template(item):
+        if _is_placeholder_template(item):
             continue
         pool[item.teaching_unit_id].append(item)
     return pool

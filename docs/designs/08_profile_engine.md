@@ -13,39 +13,28 @@ Profile 负责把学习过程沉淀成可持续利用的学习状态。它不只
 
 ## 2. 当前实现落点
 
-当前 Profile 同样处于双轨期。
+当前 Profile 的对外资源组已经收口到 `profile`，底层主线是 workflow-backed 的学习状态层。
 
-### 2.1 legacy 路径
+### 2.1 当前正式路径
 
 - 前端页面：`frontend/src/pages/AnalysisPage.tsx`
 - 后端资源组：`profile`
 - 业务入口：`backend/app/services/profile_service.py`
-- 关键模型：`user_profile`、`mistake`
-
-### 2.2 workflow-backed 新路径
-
-- 后端资源组：`assessment`
-- 业务入口：`backend/app/services/assessment_service.py`
 - 工作流编排：`backend/app/workflows/profile/*`
 - 关键模型：
   - `user_knowledge_state`
   - `review_task`
-  - 以及由 Examine 触发的 `user_answer_attempt`
+  - `user_answer_attempt`
+  - `exam_paper`、`exam_paper_item`
+
+补充说明：
+
+- 旧 `user_profile / mistake` 不是主设计
+- `assessment` 不再是正式资源组名称
 
 ---
 
 ## 3. 当前主 Pipeline
-
-### 3.1 legacy 画像链路
-
-| 步骤 | 当前主模块 | 输入 | 输出 |
-| --- | --- | --- | --- |
-| 1. 测评结果回流 | legacy `exams_service` | 判卷结果 | 知识点级统计 |
-| 2. 画像更新 | `profile_repo.upsert_profile` | knowledge point、attempt/correct | `user_profile` |
-| 3. 薄弱点查询 | `profile_service` | `subject` | 薄弱点列表、学习报告 |
-| 4. 错题本查询 | `profile_service.list_mistakes` | `subject` | `mistake` 列表 |
-
-### 3.2 workflow-backed 新状态链路
 
 | 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
@@ -53,7 +42,7 @@ Profile 负责把学习过程沉淀成可持续利用的学习状态。它不只
 | 2. 掌握度更新 | `workflows/profile/mastery_updater.py` | `exam_paper_item`、`user_answer_attempt` | `user_knowledge_state` |
 | 3. 复习调度 | `workflows/profile/review_scheduler.py` | 更新后的状态 | `review_task` |
 | 4. 薄弱分析 | `workflows/profile/weakness_analyzer.py` | 掌握度、答题记录、课程结构 | 薄弱排序结果 |
-| 5. assessment 查询 | `assessment_service` | `subject`、用户 | mastery overview、review tasks |
+| 5. profile 查询 | `profile_service` | `subject`、用户 | mastery overview、review tasks、报告读模型 |
 
 ---
 
@@ -68,8 +57,8 @@ Profile 的核心价值不在于“画了几张图”，而在于它能否被其
 新链路优先锚定：
 
 - `teaching_unit_id`
-- 知识节点链接
-- `curriculum_snapshot`
+- `knowledge_node_id`
+- `curriculum_version`
 
 这比只依赖 `knowledge_point` 字符串更稳定。
 
@@ -96,15 +85,6 @@ Profile 的输出至少要能回到：
 
 ## 5. 数据库写入对象
 
-### 5.1 legacy 链路
-
-直接写入：
-
-- `user_profile`
-- `mistake`
-
-### 5.2 workflow-backed 新链路
-
 直接写入：
 
 - `user_knowledge_state`
@@ -115,7 +95,7 @@ Profile 的输出至少要能回到：
 - `user_answer_attempt`
 - `exam_paper`
 - `exam_paper_item`
-- `curriculum_snapshot`
+- `curriculum_version`
 
 ---
 
@@ -138,17 +118,6 @@ Profile 的输出至少要能回到：
 ---
 
 ## 7. 关键状态推进
-
-### 7.1 legacy 路径
-
-主要依赖：
-
-- `user_profile.mastery`
-- `mistake`
-
-来表达学习状态和错题积累。
-
-### 7.2 workflow-backed 新路径
 
 新的状态对象包括：
 
@@ -173,32 +142,27 @@ Profile 的输出至少要能回到：
 | --- | --- | --- | --- |
 | `mastery_updater.py` | `exam_paper`、`exam_paper_item`、`user_answer_attempt`、已有 `user_knowledge_state` | `user_knowledge_state` | 无 |
 | `review_scheduler.py` | `user_knowledge_state`、已有 `review_task` | `review_task`、状态相关字段 | 无 |
-| `weakness_analyzer.py` | `user_knowledge_state`、`user_answer_attempt`、`curriculum_snapshot`、课程结构对象 | 无 | 无 |
-| legacy `profile_service` 链路 | `user_profile`、`mistake` | `user_profile` | 无 |
+| `weakness_analyzer.py` | `user_knowledge_state`、`user_answer_attempt`、`curriculum_version`、课程结构对象 | 无 | 无 |
+| `profile_service` | `user_knowledge_state`、`review_task`、`user_answer_attempt`、`exam_paper_item` | 无 | 无 |
 
 ---
 
 ## 9. 开发关注点
 
-### 9.1 不能再把 UserProfile 当成唯一画像对象
+### 9.1 不能再把 UserProfile 当成画像真相源
 
-`user_profile` 仍在线，但已经不是系统唯一、也不是长期最值得强化的学习状态层。
+新的学习状态真相源应该围绕 `user_knowledge_state / review_task / user_answer_attempt` 组织。
 
 ### 9.2 新状态层是 Interact 和 Examine 的共同输入
 
 `user_knowledge_state` 和 `review_task` 的价值，不只是分析页展示，而是驱动下一轮对话与测评。
 
-### 9.3 文档必须明确双轨现状
+### 9.3 当前代码里仍有弱多态目标字段
 
-任何设计文档如果继续只讲 `UserProfile + Mistake`，都会和当前数据库与 workflow 真相失配。
+当前 `user_knowledge_state` 和 `review_task` 仍使用 `granularity + target_id` 过渡表达；目标态应进一步收口到 `teaching_unit_id / knowledge_node_id` 强外键模型。
 
 ---
 
 ## 10. 总结
 
-Profile 当前已经从“掌握度统计页”演进成双轨状态层：
-
-- legacy 链路继续服务现有 `profile` API
-- workflow-backed 新链路已经落到 `user_knowledge_state` 与 `review_task`
-
-后续开发应优先强化新链路，同时继续在文档中准确说明两套状态对象各自的责任、读写边界和消费方，避免前端、后端和设计文档再出现状态模型漂移。
+Profile 当前已经明确收口到学习状态层：`user_knowledge_state` 负责掌握度真相，`review_task` 负责复习调度，`user_answer_attempt` 负责行为回放。后续开发应继续强化这条主线，不再回到 `user_profile / mistake` 模型。

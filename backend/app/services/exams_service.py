@@ -427,20 +427,6 @@ async def trigger_exam_generate(
         lock.release()
 
 
-async def get_exam_generate_job_status(
-    session: Session,
-    *,
-    subject: str,
-    job_id: int,
-    user_id: str,
-) -> ExamGenerateResult:
-    del session, subject, user_id
-    _raise_not_found(
-        f"组卷任务 `{job_id}` 不存在（ExamGenerateJob 已移除）。",
-        error_code="EXAM_GENERATE_JOB_NOT_FOUND",
-    )
-
-
 async def submit_exam_answers(
     session: Session,
     *,
@@ -621,20 +607,6 @@ async def trigger_exam_grade(
             exc_info=True,
         )
         raise
-
-
-async def get_exam_grade_job_status(
-    session: Session,
-    *,
-    subject: str,
-    job_id: int,
-    user_id: str,
-) -> ExamGradeResult:
-    del session, subject, user_id
-    _raise_not_found(
-        f"判卷任务 `{job_id}` 不存在（ExamGradeJob 已移除）。",
-        error_code="EXAM_GRADE_JOB_NOT_FOUND",
-    )
 
 
 async def get_exam_history(

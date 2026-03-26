@@ -222,7 +222,7 @@ class DigestJobStatus(str, Enum):
     FAILED = "failed"
 
 
-# ── Assessment & Mastery Layer ──
+# ── Exam & Profile Layer ──
 
 
 class ExamMode(str, Enum):

@@ -4,54 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from app.schemas.common import PageParams
-from app.schemas.enums import QuestionTypeValue
-
-
-class ProfileListRequest(PageParams):
-    """Legacy profile list request."""
-
-
-class ProfileReportRequest(BaseModel):
-    """Legacy profile report request."""
-
-    model_config = ConfigDict(json_schema_extra={"example": {}})
-
-
-class ProfileMistakesRequest(PageParams):
-    """Legacy profile mistakes request."""
-
-
-class ProfileItem(BaseModel):
-    """Legacy knowledge point profile item."""
-
-    knowledge_point: str = Field(description="Knowledge point.")
-    mastery: float | None = Field(default=None, description="Mastery score in [0,1].", ge=0, le=1)
-    attempts: int = Field(description="Attempt count.", ge=0)
-    correct: int = Field(description="Correct count.", ge=0)
-
-
-class ReportData(BaseModel):
-    """Legacy profile report data."""
-
-    overall_mastery: float | None = Field(default=None, description="Overall mastery.", ge=0, le=1)
-    weak_points_top5: list[ProfileItem] = Field(default_factory=list, description="Top 5 weak points.")
-    suggestions: list[str] = Field(default_factory=list, description="Suggestions.")
-
-
-class MistakeItem(BaseModel):
-    """Legacy mistake item."""
-
-    id: int = Field(description="Mistake ID.")
-    question_stem: str = Field(description="Question stem.")
-    question_type: QuestionTypeValue = Field(description="Question type.")
-    user_answer: str = Field(description="User answer.")
-    correct_answer: str = Field(description="Correct answer.")
-    analysis: str = Field(description="Error analysis.")
-    knowledge_point: str = Field(description="Knowledge point.")
-    created_at: datetime = Field(description="Created at.")
+from pydantic import BaseModel, Field
 
 
 class MasteryStateResponse(BaseModel):

@@ -7,7 +7,6 @@ import structlog
 from sqlmodel import Session, func, select
 
 from app.models import (
-    AnswerRecord,
     ChatMessage,
     ChatSession,
     CurriculumSnapshot,
@@ -15,18 +14,14 @@ from app.models import (
     DocumentChunk,
     EdgeRevision,
     EvidenceLink,
-    Exam,
     ExamPaper,
     ExamPaperGenerationContext,
     ExamPaperItem,
-    ExamSubmission,
     KnowledgeAlias,
     KnowledgeEdge,
     KnowledgeNode,
     KnowledgeRevision,
-    Mistake,
     PrereqDagVersion,
-    Question,
     QuestionTemplate,
     QuestionTemplateNodeLink,
     RawFile,
@@ -42,7 +37,6 @@ from app.models import (
     UnitTreeMembership,
     UserAnswerAttempt,
     UserKnowledgeState,
-    UserProfile,
 )
 from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import (
@@ -56,11 +50,6 @@ from app.services.upload_support import build_asset_name_prefix, build_subject_d
 logger = structlog.get_logger()
 
 _EXAM_KEYS = [
-    "exam",
-    "question",
-    "exam_submission",
-    "answer_record",
-    "mistake",
     "question_template",
     "question_template_node_link",
     "exam_paper",
@@ -68,7 +57,7 @@ _EXAM_KEYS = [
     "user_answer_attempt",
     "exam_paper_generation_context",
 ]
-_PROFILE_KEYS = ["user_profile", "user_knowledge_state", "review_task"]
+_PROFILE_KEYS = ["user_knowledge_state", "review_task"]
 _KNOWLEDGE_KEYS = [
     "curriculum_snapshot",
     "edge_revision",
@@ -112,45 +101,6 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "chat_session": _count_query(
             session,
             select(func.count()).select_from(ChatSession).where(ChatSession.subject == subject),
-        ),
-        "user_profile": _count_query(
-            session,
-            select(func.count()).select_from(UserProfile).where(UserProfile.subject == subject),
-        ),
-        "exam": _count_query(
-            session,
-            select(func.count()).select_from(Exam).where(Exam.subject == subject),
-        ),
-        "question": _count_query(
-            session,
-            select(func.count())
-            .select_from(Question)
-            .join(Exam, Question.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "exam_submission": _count_query(
-            session,
-            select(func.count())
-            .select_from(ExamSubmission)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "answer_record": _count_query(
-            session,
-            select(func.count())
-            .select_from(AnswerRecord)
-            .join(ExamSubmission, AnswerRecord.submission_id == ExamSubmission.id)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
-        ),
-        "mistake": _count_query(
-            session,
-            select(func.count())
-            .select_from(Mistake)
-            .join(AnswerRecord, Mistake.answer_record_id == AnswerRecord.id)
-            .join(ExamSubmission, AnswerRecord.submission_id == ExamSubmission.id)
-            .join(Exam, ExamSubmission.exam_id == Exam.id)
-            .where(Exam.subject == subject),
         ),
         "question_template": _count_rows(
             session,
@@ -311,7 +261,7 @@ def build_subject_delete_preview(
             key="exam",
             label="考试与判题记录",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
-            description="会删除旧 exam 链路和新 assessment 链路的出题、组卷、判题数据。",
+            description="会删除当前 exam 链路下的出题、组卷、作答和判题数据。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
@@ -323,7 +273,7 @@ def build_subject_delete_preview(
             key="profile",
             label="学习画像",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
-            description="会删除旧 profile 和新 mastery/review 相关记录。",
+            description="会删除 mastery/review 相关记录。",
         ),
     ]
     return SubjectDeletePreviewData(
@@ -362,7 +312,7 @@ def delete_subject_with_all_content(
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
-    # New assessment chain
+    # Active exam/profile chain
     papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
     paper_ids = [paper.id for paper in papers if paper.id is not None]
     if paper_ids:
@@ -419,42 +369,6 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
     for template in templates:
         session.delete(template)
 
-    # Legacy exam chain
-    exams = list(session.exec(select(Exam).where(Exam.subject == subject)).all())
-    exam_ids = [exam.id for exam in exams if exam.id is not None]
-    if exam_ids:
-        submissions = list(
-            session.exec(select(ExamSubmission).where(ExamSubmission.exam_id.in_(exam_ids))).all()
-        )
-        submission_ids = [submission.id for submission in submissions if submission.id is not None]
-        if submission_ids:
-            records = list(
-                session.exec(
-                    select(AnswerRecord).where(AnswerRecord.submission_id.in_(submission_ids))
-                ).all()
-            )
-            record_ids = [record.id for record in records if record.id is not None]
-            if record_ids:
-                mistakes = list(
-                    session.exec(
-                        select(Mistake).where(Mistake.answer_record_id.in_(record_ids))
-                    ).all()
-                )
-                for mistake in mistakes:
-                    session.delete(mistake)
-            for record in records:
-                session.delete(record)
-        for submission in submissions:
-            session.delete(submission)
-
-        questions = list(
-            session.exec(select(Question).where(Question.exam_id.in_(exam_ids))).all()
-        )
-        for question in questions:
-            session.delete(question)
-
-    for exam in exams:
-        session.delete(exam)
     session.commit()
 
 
@@ -483,11 +397,7 @@ def _delete_profiles(session: Session, *, subject: str) -> None:
     for state in knowledge_states:
         session.delete(state)
 
-    profiles = list(session.exec(select(UserProfile).where(UserProfile.subject == subject)).all())
-    for profile in profiles:
-        session.delete(profile)
-
-    if not review_tasks and not knowledge_states and not profiles:
+    if not review_tasks and not knowledge_states:
         return
     session.commit()
 
@@ -541,4 +451,3 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
-

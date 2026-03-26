@@ -17,14 +17,14 @@
 
 | 边界 | 核心对象 | 当前定位 |
 | --- | --- | --- |
-| 工作空间 | `Subject`、`RawFile` | 当前主路径 |
-| 材料层 | `Document`、`DocumentChunk`、`chunk_embeddings` | 当前主路径 |
-| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`EvidenceLink`、`KnowledgeAlias`、`KnowledgeRevision` | 当前主路径 |
-| 课程结构层 | `TeachingUnit*`、`ThemeTree*`、`PrereqDag*`、`CurriculumSnapshot` | 当前主路径 |
-| 知识文档层 | `KnowledgeDoc` | 当前主路径 |
-| 交互层 | `ChatMessage` | 当前主路径 |
-| 测评与学习状态 | `QuestionBuildJob`、`ExamGenerateJob`、`ExamGradeJob`、`UserKnowledgeState`、`ReviewTask` | 演进主方向 |
-| 旧测评层 | `Exam`、`Question`、`ExamSubmission`、`AnswerRecord`、`Mistake`、`UserProfile` | 仍在兼容期 |
+| 工作空间 | `User`、`Subject`、`RawFile` | 目标主路径 |
+| 材料层 | `RetrievalChunk`、`ChunkEmbedding` | 目标主路径 |
+| 知识层 | `KnowledgeNode`、`KnowledgeEdge`、`KnowledgeEvidence`、`KnowledgeAlias` | 目标主路径 |
+| 课程结构层 | `TeachingUnit*`、`CurriculumBlueprintNode`、`CurriculumVersion*` | 目标主路径 |
+| 知识文档层 | `KnowledgeDocument` | 目标主路径 |
+| 交互层 | `ChatSession`、`ChatMessage` | 目标主路径 |
+| 测评与学习状态 | `QuestionTemplate`、`ExamPaper*`、`UserAnswerAttempt`、`UserKnowledgeState`、`ReviewTask` | 目标主路径 |
+| 过渡对象 | `Document`、`DocumentChunk`、`KnowledgeDoc`、`CurriculumSnapshot` 等 | 当前代码残留，目标态收敛删除 |
 
 关键更新：
 
@@ -32,6 +32,7 @@
 - Graph / Curriculum 的 `job_id` 当前更偏运行时语义，数据库真相已回到最终业务表。
 - 知识文档的外部协议中不再有 `job_id`、`status`、`progress`、`current_step`。
 - 知识文档构建状态只存在于内部文件锁和工作流阶段日志中。
+- Examine / Profile 不再把 job 表作为长期业务对象。
 
 ---
 
@@ -56,15 +57,14 @@
 
 它回答的是“资料是否已经进入系统并可被 Digest 消费”。
 
-### 3.3 Document / DocumentChunk / chunk_embeddings
+### 3.3 RetrievalChunk / ChunkEmbedding
 
-这三者是材料层桥接对象：
+目标态材料层桥接对象是：
 
-- `Document` 表示 Digest 可消费的文档级材料。
-- `DocumentChunk` 表示检索、证据引用、图谱抽取使用的块级材料。
-- `chunk_embeddings` 是与 `DocumentChunk` 同步维护的向量索引。
+- `RetrievalChunk`
+- `ChunkEmbedding`
 
-它们是 Ingest、Digest、Interact 共同依赖的稳定材料层。
+当前代码里的 `Document / DocumentChunk / chunk_embeddings` 只是过渡实现，最终都要并到这两个逻辑对象里。
 
 ### 3.4 Knowledge Graph
 
@@ -82,22 +82,20 @@
 课程结构层负责把知识图谱转换为教学组织视图，核心对象包括：
 
 - `TeachingUnit`
-- `TeachingUnitRevision`
 - `TeachingUnitMembership`
-- `ThemeTreeVersion`
-- `ThemeTreeNode`
-- `UnitTreeMembership`
-- `PrereqDagVersion`
-- `UnitDependency`
-- `CurriculumSnapshot`
+- `CurriculumBlueprintNode`
+- `CurriculumVersion`
+- `CurriculumTreeNode`
+- `CurriculumUnitLink`
+- `CurriculumDependency`
 
 这层回答“这些知识应该怎么组织、怎么展示、怎么安排学习顺序”。
 
-### 3.6 KnowledgeDoc
+### 3.6 KnowledgeDocument
 
-知识文档层现在只有一个长期业务对象：`KnowledgeDoc`。
+知识文档层现在只有一个长期业务对象：`KnowledgeDocument`。
 
-它对应的是已经发布的知识文档章节记录，而不是构建任务。
+它对应的是已经发布的知识文档包和章节记录，而不是构建任务。
 
 知识文档的发布形态明确为两层：
 
@@ -106,15 +104,20 @@
 
 知识文档层的重要结论：
 
-- `KnowledgeDoc` 承载的是已发布章节。
+- `KnowledgeDocument` 承载的是已发布章节与包级元数据。
 - `merged_knowledge_base.md` 是面向阅读页的统一入口。
 - 不再引入 `DocGenJob` 作为外部状态对象。
 - 构建中的状态由 `.build.lock` 与 `_build/` staging 目录表达。
 - 最近一版发布元信息由 `manifest.json` 表达。
 
-### 3.7 ChatMessage
+### 3.7 ChatSession / ChatMessage
 
-`ChatMessage` 表达对话真相，主要记录：
+对话层长期对象是：
+
+- `ChatSession`
+- `ChatMessage`
+
+它们主要记录：
 
 - 用户与助手消息。
 - turn 对。
@@ -133,7 +136,7 @@
 
 - `graph_job_id`
 - `curriculum_job_id`
-- assessment/profile 里的运行时任务标识
+- examine/profile 里的运行时任务标识
 
 但在知识域里，这些 ID 当前主要用于：
 
@@ -176,7 +179,7 @@
 - 若干章节 Markdown 文件
 - 一个 merged Markdown 文件
 - 一份 manifest
-- 一组 `KnowledgeDoc` 章节记录
+- 一组 `KnowledgeDocument` 记录
 
 ### 5.2 构建与发布的边界
 
@@ -186,7 +189,7 @@
 2. 再生成 `_build/merged_knowledge_base.md`
 3. 全部成功后覆盖正式目录
 4. 同步覆盖 `manifest.json`
-5. 同步重建 `KnowledgeDoc` published 记录
+5. 同步重建 `KnowledgeDocument` published 记录
 
 这保证了：
 
@@ -207,7 +210,7 @@
 - 材料层对象
 - 知识图谱与课程结构
 - 对话与测评结构化数据
-- `KnowledgeDoc` 已发布章节记录
+- `KnowledgeDocument` 已发布章节与版本记录
 
 ### 6.2 本地文件存什么
 

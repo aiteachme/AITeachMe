@@ -1,132 +1,14 @@
-﻿"""Profile and mastery data access layer."""
+"""Profile and mastery data access layer."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
-from app.models import (
-    ExamPaper,
-    ExamPaperItem,
-    KnowledgeNode,
-    ReviewTask,
-    UserAnswerAttempt,
-    UserKnowledgeState,
-    UserProfile,
-)
+from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, ReviewTask, UserAnswerAttempt, UserKnowledgeState
 from app.utils.time import utcnow
-
-
-# ---------------------------------------------------------------------------
-# Legacy profile table CRUD
-# ---------------------------------------------------------------------------
-
-
-def upsert_profile(
-    session: Session,
-    *,
-    user_id: str,
-    subject: str,
-    knowledge_point: str,
-    attempts: int,
-    correct: int,
-) -> UserProfile:
-    stmt = select(UserProfile).where(
-        UserProfile.user_id == user_id,
-        UserProfile.subject == subject,
-        UserProfile.knowledge_point == knowledge_point,
-    )
-    profile = session.exec(stmt).first()
-    mastery = correct / attempts if attempts > 0 else None
-
-    if profile is None:
-        profile = UserProfile(
-            user_id=user_id,
-            subject=subject,
-            knowledge_point=knowledge_point,
-            mastery=mastery,
-            attempts=attempts,
-            correct=correct,
-            updated_at=utcnow(),
-        )
-    else:
-        profile.mastery = mastery
-        profile.attempts = attempts
-        profile.correct = correct
-        profile.updated_at = utcnow()
-
-    session.add(profile)
-    session.commit()
-    session.refresh(profile)
-    return profile
-
-
-def list_profiles_by_subject(
-    session: Session,
-    subject: str,
-    *,
-    user_id: str = "local",
-    limit: int,
-    offset: int,
-) -> tuple[list[UserProfile], int]:
-    total = session.exec(
-        select(func.count())
-        .select_from(UserProfile)
-        .where(UserProfile.subject == subject, UserProfile.user_id == user_id)
-    ).one()
-    stmt = (
-        select(UserProfile)
-        .where(UserProfile.subject == subject, UserProfile.user_id == user_id)
-        .order_by(UserProfile.updated_at.desc())  # type: ignore[union-attr]
-        .offset(offset)
-        .limit(limit)
-    )
-    return list(session.exec(stmt).all()), total
-
-
-def get_profile_by_key(
-    session: Session,
-    *,
-    user_id: str,
-    subject: str,
-    knowledge_point: str,
-) -> UserProfile | None:
-    stmt = select(UserProfile).where(
-        UserProfile.user_id == user_id,
-        UserProfile.subject == subject,
-        UserProfile.knowledge_point == knowledge_point,
-    )
-    return session.exec(stmt).first()
-
-
-def get_weak_points(
-    session: Session,
-    subject: str,
-    *,
-    user_id: str = "local",
-    threshold: float = 0.6,
-    limit: int | None = None,
-) -> list[UserProfile]:
-    stmt = (
-        select(UserProfile)
-        .where(
-            UserProfile.subject == subject,
-            UserProfile.user_id == user_id,
-            UserProfile.mastery.is_not(None),  # type: ignore[union-attr]
-            UserProfile.mastery < threshold,  # type: ignore[operator]
-        )
-        .order_by(UserProfile.mastery.asc())  # type: ignore[union-attr]
-    )
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    return list(session.exec(stmt).all())
-
-
-# ---------------------------------------------------------------------------
-# UserKnowledgeState + ReviewTask CRUD
-# ---------------------------------------------------------------------------
 
 
 def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserKnowledgeState:
@@ -211,7 +93,7 @@ def list_knowledge_states(
     )
     if granularity is not None:
         stmt = stmt.where(UserKnowledgeState.granularity == granularity)
-    return list(session.exec(stmt.order_by(UserKnowledgeState.updated_at.desc())).all())  # type: ignore[union-attr]
+    return list(session.exec(stmt.order_by(UserKnowledgeState.updated_at.desc())).all())
 
 
 def list_weak_knowledge_states(
@@ -226,9 +108,9 @@ def list_weak_knowledge_states(
         .where(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
-            UserKnowledgeState.mastery_score < threshold,  # type: ignore[operator]
+            UserKnowledgeState.mastery_score < threshold,
         )
-        .order_by(UserKnowledgeState.mastery_score.asc())  # type: ignore[union-attr]
+        .order_by(UserKnowledgeState.mastery_score.asc())
     )
     return list(session.exec(stmt).all())
 
@@ -245,10 +127,10 @@ def list_due_knowledge_states(
         .where(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
-            UserKnowledgeState.forgetting_due_at.is_not(None),  # type: ignore[union-attr]
-            UserKnowledgeState.forgetting_due_at <= as_of,  # type: ignore[operator]
+            UserKnowledgeState.forgetting_due_at.is_not(None),
+            UserKnowledgeState.forgetting_due_at <= as_of,
         )
-        .order_by(UserKnowledgeState.forgetting_due_at.asc())  # type: ignore[union-attr]
+        .order_by(UserKnowledgeState.forgetting_due_at.asc())
     )
     return list(session.exec(stmt).all())
 
@@ -268,12 +150,12 @@ def list_weak_node_summaries(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
             UserKnowledgeState.granularity == "node",
-            UserKnowledgeState.mastery_score < threshold,  # type: ignore[operator]
+            UserKnowledgeState.mastery_score < threshold,
             KnowledgeNode.subject == subject,
         )
         .order_by(
-            UserKnowledgeState.mastery_score.asc(),  # type: ignore[union-attr]
-            UserKnowledgeState.updated_at.desc(),  # type: ignore[union-attr]
+            UserKnowledgeState.mastery_score.asc(),
+            UserKnowledgeState.updated_at.desc(),
         )
         .limit(limit)
     )
@@ -304,9 +186,9 @@ def list_recent_wrong_attempt_summaries(
         .where(
             ExamPaper.user_id == user_id,
             ExamPaper.subject == subject,
-            UserAnswerAttempt.is_correct.is_(False),  # type: ignore[union-attr]
+            UserAnswerAttempt.is_correct.is_(False),
         )
-        .order_by(UserAnswerAttempt.created_at.desc())  # type: ignore[union-attr]
+        .order_by(UserAnswerAttempt.created_at.desc())
         .limit(limit)
     )
     rows = session.exec(stmt).all()
@@ -392,9 +274,9 @@ def list_pending_reviews(
             ReviewTask.status == "pending",
         )
         .order_by(
-            ReviewTask.priority.desc(),  # type: ignore[union-attr]
-            ReviewTask.scheduled_at.asc(),  # type: ignore[union-attr]
-            ReviewTask.id.asc(),  # type: ignore[union-attr]
+            ReviewTask.priority.desc(),
+            ReviewTask.scheduled_at.asc(),
+            ReviewTask.id.asc(),
         )
     )
     return list(session.exec(stmt).all())

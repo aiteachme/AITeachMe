@@ -12,7 +12,7 @@ Ingest 负责把原始资料转换成后续所有引擎都能稳定消费的"材
 - 提取图片 / 附件到共享 `assets/`
 - 对提取图片做 OCR / vision 补强
 - 把解析状态写回 `raw_file`
-- 为下游 `document / document_chunk / chunk_embeddings` 做好准备
+- 为下游 `retrieval_chunk / knowledge_document / knowledge graph` 做好准备
 
 Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料打磨到可消费状态。
 
@@ -27,7 +27,13 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 | service     | `backend/app/services/file_service.py`   |
 | workflow    | `backend/app/workflows/ingest/*`         |
 | 路径 helper | `backend/app/services/upload_support.py` |
-| 核心表      | `raw_file`                               |
+| 核心表      | `raw_file`、`raw_file_asset`             |
+
+补充说明：
+
+- Ingest 的正式输出是 `raw_file + raw_file_asset + markdown/assets 文件产物`
+- 当前代码里后续仍会经过 `document/document_chunk` 过渡 materialize
+- 目标态数据库语义已经收口到 `retrieval_chunk`
 
 ---
 
@@ -455,7 +461,7 @@ options.timeout_s = 150                 # 延长超时时间
 
 Ingest 的 Phase 2 结束后，下游并不是直接消费 `raw_file` 本身，而是消费：
 
-`raw_file.markdown_path -> document -> document_chunk -> chunk_embeddings`
+`raw_file.markdown_path -> retrieval_chunk -> chunk_embedding`
 
 这个桥接发生在：
 

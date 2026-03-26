@@ -25,8 +25,6 @@ from app.services.exams_service import (
     ExamPaperDetail,
     QuestionBankItem,
     delete_exam_paper,
-    get_exam_generate_job_status,
-    get_exam_grade_job_status,
     get_exam_history,
     get_exam_paper_detail,
     get_question_bank,
@@ -209,52 +207,6 @@ async def api_get_exam_history(
             total=history.total,
         )
     )
-
-
-@router.post(
-    "/generate-jobs/{job_id:int}",
-    response_model=ApiResponse[ExamGenerateJobStatusResponse],
-    summary="Exam generate job status",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def api_get_generate_job_status(
-    subject: str = Path(...),
-    job_id: int = Path(..., ge=1),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[ExamGenerateJobStatusResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-    job = await get_exam_generate_job_status(
-        session,
-        subject=normalized,
-        job_id=job_id,
-        user_id=user.user_id,
-    )
-    return ok_response(_to_exam_generate_job_response(job))
-
-
-@router.post(
-    "/grade-jobs/{job_id:int}",
-    response_model=ApiResponse[ExamGradeJobStatusResponse],
-    summary="Exam grade job status",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def api_get_grade_job_status(
-    subject: str = Path(...),
-    job_id: int = Path(..., ge=1),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[ExamGradeJobStatusResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
-    job = await get_exam_grade_job_status(
-        session,
-        subject=normalized,
-        job_id=job_id,
-        user_id=user.user_id,
-    )
-    return ok_response(_to_exam_grade_job_response(job))
 
 
 @router.post(

@@ -1,15 +1,5 @@
-"""模型统一导出。"""
+"""Central model exports."""
 
-from app.models.assessment import (
-    ExamPaper,
-    ExamPaperGenerationContext,
-    ExamPaperItem,
-    QuestionTemplate,
-    QuestionTemplateNodeLink,
-    ReviewTask,
-    UserAnswerAttempt,
-    UserKnowledgeState,
-)
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     CurriculumSnapshot,
@@ -43,14 +33,16 @@ from app.models.enums import (
     WeaknessReason,
     validate_status_transition,
 )
-from app.models.exam import AnswerRecord, Exam, ExamSubmission, Mistake, Question
-from app.models.knowledge import (
-    Document,
-    DocumentChunk,
+from app.models.exam import (
+    ExamPaper,
+    ExamPaperGenerationContext,
+    ExamPaperItem,
+    QuestionTemplate,
+    QuestionTemplateNodeLink,
+    UserAnswerAttempt,
 )
-from app.models.knowledge_doc import (
-    KnowledgeDoc,
-)
+from app.models.knowledge import Document, DocumentChunk
+from app.models.knowledge_doc import KnowledgeDoc
 from app.models.knowledge_graph import (
     EdgeRevision,
     EvidenceLink,
@@ -59,12 +51,11 @@ from app.models.knowledge_graph import (
     KnowledgeNode,
     KnowledgeRevision,
 )
-from app.models.profile import UserProfile
+from app.models.profile import ReviewTask, UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
 
 __all__ = [
-    "AnswerRecord",
     "AsyncJobStatus",
     "ChatMessage",
     "ChatSession",
@@ -77,13 +68,11 @@ __all__ = [
     "EdgeRevision",
     "EvidenceLink",
     "ErrorCauseLabel",
-    "Exam",
     "ExamMode",
     "ExamPaper",
     "ExamPaperGenerationContext",
     "ExamPaperItem",
     "ExamPaperStatus",
-    "ExamSubmission",
     "IngestStatus",
     "KnowledgeAlias",
     "KnowledgeDoc",
@@ -92,9 +81,7 @@ __all__ = [
     "KnowledgeNode",
     "KnowledgeRevision",
     "MasteryGranularity",
-    "Mistake",
     "PrereqDagVersion",
-    "Question",
     "QuestionTemplate",
     "QuestionTemplateNodeLink",
     "QuestionTemplateStatus",
@@ -107,16 +94,15 @@ __all__ = [
     "TaskStatus",
     "TaxonomyAnchor",
     "TeachingUnit",
-    "TemplateNodeRole",
     "TeachingUnitMembership",
     "TeachingUnitRevision",
+    "TemplateNodeRole",
     "ThemeTreeNode",
     "ThemeTreeVersion",
     "UnitDependency",
     "UnitTreeMembership",
     "UserAnswerAttempt",
     "UserKnowledgeState",
-    "UserProfile",
     "WeaknessReason",
     "validate_status_transition",
 ]
