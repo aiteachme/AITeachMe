@@ -1,4 +1,4 @@
-"""Exam data access layer."""
+﻿"""Exam data access layer."""
 
 from __future__ import annotations
 

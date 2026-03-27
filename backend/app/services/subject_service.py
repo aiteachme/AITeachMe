@@ -11,6 +11,7 @@ from app.repositories.subject_repo import (
     list_subjects,
     update_subject,
 )
+from app.repositories.user_repo import get_or_create_user_by_username
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData, SubjectItem
 from app.services.subject_deletion_service import (
@@ -45,9 +46,12 @@ def create_subject_record(
     name: str,
     description: str = "",
 ) -> SubjectItem:
+    owner = get_or_create_user_by_username(session, username="local")
+    owner_id = require_id(owner.id, "User.id")
     subject = create_subject(
         session,
         Subject(
+            user_id=owner_id,
             slug=_create_unique_subject_id(session),
             name=name.strip() or "Untitled Subject",
             description=description.strip(),

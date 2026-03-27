@@ -1,4 +1,4 @@
-"""User ownership model."""
+﻿"""User ownership model."""
 
 from __future__ import annotations
 

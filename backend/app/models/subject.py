@@ -1,4 +1,4 @@
-"""Subject workspace model."""
+﻿"""Subject workspace model."""
 
 from __future__ import annotations
 

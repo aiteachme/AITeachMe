@@ -4,59 +4,85 @@
 
 本文档只回答两件事：
 
-- 源码主阅读顺序是什么
-- 运行时数据根目录现在到底怎么落盘
+- 现在应该按什么顺序读仓库
+- 运行时文件到底怎么落盘
 
-数据库表设计看 [13_database_schema_inventory.md](./13_database_schema_inventory.md)。  
-部署与存储抽象看 [11_database_and_storage_architecture.md](./11_database_and_storage_architecture.md)。
+数据库表职责请看 [13_database_schema_inventory.md](./13_database_schema_inventory.md)。
 
 ---
 
-## 2. 源码主阅读顺序
+## 2. 推荐阅读顺序
 
 后端主顺序：
 
 `api -> services -> workflows -> repositories -> models -> schemas -> core`
 
-顶层目录：
+原因：
+
+- `api` 告诉你对外资源长什么样
+- `services` 告诉你请求怎么被转成用例
+- `workflows` 告诉你复杂流程真实怎么跑
+- `repositories/models` 告诉你数据最终怎么落
+
+---
+
+## 3. 顶层目录
 
 | 目录 | 作用 |
 | --- | --- |
 | `frontend/` | React 页面、组件、前端 API |
 | `backend/` | FastAPI、workflow、repository、model |
 | `docs/` | 设计文档 |
-| `backend/scripts/` | 工程脚本 |
+| `backend/scripts/` | 工具脚本与辅助脚本 |
+| `backend/skills/` | 教学技能定义 |
+| `backend/tools/` | 工具配置 YAML |
 
 ---
 
-## 3. 运行时数据根目录
+## 4. 后端核心目录
 
-代码配置默认数据根目录是：
+`backend/app/` 当前核心目录为：
 
-`./data/`
+| 目录 | 作用 |
+| --- | --- |
+| `api/` | HTTP 资源入口 |
+| `services/` | 用例入口与结果封装 |
+| `workflows/` | 五大引擎编排中心 |
+| `repositories/` | 查询与持久化帮助 |
+| `models/` | 业务表模型 |
+| `schemas/` | API 请求 / 响应模型 |
+| `core/` | LLM、Search、Memory、Sandbox 等基础设施 |
 
-在当前仓库的常见启动方式下，实际通常会看到：
+其中最需要优先读的是 `workflows/`，因为复杂主链路已经正式迁到这里。
+
+---
+
+## 5. 当前数据根目录
+
+默认数据根目录来自 `get_settings().data_dir`。
+
+在当前仓库的常见落点是：
 
 `backend/data/`
 
 其中：
 
-- 常见落点里的 `backend/data/aiteachme.db` 是主 SQLite 数据库
-- 每个 `subject` 一个运行时目录
-- `chunk_embeddings` 是本地 `sqlite-vec` 虚拟表，不是文件目录
+- `backend/data/aiteachme.db` 是主 SQLite 数据库
+- 每个 `subject` 都有自己的运行时目录
 
 ---
 
-## 4. 当前 Subject 目录布局
+## 6. Subject 目录真实布局
 
-当前代码真实目录由 `backend/app/services/upload_support.py` 定义：
+当前真实目录由 `backend/app/services/upload_support.py` 定义：
 
 ```text
 backend/data/<subject>/
-├─ raw/
-├─ raw_markdown/
+├─ raw_files/
+├─ raw_markdowns/
 ├─ assets/
-├─ knowledge_markdown/
+│  └─ <file_id>/
+├─ knowledge_markdowns/
 │  └─ _build/
 ├─ temp/
 └─ debug/
@@ -66,88 +92,102 @@ backend/data/<subject>/
 
 | 目录 | 作用 |
 | --- | --- |
-| `raw/` | 原始上传文件 |
-| `raw_markdown/` | ingest 解析后的 Markdown |
-| `assets/` | 当前 subject 的共享资源目录 |
-| `knowledge_markdown/` | 已发布知识文档 |
-| `knowledge_markdown/_build/` | 知识文档 staging 和中间产物 |
+| `raw_files/` | 原始上传文件 |
+| `raw_markdowns/` | ingest 产出的材料层 Markdown |
+| `assets/<file_id>/` | 单文件图片与附件资产 |
+| `knowledge_markdowns/` | 已发布知识文档 |
+| `knowledge_markdowns/_build/` | 知识文档 staging 与中间产物 |
 | `temp/` | 临时文件 |
-| `debug/` | 调试快照 |
+| `debug/` | workflow 调试快照 |
 
 ---
 
-## 5. 命名说明
+## 7. 主要路径 helper
 
-这里是运行时目录名，不是数据库表名。
+当前最重要的 helper 位于 `backend/app/services/upload_support.py`：
 
-- 数据库表名按单数 `snake_case` 设计
-- 运行时目录名以当前代码真实实现为准
-- 当前不要在文档里提前改成不存在的复数目录名
+- `build_raw_dir()`
+- `build_raw_file_path()`
+- `build_raw_markdown_dir()`
+- `build_raw_markdown_path()`
+- `build_asset_dir()`
+- `build_knowledge_markdown_dir()`
+- `build_knowledge_doc_path()`
+- `build_knowledge_manifest_path()`
+- `to_storage_key()`
+- `resolve_storage_key_path()`
 
-也就是说，当前文档必须写：
-
-- `raw/`
-- `raw_markdown/`
-- `assets/`
-- `knowledge_markdown/`
-
-而不是写成未来假想名字。
+这些 helper 才是运行时路径真相，文档和代码都应以它们为准。
 
 ---
 
-## 6. 当前正式产物
+## 8. 当前正式产物
 
-### 6.1 Ingest 后
+### 8.1 Ingest 之后
 
-- `raw/<raw_file_id>.<ext>`
-- `raw_markdown/<raw_file_id>.md`
-- `assets/<asset_name_prefix>__*.png|jpg|...`
+- `raw_files/<raw_file_id>.<ext>`
+- `raw_markdowns/<raw_file_id>.md`
+- `assets/<raw_file_id>/*`
 
-### 6.2 Digest Docs 后
+### 8.2 Digest Docs 发布之后
 
-- `knowledge_markdown/chapter_XX_*.md`
-- `knowledge_markdown/merged_knowledge_base.md`
-- `knowledge_markdown/manifest.json`
-- `knowledge_markdown/.build.lock`
+- `knowledge_markdowns/chapter_XX_*.md`
+- `knowledge_markdowns/merged_knowledge_base.md`
+- `knowledge_markdowns/manifest.json`
+- `knowledge_markdowns/.build.lock`
 
-### 6.3 中间产物
+### 8.3 中间与调试产物
 
-- `knowledge_markdown/_build/*`
+- `knowledge_markdowns/_build/*`
 - `temp/*`
 - `debug/*`
 
-### 6.4 版本记录怎么放
+---
 
-- 运行时目录默认只保留当前 live 的知识文档文件
-- 最近一次 live 的文件级元数据写在 `knowledge_markdown/manifest.json`
-- 历史版本真相放在数据库的 `knowledge_document.package_key / version_no / is_current`
+## 9. 目录名与表名不是一回事
 
-也就是说，版本管理主要靠数据库，不靠在文件系统里无限堆目录层级。
+当前必须明确区分两套概念：
+
+- 数据库表名：按业务模型命名
+- 文件系统目录名：按运行时产物命名
+
+例如：
+
+- 表里是 `raw_file`
+- 目录里是 `raw_files/`
+
+例如：
+
+- 表里是 `knowledge_document`
+- 目录里是 `knowledge_markdowns/`
+
+不要把目录名误写成数据库表名，也不要反过来。
 
 ---
 
-## 7. 删除与重建边界
+## 10. 删除与重建边界
 
 可以安全重建：
 
 - `temp/`
 - `debug/`
-- `knowledge_markdown/_build/`
+- `knowledge_markdowns/_build/`
 
-谨慎删除：
+需要谨慎处理：
 
-- `raw/`
-- `raw_markdown/`
-- `assets/`
-- `knowledge_markdown/*.md`
-- `knowledge_markdown/manifest.json`
+- `raw_files/`
+- `raw_markdowns/`
+- `assets/<file_id>/`
+- `knowledge_markdowns/*.md`
+- `knowledge_markdowns/manifest.json`
 
 ---
 
-## 8. 一句话结论
+## 11. 一句话结论
 
-`backend/data/` 当前分三层，而且“目录名”和“数据库表名”是两套概念：
+当前仓库的关键事实是：
 
-- 数据库：`aiteachme.db`
-- 正式文件产物：`raw/ raw_markdown/ assets/ knowledge_markdown/`
-- 中间与调试产物：`_build/ temp/ debug/`
+- 复杂流程真相在 `workflows/`
+- 数据真相在数据库
+- 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns`
+- 真实路径命名必须服从 `upload_support.py`

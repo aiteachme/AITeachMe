@@ -1,4 +1,4 @@
-"""Knowledge graph repository helpers."""
+﻿"""Knowledge graph repository helpers."""
 
 from __future__ import annotations
 

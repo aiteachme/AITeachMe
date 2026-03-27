@@ -1,118 +1,63 @@
 # 01. 系统架构
 
-## 1. 目标与职责
+## 1. 文档定位
 
-本文档描述 AITeachMe 当前的系统骨架，重点说明：
+本文档只回答当前系统最重要的三件事：
 
+- AITeachMe 现在的主链路到底是什么
 - 前端、API、service、workflow、repository、model 各自负责什么
-- 五大引擎在整套学习闭环中的位置
-- 当前本地优先架构如何落到数据库、向量索引和本地文件系统
-- 哪些路径是稳定真相源，哪些仍处于过渡态
+- 本轮 merge 之后，远程 ingest 加速方法和本地数据库重构是如何并到一起的
 
 ---
 
-## 2. 系统总览
+## 2. 系统主链路
 
-AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一个以 `Subject` 为工作空间边界的本地优先教学系统。主链路可以概括为：
+当前系统围绕 `Subject` 这个工作空间边界组织，正式主链路可以概括为：
 
-`RawFile -> Raw Markdown / Assets -> RetrievalChunk -> Knowledge Document / Knowledge Graph -> Teaching Unit -> Curriculum -> Chat / Exams / Profile`
+`RawFile -> raw_markdowns / assets -> RetrievalChunk -> KnowledgeDocument + KnowledgeNode/KnowledgeEdge -> TeachingUnit -> Curriculum -> Chat / Exams / Profile`
 
+补充约束：
 
-TODO 这里如果用ra的时候使用了不同的模型那不是直接无效了
-
-
-
-按系统分层看，当前主要由五层组成：
-
-1. 前端交互层  
-   React 页面、业务组件、API facade、MSW mock。
-2. 后端接口层  
-   FastAPI 路由、请求 schema、统一响应与异常处理。
-3. 后端用例入口层  
-   `services/*`，负责 HTTP 触发、参数整理、后台分发、结果封装。
-4. 后端工作流编排层  
-   `workflows/*`，负责真正的状态推进、节点编排、事件发布和流程失败恢复。
-5. 数据与运行时层  
-   `repositories/*`、`models/*`、SQLite、sqlite-vec、本地文件系统、外部 LLM / Embedding 服务。
-
-当前后端的编排真相源已经从旧 `agents/*` 迁移到 `workflows/*`。`services/*` 仍然重要，但它们的职责更接近“用例入口”和“触发器”，而不是复杂长流程的最终归宿。
+- Ingest 负责把原始资料变成“可消费材料层”。
+- Digest 同时构建知识文档和知识图谱。
+- Knowledge Document、Knowledge Graph、Curriculum 在同一轮 digest 中共享同一个构建版号。
+- Interact、Examine、Profile 都消费同一套知识层和课程层锚点，而不是各自维护一套平行模型。
 
 ---
 
-## 3. 前端架构
+## 3. 系统分层
 
-### 3.1 页面主骨架
+### 3.1 前端层
 
-当前前端位于 `frontend/`，主要页面包括：
+当前主要页面位于 `frontend/src/pages/`：
 
-- `UploadPage`
+- `HomePage`
+- `FilesPage`
 - `KnowledgeDocsPage`
 - `KnowledgeGraphPage`
 - `ChatPage`
 - `ExamsPage`
 - `ProfilePage`
 
-这些页面对应完整学习闭环：
+前端的职责是：
 
-- `UploadPage`：资料进入系统
-- `KnowledgeDocsPage`：阅读 AI 整理后的知识文档
-- `KnowledgeGraphPage`：查看图谱、主题树、先修图等结构化视图
-- `ChatPage`：进行教学型对话
-- `ExamsPage`：发起测评与查看试卷
-- `ProfilePage`：查看掌握度、复习任务和薄弱点
+- 组织学习闭环页面
+- 发起 API 请求
+- 展示 workflow 推进后的结果
 
-### 3.2 前端分层方式
+前端不承担复杂的知识处理或构建逻辑。
 
-当前前端适合继续保持以下分层：
+### 3.2 API 层
 
-- `src/pages/`
-  页面级编排与用户流程入口。
-- `src/components/`
-  复用组件与业务视图组件。
-- `src/api/`
-  手写 API facade、生成代码和请求工具。
-- `src/mocks/`
-  MSW 本地联调层。
-- `src/lib/`
-  通用工具与页面无关的前端基础逻辑。
+`backend/app/api/*` 是对外 HTTP 资源入口，负责：
 
-### 3.3 前端设计原则
+- 资源分组
+- 请求参数接收
+- 响应结构封装
+- 异常转换
 
-- 页面按学习闭环组织，而不是按零散功能堆积。
-- 页面优先承担交互编排，不直接承载复杂知识处理逻辑。
-- 页面层必须以真实后端路由为准，而不是以历史生成文件为准。
-- 长流程页面统一遵守“触发 + 状态查询 + 结果消费”的交互模式。
+当前正式资源组以这些为主：
 
----
-
-## 4. 后端架构
-
-### 4.1 后端分层
-
-当前后端位于 `backend/app/`，核心分层如下：
-
-- `api/`
-  HTTP 入口、资源分组、参数接收、响应包装。
-- `services/`
-  业务入口层，负责触发 workflow、读取聚合数据、封装 API 返回。
-- `workflows/`
-  新的编排中心，负责 LangGraph 图、节点状态流、事件回流与流程失败处理。
-- `repositories/`
-  数据访问层，负责 SQLModel 查询、批量写入、向量表操作等。
-- `models/`
-  关系模型定义，包括主业务表、图谱表、课程表、聊天表、考试与画像表。
-- `schemas/`
-  API 请求/响应模型和通用传输结构。
-- `core/`
-  配置、数据库初始化、日志、LLM、Embedding、异常等基础设施。加上一系列的agent的基础能力
-
-### 4.2 路由资源组
-
-当前 `main.py` 注册的主要资源组包括：
-
-- `health`
-- `system`
-- `auth`
 - `subjects`
 - `files`
 - `knowledge`
@@ -120,189 +65,191 @@ TODO 这里如果用ra的时候使用了不同的模型那不是直接无效了
 - `exams`
 - `profile`
 
-其中：
+### 3.3 Service 层
 
-- `exams` / `profile` 是当前正式对外资源组。
-- 旧 exam/profile 表和过渡命名仍有代码残留，但不是新的接口收敛方向。（旧表旧接口最好都剔除干净）
+`backend/app/services/*` 是用例入口层，负责：
 
-### 4.3 workflows 的角色
+- 触发 workflow
+- 做轻量参数整理
+- 读取聚合数据并封装返回
 
-`backend/app/workflows/README.md` 规定了当前工作流编排规范。其核心约束是：
+复杂长流程不再堆在 service 中。
 
-- `services/*` 只做触发、参数整理、持久化适配和返回封装。
-- 真正的状态流与节点编排放在 `workflows/*`。
-- 各工作流优先保持统一骨架：`graph.py`、`runtime.py`、`state.py`、`events.py`、`exports.py`。
+### 3.4 Workflow 层
 
+`backend/app/workflows/*` 是真正的编排中心，负责：
 
-TODO 这里的几个文件都是干啥的也解释下？
-graph.py: 定义工作流的图结构，包括节点和边的关系
-runtime.py: 负责工作流的运行时管理，包括调度和执行
-state.py: 管理工作流的状态，包括节点状态和全局状态
-events.py: 处理工作流中的事件，包括触发和监听
-exports.py: 定义工作流的输出接口，用于结果导出和外部调用
+- LangGraph 节点与状态流
+- 跨节点状态推进
+- 事件发布
+- 构建失败恢复
 
+这一层是当前复杂业务流程的真相源。
 
+### 3.5 Repository / Model 层
 
-这意味着后续新功能应优先进入已有 workflow，而不是重新在路由或 service 中堆流程逻辑。
+`repositories/*` + `models/*` 负责结构化持久化：
+
+- SQLite 业务表
+- sqlite-vec 向量表
+- 查询与批量更新
+
+### 3.6 Core 层
+
+`backend/app/core/*` 提供基础设施能力：
+
+- 配置
+- 数据库初始化
+- LLM / Embedding
+- Search / Memory / Skills / Tools / Sandbox
+
+它服务五大引擎，但不直接承载业务真相。
 
 ---
 
-## 5. 五大引擎在系统中的位置
+## 4. 五大引擎的职责
 
-### 5.1 Ingest
+### 4.1 Ingest
 
-负责接收原始资料、选择解析器、生成 Markdown 与资产目录，并把解析状态写回 `raw_file`。
+Ingest 现在采用“远程分支的方法层 + 本地分支的数据层”合并结果：
 
-### 5.2 Digest
+- 方法层保留两阶段加速思路
+- 数据落点、表结构、目录边界仍按本地重构收敛
 
-负责两类结构化产出：
+当前真实流程：
 
-- 面向用户的知识文档
-- 面向系统的知识图谱、Teaching Unit、Curriculum
+1. `file_service` 创建 `raw_file`、保存原始文件、排队解析
+2. Phase 1 Fast Parse 产出 `raw_markdowns/<file_id>.md`
+3. Phase 2 Deep Enhance 在后台做质量重解析和可选 OCR
+4. 只有 `ready_for_digest` 的文件才进入 Digest 主链路
 
-这里的“版本”不再指独立的 `theme_tree_version / prereq_dag_version / curriculum_version` 三套表，而是指统一收敛到 `curriculum.version_no`、`knowledge_document.version_no`、`knowledge_node.build_revision_no`、`knowledge_edge.build_revision_no` 上的共享构建版号。
+### 4.2 Digest
 
-### 5.3 Interact
+Digest 负责三类正式结果：
 
-负责把 `retrieval_chunk`、聊天历史、用户级画像、学科级画像和细粒度学习状态装配成教学型对话，并通过 SSE 流式返回结果。
+- `knowledge_document`
+- `knowledge_node / knowledge_edge`
+- `curriculum / theme_tree_node / unit_dependency`
 
-TODO interact的时候可以像openclaw那样也加上用户的SOUL.md USER.md
+当前版本语义已经统一收敛为：
 
-### 5.4 Examine
+- `curriculum.version_no`
+- `knowledge_document.version_no`
+- `knowledge_node.build_revision_no`
+- `knowledge_edge.build_revision_no`
 
-负责测评蓝图、组卷、判卷、答题结果持久化。当前正式主线已经收口到：
+不再以独立的 `theme_tree_version / prereq_dag_version / curriculum_version` 三套表作为目标态。
 
-- `exams_service`
-- `workflows/examine/*`
-- `question_template / exam_paper / exam_paper_item / user_knowledge_state`
+### 4.3 Interact
 
-### 5.5 Profile
+Interact 负责教学型对话，消费：
 
-负责学习状态沉淀、薄弱分析、复习调度与学习画像。当前正式主线已经收口到：
-
-- `profile_service`
-- `workflows/profile/*`
+- `retrieval_chunk`
+- `knowledge_document`
+- `knowledge_node / knowledge_edge`
+- `teaching_unit / curriculum`
 - `user.profile_json / subject.profile_json / user_knowledge_state`
 
----
+### 4.4 Examine
 
-## 6. 页面、资源组与后端主链路
+Examine 负责：
 
-| 页面 | 资源组 | 当前 service | 当前后端主链路 |
-| --- | --- | --- | --- |
-| `UploadPage` | `files` | `file_service` | `workflows/ingest/*` |
-| `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service` | `workflows/digest/docs/*` |
-| `KnowledgeGraphPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
-| `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
-| `ExamsPage` | `exams` | `exams_service` | `workflows/examine/*` |
-| `ProfilePage` | `profile` | `profile_service` | `workflows/profile/*` |
+- 题模板
+- 组卷
+- 判卷
+- 回写学习状态
 
----
+正式主线收口到：
 
-## 7. 数据与运行时架构
+- `question_template`
+- `exam_paper`
+- `exam_paper_item`
+- `user_knowledge_state`
 
-### 7.1 存储层
+### 4.5 Profile
 
-当前系统使用三类核心存储：
+Profile 负责：
 
-- SQLite  
-  保存主业务数据、聊天记录、图谱、课程结构、考试与画像数据。
-- sqlite-vec  
-  保存 `retrieval_chunk` 的向量索引物理表，服务检索与召回。
-- 本地文件系统  
-  保存原始文件、Markdown、资产、知识文档和调试产物。
+- 用户级画像
+- 学科级画像
+- 细粒度掌握状态
 
-### 7.2 长流程模型
+当前主锚点是：
 
-当前长流程分三类：
-
-- 文件解析：由 `files` 资源组触发，Ingest workflow 推进
-- 知识构建：由 `knowledge` 资源组触发，Digest graph / curriculum / docs workflow 推进
-- 测评与状态回流：由 `exams` 触发 Examine workflow，由 `profile` 读取状态层
-
-这些长流程都应有稳定持久化锚点，而不是只依赖内存态。当前锚点可能是：
-
-- 最终业务表
-- 文件锁 / manifest
-- 本地正式产物
-- 必要的运行时日志 / workflow state
-
-### 7.3 开发期双写策略
-
-开发阶段采用：
-
-- 数据库保存结构化业务真相
-- 本地文件保存正式产物与调试摘要
-
-当前已经存在的本地产物包括：
-
-- `raw/`
-- `raw_markdown/`
-- `assets/`
-- `knowledge_markdown/`
-- `knowledge_markdown/_build/`
-
-后续新增调试快照统一约定写入：
-
-`data/<subject>/debug/<workflow>/<run_or_job_id>/`
+- `user.profile_json`
+- `subject.profile_json`
+- `user_knowledge_state`
 
 ---
 
-## 8. 架构设计原则
+## 5. 数据与存储真相
 
-### 8.1 本地优先
+### 5.1 当前默认运行底座
 
-当前默认运行模式是本地部署，优先追求简单、低依赖、好调试，而不是一开始就做重型分布式架构。
+当前默认底座仍然是：
 
-### 8.2 Subject 是顶层工作空间边界
+`SQLite + sqlite-vec + 本地文件系统`
 
-文件、图谱、课程、聊天、测评、画像都按 `Subject` 隔离；数据库查询、本地目录和 API 路径都围绕这个边界组织。
+### 5.2 Subject 是顶层边界
 
-### 8.3 workflows 是复杂业务的编排中心
+`Subject` 同时决定：
 
-service 不是最终流程容器，复杂业务要以 workflow 状态流为准。这一点是当前架构和旧设计最大的区别。
+- API 路由边界
+- 本地运行时目录边界
+- workflow 的隔离范围
 
-### 8.4 知识层与学习者状态层分离
+### 5.3 当前数据库主线
 
-图谱与课程结构描述知识本身；聊天、测评、掌握度、复习任务描述学习者和知识的交互结果。两层通过稳定锚点关联，而不应相互污染。
+当前数据库重构后的主线是“少表、强锚点、字段表达版本”：
 
-补充约定：
-
-- `user.profile_json` 负责跨学科稳定画像
-- `subject.profile_json` 负责学科级学习画像
-- `user_knowledge_state` 负责细粒度学习状态
-
-TODO 这里都结合一下？作为用户的上下文
-
-### 8.5 结构化真相与可调试产物并存
-
-数据库承担结构化真相；本地文件承担原始材料、正式文档和调试摘要。教学系统需要两者同时存在，才能兼顾产品能力和研发可观察性。
+- `curriculum` 是课程构建主表
+- `theme_tree_node.tree_version_id` 实际指向 `curriculum.id`
+- `unit_dependency.dag_version_id` 实际指向 `curriculum.id`
+- `raw_file_asset` 不再是目标态业务表，运行时由 `RawFileAsset` 兼容对象和文件系统动态表达
 
 ---
 
-## 9. 当前开发关注点
+## 6. 运行时目录
 
-### 9.1 文档和生成物仍有历史漂移
+当前真实目录由 `backend/app/services/upload_support.py` 定义：
 
-当前仍存在旧 OpenAPI 产物、历史前端调用和旧文档口径，因此开发时必须优先核对后端源码。
+```text
+backend/data/<subject>/
+├─ raw_files/
+├─ raw_markdowns/
+├─ assets/
+│  └─ <file_id>/
+├─ knowledge_markdowns/
+│  └─ _build/
+├─ temp/
+└─ debug/
+```
 
-### 9.2 exam/profile 域仍有旧表残留
+目录职责：
 
-对外资源组已经收口到 `exams / profile`，但仓库里仍有部分旧表、旧命名和过渡对象残留。任何新设计都应以 `12_api_refactor_plan.md` 和 `13_database_schema_inventory.md` 为准，不再新增新的双轨接口。
-
-### 9.3 本地优先不等于未来不能中心化
-
-当前默认基础设施仍是 SQLite + sqlite-vec + 本地文件系统，但架构边界要为未来切换到 PostgreSQL + pgvector + OSS/MinIO 预留迁移空间。
+- `raw_files/`：原始上传文件
+- `raw_markdowns/`：ingest 材料层 Markdown
+- `assets/<file_id>/`：单文件资产目录
+- `knowledge_markdowns/`：已发布知识文档
+- `knowledge_markdowns/_build/`：知识文档 staging
 
 ---
 
-## 10. 总结
+## 7. 当前关键设计原则
 
-AITeachMe 当前已经形成稳定骨架：
+1. 方法层优先复用远程 ingest 加速思路，但不回退本地数据库收敛。
+2. 复杂流程以 workflow 为真相，不回流到 route / service 堆逻辑。
+3. Subject 是外部模块最稳定的集成边界。
+4. 版本优先用字段表达，不先拆一组 history / version 表。
+5. 文档必须跟真实目录、真实表语义、真实流程保持一致。
 
-- 前端按学习闭环组织页面
-- 后端按资源组、service、workflow、repository、model 分层
-- 五大引擎围绕同一条教学主链路协作
-- SQLite、sqlite-vec 和本地文件系统共同构成运行时底座
+---
 
-后续开发的重点不是另起一套架构，而是继续把这套骨架的边界、状态语义、持久化职责和调试路径写清楚、做扎实。
+## 8. 一句话结论
+
+这次合并后的系统架构可以简单理解为：
+
+- ingest 方法层吸收远程的两阶段加速
+- digest / curriculum / exams / profile 继续沿用本地收敛后的数据库主线
+- workflow 仍是复杂业务的编排中心
+- 当前正式运行底座仍然是本地优先的 SQLite + sqlite-vec + 文件系统

@@ -11,6 +11,7 @@ from app.core.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
+    is_audio_extension,
     is_image_extension,
     is_markitdown_generic_extension,
     is_text_extension,
@@ -120,32 +121,21 @@ def _preferred_parser_order(
         return ["text_native"]
 
     if extension == ".pdf":
-        if classification and classification.file_category == "scanned_pdf":
-            if llm_enabled:
-                return ["pymupdf_ocr_vision", "pymupdf_native", "markitdown", "pymupdf4llm"]
-            return ["pymupdf_native", "markitdown", "pymupdf4llm"]
-        if classification and classification.file_category == "formula_heavy_pdf":
-            # 数学试卷类：优先 native 提取 drawing，再用 vision OCR 补强
-            if llm_enabled:
-                return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-            return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-        if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
-            return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-        if classification and (classification.has_tables or classification.has_formulas):
-            if llm_enabled:
-                return ["pymupdf4llm", "pymupdf_native", "markitdown"]
-            return ["pymupdf4llm", "pymupdf_native", "markitdown"]
-        return _classification_first(classification, extension)
+        # Phase 1 核心原则：速度优先！pymupdf_native 最快（< 1s），质量交给 Phase 2
+        # pdfplumber 做表格最好，作为 fallback
+        return ["pymupdf_native", "pdfplumber", "pymupdf4llm", "markitdown"]
 
     if extension == ".docx":
-        if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:
-            return ["docx_native", "markitdown"]
-        return _classification_first(classification, extension)
+        # markitdown (Microsoft) 对 LLM 场景最优化，mammoth 语义保留好作为 fallback
+        return ["markitdown", "mammoth", "docx_native"]
 
     if extension in {".ppt", ".pptx"}:
         if file_mb >= 15 or estimated_pages >= _LARGE_SLIDE_COUNT:
             return ["python_pptx_native", "markitdown"]
         return _classification_first(classification, extension)
+
+    if is_audio_extension(extension):
+        return ["audio_transcription"]
 
     if is_markitdown_generic_extension(extension):
         return ["markitdown_generic"]

@@ -1,4 +1,4 @@
-"""Resolve graph candidates against the compressed graph schema."""
+﻿"""Resolve graph candidates against the compressed graph schema."""
 
 from __future__ import annotations
 

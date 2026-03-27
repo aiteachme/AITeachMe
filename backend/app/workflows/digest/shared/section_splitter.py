@@ -12,6 +12,7 @@ HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 INLINE_FORMULA_PATTERN = re.compile(r"\$([^$\n]{1,160})\$")
 BLOCK_FORMULA_PATTERN = re.compile(r"\$\$([^$]{1,400})\$\$")
 IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
+PAGE_MARKER_PATTERN = re.compile(r"<!--\s*page\s*:\s*(\d+)\s*-->", re.IGNORECASE)
 QUESTION_MARKERS = (
     "question",
     "exercise",
@@ -21,6 +22,8 @@ QUESTION_MARKERS = (
     "例",
 )
 TOKEN_PATTERN = re.compile(r"[A-Za-z]{2,}|[\u4e00-\u9fff]{2,}")
+MAX_SECTION_CHARS = 1800
+TARGET_SECTION_CHARS = 1200
 
 
 def split_into_sections(content: str, file_id: int, filename: str) -> list[SectionPacket]:
@@ -32,34 +35,41 @@ def split_into_sections(content: str, file_id: int, filename: str) -> list[Secti
 
     headings = list(HEADING_PATTERN.finditer(stripped))
     if not headings:
-        return [
-            _build_section_packet(
-                content=stripped,
-                file_id=file_id,
-                filename=filename,
-                chunk_index=0,
-                title=Path(filename).stem or "Untitled",
-                level=1,
-                header_path=Path(filename).stem or "Untitled",
-            )
-        ]
+        cleaned_content, page_num, _ = _extract_page_context(stripped, fallback_page_num=None)
+        return _build_section_packets(
+            content=cleaned_content,
+            file_id=file_id,
+            filename=filename,
+            start_chunk_index=0,
+            page_num=page_num,
+            title=Path(filename).stem or "Untitled",
+            level=1,
+            header_path=Path(filename).stem or "Untitled",
+        )
 
     sections: list[SectionPacket] = []
+    current_page_num: int | None = None
     first_start = headings[0].start()
     if first_start > 0:
         preamble = stripped[:first_start].strip()
         if preamble:
-            sections.append(
-                _build_section_packet(
-                    content=preamble,
-                    file_id=file_id,
-                    filename=filename,
-                    chunk_index=len(sections),
-                    title="Preamble",
-                    level=1,
-                    header_path="Preamble",
-                )
+            cleaned_preamble, section_page_num, current_page_num = _extract_page_context(
+                preamble,
+                fallback_page_num=current_page_num,
             )
+            if cleaned_preamble:
+                sections.extend(
+                    _build_section_packets(
+                        content=cleaned_preamble,
+                        file_id=file_id,
+                        filename=filename,
+                        start_chunk_index=len(sections),
+                        page_num=section_page_num,
+                        title="Preamble",
+                        level=1,
+                        header_path="Preamble",
+                    )
+                )
 
     for index, heading_match in enumerate(headings):
         level = len(heading_match.group(1))
@@ -67,13 +77,20 @@ def split_into_sections(content: str, file_id: int, filename: str) -> list[Secti
         start = heading_match.end()
         end = headings[index + 1].start() if index + 1 < len(headings) else len(stripped)
         section_content = stripped[start:end].strip()
+        section_content, section_page_num, current_page_num = _extract_page_context(
+            section_content,
+            fallback_page_num=current_page_num,
+        )
         header_path = _build_header_path(headings, index)
-        sections.append(
-            _build_section_packet(
+        if not section_content:
+            continue
+        sections.extend(
+            _build_section_packets(
                 content=section_content,
                 file_id=file_id,
                 filename=filename,
-                chunk_index=len(sections),
+                start_chunk_index=len(sections),
+                page_num=section_page_num,
                 title=title,
                 level=level,
                 header_path=header_path,
@@ -82,12 +99,22 @@ def split_into_sections(content: str, file_id: int, filename: str) -> list[Secti
     return sections
 
 
+def _extract_page_context(content: str, *, fallback_page_num: int | None) -> tuple[str, int | None, int | None]:
+    page_markers = [int(match.group(1)) for match in PAGE_MARKER_PATTERN.finditer(content)]
+    cleaned_content = PAGE_MARKER_PATTERN.sub("", content)
+    cleaned_content = re.sub(r"\n{3,}", "\n\n", cleaned_content).strip()
+    section_page_num = page_markers[0] if page_markers else fallback_page_num
+    latest_page_num = page_markers[-1] if page_markers else fallback_page_num
+    return cleaned_content, section_page_num, latest_page_num
+
+
 def _build_section_packet(
     *,
     content: str,
     file_id: int,
     filename: str,
     chunk_index: int,
+    page_num: int | None,
     title: str,
     level: int,
     header_path: str,
@@ -106,6 +133,7 @@ def _build_section_packet(
         source_file_id=file_id,
         source_filename=filename,
         chunk_index=chunk_index,
+        page_num=page_num,
         title=title,
         header_path=header_path,
         level=level,
@@ -117,6 +145,87 @@ def _build_section_packet(
         header_candidates=_extract_header_candidates(title, header_path),
         image_refs=_extract_image_refs(normalized_content),
     )
+
+
+def _build_section_packets(
+    *,
+    content: str,
+    file_id: int,
+    filename: str,
+    start_chunk_index: int,
+    page_num: int | None,
+    title: str,
+    level: int,
+    header_path: str,
+) -> list[SectionPacket]:
+    parts = _split_large_content(content)
+    packets: list[SectionPacket] = []
+    for offset, part in enumerate(parts):
+        part_title = title
+        if len(parts) > 1:
+            part_title = f"{title} (Part {offset + 1})"
+        packets.append(
+            _build_section_packet(
+                content=part,
+                file_id=file_id,
+                filename=filename,
+                chunk_index=start_chunk_index + offset,
+                page_num=page_num,
+                title=part_title,
+                level=level,
+                header_path=header_path,
+            )
+        )
+    return packets
+
+
+def _split_large_content(content: str) -> list[str]:
+    normalized = content.strip()
+    if len(normalized) <= MAX_SECTION_CHARS:
+        return [normalized]
+
+    paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", normalized) if paragraph.strip()]
+    if len(paragraphs) <= 1:
+        return _split_plain_text(normalized)
+
+    parts: list[str] = []
+    current: list[str] = []
+    current_chars = 0
+    for paragraph in paragraphs:
+        paragraph_chars = len(paragraph)
+        if current and current_chars + paragraph_chars > TARGET_SECTION_CHARS:
+            parts.append("\n\n".join(current).strip())
+            current = []
+            current_chars = 0
+        current.append(paragraph)
+        current_chars += paragraph_chars
+    if current:
+        parts.append("\n\n".join(current).strip())
+
+    compact = [part for part in parts if part]
+    if len(compact) == 1:
+        return _split_plain_text(normalized)
+    return compact
+
+
+def _split_plain_text(content: str) -> list[str]:
+    parts: list[str] = []
+    cursor = 0
+    total = len(content)
+    while cursor < total:
+        end = min(cursor + TARGET_SECTION_CHARS, total)
+        if end < total:
+            split_at = content.rfind("\n", cursor, end)
+            if split_at <= cursor:
+                split_at = content.rfind("。", cursor, end)
+            if split_at <= cursor:
+                split_at = end
+            end = split_at
+        chunk = content[cursor:end].strip()
+        if chunk:
+            parts.append(chunk)
+        cursor = max(end, cursor + 1)
+    return parts or [content]
 
 
 def _build_header_path(headings: list[re.Match[str]], current_index: int) -> str:

@@ -1,4 +1,4 @@
-"""Impact analysis for graph-driven curriculum rebuilds."""
+﻿"""Impact analysis for graph-driven curriculum rebuilds."""
 
 from __future__ import annotations
 

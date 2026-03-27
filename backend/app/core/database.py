@@ -1,4 +1,4 @@
-"""Database bootstrap and session helpers."""
+﻿"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 

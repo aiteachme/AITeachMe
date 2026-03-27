@@ -1,4 +1,4 @@
-"""Mutation helpers for digest graph workflow persistence."""
+﻿"""Mutation helpers for digest graph workflow persistence."""
 
 from __future__ import annotations
 

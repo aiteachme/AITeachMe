@@ -1,4 +1,4 @@
-"""Canonical section materialization for unified digest builds."""
+﻿"""Canonical section materialization for unified digest builds."""
 
 from __future__ import annotations
 

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-v3"
     data_dir: str = "./data"
     max_upload_size_mb: int = 50
-    ingest_parse_concurrency: int = 2
+    ingest_parse_concurrency: int = 5
     ingest_parser_timeout_s: int = 90
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3
@@ -121,6 +121,20 @@ class Settings(BaseSettings):
             raise MissingLLMApiKeyError()
 
         return ocr_model, ocr_api_key, ocr_base_url
+
+    @property
+    def has_vision_ocr_model(self) -> bool:
+        """检测是否配置了真正的视觉模型用于 OCR。
+
+        如果 OCR_MODEL 未显式配置（回退到 LLM_MODEL），则认为没有视觉模型，
+        因为大部分 LLM_MODEL（如 qwen-plus）不支持图片输入。
+        只有显式设置了 OCR_MODEL 才启用 OCR。
+
+        已知的视觉模型名称模式：qwen-vl-*, gpt-4o*, claude-3*, gemini-*
+        """
+        if not self.ocr_model:
+            return False  # 未显式配置 OCR_MODEL → 不启用 OCR
+        return True
 
 
 @lru_cache

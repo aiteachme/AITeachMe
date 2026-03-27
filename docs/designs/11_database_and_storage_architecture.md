@@ -5,29 +5,30 @@
 本文档只讲三件事：
 
 - 本地部署怎么落
-- 中心化部署怎么落
-- 存储和向量层怎么抽象
+- 中心化部署将来怎么落
+- 当前存储抽象应该围绕什么边界设计
 
-数据库主树和表职责只看 [13_database_schema_inventory.md](./13_database_schema_inventory.md)。
+数据库主树请看 [13_database_schema_inventory.md](./13_database_schema_inventory.md)。
 
 ---
 
-## 2. 本地部署
+## 2. 当前默认部署
 
-当前默认方案：
+当前默认部署仍然是：
 
 `SQLite + sqlite-vec + 本地文件系统`
 
-当前本地目录在开发环境里的常见落点是：
+典型本地目录如下：
 
 ```text
 backend/data/
 ├─ aiteachme.db
 └─ <subject>/
-   ├─ raw/
-   ├─ raw_markdown/
+   ├─ raw_files/
+   ├─ raw_markdowns/
    ├─ assets/
-   ├─ knowledge_markdown/
+   │  └─ <file_id>/
+   ├─ knowledge_markdowns/
    │  ├─ _build/
    │  ├─ manifest.json
    │  └─ .build.lock
@@ -37,70 +38,99 @@ backend/data/
 
 说明：
 
-- 这些目录名来自 `backend/app/services/upload_support.py`
-- 这是运行时路径名，不套数据库表名规范
-- 当前代码真实名字就是 `raw / raw_markdown / assets / knowledge_markdown`
-
-本地方案的优点：
-
-- 启动最简单
-- 调试最直接
-- 和当前代码最贴合
+- 这些目录名来自 `upload_support.py`
+- 当前代码真实目录名是复数形式
+- `assets/` 是 subject 根目录，单文件资产继续按 `<file_id>/` 分桶
 
 ---
 
-## 3. 中心化部署
+## 3. 当前数据库与文件系统的分工
 
-推荐方案：
+### 3.1 数据库存什么
+
+数据库负责结构化真相：
+
+- `raw_file`
+- `retrieval_chunk`
+- `knowledge_document`
+- `knowledge_node / knowledge_edge`
+- `curriculum / theme_tree_node / unit_dependency`
+- `question_template / exam_paper / exam_paper_item`
+- `user_knowledge_state`
+
+### 3.2 文件系统存什么
+
+文件系统负责正文和产物：
+
+- 原始文件
+- 材料层 Markdown
+- 资产文件
+- 已发布知识文档正文
+- staging / debug / temp
+
+---
+
+## 4. 当前存储表示
+
+当前代码里已经同时存在两套表示：
+
+### 4.1 本地绝对路径
+
+例如 `RawFile` 中的：
+
+- `file_path`
+- `markdown_path`
+- `asset_dir`
+
+### 4.2 派生 storage key
+
+为兼容远程 ingest / 未来对象存储，当前通过 helper 提供：
+
+- `to_storage_key(path)`
+- `resolve_storage_key_path(storage_key)`
+
+典型 local storage key 形式：
+
+- `<subject>/raw_files/12.pdf`
+- `<subject>/raw_markdowns/12.md`
+- `<subject>/assets/12/figure_001.png`
+- `<subject>/knowledge_markdowns/merged_knowledge_base.md`
+
+结论：
+
+- 当前真实实现仍是本地路径优先
+- `storage_key` 已经是未来对象存储抽象的过渡桥
+
+---
+
+## 5. 中心化部署目标
+
+未来中心化部署推荐目标：
 
 `PostgreSQL + pgvector + OSS/MinIO`
 
-不默认推荐 `MySQL + OSS` 的原因很简单：
+迁移时只替换底层实现，不改变业务主对象：
 
-- 向量能力不如 PostgreSQL + pgvector 顺手
-- JSON、CTE、复杂查询和后续扩展能力更弱
-- 很容易被迫再外挂一个独立向量服务
-
-中心化部署的目标不是改业务模型，而是替换底层实现：
-
-- 关系数据进 PostgreSQL
-- 文件进 OSS
-- 向量进 pgvector
-- 锁和发布从本地文件切换到共享租约
+- 关系数据：SQLite -> PostgreSQL
+- 向量：sqlite-vec -> pgvector
+- 文件：本地文件系统 -> OSS / MinIO
 
 ---
 
-## 4. 存储抽象
+## 6. 推荐存储抽象
 
-建议统一成四个抽象：
+建议围绕四个抽象层设计：
 
 | 抽象 | 负责什么 | 本地实现 | 中心化实现 |
 | --- | --- | --- | --- |
 | `ArtifactStore` | 原始文件、Markdown、图片、manifest | 本地文件系统 | OSS / MinIO |
-| `VectorIndex` | `retrieval_chunk` 向量的写入、删除、查询 | sqlite-vec | pgvector |
-| `BuildLock / PublishLease` | subject 级构建锁和发布租约 | 锁文件 | 数据库租约 |
-| `DatabaseBootstrap` | 启动时建表、扩展检查、schema 校验、开发期删库重建 | SQLite 初始化 | PostgreSQL 初始化 |
-
-补充约束：
-
-- 开发期默认允许直接删库重建，不为旧表做兼容迁移
-- 中心化部署也不额外保留 legacy 表，只保留当前正式 schema
+| `VectorIndex` | `retrieval_chunk` 向量读写 | sqlite-vec | pgvector |
+| `BuildLock / PublishLease` | subject 级构建锁与发布锁 | 锁文件 | DB / Redis 租约 |
+| `DatabaseBootstrap` | 启动建表、扩展检查 | SQLite 初始化 | PostgreSQL 初始化 |
 
 ---
 
-## 5. URI 统一
-
-数据库里不应长期保存某台机器的绝对路径，目标应统一成 URI：
-
-| 字段 | 本地示例 | 中心化示例 |
-| --- | --- | --- |
-| `storage_uri` | `file:///.../raw/12.pdf` | `oss://bucket/subject/raw/12.pdf` |
-| `markdown_uri` | `file:///.../raw_markdown/12.md` | `oss://bucket/subject/raw_markdown/12.md` |
-| `asset_root_uri` | `file:///.../assets/` | `oss://bucket/subject/assets/` |
-
----
-
-## 6. 向量实现层
+## 7. 向量层说明
 
 逻辑模型只认：
 
@@ -110,25 +140,30 @@ backend/data/
 
 本地物理实现当前是：
 
-- SQLite 虚表 `chunk_embeddings`
+- `chunk_embeddings`
+- sqlite-vec 自动生成的若干影子表
 
-需要特别说明：
-
-- `chunk_embeddings_chunks`
-- `chunk_embeddings_info`
-- `chunk_embeddings_rowids`
-- `chunk_embeddings_vector_chunks00`
-
-这些都是 `sqlite-vec` 自动生成的影子表，不属于业务主表。
-
-也就是说：
-
-- 业务主模型里只认 `retrieval_chunk` 的向量字段
-- 数据库浏览器里看到的那串 `chunk_embeddings_*` 不要写回主树
+这些影子表不是业务主表，不应该写回设计主树。
 
 ---
 
-## 7. 一句话结论
+## 8. 版本与发布约束
 
-本地部署继续用 `SQLite + sqlite-vec + 本地文件系统`，中心化部署默认走 `PostgreSQL + pgvector + OSS/MinIO`。  
-业务层只认逻辑对象，不认本地影子表和绝对路径。
+当前数据库和存储层还必须遵守两个约束：
+
+1. `curriculum` 是课程构建主表，不回退到多张 version 表。
+2. 知识文档、知识图谱、课程结构在同一轮 digest 中共享同一版号语义。
+
+也就是说，存储层迁移可以做，版本语义不能重新分叉。
+
+---
+
+## 9. 一句话结论
+
+当前正式运行模式还是本地优先：
+
+- DB：SQLite
+- Vector：sqlite-vec
+- Artifact：本地文件系统
+
+但 `storage_key` 和统一的路径 helper 已经把未来迁移到 PostgreSQL + pgvector + OSS/MinIO 的边界预留出来了。

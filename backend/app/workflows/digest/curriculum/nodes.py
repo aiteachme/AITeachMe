@@ -1,4 +1,4 @@
-"""Digest curriculum workflow nodes and routing.
+﻿"""Digest curriculum workflow nodes and routing.
 
 Reads DB: graph entities plus prior ``teaching_unit*`` and the current live ``curriculum``.
 Writes DB: ``teaching_unit*``, ``taxonomy_anchor``, ``theme_tree_node``,

@@ -1,4 +1,4 @@
-"""Profile API endpoints."""
+﻿"""Profile API endpoints."""
 
 from __future__ import annotations
 

@@ -148,33 +148,51 @@ async def _fill_page_ocr(
     language_mode: str,
     concurrency: int,
 ) -> None:
+    """Fill OCR text for rendered pages, with circuit breaker.
+
+    Stops after 2 consecutive [unclear] results to avoid wasting LLM calls
+    when the vision model can't process images.
+    """
     if fitz is None or not rendered_pages:
         return
 
-    semaphore = asyncio.Semaphore(max(1, concurrency))
+    _CIRCUIT_BREAKER_THRESHOLD = 2
+    consecutive_failures = 0
+
     document = fitz.open(str(pdf_path))
     try:
-        async def _ocr_one(page_number: int) -> None:
-            async with semaphore:
-                page = document[page_number - 1]
-                pixmap = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5), alpha=False)
-                page_bytes = pixmap.tobytes("png")
-                try:
-                    rendered_pages[page_number].ocr_markdown = (
-                        await parse_image_bytes_with_llm_vision(
-                            page_bytes,
-                            mime_type="image/png",
-                            language_mode=language_mode,
-                        )
-                    ).strip()
-                except Exception as exc:
-                    logger.warning(
-                        "pdf_page_fallback_ocr_failed",
-                        page_number=page_number,
-                        error=str(exc),
-                    )
+        for page_number in rendered_pages:
+            if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
+                logger.warning(
+                    "page_ocr_circuit_breaker_triggered",
+                    reason="vision_model_refused",
+                    failed_count=consecutive_failures,
+                    remaining_skipped=len(rendered_pages) - list(rendered_pages.keys()).index(page_number),
+                    hint="OCR model may not support vision. Check OCR_MODEL config.",
+                )
+                break
 
-        await asyncio.gather(*[_ocr_one(page_number) for page_number in rendered_pages])
+            page = document[page_number - 1]
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5), alpha=False)
+            page_bytes = pixmap.tobytes("png")
+            try:
+                result = await parse_image_bytes_with_llm_vision(
+                    page_bytes,
+                    mime_type="image/png",
+                    language_mode=language_mode,
+                )
+                result = result.strip()
+            except Exception as exc:
+                logger.warning("pdf_page_fallback_ocr_failed", page_number=page_number, error=str(exc))
+                consecutive_failures += 1
+                continue
+
+            if result == "[unclear]":
+                consecutive_failures += 1
+                continue
+            else:
+                consecutive_failures = 0
+                rendered_pages[page_number].ocr_markdown = result
     finally:
         document.close()
 

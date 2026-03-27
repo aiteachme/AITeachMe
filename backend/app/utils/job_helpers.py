@@ -1,4 +1,4 @@
-"""Helpers for digest/curriculum build lifecycle maintenance."""
+﻿"""Helpers for digest/curriculum build lifecycle maintenance."""
 
 from __future__ import annotations
 

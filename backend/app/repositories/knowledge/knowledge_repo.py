@@ -1,4 +1,4 @@
-"""Repository helpers for retrieval chunks and embeddings."""
+﻿"""Repository helpers for retrieval chunks and embeddings."""
 
 from __future__ import annotations
 

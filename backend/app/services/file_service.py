@@ -1,4 +1,4 @@
-"""File service layer."""
+﻿"""File service layer."""
 
 from __future__ import annotations
 
@@ -41,8 +41,10 @@ from app.schemas.files import (
 )
 from app.services.presenters import require_id, require_uid
 from app.services.upload_support import (
+    build_asset_dir,
     build_asset_name_prefix,
     build_raw_file_path,
+    build_raw_markdown_path,
     build_temp_dir,
     delete_asset_files,
     get_data_dir,
@@ -66,7 +68,11 @@ def _build_asset_name_prefix_for_raw_file(raw_file: RawFile) -> str:
     )
 
 
-def _extract_parser_used(parse_metadata: str | None) -> str | None:
+def _extract_parser_used(raw_file: RawFile) -> str | None:
+    if raw_file.parser_used:
+        return raw_file.parser_used
+
+    parse_metadata = raw_file.parse_metadata_json or raw_file.parse_metadata
     if not parse_metadata:
         return None
 
@@ -152,11 +158,14 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
 
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
     asset_name_prefix = _build_asset_name_prefix_for_raw_file(raw_file)
+    asset_dir_value = raw_file.asset_dir
+    if not asset_dir_value and raw_file.id is not None:
+        asset_dir_value = str(build_asset_dir(raw_file.subject, raw_file.id))
     assets = _build_asset_items(
-        asset_dir_value=raw_file.asset_dir,
+        asset_dir_value=asset_dir_value,
         asset_name_prefix=asset_name_prefix,
     )
-    asset_base_url = _build_runtime_asset_url(raw_file.asset_dir) if assets else None
+    asset_base_url = _build_runtime_asset_url(asset_dir_value) if assets else None
     return FileRecord(
         uid=file_uid,
         filename=raw_file.filename,
@@ -170,10 +179,14 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         detected_language=raw_file.detected_language,
         estimated_pages=raw_file.estimated_pages,
         image_count=raw_file.image_count,
-        parser_used=_extract_parser_used(raw_file.parse_metadata),
+        parser_used=_extract_parser_used(raw_file),
         markdown_content=_read_markdown(raw_file.markdown_path),
         asset_base_url=asset_base_url,
         assets=assets,
+        classification_json=raw_file.classification_json,
+        quality_score=raw_file.quality_score,
+        digest_current_step=raw_file.digest_current_step,
+        parse_metadata_json=raw_file.parse_metadata_json or raw_file.parse_metadata,
         latest_updated_at=raw_file.updated_at,
         created_at=raw_file.created_at,
     )
@@ -209,6 +222,8 @@ async def save_uploaded_file(
             filename=filename,
             filetype=extension.lstrip("."),
             file_path=str(temp_path),
+            mime_type=file.content_type or mimetypes.guess_type(filename)[0],
+            storage_backend="local",
             status=TaskStatus.PENDING.value,
             content_hash=content_hash,
             file_size_bytes=len(content),
@@ -226,7 +241,13 @@ async def save_uploaded_file(
         temp_path.unlink(missing_ok=True)
         raise FileParseError(filename, reason=f"移动上传文件失败: {exc}") from exc
 
-    return update_raw_file(session, raw_file, file_path=str(final_path))
+    return update_raw_file(
+        session,
+        raw_file,
+        file_path=str(final_path),
+        markdown_path=str(build_raw_markdown_path(normalized_subject, raw_file_id)),
+        asset_dir=str(build_asset_dir(normalized_subject, raw_file_id)),
+    )
 
 
 async def save_uploaded_files(
@@ -341,6 +362,7 @@ def _start_parse_for_files(
             status=TaskStatus.PROCESSING.value,
             error_message=None,
             ingest_status=IngestStatus.CLASSIFYING.value,
+            digest_current_step="ingest.parse.queued",
         )
 
     logger.info(
@@ -440,10 +462,13 @@ def delete_files(
         for path_value in [raw_file.file_path, raw_file.markdown_path]:
             if path_value:
                 Path(path_value).unlink(missing_ok=True)
-        delete_asset_files(
-            raw_file.asset_dir,
-            asset_name_prefix=_build_asset_name_prefix_for_raw_file(raw_file),
-        )
+        if raw_file.asset_dir:
+            shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
+        else:
+            delete_asset_files(
+                str(build_asset_dir(raw_file.subject, require_id(raw_file.id, "RawFile.id"))),
+                asset_name_prefix=_build_asset_name_prefix_for_raw_file(raw_file),
+            )
 
         delete_raw_file(session, raw_file)
         deleted_uids.append(raw_file_uid)

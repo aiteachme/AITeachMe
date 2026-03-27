@@ -1,4 +1,4 @@
-"""Knowledge document models."""
+﻿"""Knowledge document models."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Knowledge graph models."""
+﻿"""Knowledge graph models."""
 
 from __future__ import annotations
 

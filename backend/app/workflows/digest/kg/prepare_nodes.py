@@ -8,8 +8,8 @@ from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.database import managed_session
-from app.models.knowledge import DocumentChunk
-from app.repositories import kg_repo
+from app.models import RetrievalChunk
+from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.kg.services.clusterer import cluster_candidates
 from app.workflows.digest.kg.services.extractor import (
@@ -196,8 +196,8 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
 
             chunk_rows = list(
                 session.exec(
-                    select(DocumentChunk).where(
-                        DocumentChunk.id.in_(chunk_ids),
+                    select(RetrievalChunk).where(
+                        RetrievalChunk.id.in_(chunk_ids),  # type: ignore[union-attr]
                     )
                 ).all()
             )
@@ -219,6 +219,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             chunk_content=chunk.content,
                             chunk_title=chunk.title,
                             header_path=chunk.header_path,
+                            doc_source_type=chunk.source_type,
                             subject_context=subject_context,
                         )
                     _apply_taxonomy_hints(result, taxonomy_hints)

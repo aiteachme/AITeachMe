@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 from app.services.upload_support import (
     build_docgen_intermediate_latest_dir,
     build_knowledge_build_lock_path,
-    build_knowledge_docs_build_dir,
+    build_knowledge_markdown_build_dir,
+    build_knowledge_markdown_dir,
     build_knowledge_manifest_path,
 )
 
@@ -105,7 +106,7 @@ def clear_docgen_staging(subject: str) -> None:
     """Remove the current knowledge-markdown build directory."""
 
     for directory in {
-        build_knowledge_docs_build_dir(subject),
+        build_knowledge_markdown_build_dir(subject),
         build_docgen_intermediate_latest_dir(subject),
     }:
         if directory.exists():
@@ -115,7 +116,7 @@ def clear_docgen_staging(subject: str) -> None:
 def clear_published_knowledge_docs_files(subject: str) -> None:
     """Remove published chapter markdown files before replacing them."""
 
-    docs_dir = build_knowledge_docs_build_dir(subject).parent
+    docs_dir = build_knowledge_markdown_dir(subject)
     for path in docs_dir.glob("chapter_*.md"):
         path.unlink(missing_ok=True)
     merged_path = docs_dir / "merged_knowledge_base.md"

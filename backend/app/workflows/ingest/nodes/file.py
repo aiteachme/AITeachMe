@@ -2,7 +2,7 @@
 
 Reads DB: ``raw_file``.
 Writes DB: ``raw_file`` classification / ingest-prep metadata.
-Writes FS: reads the persisted raw file path and derives deterministic ``raw_markdown/`` and shared ``assets/`` paths.
+Writes FS: reads the persisted raw file path and derives deterministic ``raw_markdowns/`` and shared ``assets/`` paths.
 Idempotency: reruns refresh metadata for the same ``raw_file`` and reuse the same output paths.
 """
 
@@ -15,13 +15,18 @@ from pathlib import Path
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import build_asset_dir, build_asset_name_prefix, build_markdown_path
+from app.services.upload_support import (
+    build_asset_dir,
+    build_asset_name_prefix,
+    build_raw_markdown_path,
+    resolve_storage_key_path,
+)
 from app.workflows.common.context import WorkflowContext
-from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.events import IngestFileClassifiedEvent
+from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.parsing.classifier import classify_file
-from app.workflows.ingest.state import IngestParseState
 from app.workflows.ingest.parsing.strategy import build_parse_plan
+from app.workflows.ingest.state import IngestParseState
 
 
 def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
@@ -34,15 +39,16 @@ def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             }
 
         file_id = state["file_id"]
+        file_path = resolve_storage_key_path(raw_file.storage_key)
         return {
             **state,
-            "filename": raw_file.filename,
-            "filetype": raw_file.filetype,
-            "file_path": raw_file.file_path,
-            "markdown_path": str(build_markdown_path(raw_file.subject, file_id)),
-            "asset_dir": str(build_asset_dir(raw_file.subject, file_id)),
+            "filename": raw_file.original_filename,
+            "filetype": raw_file.file_ext,
+            "file_path": str(file_path),
+            "markdown_path": str(build_raw_markdown_path(state["subject"], file_id)),
+            "asset_dir": str(build_asset_dir(state["subject"], file_id)),
             "asset_name_prefix": build_asset_name_prefix(
-                filename=raw_file.filename,
+                filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
                 file_id=file_id,
             ),
@@ -113,8 +119,9 @@ def build_classify_file_node(*, context: WorkflowContext):
                     raw_file,
                     estimated_pages=classification.estimated_pages,
                     detected_language=classification.detected_language,
-                    classification_result=classification_payload,
-                    ingest_status=IngestStatus.PARSING.value,
+                    classification_json=classification_payload,
+                    ingest_status=IngestStatus.FAST_PARSING.value,
+                    digest_current_step="ingest.fast_parse.running",
                 )
             await context.event_bus.publish(
                 IngestFileClassifiedEvent(

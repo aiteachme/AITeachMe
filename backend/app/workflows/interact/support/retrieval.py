@@ -83,8 +83,8 @@ async def _vector_search(
     results = vector_search(session, query_embedding, subject, top_k=top_k)
     return [
         RetrievedChunk(
-            chunk_id=require_id(result.chunk.id, "DocumentChunk.id"),
-            document_id=result.chunk.document_id,
+            chunk_id=require_id(result.chunk.id, "RetrievalChunk.id"),
+            document_id=result.chunk.source_id,
             title=result.chunk.title,
             header_path=result.chunk.header_path,
             content=result.chunk.content,

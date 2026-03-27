@@ -1,4 +1,4 @@
-"""Support helpers for digest graph workflow nodes.
+﻿"""Support helpers for digest graph workflow nodes.
 
 Reads DB: ``raw_file``, ``retrieval_chunk``.
 Writes DB: ``raw_file``, ``retrieval_chunk``, ``chunk_embeddings`` and raw-file step updates.

@@ -12,6 +12,8 @@ PROSE_TEXT_EXTENSIONS = frozenset(
         ".adoc",
         ".asciidoc",
         ".org",
+        ".tex",
+        ".latex",
     }
 )
 
@@ -27,11 +29,7 @@ STRUCTURED_TEXT_LANGUAGE_HINTS: dict[str, str] = {
     ".conf": "ini",
     ".env": "bash",
     ".properties": "properties",
-    ".csv": "csv",
-    ".tsv": "tsv",
     ".xml": "xml",
-    ".html": "html",
-    ".htm": "html",
     ".css": "css",
     ".scss": "scss",
     ".less": "less",
@@ -69,6 +67,10 @@ IMAGE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 )
 
+AUDIO_EXTENSIONS = frozenset(
+    {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".wma", ".opus"}
+)
+
 MARKITDOWN_GENERIC_EXTENSIONS = frozenset(
     {
         ".doc",
@@ -85,6 +87,10 @@ MARKITDOWN_GENERIC_EXTENSIONS = frozenset(
         ".msg",
         ".eml",
         ".mobi",
+        ".html",
+        ".htm",
+        ".csv",
+        ".tsv",
     }
 )
 
@@ -110,6 +116,10 @@ def is_prose_text_extension(extension: str) -> bool:
 
 def is_image_extension(extension: str) -> bool:
     return normalize_extension(extension) in IMAGE_EXTENSIONS
+
+
+def is_audio_extension(extension: str) -> bool:
+    return normalize_extension(extension) in AUDIO_EXTENSIONS
 
 
 def is_markitdown_generic_extension(extension: str) -> bool:

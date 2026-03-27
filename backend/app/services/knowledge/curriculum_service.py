@@ -1,4 +1,4 @@
-"""Curriculum and teaching-unit query services."""
+﻿"""Curriculum and teaching-unit query services."""
 
 from __future__ import annotations
 

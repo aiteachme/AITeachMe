@@ -102,8 +102,16 @@ function getFileStatusMeta(file: FileRecord) {
   }
 
   if (ACTIVE_FILE_STATUSES.has(file.status) || file.ingest_status !== "pending") {
+    const stageLabels: Record<string, string> = {
+      classifying: "分类中…",
+      fast_parsing: "解析中…",
+      fast_parsed: "已解析",
+      enhancing: "优化中…",
+      ready_for_digest: "就绪",
+    };
+    const label = stageLabels[file.ingest_status] ?? "处理中…";
     return {
-      label: "解析中",
+      label,
       tone: "text-slate-700 bg-slate-50 border-slate-200",
       icon: <Loader2 className="h-4 w-4 animate-spin text-slate-500" />,
     };
@@ -249,7 +257,7 @@ export function FilesPage() {
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
-      return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 2500 : false;
+      return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 1500 : false;
     },
   });
 

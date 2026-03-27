@@ -1,4 +1,4 @@
-"""Exam API endpoints."""
+﻿"""Exam API endpoints."""
 
 from __future__ import annotations
 

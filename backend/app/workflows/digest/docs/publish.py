@@ -1,4 +1,4 @@
-"""Helpers for staging and publishing knowledge docs in unified builds."""
+﻿"""Helpers for staging and publishing knowledge docs in unified builds."""
 
 from __future__ import annotations
 

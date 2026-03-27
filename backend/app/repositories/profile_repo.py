@@ -1,4 +1,4 @@
-"""Profile and mastery data access layer."""
+﻿"""Profile and mastery data access layer."""
 
 from __future__ import annotations
 

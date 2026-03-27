@@ -1,4 +1,4 @@
-"""Retrieval chunk model."""
+﻿"""Retrieval chunk model."""
 
 from __future__ import annotations
 

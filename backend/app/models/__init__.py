@@ -1,4 +1,4 @@
-"""Central model exports."""
+﻿"""Central model exports."""
 
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
@@ -37,7 +37,7 @@ from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile
+from app.models.raw_file import RawFile, RawFileAsset
 from app.models.subject import Subject
 from app.models.user import User
 
@@ -68,6 +68,7 @@ __all__ = [
     "QuestionTemplateStatus",
     "QuestionType",
     "RawFile",
+    "RawFileAsset",
     "RetrievalChunk",
     "ReviewTaskStatus",
     "ReviewTaskType",

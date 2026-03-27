@@ -1,4 +1,4 @@
-"""Build curriculum-aligned knowledge docs from the compressed schema."""
+﻿"""Build curriculum-aligned knowledge docs from the compressed schema."""
 
 from __future__ import annotations
 
