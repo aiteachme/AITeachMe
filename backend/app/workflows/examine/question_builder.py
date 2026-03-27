@@ -296,7 +296,7 @@ async def build_question_templates(
                 difficulty=difficulty,
                 stem=stem,
                 stem_hash=stem_hash,
-                options=options_json,
+                options_json=options_json,
                 answer=answer,
                 explanation=explanation,
                 status="active",

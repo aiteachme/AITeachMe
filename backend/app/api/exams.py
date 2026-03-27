@@ -11,9 +11,9 @@ from app.api.deps import CurrentUserContext, get_current_user_context, get_db, n
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
-    ExamGenerateJobStatusResponse,
+    ExamGenerateResponse,
     ExamGenerateRequest,
-    ExamGradeJobStatusResponse,
+    ExamGradeResponse,
     ExamHistoryItem,
     ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
@@ -23,6 +23,8 @@ from app.schemas.exams import (
 )
 from app.services.exams_service import (
     ExamPaperDetail,
+    ExamGenerationResult,
+    ExamGradingResult,
     QuestionBankItem,
     delete_exam_paper,
     get_exam_history,
@@ -47,8 +49,8 @@ def _parse_json_list(raw: str | None) -> list:
     return value if isinstance(value, list) else []
 
 
-def _to_exam_generate_job_response(job) -> ExamGenerateJobStatusResponse:
-    return ExamGenerateJobStatusResponse(
+def _to_exam_generate_response(job: ExamGenerationResult) -> ExamGenerateResponse:
+    return ExamGenerateResponse(
         id=job.id or 0,
         status=job.status,
         error_message=job.error_message,
@@ -64,8 +66,8 @@ def _to_exam_generate_job_response(job) -> ExamGenerateJobStatusResponse:
     )
 
 
-def _to_exam_grade_job_response(job) -> ExamGradeJobStatusResponse:
-    return ExamGradeJobStatusResponse(
+def _to_exam_grade_response(job: ExamGradingResult) -> ExamGradeResponse:
+    return ExamGradeResponse(
         id=job.id or 0,
         status=job.status,
         error_message=job.error_message,
@@ -99,21 +101,21 @@ def _to_exam_paper_detail_response(detail: ExamPaperDetail) -> ExamPaperDetailRe
     paper = detail.paper
     items: list[ExamPaperItemResponse] = []
     for item in detail.items:
-        options = _parse_json_list(item.snapshot_options)
+        options = _parse_json_list(item.options_snapshot_json)
         attempts = detail.attempts_by_item_id.get(item.id or -1)
         items.append(
             ExamPaperItemResponse(
                 id=item.id or 0,
                 item_order=item.item_order,
                 question_template_id=item.question_template_id,
-                question_type=item.snapshot_question_type,
-                difficulty=item.snapshot_difficulty,
-                stem=item.snapshot_stem,
+                question_type=item.question_type,
+                difficulty=item.difficulty,
+                stem=item.stem_snapshot,
                 options=[str(option) for option in options] if options else None,
-                explanation=item.snapshot_explanation,
-                teaching_unit_id=item.snapshot_teaching_unit_id,
-                node_links=_parse_json_list(item.snapshot_node_links_json),
-                user_answer=(attempts.user_answer if attempts is not None else None),
+                explanation=item.explanation_snapshot,
+                teaching_unit_id=item.teaching_unit_id,
+                node_links=_parse_json_list(item.node_refs_json),
+                user_answer=(attempts.answer_content if attempts is not None else None),
                 is_correct=(attempts.is_correct if attempts is not None else None),
                 score_obtained=(attempts.score_obtained if attempts is not None else None),
                 score_max=(attempts.score_max if attempts is not None else None),
@@ -152,7 +154,7 @@ def _to_question_bank_item_response(item: QuestionBankItem) -> QuestionBankItemR
 
 @router.post(
     "/generate",
-    response_model=ApiResponse[ExamGenerateJobStatusResponse],
+    response_model=ApiResponse[ExamGenerateResponse],
     summary="Trigger exam generation",
     responses=build_error_responses([400, 404, 409, 500]),
 )
@@ -161,7 +163,7 @@ async def api_trigger_exam_generate(
     body: ExamGenerateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
-) -> ApiResponse[ExamGenerateJobStatusResponse]:
+) -> ApiResponse[ExamGenerateResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
     job = await trigger_exam_generate(
@@ -174,7 +176,7 @@ async def api_trigger_exam_generate(
         theme_tree_node_id=body.theme_tree_node_id,
         teaching_unit_ids=body.teaching_unit_ids,
     )
-    return ok_response(_to_exam_generate_job_response(job))
+    return ok_response(_to_exam_generate_response(job))
 
 
 @router.post(
@@ -313,7 +315,7 @@ async def api_submit_exam(
 
 @router.post(
     "/{exam_paper_id:int}/grade",
-    response_model=ApiResponse[ExamGradeJobStatusResponse],
+    response_model=ApiResponse[ExamGradeResponse],
     summary="Trigger exam grading",
     responses=build_error_responses([400, 404, 409, 500]),
 )
@@ -323,7 +325,7 @@ async def api_trigger_exam_grade(
     regrade: bool = Query(False),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
-) -> ApiResponse[ExamGradeJobStatusResponse]:
+) -> ApiResponse[ExamGradeResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
 
@@ -338,4 +340,4 @@ async def api_trigger_exam_grade(
         exam_paper_id=exam_paper_id,
         regrade=regrade,
     )
-    return ok_response(_to_exam_grade_job_response(job))
+    return ok_response(_to_exam_grade_response(job))

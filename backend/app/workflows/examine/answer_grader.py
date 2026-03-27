@@ -69,7 +69,7 @@ class GradeResult(BaseModel):
 
 def _build_knowledge_context(session: Session, exam_paper_item: ExamPaperItem) -> str:
     try:
-        links = json.loads(exam_paper_item.snapshot_node_links_json or "[]")
+        links = json.loads(exam_paper_item.node_refs_json or "[]")
     except json.JSONDecodeError:
         links = []
     if not isinstance(links, list):
@@ -208,9 +208,9 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
             _AttemptContext(
                 attempt=attempt,
                 item=item,
-                user_answer=attempt.user_answer or "",
-                correct_answer=item.snapshot_answer or "",
-                question_type=item.snapshot_question_type,
+                user_answer=attempt.answer_content or "",
+                correct_answer=item.answer_snapshot or "",
+                question_type=item.question_type,
             )
         )
 
@@ -223,7 +223,7 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
     if short_answer_indices:
         short_answer_tasks = [
             _grade_short_answer_with_llm(
-                stem=to_grade[idx].item.snapshot_stem,
+                stem=to_grade[idx].item.stem_snapshot,
                 correct_answer=to_grade[idx].correct_answer,
                 user_answer=to_grade[idx].user_answer,
             )
@@ -257,7 +257,7 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         }
         label_tasks = [
             _infer_error_cause_label(
-                stem=to_grade[idx].item.snapshot_stem,
+                stem=to_grade[idx].item.stem_snapshot,
                 correct_answer=to_grade[idx].correct_answer,
                 user_answer=to_grade[idx].user_answer,
                 knowledge_context=contexts[idx],

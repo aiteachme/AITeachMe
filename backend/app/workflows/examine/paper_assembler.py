@@ -2,11 +2,10 @@
 
 Reads DB: ``question_template*``, ``curriculum_snapshot``, ``user_knowledge_state``,
 ``review_task`` and related curriculum memberships.
-Writes DB: ``exam_generate_job``, ``exam_paper``, ``exam_paper_item`` and
-``exam_paper_generation_context``.
+Writes DB: ``exam_paper`` and ``exam_paper_item``.
 Writes FS: none.
-Idempotency: each generate job should assemble one paper snapshot; reruns create/refresh that job's
-paper context rather than mutating historical papers in place.
+Idempotency: each generate call assembles one paper snapshot rather than mutating historical papers
+in place.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ from app.core.exceptions import NoPublishedCurriculumSnapshotError
 from app.models import (
     ExamMode,
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
     QuestionTemplate,
     QuestionType,
@@ -108,9 +106,9 @@ def _is_placeholder_template(template: QuestionTemplate) -> bool:
     if sum(token in stem for token in bad_tokens) >= 2:
         return True
 
-    if template.options:
+    if template.options_json:
         try:
-            opts = json.loads(template.options)
+            opts = json.loads(template.options_json)
         except json.JSONDecodeError:
             opts = None
         if isinstance(opts, list):
@@ -272,7 +270,7 @@ def _build_mock_final_unit_allocation(
     return allocation
 
 
-def _snapshot_node_links_json(session: Session, template_id: int) -> str:
+def _serialize_node_refs_json(session: Session, template_id: int) -> str:
     links = exams_repo.find_node_links_by_template(session, template_id)
     payload = [
         {
@@ -303,8 +301,8 @@ def assemble_paper(
     now = as_of or utcnow()
     question_type_filter = set(item for item in (preferred_question_types or []) if item)
 
-    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
-    if snapshot is None or snapshot.id is None:
+    curriculum_version = exams_repo.get_published_curriculum_version(session, subject)
+    if curriculum_version is None or curriculum_version.id is None:
         raise NoPublishedCurriculumSnapshotError(subject)
 
     excluded_ids = set(
@@ -319,11 +317,11 @@ def assemble_paper(
     used_template_ids: set[int] = set()
     selections: list[_Selection] = []
     context_payload: dict[str, object] = {
-        "selection_reason_json": {},
+        "selection_reasons": {},
         "target_theme_tree_node_id": theme_tree_node_id,
-        "weakness_state_ids_json": [],
-        "review_task_ids_json": [],
-        "excluded_template_ids_json": sorted(excluded_ids),
+        "weakness_state_ids": [],
+        "review_task_ids": [],
+        "excluded_template_ids": sorted(excluded_ids),
     }
 
     if mode == ExamMode.PRACTICE.value:
@@ -348,18 +346,19 @@ def assemble_paper(
             )
         )
     elif mode == ExamMode.WEAKPOINT_BOOST.value:
-        weak_states = [
-            state
-            for state in profile_repo.list_weak_knowledge_states(
-                session,
-                user_id=user_id,
-                subject=subject,
-                threshold=0.8,
-            )
-            if state.granularity == "unit"
-        ]
-        weak_units = {state.target_id for state in weak_states}
-        source_state_by_unit = {state.target_id: state.id for state in weak_states if state.id is not None}
+        weak_states = profile_repo.list_weak_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            threshold=0.8,
+            target_kind="unit",
+        )
+        weak_units = {int(state.teaching_unit_id) for state in weak_states if state.teaching_unit_id is not None}
+        source_state_by_unit = {
+            int(state.teaching_unit_id): state.id
+            for state in weak_states
+            if state.id is not None and state.teaching_unit_id is not None
+        }
         prereq_units: set[int] = set()
         for unit_id in weak_units:
             prereq_units.update(exams_repo.list_prereq_units(session, unit_id))
@@ -425,20 +424,21 @@ def assemble_paper(
             )
         )
 
-        context_payload["weakness_state_ids_json"] = [state.id for state in weak_states if state.id is not None]
+        context_payload["weakness_state_ids"] = [state.id for state in weak_states if state.id is not None]
     elif mode == ExamMode.REVIEW.value:
-        due_states = [
-            state
-            for state in profile_repo.list_due_knowledge_states(
-                session,
-                user_id=user_id,
-                subject=subject,
-                as_of=now,
-            )
-            if state.granularity == "unit"
-        ]
-        due_units = {state.target_id for state in due_states}
-        source_state_by_unit = {state.target_id: state.id for state in due_states if state.id is not None}
+        due_states = profile_repo.list_due_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            as_of=now,
+            target_kind="unit",
+        )
+        due_units = {int(state.teaching_unit_id) for state in due_states if state.teaching_unit_id is not None}
+        source_state_by_unit = {
+            int(state.teaching_unit_id): state.id
+            for state in due_states
+            if state.id is not None and state.teaching_unit_id is not None
+        }
         due_pool = _build_unit_template_pool(
             session,
             subject=subject,
@@ -456,11 +456,11 @@ def assemble_paper(
             )
         )
         pending_review_tasks = profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
-        context_payload["review_task_ids_json"] = [task.id for task in pending_review_tasks if task.id is not None]
+        context_payload["review_task_ids"] = [task.id for task in pending_review_tasks if task.id is not None]
     elif mode == ExamMode.MOCK_FINAL.value:
         allocation = _build_mock_final_unit_allocation(
             session,
-            snapshot=snapshot,
+            snapshot=curriculum_version,
             num_questions=num_questions,
         )
         pool = _build_unit_template_pool(
@@ -558,9 +558,10 @@ def assemble_paper(
             subject=subject,
             user_id=user_id,
             exam_mode=mode,
-            curriculum_snapshot_id=snapshot.id,
+            curriculum_version_id=curriculum_version.id,
             status="draft",
             total_items=0,
+            selection_context_json="{}",
             created_at=utcnow(),
             updated_at=utcnow(),
         ),
@@ -571,21 +572,21 @@ def assemble_paper(
     items_to_create: list[ExamPaperItem] = []
     for item_order, selection in enumerate(selections, start=1):
         template = selection.template
-        options_snapshot = template.options
+        options_snapshot = template.options_json
         answer_snapshot = template.answer
         if (
             template.question_type == QuestionType.SINGLE_CHOICE.value
-            and template.options is not None
+            and template.options_json is not None
         ):
             try:
                 options_snapshot, answer_snapshot = shuffle_single_choice_options(
-                    template.options,
+                    template.options_json,
                     template.answer,
                 )
             except Exception:
                 # 选项异常时保底使用原始快照，避免整卷失败
                 logger.warning("paper_assembler_shuffle_failed", template_id=template.id)
-                options_snapshot = template.options
+                options_snapshot = template.options_json
                 answer_snapshot = template.answer
 
         template_id = template.id
@@ -596,14 +597,15 @@ def assemble_paper(
                 exam_paper_id=paper.id,
                 question_template_id=template_id,
                 item_order=item_order,
-                snapshot_stem=template.stem,
-                snapshot_options=options_snapshot,
-                snapshot_answer=answer_snapshot,
-                snapshot_explanation=template.explanation,
-                snapshot_teaching_unit_id=template.teaching_unit_id,
-                snapshot_node_links_json=_snapshot_node_links_json(session, template_id),
-                snapshot_difficulty=template.difficulty,
-                snapshot_question_type=template.question_type,
+                stem_snapshot=template.stem,
+                options_snapshot_json=options_snapshot,
+                answer_snapshot=answer_snapshot,
+                explanation_snapshot=template.explanation,
+                teaching_unit_id=template.teaching_unit_id,
+                node_refs_json=_serialize_node_refs_json(session, template_id),
+                difficulty=template.difficulty,
+                question_type=template.question_type,
+                score=1.0,
                 created_at=utcnow(),
             )
         )
@@ -626,14 +628,10 @@ def assemble_paper(
             "source_state_id": selection.source_state_id,
         }
 
-    context = ExamPaperGenerationContext(
-        exam_paper_id=paper.id,
-        selection_reason_json=json.dumps(selection_reason_map, ensure_ascii=False),
-        target_theme_tree_node_id=theme_tree_node_id,
-        weakness_state_ids_json=json.dumps(context_payload["weakness_state_ids_json"], ensure_ascii=False),
-        review_task_ids_json=json.dumps(context_payload["review_task_ids_json"], ensure_ascii=False),
-        excluded_template_ids_json=json.dumps(context_payload["excluded_template_ids_json"], ensure_ascii=False),
-        created_at=utcnow(),
-    )
-    exams_repo.create_generation_context(session, context)
+    context_payload["selection_reasons"] = selection_reason_map
+    paper.selection_context_json = json.dumps(context_payload, ensure_ascii=False)
+    paper.updated_at = utcnow()
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
     return paper

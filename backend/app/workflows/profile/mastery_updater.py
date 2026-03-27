@@ -178,9 +178,9 @@ def _merge_mastery_score(
     return min(1.0, max(0.0, merged))
 
 
-def _parse_node_links(snapshot_node_links_json: str) -> list[tuple[int, float]]:
+def _parse_node_links(node_refs_json: str) -> list[tuple[int, float]]:
     try:
-        payload = json.loads(snapshot_node_links_json or "[]")
+        payload = json.loads(node_refs_json or "[]")
     except json.JSONDecodeError:
         return []
     if not isinstance(payload, list):
@@ -213,20 +213,22 @@ def _upsert_state_from_attempts(
     *,
     user_id: str,
     subject: str,
-    granularity: str,
-    target_id: int,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
     attempts: list[_WeightedAttempt],
     now: datetime,
 ) -> UserKnowledgeState | None:
     if not attempts:
         return None
+    if (teaching_unit_id is None) == (knowledge_node_id is None):
+        raise ValueError("Exactly one mastery target must be provided.")
 
     existing = profile_repo.get_knowledge_state(
         session,
         user_id=user_id,
         subject=subject,
-        granularity=granularity,
-        target_id=target_id,
+        teaching_unit_id=teaching_unit_id,
+        knowledge_node_id=knowledge_node_id,
     )
 
     current_exam_score = _compute_weighted_mastery_score(attempts=attempts, now=now)
@@ -253,8 +255,8 @@ def _upsert_state_from_attempts(
     state = UserKnowledgeState(
         user_id=user_id,
         subject=subject,
-        granularity=granularity,
-        target_id=target_id,
+        teaching_unit_id=teaching_unit_id,
+        knowledge_node_id=knowledge_node_id,
         mastery_score=mastery_score,
         confidence_score=confidence_score,
         stability_score=stability_score,
@@ -265,6 +267,7 @@ def _upsert_state_from_attempts(
         last_attempt_at=last_attempt_at,
         state_version=((existing.state_version + 1) if existing is not None else 1),
         last_recomputed_at=now,
+        stats_json=(existing.stats_json if existing is not None else "{}"),
         updated_at=now,
     )
     return profile_repo.upsert_knowledge_state(session, state)
@@ -299,17 +302,17 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
 
         base = _WeightedAttempt(
             is_correct=attempt.is_correct,
-            difficulty=item.snapshot_difficulty,
+            difficulty=item.difficulty,
             answered_at=attempt.created_at,
             coverage_weight=1.0,
         )
-        unit_attempts.setdefault(item.snapshot_teaching_unit_id, []).append(base)
+        unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
 
-        for node_id, normalized_weight in _parse_node_links(item.snapshot_node_links_json):
+        for node_id, normalized_weight in _parse_node_links(item.node_refs_json):
             node_attempts.setdefault(node_id, []).append(
                 _WeightedAttempt(
                     is_correct=attempt.is_correct,
-                    difficulty=item.snapshot_difficulty,
+                    difficulty=item.difficulty,
                     answered_at=attempt.created_at,
                     coverage_weight=normalized_weight,
                 )
@@ -323,8 +326,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             session,
             user_id=exam_paper.user_id,
             subject=exam_paper.subject,
-            granularity="unit",
-            target_id=target_id,
+            teaching_unit_id=target_id,
             attempts=target_attempts,
             now=now,
         )
@@ -336,8 +338,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             session,
             user_id=exam_paper.user_id,
             subject=exam_paper.subject,
-            granularity="node",
-            target_id=target_id,
+            knowledge_node_id=target_id,
             attempts=target_attempts,
             now=now,
         )

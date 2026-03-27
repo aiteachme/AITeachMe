@@ -9,7 +9,6 @@ from sqlmodel import Session, func, select
 from app.models import (
     CurriculumSnapshot,
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
     PrereqDagVersion,
     QuestionTemplate,
@@ -108,16 +107,6 @@ def create_exam_paper_items(session: Session, items: list[ExamPaperItem]) -> lis
     for item in items:
         session.refresh(item)
     return items
-
-
-def create_generation_context(
-    session: Session,
-    ctx: ExamPaperGenerationContext,
-) -> ExamPaperGenerationContext:
-    session.add(ctx)
-    session.commit()
-    session.refresh(ctx)
-    return ctx
 
 
 def get_exam_paper_by_id(session: Session, paper_id: int) -> ExamPaper | None:
@@ -230,12 +219,6 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
         for item in paper_items:
             session.delete(item)
 
-    generation_contexts = list(
-        session.exec(select(ExamPaperGenerationContext).where(ExamPaperGenerationContext.exam_paper_id == paper_id)).all()
-    )
-    for item in generation_contexts:
-        session.delete(item)
-
     review_tasks = list(session.exec(select(ReviewTask).where(ReviewTask.source_exam_paper_id == paper_id)).all())
     for item in review_tasks:
         session.delete(item)
@@ -272,7 +255,7 @@ def list_attempts_by_paper(session: Session, paper_id: int) -> list[UserAnswerAt
 # ---------------------------------------------------------------------------
 
 
-def get_published_curriculum_snapshot(
+def get_published_curriculum_version(
     session: Session,
     subject: str,
 ) -> CurriculumSnapshot | None:

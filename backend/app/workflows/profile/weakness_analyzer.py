@@ -28,7 +28,7 @@ def _as_utc(dt: datetime) -> datetime:
 
 @dataclass(frozen=True)
 class WeaknessItem:
-    target_id: int
+    teaching_unit_id: int
     priority: float
     reason: str
     mastery_score: float
@@ -60,7 +60,7 @@ def _recent_error_stats_by_unit(
 
     stats: dict[int, tuple[int, int]] = {}
     for attempt, item in rows:
-        unit_id = int(item.snapshot_teaching_unit_id)
+        unit_id = int(item.teaching_unit_id)
         total, wrong = stats.get(unit_id, (0, 0))
         total += 1
         if attempt.is_correct is False:
@@ -74,7 +74,7 @@ def _exam_weight_by_unit(
     *,
     subject: str,
 ) -> dict[int, float]:
-    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
+    snapshot = exams_repo.get_published_curriculum_version(session, subject)
     if snapshot is None or snapshot.theme_tree_version_id is None:
         return {}
 
@@ -104,7 +104,7 @@ def _prereq_gap_units(
     subject: str,
     unit_states: dict[int, UserKnowledgeState],
 ) -> set[int]:
-    snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
+    snapshot = exams_repo.get_published_curriculum_version(session, subject)
     if snapshot is None or snapshot.prereq_dag_version_id is None:
         return set()
 
@@ -165,12 +165,12 @@ def analyze_weakness(
 
     states = [
         item
-        for item in profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, granularity="unit")
+        for item in profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="unit")
     ]
     if not states:
         return []
 
-    state_by_unit = {state.target_id: state for state in states}
+    state_by_unit = {int(state.teaching_unit_id): state for state in states if state.teaching_unit_id is not None}
     error_stats = _recent_error_stats_by_unit(session, user_id=user_id, subject=subject)
     exam_weight = _exam_weight_by_unit(session, subject=subject)
     prereq_gaps = _prereq_gap_units(session, subject=subject, unit_states=state_by_unit)
@@ -178,31 +178,34 @@ def analyze_weakness(
     now = utcnow()
     items: list[WeaknessItem] = []
     for state in states:
-        total, wrong = error_stats.get(state.target_id, (0, 0))
+        if state.teaching_unit_id is None:
+            continue
+        teaching_unit_id = int(state.teaching_unit_id)
+        total, wrong = error_stats.get(teaching_unit_id, (0, 0))
         wrong_rate = (wrong / total) if total > 0 else 0.0
         mastery_component = (1.0 - state.mastery_score) * 0.45
         wrong_component = wrong_rate * 0.20
-        prereq_component = (0.20 if state.target_id in prereq_gaps else 0.0)
+        prereq_component = (0.20 if teaching_unit_id in prereq_gaps else 0.0)
         forgetting_component = _forgetting_risk(state, now=now) * 0.10
-        exam_weight_component = exam_weight.get(state.target_id, 0.0) * 0.05
+        exam_weight_component = exam_weight.get(teaching_unit_id, 0.0) * 0.05
         priority = mastery_component + wrong_component + prereq_component + forgetting_component + exam_weight_component
 
         items.append(
             WeaknessItem(
-                target_id=state.target_id,
+                teaching_unit_id=teaching_unit_id,
                 priority=priority,
                 reason=_pick_reason(
                     state=state,
-                    prereq_gap=(state.target_id in prereq_gaps),
+                    prereq_gap=(teaching_unit_id in prereq_gaps),
                     recent_total=total,
                     recent_wrong_rate=wrong_rate,
                     now=now,
                 ),
                 mastery_score=state.mastery_score,
                 recent_wrong_rate=wrong_rate,
-                exam_weight=exam_weight.get(state.target_id, 0.0),
+                exam_weight=exam_weight.get(teaching_unit_id, 0.0),
             )
         )
 
-    ordered = sorted(items, key=lambda x: (-x.priority, x.target_id))
+    ordered = sorted(items, key=lambda x: (-x.priority, x.teaching_unit_id))
     return ordered[:top_n]

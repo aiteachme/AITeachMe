@@ -157,9 +157,9 @@ Profile 的输出至少要能回到：
 
 `user_knowledge_state` 和 `review_task` 的价值，不只是分析页展示，而是驱动下一轮对话与测评。
 
-### 9.3 当前代码里仍有弱多态目标字段
+### 9.3 当前代码已切到显式目标外键
 
-当前 `user_knowledge_state` 和 `review_task` 仍使用 `granularity + target_id` 过渡表达；目标态应进一步收口到 `teaching_unit_id / knowledge_node_id` 强外键模型。
+当前 `user_knowledge_state` 和 `review_task` 已显式使用 `teaching_unit_id / knowledge_node_id` 强外键表达目标。后续重点不再是保留弱多态兼容，而是继续把所有读模型、查询和下游调用统一收口到这组字段。
 
 ---
 

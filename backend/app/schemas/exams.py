@@ -31,8 +31,8 @@ class ExamSubmitRequest(BaseModel):
     answers: list[ExamSubmitAnswerItem] = Field(default_factory=list, description="Submitted answers.")
 
 
-class JobStatusResponse(BaseModel):
-    """Generic runtime job status response."""
+class RuntimeStatusResponse(BaseModel):
+    """Generic runtime status response."""
 
     id: int
     status: str
@@ -41,7 +41,7 @@ class JobStatusResponse(BaseModel):
     updated_at: datetime
 
 
-class ExamGenerateJobStatusResponse(JobStatusResponse):
+class ExamGenerateResponse(RuntimeStatusResponse):
     subject: str
     user_id: str
     exam_mode: str
@@ -51,7 +51,7 @@ class ExamGenerateJobStatusResponse(JobStatusResponse):
     teaching_unit_ids: list[int] = Field(default_factory=list)
 
 
-class ExamGradeJobStatusResponse(JobStatusResponse):
+class ExamGradeResponse(RuntimeStatusResponse):
     exam_paper_id: int
     score: float | None = None
     states_updated: int

@@ -80,12 +80,107 @@ user
 - 表名统一用单数 `snake_case`
 - 主关系优先用强外键，不优先用字符串和弱多态
 - 少表优先，但不能为了少表把不同生命周期的对象揉烂
+- 先区分“业务主表”和“支持表”，不要把所有桥接表都当成同一层级的大表
 - 不做 legacy 兼容，不保留旧表旧字段
 - 兼容旧功能，不兼容旧命名
 - 版本记录内嵌到正式主表，不为重建再拆一层 job 表
 - 本地部署和中心化部署共用同一套逻辑模型
 - `速成课 / 系统课` 共用同一套主表，只改模式字段、提示词和生成深度
 - 为未来 `tools / memory / skills` 预留扩展口，但不提前加空表
+
+### 4.1 还能不能再减表
+
+可以再减一点，但空间已经不大了。
+
+更准确地说：
+
+- 现在这版不是“绝对完美”
+- 但主业务表已经比较接近稳定形态
+- 真正还能继续减的，主要只剩 3 张支持表
+- `chunk_embedding` 不应和业务主表混着统计
+
+建议把这套结构分成三层理解：
+
+#### A. 不能再减的主业务表
+
+这些表不要再减：
+
+- `user`
+- `subject`
+- `raw_file`
+- `retrieval_chunk`
+- `knowledge_document`
+- `knowledge_node`
+- `knowledge_edge`
+- `teaching_unit`
+- `curriculum_version`
+- `question_template`
+- `exam_paper`
+- `exam_paper_item`
+- `user_answer_attempt`
+- `user_knowledge_state`
+- `review_task`
+- `chat_session`
+- `chat_message`
+
+原因是它们分别承担：
+
+- 不同生命周期
+- 不同查询入口
+- 不同状态流转
+- 不同删除边界
+
+继续合并，后面很容易重新长回旧项目那种“字段越来越乱、表越来越暧昧”的状态。
+
+#### B. 属于支持层，不要和主业务表一起数
+
+这些表存在是合理的，但不应该和主业务表混在一起数：
+
+- `raw_file_asset`
+- `chunk_embedding`
+- `knowledge_evidence`
+- `teaching_unit_membership`
+- `curriculum_tree_node`
+- `curriculum_unit_link`
+- `curriculum_dependency`
+- `question_template_node_link`
+
+其中：
+
+- `chunk_embedding` 更接近向量后端映射
+- `*_membership / *_link / *_dependency` 本质是桥接关系
+- `question_template_node_link` 是模板覆盖信息，不是用户直接操作的主对象
+
+#### C. 真正还能继续减的 3 张支持表
+
+如果现在第一目标是“再少几张表”，优先只考虑下面 3 张：
+
+1. `knowledge_alias`
+   可临时并入 `knowledge_node.aliases_json`
+2. `question_template_node_link`
+   可临时并入 `question_template.node_refs_json`
+3. `curriculum_blueprint_node`
+   如果第一阶段暂时不做人工蓝图编辑，可先不单独落表，让 `curriculum_tree_node` 临时承接 `blueprint_key`
+
+这 3 张表的共同点是：
+
+- 都不是当前用户直接操作的主对象
+- 都属于“为了查询更稳、后续扩展更顺”而存在的支持结构
+- 都可以在 MVP 第一阶段先合并，再在第二阶段拆回独立表
+
+### 4.2 推荐的最小落地版
+
+如果现在就要一套更浓缩、但又不伤主链路的目标态，建议这样取舍：
+
+- 正式保留当前主树里的全部主业务表
+- `chunk_embedding` 继续只当存储层逻辑对象，不算业务主表
+- `knowledge_alias / question_template_node_link / curriculum_blueprint_node` 标记为“可延后支持表”
+
+也就是说：
+
+- 推荐稳定态：保留文档当前整套主树
+- 推荐第一阶段最小落地态：少落 3 张支持表
+- 不推荐再继续减 `retrieval_chunk / knowledge_document / exam_paper_item / user_answer_attempt / review_task`
 
 ---
 
@@ -116,7 +211,7 @@ user
 聊天检索、知识图谱证据、chunk 上下文回溯，本质都依赖统一 chunk 层。  
 所以旧的 `document_chunk` 必须收敛为 `retrieval_chunk`，而不是直接删掉。
 
-### 5.4 `curriculum_blueprint_node` 不能省
+### 5.4 `curriculum_blueprint_node` 稳定态建议保留，但允许第一阶段延后物理落表
 
 它不是装饰表，而是 `taxonomy_anchor` 的正式替代。  
 它要承担：
@@ -126,6 +221,12 @@ user
 - 跨版本对齐键
 
 如果没有这层，课程树每次重建都更容易漂移。
+
+但更务实地讲：
+
+- 稳定态建议保留这张表
+- 如果第一阶段只追求最少表，且暂时不做人工蓝图编辑，可以先不单独落这张表
+- 这时要由 `curriculum_tree_node` 临时承接 `blueprint_key` 一类稳定锚点语义
 
 ### 5.5 `curriculum_version` 不是普通版本号
 
@@ -237,7 +338,7 @@ user
 | 表名 | 主键 / 外键 | 核心字段 | 说明 |
 | --- | --- | --- | --- |
 | `knowledge_node` | `id`, `subject_id -> subject.id`, `merge_target_id -> knowledge_node.id` | `canonical_name`, `normalized_name`, `node_type`, `summary`, `body_markdown`, `confidence`, `status`, `created_at`, `updated_at` | 正式节点表。这里直接吸收旧 `knowledge_revision` 的正文语义。 |
-| `knowledge_alias` | `id`, `knowledge_node_id -> knowledge_node.id` | `alias`, `normalized_alias`, `alias_type`, `confidence`, `created_at` | 节点别名。 |
+| `knowledge_alias` | `id`, `knowledge_node_id -> knowledge_node.id` | `alias`, `normalized_alias`, `alias_type`, `confidence`, `created_at` | 节点别名。减表优先时可先并入 `knowledge_node.aliases_json`。 |
 | `knowledge_edge` | `id`, `subject_id -> subject.id`, `source_node_id -> knowledge_node.id`, `target_node_id -> knowledge_node.id` | `edge_type`, `description`, `confidence`, `status`, `created_at`, `updated_at` | 正式边表。这里直接吸收旧 `edge_revision` 的描述语义。 |
 | `knowledge_evidence` | `id`, `retrieval_chunk_id -> retrieval_chunk.id`, `knowledge_node_id -> knowledge_node.id`, `knowledge_edge_id -> knowledge_edge.id` | `quote_text`, `locator_json`, `evidence_role`, `field_scope`, `strength`, `is_active`, `created_at` | 证据表。要求 `knowledge_node_id` 和 `knowledge_edge_id` 二选一。 |
 
@@ -253,23 +354,23 @@ user
 | --- | --- | --- | --- |
 | `teaching_unit` | `id`, `subject_id -> subject.id` | `title`, `normalized_title`, `unit_signature`, `summary`, `body_markdown`, `learning_objectives_json`, `difficulty`, `status`, `created_at`, `updated_at` | 教学单元。这里直接吸收旧 `teaching_unit_revision` 的正文语义。 |
 | `teaching_unit_membership` | `id`, `teaching_unit_id -> teaching_unit.id`, `knowledge_node_id -> knowledge_node.id` | `role`, `order_index`, `weight`, `created_at` | 单元和知识点绑定表。 |
-| `curriculum_blueprint_node` | `id`, `subject_id -> subject.id`, `parent_id -> curriculum_blueprint_node.id` | `blueprint_key`, `title`, `normalized_title`, `node_type`, `order_index`, `source_type`, `is_manual`, `is_system`, `status`, `note`, `created_at`, `updated_at` | 稳定课程蓝图骨架。正式替代 `taxonomy_anchor`。 |
+| `curriculum_blueprint_node` | `id`, `subject_id -> subject.id`, `parent_id -> curriculum_blueprint_node.id` | `blueprint_key`, `title`, `normalized_title`, `node_type`, `order_index`, `source_type`, `is_manual`, `is_system`, `status`, `note`, `created_at`, `updated_at` | 稳定课程蓝图骨架。正式替代 `taxonomy_anchor`。若第一阶段追求最少表，可延后物理落表。 |
 | `curriculum_version` | `id`, `subject_id -> subject.id` | `version_no`, `build_session_id`, `status`, `is_current`, `source_kind`, `summary`, `build_context_json`, `published_at`, `superseded_at`, `created_at`, `updated_at` | 正式课程发布包。正式替代 `curriculum_snapshot`。 |
-| `curriculum_tree_node` | `id`, `curriculum_version_id -> curriculum_version.id`, `curriculum_blueprint_node_id -> curriculum_blueprint_node.id`, `parent_id -> curriculum_tree_node.id` | `title`, `node_type`, `order_index`, `level`, `summary` | 某个课程版本下的目录树节点。 |
+| `curriculum_tree_node` | `id`, `curriculum_version_id -> curriculum_version.id`, `curriculum_blueprint_node_id -> curriculum_blueprint_node.id`, `parent_id -> curriculum_tree_node.id` | `title`, `node_type`, `order_index`, `level`, `summary` | 某个课程版本下的目录树节点。若 `curriculum_blueprint_node` 延后落表，这里要临时承接 `blueprint_key` 语义。 |
 | `curriculum_unit_link` | `id`, `curriculum_version_id -> curriculum_version.id`, `curriculum_tree_node_id -> curriculum_tree_node.id`, `teaching_unit_id -> teaching_unit.id` | `role`, `order_index`, `weight` | 课程树和教学单元连接表。 |
 | `curriculum_dependency` | `id`, `curriculum_version_id -> curriculum_version.id`, `source_unit_id -> teaching_unit.id`, `target_unit_id -> teaching_unit.id` | `dependency_type`, `confidence`, `note` | 某个课程版本内的先修依赖。 |
 
 这里最重要的决定：
 
 - `curriculum_version` 统一承接旧 `theme_tree_version + prereq_dag_version + curriculum_snapshot`
-- `curriculum_blueprint_node` 保留稳定骨架，不省略
+- `curriculum_blueprint_node` 在稳定态保留，不建议长期省略
 
 ### 7.7 出题、考试、学习状态
 
 | 表名 | 主键 / 外键 | 核心字段 | 说明 |
 | --- | --- | --- | --- |
 | `question_template` | `id`, `subject_id -> subject.id`, `teaching_unit_id -> teaching_unit.id`, `curriculum_version_id -> curriculum_version.id` | `question_type`, `difficulty`, `stem`, `stem_hash`, `options_json`, `answer`, `explanation`, `template_version`, `status`, `selection_hints_json`, `created_at`, `updated_at` | 出题模板表。必须兼容 `f8099a3` 的现有 question bank 能力。 |
-| `question_template_node_link` | `id`, `question_template_id -> question_template.id`, `knowledge_node_id -> knowledge_node.id` | `coverage_weight`, `role`, `created_at` | 模板覆盖知识点。 |
+| `question_template_node_link` | `id`, `question_template_id -> question_template.id`, `knowledge_node_id -> knowledge_node.id` | `coverage_weight`, `role`, `created_at` | 模板覆盖知识点。减表优先时可先并入 `question_template.node_refs_json`。 |
 | `exam_paper` | `id`, `user_id -> user.id`, `subject_id -> subject.id`, `curriculum_version_id -> curriculum_version.id` | `title`, `exam_mode`, `status`, `total_items`, `total_score`, `score_obtained`, `duration_seconds`, `selection_context_json`, `submitted_at`, `graded_at`, `created_at`, `updated_at` | 试卷主表。这里直接吸收旧 `exam_paper_generation_context` 的上下文语义。 |
 | `exam_paper_item` | `id`, `exam_paper_id -> exam_paper.id`, `question_template_id -> question_template.id` | `item_order`, `question_type`, `difficulty`, `stem_snapshot`, `options_snapshot_json`, `answer_snapshot`, `explanation_snapshot`, `teaching_unit_id`, `node_refs_json`, `score`, `created_at` | 题目快照表。必须兼容 `f8099a3` 的 detail/history/question-bank 读取。 |
 | `user_answer_attempt` | `id`, `exam_paper_item_id -> exam_paper_item.id`, `user_id -> user.id` | `attempt_no`, `answer_content`, `is_correct`, `score_obtained`, `score_max`, `time_spent_seconds`, `hint_used`, `confidence_self_report`, `error_cause_label`, `feedback_text`, `created_at` | 作答记录。既服务判卷，也服务错题、画像、聊天历史。 |
@@ -421,6 +522,13 @@ user
 | `exam / question / exam_submission / answer_record / mistake` | 不进入目标态 | 删除 |
 | `user_profile` | 由 `user_knowledge_state` 派生替代 | 删除 |
 | 各类 `*_job`、`*_lock`、`*_snapshot` 兼容表 | 不进入目标态 | 删除 |
+
+补充：
+
+- 如果采用“第一阶段最小落地态”，可暂不单独落 `knowledge_alias`
+- 可暂不单独落 `question_template_node_link`
+- 可暂不单独落 `curriculum_blueprint_node`
+- 但这三类语义必须分别并入 `knowledge_node`、`question_template`、`curriculum_tree_node`
 
 ---
 

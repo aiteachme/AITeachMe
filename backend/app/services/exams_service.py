@@ -66,7 +66,7 @@ class QuestionBuildResult:
 
 
 @dataclass(frozen=True)
-class ExamGenerateResult:
+class ExamGenerationResult:
     id: int
     status: str
     error_message: str | None
@@ -82,7 +82,7 @@ class ExamGenerateResult:
 
 
 @dataclass(frozen=True)
-class ExamGradeResult:
+class ExamGradingResult:
     id: int
     status: str
     error_message: str | None
@@ -319,7 +319,7 @@ async def trigger_exam_generate(
     user_prompt: str | None = None,
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
-) -> ExamGenerateResult:
+) -> ExamGenerationResult:
     mode = _resolve_generate_mode(exam_mode)
     prompt_requested_count = _extract_requested_question_count(user_prompt)
     resolved_num_questions = (
@@ -343,7 +343,7 @@ async def trigger_exam_generate(
             mode=mode,
         )
 
-        snapshot = exams_repo.get_published_curriculum_snapshot(session, subject)
+        snapshot = exams_repo.get_published_curriculum_version(session, subject)
         if snapshot is None:
             raise NoPublishedCurriculumSnapshotError(subject)
         if not build_unit_ids:
@@ -409,7 +409,7 @@ async def trigger_exam_generate(
             teaching_unit_count=len(build_unit_ids),
             user_prompt_present=bool((user_prompt or "").strip()),
         )
-        return ExamGenerateResult(
+        return ExamGenerationResult(
             id=runtime_job_id,
             status="completed",
             error_message=None,
@@ -480,7 +480,7 @@ async def submit_exam_answers(
                 exam_paper_item_id=item.id,
                 user_id=user_id,
                 attempt_no=1,
-                user_answer=answer_text,
+                answer_content=answer_text,
                 created_at=utcnow(),
             )
         )
@@ -513,7 +513,7 @@ async def trigger_exam_grade(
     *,
     exam_paper_id: int,
     regrade: bool = False,
-) -> ExamGradeResult:
+) -> ExamGradingResult:
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None:
         _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
@@ -580,7 +580,7 @@ async def trigger_exam_grade(
             tasks_created=tasks_created,
             mastery_consumed=mastery_consumed,
         )
-        return ExamGradeResult(
+        return ExamGradingResult(
             id=runtime_job_id,
             status="completed",
             error_message=None,
@@ -645,10 +645,10 @@ async def get_question_bank(
         if existing is None:
             agg[template_id] = QuestionBankItem(
                 question_template_id=template_id,
-                stem=item.snapshot_stem,
-                question_type=item.snapshot_question_type,
-                difficulty=item.snapshot_difficulty,
-                teaching_unit_id=item.snapshot_teaching_unit_id,
+                stem=item.stem_snapshot,
+                question_type=item.question_type,
+                difficulty=item.difficulty,
+                teaching_unit_id=item.teaching_unit_id,
                 times_asked=1,
                 last_asked_at=asked_at,
                 last_exam_paper_id=exam_paper_id,

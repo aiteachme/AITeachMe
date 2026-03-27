@@ -2116,7 +2116,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateJobStatusResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateResponse_"
                 }
               }
             }
@@ -2661,7 +2661,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamGradeJobStatusResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeResponse_"
                 }
               }
             }
@@ -2791,13 +2791,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/mastery/unit/{target_id}": {
+    "/api/v1/subjects/{subject}/profile/mastery/unit/{teaching_unit_id}": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Unit mastery detail",
-        "operationId": "api_get_unit_mastery_detail_api_v1_subjects__subject__profile_mastery_unit__target_id__get",
+        "operationId": "api_get_unit_mastery_detail_api_v1_subjects__subject__profile_mastery_unit__teaching_unit_id__get",
         "parameters": [
           {
             "name": "subject",
@@ -2809,13 +2809,13 @@
             }
           },
           {
-            "name": "target_id",
+            "name": "teaching_unit_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "title": "Target Id"
+              "title": "Teaching Unit Id"
             }
           }
         ],
@@ -2873,13 +2873,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/mastery/node/{target_id}": {
+    "/api/v1/subjects/{subject}/profile/mastery/node/{knowledge_node_id}": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Node mastery detail",
-        "operationId": "api_get_node_mastery_detail_api_v1_subjects__subject__profile_mastery_node__target_id__get",
+        "operationId": "api_get_node_mastery_detail_api_v1_subjects__subject__profile_mastery_node__knowledge_node_id__get",
         "parameters": [
           {
             "name": "subject",
@@ -2891,13 +2891,13 @@
             }
           },
           {
-            "name": "target_id",
+            "name": "knowledge_node_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "title": "Target Id"
+              "title": "Knowledge Node Id"
             }
           }
         ],
@@ -3498,7 +3498,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_ExamGenerateJobStatusResponse_": {
+      "ApiResponse_ExamGenerateResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -3515,7 +3515,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ExamGenerateJobStatusResponse"
+                "$ref": "#/components/schemas/ExamGenerateResponse"
               },
               {
                 "type": "null"
@@ -3525,14 +3525,14 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[ExamGenerateJobStatusResponse]",
+        "title": "ApiResponse[ExamGenerateResponse]",
         "example": {
           "code": 0,
           "data": {},
           "message": "ok"
         }
       },
-      "ApiResponse_ExamGradeJobStatusResponse_": {
+      "ApiResponse_ExamGradeResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -3549,7 +3549,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ExamGradeJobStatusResponse"
+                "$ref": "#/components/schemas/ExamGradeResponse"
               },
               {
                 "type": "null"
@@ -3559,7 +3559,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[ExamGradeJobStatusResponse]",
+        "title": "ApiResponse[ExamGradeResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5372,7 +5372,75 @@
         "title": "EvidenceSummary",
         "description": "Evidence summary used in node detail."
       },
-      "ExamGenerateJobStatusResponse": {
+      "ExamGenerateRequest": {
+        "properties": {
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode",
+            "description": "Exam mode."
+          },
+          "user_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Prompt",
+            "description": "Optional user prompt for preference hints."
+          },
+          "num_questions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Questions",
+            "description": "Optional target question count."
+          },
+          "theme_tree_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Tree Node Id",
+            "description": "Optional theme tree node scope."
+          },
+          "teaching_unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Ids",
+            "description": "Optional teaching unit scope."
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_mode"
+        ],
+        "title": "ExamGenerateRequest",
+        "description": "Trigger exam generation request."
+      },
+      "ExamGenerateResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -5460,77 +5528,9 @@
           "exam_mode",
           "num_questions"
         ],
-        "title": "ExamGenerateJobStatusResponse"
+        "title": "ExamGenerateResponse"
       },
-      "ExamGenerateRequest": {
-        "properties": {
-          "exam_mode": {
-            "type": "string",
-            "title": "Exam Mode",
-            "description": "Exam mode."
-          },
-          "user_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Prompt",
-            "description": "Optional user prompt for preference hints."
-          },
-          "num_questions": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 200.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Num Questions",
-            "description": "Optional target question count."
-          },
-          "theme_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Node Id",
-            "description": "Optional theme tree node scope."
-          },
-          "teaching_unit_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Teaching Unit Ids",
-            "description": "Optional teaching unit scope."
-          }
-        },
-        "type": "object",
-        "required": [
-          "exam_mode"
-        ],
-        "title": "ExamGenerateRequest",
-        "description": "Trigger exam generation request."
-      },
-      "ExamGradeJobStatusResponse": {
+      "ExamGradeResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -5600,7 +5600,7 @@
           "tasks_created",
           "mastery_consumed"
         ],
-        "title": "ExamGradeJobStatusResponse"
+        "title": "ExamGradeResponse"
       },
       "ExamHistoryItem": {
         "properties": {
@@ -6871,13 +6871,31 @@
             "type": "integer",
             "title": "Id"
           },
-          "granularity": {
+          "target_kind": {
             "type": "string",
-            "title": "Granularity"
+            "title": "Target Kind"
           },
-          "target_id": {
-            "type": "integer",
-            "title": "Target Id"
+          "teaching_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Id"
+          },
+          "knowledge_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Node Id"
           },
           "mastery_score": {
             "type": "number",
@@ -6940,8 +6958,7 @@
         "type": "object",
         "required": [
           "id",
-          "granularity",
-          "target_id",
+          "target_kind",
           "mastery_score",
           "confidence_score",
           "stability_score",
@@ -7332,13 +7349,31 @@
             "type": "string",
             "title": "Task Type"
           },
-          "target_id": {
-            "type": "integer",
-            "title": "Target Id"
-          },
-          "target_granularity": {
+          "target_kind": {
             "type": "string",
-            "title": "Target Granularity"
+            "title": "Target Kind"
+          },
+          "teaching_unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teaching Unit Id"
+          },
+          "knowledge_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Node Id"
           },
           "priority": {
             "type": "number",
@@ -7434,8 +7469,7 @@
           "user_id",
           "subject",
           "task_type",
-          "target_id",
-          "target_granularity",
+          "target_kind",
           "priority",
           "scheduled_at",
           "status",

@@ -15,7 +15,6 @@ from app.models import (
     EdgeRevision,
     EvidenceLink,
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
     KnowledgeAlias,
     KnowledgeEdge,
@@ -55,7 +54,6 @@ _EXAM_KEYS = [
     "exam_paper",
     "exam_paper_item",
     "user_answer_attempt",
-    "exam_paper_generation_context",
 ]
 _PROFILE_KEYS = ["user_knowledge_state", "review_task"]
 _KNOWLEDGE_KEYS = [
@@ -135,13 +133,6 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             .select_from(UserAnswerAttempt)
             .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
             .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject),
-        ),
-        "exam_paper_generation_context": _count_query(
-            session,
-            select(func.count())
-            .select_from(ExamPaperGenerationContext)
-            .join(ExamPaper, ExamPaperGenerationContext.exam_paper_id == ExamPaper.id)
             .where(ExamPaper.subject == subject),
         ),
         "user_knowledge_state": _count_rows(
@@ -323,16 +314,6 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
         )
         for task in review_tasks:
             session.delete(task)
-
-        generation_contexts = list(
-            session.exec(
-                select(ExamPaperGenerationContext).where(
-                    ExamPaperGenerationContext.exam_paper_id.in_(paper_ids)
-                )
-            ).all()
-        )
-        for ctx in generation_contexts:
-            session.delete(ctx)
 
         paper_items = list(
             session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id.in_(paper_ids))).all()

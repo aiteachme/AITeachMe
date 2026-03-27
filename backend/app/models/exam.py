@@ -29,12 +29,12 @@ class QuestionTemplate(SQLModel, table=True):
     difficulty: str
     stem: str
     stem_hash: str = Field(index=True)
-    options: str | None = Field(default=None)
+    options_json: str | None = Field(default=None)
     answer: str
     explanation: str
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
-    source_snapshot_id: int | None = Field(
+    curriculum_version_id: int | None = Field(
         default=None,
         foreign_key="curriculum_snapshot.id",
         index=True,
@@ -72,7 +72,7 @@ class ExamPaper(SQLModel, table=True):
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
-    curriculum_snapshot_id: int = Field(foreign_key="curriculum_snapshot.id", index=True)
+    curriculum_version_id: int = Field(foreign_key="curriculum_snapshot.id", index=True)
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)
@@ -80,6 +80,7 @@ class ExamPaper(SQLModel, table=True):
     total_score: float | None = Field(default=None, ge=0.0)
     score_obtained: float | None = Field(default=None, ge=0.0)
     duration_seconds: int | None = Field(default=None, ge=0)
+    selection_context_json: str = Field(default="{}")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -100,14 +101,15 @@ class ExamPaperItem(SQLModel, table=True):
     exam_paper_id: int = Field(foreign_key="exam_paper.id", index=True)
     question_template_id: int = Field(foreign_key="question_template.id", index=True)
     item_order: int = Field(ge=1)
-    snapshot_stem: str
-    snapshot_options: str | None = Field(default=None)
-    snapshot_answer: str
-    snapshot_explanation: str
-    snapshot_teaching_unit_id: int
-    snapshot_node_links_json: str = Field(default="[]")
-    snapshot_difficulty: str
-    snapshot_question_type: str
+    stem_snapshot: str
+    options_snapshot_json: str | None = Field(default=None)
+    answer_snapshot: str
+    explanation_snapshot: str
+    teaching_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
+    node_refs_json: str = Field(default="[]")
+    difficulty: str
+    question_type: str
+    score: float = Field(default=1.0, ge=0.0)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -128,7 +130,7 @@ class UserAnswerAttempt(SQLModel, table=True):
     exam_paper_item_id: int = Field(foreign_key="exam_paper_item.id", index=True)
     user_id: str = Field(default="local", index=True)
     attempt_no: int = Field(default=1, ge=1)
-    user_answer: str
+    answer_content: str
     is_correct: bool | None = Field(default=None)
     score_obtained: float | None = Field(default=None, ge=0.0)
     score_max: float | None = Field(default=None, ge=0.0)
@@ -136,19 +138,5 @@ class UserAnswerAttempt(SQLModel, table=True):
     hint_used: bool = Field(default=False)
     confidence_self_report: int | None = Field(default=None, ge=1, le=5)
     error_cause_label: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utcnow)
-
-
-class ExamPaperGenerationContext(SQLModel, table=True):
-    """Persisted selection context for one generated exam paper."""
-
-    __tablename__ = "exam_paper_generation_context"
-
-    id: int | None = Field(default=None, primary_key=True)
-    exam_paper_id: int = Field(foreign_key="exam_paper.id", unique=True, index=True)
-    selection_reason_json: str = Field(default="{}")
-    target_theme_tree_node_id: int | None = Field(default=None, foreign_key="theme_tree_node.id")
-    weakness_state_ids_json: str = Field(default="[]")
-    review_task_ids_json: str = Field(default="[]")
-    excluded_template_ids_json: str = Field(default="[]")
+    feedback_text: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)

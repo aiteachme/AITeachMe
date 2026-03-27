@@ -19,8 +19,9 @@ interface ApiResponse<T> {
 }
 
 interface MasteryStateResponse {
-  target_id: number;
-  granularity: string;
+  target_kind: "unit" | "node";
+  teaching_unit_id: number | null;
+  knowledge_node_id: number | null;
   mastery_score: number;
   review_priority: number;
   total_attempts: number;
@@ -38,8 +39,9 @@ interface ReviewTaskResponse {
   status: string;
   priority: number;
   scheduled_at: string;
-  target_granularity: string;
-  target_id: number;
+  target_kind: "unit" | "node";
+  teaching_unit_id: number | null;
+  knowledge_node_id: number | null;
   reason?: string | null;
 }
 
@@ -115,6 +117,16 @@ function formatDate(value: string): string {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleDateString("zh-CN");
+}
+
+function resolveMasteryTargetId(state: MasteryStateResponse): number {
+  if (state.target_kind === "node") return state.knowledge_node_id ?? 0;
+  return state.teaching_unit_id ?? 0;
+}
+
+function resolveReviewTaskTargetId(task: ReviewTaskResponse): number {
+  if (task.target_kind === "node") return task.knowledge_node_id ?? 0;
+  return task.teaching_unit_id ?? 0;
 }
 
 async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewResponse> {
@@ -193,11 +205,12 @@ export function ProfilePage() {
   const displayStates = useMemo<DisplayMasteryState[]>(() => {
     return [...baseStates]
       .map((state) => {
-        const mappedName = hasNodeStates ? nodeNameMap.get(state.target_id) : unitNameMap.get(state.target_id);
+        const targetId = resolveMasteryTargetId(state);
+        const mappedName = hasNodeStates ? nodeNameMap.get(targetId) : unitNameMap.get(targetId);
         return {
           ...state,
           display_name:
-            mappedName ?? (hasNodeStates ? `知识点 #${state.target_id}` : `教学单元 #${state.target_id}`),
+            mappedName ?? (hasNodeStates ? `知识点 #${targetId}` : `教学单元 #${targetId}`),
         };
       })
       .sort((a, b) => {
@@ -237,13 +250,14 @@ export function ProfilePage() {
 
     if (pendingTasks.length > 0) {
       return pendingTasks.slice(0, 3).map((task) => {
+        const targetId = resolveReviewTaskTargetId(task);
         const mappedName =
-          task.target_granularity === "node"
-            ? nodeNameMap.get(task.target_id)
-            : unitNameMap.get(task.target_id);
+          task.target_kind === "node"
+            ? nodeNameMap.get(targetId)
+            : unitNameMap.get(targetId);
         const displayName =
           mappedName ??
-          (task.target_granularity === "node" ? `知识点 #${task.target_id}` : `教学单元 #${task.target_id}`);
+          (task.target_kind === "node" ? `知识点 #${targetId}` : `教学单元 #${targetId}`);
         const reason = formatReason(task.reason);
         const reasonText = reason ? `（${reason}）` : "";
         return `优先复习「${displayName}」${reasonText}，建议在 ${formatDate(task.scheduled_at)} 前完成。`;
@@ -349,8 +363,9 @@ export function ProfilePage() {
               {displayStates.length === 0 && <p className="py-4 text-center text-sm text-slate-400">暂无数据</p>}
               {displayStates.map((item) => {
                 const pct = clampPercent(item.mastery_score);
+                const targetId = resolveMasteryTargetId(item);
                 return (
-                  <div key={`${item.granularity}-${item.target_id}`}>
+                  <div key={`${item.target_kind}-${targetId}`}>
                     <div className="mb-1.5 flex items-center justify-between gap-3">
                       <span className="truncate text-sm font-medium text-slate-700">{item.display_name}</span>
                       <span className="shrink-0 text-sm text-slate-500">
@@ -377,7 +392,7 @@ export function ProfilePage() {
                 <div className="space-y-3">
                   {weakStates.map((item) => (
                     <div
-                      key={`${item.granularity}-${item.target_id}`}
+                      key={`${item.target_kind}-${resolveMasteryTargetId(item)}`}
                       className="flex items-center justify-between rounded-lg bg-slate-50 p-3"
                     >
                       <span className="text-sm font-medium text-slate-700">{item.display_name}</span>

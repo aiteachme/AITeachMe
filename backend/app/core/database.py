@@ -28,15 +28,6 @@ _engine = None
 _vec_ready: bool | None = None
 _vec_error: str | None = None
 
-_RUNTIME_INDEX_DDLS: tuple[str, ...] = (
-    (
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_review_task_pending "
-        "ON review_task (user_id, subject, target_id, target_granularity) "
-        "WHERE status = 'pending'"
-    ),
-)
-
-
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
     global _vec_ready, _vec_error
     _vec_ready = ready
@@ -131,12 +122,6 @@ def get_engine():
     return _engine
 
 
-def _ensure_runtime_indexes(engine) -> None:
-    with engine.begin() as conn:
-        for ddl in _RUNTIME_INDEX_DDLS:
-            conn.execute(sa.text(ddl))
-
-
 def _ensure_vec_table(engine, *, embedding_dim: int) -> None:
     if not is_vec_ready():
         logger.warning(
@@ -162,7 +147,6 @@ def init_db() -> None:
     engine = get_engine()
 
     SQLModel.metadata.create_all(engine)
-    _ensure_runtime_indexes(engine)
     _ensure_vec_table(engine, embedding_dim=settings.embedding_dim)
 
     logger.info(

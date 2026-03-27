@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
@@ -11,13 +12,89 @@ from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, ReviewTask, User
 from app.utils.time import utcnow
 
 
+def _validate_target_ref(
+    *,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
+) -> tuple[str, int]:
+    if teaching_unit_id is not None and knowledge_node_id is None:
+        return "unit", teaching_unit_id
+    if teaching_unit_id is None and knowledge_node_id is not None:
+        return "node", knowledge_node_id
+    raise ValueError("Exactly one target ref must be provided.")
+
+
+def _apply_state_target_filter(
+    stmt,
+    *,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
+    target_kind: str | None = None,
+):
+    if teaching_unit_id is not None:
+        return stmt.where(
+            UserKnowledgeState.teaching_unit_id == teaching_unit_id,
+            UserKnowledgeState.knowledge_node_id.is_(None),
+        )
+    if knowledge_node_id is not None:
+        return stmt.where(
+            UserKnowledgeState.knowledge_node_id == knowledge_node_id,
+            UserKnowledgeState.teaching_unit_id.is_(None),
+        )
+    if target_kind == "unit":
+        return stmt.where(
+            UserKnowledgeState.teaching_unit_id.is_not(None),
+            UserKnowledgeState.knowledge_node_id.is_(None),
+        )
+    if target_kind == "node":
+        return stmt.where(
+            UserKnowledgeState.knowledge_node_id.is_not(None),
+            UserKnowledgeState.teaching_unit_id.is_(None),
+        )
+    return stmt
+
+
+def _apply_review_target_filter(
+    stmt,
+    *,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
+    target_kind: str | None = None,
+):
+    if teaching_unit_id is not None:
+        return stmt.where(
+            ReviewTask.teaching_unit_id == teaching_unit_id,
+            ReviewTask.knowledge_node_id.is_(None),
+        )
+    if knowledge_node_id is not None:
+        return stmt.where(
+            ReviewTask.knowledge_node_id == knowledge_node_id,
+            ReviewTask.teaching_unit_id.is_(None),
+        )
+    if target_kind == "unit":
+        return stmt.where(
+            ReviewTask.teaching_unit_id.is_not(None),
+            ReviewTask.knowledge_node_id.is_(None),
+        )
+    if target_kind == "node":
+        return stmt.where(
+            ReviewTask.knowledge_node_id.is_not(None),
+            ReviewTask.teaching_unit_id.is_(None),
+        )
+    return stmt
+
+
 def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserKnowledgeState:
     now = utcnow()
+    target_kind, target_ref_id = _validate_target_ref(
+        teaching_unit_id=state.teaching_unit_id,
+        knowledge_node_id=state.knowledge_node_id,
+    )
     insert_values = {
         "user_id": state.user_id,
         "subject": state.subject,
-        "granularity": state.granularity,
-        "target_id": state.target_id,
+        "teaching_unit_id": state.teaching_unit_id,
+        "knowledge_node_id": state.knowledge_node_id,
         "mastery_score": state.mastery_score,
         "confidence_score": state.confidence_score,
         "stability_score": state.stability_score,
@@ -28,26 +105,49 @@ def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserK
         "last_attempt_at": state.last_attempt_at,
         "state_version": state.state_version,
         "last_recomputed_at": state.last_recomputed_at,
+        "stats_json": state.stats_json,
         "updated_at": now,
     }
 
     stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["user_id", "subject", "granularity", "target_id"],
-        set_={
-            "mastery_score": insert_values["mastery_score"],
-            "confidence_score": insert_values["confidence_score"],
-            "stability_score": insert_values["stability_score"],
-            "forgetting_due_at": insert_values["forgetting_due_at"],
-            "review_priority": insert_values["review_priority"],
-            "total_attempts": insert_values["total_attempts"],
-            "correct_attempts": insert_values["correct_attempts"],
-            "last_attempt_at": insert_values["last_attempt_at"],
-            "state_version": insert_values["state_version"],
-            "last_recomputed_at": insert_values["last_recomputed_at"],
-            "updated_at": insert_values["updated_at"],
-        },
-    )
+    if target_kind == "unit":
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "subject", "teaching_unit_id"],
+            index_where=sa.text("knowledge_node_id IS NULL"),
+            set_={
+                "mastery_score": insert_values["mastery_score"],
+                "confidence_score": insert_values["confidence_score"],
+                "stability_score": insert_values["stability_score"],
+                "forgetting_due_at": insert_values["forgetting_due_at"],
+                "review_priority": insert_values["review_priority"],
+                "total_attempts": insert_values["total_attempts"],
+                "correct_attempts": insert_values["correct_attempts"],
+                "last_attempt_at": insert_values["last_attempt_at"],
+                "state_version": insert_values["state_version"],
+                "last_recomputed_at": insert_values["last_recomputed_at"],
+                "stats_json": insert_values["stats_json"],
+                "updated_at": insert_values["updated_at"],
+            },
+        )
+    else:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "subject", "knowledge_node_id"],
+            index_where=sa.text("teaching_unit_id IS NULL"),
+            set_={
+                "mastery_score": insert_values["mastery_score"],
+                "confidence_score": insert_values["confidence_score"],
+                "stability_score": insert_values["stability_score"],
+                "forgetting_due_at": insert_values["forgetting_due_at"],
+                "review_priority": insert_values["review_priority"],
+                "total_attempts": insert_values["total_attempts"],
+                "correct_attempts": insert_values["correct_attempts"],
+                "last_attempt_at": insert_values["last_attempt_at"],
+                "state_version": insert_values["state_version"],
+                "last_recomputed_at": insert_values["last_recomputed_at"],
+                "stats_json": insert_values["stats_json"],
+                "updated_at": insert_values["updated_at"],
+            },
+        )
 
     session.exec(stmt)
     session.commit()
@@ -55,8 +155,8 @@ def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserK
         session,
         user_id=state.user_id,
         subject=state.subject,
-        granularity=state.granularity,
-        target_id=state.target_id,
+        teaching_unit_id=(target_ref_id if target_kind == "unit" else None),
+        knowledge_node_id=(target_ref_id if target_kind == "node" else None),
     )
     if persisted is None:
         raise ValueError("UserKnowledgeState upsert failed.")
@@ -68,14 +168,17 @@ def get_knowledge_state(
     *,
     user_id: str,
     subject: str,
-    granularity: str,
-    target_id: int,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
         UserKnowledgeState.subject == subject,
-        UserKnowledgeState.granularity == granularity,
-        UserKnowledgeState.target_id == target_id,
+    )
+    stmt = _apply_state_target_filter(
+        stmt,
+        teaching_unit_id=teaching_unit_id,
+        knowledge_node_id=knowledge_node_id,
     )
     return session.exec(stmt).first()
 
@@ -85,14 +188,13 @@ def list_knowledge_states(
     *,
     user_id: str,
     subject: str,
-    granularity: str | None = None,
+    target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
         UserKnowledgeState.subject == subject,
     )
-    if granularity is not None:
-        stmt = stmt.where(UserKnowledgeState.granularity == granularity)
+    stmt = _apply_state_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt.order_by(UserKnowledgeState.updated_at.desc())).all())
 
 
@@ -102,6 +204,7 @@ def list_weak_knowledge_states(
     user_id: str,
     subject: str,
     threshold: float = 0.8,
+    target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
     stmt = (
         select(UserKnowledgeState)
@@ -112,6 +215,7 @@ def list_weak_knowledge_states(
         )
         .order_by(UserKnowledgeState.mastery_score.asc())
     )
+    stmt = _apply_state_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt).all())
 
 
@@ -121,6 +225,7 @@ def list_due_knowledge_states(
     user_id: str,
     subject: str,
     as_of: datetime,
+    target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
     stmt = (
         select(UserKnowledgeState)
@@ -132,6 +237,7 @@ def list_due_knowledge_states(
         )
         .order_by(UserKnowledgeState.forgetting_due_at.asc())
     )
+    stmt = _apply_state_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt).all())
 
 
@@ -145,11 +251,12 @@ def list_weak_node_summaries(
 ) -> list[tuple[str, float]]:
     stmt = (
         select(KnowledgeNode.canonical_name, UserKnowledgeState.mastery_score)
-        .join(KnowledgeNode, UserKnowledgeState.target_id == KnowledgeNode.id)
+        .join(KnowledgeNode, UserKnowledgeState.knowledge_node_id == KnowledgeNode.id)
         .where(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
-            UserKnowledgeState.granularity == "node",
+            UserKnowledgeState.knowledge_node_id.is_not(None),
+            UserKnowledgeState.teaching_unit_id.is_(None),
             UserKnowledgeState.mastery_score < threshold,
             KnowledgeNode.subject == subject,
         )
@@ -175,11 +282,11 @@ def list_recent_wrong_attempt_summaries(
 ) -> list[dict[str, str]]:
     stmt = (
         select(
-            ExamPaperItem.snapshot_stem,
-            UserAnswerAttempt.user_answer,
-            ExamPaperItem.snapshot_answer,
+            ExamPaperItem.stem_snapshot,
+            UserAnswerAttempt.answer_content,
+            ExamPaperItem.answer_snapshot,
             UserAnswerAttempt.error_cause_label,
-            ExamPaperItem.snapshot_explanation,
+            ExamPaperItem.explanation_snapshot,
         )
         .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
@@ -193,7 +300,7 @@ def list_recent_wrong_attempt_summaries(
     )
     rows = session.exec(stmt).all()
     items: list[dict[str, str]] = []
-    for stem, user_answer, correct_answer, error_label, explanation in rows:
+    for stem, answer_content, correct_answer, error_label, explanation in rows:
         analysis = ""
         if error_label and error_label != "unknown":
             analysis = f"Possible error cause: {error_label}"
@@ -204,7 +311,7 @@ def list_recent_wrong_attempt_summaries(
         items.append(
             {
                 "question_stem": str(stem or ""),
-                "user_answer": str(user_answer or ""),
+                "user_answer": str(answer_content or ""),
                 "correct_answer": str(correct_answer or ""),
                 "analysis": analysis,
             }
@@ -218,8 +325,8 @@ def upsert_review_task(session: Session, task: ReviewTask) -> ReviewTask:
             session,
             user_id=task.user_id,
             subject=task.subject,
-            target_id=task.target_id,
-            target_granularity=task.target_granularity,
+            teaching_unit_id=task.teaching_unit_id,
+            knowledge_node_id=task.knowledge_node_id,
         )
         if existing is not None:
             existing.task_type = task.task_type
@@ -247,15 +354,22 @@ def find_pending_review(
     *,
     user_id: str,
     subject: str,
-    target_id: int,
-    target_granularity: str,
+    teaching_unit_id: int | None = None,
+    knowledge_node_id: int | None = None,
 ) -> ReviewTask | None:
+    _validate_target_ref(
+        teaching_unit_id=teaching_unit_id,
+        knowledge_node_id=knowledge_node_id,
+    )
     stmt = select(ReviewTask).where(
         ReviewTask.user_id == user_id,
         ReviewTask.subject == subject,
-        ReviewTask.target_id == target_id,
-        ReviewTask.target_granularity == target_granularity,
         ReviewTask.status == "pending",
+    )
+    stmt = _apply_review_target_filter(
+        stmt,
+        teaching_unit_id=teaching_unit_id,
+        knowledge_node_id=knowledge_node_id,
     )
     return session.exec(stmt).first()
 
@@ -265,6 +379,7 @@ def list_pending_reviews(
     *,
     user_id: str,
     subject: str,
+    target_kind: str | None = None,
 ) -> list[ReviewTask]:
     stmt = (
         select(ReviewTask)
@@ -279,6 +394,7 @@ def list_pending_reviews(
             ReviewTask.id.asc(),
         )
     )
+    stmt = _apply_review_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt).all())
 
 

@@ -9,7 +9,13 @@ from app.api.deps import CurrentUserContext, get_current_user_context, get_db, n
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.profile import MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse
-from app.services.profile_service import complete_review_task, get_mastery_detail, get_mastery_overview, get_review_tasks
+from app.services.profile_service import (
+    complete_review_task,
+    get_mastery_overview,
+    get_node_mastery_detail,
+    get_review_tasks,
+    get_unit_mastery_detail,
+)
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/profile", tags=["profile"])
@@ -18,8 +24,9 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/profile", tags=["profile"]
 def _to_mastery_state_response(state) -> MasteryStateResponse:
     return MasteryStateResponse(
         id=state.id or 0,
-        granularity=state.granularity,
-        target_id=state.target_id,
+        target_kind=("unit" if state.teaching_unit_id is not None else "node"),
+        teaching_unit_id=state.teaching_unit_id,
+        knowledge_node_id=state.knowledge_node_id,
         mastery_score=state.mastery_score,
         confidence_score=state.confidence_score,
         stability_score=state.stability_score,
@@ -50,8 +57,9 @@ def _to_review_task_response(task) -> ReviewTaskResponse:
         user_id=task.user_id,
         subject=task.subject,
         task_type=task.task_type,
-        target_id=task.target_id,
-        target_granularity=task.target_granularity,
+        target_kind=("unit" if task.teaching_unit_id is not None else "node"),
+        teaching_unit_id=task.teaching_unit_id,
+        knowledge_node_id=task.knowledge_node_id,
         priority=task.priority,
         scheduled_at=task.scheduled_at,
         status=task.status,
@@ -85,49 +93,47 @@ async def api_get_mastery_overview(
 
 
 @router.get(
-    "/mastery/unit/{target_id:int}",
+    "/mastery/unit/{teaching_unit_id:int}",
     response_model=ApiResponse[MasteryStateResponse],
     summary="Unit mastery detail",
     responses=build_error_responses([400, 404, 500]),
 )
 async def api_get_unit_mastery_detail(
     subject: str = Path(...),
-    target_id: int = Path(..., ge=1),
+    teaching_unit_id: int = Path(..., ge=1),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryStateResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    state = await get_mastery_detail(
+    state = await get_unit_mastery_detail(
         session,
         subject=normalized,
         user_id=user.user_id,
-        target_id=target_id,
-        granularity="unit",
+        teaching_unit_id=teaching_unit_id,
     )
     return ok_response(_to_mastery_state_response(state))
 
 
 @router.get(
-    "/mastery/node/{target_id:int}",
+    "/mastery/node/{knowledge_node_id:int}",
     response_model=ApiResponse[MasteryStateResponse],
     summary="Node mastery detail",
     responses=build_error_responses([400, 404, 500]),
 )
 async def api_get_node_mastery_detail(
     subject: str = Path(...),
-    target_id: int = Path(..., ge=1),
+    knowledge_node_id: int = Path(..., ge=1),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryStateResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-    state = await get_mastery_detail(
+    state = await get_node_mastery_detail(
         session,
         subject=normalized,
         user_id=user.user_id,
-        target_id=target_id,
-        granularity="node",
+        knowledge_node_id=knowledge_node_id,
     )
     return ok_response(_to_mastery_state_response(state))
 

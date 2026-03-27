@@ -156,8 +156,8 @@ def schedule_reviews(
             session,
             user_id=user_id,
             subject=subject,
-            target_id=state.target_id,
-            target_granularity=state.granularity,
+            teaching_unit_id=state.teaching_unit_id,
+            knowledge_node_id=state.knowledge_node_id,
         )
         repetition_count = existing_pending.repetition_count if existing_pending is not None else 0
         interval_days = existing_pending.interval_days if existing_pending is not None else 1
@@ -176,9 +176,9 @@ def schedule_reviews(
         task = ReviewTask(
             user_id=user_id,
             subject=subject,
-            task_type=("review_unit" if state.granularity == "unit" else "review_node"),
-            target_id=state.target_id,
-            target_granularity=state.granularity,
+            task_type=("review_unit" if state.teaching_unit_id is not None else "review_node"),
+            teaching_unit_id=state.teaching_unit_id,
+            knowledge_node_id=state.knowledge_node_id,
             priority=_compute_priority(state, now=now),
             scheduled_at=scheduled_at,
             status="pending",

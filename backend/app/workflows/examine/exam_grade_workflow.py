@@ -1,11 +1,10 @@
-"""ExamGradeJob 工作流：判卷 → 掌握度更新 → 复习调度。
+"""试卷判卷工作流：判卷 → 掌握度更新 → 复习调度。
 
-Reads DB: ``exam_grade_job``, ``exam_paper*`` and downstream profile state tables.
-Writes DB: ``exam_grade_job`` progress/status, ``exam_paper.status``, graded attempts,
+Reads DB: ``exam_paper*`` and downstream profile state tables.
+Writes DB: ``exam_paper.status``, graded attempts,
 ``user_knowledge_state`` and ``review_task`` via delegated profile steps.
 Writes FS: none.
-Idempotency: grading jobs are intentionally single-active per paper; reruns should reconcile the
-same paper/job rather than creating parallel grading flows.
+Idempotency: reruns reconcile the same paper rather than creating parallel grading flows.
 """
 
 from __future__ import annotations
@@ -140,7 +139,7 @@ async def finalize_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """完成 ExamGradeJob，回填 score/states_updated/tasks_created。"""
+    """完成判卷流程，回填 score/states_updated/tasks_created。"""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -179,7 +178,7 @@ async def fail_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """失败处理：标记 job 失败并记录错误。"""
+    """失败处理：回滚试卷状态并记录错误。"""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)

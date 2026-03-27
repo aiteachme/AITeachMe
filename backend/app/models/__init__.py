@@ -35,7 +35,6 @@ from app.models.enums import (
 )
 from app.models.exam import (
     ExamPaper,
-    ExamPaperGenerationContext,
     ExamPaperItem,
     QuestionTemplate,
     QuestionTemplateNodeLink,
@@ -70,7 +69,6 @@ __all__ = [
     "ErrorCauseLabel",
     "ExamMode",
     "ExamPaper",
-    "ExamPaperGenerationContext",
     "ExamPaperItem",
     "ExamPaperStatus",
     "IngestStatus",

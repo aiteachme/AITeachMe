@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field
 
 class MasteryStateResponse(BaseModel):
     id: int
-    granularity: str
-    target_id: int
+    target_kind: str
+    teaching_unit_id: int | None = None
+    knowledge_node_id: int | None = None
     mastery_score: float
     confidence_score: float
     stability_score: float
@@ -37,8 +38,9 @@ class ReviewTaskResponse(BaseModel):
     user_id: str
     subject: str
     task_type: str
-    target_id: int
-    target_granularity: str
+    target_kind: str
+    teaching_unit_id: int | None = None
+    knowledge_node_id: int | None = None
     priority: float
     scheduled_at: datetime
     status: str

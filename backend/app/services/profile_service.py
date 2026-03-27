@@ -37,9 +37,8 @@ async def get_mastery_overview(
     subject: str,
     user_id: str,
 ) -> MasteryOverview:
-    states = list_knowledge_states(session, user_id=user_id, subject=subject)
-    unit_states = [item for item in states if item.granularity == "unit"]
-    node_states = [item for item in states if item.granularity == "node"]
+    unit_states = list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="unit")
+    node_states = list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="node")
     return MasteryOverview(
         subject=subject,
         user_id=user_id,
@@ -50,24 +49,43 @@ async def get_mastery_overview(
     )
 
 
-async def get_mastery_detail(
+async def get_unit_mastery_detail(
     session: Session,
     *,
     subject: str,
     user_id: str,
-    target_id: int,
-    granularity: str,
-):
+    teaching_unit_id: int,
+) -> UserKnowledgeState:
     state = get_knowledge_state(
         session,
         user_id=user_id,
         subject=subject,
-        granularity=granularity,
-        target_id=target_id,
+        teaching_unit_id=teaching_unit_id,
     )
     if state is None:
         _raise_not_found(
-            f"未找到掌握度记录：user_id={user_id}, subject={subject}, granularity={granularity}, target_id={target_id}。",
+            f"未找到掌握度记录：user_id={user_id}, subject={subject}, teaching_unit_id={teaching_unit_id}。",
+            error_code="MASTERY_STATE_NOT_FOUND",
+        )
+    return state
+
+
+async def get_node_mastery_detail(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    knowledge_node_id: int,
+) -> UserKnowledgeState:
+    state = get_knowledge_state(
+        session,
+        user_id=user_id,
+        subject=subject,
+        knowledge_node_id=knowledge_node_id,
+    )
+    if state is None:
+        _raise_not_found(
+            f"未找到掌握度记录：user_id={user_id}, subject={subject}, knowledge_node_id={knowledge_node_id}。",
             error_code="MASTERY_STATE_NOT_FOUND",
         )
     return state
