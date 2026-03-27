@@ -10,31 +10,26 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-import app.models
 from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
-from app.models import (
-    ChatMessage,
-    ChatSession,
+from app.models.chat import ChatMessage, ChatSession
+from app.models.curriculum import (
     CurriculumVersion,
-    ExamPaper,
-    ExamPaperItem,
-    KnowledgeDocument,
-    KnowledgeEdge,
-    KnowledgeNode,
     PrereqDagVersion,
-    QuestionTemplate,
-    RawFile,
-    RetrievalChunk,
-    Subject,
     TaxonomyAnchor,
     TeachingUnit,
     ThemeTreeNode,
     ThemeTreeVersion,
     UnitDependency,
-    User,
-    UserKnowledgeState,
 )
+from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
+from app.models.knowledge import RetrievalChunk
+from app.models.knowledge_doc import KnowledgeDocument
+from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
+from app.models.profile import UserKnowledgeState
+from app.models.raw_file import RawFile
+from app.models.subject import Subject
+from app.models.user import User
 
 logger = structlog.get_logger()
 
@@ -49,28 +44,35 @@ else:
 _engine = None
 _vec_ready: bool | None = None
 _vec_error: str | None = None
-_SCHEMA_TABLES = [
-    User.__table__,
-    Subject.__table__,
-    RawFile.__table__,
-    RetrievalChunk.__table__,
-    KnowledgeDocument.__table__,
-    KnowledgeNode.__table__,
-    KnowledgeEdge.__table__,
-    TeachingUnit.__table__,
-    TaxonomyAnchor.__table__,
-    ThemeTreeVersion.__table__,
-    ThemeTreeNode.__table__,
-    PrereqDagVersion.__table__,
-    UnitDependency.__table__,
-    CurriculumVersion.__table__,
-    QuestionTemplate.__table__,
-    ExamPaper.__table__,
-    ExamPaperItem.__table__,
-    UserKnowledgeState.__table__,
-    ChatSession.__table__,
-    ChatMessage.__table__,
-]
+_SCHEMA_MODELS = (
+    User,
+    Subject,
+    RawFile,
+    RetrievalChunk,
+    KnowledgeDocument,
+    KnowledgeNode,
+    KnowledgeEdge,
+    TeachingUnit,
+    TaxonomyAnchor,
+    ThemeTreeVersion,
+    ThemeTreeNode,
+    PrereqDagVersion,
+    UnitDependency,
+    CurriculumVersion,
+    QuestionTemplate,
+    ExamPaper,
+    ExamPaperItem,
+    UserKnowledgeState,
+    ChatSession,
+    ChatMessage,
+)
+_SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
+_EXPECTED_SCHEMA_COLUMNS = {
+    table.name: {column.name for column in table.columns}
+    for table in _SCHEMA_TABLES
+}
+_ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence", "chunk_embeddings"}
+_ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
 
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
@@ -141,17 +143,98 @@ def _load_vec_extension(dbapi_conn) -> None:
                 logger.warning("sqlite_extension_disable_failed", error=str(exc))
 
 
-def get_engine():
+def _get_db_path() -> Path:
+    settings = get_settings()
+    db_dir = Path(settings.data_dir)
+    db_dir.mkdir(parents=True, exist_ok=True)
+    return db_dir / "aiteachme.db"
+
+
+def _is_allowed_runtime_table(table_name: str) -> bool:
+    if table_name in _ALLOWED_SQLITE_RUNTIME_TABLES:
+        return True
+    return table_name.startswith(_ALLOWED_SQLITE_RUNTIME_PREFIXES)
+
+
+def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return None
+
+    unexpected_tables = sorted(
+        table_name
+        for table_name in existing_tables
+        if table_name not in _EXPECTED_SCHEMA_COLUMNS
+        and not _is_allowed_runtime_table(table_name)
+    )
+    missing_columns: dict[str, list[str]] = {}
+    for table_name, expected_columns in _EXPECTED_SCHEMA_COLUMNS.items():
+        if table_name not in existing_tables:
+            continue
+        existing_columns = {
+            column["name"]
+            for column in inspector.get_columns(table_name)
+        }
+        missing = sorted(expected_columns - existing_columns)
+        if missing:
+            missing_columns[table_name] = missing
+
+    if not unexpected_tables and not missing_columns:
+        return None
+
+    return {
+        "unexpected_tables": unexpected_tables,
+        "missing_columns": missing_columns,
+    }
+
+
+def _remove_sqlite_files(db_path: Path) -> None:
+    for suffix in ("", "-shm", "-wal"):
+        Path(f"{db_path}{suffix}").unlink(missing_ok=True)
+
+
+def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
+    settings = get_settings()
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return engine
+
+    drift = _inspect_sqlite_schema_drift(engine)
+    if drift is None:
+        return engine
+
+    if not settings.is_local_mode:
+        raise RuntimeError(
+            "Database schema drift detected for non-local mode. "
+            f"db_path={db_path}, unexpected_tables={drift['unexpected_tables']}, "
+            f"missing_columns={drift['missing_columns']}"
+        )
+
+    logger.warning(
+        "local_sqlite_schema_drift_detected",
+        db_path=str(db_path),
+        unexpected_tables=drift["unexpected_tables"],
+        missing_columns=drift["missing_columns"],
+    )
+    reset_runtime_state()
+    _remove_sqlite_files(db_path)
+    rebuilt_engine = get_engine()
+    logger.warning(
+        "local_sqlite_database_rebuilt",
+        db_path=str(db_path),
+    )
+    return rebuilt_engine
+
+
+def get_engine() -> sa.Engine:
     """Create or return the shared SQLAlchemy engine."""
 
     global _engine
     if _engine is not None:
         return _engine
 
-    settings = get_settings()
-    db_dir = Path(settings.data_dir)
-    db_dir.mkdir(parents=True, exist_ok=True)
-    db_path = db_dir / "aiteachme.db"
+    db_path = _get_db_path()
 
     _engine = create_engine(
         f"sqlite:///{db_path}",
@@ -208,7 +291,7 @@ def init_db() -> None:
     """Initialize the local database schema and vector table."""
 
     settings = get_settings()
-    engine = get_engine()
+    engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _ensure_vec_table(engine, embedding_dim=settings.embedding_dim)

@@ -7345,10 +7345,6 @@
             "type": "string",
             "title": "Subject"
           },
-          "task_type": {
-            "type": "string",
-            "title": "Task Type"
-          },
           "target_kind": {
             "type": "string",
             "title": "Target Kind"
@@ -7380,8 +7376,15 @@
             "title": "Priority"
           },
           "scheduled_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Scheduled At"
           },
           "status": {
@@ -7411,17 +7414,6 @@
             ],
             "title": "Reason"
           },
-          "source_state_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source State Id"
-          },
           "source_exam_paper_id": {
             "anyOf": [
               {
@@ -7433,34 +7425,10 @@
             ],
             "title": "Source Exam Paper Id"
           },
-          "created_at": {
+          "updated_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completed At"
-          },
-          "expired_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expired At"
+            "title": "Updated At"
           }
         },
         "type": "object",
@@ -7468,15 +7436,13 @@
           "id",
           "user_id",
           "subject",
-          "task_type",
           "target_kind",
           "priority",
-          "scheduled_at",
           "status",
           "interval_days",
           "ease_factor",
           "repetition_count",
-          "created_at"
+          "updated_at"
         ],
         "title": "ReviewTaskResponse"
       },
