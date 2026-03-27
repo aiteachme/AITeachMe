@@ -7,13 +7,21 @@ import structlog
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from app.workflows.ingest.parsing.audio import (
+    AUDIO_NATIVE_AVAILABLE,
+    parse_audio_with_transcription,
+)
 from app.workflows.ingest.parsing.docx import (
     DOCX_MARKITDOWN_AVAILABLE,
     DOCX_NATIVE_AVAILABLE,
     parse_docx_with_markitdown,
     parse_docx_with_native,
 )
-from app.workflows.ingest.parsing.formats import MARKITDOWN_GENERIC_EXTENSIONS, TEXT_EXTENSIONS, normalize_extension
+from app.workflows.ingest.parsing.docx_mammoth import (
+    DOCX_MAMMOTH_AVAILABLE,
+    parse_docx_with_mammoth,
+)
+from app.workflows.ingest.parsing.formats import AUDIO_EXTENSIONS, MARKITDOWN_GENERIC_EXTENSIONS, TEXT_EXTENSIONS, normalize_extension
 from app.workflows.ingest.parsing.generic import (
     GENERIC_MARKITDOWN_AVAILABLE,
     parse_with_markitdown_generic,
@@ -28,6 +36,10 @@ from app.workflows.ingest.parsing.pdf import (
     parse_pdf_with_pymupdf_ocr_vision,
     parse_pdf_with_pymupdf4llm,
     parse_pdf_with_pymupdf_native,
+)
+from app.workflows.ingest.parsing.pdf_pdfplumber import (
+    PDF_PDFPLUMBER_AVAILABLE,
+    parse_pdf_with_pdfplumber,
 )
 from app.workflows.ingest.parsing.pptx import (
     PPTX_MARKITDOWN_AVAILABLE,
@@ -58,6 +70,18 @@ def _build_text_parser_availability() -> dict[str, dict[str, bool]]:
     return {extension: {"text_native": TEXT_NATIVE_AVAILABLE} for extension in TEXT_EXTENSIONS}
 
 
+def _build_audio_parser_mapping() -> dict[str, dict[str, Parser]]:
+    return {extension: {"audio_transcription": parse_audio_with_transcription} for extension in AUDIO_EXTENSIONS}
+
+
+def _build_audio_parser_chain() -> dict[str, list[str]]:
+    return {extension: ["audio_transcription"] for extension in AUDIO_EXTENSIONS}
+
+
+def _build_audio_parser_availability() -> dict[str, dict[str, bool]]:
+    return {extension: {"audio_transcription": AUDIO_NATIVE_AVAILABLE} for extension in AUDIO_EXTENSIONS}
+
+
 def _build_markitdown_generic_mapping() -> dict[str, dict[str, Parser]]:
     return {
         extension: {"markitdown_generic": parse_with_markitdown_generic}
@@ -80,10 +104,12 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".pdf": {
         "pymupdf_ocr_vision": parse_pdf_with_pymupdf_ocr_vision,
         "pymupdf4llm": parse_pdf_with_pymupdf4llm,
+        "pdfplumber": parse_pdf_with_pdfplumber,
         "markitdown": parse_pdf_with_markitdown,
         "pymupdf_native": parse_pdf_with_pymupdf_native,
     },
     ".docx": {
+        "mammoth": parse_docx_with_mammoth,
         "markitdown": parse_docx_with_markitdown,
         "docx_native": parse_docx_with_native,
     },
@@ -119,13 +145,14 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     ".tiff": {
         "llm_vision": parse_image_with_llm_vision,
     },
+    **_build_audio_parser_mapping(),
     **_build_markitdown_generic_mapping(),
     **_build_text_parser_mapping(),
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
-    ".pdf": ["pymupdf4llm", "pymupdf_native", "markitdown"],
-    ".docx": ["markitdown", "docx_native"],
+    ".pdf": ["pymupdf_native", "pymupdf4llm", "pdfplumber", "markitdown"],
+    ".docx": ["markitdown", "mammoth", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
     ".png": ["llm_vision"],
@@ -136,6 +163,7 @@ DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     ".bmp": ["llm_vision"],
     ".tif": ["llm_vision"],
     ".tiff": ["llm_vision"],
+    **_build_audio_parser_chain(),
     **_build_markitdown_generic_chain(),
     **_build_text_parser_chain(),
 }
@@ -144,10 +172,12 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     ".pdf": {
         "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
         "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
+        "pdfplumber": PDF_PDFPLUMBER_AVAILABLE,
         "markitdown": PDF_MARKITDOWN_AVAILABLE,
         "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
     },
     ".docx": {
+        "mammoth": DOCX_MAMMOTH_AVAILABLE,
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
         "docx_native": DOCX_NATIVE_AVAILABLE,
     },
@@ -159,6 +189,7 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
     },
+    **_build_audio_parser_availability(),
     **_build_markitdown_generic_availability(),
     **_build_text_parser_availability(),
 }
@@ -210,14 +241,17 @@ def log_parser_availability() -> None:
     core_parsers = {
         "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
         "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
+        "pdfplumber": PDF_PDFPLUMBER_AVAILABLE,
         "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
         "markitdown (pdf)": PDF_MARKITDOWN_AVAILABLE,
+        "mammoth (docx)": DOCX_MAMMOTH_AVAILABLE,
         "docx_native": DOCX_NATIVE_AVAILABLE,
         "markitdown (docx)": DOCX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
         "markitdown (pptx)": PPTX_MARKITDOWN_AVAILABLE,
         "markitdown_generic": GENERIC_MARKITDOWN_AVAILABLE,
         "text_native": TEXT_NATIVE_AVAILABLE,
+        "audio_transcription": AUDIO_NATIVE_AVAILABLE,
     }
 
     available = [name for name, ok in core_parsers.items() if ok]

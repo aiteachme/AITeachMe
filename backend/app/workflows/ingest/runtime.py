@@ -203,16 +203,61 @@ async def _run_deep_enhance_background(
 
         markdown = markdown_path.read_text(encoding="utf-8")
 
-        # Run Phase 2 enhancement
-        enhance_result = await deep_enhance_file(
-            markdown,
-            file_path=str(file_path),
-            asset_dir=str(asset_dir),
-            asset_link_prefix=f"../assets/{file_id}",
-            asset_name_prefix=asset_name_prefix,
-            parse_plan=parse_plan,
-            classification=classification,
-        )
+        # ── Step 1: Quality re-parse with pymupdf4llm (no LLM needed) ──
+        # Phase 1 used pymupdf_native for speed. Now re-parse with pymupdf4llm
+        # for better markdown formatting (tables, headings, formula rendering).
+        extension = Path(str(file_path)).suffix.lower()
+        if extension == ".pdf":
+            try:
+                from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
+                from app.workflows.ingest.parsing.types import ParserRunOptions
+                from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
+
+                if PDF_PYMUPDF4LLM_AVAILABLE:
+                    quality_options = ParserRunOptions(
+                        ocr_language_mode=parse_plan.options.ocr_language_mode,
+                        asset_name_prefix=asset_name_prefix,
+                    )
+                    raw_quality = await parse_pdf_with_pymupdf4llm(
+                        file_path, asset_dir, quality_options,
+                    )
+                    quality_md = canonicalize_markdown(raw_quality)
+                    # Only use quality version if it has reasonable content
+                    if quality_md and len(quality_md.strip()) > len(markdown.strip()) * 0.5:
+                        markdown = quality_md
+                        markdown_path.write_text(markdown, encoding="utf-8")
+                        enhance_logger.info(
+                            "quality_reparse_completed",
+                            parser="pymupdf4llm",
+                            chars_before=len(markdown),
+                            chars_after=len(quality_md),
+                        )
+            except Exception as exc:
+                enhance_logger.warning("quality_reparse_failed", error=str(exc))
+                # Continue with Phase 1 markdown — quality re-parse is best-effort
+
+        # ── Step 2: LLM OCR enrichment (only if vision model configured) ──
+        from app.core.config import get_settings
+        has_vision = get_settings().has_vision_ocr_model
+
+        if has_vision:
+            enhance_result = await deep_enhance_file(
+                markdown,
+                file_path=str(file_path),
+                asset_dir=str(asset_dir),
+                asset_link_prefix=f"../assets/{file_id}",
+                asset_name_prefix=asset_name_prefix,
+                parse_plan=parse_plan,
+                classification=classification,
+            )
+        else:
+            enhance_logger.info(
+                "skipping_ocr_no_vision_model",
+                hint="Set OCR_MODEL in .env to enable LLM OCR (e.g. OCR_MODEL=qwen-vl-max)",
+            )
+            # Create a dummy result — no OCR was done
+            from app.workflows.ingest.parsing.orchestrator import DeepEnhanceResult
+            enhance_result = DeepEnhanceResult(markdown=markdown)
 
         # Overwrite markdown with enhanced version
         markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
@@ -557,36 +602,19 @@ async def run_parse_file_workflow(
             needs_enhance=parse_result.needs_enhance,
         )
 
-        # ── Phase 2: Deep Enhance (background, only if vision model configured) ──
+        # ── Phase 2: Background enhance (quality re-parse + optional OCR) ──
+        # Phase 2 always dispatches: pymupdf4llm quality re-parse runs without LLM.
+        # LLM OCR only runs when OCR_MODEL is explicitly configured.
 
         if parse_result.needs_enhance:
-            from app.core.config import get_settings
-            if get_settings().has_vision_ocr_model:
-                logger.info("dispatching_deep_enhance_background", subject=subject, file_id=file_id)
-                asyncio.create_task(
-                    _run_deep_enhance_background(
-                        subject=subject,
-                        file_id=file_id,
-                        event_bus=event_bus,
-                    )
-                )
-            else:
-                logger.info(
-                    "skipping_deep_enhance_no_vision_model",
+            logger.info("dispatching_deep_enhance_background", subject=subject, file_id=file_id)
+            asyncio.create_task(
+                _run_deep_enhance_background(
                     subject=subject,
                     file_id=file_id,
-                    hint="Set OCR_MODEL in .env to enable Phase 2 vision OCR (e.g. OCR_MODEL=qwen-vl-max)",
+                    event_bus=event_bus,
                 )
-                # No vision model → mark as ready directly
-                with managed_session() as session:
-                    raw_file = get_raw_file_by_id(session, file_id)
-                    if raw_file is not None:
-                        update_raw_file(
-                            session,
-                            raw_file,
-                            ingest_status=IngestStatus.READY_FOR_DIGEST.value,
-                            digest_current_step="ingest.parse.completed",
-                        )
+            )
 
         return ok_result(
             {
