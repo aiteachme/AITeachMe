@@ -1,21 +1,14 @@
-"""薄弱分析：多维度优先级排序。
-
-Reads DB: ``user_knowledge_state``, ``user_answer_attempt``, ``exam_paper_item`` and current
-curriculum snapshot structures.
-Writes DB: none.
-Writes FS: none.
-Idempotency: read-only analysis over the current persisted mastery and answer history.
-"""
+"""Weakness analysis over mastery states and recent exam items."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
-from app.models import ExamPaper, ExamPaperItem, UnitDependency, UnitTreeMembership, UserAnswerAttempt, UserKnowledgeState, WeaknessReason
+from app.models import ExamPaper, ExamPaperItem, ThemeTreeNode, UnitDependency, UserKnowledgeState, WeaknessReason
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
@@ -24,6 +17,26 @@ def _as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _extract_unit_ids(unit_refs_json: str) -> list[int]:
+    try:
+        payload = json.loads(unit_refs_json or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+
+    unit_ids: list[int] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("teaching_unit_id")
+        if isinstance(raw_id, int):
+            unit_ids.append(raw_id)
+        elif isinstance(raw_id, str) and raw_id.isdigit():
+            unit_ids.append(int(raw_id))
+    return unit_ids
 
 
 @dataclass(frozen=True)
@@ -46,24 +59,23 @@ def _recent_error_stats_by_unit(
     since = now - timedelta(days=30)
     rows = list(
         session.exec(
-            select(UserAnswerAttempt, ExamPaperItem)
-            .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
+            select(ExamPaperItem)
             .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
             .where(
                 ExamPaper.user_id == user_id,
                 ExamPaper.subject == subject,
-                UserAnswerAttempt.is_correct.is_not(None),  # type: ignore[union-attr]
-                UserAnswerAttempt.created_at >= since,  # type: ignore[operator]
+                ExamPaperItem.is_correct.is_not(None),
+                ExamPaperItem.answered_at >= since,
             )
         ).all()
     )
 
     stats: dict[int, tuple[int, int]] = {}
-    for attempt, item in rows:
+    for item in rows:
         unit_id = int(item.teaching_unit_id)
         total, wrong = stats.get(unit_id, (0, 0))
         total += 1
-        if attempt.is_correct is False:
+        if item.is_correct is False:
             wrong += 1
         stats[unit_id] = (total, wrong)
     return stats
@@ -74,24 +86,20 @@ def _exam_weight_by_unit(
     *,
     subject: str,
 ) -> dict[int, float]:
-    snapshot = exams_repo.get_published_curriculum_version(session, subject)
-    if snapshot is None or snapshot.theme_tree_version_id is None:
+    version = exams_repo.get_published_curriculum_version(session, subject)
+    if version is None or version.theme_tree_version_id is None:
         return {}
 
-    rows = list(
+    nodes = list(
         session.exec(
-            select(UnitTreeMembership.teaching_unit_id).where(
-                UnitTreeMembership.tree_version_id == snapshot.theme_tree_version_id
-            )
+            select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id == version.theme_tree_version_id)
         ).all()
     )
-    if not rows:
-        return {}
-
     counts: dict[int, int] = {}
-    for unit_id in rows:
-        key = int(unit_id)
-        counts[key] = counts.get(key, 0) + 1
+    for node in nodes:
+        for unit_id in _extract_unit_ids(node.unit_refs_json):
+            counts[unit_id] = counts.get(unit_id, 0) + 1
+
     total = sum(counts.values())
     if total <= 0:
         return {}
@@ -104,14 +112,14 @@ def _prereq_gap_units(
     subject: str,
     unit_states: dict[int, UserKnowledgeState],
 ) -> set[int]:
-    snapshot = exams_repo.get_published_curriculum_version(session, subject)
-    if snapshot is None or snapshot.prereq_dag_version_id is None:
+    version = exams_repo.get_published_curriculum_version(session, subject)
+    if version is None or version.prereq_dag_version_id is None:
         return set()
 
     rows = list(
         session.exec(
             select(UnitDependency.source_unit_id, UnitDependency.target_unit_id).where(
-                UnitDependency.dag_version_id == snapshot.prereq_dag_version_id,
+                UnitDependency.dag_version_id == version.prereq_dag_version_id,
                 UnitDependency.dependency_type == "prerequisite",
             )
         ).all()
@@ -125,7 +133,7 @@ def _prereq_gap_units(
     return gaps
 
 
-def _forgetting_risk(state: UserKnowledgeState, *, now) -> float:
+def _forgetting_risk(state: UserKnowledgeState, *, now: datetime) -> float:
     if state.forgetting_due_at is None:
         return 0.0
     due_at = _as_utc(state.forgetting_due_at)
@@ -141,7 +149,7 @@ def _pick_reason(
     prereq_gap: bool,
     recent_total: int,
     recent_wrong_rate: float,
-    now,
+    now: datetime,
 ) -> str:
     if prereq_gap:
         return WeaknessReason.PREREQ_GAP.value
@@ -158,15 +166,10 @@ def analyze_weakness(
     subject: str,
     top_n: int = 20,
 ) -> list[WeaknessItem]:
-    """综合 5 个维度输出薄弱单元优先级。"""
-
     if top_n <= 0:
         return []
 
-    states = [
-        item
-        for item in profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="unit")
-    ]
+    states = list(profile_repo.list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="unit"))
     if not states:
         return []
 
@@ -185,7 +188,7 @@ def analyze_weakness(
         wrong_rate = (wrong / total) if total > 0 else 0.0
         mastery_component = (1.0 - state.mastery_score) * 0.45
         wrong_component = wrong_rate * 0.20
-        prereq_component = (0.20 if teaching_unit_id in prereq_gaps else 0.0)
+        prereq_component = 0.20 if teaching_unit_id in prereq_gaps else 0.0
         forgetting_component = _forgetting_risk(state, now=now) * 0.10
         exam_weight_component = exam_weight.get(teaching_unit_id, 0.0) * 0.05
         priority = mastery_component + wrong_component + prereq_component + forgetting_component + exam_weight_component

@@ -15,7 +15,7 @@
 
 AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一个以 `Subject` 为工作空间边界的本地优先教学系统。主链路可以概括为：
 
-`RawFile -> Markdown / Assets -> RetrievalChunk -> Knowledge Graph -> Teaching Unit -> Curriculum Version -> Chat / Exams / Profile`
+`RawFile -> Raw Markdown / Assets -> RetrievalChunk -> Knowledge Document / Knowledge Graph -> Teaching Unit -> Curriculum Version -> Chat / Exams / Profile`
 
 按系统分层看，当前主要由五层组成：
 
@@ -143,11 +143,11 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 负责两类结构化产出：
 
 - 面向用户的知识文档
-- 面向系统的知识图谱、Teaching Unit、Curriculum Blueprint、Curriculum Version
+- 面向系统的知识图谱、Teaching Unit、Curriculum Version
 
 ### 5.3 Interact
 
-负责把 `retrieval_chunk`、聊天历史、薄弱点、错题等上下文装配成教学型对话，并通过 SSE 流式返回结果。
+负责把 `retrieval_chunk`、聊天历史、用户级画像、学科级画像和细粒度学习状态装配成教学型对话，并通过 SSE 流式返回结果。
 
 ### 5.4 Examine
 
@@ -155,15 +155,15 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 - `exams_service`
 - `workflows/examine/*`
-- `question_template / exam_paper / exam_paper_item / user_answer_attempt`
+- `question_template / exam_paper / exam_paper_item / user_knowledge_state`
 
 ### 5.5 Profile
 
-负责学习状态沉淀、薄弱分析、复习任务与学习画像。当前正式主线已经收口到：
+负责学习状态沉淀、薄弱分析、复习调度与学习画像。当前正式主线已经收口到：
 
 - `profile_service`
 - `workflows/profile/*`
-- `user_knowledge_state / review_task`
+- `user.profile_json / subject.profile_json / user_knowledge_state`
 
 ---
 
@@ -189,7 +189,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - SQLite  
   保存主业务数据、聊天记录、图谱、课程结构、考试与画像数据。
 - sqlite-vec  
-  保存 `chunk_embeddings`，服务检索与召回。
+  保存 `retrieval_chunk` 的向量索引物理表，服务检索与召回。
 - 本地文件系统  
   保存原始文件、Markdown、资产、知识文档和调试产物。
 
@@ -246,6 +246,12 @@ service 不是最终流程容器，复杂业务要以 workflow 状态流为准�
 ### 8.4 知识层与学习者状态层分离
 
 图谱与课程结构描述知识本身；聊天、测评、掌握度、复习任务描述学习者和知识的交互结果。两层通过稳定锚点关联，而不应相互污染。
+
+补充约定：
+
+- `user.profile_json` 负责跨学科稳定画像
+- `subject.profile_json` 负责学科级学习画像
+- `user_knowledge_state` 负责细粒度学习状态
 
 ### 8.5 结构化真相与可调试产物并存
 

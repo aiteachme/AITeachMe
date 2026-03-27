@@ -66,12 +66,12 @@
 | `05b_digest_knowledge_graph.md` | 知识图谱设计：主题图谱、依赖关系、curriculum 信号与影响域 |
 | `06_interact_engine.md` | 教学对话、检索、流式输出、引用来源 |
 | `07_examine_engine.md` | 测评蓝图、组卷、判卷、试卷快照与状态回流 |
-| `08_profile_engine.md` | 掌握度、复习调度、薄弱分析与学习状态层 |
+| `08_profile_engine.md` | 用户级画像、学科级画像、掌握度与复习调度 |
 | `09_ai_stack_and_refactor_guide.md` | AI 技术栈、工程化方法与重构指导 |
 | `10_repo_structure_and_runtime_files.md` | 仓库目录、生成物、运行时目录与本地文件布局 |
 | `11_database_and_storage_architecture.md` | 本地部署、中心化部署、存储抽象、URI 统一与向量实现 |
 | `12_api_refactor_plan.md` | API 接口收敛、全量返回、知识图谱三 Tab 接口重构计划 |
-| `13_database_schema_inventory.md` | 数据库唯一主文档：目标主树、目标表职责、收敛映射、重构边界 |
+| `13_database_schema_inventory.md` | 数据库唯一主文档：目标主树、目标表职责、profile 分层、收敛映射、重构边界 |
 
 ---
 
@@ -128,7 +128,7 @@
 | `ExamPage` | `exams` | `exams_service` | `workflows/examine/*` |
 | `AnalysisPage` | `profile` | `profile_service` | `workflows/profile/*` |
 
-其中 `exams/profile` 仍是当前对外可用接口的一部分，但数据库目标设计已经明确要向 `exam_paper / user_answer_attempt / user_knowledge_state / review_task` 这条主线收敛。
+其中 `exams/profile` 仍是当前对外可用接口的一部分，但数据库目标设计已经明确要向 `exam_paper / exam_paper_item / user.profile_json / subject.profile_json / user_knowledge_state` 这条压缩主线收敛。
 
 ---
 

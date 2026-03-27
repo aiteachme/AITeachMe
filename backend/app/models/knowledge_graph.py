@@ -1,4 +1,4 @@
-"""知识图谱数据模型：节点、边、修订、证据。"""
+"""Knowledge graph models."""
 
 from __future__ import annotations
 
@@ -10,12 +10,14 @@ from app.utils.time import utcnow
 
 
 class KnowledgeNode(SQLModel, table=True):
-    """知识节点：身份 + 路由 + 状态，不存内容（内容由 KnowledgeRevision 承载）。"""
+    """Canonical knowledge node."""
 
     __tablename__ = "knowledge_node"
     __table_args__ = (
         UniqueConstraint(
-            "subject", "node_type", "normalized_name",
+            "subject",
+            "node_type",
+            "normalized_name",
             name="uq_node_subject_type_name",
         ),
         Index("ix_node_subject_status", "subject", "status"),
@@ -23,49 +25,47 @@ class KnowledgeNode(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    node_type: str = Field(index=True)  # KGNodeType
+    node_type: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
-    status: str = Field(default="pending")  # KGNodeStatus
+    summary: str = ""
+    body: str = ""
+    body_markdown: str = ""
+    aliases_json: str = Field(default="[]")
+    evidence_refs_json: str = Field(default="[]")
+    status: str = Field(default="pending")
     confidence: float = Field(default=1.0)
     current_revision_id: int | None = Field(default=None)
-    merged_into_node_id: int | None = Field(
-        default=None, foreign_key="knowledge_node.id",
-    )
+    merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-class KnowledgeAlias(SQLModel, table=True):
-    """知识节点别名，独立表支持高效索引。"""
+class KnowledgeAlias(SQLModel):
+    """Structured alias payload embedded on a knowledge node."""
 
-    __tablename__ = "knowledge_alias"
-    __table_args__ = (
-        UniqueConstraint(
-            "node_id", "normalized_alias",
-            name="uq_alias_node_normalized",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    node_id: int = Field(foreign_key="knowledge_node.id", index=True)
+    id: int | None = None
+    node_id: int
     alias: str
-    normalized_alias: str = Field(index=True)
+    normalized_alias: str
     language: str = Field(default="zh")
-    source: str = Field(default="llm")  # ExtractionMethod
+    source: str = Field(default="llm")
     confidence: float = Field(default=1.0)
     is_primary: bool = Field(default=False)
-    status: str = Field(default="active")  # AliasStatus
+    status: str = Field(default="active")
     created_at: datetime = Field(default_factory=utcnow)
 
 
 class KnowledgeEdge(SQLModel, table=True):
-    """知识边：两个节点之间的有向关系。"""
+    """Directed relation between two knowledge nodes."""
 
     __tablename__ = "knowledge_edge"
     __table_args__ = (
         UniqueConstraint(
-            "subject", "source_node_id", "target_node_id", "edge_type",
+            "subject",
+            "source_node_id",
+            "target_node_id",
+            "edge_type",
             name="uq_edge_subject_src_tgt_type",
         ),
         Index("ix_edge_subject_status", "subject", "status"),
@@ -75,77 +75,61 @@ class KnowledgeEdge(SQLModel, table=True):
     subject: str = Field(index=True)
     source_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     target_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
-    edge_type: str = Field(index=True)  # KGEdgeType
+    edge_type: str = Field(index=True)
+    description: str = ""
+    evidence_refs_json: str = Field(default="[]")
     weight: float = Field(default=1.0)
     confidence: float = Field(default=0.5)
-    status: str = Field(default="pending")  # KGEdgeStatus
+    status: str = Field(default="pending")
     current_revision_id: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-class KnowledgeRevision(SQLModel, table=True):
-    """知识节点的版本化修订记录。"""
+class KnowledgeRevision(SQLModel):
+    """Materialized revision view derived from the current node body."""
 
-    __tablename__ = "knowledge_revision"
-    __table_args__ = (
-        UniqueConstraint("node_id", "revision_no", name="uq_node_revision_no"),
-        Index("ix_revision_node_current", "node_id", "is_current"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    node_id: int = Field(foreign_key="knowledge_node.id", index=True)
+    id: int | None = None
+    node_id: int
     revision_no: int
     title: str
     summary: str = ""
     body: str = ""
-    revision_reason: str  # RevisionReason
+    revision_reason: str
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class EdgeRevision(SQLModel, table=True):
-    """知识边的版本化修订记录。"""
+class EdgeRevision(SQLModel):
+    """Materialized revision view derived from the current edge body."""
 
-    __tablename__ = "edge_revision"
-    __table_args__ = (
-        UniqueConstraint("edge_id", "revision_no", name="uq_edge_revision_no"),
-        Index("ix_edge_revision_edge_current", "edge_id", "is_current"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    edge_id: int = Field(foreign_key="knowledge_edge.id", index=True)
+    id: int | None = None
+    edge_id: int
     revision_no: int
     description: str
     weight: float
     confidence: float
-    revision_reason: str  # RevisionReason
+    revision_reason: str
     is_current: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class EvidenceLink(SQLModel, table=True):
-    """证据链接。采用 polymorphic association（entity_type + entity_id），
-    DB 层不做外键强约束到 node/edge，完整性由服务层保证。"""
+class EvidenceLink(SQLModel):
+    """Structured evidence payload embedded on a node or edge."""
 
-    __tablename__ = "evidence_link"
-    __table_args__ = (
-        Index("ix_evidence_entity", "entity_type", "entity_id", "is_active"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    entity_type: str  # "node" | "edge"
-    entity_id: int = Field(index=True)
+    id: int | None = None
+    subject: str = ""
+    entity_type: str
+    entity_id: int
     entity_revision_id: int | None = Field(default=None)
-    document_id: int = Field(foreign_key="document.id")
-    chunk_id: int = Field(foreign_key="document_chunk.id")
+    document_id: int
+    chunk_id: int
     quote_text: str = ""
     source_span_start: int | None = Field(default=None)
     source_span_end: int | None = Field(default=None)
-    evidence_role: str  # EvidenceRole
-    extraction_method: str = Field(default="llm")  # ExtractionMethod
-    field_scope: str = Field(default="summary")  # FieldScope
+    evidence_role: str
+    extraction_method: str = Field(default="llm")
+    field_scope: str = Field(default="summary")
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)

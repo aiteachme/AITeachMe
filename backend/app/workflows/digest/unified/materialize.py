@@ -8,7 +8,8 @@ import structlog
 
 from app.core.database import managed_session
 from app.core.embedding import aembed_texts
-from app.models import DigestStep, Document, DocumentChunk
+from app.models import DigestStep, RetrievalChunk
+from app.models.raw_file import RawFile
 from app.repositories import knowledge_repo
 from app.workflows.digest.shared.models import SharedInputs
 from app.workflows.digest.unified.models import MaterializedSections
@@ -43,10 +44,13 @@ async def materialize_shared_inputs(
         documents = knowledge_repo.bulk_create_documents(
             session,
             [
-                Document(
+                RawFile(
+                    id=packet.file_id,
+                    uid=f"raw_{packet.file_id}",
                     subject=subject,
-                    source_file_id=packet.file_id,
-                    title=packet.filename,
+                    filename=packet.filename,
+                    filetype="markdown",
+                    file_path="",
                     markdown_content=packet.normalized_content,
                     current_step=DigestStep.STORED.value,
                 )
@@ -54,7 +58,7 @@ async def materialize_shared_inputs(
             ],
         )
         document_id_by_file_id = {
-            document.source_file_id: document.id
+            document.id: document.id
             for document in documents
             if document.id is not None
         }
@@ -62,7 +66,8 @@ async def materialize_shared_inputs(
         chunk_rows = knowledge_repo.bulk_create_chunks(
             session,
             [
-                DocumentChunk(
+                RetrievalChunk(
+                    subject=subject,
                     document_id=document_id_by_file_id[section.source_file_id],
                     title=section.title,
                     level=section.level,

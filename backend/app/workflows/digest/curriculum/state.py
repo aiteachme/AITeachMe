@@ -13,6 +13,8 @@ class CurriculumDeriveState(TypedDict, total=False):
     curriculum_job_id: int
     impact_set: ImpactSet | None
     derived_unit_ids: list[int]
+    created_unit_ids: list[int]
+    updated_unit_ids: list[int]
     theme_tree_version_id: int | None
     prereq_dag_version_id: int | None
     snapshot_id: int | None

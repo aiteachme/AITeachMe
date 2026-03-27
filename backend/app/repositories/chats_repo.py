@@ -1,4 +1,4 @@
-"""聊天记录数据访问层。"""
+"""Chat message data-access layer."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def create_chat_session(
     source: str | None = None,
     user_id: str = "local",
 ) -> ChatSession:
-    """创建一个会话。"""
+    """Create one chat session."""
 
     now = utcnow()
     item = ChatSession(
@@ -29,6 +29,7 @@ def create_chat_session(
         user_id=user_id,
         title=title,
         source=source,
+        meta_json=None,
         created_at=now,
         updated_at=now,
         last_message_at=now,
@@ -46,8 +47,6 @@ def get_chat_session(
     session_id: str,
     user_id: str = "local",
 ) -> ChatSession | None:
-    """按 ID 读取会话。"""
-
     stmt = select(ChatSession).where(
         ChatSession.id == session_id,
         ChatSession.subject == subject,
@@ -64,8 +63,6 @@ def list_sessions_by_subject(
     offset: int,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
-    """分页查询会话。"""
-
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
@@ -74,7 +71,7 @@ def list_sessions_by_subject(
     stmt = (
         select(ChatSession)
         .where(ChatSession.subject == subject, ChatSession.user_id == user_id)
-        .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())  # type: ignore[union-attr]
+        .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -91,8 +88,6 @@ def list_thread_turn_heads_by_subject(
     require_anchor: bool = False,
     user_id: str = "local",
 ) -> tuple[list[ChatMessage], int]:
-    """分页查询划词问答轮次头部消息（assistant 消息作为轮次代表）。"""
-
     conditions = [
         ChatMessage.subject == subject,
         ChatMessage.user_id == user_id,
@@ -113,7 +108,7 @@ def list_thread_turn_heads_by_subject(
     stmt = (
         select(ChatMessage)
         .where(*conditions)
-        .order_by(ChatMessage.created_at.desc())  # type: ignore[union-attr]
+        .order_by(ChatMessage.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -129,8 +124,6 @@ def touch_chat_session(
     title: str | None = None,
     touched_at: datetime | None = None,
 ) -> ChatSession | None:
-    """更新会话活跃时间和标题。"""
-
     item = get_chat_session(
         session,
         subject=subject,
@@ -158,8 +151,6 @@ def count_messages_by_session_ids(
     session_ids: list[str],
     user_id: str = "local",
 ) -> dict[str, int]:
-    """按会话统计消息数量。"""
-
     if not session_ids:
         return {}
 
@@ -183,8 +174,6 @@ def delete_chat_session(
     session_id: str,
     user_id: str = "local",
 ) -> int:
-    """删除一个会话及其消息，返回删除消息数量。"""
-
     message_items = list(
         session.exec(
             select(ChatMessage).where(
@@ -225,8 +214,6 @@ def create_message_pair(
     source_chunk_id: int | None = None,
     user_id: str = "local",
 ) -> tuple[ChatMessage, ChatMessage]:
-    """创建一轮对话消息。"""
-
     resolved_turn_id = turn_id or str(uuid.uuid4())
     user_message = ChatMessage(
         subject=subject,
@@ -239,6 +226,8 @@ def create_message_pair(
         source_chunk_id=source_chunk_id,
         role="user",
         content=user_content,
+        meta_json=None,
+        contexts_json=None,
     )
     assistant_message = ChatMessage(
         subject=subject,
@@ -251,7 +240,8 @@ def create_message_pair(
         source_chunk_id=source_chunk_id,
         role="assistant",
         content=assistant_content,
-        contexts=contexts,
+        meta_json=None,
+        contexts_json=contexts,
     )
     session.add(user_message)
     session.add(assistant_message)
@@ -268,8 +258,6 @@ def list_messages_by_turn_ids(
     turn_ids: list[str],
     user_id: str = "local",
 ) -> list[ChatMessage]:
-    """批量读取多轮对话消息，按时间正序返回。"""
-
     if not turn_ids:
         return []
 
@@ -280,7 +268,7 @@ def list_messages_by_turn_ids(
             ChatMessage.user_id == user_id,
             ChatMessage.turn_id.in_(turn_ids),
         )
-        .order_by(ChatMessage.created_at.asc())  # type: ignore[union-attr]
+        .order_by(ChatMessage.created_at.asc())
     )
     return list(session.exec(stmt).all())
 
@@ -293,8 +281,6 @@ def get_recent_turns(
     session_id: str | None = None,
     user_id: str = "local",
 ) -> list[ChatMessage]:
-    """读取最近 N 轮对话。"""
-
     turn_stmt = select(ChatMessage.turn_id).where(
         ChatMessage.subject == subject,
         ChatMessage.user_id == user_id,
@@ -302,16 +288,16 @@ def get_recent_turns(
     )
     if session_id:
         turn_stmt = turn_stmt.where(ChatMessage.session_id == session_id)
-    turn_subquery = turn_stmt.order_by(ChatMessage.created_at.desc()).limit(n_turns).subquery()  # type: ignore[union-attr]
+    turn_subquery = turn_stmt.order_by(ChatMessage.created_at.desc()).limit(n_turns).subquery()
 
     stmt = (
         select(ChatMessage)
         .where(
             ChatMessage.subject == subject,
             ChatMessage.user_id == user_id,
-            ChatMessage.turn_id.in_(select(turn_subquery.c.turn_id)),  # type: ignore[union-attr]
+            ChatMessage.turn_id.in_(select(turn_subquery.c.turn_id)),
         )
-        .order_by(ChatMessage.created_at.asc())  # type: ignore[union-attr]
+        .order_by(ChatMessage.created_at.asc())
     )
     if session_id:
         stmt = stmt.where(ChatMessage.session_id == session_id)
@@ -327,8 +313,6 @@ def list_messages_by_subject(
     session_id: str | None = None,
     user_id: str = "local",
 ) -> tuple[list[ChatMessage], int]:
-    """分页查询聊天记录。"""
-
     conditions = [
         ChatMessage.subject == subject,
         ChatMessage.user_id == user_id,
@@ -342,7 +326,7 @@ def list_messages_by_subject(
     stmt = (
         select(ChatMessage)
         .where(*conditions)
-        .order_by(ChatMessage.created_at.desc())  # type: ignore[union-attr]
+        .order_by(ChatMessage.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -356,8 +340,6 @@ def clear_messages_by_subject(
     session_id: str | None = None,
     user_id: str = "local",
 ) -> int:
-    """清空学科下聊天记录，或仅清空单个会话。"""
-
     conditions = [
         ChatMessage.subject == subject,
         ChatMessage.user_id == user_id,

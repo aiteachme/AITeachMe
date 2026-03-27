@@ -1,20 +1,15 @@
-"""Resolve and impact-analysis nodes for the graph lane."""
+"""Resolve graph candidates against the compressed graph schema."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from sqlmodel import select
 
 from app.core.database import managed_session
 from app.core.embedding import aembed_texts
-from app.models.knowledge_graph import (
-    EdgeRevision,
-    KnowledgeAlias,
-    KnowledgeEdge,
-    KnowledgeNode,
-    KnowledgeRevision,
-)
+from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.utils.kg_helpers import normalize_name
@@ -57,6 +52,16 @@ class ResolutionIndex:
     children_by_parent: dict[int, dict[str, list[ExistingNodeRecord]]] = field(default_factory=dict)
 
 
+def _load_alias_entries(raw: str) -> list[dict[str, object]]:
+    try:
+        payload = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = sum(x * x for x in a) ** 0.5
@@ -86,29 +91,6 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
                 )
             ).all()
         )
-        if not nodes:
-            return ResolutionIndex(subject=subject)
-
-        node_ids = [node.id for node in nodes if node.id is not None]
-        revisions = list(
-            session.exec(
-                select(KnowledgeRevision).where(
-                    KnowledgeRevision.node_id.in_(node_ids),
-                    KnowledgeRevision.is_current == True,
-                )
-            ).all()
-        )
-        revision_by_node_id = {
-            revision.node_id: revision for revision in revisions if revision.node_id is not None
-        }
-        aliases = list(
-            session.exec(
-                select(KnowledgeAlias).where(
-                    KnowledgeAlias.node_id.in_(node_ids),
-                    KnowledgeAlias.status == "active",
-                )
-            ).all()
-        )
         edges = list(
             session.exec(
                 select(KnowledgeEdge).where(
@@ -118,30 +100,29 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
             ).all()
         )
 
-    embedding_texts = [
-        f"{node.canonical_name}\n{revision_by_node_id.get(node.id).summary if node.id in revision_by_node_id else ''}".strip()
-        for node in nodes
-    ]
-    embeddings = await aembed_texts(embedding_texts) if embedding_texts else []
+    if not nodes:
+        return ResolutionIndex(subject=subject)
+
+    embedding_texts = [f"{node.canonical_name}\n{node.summary}".strip() for node in nodes]
+    embeddings = await aembed_texts(embedding_texts)
     index = ResolutionIndex(subject=subject)
     record_by_node_id: dict[int, ExistingNodeRecord] = {}
 
     for node, embedding in zip(nodes, embeddings):
         if node.id is None:
             continue
-        summary = revision_by_node_id.get(node.id).summary if node.id in revision_by_node_id else ""
-        record = ExistingNodeRecord(node=node, summary=summary, embedding=embedding)
+        record = ExistingNodeRecord(node=node, summary=node.summary, embedding=embedding)
         record_by_node_id[node.id] = record
         index.normalized_map[(node.node_type, node.normalized_name)] = record
         index.records_by_type.setdefault(node.node_type, []).append(record)
 
-    for alias in aliases:
-        if alias.node_id is None:
-            continue
-        record = record_by_node_id.get(alias.node_id)
-        if record is None:
-            continue
-        index.alias_map[(record.node.node_type, alias.normalized_alias)] = record
+        for alias_entry in _load_alias_entries(node.aliases_json):
+            if str(alias_entry.get("status", "active")) != "active":
+                continue
+            normalized_alias = str(alias_entry.get("normalized_alias", "")).strip()
+            if not normalized_alias:
+                continue
+            index.alias_map[(node.node_type, normalized_alias)] = record
 
     for edge in edges:
         parent_id: int | None = None
@@ -162,6 +143,7 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
 
         if parent_id is None or child_id is None or child_type is None:
             continue
+
         child_record = record_by_node_id.get(child_id)
         if child_record is None or child_record.node.node_type != child_type:
             continue
@@ -417,7 +399,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                     decision=result.decision,
                     matched_node_id=result.matched_node_id,
                 )
-                if (cluster_index + 1) % 20 == 0:
+                if clustered_candidates and (cluster_index + 1) % 20 == 0:
                     progress = 50 + int(15 * (cluster_index + 1) / len(clustered_candidates))
                     update_job_progress(
                         session,
@@ -492,18 +474,21 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     edge_id = edge.id
                     if edge_id is None:
                         continue
-                    revision = EdgeRevision(
-                        edge_id=edge_id,
-                        revision_no=1,
-                        description=edge_candidate.description,
-                        weight=edge.weight,
-                        confidence=confidence,
-                        revision_reason="new_evidence",
-                        is_current=True,
+                    revision = kg_repo.create_edge_revision(
+                        session,
+                        EdgeRevision(
+                            edge_id=edge_id,
+                            revision_no=1,
+                            description=edge_candidate.description,
+                            weight=edge.weight,
+                            confidence=confidence,
+                            revision_reason="new_evidence",
+                            is_current=True,
+                        ),
                     )
-                    revision = kg_repo.create_edge_revision(session, revision)
                     edge.current_revision_id = revision.id
                     edge.confidence = confidence
+                    edge.updated_at = utcnow()
                     session.add(edge)
                     session.commit()
                     create_edge_evidence(

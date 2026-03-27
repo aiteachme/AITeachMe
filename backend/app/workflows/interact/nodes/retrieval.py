@@ -1,6 +1,6 @@
 """Retrieval node builders for the interact workflow.
 
-Reads DB: ``document_chunk`` and ``chunk_embeddings`` through the retrieval pipeline.
+Reads DB: ``retrieval_chunk`` and ``chunk_embeddings`` through the retrieval pipeline.
 Writes DB: none.
 Writes FS: none.
 Idempotency: read-only retrieval for one question / subject pair.

@@ -8,11 +8,33 @@ from typing import Generator
 
 import sqlalchemy as sa
 import structlog
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
 import app.models
 from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
+from app.models import (
+    ChatMessage,
+    ChatSession,
+    CurriculumVersion,
+    ExamPaper,
+    ExamPaperItem,
+    KnowledgeDocument,
+    KnowledgeEdge,
+    KnowledgeNode,
+    PrereqDagVersion,
+    QuestionTemplate,
+    RawFile,
+    RetrievalChunk,
+    Subject,
+    TaxonomyAnchor,
+    TeachingUnit,
+    ThemeTreeNode,
+    ThemeTreeVersion,
+    UnitDependency,
+    User,
+    UserKnowledgeState,
+)
 
 logger = structlog.get_logger()
 
@@ -27,6 +49,29 @@ else:
 _engine = None
 _vec_ready: bool | None = None
 _vec_error: str | None = None
+_SCHEMA_TABLES = [
+    User.__table__,
+    Subject.__table__,
+    RawFile.__table__,
+    RetrievalChunk.__table__,
+    KnowledgeDocument.__table__,
+    KnowledgeNode.__table__,
+    KnowledgeEdge.__table__,
+    TeachingUnit.__table__,
+    TaxonomyAnchor.__table__,
+    ThemeTreeVersion.__table__,
+    ThemeTreeNode.__table__,
+    PrereqDagVersion.__table__,
+    UnitDependency.__table__,
+    CurriculumVersion.__table__,
+    QuestionTemplate.__table__,
+    ExamPaper.__table__,
+    ExamPaperItem.__table__,
+    UserKnowledgeState.__table__,
+    ChatSession.__table__,
+    ChatMessage.__table__,
+]
+
 
 def _set_vec_status(ready: bool, error: str | None = None) -> None:
     global _vec_ready, _vec_error
@@ -114,8 +159,11 @@ def get_engine():
     )
 
     @sa.event.listens_for(_engine, "connect")
-    def load_vec_extension(dbapi_conn, connection_record):
+    def configure_sqlite(dbapi_conn, connection_record):
         del connection_record
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
         _load_vec_extension(dbapi_conn)
 
     logger.info("database_engine_created", db_path=str(db_path))
@@ -140,18 +188,36 @@ def _ensure_vec_table(engine, *, embedding_dim: int) -> None:
         )
 
 
+def _ensure_default_local_user(engine) -> None:
+    with Session(engine, expire_on_commit=False) as session:
+        user = session.get(User, "local")
+        if user is None:
+            session.add(
+                User(
+                    id="local",
+                    username="local",
+                    email=None,
+                    last_seen_ip=None,
+                    profile_json="{}",
+                )
+            )
+            session.commit()
+
+
 def init_db() -> None:
     """Initialize the local database schema and vector table."""
 
     settings = get_settings()
     engine = get_engine()
 
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _ensure_vec_table(engine, embedding_dim=settings.embedding_dim)
+    _ensure_default_local_user(engine)
 
     logger.info(
         "database_initialized",
         embedding_dim=settings.embedding_dim,
+        table_count=len(_SCHEMA_TABLES),
         vec_ready=is_vec_ready(),
     )
 

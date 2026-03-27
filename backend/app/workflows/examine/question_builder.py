@@ -1,11 +1,4 @@
-"""Question template builder.
-
-Reads DB: ``teaching_unit_membership`` plus graph / curriculum context used to build prompts.
-Writes DB: ``question_template`` and ``question_template_node_link``.
-Writes FS: none.
-Idempotency: template creation is best-effort deduplicated by content hashing, but reruns may still
-produce additional templates for the same unit when the source context changes.
-"""
+"""Question template builder."""
 
 from __future__ import annotations
 
@@ -21,10 +14,8 @@ from sqlmodel import Session
 from app.core.llm import acompletion_structured
 from app.core.model_router import TaskType
 from app.core.prompt_loader import populate_prompt
-from app.models import Difficulty, QuestionTemplate, QuestionTemplateNodeLink, QuestionType
-from app.models.curriculum import TeachingUnitMembership
+from app.models import Difficulty, KnowledgeNode, QuestionTemplate, QuestionType, TeachingUnit
 from app.repositories import exams_repo
-from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.schemas.llm import SYSTEM
 from app.utils.time import utcnow
 from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
@@ -43,8 +34,6 @@ def _normalize_options(options: list[str] | None) -> str | None:
 
 
 def validate_single_choice_options(options_json: str | None) -> bool:
-    """Validate single-choice options is a JSON list with at least 2 items."""
-
     if not options_json:
         return False
     try:
@@ -59,6 +48,8 @@ class _NodeContext:
     node_id: int
     node_name: str
     content: str
+    coverage_weight: float
+    role: str
 
 
 class _GeneratedTemplateItem(BaseModel):
@@ -86,10 +77,9 @@ def _pick_reference_sentence(node: _NodeContext) -> str:
 
     candidates = [
         _clean_text(part)
-        for part in re.split(r"[。！？!?;\n]+", raw)
+        for part in re.split(r"[。！？；;\n]+", raw)
         if _clean_text(part)
     ]
-    # Prefer medium-length informative sentence.
     scored = sorted(
         candidates,
         key=lambda s: (
@@ -101,7 +91,7 @@ def _pick_reference_sentence(node: _NodeContext) -> str:
         return f"该知识点围绕“{node.node_name}”的定义、条件与应用。"
     picked = scored[0]
     if len(picked) > 120:
-        picked = picked[:120].rstrip("，,；;:：") + "..."
+        picked = picked[:120].rstrip("，:：") + "..."
     return picked
 
 
@@ -117,8 +107,6 @@ def _build_deterministic_templates(
     node_contexts: list[_NodeContext],
     questions_per_unit: int,
 ) -> list[_GeneratedTemplateItem]:
-    """Fallback template generator when LLM is unavailable."""
-
     if not node_contexts:
         return []
 
@@ -141,7 +129,7 @@ def _build_deterministic_templates(
         reference = _pick_reference_sentence(node)
 
         if qtype == QuestionType.SINGLE_CHOICE.value:
-            stem = f"【单选】关于知识点「{node.node_name}」，以下哪一项最恰当？"
+            stem = f"【单选】关于知识点《{node.node_name}》，以下哪一项最恰当？"
             options = [
                 f"强调“{node.node_name}”的核心含义，并结合条件理解：{reference}",
                 f"把“{node.node_name}”当作不需要条件即可套用的结论",
@@ -149,16 +137,14 @@ def _build_deterministic_templates(
                 "选择与该知识点无关的描述",
             ]
             answer = options[0]
-            explanation = (
-                f"正确思路是回到“{node.node_name}”的定义与条件，再结合题目情境判断。"
-            )
+            explanation = f"正确思路是回到“{node.node_name}”的定义与条件，再结合题目情境判断。"
         elif qtype == QuestionType.FILL_BLANK.value:
             stem, answer = _build_fill_blank_stem(node.node_name, reference)
             options = None
             explanation = f"填空围绕“{node.node_name}”的关键词与核心结论。"
         else:
             stem = (
-                f"【简答】请用 2-3 句话说明「{node.node_name}」的核心概念，"
+                f"【简答】请用 2-3 句话说明《{node.node_name}》的核心概念，"
                 "并给出一个简短应用步骤。"
             )
             options = None
@@ -217,22 +203,66 @@ async def _try_llm_generate_templates(
 
 
 def _load_unit_node_contexts(session: Session, unit_id: int) -> list[_NodeContext]:
-    memberships: list[TeachingUnitMembership] = curriculum_repo.list_memberships_by_unit(session, unit_id)
+    unit = session.get(TeachingUnit, unit_id)
+    if unit is None:
+        return []
+
+    try:
+        memberships = json.loads(unit.member_node_refs_json or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(memberships, list):
+        return []
+
     contexts: list[_NodeContext] = []
     for membership in memberships:
-        node_with_revision = kg_repo.get_node_with_current_revision(session, membership.knowledge_node_id)
-        if node_with_revision is None:
+        if not isinstance(membership, dict):
             continue
-        node, revision = node_with_revision
-        text_parts = [revision.title or "", revision.summary or "", revision.body or ""]
+        raw_node_id = membership.get("knowledge_node_id")
+        if not isinstance(raw_node_id, int):
+            continue
+        node = session.get(KnowledgeNode, raw_node_id)
+        if node is None:
+            continue
+        text_parts = [node.canonical_name or "", node.summary or "", node.body or ""]
         contexts.append(
             _NodeContext(
-                node_id=node.id or membership.knowledge_node_id,
+                node_id=node.id or raw_node_id,
                 node_name=node.canonical_name,
                 content="\n".join(part for part in text_parts if part).strip(),
+                coverage_weight=float(membership.get("weight", 1.0) or 1.0),
+                role=str(membership.get("role", "primary")),
             )
         )
     return contexts
+
+
+def _build_node_refs_json(
+    *,
+    node_contexts: list[_NodeContext],
+    preferred_node_id: int | None,
+) -> str:
+    if preferred_node_id is not None:
+        preferred = [item for item in node_contexts if item.node_id == preferred_node_id]
+        if preferred:
+            node_contexts = preferred
+
+    if not node_contexts:
+        return "[]"
+
+    total_weight = sum(max(0.0, item.coverage_weight) for item in node_contexts)
+    if total_weight <= 0:
+        total_weight = float(len(node_contexts))
+
+    payload = [
+        {
+            "knowledge_node_id": item.node_id,
+            "coverage_weight": max(0.0, item.coverage_weight) / total_weight,
+            "role": item.role,
+        }
+        for item in node_contexts
+    ]
+    return json.dumps(payload, ensure_ascii=False)
 
 
 async def build_question_templates(
@@ -265,7 +295,6 @@ async def build_question_templates(
                 questions_per_unit=questions_per_unit,
             )
 
-        links_to_create: list[QuestionTemplateNodeLink] = []
         for idx, draft in enumerate(generated):
             question_type = (draft.question_type or "").strip().lower()
             difficulty = (draft.difficulty or "").strip().lower()
@@ -289,6 +318,8 @@ async def build_question_templates(
                 logger.info("question_builder_skip_duplicate_stem_hash", unit_id=unit_id, stem_hash=stem_hash)
                 continue
 
+            fallback_node = node_contexts[idx % len(node_contexts)].node_id
+            preferred_node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node
             template = QuestionTemplate(
                 subject=subject,
                 teaching_unit_id=unit_id,
@@ -300,25 +331,14 @@ async def build_question_templates(
                 answer=answer,
                 explanation=explanation,
                 status="active",
+                node_refs_json=_build_node_refs_json(
+                    node_contexts=node_contexts,
+                    preferred_node_id=preferred_node_id,
+                ),
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )
             persisted = exams_repo.create_question_template(session, template)
             created_templates.append(persisted)
-
-            fallback_node = node_contexts[idx % len(node_contexts)].node_id
-            node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node
-            links_to_create.append(
-                QuestionTemplateNodeLink(
-                    question_template_id=persisted.id or 0,
-                    knowledge_node_id=node_id,
-                    coverage_weight=1.0,
-                    role="primary",
-                    created_at=utcnow(),
-                )
-            )
-
-        if links_to_create:
-            exams_repo.create_template_node_links(session, links_to_create)
 
     return created_templates

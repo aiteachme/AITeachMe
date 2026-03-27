@@ -8,7 +8,7 @@ from http import HTTPStatus
 from sqlmodel import Session
 
 from app.core.exceptions import AITeachMeError
-from app.models import ReviewTask, UserKnowledgeState
+from app.models import UserKnowledgeState
 from app.repositories.profile_repo import complete_review_task as complete_review_task_repo
 from app.repositories.profile_repo import get_knowledge_state, list_knowledge_states, list_pending_reviews
 
@@ -96,7 +96,7 @@ async def get_review_tasks(
     *,
     subject: str,
     user_id: str,
-) -> list[ReviewTask]:
+) -> list[UserKnowledgeState]:
     return list_pending_reviews(session, user_id=user_id, subject=subject)
 
 
@@ -106,7 +106,7 @@ async def complete_review_task(
     subject: str,
     task_id: int,
     user_id: str,
-) -> ReviewTask:
+) -> UserKnowledgeState:
     task = complete_review_task_repo(
         session,
         task_id=task_id,

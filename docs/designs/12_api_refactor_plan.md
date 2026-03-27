@@ -39,11 +39,11 @@
 | API 分组 | 核心能力 | 正式主表 |
 | --- | --- | --- |
 | `/subjects` | 学科创建、删除、清空、状态查询 | `user`, `subject` |
-| `/files` | 上传、列文件、删文件、重新解析 | `raw_file`, `raw_file_asset` |
-| `/knowledge` | 构建、文档、总览、图谱详情、chunk 上下文、课程详情 | `knowledge_document`, `retrieval_chunk`, `knowledge_node`, `knowledge_alias`, `knowledge_edge`, `knowledge_evidence`, `teaching_unit`, `curriculum_*` |
-| `/chats` | 会话、消息、流式问答、引用上下文 | `chat_session`, `chat_message`, `retrieval_chunk`, `user_knowledge_state`, `user_answer_attempt` |
-| `/exams` | 出题、组卷、历史、详情、交卷、判卷、题库视图 | `question_template`, `question_template_node_link`, `exam_paper`, `exam_paper_item`, `user_answer_attempt`, `user_knowledge_state`, `review_task` |
-| `/profile` | 掌握度、复习任务、学习报告、错题视图 | `user_knowledge_state`, `review_task`, `user_answer_attempt`, `exam_paper_item` |
+| `/files` | 上传、列文件、删文件、重新解析 | `raw_file` |
+| `/knowledge` | 构建、文档、总览、图谱详情、chunk 上下文、课程详情 | `knowledge_document`, `retrieval_chunk`, `knowledge_node`, `knowledge_edge`, `teaching_unit`, `curriculum_version` |
+| `/chats` | 会话、消息、流式问答、引用上下文 | `chat_session`, `chat_message`, `retrieval_chunk`, `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
+| `/exams` | 出题、组卷、历史、详情、交卷、判卷、题库视图 | `question_template`, `exam_paper`, `exam_paper_item`, `subject.profile_json`, `user_knowledge_state` |
+| `/profile` | 掌握度、复习任务、学习报告、错题视图 | `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
 
 ---
 
@@ -66,7 +66,7 @@
 新的数据落点：
 
 - `docs` -> `knowledge_document`
-- `overview` -> `curriculum_version + curriculum_tree_node + curriculum_dependency + knowledge_* + teaching_unit`
+- `overview` -> `curriculum_version + knowledge_* + teaching_unit`
 - `chunks/context` -> `retrieval_chunk`
 
 ### 4.2 `/chats`
@@ -83,7 +83,7 @@
 
 - 会话和消息 -> `chat_session`, `chat_message`
 - 检索引用 -> `retrieval_chunk`
-- 弱点和错题上下文 -> `user_knowledge_state + user_answer_attempt`
+- 教学上下文 -> `user.profile_json + subject.profile_json + user_knowledge_state + exam_paper_item`
 
 明确要求：
 
@@ -106,8 +106,9 @@
 - 题模板 -> `question_template`
 - 试卷 -> `exam_paper`
 - 试卷详情 -> `exam_paper_item`
-- 作答 -> `user_answer_attempt`
+- 作答 -> `exam_paper_item`
 - 试卷选题上下文 -> `exam_paper.selection_context_json`
+- 组卷偏好与学科级学习画像 -> `subject.profile_json`
 
 明确要求：
 
@@ -120,6 +121,12 @@
 
 - `/mastery`
 - `/review/tasks`
+
+其中 profile 读模型应明确来自三层：
+
+- `user.profile_json`
+- `subject.profile_json`
+- `user_knowledge_state`
 
 旧的 `/list`、`/report`、`/mistakes` 不再进入目标态 contract。  
 如果未来真的要恢复这类读模型，也只能从新表派生，不允许重新引入 `user_profile`、`mistake`。
@@ -162,7 +169,7 @@
 注意：
 
 - 这里对外仍然可以叫 `snapshot/theme_tree/prereq_dag`
-- 但数据库底层已经统一收敛为 `curriculum_version` 及其子表
+- 但数据库底层已经统一收敛为 `curriculum_version` 单表快照字段
 
 ### 6.2 `/profile`
 
@@ -207,7 +214,7 @@
 也就是说：
 
 - `generate` 最终产物是 `exam_paper`
-- `grade` 最终结果回写 `exam_paper + user_answer_attempt + user_knowledge_state + review_task`
+- `grade` 最终结果回写 `exam_paper + exam_paper_item + user_knowledge_state + subject.profile_json`
 - `build` 最终产物是 `knowledge_document + curriculum_version + knowledge_*`
 
 ---

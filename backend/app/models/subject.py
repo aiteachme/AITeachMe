@@ -1,4 +1,4 @@
-"""学科模型定义。"""
+"""Subject workspace model."""
 
 from __future__ import annotations
 
@@ -10,13 +10,22 @@ from app.utils.time import utcnow
 
 
 class Subject(SQLModel, table=True):
-    """学科空间。"""
+    """Subject workspace root."""
 
     __tablename__ = "subject"
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="local", foreign_key="user.id", index=True)
     slug: str = Field(index=True, unique=True)
     name: str
+    normalized_name: str | None = Field(default=None, index=True)
     description: str = ""
+    preferred_digest_mode: str | None = None
+    preferred_digest_note: str | None = None
+    detected_discipline: str | None = None
+    detected_sub_discipline: str | None = None
+    profile_json: str = Field(default="{}")
+    settings_json: str = Field(default="{}")
+    status: str = Field(default="active", index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -19,7 +19,6 @@ from app.models import (
     ExamPaperItem,
     ExamPaperStatus,
     QuestionType,
-    UserAnswerAttempt,
     validate_status_transition,
 )
 from app.repositories import exams_repo
@@ -38,7 +37,7 @@ logger = structlog.get_logger()
 class ExamPaperDetail:
     paper: ExamPaper
     items: list[ExamPaperItem]
-    attempts_by_item_id: dict[int, UserAnswerAttempt]
+    attempts_by_item_id: dict[int, ExamPaperItem]
 
 
 @dataclass(frozen=True)
@@ -468,25 +467,16 @@ async def submit_exam_answers(
 
     validate_status_transition(ExamPaperStatus.IN_PROGRESS, ExamPaperStatus.SUBMITTED)
 
-    attempts: list[UserAnswerAttempt] = []
     for item in items:
         if item.id is None:
             continue
         answer_text = answer_map.get(item.id)
         if answer_text is None:
             answer_text = answer_map.get(item.item_order, "")
-        attempts.append(
-            UserAnswerAttempt(
-                exam_paper_item_id=item.id,
-                user_id=user_id,
-                attempt_no=1,
-                answer_content=answer_text,
-                created_at=utcnow(),
-            )
-        )
-
-    if attempts:
-        exams_repo.create_answer_attempts(session, attempts)
+        item.answer_content = answer_text
+        item.answered_at = utcnow()
+        item.updated_at = utcnow()
+        session.add(item)
 
     paper.status = "submitted"
     paper.submitted_at = utcnow()
@@ -498,13 +488,16 @@ async def submit_exam_answers(
 
 
 def _reset_attempts_for_regrade(session: Session, exam_paper_id: int) -> None:
-    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
-    for attempt in attempts:
-        attempt.is_correct = None
-        attempt.score_obtained = None
-        attempt.score_max = None
-        attempt.error_cause_label = None
-        session.add(attempt)
+    items = exams_repo.list_items_by_paper(session, exam_paper_id)
+    for item in items:
+        item.is_correct = None
+        item.score_obtained = None
+        item.score_max = None
+        item.error_cause_label = None
+        item.feedback_text = None
+        item.graded_at = None
+        item.updated_at = utcnow()
+        session.add(item)
     session.commit()
 
 
@@ -706,11 +699,12 @@ async def get_exam_paper_detail(
             .order_by(ExamPaperItem.item_order)
         ).all()
     )
-    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
-    attempts_by_item_id: dict[int, UserAnswerAttempt] = {}
-    for attempt in attempts:
-        current = attempts_by_item_id.get(attempt.exam_paper_item_id)
-        if current is None or attempt.attempt_no > current.attempt_no:
-            attempts_by_item_id[attempt.exam_paper_item_id] = attempt
+    attempts_by_item_id: dict[int, ExamPaperItem] = {}
+    for item in items:
+        if item.id is None:
+            continue
+        if not (item.answer_content or item.is_correct is not None):
+            continue
+        attempts_by_item_id[item.id] = item
 
     return ExamPaperDetail(paper=paper, items=items, attempts_by_item_id=attempts_by_item_id)

@@ -20,7 +20,7 @@ from app.workflows.digest.curriculum.services.prereq_dag_builder import derive_p
 from app.workflows.digest.curriculum.services.theme_tree_builder import derive_theme_tree
 from app.workflows.digest.curriculum.services.unit_builder import derive_teaching_units
 from app.core.database import managed_session
-from app.models.curriculum import CurriculumSnapshot, TeachingUnit, TeachingUnitRevision
+from app.models.curriculum import CurriculumSnapshot, TeachingUnit
 from app.repositories import curriculum_repo
 from app.utils.job_helpers import (
     activate_curriculum_entities_by_job,
@@ -70,18 +70,20 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
                 )
                 return {**state, "derived_unit_ids": [], "error": None}
 
-            units = await derive_teaching_units(
+            derive_result = await derive_teaching_units(
                 session,
                 subject,
                 impact_set,
                 curriculum_job_id=job_id,
             )
-            derived_unit_ids = [unit.id for unit in units]  # type: ignore[misc]
+            derived_unit_ids = [unit.id for unit in derive_result.units if unit.id is not None]
             digest_logger.info(
                 "derive_units_complete",
                 units_count=len(derived_unit_ids),
                 impact_changed_nodes=len(impact_set.changed_node_ids),
                 impact_affected_units=len(impact_set.affected_unit_ids),
+                created_units=len(derive_result.created_unit_ids),
+                updated_units=len(derive_result.updated_unit_ids),
             )
 
             update_job_progress(
@@ -91,7 +93,13 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
                 progress=40,
                 current_step="derive_units_done",
             )
-            return {**state, "derived_unit_ids": derived_unit_ids, "error": None}
+            return {
+                **state,
+                "derived_unit_ids": derived_unit_ids,
+                "created_unit_ids": list(derive_result.created_unit_ids),
+                "updated_unit_ids": list(derive_result.updated_unit_ids),
+                "error": None,
+            }
         except Exception as exc:
             digest_logger.error("derive_units_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"derive_units_failed: {exc}"}
@@ -265,21 +273,8 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
                         session.add(old_unit)
                 session.commit()
 
-            units_added = 0
-            units_updated = 0
-            for unit_id in state.get("derived_unit_ids", []):
-                unit = session.get(TeachingUnit, unit_id)
-                if unit is None:
-                    continue
-                revision = (
-                    session.get(TeachingUnitRevision, unit.current_revision_id)
-                    if unit.current_revision_id is not None
-                    else None
-                )
-                if revision is not None and revision.revision_no <= 1:
-                    units_added += 1
-                else:
-                    units_updated += 1
+            units_added = len(state.get("created_unit_ids", []))
+            units_updated = len(state.get("updated_unit_ids", []))
 
             update_kwargs: dict[str, object] = {
                 "status": "completed",

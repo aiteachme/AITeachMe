@@ -32,35 +32,17 @@ class QuestionTemplate(SQLModel, table=True):
     options_json: str | None = Field(default=None)
     answer: str
     explanation: str
+    node_refs_json: str = Field(default="[]")
+    selection_hints_json: str = Field(default="{}")
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
     curriculum_version_id: int | None = Field(
         default=None,
-        foreign_key="curriculum_snapshot.id",
+        foreign_key="curriculum_version.id",
         index=True,
     )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-
-
-class QuestionTemplateNodeLink(SQLModel, table=True):
-    """Knowledge-node coverage mapping for a question template."""
-
-    __tablename__ = "question_template_node_link"
-    __table_args__ = (
-        UniqueConstraint(
-            "question_template_id",
-            "knowledge_node_id",
-            name="uq_template_node_link",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    question_template_id: int = Field(foreign_key="question_template.id", index=True)
-    knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
-    coverage_weight: float = Field(default=1.0, ge=0.0)
-    role: str = Field(default="primary")
-    created_at: datetime = Field(default_factory=utcnow)
 
 
 class ExamPaper(SQLModel, table=True):
@@ -72,7 +54,7 @@ class ExamPaper(SQLModel, table=True):
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
-    curriculum_version_id: int = Field(foreign_key="curriculum_snapshot.id", index=True)
+    curriculum_version_id: int = Field(foreign_key="curriculum_version.id", index=True)
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)
@@ -90,11 +72,7 @@ class ExamPaperItem(SQLModel, table=True):
 
     __tablename__ = "exam_paper_item"
     __table_args__ = (
-        UniqueConstraint(
-            "exam_paper_id",
-            "item_order",
-            name="uq_paper_item_order",
-        ),
+        UniqueConstraint("exam_paper_id", "item_order", name="uq_paper_item_order"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -110,27 +88,7 @@ class ExamPaperItem(SQLModel, table=True):
     difficulty: str
     question_type: str
     score: float = Field(default=1.0, ge=0.0)
-    created_at: datetime = Field(default_factory=utcnow)
-
-
-class UserAnswerAttempt(SQLModel, table=True):
-    """One user answer attempt for one exam paper item."""
-
-    __tablename__ = "user_answer_attempt"
-    __table_args__ = (
-        UniqueConstraint(
-            "exam_paper_item_id",
-            "user_id",
-            "attempt_no",
-            name="uq_attempt_item_user_attempt",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    exam_paper_item_id: int = Field(foreign_key="exam_paper_item.id", index=True)
-    user_id: str = Field(default="local", index=True)
-    attempt_no: int = Field(default=1, ge=1)
-    answer_content: str
+    answer_content: str = ""
     is_correct: bool | None = Field(default=None)
     score_obtained: float | None = Field(default=None, ge=0.0)
     score_max: float | None = Field(default=None, ge=0.0)
@@ -139,4 +97,7 @@ class UserAnswerAttempt(SQLModel, table=True):
     confidence_self_report: int | None = Field(default=None, ge=1, le=5)
     error_cause_label: str | None = Field(default=None)
     feedback_text: str | None = Field(default=None)
+    answered_at: datetime | None = Field(default=None)
+    graded_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

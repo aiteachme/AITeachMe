@@ -77,7 +77,7 @@ backend/data/
 | 抽象 | 负责什么 | 本地实现 | 中心化实现 |
 | --- | --- | --- | --- |
 | `ArtifactStore` | 原始文件、Markdown、图片、manifest | 本地文件系统 | OSS / MinIO |
-| `VectorIndex` | `chunk_embedding` 的写入、删除、查询 | sqlite-vec | pgvector |
+| `VectorIndex` | `retrieval_chunk` 向量的写入、删除、查询 | sqlite-vec | pgvector |
 | `BuildLock / PublishLease` | subject 级构建锁和发布租约 | 锁文件 | 数据库租约 |
 | `DatabaseBootstrap` | 启动时建表、扩展检查、schema 校验、开发期删库重建 | SQLite 初始化 | PostgreSQL 初始化 |
 
@@ -105,7 +105,8 @@ backend/data/
 逻辑模型只认：
 
 - `retrieval_chunk`
-- `chunk_embedding`
+- `retrieval_chunk.embedding_model`
+- `retrieval_chunk.vector_ref`
 
 本地物理实现当前是：
 
@@ -122,7 +123,7 @@ backend/data/
 
 也就是说：
 
-- 业务主模型里只认 `chunk_embedding`
+- 业务主模型里只认 `retrieval_chunk` 的向量字段
 - 数据库浏览器里看到的那串 `chunk_embeddings_*` 不要写回主树
 
 ---

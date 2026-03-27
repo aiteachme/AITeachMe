@@ -27,9 +27,7 @@ from app.models import (
     ExamPaperItem,
     QuestionTemplate,
     QuestionType,
-    ReviewTask,
-    UnitTreeMembership,
-    UserKnowledgeState,
+    ThemeTreeNode,
 )
 from app.models.curriculum import CurriculumSnapshot
 from app.repositories import exams_repo, profile_repo
@@ -232,19 +230,23 @@ def _build_mock_final_unit_allocation(
     if snapshot.theme_tree_version_id is None:
         return {}
 
-    rows = list(
+    tree_nodes = list(
         session.exec(
-            select(UnitTreeMembership.teaching_unit_id).where(
-                UnitTreeMembership.tree_version_id == snapshot.theme_tree_version_id
+            select(ThemeTreeNode).where(
+                ThemeTreeNode.tree_version_id == snapshot.theme_tree_version_id
             )
         ).all()
     )
-    if not rows:
+    if not tree_nodes:
         return {}
 
     unit_weight: dict[int, int] = defaultdict(int)
-    for unit_id in rows:
-        unit_weight[int(unit_id)] += 1
+    for node in tree_nodes:
+        for unit_id in exams_repo.resolve_teaching_units_from_theme_tree_node(
+            session,
+            node.id or 0,
+        ):
+            unit_weight[int(unit_id)] += 1
 
     total_weight = sum(unit_weight.values())
     if total_weight <= 0:
@@ -274,11 +276,12 @@ def _serialize_node_refs_json(session: Session, template_id: int) -> str:
     links = exams_repo.find_node_links_by_template(session, template_id)
     payload = [
         {
-            "knowledge_node_id": link.knowledge_node_id,
-            "coverage_weight": link.coverage_weight,
-            "role": link.role,
+            "knowledge_node_id": int(link.get("knowledge_node_id", 0)),
+            "coverage_weight": float(link.get("coverage_weight", 0.0)),
+            "role": str(link.get("role", "primary")),
         }
         for link in links
+        if int(link.get("knowledge_node_id", 0)) > 0
     ]
     return json.dumps(payload, ensure_ascii=False)
 

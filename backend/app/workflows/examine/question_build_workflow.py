@@ -1,7 +1,7 @@
 """Question build workflow based on LangGraph.
 
 Reads DB: teaching units and graph-backed teaching context.
-Writes DB: question_template / question_template_node_link via downstream builder.
+Writes DB: question_template via downstream builder.
 Writes FS: none.
 """
 
@@ -16,7 +16,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.core.database import managed_session
-from app.models import QuestionTemplate, QuestionTemplateNodeLink
+from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.workflows.examine.question_builder import build_question_templates
 from app.workflows.examine.state import QuestionBuildState
@@ -207,15 +207,6 @@ async def fail_build_node(
                         )
                     ).all()
                 )
-                links = list(
-                    session.exec(
-                        select(QuestionTemplateNodeLink).where(
-                            QuestionTemplateNodeLink.question_template_id.in_(template_ids)  # type: ignore[union-attr]
-                        )
-                    ).all()
-                )
-                for link in links:
-                    session.delete(link)
                 for template in created_templates:
                     session.delete(template)
             session.commit()

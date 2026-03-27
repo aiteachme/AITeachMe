@@ -1,30 +1,37 @@
-﻿"""Exam data access layer."""
+"""Exam data access layer."""
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from sqlmodel import Session, func, select
 
 from app.models import (
-    CurriculumSnapshot,
+    CurriculumVersion,
     ExamPaper,
     ExamPaperItem,
     PrereqDagVersion,
     QuestionTemplate,
-    QuestionTemplateNodeLink,
-    ReviewTask,
     TeachingUnit,
+    ThemeTreeNode,
     UnitDependency,
-    UnitTreeMembership,
-    UserAnswerAttempt,
 )
 from app.repositories.knowledge import curriculum_repo
 
 
-# ---------------------------------------------------------------------------
-# ExamPaper + QuestionTemplate CRUD
-# ---------------------------------------------------------------------------
+def _load_json_list(payload: str) -> list[dict[str, object]]:
+    try:
+        decoded = json.loads(payload or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(decoded, list):
+        return []
+    return [item for item in decoded if isinstance(item, dict)]
+
+
+def _dump_json_list(payload: list[dict[str, object]]) -> str:
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def create_question_template(session: Session, template: QuestionTemplate) -> QuestionTemplate:
@@ -34,15 +41,29 @@ def create_question_template(session: Session, template: QuestionTemplate) -> Qu
     return template
 
 
-def create_template_node_links(
-    session: Session,
-    links: list[QuestionTemplateNodeLink],
-) -> list[QuestionTemplateNodeLink]:
+def create_template_node_links(session: Session, links: list) -> list:
+    grouped: dict[int, list[dict[str, object]]] = {}
     for item in links:
-        session.add(item)
+        template_id = getattr(item, "question_template_id", None)
+        node_id = getattr(item, "knowledge_node_id", None)
+        if template_id is None or node_id is None:
+            continue
+        grouped.setdefault(int(template_id), []).append(
+            {
+                "knowledge_node_id": int(node_id),
+                "coverage_weight": float(getattr(item, "coverage_weight", 1.0)),
+                "role": str(getattr(item, "role", "primary")),
+            }
+        )
+
+    for template_id, node_refs in grouped.items():
+        template = session.get(QuestionTemplate, template_id)
+        if template is None:
+            continue
+        template.node_refs_json = _dump_json_list(node_refs)
+        session.add(template)
+
     session.commit()
-    for item in links:
-        session.refresh(item)
     return links
 
 
@@ -64,14 +85,16 @@ def find_templates_by_node(
     *,
     status: str = "active",
 ) -> list[QuestionTemplate]:
-    stmt = (
-        select(QuestionTemplate)
-        .join(QuestionTemplateNodeLink, QuestionTemplateNodeLink.question_template_id == QuestionTemplate.id)
-        .where(QuestionTemplateNodeLink.knowledge_node_id == node_id)
-    )
+    stmt = select(QuestionTemplate)
     if status:
         stmt = stmt.where(QuestionTemplate.status == status)
-    return list(session.exec(stmt.distinct().order_by(QuestionTemplate.id)).all())
+
+    rows = list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
+    matched: list[QuestionTemplate] = []
+    for item in rows:
+        if any(ref.get("knowledge_node_id") == node_id for ref in _load_json_list(item.node_refs_json)):
+            matched.append(item)
+    return matched
 
 
 def find_template_by_stem_hash(
@@ -88,9 +111,11 @@ def find_template_by_stem_hash(
     return session.exec(stmt).first()
 
 
-def find_node_links_by_template(session: Session, template_id: int) -> list[QuestionTemplateNodeLink]:
-    stmt = select(QuestionTemplateNodeLink).where(QuestionTemplateNodeLink.question_template_id == template_id)
-    return list(session.exec(stmt.order_by(QuestionTemplateNodeLink.id)).all())
+def find_node_links_by_template(session: Session, template_id: int) -> list[dict[str, object]]:
+    template = session.get(QuestionTemplate, template_id)
+    if template is None:
+        return []
+    return _load_json_list(template.node_refs_json)
 
 
 def create_exam_paper(session: Session, paper: ExamPaper) -> ExamPaper:
@@ -113,6 +138,15 @@ def get_exam_paper_by_id(session: Session, paper_id: int) -> ExamPaper | None:
     return session.get(ExamPaper, paper_id)
 
 
+def list_items_by_paper(session: Session, paper_id: int) -> list[ExamPaperItem]:
+    stmt = (
+        select(ExamPaperItem)
+        .where(ExamPaperItem.exam_paper_id == paper_id)
+        .order_by(ExamPaperItem.item_order.asc())
+    )
+    return list(session.exec(stmt).all())
+
+
 def list_exam_papers(
     session: Session,
     *,
@@ -130,7 +164,7 @@ def list_exam_papers(
         session.exec(
             select(ExamPaper)
             .where(ExamPaper.subject == subject, ExamPaper.user_id == user_id)
-            .order_by(ExamPaper.created_at.desc())  # type: ignore[union-attr]
+            .order_by(ExamPaper.created_at.desc())
             .offset(offset)
             .limit(limit)
         ).all()
@@ -166,7 +200,7 @@ def count_active_question_templates(
         )
     )
     if question_types:
-        stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))  # type: ignore[union-attr]
+        stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))
     return int(session.exec(stmt).one())
 
 
@@ -183,7 +217,7 @@ def list_exam_item_snapshots_by_user(
             ExamPaper.subject == subject,
             ExamPaper.user_id == user_id,
         )
-        .order_by(ExamPaper.created_at.desc(), ExamPaper.id.desc(), ExamPaperItem.item_order.asc())  # type: ignore[union-attr]
+        .order_by(ExamPaper.created_at.desc(), ExamPaper.id.desc(), ExamPaperItem.item_order.asc())
     )
     rows = list(session.exec(stmt).all())
     normalized: list[tuple[ExamPaperItem, datetime, int]] = []
@@ -198,29 +232,8 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
     if paper is None:
         return False
 
-    item_ids = [
-        int(item_id)
-        for item_id in session.exec(select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id == paper_id)).all()
-        if item_id is not None
-    ]
-
-    if item_ids:
-        attempts = list(
-            session.exec(
-                select(UserAnswerAttempt).where(UserAnswerAttempt.exam_paper_item_id.in_(item_ids))  # type: ignore[union-attr]
-            ).all()
-        )
-        for item in attempts:
-            session.delete(item)
-
-        paper_items = list(
-            session.exec(select(ExamPaperItem).where(ExamPaperItem.id.in_(item_ids))).all()  # type: ignore[union-attr]
-        )
-        for item in paper_items:
-            session.delete(item)
-
-    review_tasks = list(session.exec(select(ReviewTask).where(ReviewTask.source_exam_paper_id == paper_id)).all())
-    for item in review_tasks:
+    paper_items = list_items_by_paper(session, paper_id)
+    for item in paper_items:
         session.delete(item)
 
     session.delete(paper)
@@ -228,37 +241,10 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
     return True
 
 
-def create_answer_attempts(
-    session: Session,
-    attempts: list[UserAnswerAttempt],
-) -> list[UserAnswerAttempt]:
-    for item in attempts:
-        session.add(item)
-    session.commit()
-    for item in attempts:
-        session.refresh(item)
-    return attempts
-
-
-def list_attempts_by_paper(session: Session, paper_id: int) -> list[UserAnswerAttempt]:
-    stmt = (
-        select(UserAnswerAttempt)
-        .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
-        .where(ExamPaperItem.exam_paper_id == paper_id)
-        .order_by(UserAnswerAttempt.id)
-    )
-    return list(session.exec(stmt).all())
-
-
-# ---------------------------------------------------------------------------
-# Cross-table reads for paper assembly
-# ---------------------------------------------------------------------------
-
-
 def get_published_curriculum_version(
     session: Session,
     subject: str,
-) -> CurriculumSnapshot | None:
+) -> CurriculumVersion | None:
     return curriculum_repo.get_current_curriculum_snapshot(session, subject)
 
 
@@ -266,13 +252,16 @@ def resolve_teaching_units_from_theme_tree_node(
     session: Session,
     theme_tree_node_id: int,
 ) -> list[int]:
-    stmt = (
-        select(UnitTreeMembership.teaching_unit_id)
-        .where(UnitTreeMembership.tree_node_id == theme_tree_node_id)
-        .distinct()
-        .order_by(UnitTreeMembership.teaching_unit_id)
-    )
-    return [int(item) for item in session.exec(stmt).all()]
+    node = session.get(ThemeTreeNode, theme_tree_node_id)
+    if node is None:
+        return []
+
+    teaching_unit_ids: list[int] = []
+    for item in _load_json_list(node.unit_refs_json):
+        raw_unit_id = item.get("teaching_unit_id")
+        if isinstance(raw_unit_id, int):
+            teaching_unit_ids.append(raw_unit_id)
+    return sorted(set(teaching_unit_ids))
 
 
 def list_prereq_units(session: Session, unit_id: int) -> list[int]:
@@ -286,7 +275,7 @@ def list_prereq_units(session: Session, unit_id: int) -> list[int]:
             PrereqDagVersion.subject == unit.subject,
             PrereqDagVersion.status == "published",
         )
-        .order_by(PrereqDagVersion.version_no.desc())  # type: ignore[union-attr]
+        .order_by(PrereqDagVersion.version_no.desc())
         .limit(1)
     ).first()
     if dag_id is None:
@@ -318,7 +307,7 @@ def list_recent_exam_template_ids_for_user(
     recent_exam_ids_subquery = (
         select(ExamPaper.id)
         .where(ExamPaper.user_id == user_id, ExamPaper.subject == subject)
-        .order_by(ExamPaper.created_at.desc())  # type: ignore[union-attr]
+        .order_by(ExamPaper.created_at.desc())
         .limit(limit)
         .subquery()
     )

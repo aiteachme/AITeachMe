@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, ReviewTask, UserAnswerAttempt, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, UserKnowledgeState
 from app.utils.time import utcnow
 
 
@@ -54,36 +54,6 @@ def _apply_state_target_filter(
     return stmt
 
 
-def _apply_review_target_filter(
-    stmt,
-    *,
-    teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
-    target_kind: str | None = None,
-):
-    if teaching_unit_id is not None:
-        return stmt.where(
-            ReviewTask.teaching_unit_id == teaching_unit_id,
-            ReviewTask.knowledge_node_id.is_(None),
-        )
-    if knowledge_node_id is not None:
-        return stmt.where(
-            ReviewTask.knowledge_node_id == knowledge_node_id,
-            ReviewTask.teaching_unit_id.is_(None),
-        )
-    if target_kind == "unit":
-        return stmt.where(
-            ReviewTask.teaching_unit_id.is_not(None),
-            ReviewTask.knowledge_node_id.is_(None),
-        )
-    if target_kind == "node":
-        return stmt.where(
-            ReviewTask.knowledge_node_id.is_not(None),
-            ReviewTask.teaching_unit_id.is_(None),
-        )
-    return stmt
-
-
 def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserKnowledgeState:
     now = utcnow()
     target_kind, target_ref_id = _validate_target_ref(
@@ -103,6 +73,13 @@ def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserK
         "total_attempts": state.total_attempts,
         "correct_attempts": state.correct_attempts,
         "last_attempt_at": state.last_attempt_at,
+        "review_status": state.review_status,
+        "scheduled_review_at": state.scheduled_review_at,
+        "review_interval_days": state.review_interval_days,
+        "review_ease_factor": state.review_ease_factor,
+        "review_repetition_count": state.review_repetition_count,
+        "review_reason": state.review_reason,
+        "source_exam_paper_id": state.source_exam_paper_id,
         "state_version": state.state_version,
         "last_recomputed_at": state.last_recomputed_at,
         "stats_json": state.stats_json,
@@ -110,43 +87,22 @@ def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserK
     }
 
     stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
+    set_values = {
+        key: value
+        for key, value in insert_values.items()
+        if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_node_id"}
+    }
     if target_kind == "unit":
         stmt = stmt.on_conflict_do_update(
             index_elements=["user_id", "subject", "teaching_unit_id"],
             index_where=sa.text("knowledge_node_id IS NULL"),
-            set_={
-                "mastery_score": insert_values["mastery_score"],
-                "confidence_score": insert_values["confidence_score"],
-                "stability_score": insert_values["stability_score"],
-                "forgetting_due_at": insert_values["forgetting_due_at"],
-                "review_priority": insert_values["review_priority"],
-                "total_attempts": insert_values["total_attempts"],
-                "correct_attempts": insert_values["correct_attempts"],
-                "last_attempt_at": insert_values["last_attempt_at"],
-                "state_version": insert_values["state_version"],
-                "last_recomputed_at": insert_values["last_recomputed_at"],
-                "stats_json": insert_values["stats_json"],
-                "updated_at": insert_values["updated_at"],
-            },
+            set_=set_values,
         )
     else:
         stmt = stmt.on_conflict_do_update(
             index_elements=["user_id", "subject", "knowledge_node_id"],
             index_where=sa.text("teaching_unit_id IS NULL"),
-            set_={
-                "mastery_score": insert_values["mastery_score"],
-                "confidence_score": insert_values["confidence_score"],
-                "stability_score": insert_values["stability_score"],
-                "forgetting_due_at": insert_values["forgetting_due_at"],
-                "review_priority": insert_values["review_priority"],
-                "total_attempts": insert_values["total_attempts"],
-                "correct_attempts": insert_values["correct_attempts"],
-                "last_attempt_at": insert_values["last_attempt_at"],
-                "state_version": insert_values["state_version"],
-                "last_recomputed_at": insert_values["last_recomputed_at"],
-                "stats_json": insert_values["stats_json"],
-                "updated_at": insert_values["updated_at"],
-            },
+            set_=set_values,
         )
 
     session.exec(stmt)
@@ -283,19 +239,18 @@ def list_recent_wrong_attempt_summaries(
     stmt = (
         select(
             ExamPaperItem.stem_snapshot,
-            UserAnswerAttempt.answer_content,
+            ExamPaperItem.answer_content,
             ExamPaperItem.answer_snapshot,
-            UserAnswerAttempt.error_cause_label,
+            ExamPaperItem.error_cause_label,
             ExamPaperItem.explanation_snapshot,
         )
-        .join(ExamPaperItem, UserAnswerAttempt.exam_paper_item_id == ExamPaperItem.id)
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
             ExamPaper.user_id == user_id,
             ExamPaper.subject == subject,
-            UserAnswerAttempt.is_correct.is_(False),
+            ExamPaperItem.is_correct.is_(False),
         )
-        .order_by(UserAnswerAttempt.created_at.desc())
+        .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
         .limit(limit)
     )
     rows = session.exec(stmt).all()
@@ -319,36 +274,6 @@ def list_recent_wrong_attempt_summaries(
     return items
 
 
-def upsert_review_task(session: Session, task: ReviewTask) -> ReviewTask:
-    if task.status == "pending":
-        existing = find_pending_review(
-            session,
-            user_id=task.user_id,
-            subject=task.subject,
-            teaching_unit_id=task.teaching_unit_id,
-            knowledge_node_id=task.knowledge_node_id,
-        )
-        if existing is not None:
-            existing.task_type = task.task_type
-            existing.priority = task.priority
-            existing.scheduled_at = task.scheduled_at
-            existing.interval_days = task.interval_days
-            existing.ease_factor = task.ease_factor
-            existing.repetition_count = task.repetition_count
-            existing.reason = task.reason
-            existing.source_state_id = task.source_state_id
-            existing.source_exam_paper_id = task.source_exam_paper_id
-            session.add(existing)
-            session.commit()
-            session.refresh(existing)
-            return existing
-
-    session.add(task)
-    session.commit()
-    session.refresh(task)
-    return task
-
-
 def find_pending_review(
     session: Session,
     *,
@@ -356,17 +281,17 @@ def find_pending_review(
     subject: str,
     teaching_unit_id: int | None = None,
     knowledge_node_id: int | None = None,
-) -> ReviewTask | None:
+) -> UserKnowledgeState | None:
     _validate_target_ref(
         teaching_unit_id=teaching_unit_id,
         knowledge_node_id=knowledge_node_id,
     )
-    stmt = select(ReviewTask).where(
-        ReviewTask.user_id == user_id,
-        ReviewTask.subject == subject,
-        ReviewTask.status == "pending",
+    stmt = select(UserKnowledgeState).where(
+        UserKnowledgeState.user_id == user_id,
+        UserKnowledgeState.subject == subject,
+        UserKnowledgeState.review_status == "pending",
     )
-    stmt = _apply_review_target_filter(
+    stmt = _apply_state_target_filter(
         stmt,
         teaching_unit_id=teaching_unit_id,
         knowledge_node_id=knowledge_node_id,
@@ -380,21 +305,21 @@ def list_pending_reviews(
     user_id: str,
     subject: str,
     target_kind: str | None = None,
-) -> list[ReviewTask]:
+) -> list[UserKnowledgeState]:
     stmt = (
-        select(ReviewTask)
+        select(UserKnowledgeState)
         .where(
-            ReviewTask.user_id == user_id,
-            ReviewTask.subject == subject,
-            ReviewTask.status == "pending",
+            UserKnowledgeState.user_id == user_id,
+            UserKnowledgeState.subject == subject,
+            UserKnowledgeState.review_status == "pending",
         )
         .order_by(
-            ReviewTask.priority.desc(),
-            ReviewTask.scheduled_at.asc(),
-            ReviewTask.id.asc(),
+            UserKnowledgeState.review_priority.desc(),
+            UserKnowledgeState.scheduled_review_at.asc(),
+            UserKnowledgeState.id.asc(),
         )
     )
-    stmt = _apply_review_target_filter(stmt, target_kind=target_kind)
+    stmt = _apply_state_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt).all())
 
 
@@ -404,19 +329,21 @@ def complete_review_task(
     task_id: int,
     user_id: str,
     subject: str,
-) -> ReviewTask | None:
-    stmt = select(ReviewTask).where(
-        ReviewTask.id == task_id,
-        ReviewTask.user_id == user_id,
-        ReviewTask.subject == subject,
+) -> UserKnowledgeState | None:
+    stmt = select(UserKnowledgeState).where(
+        UserKnowledgeState.id == task_id,
+        UserKnowledgeState.user_id == user_id,
+        UserKnowledgeState.subject == subject,
     )
-    task = session.exec(stmt).first()
-    if task is None:
+    state = session.exec(stmt).first()
+    if state is None:
         return None
 
-    task.status = "completed"
-    task.completed_at = utcnow()
-    session.add(task)
+    state.review_status = "completed"
+    state.scheduled_review_at = None
+    state.review_reason = None
+    state.updated_at = utcnow()
+    session.add(state)
     session.commit()
-    session.refresh(task)
-    return task
+    session.refresh(state)
+    return state

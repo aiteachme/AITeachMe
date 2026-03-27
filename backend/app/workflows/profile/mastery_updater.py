@@ -1,12 +1,4 @@
-"""掌握度更新：纯函数 + 试卷驱动更新流程。
-
-Reads DB: ``exam_paper``, ``exam_paper_item``, ``user_answer_attempt`` and existing
-``user_knowledge_state`` rows.
-Writes DB: ``user_knowledge_state`` mastery/confidence/stability aggregates and related timestamps.
-Writes FS: none.
-Idempotency: guarded by paper-consumption semantics; once a paper is consumed, reruns should not
-double-apply the same attempts.
-"""
+"""Mastery updater driven by graded exam paper items."""
 
 from __future__ import annotations
 
@@ -15,14 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import exp
 
-import structlog
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.models import ExamPaper, ExamPaperItem, UserKnowledgeState
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
-
-logger = structlog.get_logger()
 
 _DIFFICULTY_WEIGHT = {
     "easy": 0.8,
@@ -32,25 +21,15 @@ _DIFFICULTY_WEIGHT = {
 
 
 @dataclass(frozen=True)
-class MasteryAttempt:
-    """单次作答样本（纯函数输入）。"""
-
+class _WeightedAttempt:
     is_correct: bool
     difficulty: str
     answered_at: datetime
-
-
-@dataclass(frozen=True)
-class _WeightedAttempt(MasteryAttempt):
-    """带覆盖权重的作答样本（流程内部使用）。"""
-
     coverage_weight: float = 1.0
 
 
 @dataclass(frozen=True)
 class MasteryUpdateResult:
-    """掌握度更新结果。"""
-
     exam_paper_id: int
     states_updated: int
     updated_state_ids: list[int]
@@ -73,51 +52,6 @@ def _time_decay_weight(*, answered_at: datetime, now: datetime, half_life_days: 
     age_seconds = max(0.0, (now - answered_at).total_seconds())
     age_days = age_seconds / 86400.0
     return exp(-age_days / half_life_days)
-
-
-def compute_mastery_score(
-    *,
-    attempts: list[MasteryAttempt],
-    now: datetime | None = None,
-    half_life_days: float = 30.0,
-) -> float:
-    """按时间衰减 + 难度权重计算掌握度。"""
-
-    if not attempts:
-        return 0.0
-
-    reference_now = _to_utc(now or datetime.now(timezone.utc))
-
-    weighted_total = 0.0
-    weighted_correct = 0.0
-    for item in attempts:
-        answered_at_utc = _to_utc(item.answered_at)
-        weight = _difficulty_weight(item.difficulty) * _time_decay_weight(
-            answered_at=answered_at_utc,
-            now=reference_now,
-            half_life_days=half_life_days,
-        )
-        weighted_total += weight
-        if item.is_correct:
-            weighted_correct += weight
-
-    if weighted_total <= 0:
-        return 0.0
-    return min(1.0, max(0.0, weighted_correct / weighted_total))
-
-
-def compute_confidence_score(*, total_attempts: int) -> float:
-    """根据总作答次数估计置信度。"""
-
-    bounded_attempts = max(0, total_attempts)
-    return min(1.0, bounded_attempts / 10.0)
-
-
-def compute_stability_score(*, consecutive_correct: int) -> float:
-    """根据连续正确次数估计记忆稳定性。"""
-
-    bounded_streak = max(0, consecutive_correct)
-    return min(1.0, bounded_streak / 5.0)
 
 
 def _compute_weighted_mastery_score(
@@ -145,6 +79,16 @@ def _compute_weighted_mastery_score(
     if weighted_total <= 0:
         return 0.0
     return min(1.0, max(0.0, weighted_correct / weighted_total))
+
+
+def compute_confidence_score(*, total_attempts: int) -> float:
+    bounded_attempts = max(0, total_attempts)
+    return min(1.0, bounded_attempts / 10.0)
+
+
+def compute_stability_score(*, consecutive_correct: int) -> float:
+    bounded_streak = max(0, consecutive_correct)
+    return min(1.0, bounded_streak / 5.0)
 
 
 def _compute_consecutive_correct(
@@ -217,6 +161,7 @@ def _upsert_state_from_attempts(
     knowledge_node_id: int | None = None,
     attempts: list[_WeightedAttempt],
     now: datetime,
+    source_exam_paper_id: int | None = None,
 ) -> UserKnowledgeState | None:
     if not attempts:
         return None
@@ -265,6 +210,13 @@ def _upsert_state_from_attempts(
         total_attempts=total_attempts,
         correct_attempts=correct_attempts,
         last_attempt_at=last_attempt_at,
+        review_status=(existing.review_status if existing is not None else "idle"),
+        scheduled_review_at=(existing.scheduled_review_at if existing is not None else None),
+        review_interval_days=(existing.review_interval_days if existing is not None else 1),
+        review_ease_factor=(existing.review_ease_factor if existing is not None else 2.5),
+        review_repetition_count=(existing.review_repetition_count if existing is not None else 0),
+        review_reason=(existing.review_reason if existing is not None else None),
+        source_exam_paper_id=source_exam_paper_id,
         state_version=((existing.state_version + 1) if existing is not None else 1),
         last_recomputed_at=now,
         stats_json=(existing.stats_json if existing is not None else "{}"),
@@ -274,36 +226,25 @@ def _upsert_state_from_attempts(
 
 
 def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpdateResult:
-    """根据试卷作答结果更新双粒度掌握度。
-
-    幂等语义：
-    - 若试卷已经是 graded 状态，则不重复入账。
-    """
+    """Update mastery from graded exam paper items."""
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
     if exam_paper is None:
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
 
-    items = list(
-        session.exec(select(ExamPaperItem).where(ExamPaperItem.exam_paper_id == exam_paper_id)).all()
-    )
-    item_by_id = {item.id: item for item in items if item.id is not None}
-    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
+    items = exams_repo.list_items_by_paper(session, exam_paper_id)
 
     unit_attempts: dict[int, list[_WeightedAttempt]] = {}
     node_attempts: dict[int, list[_WeightedAttempt]] = {}
 
-    for attempt in attempts:
-        if attempt.is_correct is None:
+    for item in items:
+        if item.is_correct is None:
             continue
-        item = item_by_id.get(attempt.exam_paper_item_id)
-        if item is None:
-            continue
-
+        answered_at = item.answered_at or item.updated_at or item.created_at
         base = _WeightedAttempt(
-            is_correct=attempt.is_correct,
+            is_correct=item.is_correct,
             difficulty=item.difficulty,
-            answered_at=attempt.created_at,
+            answered_at=answered_at,
             coverage_weight=1.0,
         )
         unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
@@ -311,9 +252,9 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
         for node_id, normalized_weight in _parse_node_links(item.node_refs_json):
             node_attempts.setdefault(node_id, []).append(
                 _WeightedAttempt(
-                    is_correct=attempt.is_correct,
+                    is_correct=item.is_correct,
                     difficulty=item.difficulty,
-                    answered_at=attempt.created_at,
+                    answered_at=answered_at,
                     coverage_weight=normalized_weight,
                 )
             )
@@ -329,6 +270,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             teaching_unit_id=target_id,
             attempts=target_attempts,
             now=now,
+            source_exam_paper_id=exam_paper_id,
         )
         if persisted is not None and persisted.id is not None:
             updated_state_ids.append(persisted.id)
@@ -341,6 +283,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             knowledge_node_id=target_id,
             attempts=target_attempts,
             now=now,
+            source_exam_paper_id=exam_paper_id,
         )
         if persisted is not None and persisted.id is not None:
             updated_state_ids.append(persisted.id)

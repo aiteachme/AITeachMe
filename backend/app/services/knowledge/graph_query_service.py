@@ -203,7 +203,7 @@ def get_chunk_context(
     return ChunkContextResponse(
         chunk_id=chunk.id,  # type: ignore[arg-type]
         document_id=document.id,  # type: ignore[arg-type]
-        document_title=document.title,
+        document_title=document.filename,
         chunk_title=chunk.title,
         chunk_header_path=chunk.header_path,
         chunk_content=chunk.content,

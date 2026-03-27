@@ -1,9 +1,9 @@
 """Support helpers for digest graph workflow nodes.
 
-Reads DB: ``raw_file``, ``document``, ``document_chunk``.
-Writes DB: ``document``, ``document_chunk``, ``chunk_embeddings`` and document step updates.
+Reads DB: ``raw_file``, ``retrieval_chunk``.
+Writes DB: ``raw_file``, ``retrieval_chunk``, ``chunk_embeddings`` and raw-file step updates.
 Writes FS: reads ingest-produced markdown files from subject-scoped storage.
-Idempotency: document/chunk materialization reuses existing rows and only inserts what is missing.
+Idempotency: raw-file/chunk materialization reuses existing rows and only inserts what is missing.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.workflows.digest.kg.services.cleaner import clean_markdown
 from app.workflows.digest.kg.services.embedder import embed_chunks
 from app.core.database import managed_session
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
-from app.models.knowledge import Document, DocumentChunk
+from app.models import RetrievalChunk
 from app.repositories import knowledge_repo
 from app.workflows.digest.kg.state import KGDigestState
 
@@ -36,16 +36,16 @@ def workflow_logger(state: KGDigestState) -> structlog.stdlib.BoundLogger:
     )
 
 
-def get_document_by_source_file(
+def get_raw_file_record(
     session: Session,
     *,
     subject: str,
     raw_file_id: int,
-) -> Document | None:
+) -> RawFile | None:
     return session.exec(
-        select(Document).where(
-            Document.subject == subject,
-            Document.source_file_id == raw_file_id,
+        select(RawFile).where(
+            RawFile.subject == subject,
+            RawFile.id == raw_file_id,
         )
     ).first()
 
@@ -61,7 +61,7 @@ def load_clean_markdown(raw_file: RawFile) -> str:
     return clean_markdown(markdown_path.read_text(encoding="utf-8"))
 
 
-async def ensure_document_chunks_for_file(
+async def ensure_retrieval_chunks_for_file(
     session: Session,
     *,
     raw_file: RawFile,
@@ -71,7 +71,7 @@ async def ensure_document_chunks_for_file(
         raise ValueError("RawFile.id should not be empty after persistence.")
 
     markdown_content = load_clean_markdown(raw_file)
-    document = get_document_by_source_file(
+    document = get_raw_file_record(
         session,
         subject=raw_file.subject,
         raw_file_id=raw_file_id,
@@ -81,10 +81,14 @@ async def ensure_document_chunks_for_file(
         document = knowledge_repo.bulk_create_documents(
             session,
             [
-                Document(
+                RawFile(
+                    id=raw_file_id,
+                    uid=raw_file.uid,
                     subject=raw_file.subject,
-                    source_file_id=raw_file_id,
-                    title=raw_file.filename,
+                    filename=raw_file.filename,
+                    filetype=raw_file.filetype,
+                    file_path=raw_file.file_path,
+                    markdown_path=raw_file.markdown_path,
                     markdown_content=markdown_content,
                     current_step=DigestStep.STORED.value,
                 )
@@ -101,7 +105,7 @@ async def ensure_document_chunks_for_file(
 
     document_id = document.id
     if document_id is None:
-        raise ValueError("Document.id should not be empty after persistence.")
+        raise ValueError("RawFile.id should not be empty after persistence.")
 
     existing_chunks = knowledge_repo.get_chunks_by_document_id(session, document_id)
     if existing_chunks:
@@ -111,7 +115,8 @@ async def ensure_document_chunks_for_file(
     db_chunks = knowledge_repo.bulk_create_chunks(
         session,
         [
-            DocumentChunk(
+            RetrievalChunk(
+                subject=raw_file.subject,
                 document_id=document_id,
                 title=chunk.title,
                 level=chunk.level,
@@ -129,7 +134,7 @@ async def ensure_document_chunks_for_file(
             knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
         except Exception:
             logger.exception(
-                "ensure_document_chunks_embedding_failed",
+                "ensure_retrieval_chunks_embedding_failed",
                 subject=raw_file.subject,
                 raw_file_id=raw_file_id,
                 filename=raw_file.filename,
@@ -170,7 +175,7 @@ async def prepare_chunk_ids_for_files(
             )
             continue
 
-        document_id, file_chunk_ids = await ensure_document_chunks_for_file(
+        document_id, file_chunk_ids = await ensure_retrieval_chunks_for_file(
             session,
             raw_file=raw_file,
         )
@@ -189,8 +194,8 @@ def open_managed_session():
 
 
 __all__ = [
-    "ensure_document_chunks_for_file",
-    "get_document_by_source_file",
+    "ensure_retrieval_chunks_for_file",
+    "get_raw_file_record",
     "load_clean_markdown",
     "open_managed_session",
     "prepare_chunk_ids_for_files",

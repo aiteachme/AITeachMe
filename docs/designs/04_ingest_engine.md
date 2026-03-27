@@ -27,13 +27,15 @@ Ingest 不负责直接产出知识图谱或知识文档，它只负责把材料�
 | service     | `backend/app/services/file_service.py`   |
 | workflow    | `backend/app/workflows/ingest/*`         |
 | 路径 helper | `backend/app/services/upload_support.py` |
-| 核心表      | `raw_file`、`raw_file_asset`             |
+| 核心表      | `raw_file`                               |
 
 补充说明：
 
-- Ingest 的正式输出是 `raw_file + raw_file_asset + markdown/assets 文件产物`
-- 当前代码里后续仍会经过 `document/document_chunk` 过渡 materialize
-- 目标态数据库语义已经收口到 `retrieval_chunk`
+- Ingest 的正式输出是 `raw_file + raw_markdown/assets 文件产物`
+- 图片、附件和抽取资源清单并入 `raw_file.asset_manifest_json`
+- 材料画像优先写入 `raw_file.material_profile_json`，必要时上推为 `subject.profile_json` 的先验信号
+- 当前代码里下游切块已经直接落到 `retrieval_chunk`
+- `document / document_chunk` 只作为已废弃历史命名保留在设计说明里，不再作为运行时主模型
 
 ---
 
@@ -122,7 +124,7 @@ load_raw_file → compute_fingerprint → classify_file → plan_parse → fast_
 
 - `raw_file.status = completed`
 - `raw_file.ingest_status = FAST_PARSED`（新状态）
-- `raw_file.markdown_path` 指向快速版 Markdown
+- `raw_file.markdown_uri` 指向快速版 Markdown
 - 发布 `IngestFileFastParsedEvent`
 - **前端收到此事件或轮询到此状态后，即可展示解析结果**
 - **此时后台自动触发 Phase 2**
@@ -404,7 +406,7 @@ options.timeout_s = 150                 # 延长超时时间
 
 #### `build_finalize_fast_parse_node`（**新，替代原 `finalize_success`**）
 
-写表 `raw_file`：`status=completed`、`ingest_status=FAST_PARSED`、`markdown_path`、`asset_dir` 等。
+写表 `raw_file`：`status=completed`、`ingest_status=FAST_PARSED`、`markdown_uri`、`asset_manifest_json`、`parse_metadata_json` 等。
 发布 `IngestFileFastParsedEvent`。
 **自动触发 Phase 2**。
 
@@ -421,7 +423,7 @@ options.timeout_s = 150                 # 延长超时时间
 
 #### `build_finalize_deep_enhance_node`（**新**）
 
-写表 `raw_file`：`ingest_status=READY_FOR_DIGEST`、更新 `parse_metadata`（含 OCR 统计）。
+写表 `raw_file`：`ingest_status=READY_FOR_DIGEST`、更新 `parse_metadata_json`（含 OCR 统计）。
 发布 `IngestFileReadyForDigestEvent`。
 
 ---
@@ -461,7 +463,7 @@ options.timeout_s = 150                 # 延长超时时间
 
 Ingest 的 Phase 2 结束后，下游并不是直接消费 `raw_file` 本身，而是消费：
 
-`raw_file.markdown_path -> retrieval_chunk -> chunk_embedding`
+`raw_file.markdown_uri -> retrieval_chunk`
 
 这个桥接发生在：
 
@@ -469,7 +471,7 @@ Ingest 的 Phase 2 结束后，下游并不是直接消费 `raw_file` 本身，�
 
 所以当前的正式材料层应理解为：
 
-`RawFile -> raw_markdown / assets -> Document / DocumentChunk`
+`RawFile -> raw_markdown / assets -> RetrievalChunk`
 
 Digest 引擎在消费之前必须确认 `ingest_status == READY_FOR_DIGEST`（或降级接受 `ENHANCE_FAILED`）。
 

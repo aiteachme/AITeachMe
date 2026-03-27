@@ -30,9 +30,9 @@ from app.schemas.chats import (
     ChatClearData,
     ChatContextItem,
     ChatMessageItem,
-    ChatThreadTurnItem,
     ChatSessionDeleteData,
     ChatSessionItem,
+    ChatThreadTurnItem,
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.services.presenters import require_id
@@ -51,8 +51,6 @@ def list_chat_sessions(
     page: int,
     size: int,
 ) -> PaginatedData[ChatSessionItem]:
-    """Read paginated chat sessions."""
-
     items, total = list_sessions_by_subject(
         session,
         subject,
@@ -85,13 +83,11 @@ def create_session(
     title: str | None = None,
     source: str | None = None,
 ) -> ChatSessionItem:
-    """Create one chat session."""
-
     created = create_chat_session(
         session,
         subject=subject,
         source=source,
-        title=(title or "新会话").strip() or "新会话",
+        title=(title or "New Chat").strip() or "New Chat",
     )
     return _to_chat_session_item(created, message_count=0)
 
@@ -104,8 +100,6 @@ def list_chat_threads(
     size: int,
     source: str | None = "quick_chat",
 ) -> PaginatedData[ChatThreadTurnItem]:
-    """Read paginated doc-selection chat turns with message payload."""
-
     turn_heads, total = list_thread_turn_heads_by_subject(
         session,
         subject,
@@ -144,8 +138,6 @@ def delete_session(
     subject: str,
     session_id: str,
 ) -> ChatSessionDeleteData:
-    """Delete one session and all its messages."""
-
     deleted_message_count = delete_chat_session(
         session,
         subject=subject,
@@ -165,8 +157,6 @@ def list_chat_history(
     size: int,
     session_id: str | None = None,
 ) -> PaginatedData[ChatMessageItem]:
-    """Read paginated chat history."""
-
     items, total = list_messages_by_subject(
         session,
         subject,
@@ -188,8 +178,6 @@ def clear_chat_history(
     subject: str,
     session_id: str | None = None,
 ) -> ChatClearData:
-    """Clear chat history for one subject or one session."""
-
     deleted_count = clear_messages_by_subject(
         session,
         subject,
@@ -210,8 +198,6 @@ async def chat_stream(
     selected_context: str | None = None,
     source_chunk_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Stream one tutoring response."""
-
     resolved_session = _resolve_chat_session(
         session,
         subject=subject,
@@ -308,7 +294,7 @@ async def _stream_direct_chat(
 
     assistant_content = "".join(assistant_tokens).strip()
     if not assistant_content:
-        assistant_content = "已收到问题，但当前没有返回内容。"
+        assistant_content = "I received the question, but no answer content was generated."
 
     create_message_pair(
         session,
@@ -368,14 +354,14 @@ def _resolve_chat_session(
 def _build_session_title(question: str) -> str:
     text = " ".join(question.strip().split())
     if not text:
-        return "新会话"
+        return "New Chat"
     max_len = 24
     return text[:max_len] if len(text) <= max_len else f"{text[:max_len]}..."
 
 
 def _is_placeholder_title(title: str) -> bool:
     normalized = title.strip().lower()
-    return normalized in {"", "新会话", "new chat"}
+    return normalized in {"", "new chat"}
 
 
 def _parse_sse_payload(payload: str) -> tuple[str | None, object | None]:
@@ -403,7 +389,7 @@ def _to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
         turn_id=message.turn_id,
         role=message.role,
         content=message.content,
-        contexts=_normalize_chat_contexts(message.contexts),
+        contexts=_normalize_chat_contexts(message.contexts_json),
         created_at=message.created_at,
     )
 

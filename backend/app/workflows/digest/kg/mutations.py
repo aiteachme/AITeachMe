@@ -43,10 +43,8 @@ def create_new_node(
         revision_reason="new_evidence",
         is_current=True,
     )
-    revision = kg_repo.create_knowledge_revision(session, revision)
-    node.current_revision_id = revision.id
-    session.add(node)
-    session.commit()
+    kg_repo.create_knowledge_revision(session, revision)
+    session.refresh(node)
 
     alias = KnowledgeAlias(
         node_id=node.id,  # type: ignore[arg-type]
@@ -88,8 +86,7 @@ def create_updated_revision(
         revision_reason="new_evidence",
         is_current=True,
     )
-    revision = kg_repo.create_knowledge_revision(session, revision)
-    node.current_revision_id = revision.id
+    kg_repo.create_knowledge_revision(session, revision)
     node.updated_at = utcnow()
     session.add(node)
     session.commit()

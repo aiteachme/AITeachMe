@@ -37,19 +37,15 @@ class ReviewTaskResponse(BaseModel):
     id: int
     user_id: str
     subject: str
-    task_type: str
     target_kind: str
     teaching_unit_id: int | None = None
     knowledge_node_id: int | None = None
     priority: float
-    scheduled_at: datetime
+    scheduled_at: datetime | None = None
     status: str
     interval_days: int
     ease_factor: float
     repetition_count: int
     reason: str | None = None
-    source_state_id: int | None = None
     source_exam_paper_id: int | None = None
-    created_at: datetime
-    completed_at: datetime | None = None
-    expired_at: datetime | None = None
+    updated_at: datetime

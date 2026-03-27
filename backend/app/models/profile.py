@@ -55,59 +55,14 @@ class UserKnowledgeState(SQLModel, table=True):
     total_attempts: int = Field(default=0, ge=0)
     correct_attempts: int = Field(default=0, ge=0)
     last_attempt_at: datetime | None = Field(default=None)
+    review_status: str = Field(default="idle", index=True)
+    scheduled_review_at: datetime | None = Field(default=None, index=True)
+    review_interval_days: int = Field(default=1, ge=1)
+    review_ease_factor: float = Field(default=2.5, ge=1.3)
+    review_repetition_count: int = Field(default=0, ge=0)
+    review_reason: str | None = Field(default=None)
+    source_exam_paper_id: int | None = Field(default=None, foreign_key="exam_paper.id", index=True)
     state_version: int = Field(default=1, ge=1)
     last_recomputed_at: datetime | None = Field(default=None)
     stats_json: str = Field(default="{}")
     updated_at: datetime = Field(default_factory=utcnow)
-
-
-class ReviewTask(SQLModel, table=True):
-    """Scheduled review task."""
-
-    __tablename__ = "review_task"
-    __table_args__ = (
-        sa.CheckConstraint(
-            (
-                "(teaching_unit_id IS NOT NULL AND knowledge_node_id IS NULL) "
-                "OR (teaching_unit_id IS NULL AND knowledge_node_id IS NOT NULL)"
-            ),
-            name="ck_review_task_target",
-        ),
-        sa.Index(
-            "uq_review_task_pending_unit",
-            "user_id",
-            "subject",
-            "teaching_unit_id",
-            unique=True,
-            sqlite_where=sa.text("knowledge_node_id IS NULL AND status = 'pending'"),
-            postgresql_where=sa.text("knowledge_node_id IS NULL AND status = 'pending'"),
-        ),
-        sa.Index(
-            "uq_review_task_pending_node",
-            "user_id",
-            "subject",
-            "knowledge_node_id",
-            unique=True,
-            sqlite_where=sa.text("teaching_unit_id IS NULL AND status = 'pending'"),
-            postgresql_where=sa.text("teaching_unit_id IS NULL AND status = 'pending'"),
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    user_id: str = Field(default="local", index=True)
-    subject: str = Field(index=True)
-    task_type: str
-    teaching_unit_id: int | None = Field(default=None, foreign_key="teaching_unit.id", index=True)
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
-    priority: float = Field(default=0.0)
-    scheduled_at: datetime
-    status: str = Field(default="pending", index=True)
-    interval_days: int = Field(default=1, ge=1)
-    ease_factor: float = Field(default=2.5, ge=1.3)
-    repetition_count: int = Field(default=0, ge=0)
-    reason: str | None = Field(default=None)
-    source_state_id: int | None = Field(default=None, foreign_key="user_knowledge_state.id", index=True)
-    source_exam_paper_id: int | None = Field(default=None, foreign_key="exam_paper.id", index=True)
-    created_at: datetime = Field(default_factory=utcnow)
-    completed_at: datetime | None = Field(default=None)
-    expired_at: datetime | None = Field(default=None)

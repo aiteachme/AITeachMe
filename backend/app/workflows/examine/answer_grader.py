@@ -1,10 +1,4 @@
-"""判卷器：判分 + 错因标注。
-
-Reads DB: ``exam_paper``, ``exam_paper_item``, ``user_answer_attempt`` and referenced knowledge nodes.
-Writes DB: graded ``user_answer_attempt`` fields such as correctness, scores and error labels.
-Writes FS: none.
-Idempotency: reruns recompute grading for the same attempts and overwrite grading fields in place.
-"""
+"""Exam grader that writes grading results onto ExamPaperItem rows."""
 
 from __future__ import annotations
 
@@ -14,19 +8,12 @@ from dataclasses import dataclass
 
 import structlog
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.core.llm import acompletion
 from app.core.model_router import TaskType
 from app.core.prompt_loader import populate_prompt
-from app.models import (
-    ErrorCauseLabel,
-    ExamPaper,
-    ExamPaperItem,
-    KnowledgeNode,
-    QuestionType,
-    UserAnswerAttempt,
-)
+from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, KnowledgeNode, QuestionType
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER
 from app.utils.time import utcnow
@@ -39,19 +26,14 @@ logger = structlog.get_logger()
 
 
 def normalize_answer(text: str) -> str:
-    """Normalize answer text for exact-match grading."""
-
     return (text or "").strip().lower()
 
 
 def exact_match_grade(user_answer: str, correct_answer: str) -> bool:
-    """Exact-match grade using normalized answer strings."""
-
     return normalize_answer(user_answer) == normalize_answer(correct_answer)
 
 
 class GradeResultItem(BaseModel):
-    attempt_id: int
     exam_paper_item_id: int
     is_correct: bool
     score_obtained: float
@@ -150,8 +132,7 @@ async def _infer_error_cause_label(
 
 
 @dataclass
-class _AttemptContext:
-    attempt: UserAnswerAttempt
+class _ItemContext:
     item: ExamPaperItem
     user_answer: str
     correct_answer: str
@@ -161,60 +142,50 @@ class _AttemptContext:
 
 
 async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
-    """Grade all attempts for a paper and persist grading fields."""
+    """Grade all items for a paper and persist grading fields."""
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
     if exam_paper is None:
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
 
-    attempts = exams_repo.list_attempts_by_paper(session, exam_paper_id)
-    items = list(
-        session.exec(
-            select(ExamPaperItem).where(ExamPaperItem.exam_paper_id == exam_paper_id)
-        ).all()
-    )
-    item_by_id = {item.id: item for item in items if item.id is not None}
+    items = exams_repo.list_items_by_paper(session, exam_paper_id)
 
     graded_items: list[GradeResultItem] = []
     correct_items = 0
 
     objective_types = {QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value}
-    to_grade: list[_AttemptContext] = []
-    for attempt in attempts:
-        item = item_by_id.get(attempt.exam_paper_item_id)
-        if item is None:
+    to_grade: list[_ItemContext] = []
+    for item in items:
+        if item.answer_content is None:
             continue
 
-        if attempt.is_correct is not None:
-            score_max = attempt.score_max if attempt.score_max is not None else 1.0
-            score_obtained = attempt.score_obtained
+        if item.is_correct is not None:
+            score_max = item.score_max if item.score_max is not None else 1.0
+            score_obtained = item.score_obtained
             if score_obtained is None:
-                score_obtained = 1.0 if attempt.is_correct else 0.0
-            if attempt.is_correct:
+                score_obtained = 1.0 if item.is_correct else 0.0
+            if item.is_correct:
                 correct_items += 1
             graded_items.append(
                 GradeResultItem(
-                    attempt_id=attempt.id or 0,
-                    exam_paper_item_id=attempt.exam_paper_item_id,
-                    is_correct=attempt.is_correct,
+                    exam_paper_item_id=item.id or 0,
+                    is_correct=item.is_correct,
                     score_obtained=score_obtained,
                     score_max=score_max,
-                    error_cause_label=attempt.error_cause_label,
+                    error_cause_label=item.error_cause_label,
                 )
             )
             continue
 
         to_grade.append(
-            _AttemptContext(
-                attempt=attempt,
+            _ItemContext(
                 item=item,
-                user_answer=attempt.answer_content or "",
+                user_answer=item.answer_content or "",
                 correct_answer=item.answer_snapshot or "",
                 question_type=item.question_type,
             )
         )
 
-    # 1) Grade short-answer questions concurrently.
     short_answer_indices = [
         idx
         for idx, entry in enumerate(to_grade)
@@ -244,11 +215,10 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         if entry.is_correct is None:
             entry.is_correct = exact_match_grade(entry.user_answer, entry.correct_answer)
 
-    # 2) Infer labels for wrong short-answer questions concurrently.
     wrong_short_answer_indices = [
         idx
         for idx, entry in enumerate(to_grade)
-        if (entry.is_correct is False and entry.question_type == QuestionType.SHORT_ANSWER.value)
+        if entry.is_correct is False and entry.question_type == QuestionType.SHORT_ANSWER.value
     ]
     if wrong_short_answer_indices:
         contexts = {
@@ -276,25 +246,25 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         if entry.is_correct:
             entry.error_cause_label = None
         elif entry.error_cause_label is None:
-            # Avoid extra LLM latency on objective-question mistakes.
             entry.error_cause_label = ErrorCauseLabel.UNKNOWN.value
 
-        entry.attempt.is_correct = entry.is_correct
-        entry.attempt.score_max = 1.0
-        entry.attempt.score_obtained = 1.0 if entry.is_correct else 0.0
-        entry.attempt.error_cause_label = entry.error_cause_label
-        session.add(entry.attempt)
+        entry.item.is_correct = entry.is_correct
+        entry.item.score_max = 1.0
+        entry.item.score_obtained = 1.0 if entry.is_correct else 0.0
+        entry.item.error_cause_label = entry.error_cause_label
+        entry.item.graded_at = utcnow()
+        entry.item.updated_at = utcnow()
+        session.add(entry.item)
 
         if entry.is_correct:
             correct_items += 1
         graded_items.append(
             GradeResultItem(
-                attempt_id=entry.attempt.id or 0,
-                exam_paper_item_id=entry.attempt.exam_paper_item_id,
+                exam_paper_item_id=entry.item.id or 0,
                 is_correct=entry.is_correct,
-                score_obtained=entry.attempt.score_obtained,
-                score_max=entry.attempt.score_max,
-                error_cause_label=entry.attempt.error_cause_label,
+                score_obtained=entry.item.score_obtained or 0.0,
+                score_max=entry.item.score_max or 1.0,
+                error_cause_label=entry.item.error_cause_label,
             )
         )
 
