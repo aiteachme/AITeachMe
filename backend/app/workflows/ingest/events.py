@@ -35,8 +35,22 @@ class IngestFileClassifiedEvent:
 
 
 @dataclass(slots=True)
+class IngestFileFastParsedEvent:
+    """Phase 1 complete – markdown available for preview."""
+
+    event_name: ClassVar[str] = "ingest.file.fast_parsed"
+
+    subject: str
+    file_id: int
+    parser_used: str
+    markdown_chars: int
+    image_count: int
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
 class IngestFileParsedEvent:
-    """A raw file has been converted into normalized markdown."""
+    """A raw file has been converted into normalized markdown (legacy compat)."""
 
     event_name: ClassVar[str] = "ingest.file.parsed"
 
@@ -49,8 +63,19 @@ class IngestFileParsedEvent:
 
 
 @dataclass(slots=True)
+class IngestFileEnhanceStartedEvent:
+    """Phase 2 deep enhancement has started."""
+
+    event_name: ClassVar[str] = "ingest.file.enhance.started"
+
+    subject: str
+    file_id: int
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
 class IngestFileReadyForDigestEvent:
-    """A raw file is ready for downstream digest processing."""
+    """Phase 2 complete – file ready for downstream digest processing."""
 
     event_name: ClassVar[str] = "ingest.file.ready_for_digest"
 
@@ -60,8 +85,20 @@ class IngestFileReadyForDigestEvent:
 
 
 @dataclass(slots=True)
+class IngestFileEnhanceFailedEvent:
+    """Phase 2 deep enhancement has failed (Phase 1 result still usable)."""
+
+    event_name: ClassVar[str] = "ingest.file.enhance.failed"
+
+    subject: str
+    file_id: int
+    error_message: str
+    occurred_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
 class IngestFileParseFailedEvent:
-    """A raw file parse workflow has failed."""
+    """Phase 1 fast parse has failed."""
 
     event_name: ClassVar[str] = "ingest.file.parse.failed"
 

@@ -40,7 +40,12 @@ logger = structlog.get_logger()
 def _markdown_ready(raw_file: RawFile) -> bool:
     return (
         raw_file.status == TaskStatus.COMPLETED.value
-        and raw_file.ingest_status == IngestStatus.READY_FOR_DIGEST.value
+        and raw_file.ingest_status in (
+            IngestStatus.FAST_PARSED.value,       # Phase 1 即可构建，不阻塞
+            IngestStatus.ENHANCING.value,          # Phase 2 进行中也可构建
+            IngestStatus.READY_FOR_DIGEST.value,
+            IngestStatus.ENHANCE_FAILED.value,     # Phase 2 失败，Phase 1 降级可用
+        )
         and bool(raw_file.parsed_markdown.strip())
     )
 

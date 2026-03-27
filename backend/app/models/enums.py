@@ -359,12 +359,22 @@ class KnowledgeDocStatus(str, Enum):
 
 
 class IngestStatus(str, Enum):
-    """Ingest 流水线状态。"""
+    """Ingest 流水线状态（两阶段架构）。
+
+    Phase 1 (Fast Parse):  PENDING → CLASSIFYING → FAST_PARSING → FAST_PARSED
+    Phase 2 (Deep Enhance): FAST_PARSED → ENHANCING → READY_FOR_DIGEST
+    """
 
     PENDING = "pending"
     CLASSIFYING = "classifying"
-    PARSING = "parsing"
-    VALIDATING = "validating"
+    FAST_PARSING = "fast_parsing"
+    FAST_PARSED = "fast_parsed"
+    ENHANCING = "enhancing"
     READY_FOR_DIGEST = "ready_for_digest"
+    ENHANCE_FAILED = "enhance_failed"
     RETRY_PENDING = "retry_pending"
     FAILED = "failed"
+
+    # 向后兼容别名 —— 数据库中可能残留旧值
+    PARSING = "fast_parsing"
+    VALIDATING = "fast_parsed"

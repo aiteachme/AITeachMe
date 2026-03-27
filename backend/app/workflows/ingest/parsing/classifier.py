@@ -155,8 +155,8 @@ def _classify_pdf(path: Path) -> ClassificationResult:
     # 优化分类逻辑：识别数学试卷类文档
     if avg_density < 30:
         file_category = "scanned_pdf"
-        recommended_parser = "pymupdf_ocr_vision"
-        fallback_parsers = ["pymupdf_native", "markitdown"]
+        recommended_parser = "pymupdf_native"
+        fallback_parsers = ["markitdown", "pymupdf4llm"]
     elif formula_ratio > 0.5 and avg_density < 300:
         # 数学试卷类：公式密集 + 文字适中
         file_category = "formula_heavy_pdf"

@@ -120,22 +120,9 @@ def _preferred_parser_order(
         return ["text_native"]
 
     if extension == ".pdf":
-        if classification and classification.file_category == "scanned_pdf":
-            if llm_enabled:
-                return ["pymupdf_ocr_vision", "pymupdf_native", "markitdown", "pymupdf4llm"]
-            return ["pymupdf_native", "markitdown", "pymupdf4llm"]
-        if classification and classification.file_category == "formula_heavy_pdf":
-            # 数学试卷类：优先 native 提取 drawing，再用 vision OCR 补强
-            if llm_enabled:
-                return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-            return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-        if file_mb >= _LARGE_FILE_MB or estimated_pages >= _LARGE_DOC_PAGES:
-            return ["pymupdf_native", "pymupdf4llm", "markitdown"]
-        if classification and (classification.has_tables or classification.has_formulas):
-            if llm_enabled:
-                return ["pymupdf4llm", "pymupdf_native", "markitdown"]
-            return ["pymupdf4llm", "pymupdf_native", "markitdown"]
-        return _classification_first(classification, extension)
+        # Phase 1 核心原则：速度优先！pymupdf_native 最快（< 1s），质量交给 Phase 2
+        # pymupdf4llm 虽然格式更好但慢 3-5 倍，不适合 Phase 1
+        return ["pymupdf_native", "pymupdf4llm", "markitdown"]
 
     if extension == ".docx":
         if file_mb >= 10 or estimated_pages >= _LARGE_DOCX_PAGE_COUNT:

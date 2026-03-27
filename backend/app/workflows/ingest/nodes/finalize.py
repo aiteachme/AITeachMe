@@ -18,7 +18,11 @@ from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_ass
 from app.repositories.subject_repo import get_subject_by_slug
 from app.services.upload_support import to_storage_key
 from app.workflows.common.context import WorkflowContext
-from app.workflows.ingest.events import IngestFileParseFailedEvent, IngestFileReadyForDigestEvent
+from app.workflows.ingest.events import (
+    IngestFileFastParsedEvent,
+    IngestFileParseFailedEvent,
+    IngestFileReadyForDigestEvent,
+)
 from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.state import IngestParseState
 
@@ -82,6 +86,12 @@ def _build_asset_rows(*, raw_file_id: int, asset_dir: Path) -> list[RawFileAsset
 
 
 def build_finalize_success_node(*, context: WorkflowContext):
+    """Phase 1 finalize: sets status to FAST_PARSED, publishes event.
+
+    After this node, the file is immediately visible to the frontend while
+    Phase 2 (deep enhance) starts in the background.
+    """
+
     async def finalize_success_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         try:
@@ -118,21 +128,26 @@ def build_finalize_success_node(*, context: WorkflowContext):
                     quality_score=None,
                     image_count=len(asset_rows),
                     status=TaskStatus.COMPLETED.value,
-                    ingest_status=IngestStatus.READY_FOR_DIGEST.value,
-                    digest_current_step="ingest.parse.completed",
+                    ingest_status=IngestStatus.FAST_PARSED.value,
+                    digest_current_step="ingest.fast_parse.completed",
                     size_bytes=state.get("file_size_bytes"),
                     checksum_sha256=state.get("content_hash"),
                     estimated_pages=state.get("estimated_pages"),
                     detected_language=state.get("detected_language"),
                 )
+
+            # Publish Phase 1 completion event
             await context.event_bus.publish(
-                IngestFileReadyForDigestEvent(
+                IngestFileFastParsedEvent(
                     subject=state["subject"],
                     file_id=state["file_id"],
+                    parser_used=state.get("parser_used") or "",
+                    markdown_chars=state.get("markdown_chars", 0),
+                    image_count=state.get("image_count", 0),
                 )
             )
             logger.info(
-                "ingest_file_finalize_success",
+                "ingest_file_fast_parse_finalized",
                 parser_used=state.get("parser_used"),
                 markdown_chars=state.get("markdown_chars", 0),
                 image_count=state.get("image_count", 0),
@@ -152,6 +167,8 @@ def build_finalize_success_node(*, context: WorkflowContext):
 
 
 def build_finalize_failure_node(*, context: WorkflowContext):
+    """Phase 1 failure finalize: sets status to FAILED."""
+
     async def finalize_failure_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         error_message = state.get("error", "unknown_error")

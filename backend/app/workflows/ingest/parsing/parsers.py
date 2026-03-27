@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import structlog
+
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -122,7 +124,7 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
-    ".pdf": ["pymupdf4llm", "pymupdf_ocr_vision", "markitdown", "pymupdf_native"],
+    ".pdf": ["pymupdf4llm", "pymupdf_native", "markitdown"],
     ".docx": ["markitdown", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
@@ -192,3 +194,40 @@ def get_available_parsers(extension: str, *, allow_llm_vision: bool) -> list[str
     if normalized in PARSER_REGISTRY and "llm_vision" in PARSER_REGISTRY[normalized] and allow_llm_vision:
         parser_names.append("llm_vision")
     return parser_names
+
+
+# ── Startup logging (改进 5: MinerU auto-engine 思路) ──
+
+_logger = structlog.get_logger()
+
+
+def log_parser_availability() -> None:
+    """Log all parsers and their availability status at startup.
+
+    Helps operators quickly see which parsers are usable in the current
+    environment. Missing packages result in degraded capability, not crashes.
+    """
+    core_parsers = {
+        "pymupdf_native": PDF_PYMUPDF_NATIVE_AVAILABLE,
+        "pymupdf4llm": PDF_PYMUPDF4LLM_AVAILABLE,
+        "pymupdf_ocr_vision": PDF_PYMUPDF_OCR_VISION_AVAILABLE,
+        "markitdown (pdf)": PDF_MARKITDOWN_AVAILABLE,
+        "docx_native": DOCX_NATIVE_AVAILABLE,
+        "markitdown (docx)": DOCX_MARKITDOWN_AVAILABLE,
+        "python_pptx_native": PPTX_NATIVE_AVAILABLE,
+        "markitdown (pptx)": PPTX_MARKITDOWN_AVAILABLE,
+        "markitdown_generic": GENERIC_MARKITDOWN_AVAILABLE,
+        "text_native": TEXT_NATIVE_AVAILABLE,
+    }
+
+    available = [name for name, ok in core_parsers.items() if ok]
+    missing = [name for name, ok in core_parsers.items() if not ok]
+
+    _logger.info(
+        "parser_availability_summary",
+        available_count=len(available),
+        missing_count=len(missing),
+        available=available,
+        missing=missing or None,
+    )
+

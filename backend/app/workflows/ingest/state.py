@@ -9,6 +9,8 @@ from app.workflows.ingest.parsing.strategy import ParsePlan
 
 
 class IngestParseState(TypedDict, total=False):
+    """Phase 1 (Fast Parse) workflow state."""
+
     subject: str
     file_id: int
     filename: str
@@ -35,6 +37,24 @@ class IngestParseState(TypedDict, total=False):
     rewritten_image_refs: int
     extracted_data_images: int
     appended_asset_images: int
+    # Phase 1 does NOT include OCR fields
+    error: str | None
+
+
+class IngestEnhanceState(TypedDict, total=False):
+    """Phase 2 (Deep Enhance) workflow state."""
+
+    subject: str
+    file_id: int
+    file_path: str
+    filetype: str
+    markdown_path: str
+    asset_dir: str
+    asset_name_prefix: str
+    classification: ClassificationResult | None
+    parse_plan: ParsePlan | None
+    # OCR enhancement results
     asset_ocr_images: int
     asset_ocr_replacements: int
+    enhanced_markdown: str | None
     error: str | None

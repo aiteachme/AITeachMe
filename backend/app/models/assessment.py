@@ -38,7 +38,6 @@ class QuestionTemplate(SQLModel, table=True):
     status: str = Field(default="active")
     source_snapshot_id: int | None = Field(
         default=None,
-        foreign_key="curriculum_snapshot.id",
         index=True,
     )
     created_at: datetime = Field(default_factory=utcnow)
@@ -213,7 +212,7 @@ class ExamPaperGenerationContext(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     exam_paper_id: int = Field(foreign_key="exam_paper.id", unique=True, index=True)
     selection_reason_json: str = Field(default="{}")
-    target_theme_tree_node_id: int | None = Field(default=None, foreign_key="theme_tree_node.id")
+    target_theme_tree_node_id: int | None = Field(default=None)
     weakness_state_ids_json: str = Field(default="[]")
     review_task_ids_json: str = Field(default="[]")
     excluded_template_ids_json: str = Field(default="[]")

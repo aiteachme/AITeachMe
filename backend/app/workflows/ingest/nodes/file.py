@@ -133,8 +133,8 @@ def build_classify_file_node(*, context: WorkflowContext):
                     estimated_pages=classification.estimated_pages,
                     detected_language=classification.detected_language,
                     classification_json=classification_payload,
-                    ingest_status=IngestStatus.PARSING.value,
-                    digest_current_step="ingest.parse.running",
+                    ingest_status=IngestStatus.FAST_PARSING.value,
+                    digest_current_step="ingest.fast_parse.running",
                 )
             await context.event_bus.publish(
                 IngestFileClassifiedEvent(

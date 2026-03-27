@@ -397,6 +397,8 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
                     parse_mode=error_metadata.get("parse_mode"),
                     parser_chain=error_metadata.get("parser_chain"),
                 )
+            else:
+                batch_logger.info("file_parse_background_success", file_id=file_id)
 
     await asyncio.gather(*[asyncio.create_task(_run_one(file_id)) for file_id in file_ids])
     batch_logger.info("file_parse_background_completed")

@@ -74,6 +74,9 @@ async def enhance_markdown_with_asset_ocr(
         if placeholder_count
         else [path for path in asset_paths if path.name not in referenced_assets][:limit]
     )
+    # OCR Budget Control (改进 6: MinerU coarse-to-fine 思路)
+    # Skip tiny/decorative images that waste LLM API calls
+    candidate_paths = [p for p in candidate_paths if _should_ocr_image(p)]
     if not candidate_paths:
         return AssetOCREnhancementResult(markdown=markdown)
 
@@ -116,6 +119,51 @@ async def enhance_markdown_with_asset_ocr(
     )
 
 
+# ── OCR Budget Control (改进 6: MinerU coarse-to-fine 思路) ──
+
+_MIN_OCR_FILE_SIZE = 2048  # 2KB — smaller files are likely icons/logos
+_MIN_OCR_DIMENSION = 80    # pixels — images smaller than this are decorative
+_MAX_OCR_ASPECT_RATIO = 8  # width/height or height/width — catch separators/lines
+
+
+def _should_ocr_image(path: Path) -> bool:
+    """Determine if an image is worth sending to LLM OCR.
+
+    Filters out decorative images (logos, separators, tiny icons) that would
+    waste LLM API calls without providing useful text content.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+
+    # Too small — likely an icon or logo
+    if size < _MIN_OCR_FILE_SIZE:
+        logger.debug("ocr_budget_skip_small", path=path.name, size=size)
+        return False
+
+    # Check dimensions if PIL is available
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            w, h = img.size
+    except Exception:
+        return True  # Can't check dimensions, assume it's worth OCR
+
+    # Too small in pixels
+    if w < _MIN_OCR_DIMENSION or h < _MIN_OCR_DIMENSION:
+        logger.debug("ocr_budget_skip_tiny_pixels", path=path.name, w=w, h=h)
+        return False
+
+    # Extreme aspect ratio — likely a separator/divider line
+    ratio = max(w / h, h / w) if h > 0 and w > 0 else 1
+    if ratio > _MAX_OCR_ASPECT_RATIO:
+        logger.debug("ocr_budget_skip_ratio", path=path.name, w=w, h=h, ratio=round(ratio, 1))
+        return False
+
+    return True
+
+
 async def _ocr_asset_paths(
     asset_paths: list[Path],
     *,
@@ -123,35 +171,70 @@ async def _ocr_asset_paths(
     language_mode: str,
     concurrency: int,
 ) -> list[AssetOCRItem]:
-    semaphore = asyncio.Semaphore(max(1, concurrency))
-    results: list[AssetOCRItem | None] = [None] * len(asset_paths)
+    """OCR asset images via LLM vision, with circuit breaker.
 
-    async def _ocr_one(index: int, asset_path: Path) -> None:
+    If the vision model refuses/fails on 2 consecutive images,
+    stops all remaining OCR attempts immediately (circuit breaker).
+    This prevents wasting minutes on a model that can't do vision.
+    """
+    _CIRCUIT_BREAKER_THRESHOLD = 2  # consecutive failures to trigger stop
+    consecutive_failures = 0
+    circuit_broken = False
+
+    results: list[AssetOCRItem | None] = []
+
+    for asset_path in asset_paths:
+        if circuit_broken:
+            break
+
         mime_type = MIME_MAP.get(asset_path.suffix.lower(), "image/png")
-        image_bytes = asset_path.read_bytes()
-        async with semaphore:
-            try:
-                ocr_markdown = await parse_image_bytes_with_llm_vision(
-                    image_bytes,
-                    mime_type=mime_type,
-                    language_mode=language_mode,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "asset_ocr_failed",
-                    asset_name=asset_path.name,
-                    error=str(exc),
-                )
-                return
+        try:
+            image_bytes = asset_path.read_bytes()
+        except OSError:
+            continue
 
-        results[index] = AssetOCRItem(
+        try:
+            ocr_markdown = await parse_image_bytes_with_llm_vision(
+                image_bytes,
+                mime_type=mime_type,
+                language_mode=language_mode,
+            )
+        except Exception as exc:
+            logger.warning("asset_ocr_failed", asset_name=asset_path.name, error=str(exc))
+            consecutive_failures += 1
+            if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
+                logger.warning(
+                    "ocr_circuit_breaker_triggered",
+                    reason="consecutive_failures",
+                    failed_count=consecutive_failures,
+                    remaining_skipped=len(asset_paths) - len(results) - 1,
+                )
+                circuit_broken = True
+            continue
+
+        # Check if model refused (returned [unclear])
+        if ocr_markdown.strip() == "[unclear]":
+            consecutive_failures += 1
+            if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
+                logger.warning(
+                    "ocr_circuit_breaker_triggered",
+                    reason="vision_model_refused",
+                    failed_count=consecutive_failures,
+                    remaining_skipped=len(asset_paths) - len(results) - 1,
+                    hint="OCR model may not support vision. Check OCR_MODEL config.",
+                )
+                circuit_broken = True
+            continue
+        else:
+            consecutive_failures = 0  # Reset on success
+
+        results.append(AssetOCRItem(
             filename=asset_path.name,
             markdown_url=f"{asset_link_prefix}/{asset_path.name}",
             ocr_markdown=ocr_markdown.strip(),
             page_number=_extract_asset_page_number(asset_path.name),
-        )
+        ))
 
-    await asyncio.gather(*[_ocr_one(index, asset_path) for index, asset_path in enumerate(asset_paths)])
     return [item for item in results if item is not None]
 
 
