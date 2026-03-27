@@ -1,0 +1,14 @@
+name: recall_info
+description: 回忆关于用户的相关信息，用于个性化教学
+version: "1.0"
+category: 记忆
+enabled: true
+parameters:
+  query:
+    type: string
+    description: 要回忆的内容关键词
+    required: true
+  top_k:
+    type: integer
+    description: 返回最多几条相关记忆
+    default: 5

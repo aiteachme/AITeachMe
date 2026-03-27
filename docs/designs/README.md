@@ -70,6 +70,7 @@
 | `11_database_and_storage_architecture.md` | 当前数据库与存储架构、向量索引、本地文件、对象存储迁移路线 |
 | `12_api_refactor_plan.md` | API 接口收敛、全量返回、知识图谱三 Tab 单接口重构计划 |
 | `13_database_schema_inventory.md` | 目标态数据库结构方案、统一检索层与最新表结构 |
+| `14_database_refactor_design.md` | 数据库重构设计、阶段划分、迁移策略与风险控制 |
 
 ---
 

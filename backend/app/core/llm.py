@@ -380,3 +380,111 @@ async def acompletion_stream(
             _track_call(task_type=task_type.value, model=profile.model, start=start, success=False, error=str(exc))
             logger.error("llm_stream_failed", error=str(exc))
             raise LLMCallError(reason=str(exc)) from exc
+
+
+async def acompletion_with_tools(
+    messages: list[ChatMessage],
+    *,
+    tools: list[dict] | None = None,
+    task_type: TaskType = TaskType.DEFAULT,
+    **kwargs,
+):
+    """异步补全（支持工具调用）。
+
+    与 acompletion() 的区别：
+    - 返回完整的 LiteLLM Response 对象，因为调用方需要检查 tool_calls。
+    - 可传入 ``tools`` 参数（OpenAI function calling 格式）。
+
+    Args:
+        messages: 消息列表。
+        tools: 工具定义列表（OpenAI 格式），为空时行为等同于普通补全。
+        task_type: 任务类型，用于模型路由。
+        **kwargs: 透传给 LiteLLM 的其他参数。
+
+    Returns:
+        litellm.ModelResponse — 包含 choices[0].message.content 和/或
+        choices[0].message.tool_calls。
+    """
+
+    settings = get_settings()
+    api_key = settings.require_llm_api_key()
+    profile = get_task_profile(task_type)
+    last_error: Exception | None = None
+
+    async with _get_semaphore():
+        for attempt in range(1, profile.max_retries + 1):
+            start = time.monotonic()
+            call_kwargs = _build_completion_kwargs(
+                profile=profile,
+                settings=settings,
+                api_key=api_key,
+                messages=messages,
+                extra_kwargs=dict(kwargs),
+            )
+            if tools:
+                call_kwargs["tools"] = tools
+            logger.info(
+                "llm_tools_started",
+                attempt=attempt,
+                model=profile.model,
+                task_type=task_type.value,
+                tool_count=len(tools) if tools else 0,
+            )
+            try:
+                response = await asyncio.wait_for(
+                    litellm.acompletion(**call_kwargs),
+                    timeout=profile.timeout_s + 2,
+                )
+                prompt_t, completion_t, total_t = _extract_usage(response)
+                logger.info(
+                    "llm_tools_complete",
+                    attempt=attempt,
+                    elapsed_s=round(time.monotonic() - start, 2),
+                    model=profile.model,
+                    task_type=task_type.value,
+                    has_tool_calls=bool(
+                        getattr(response.choices[0].message, "tool_calls", None)
+                    ),
+                )
+                _track_call(
+                    task_type=task_type.value,
+                    model=profile.model,
+                    start=start,
+                    success=True,
+                    prompt_tokens=prompt_t,
+                    completion_tokens=completion_t,
+                    total_tokens=total_t,
+                )
+                return response
+            except asyncio.TimeoutError:
+                last_error = LLMTimeoutError(timeout_s=profile.timeout_s)
+                logger.warning(
+                    "llm_tools_timeout",
+                    attempt=attempt,
+                    model=profile.model,
+                    task_type=task_type.value,
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "llm_tools_failed",
+                    attempt=attempt,
+                    model=profile.model,
+                    task_type=task_type.value,
+                    error=str(exc),
+                )
+
+            if attempt < profile.max_retries:
+                await asyncio.sleep(attempt * 2)
+
+    _track_call(
+        task_type=task_type.value,
+        model=profile.model,
+        start=time.monotonic(),
+        success=False,
+        error=str(last_error),
+    )
+    if isinstance(last_error, LLMTimeoutError):
+        raise last_error
+    raise LLMCallError(reason=str(last_error)) from last_error
+
