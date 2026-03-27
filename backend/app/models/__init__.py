@@ -2,6 +2,7 @@
 
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
+    Curriculum,
     CurriculumSnapshot,
     CurriculumVersion,
     PrereqDagVersion,
@@ -44,6 +45,7 @@ __all__ = [
     "AsyncJobStatus",
     "ChatMessage",
     "ChatSession",
+    "Curriculum",
     "CurriculumSnapshot",
     "CurriculumVersion",
     "Difficulty",

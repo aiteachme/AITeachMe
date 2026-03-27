@@ -2,19 +2,39 @@
 
 ## 1. 文档定位
 
-这份文档是当前数据库主设计文档。
-本轮目标不是继续极限压表到 15 张，而是把业务主表稳定收口到 20 张左右，去掉明显臃肿的兼容表、修订表、挂载表、attempt 表、review task 表。
+这份文档是当前数据库主设计文档，也是数据库层唯一真相源。
+
+这一轮的核心原则很明确：先用尽可能简单的实现把当前功能闭环跑通，不为了“未来可能会有版本历史”提前拆出一批 version 表。
 
 当前结论：
 
-- `20` 张业务主表是合理上限
+- 业务主表目标收敛到 `18` 张左右
 - `chunk_embeddings` 只算向量实现层，不算业务主表
-- `theme tree / prereq dag / taxonomy anchor` 继续保留为独立主表
-- `membership / revision / alias / evidence / attempt / review_task` 全部并回主表字段或 JSON
+- `theme_tree_version` 和 `prereq_dag_version` 不再作为目标态主表
+- `curriculum_version` 也不再按“版本表”思路设计，目标态改为 `curriculum` 当前态主表
+- 版本语义优先通过字段实现，不额外起表
+- `membership / revision / alias / evidence / attempt / review_task` 继续并回主表字段或 JSON
+
+如果短期代码兼容需要，物理表名可以暂时沿用旧名字，但设计语义要先统一到“当前态主表 + 修订字段”。
 
 ---
 
-## 2. 当前目标主树
+## 2. 收敛原则
+
+1. 先服务当前五大引擎闭环，不为低频历史追溯过度设计。
+2. 外部模块要能轻松消费 core，所以数据库优先暴露稳定主对象：
+   `subject / curriculum / teaching_unit / knowledge_node / exam_paper`。
+3. 中文优先，课程组织、命名、锚点管理要适合中文教学场景。
+4. 版本先用字段表达，而不是拆版本表。优先使用：
+   `version_no / build_session_id / is_current / published_at / updated_at / source_hash`
+5. 当前态结构优先按学科整体替换：
+   一次 digest 重建时，事务性替换该学科当前 `theme_tree_node` 与 `unit_dependency`。
+6. 只有满足下面任一条件，才值得再拆表：
+   独立分页查询、高频过滤更新、独立生命周期、强唯一约束、跨模块直接复用。
+
+---
+
+## 3. 当前目标主树
 
 ```text
 user
@@ -26,11 +46,9 @@ user
         │     └─ 1:N knowledge_edge
         ├─ 1:N teaching_unit
         ├─ 1:N taxonomy_anchor
-        ├─ 1:N theme_tree_version
-        │     └─ 1:N theme_tree_node
-        ├─ 1:N prereq_dag_version
+        ├─ 1:N curriculum
+        │     ├─ 1:N theme_tree_node
         │     └─ 1:N unit_dependency
-        ├─ 1:N curriculum_version
         ├─ 1:N question_template
         ├─ 1:N exam_paper
         │     └─ 1:N exam_paper_item
@@ -39,87 +57,114 @@ user
               └─ 1:N chat_message
 ```
 
+说明：
+
+- `curriculum` 是“课程构建主表”，当前实现用单表同时承载当前生效态和轻量历史。
+- 同一学科只允许一条 `published + is_current=true` 的当前记录；旧构建可继续留在同一张 `curriculum` 表中。
+- `theme_tree_node` 和 `unit_dependency` 直接挂在当前 `curriculum` 下，不再各自挂一个 version 表。
+- `knowledge_document.version_no`、`knowledge_node.build_revision_no`、`knowledge_edge.build_revision_no` 必须与当前 `curriculum.version_no` 对齐；同一轮 digest 中，知识文档和知识图谱共用同一版号。
+- 如果以后真的要保留多次发布历史，再额外引入 release/history 表，而不是现在先把三套 version 表铺开。
+
 ---
 
-## 3. 20 张业务主表
+## 4. 18 张业务主表
 
-### 3.1 用户与学科
+### 4.1 用户与学科
 
 1. `user`
-   顶层拥有者。保存账号基础信息、最近 IP、用户级 profile JSON。
+   顶层拥有者。保存账号信息、最近 IP、用户级 `profile_json`。
 
 2. `subject`
-   学科工作空间根。保存学科名、描述、偏好的 digest 模式、学科级 profile JSON、settings JSON。
+   学科工作空间根。保存学科名、描述、偏好的 digest 模式、学科级 `profile_json`、`settings_json`。
 
-### 3.2 原始资料与检索
+### 4.2 原始资料与检索
 
 3. `raw_file`
-   用户上传的原始资料。保存文件路径、Markdown 路径、解析后的 Markdown 内容、资源清单、材料画像、识别出的学科信息。
+   用户上传的原始资料。保存源文件路径、Markdown 路径、解析结果、资源清单、材料画像、识别出的学科信息。
 
 4. `retrieval_chunk`
-   RAG 检索的统一切块表。直接挂在 `raw_file` 下，保存标题、层级、header path、chunk 内容、向量引用信息。
+   统一检索切块表。直接挂在 `raw_file` 下，保存标题、层级、`header_path`、chunk 内容、向量引用信息。
 
-### 3.3 知识文档与图谱
+### 4.3 知识文档与图谱
 
 5. `knowledge_document`
-   digest 产出的正式知识文档。支持章节、merged 文档、版本号、模式判定、manifest、source scope。
+   digest 产出的正式知识文档。支持章节、文档包、`build_session_id`、`version_no`、模式判定、manifest、source scope。
 
 6. `knowledge_node`
-   知识图谱节点主表。保存 canonical name、summary、body markdown、aliases JSON、evidence refs JSON。
+   知识图谱节点主表。保存 `canonical_name`、摘要、正文、`aliases_json`、`evidence_refs_json`。
 
 7. `knowledge_edge`
-   知识图谱边主表。保存 source/target、edge type、description、evidence refs JSON。
+   知识图谱边主表。保存 `source/target`、`edge_type`、描述、`evidence_refs_json`。
 
-### 3.4 教学结构
+### 4.4 教学结构与课程快照
 
 8. `teaching_unit`
    教学单元主表。是 digest / examine / profile 的共同锚点。成员节点关系并入 `member_node_refs_json`。
 
 9. `taxonomy_anchor`
-   课程锚点主表。保存主题分类锚点，供主题树构建与人工管理使用。
+   课程锚点主表。负责中文教学分类、人工纠偏、主题树命名约束。
 
-10. `theme_tree_version`
-    主题树版本表。一个学科可以有多个版本。
+10. `curriculum`
+    课程构建主表。一个学科可以保留多条同表历史，但任意时刻只允许一条 current/published 记录。
+
+    建议核心字段：
+    `subject`、`version_no`、`status`、`summary`、`blueprint_json`、`tree_json`、
+    `dependency_json`、`build_context_json`、`build_session_id`、`is_current`、`published_at`、`updated_at`。
 
 11. `theme_tree_node`
-    主题树节点表。保留独立节点，节点下挂的教学单元并入 `unit_refs_json`。
+    当前态主题树节点表。保留独立节点，支持树形查询、分页、UI 展示。节点挂载的教学单元继续并入 `unit_refs_json`。
 
-12. `prereq_dag_version`
-    先修依赖图版本表。
+    目标语义上不再需要独立 `theme_tree_version` 主表。
+    兼容实现可以暂保留 `tree_version_id` 这个字段名，但它实际应引用 `curriculum.id`。
 
-13. `unit_dependency`
-    教学单元之间的先修边表。因为要按 source/target 独立查询，所以继续保留。
+    当前态建议约束为：
+    `subject + curriculum_id(tree_version_id) + parent_tree_node_id`
 
-14. `curriculum_version`
-    课程发布快照主表。绑定 tree version、dag version，并保存 blueprint/tree/dependency/build context JSON。
+12. `unit_dependency`
+    当前态教学单元依赖边表。因为要按 `source/target` 独立查询、分析薄弱链路、服务组卷和画像，所以继续保留。
 
-### 3.5 出题、试卷、画像
+    目标语义上不再需要独立 `prereq_dag_version` 主表。
+    兼容实现可以暂保留 `dag_version_id` 这个字段名，但它实际应引用 `curriculum.id`。
 
-15. `question_template`
-    题模板主表。题目覆盖的知识点并入 `node_refs_json`。
+    当前态建议约束为：
+    `subject + curriculum_id(dag_version_id) + source_unit_id + target_unit_id`
 
-16. `exam_paper`
-    试卷主表。保存组卷上下文、模式、总分、得分、状态。
+### 4.5 出题、试卷、画像
 
-17. `exam_paper_item`
+13. `question_template`
+    题模板主表。知识点关联继续并入 `node_refs_json`。如需记录当时课程快照，当前实现优先保留 `curriculum_version_id`，需要版号时再通过 `curriculum.version_no` 回查。
+
+14. `exam_paper`
+    试卷主表。保存组卷上下文、模式、总分、得分、状态。需要回溯时，优先保存 `curriculum_version_id` 和 `selection_context_json` 快照，而不是依赖单独版本表。
+
+15. `exam_paper_item`
     试卷题目快照表。直接承载用户答案、判卷结果、错误原因、反馈文本。
 
-18. `user_knowledge_state`
-    学习状态主表。保存掌握度、稳定度、遗忘时间、复习调度字段。`review_task` 已并回这里。
+16. `user_knowledge_state`
+    学习状态主表。保存掌握度、稳定度、遗忘时间、复习调度字段。`review_task` 已并回这里，`state_version` 保留为字段即可。
 
-### 3.6 聊天
+### 4.6 聊天
 
-19. `chat_session`
+17. `chat_session`
     聊天会话元信息表。
 
-20. `chat_message`
+18. `chat_message`
     聊天消息表。引用上下文并入 `contexts_json`，额外元数据并入 `meta_json`。
 
 ---
 
-## 4. 被移除并收敛的表
+## 5. 被移除并收敛的表
 
-下面这些表不再进入目标态：
+下面这些表不再进入目标态主设计：
+
+- `theme_tree_version`
+  并入 `curriculum.version_no / status / published_at`
+
+- `prereq_dag_version`
+  并入 `curriculum.version_no / dependency_json / published_at`
+
+- `curriculum_version`
+  改为 `curriculum` 当前态主表语义；短期兼容实现可暂沿用旧物理表名
 
 - `raw_file_asset`
   并入 `raw_file.asset_manifest_json`
@@ -128,16 +173,16 @@ user
   语义并入 `raw_file`
 
 - `document_chunk`
-  重命名并收敛为 `retrieval_chunk`
+  收敛为 `retrieval_chunk`
 
 - `chunk_embedding`
-  只保留物理向量表 `chunk_embeddings`，不再作为业务主表
+  只保留物理向量表 `chunk_embeddings`
 
 - `knowledge_alias`
   并入 `knowledge_node.aliases_json`
 
 - `knowledge_revision`
-  并入 `knowledge_node.summary/body_markdown`
+  并入 `knowledge_node.summary / body_markdown`
 
 - `edge_revision`
   并入 `knowledge_edge.description`
@@ -146,7 +191,7 @@ user
   并入 `knowledge_node.evidence_refs_json` 与 `knowledge_edge.evidence_refs_json`
 
 - `teaching_unit_revision`
-  并入 `teaching_unit.title/summary/learning_objectives_json`
+  并入 `teaching_unit.title / summary / learning_objectives_json`
 
 - `teaching_unit_membership`
   并入 `teaching_unit.member_node_refs_json`
@@ -163,90 +208,102 @@ user
 - `review_task`
   并入 `user_knowledge_state`
 
----
+- `graph_digest_job / curriculum_derive_job / question_build_job / exam_generate_job / exam_grade_job`
+  当前阶段不单独落业务表，优先用现有任务状态字段、事件流或运行时缓存承载
 
-## 5. 当前关键字段约定
-
-### 5.1 Profile 分层
-
-- `user.profile_json`
-  用户级稳定画像
-
-- `subject.profile_json`
-  学科级画像，用于 digest/exam/interact 偏好
-
-- `user_knowledge_state`
-  细粒度掌握状态
-
-### 5.2 Digest 模式判定
-
-`digest_mode` 的判断主要结合三部分：
-
-- 学科名与学科描述
-- 上传资料自动识别结果
-- 用户上传时附带的提示词
-
-模式不是完全两套结构，只是：
-
-- 主流程一致
-- 提示词不同
-- 压缩深度不同
-- 章节组织重点不同
-
-### 5.3 版本语义
-
-保留版本语义的表只有这些：
-
-- `knowledge_document`
-- `theme_tree_version`
-- `prereq_dag_version`
-- `curriculum_version`
-
-其余局部修订信息不再拆独立表。
+- `subject_build_lock`
+  当前阶段优先用轻量锁实现，不单独设计持久化主表
 
 ---
 
-## 6. 为什么不是 15 张
+## 6. 版本如何简单实现
 
-这轮没有继续压到 15 张，原因很明确：
+这轮不再设计“theme tree 一个版本表、dag 一个版本表、curriculum 再一个版本表”的三层版本体系。
 
-- `taxonomy_anchor` 需要独立管理，不适合直接揉进 JSON
-- `theme_tree_version + theme_tree_node` 需要独立查询、分页和展示
-- `prereq_dag_version + unit_dependency` 需要按边查询和更新
+当前推荐做法：
 
-如果强行继续压：
+1. `curriculum` 用一张表承载当前态和轻量历史
+   一个学科可以保留多条同表构建记录，但只有一条 `published + is_current=true`；`version_no` 自增即可。
 
-- 代码复杂度会上升
-- 主题树和先修图的查询会变差
-- 后面知识总结页、图谱 UI、试卷组装都会被拖累
+2. `theme_tree_node` 和 `unit_dependency` 不再挂独立版本主表
+   直接引用同一个 `curriculum.id`；兼容实现中 `tree_version_id / dag_version_id` 只是旧字段名。
 
-所以当前以 20 张业务主表为稳定基线。
+3. 知识文档与知识图谱共享同一轮构建版号
+   在 unified digest 中应满足：
+   - `knowledge_document.version_no == curriculum.version_no`
+   - `knowledge_node.build_revision_no == curriculum.version_no`
+   - `knowledge_edge.build_revision_no == curriculum.version_no`
+   - `theme_tree_node.tree_version_id == unit_dependency.dag_version_id == curriculum.id`
+
+4. 需要追溯时优先存“当时快照字段”
+   例如：
+   - `knowledge_document.version_no`
+   - `question_template.template_version`
+   - `question_template.curriculum_version_id`
+   - `exam_paper.curriculum_version_id`
+   - `user_knowledge_state.state_version`
+
+5. digest 重建采用事务性替换
+   推荐流程：
+   - 先在内存或临时对象中完成 build
+   - 开事务
+   - 创建/发布新的 `curriculum.version_no`
+   - 替换该学科当前 `theme_tree_node`
+   - 替换该学科当前 `unit_dependency`
+   - 更新 `knowledge_document.is_current` 与 `knowledge_document.version_no`
+   - 回写 `knowledge_node.build_revision_no / knowledge_edge.build_revision_no`
+   - 提交事务
+
+6. 真要保历史时，再追加历史表
+   未来如果确实需要“查看任意历史课程版本”，再补：
+   `curriculum_release` 或 `curriculum_history`
+   而不是现在先把所有版本表建出来。
 
 ---
 
-## 7. 当前实现边界
+## 7. 为什么不是再压到 16 张
 
-当前代码实现已经按这个方向收口：
+这轮不继续往下硬压，原因也很明确：
 
-- 数据库白名单建表只创建这 20 张业务主表
-- 聊天、考试、画像链路不再依赖 `attempt/review_task`
-- 图谱 alias/evidence/revision 已改为主表字段或 JSON
-- 教学单元成员关系、主题树单元挂载关系改为 JSON 挂载
+- `taxonomy_anchor` 需要独立管理，不适合揉进大 JSON
+- `theme_tree_node` 需要独立树查询、分页和展示
+- `unit_dependency` 需要按边查询、分析和回溯
+
+如果再继续压：
+
+- 主题树会退化成一个超大 JSON blob
+- 先修依赖分析会明显变差
+- 图谱页、课程页、薄弱点分析、组卷链路都会变得更难维护
+
+所以当前以 `18` 张业务主表作为更稳妥的简单实现。
+
+---
+
+## 8. 当前实现边界
+
+当前目标态强调的是：
+
+- 先把当前态数据模型做薄、做稳
+- 先让 ingest / digest / interact / examine / profile 共用同一组主对象
+- 先让外部模块容易消费 `curriculum / teaching_unit / knowledge_node`
+- 先避免“为了历史而历史”的过度拆表
 
 向量层仍会创建这些物理表：
 
 - `chunk_embeddings`
 - sqlite-vec 的内部辅助表
 
-这些不算业务主表。
+这些都不算业务主表。
 
 ---
 
-## 8. 一句话结论
+## 9. 一句话结论
 
-当前数据库目标态不是“继续拆”，而是：
+当前数据库目标态不是“三套版本表并行”，而是：
 
-- 主表控制在 20 张左右
-- 真正有独立查询价值的结构表保留
+- 主表控制在 `18` 张左右
+- `theme_tree_version / prereq_dag_version / curriculum_version` 不再作为目标态主表
+- 版本优先通过字段实现
+- 真正需要独立查询的结构表继续保留
 - 其余 support 表尽量并回主表字段或 JSON
-- 后续功能扩展优先加字段和 JSON，只有出现真实高频查询需求时才再拆表
+- 以后真的出现历史版本刚需，再补 history/release 表

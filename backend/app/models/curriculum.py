@@ -79,28 +79,40 @@ class TaxonomyAnchor(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
-class ThemeTreeVersion(SQLModel, table=True):
-    """Theme tree version."""
+class Curriculum(SQLModel, table=True):
+    """One build record that now owns docs/tree/dag version semantics together."""
 
-    __tablename__ = "theme_tree_version"
+    __tablename__ = "curriculum"
     __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_theme_tree_subject_version"),
+        UniqueConstraint("subject", "version_no", name="uq_curriculum_subject_version"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
     version_no: int
-    status: str = Field(default="draft")
+    status: str = Field(default="draft", index=True)
+    syllabus_version_id: int | None = Field(default=None)
+    summary: str = ""
+    blueprint_json: str = Field(default="{}")
+    tree_json: str = Field(default="{}")
+    dependency_json: str = Field(default="{}")
+    build_context_json: str = Field(default="{}")
+    build_session_id: str | None = Field(default=None, index=True)
+    is_current: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    published_at: datetime | None = Field(default=None)
+    superseded_at: datetime | None = Field(default=None)
 
 
 class ThemeTreeNode(SQLModel, table=True):
-    """Theme tree node."""
+    """Theme tree node bound to one curriculum build record."""
 
     __tablename__ = "theme_tree_node"
 
     id: int | None = Field(default=None, primary_key=True)
-    tree_version_id: int = Field(foreign_key="theme_tree_version.id", index=True)
+    subject: str = Field(index=True)
+    tree_version_id: int = Field(foreign_key="curriculum.id", index=True)
     anchor_id: int | None = Field(default=None, foreign_key="taxonomy_anchor.id")
     parent_tree_node_id: int | None = Field(default=None, foreign_key="theme_tree_node.id")
     title: str
@@ -124,23 +136,8 @@ class UnitTreeMembership(SQLModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class PrereqDagVersion(SQLModel, table=True):
-    """Prerequisite DAG version."""
-
-    __tablename__ = "prereq_dag_version"
-    __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_prereq_dag_subject_version"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    version_no: int
-    status: str = Field(default="draft")
-    created_at: datetime = Field(default_factory=utcnow)
-
-
 class UnitDependency(SQLModel, table=True):
-    """Dependency edge between teaching units."""
+    """Dependency edge between teaching units for one curriculum build."""
 
     __tablename__ = "unit_dependency"
     __table_args__ = (
@@ -154,7 +151,8 @@ class UnitDependency(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    dag_version_id: int = Field(foreign_key="prereq_dag_version.id", index=True)
+    subject: str = Field(index=True)
+    dag_version_id: int = Field(foreign_key="curriculum.id", index=True)
     source_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     target_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     dependency_type: str = Field(default="prerequisite")
@@ -164,31 +162,7 @@ class UnitDependency(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class CurriculumSnapshot(SQLModel, table=True):
-    """Published curriculum version / snapshot."""
-
-    __tablename__ = "curriculum_version"
-    __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_curriculum_snapshot_subject_version"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
-    version_no: int
-    status: str = Field(default="draft")
-    theme_tree_version_id: int | None = Field(default=None, foreign_key="theme_tree_version.id")
-    prereq_dag_version_id: int | None = Field(default=None, foreign_key="prereq_dag_version.id")
-    syllabus_version_id: int | None = Field(default=None)
-    summary: str = ""
-    blueprint_json: str = Field(default="{}")
-    tree_json: str = Field(default="{}")
-    dependency_json: str = Field(default="{}")
-    build_context_json: str = Field(default="{}")
-    is_current: bool = Field(default=False, index=True)
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
-    published_at: datetime | None = Field(default=None)
-    superseded_at: datetime | None = Field(default=None)
-
-
-CurriculumVersion = CurriculumSnapshot
+CurriculumSnapshot = Curriculum
+CurriculumVersion = Curriculum
+ThemeTreeVersion = Curriculum
+PrereqDagVersion = Curriculum

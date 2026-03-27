@@ -9,13 +9,12 @@ from sqlmodel import Session, func, select
 from app.models import (
     ChatMessage,
     ChatSession,
-    CurriculumVersion,
+    Curriculum,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeNode,
-    PrereqDagVersion,
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
@@ -23,7 +22,6 @@ from app.models import (
     TaxonomyAnchor,
     TeachingUnit,
     ThemeTreeNode,
-    ThemeTreeVersion,
     UnitDependency,
     UserKnowledgeState,
 )
@@ -41,15 +39,13 @@ _EXAM_KEYS = [
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
 _KNOWLEDGE_KEYS = [
-    "curriculum_version",
+    "curriculum",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_node",
-    "prereq_dag_version",
     "taxonomy_anchor",
     "teaching_unit",
     "theme_tree_node",
-    "theme_tree_version",
     "unit_dependency",
 ]
 
@@ -87,27 +83,16 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             .where(ExamPaper.subject == subject),
         ),
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
-        "curriculum_version": _count_rows(session, CurriculumVersion, CurriculumVersion.subject == subject),
+        "curriculum": _count_rows(session, Curriculum, Curriculum.subject == subject),
+        "curriculum_version": 0,
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
-        "prereq_dag_version": _count_rows(session, PrereqDagVersion, PrereqDagVersion.subject == subject),
+        "prereq_dag_version": 0,
         "taxonomy_anchor": _count_rows(session, TaxonomyAnchor, TaxonomyAnchor.subject == subject),
         "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
-        "theme_tree_version": _count_rows(session, ThemeTreeVersion, ThemeTreeVersion.subject == subject),
-        "theme_tree_node": _count_query(
-            session,
-            select(func.count())
-            .select_from(ThemeTreeNode)
-            .join(ThemeTreeVersion, ThemeTreeNode.tree_version_id == ThemeTreeVersion.id)
-            .where(ThemeTreeVersion.subject == subject),
-        ),
-        "unit_dependency": _count_query(
-            session,
-            select(func.count())
-            .select_from(UnitDependency)
-            .join(PrereqDagVersion, UnitDependency.dag_version_id == PrereqDagVersion.id)
-            .where(PrereqDagVersion.subject == subject),
-        ),
+        "theme_tree_version": 0,
+        "theme_tree_node": _count_rows(session, ThemeTreeNode, ThemeTreeNode.subject == subject),
+        "unit_dependency": _count_rows(session, UnitDependency, UnitDependency.subject == subject),
     }
 
 
@@ -225,37 +210,23 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
     for item in knowledge_documents:
         session.delete(item)
 
-    tree_versions = list(session.exec(select(ThemeTreeVersion).where(ThemeTreeVersion.subject == subject)).all())
-    tree_version_ids = [item.id for item in tree_versions if item.id is not None]
-    if tree_version_ids:
-        tree_nodes = list(
-            session.exec(
-                select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id.in_(tree_version_ids))
-            ).all()
-        )
-        for item in tree_nodes:
-            session.delete(item)
+    tree_nodes = list(session.exec(select(ThemeTreeNode).where(ThemeTreeNode.subject == subject)).all())
+    for item in tree_nodes:
+        session.delete(item)
 
-    dag_versions = list(session.exec(select(PrereqDagVersion).where(PrereqDagVersion.subject == subject)).all())
-    dag_version_ids = [item.id for item in dag_versions if item.id is not None]
-    if dag_version_ids:
-        dependencies = list(
-            session.exec(
-                select(UnitDependency).where(UnitDependency.dag_version_id.in_(dag_version_ids))
-            ).all()
-        )
-        for item in dependencies:
-            session.delete(item)
+    dependencies = list(session.exec(select(UnitDependency).where(UnitDependency.subject == subject)).all())
+    for item in dependencies:
+        session.delete(item)
 
     units = list(session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject)).all())
-    curriculum_versions = list(
-        session.exec(select(CurriculumVersion).where(CurriculumVersion.subject == subject)).all()
+    curricula = list(
+        session.exec(select(Curriculum).where(Curriculum.subject == subject)).all()
     )
     anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
     edges = list(session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all())
     nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject)).all())
 
-    for item in curriculum_versions + tree_versions + dag_versions + anchors + edges + nodes + units:
+    for item in curricula + anchors + edges + nodes + units:
         session.delete(item)
 
     session.commit()

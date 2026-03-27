@@ -8,6 +8,7 @@ from sqlmodel import Session, func, select
 
 from app.core.exceptions import DagVersionConflictError, TreeVersionConflictError
 from app.models.curriculum import (
+    Curriculum,
     CurriculumSnapshot,
     PrereqDagVersion,
     TaxonomyAnchor,
@@ -240,25 +241,88 @@ def get_uncategorized_anchor(session: Session, subject: str) -> TaxonomyAnchor:
     return anchor
 
 
+def get_curriculum_by_id(session: Session, curriculum_id: int) -> Curriculum | None:
+    return session.get(Curriculum, curriculum_id)
+
+
+def create_curriculum_snapshot(
+    session: Session,
+    snapshot: CurriculumSnapshot,
+) -> CurriculumSnapshot:
+    session.add(snapshot)
+    session.commit()
+    session.refresh(snapshot)
+    return snapshot
+
+
+def get_current_curriculum_snapshot(
+    session: Session,
+    subject: str,
+) -> CurriculumSnapshot | None:
+    stmt = (
+        select(CurriculumSnapshot)
+        .where(
+            CurriculumSnapshot.subject == subject,
+            CurriculumSnapshot.status == "published",
+        )
+        .order_by(CurriculumSnapshot.version_no.desc(), CurriculumSnapshot.id.desc())
+    )
+    return session.exec(stmt).first()
+
+
+def _get_existing_draft_curriculum(session: Session, subject: str) -> Curriculum | None:
+    stmt = (
+        select(Curriculum)
+        .where(
+            Curriculum.subject == subject,
+            Curriculum.status == "draft",
+        )
+        .order_by(Curriculum.version_no.desc(), Curriculum.id.desc())
+    )
+    return session.exec(stmt).first()
+
+
+def _ensure_curriculum_draft_with_optimistic_lock(
+    session: Session,
+    *,
+    subject: str,
+    expected_prev_version_no: int,
+    conflict_error: type[Exception],
+) -> Curriculum:
+    current = get_current_curriculum_snapshot(session, subject)
+    actual_prev = current.version_no if current is not None else 0
+    draft = _get_existing_draft_curriculum(session, subject)
+    if draft is not None:
+        if draft.version_no != actual_prev + 1:
+            raise conflict_error(subject)  # type: ignore[misc]
+        return draft
+    if actual_prev != expected_prev_version_no:
+        raise conflict_error(subject)  # type: ignore[misc]
+
+    draft = Curriculum(
+        subject=subject,
+        version_no=actual_prev + 1,
+        status="draft",
+        is_current=False,
+    )
+    session.add(draft)
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
 def create_theme_tree_version(
     session: Session,
     version: ThemeTreeVersion,
 ) -> ThemeTreeVersion:
-    session.add(version)
-    session.commit()
-    session.refresh(version)
-    return version
+    return create_curriculum_snapshot(session, version)
 
 
 def get_current_theme_tree_version(
     session: Session,
     subject: str,
 ) -> ThemeTreeVersion | None:
-    stmt = select(ThemeTreeVersion).where(
-        ThemeTreeVersion.subject == subject,
-        ThemeTreeVersion.status == "published",
-    )
-    return session.exec(stmt).first()
+    return get_current_curriculum_snapshot(session, subject)
 
 
 def create_theme_tree_version_with_optimistic_lock(
@@ -266,23 +330,12 @@ def create_theme_tree_version_with_optimistic_lock(
     subject: str,
     expected_prev_version_no: int,
 ) -> ThemeTreeVersion:
-    stmt = select(func.max(ThemeTreeVersion.version_no)).where(
-        ThemeTreeVersion.subject == subject,
-    )
-    current_max: int | None = session.exec(stmt).one()
-    actual_prev = current_max if current_max is not None else 0
-    if actual_prev != expected_prev_version_no:
-        raise TreeVersionConflictError(subject)
-
-    new_version = ThemeTreeVersion(
+    return _ensure_curriculum_draft_with_optimistic_lock(
+        session,
         subject=subject,
-        version_no=actual_prev + 1,
-        status="draft",
+        expected_prev_version_no=expected_prev_version_no,
+        conflict_error=TreeVersionConflictError,
     )
-    session.add(new_version)
-    session.commit()
-    session.refresh(new_version)
-    return new_version
 
 
 def create_theme_tree_node(
@@ -383,46 +436,18 @@ def delete_taxonomy_anchor(session: Session, anchor_id: int) -> bool:
     return True
 
 
-def create_curriculum_snapshot(
-    session: Session,
-    snapshot: CurriculumSnapshot,
-) -> CurriculumSnapshot:
-    session.add(snapshot)
-    session.commit()
-    session.refresh(snapshot)
-    return snapshot
-
-
-def get_current_curriculum_snapshot(
-    session: Session,
-    subject: str,
-) -> CurriculumSnapshot | None:
-    stmt = select(CurriculumSnapshot).where(
-        CurriculumSnapshot.subject == subject,
-        CurriculumSnapshot.status == "published",
-    )
-    return session.exec(stmt).first()
-
-
 def create_prereq_dag_version(
     session: Session,
     version: PrereqDagVersion,
 ) -> PrereqDagVersion:
-    session.add(version)
-    session.commit()
-    session.refresh(version)
-    return version
+    return create_curriculum_snapshot(session, version)
 
 
 def get_current_prereq_dag_version(
     session: Session,
     subject: str,
 ) -> PrereqDagVersion | None:
-    stmt = select(PrereqDagVersion).where(
-        PrereqDagVersion.subject == subject,
-        PrereqDagVersion.status == "published",
-    )
-    return session.exec(stmt).first()
+    return get_current_curriculum_snapshot(session, subject)
 
 
 def create_prereq_dag_version_with_optimistic_lock(
@@ -430,23 +455,12 @@ def create_prereq_dag_version_with_optimistic_lock(
     subject: str,
     expected_prev_version_no: int,
 ) -> PrereqDagVersion:
-    stmt = select(func.max(PrereqDagVersion.version_no)).where(
-        PrereqDagVersion.subject == subject,
-    )
-    current_max: int | None = session.exec(stmt).one()
-    actual_prev = current_max if current_max is not None else 0
-    if actual_prev != expected_prev_version_no:
-        raise DagVersionConflictError(subject)
-
-    new_version = PrereqDagVersion(
+    return _ensure_curriculum_draft_with_optimistic_lock(
+        session,
         subject=subject,
-        version_no=actual_prev + 1,
-        status="draft",
+        expected_prev_version_no=expected_prev_version_no,
+        conflict_error=DagVersionConflictError,
     )
-    session.add(new_version)
-    session.commit()
-    session.refresh(new_version)
-    return new_version
 
 
 def create_unit_dependency(

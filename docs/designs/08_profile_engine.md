@@ -1,3 +1,10 @@
+TODO 加个学习人格！mbti
+TODO 当然除了加点花哨的内容，还是要有具体有用的内容？比如profile里会有好几个字段，然后学习状态表会有对知识点的理解的介绍，然后要有本地存的文件类似USER.md这种
+
+TODO 这里结合上记忆曲线？具体记忆曲线也展示一下什么的
+TODO 还能结合上什么？结合上BKT？一些数学理论啥的？
+
+
 # 08. Profile 引擎
 
 ## 1. 目标与职责
@@ -18,7 +25,10 @@ Profile 负责把学习过程沉淀成可持续利用的画像和学习状态。
 
 ### 2.1 当前正式路径
 
-- 前端页面：`frontend/src/pages/AnalysisPage.tsx`
+
+TODO 这里文档层面是不是还有好多要重构的。。。。
+
+- 前端页面：`frontend/src/pages/ProfilePage.tsx`
 - 后端资源组：`profile`
 - 业务入口：`backend/app/services/profile_service.py`
 - 工作流编排：`backend/app/workflows/profile/*`
@@ -70,13 +80,16 @@ Profile 的核心价值不在于“画了几张图”，而在于它能否被其
 - 他在这门学科里当前应该怎么教、怎么考
 - 他在具体知识点和教学单元上到底掌握到什么程度
 
+
+TODO 上面这几点正是我想说的
+
 ### 4.3 状态要尽量锚定稳定对象
 
 新链路优先锚定：
 
 - `teaching_unit_id`
 - `knowledge_node_id`
-- `curriculum_version`
+- `curriculum`
 
 这比只依赖 `knowledge_point` 字符串更稳定。
 
@@ -122,7 +135,7 @@ Profile 的输出至少要能回到：
 
 - `exam_paper`
 - `exam_paper_item`
-- `curriculum_version`
+- `curriculum`
 
 说明：
 
@@ -182,7 +195,7 @@ Profile 的输出至少要能回到：
 | --- | --- | --- | --- |
 | `mastery_updater.py` | `exam_paper`、`exam_paper_item`、已有 `user_knowledge_state` | `user_knowledge_state` | 无 |
 | `profile_service / 后续 profile 聚合模块` | `user_knowledge_state`、`exam_paper_item`、`subject` | `subject.profile_json` | 无 |
-| `weakness_analyzer.py` | `user_knowledge_state`、`exam_paper_item`、`curriculum_version`、课程结构对象 | 无 | 无 |
+| `weakness_analyzer.py` | `user_knowledge_state`、`exam_paper_item`、`curriculum`、课程结构对象 | 无 | 无 |
 | `profile_service` | `user`、`subject`、`user_knowledge_state`、`exam_paper_item` | `user.profile_json`（显式设置场景） | 无 |
 
 ---

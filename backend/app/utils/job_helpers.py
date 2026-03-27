@@ -9,13 +9,11 @@ import structlog
 from sqlmodel import Session, select
 
 from app.models import (
-    CurriculumVersion,
+    Curriculum,
     KnowledgeEdge,
     KnowledgeNode,
-    PrereqDagVersion,
     TeachingUnit,
     ThemeTreeNode,
-    ThemeTreeVersion,
     UnitDependency,
 )
 from app.utils.time import utcnow
@@ -94,57 +92,30 @@ def _cleanup_graph_pending_by_subject(session: Session, *, subject: str) -> int:
 def _cleanup_curriculum_pending_by_subject(session: Session, *, subject: str) -> int:
     total = 0
 
-    draft_snapshots = list(
+    draft_curricula = list(
         session.exec(
-            select(CurriculumVersion).where(
-                CurriculumVersion.subject == subject,
-                CurriculumVersion.status == "draft",
+            select(Curriculum).where(
+                Curriculum.subject == subject,
+                Curriculum.status == "draft",
             )
         ).all()
     )
-    for row in draft_snapshots:
-        session.delete(row)
-    total += len(draft_snapshots)
-
-    draft_tree_versions = list(
-        session.exec(
-            select(ThemeTreeVersion).where(
-                ThemeTreeVersion.subject == subject,
-                ThemeTreeVersion.status == "draft",
-            )
-        ).all()
-    )
-    draft_tree_ids = {row.id for row in draft_tree_versions if row.id is not None}
-    if draft_tree_ids:
+    draft_ids = {row.id for row in draft_curricula if row.id is not None}
+    if draft_ids:
         tree_nodes = list(
             session.exec(
                 select(ThemeTreeNode).where(
-                    ThemeTreeNode.tree_version_id.in_(draft_tree_ids)
+                    ThemeTreeNode.tree_version_id.in_(draft_ids)
                 )
             ).all()
         )
         for row in tree_nodes:
             session.delete(row)
         total += len(tree_nodes)
-
-    for row in draft_tree_versions:
-        session.delete(row)
-    total += len(draft_tree_versions)
-
-    draft_dag_versions = list(
-        session.exec(
-            select(PrereqDagVersion).where(
-                PrereqDagVersion.subject == subject,
-                PrereqDagVersion.status == "draft",
-            )
-        ).all()
-    )
-    draft_dag_ids = {row.id for row in draft_dag_versions if row.id is not None}
-    if draft_dag_ids:
         deps = list(
             session.exec(
                 select(UnitDependency).where(
-                    UnitDependency.dag_version_id.in_(draft_dag_ids)
+                    UnitDependency.dag_version_id.in_(draft_ids)
                 )
             ).all()
         )
@@ -152,9 +123,9 @@ def _cleanup_curriculum_pending_by_subject(session: Session, *, subject: str) ->
             session.delete(row)
         total += len(deps)
 
-    for row in draft_dag_versions:
+    for row in draft_curricula:
         session.delete(row)
-    total += len(draft_dag_versions)
+    total += len(draft_curricula)
 
     pending_units = list(
         session.exec(
@@ -224,26 +195,22 @@ def cleanup_orphan_pending_by_subject(
 
 
 def publish_theme_tree_version(session: Session, *, version_id: int) -> None:
-    version = session.get(ThemeTreeVersion, version_id)
-    if version is None:
-        return
-    version.status = "published"
-    session.add(version)
+    publish_curriculum_snapshot(session, snapshot_id=version_id)
 
 
 def publish_prereq_dag_version(session: Session, *, version_id: int) -> None:
-    version = session.get(PrereqDagVersion, version_id)
-    if version is None:
-        return
-    version.status = "published"
-    session.add(version)
+    publish_curriculum_snapshot(session, snapshot_id=version_id)
 
 
 def publish_curriculum_snapshot(session: Session, *, snapshot_id: int) -> None:
-    snapshot = session.get(CurriculumVersion, snapshot_id)
+    snapshot = session.get(Curriculum, snapshot_id)
     if snapshot is None:
         return
     snapshot.status = "published"
+    snapshot.is_current = True
+    snapshot.updated_at = utcnow()
+    if snapshot.published_at is None:
+        snapshot.published_at = utcnow()
     session.add(snapshot)
 
 
@@ -255,41 +222,60 @@ def archive_old_versions(
     current_dag_version_id: int | None = None,
     current_snapshot_id: int | None = None,
 ) -> None:
-    if current_tree_version_id is not None:
-        old_trees = session.exec(
-            select(ThemeTreeVersion).where(
-                ThemeTreeVersion.subject == subject,
-                ThemeTreeVersion.status == "published",
-                ThemeTreeVersion.id != current_tree_version_id,
-            )
-        ).all()
-        for row in old_trees:
-            row.status = "archived"
-            session.add(row)
+    current_id = current_snapshot_id or current_tree_version_id or current_dag_version_id
+    if current_id is None:
+        return
 
-    if current_dag_version_id is not None:
-        old_dags = session.exec(
-            select(PrereqDagVersion).where(
-                PrereqDagVersion.subject == subject,
-                PrereqDagVersion.status == "published",
-                PrereqDagVersion.id != current_dag_version_id,
-            )
-        ).all()
-        for row in old_dags:
-            row.status = "archived"
-            session.add(row)
+    old_snapshots = session.exec(
+        select(Curriculum).where(
+            Curriculum.subject == subject,
+            Curriculum.status == "published",
+            Curriculum.id != current_id,
+        )
+    ).all()
+    for row in old_snapshots:
+        row.status = "archived"
+        row.is_current = False
+        row.updated_at = utcnow()
+        row.superseded_at = utcnow()
+        session.add(row)
 
-    if current_snapshot_id is not None:
-        old_snapshots = session.exec(
-            select(CurriculumVersion).where(
-                CurriculumVersion.subject == subject,
-                CurriculumVersion.status == "published",
-                CurriculumVersion.id != current_snapshot_id,
+
+def stamp_graph_revision_by_subject(
+    session: Session,
+    *,
+    subject: str,
+    version_no: int,
+) -> int:
+    total = 0
+    nodes = list(
+        session.exec(
+            select(KnowledgeNode).where(
+                KnowledgeNode.subject == subject,
+                KnowledgeNode.status == "active",
             )
         ).all()
-        for row in old_snapshots:
-            row.status = "archived"
-            session.add(row)
+    )
+    for row in nodes:
+        row.build_revision_no = version_no
+        row.updated_at = utcnow()
+        session.add(row)
+    total += len(nodes)
+
+    edges = list(
+        session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.subject == subject,
+                KnowledgeEdge.status == "active",
+            )
+        ).all()
+    )
+    for row in edges:
+        row.build_revision_no = version_no
+        row.updated_at = utcnow()
+        session.add(row)
+    total += len(edges)
+    return total
 
 
 def activate_graph_entities_by_job(

@@ -183,6 +183,13 @@
 
 `candidate extraction -> canonicalization -> entity resolve -> evidence attach -> dependency build -> topic map publish -> curriculum signal derive`
 
+
+
+TODO 这里既然图谱的过程和文档的过程是同时触发的，那两者的最初输入啥的应该是这样的，输入的应该是和文档生成的输入一样，都会先是一堆文档，根据总结的知识主题啥的再进行下一步？整理一个详细的流程？
+
+
+
+
 ### 5.1 Candidate Extraction
 
 职责：
@@ -263,6 +270,11 @@ curriculum lane 至少需要拿到：
 - examine 可以基于 topic salience 生成更合理的题目覆盖
 
 ---
+
+
+
+
+TODO 这里改改，未来也并不需增量更新，现在想的还是版本号的办法，同理这里对应到表结构里会有什么影响？需要一个版本号控制表？什么形式的？？
 
 ## 7. 增量更新、影响域与重建边界
 

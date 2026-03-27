@@ -1,19 +1,17 @@
 """Digest curriculum workflow nodes and routing.
 
-Reads DB: graph entities plus prior ``teaching_unit*``, ``theme_tree*``,
-``prereq_dag*`` and ``curriculum_snapshot`` versions.
-Writes DB: ``teaching_unit*``, ``taxonomy_anchor``, ``theme_tree*``,
-``prereq_dag*``, ``curriculum_snapshot`` and publish/archive status flips.
+Reads DB: graph entities plus prior ``teaching_unit*`` and the current live ``curriculum``.
+Writes DB: ``teaching_unit*``, ``taxonomy_anchor``, ``theme_tree_node``,
+``unit_dependency`` and one shared ``curriculum`` build record.
 Writes DB (compatibility no-op): curriculum progress helpers still run, but no dedicated
 ``curriculum_derive_job`` table is persisted now.
 Writes FS: none.
-Idempotency: reruns target the same derive job and replace the active published versions
-through explicit publish/archive transitions.
+Idempotency: reruns create/replace one draft curriculum build and publish it as the new
+current record on success.
 """
 
 from __future__ import annotations
 
-from sqlmodel import func as sqlfunc, select
 import structlog
 
 from app.workflows.digest.curriculum.services.prereq_dag_builder import derive_prereq_dag
@@ -27,8 +25,7 @@ from app.utils.job_helpers import (
     archive_old_versions,
     cleanup_pending_by_job,
     publish_curriculum_snapshot,
-    publish_prereq_dag_version,
-    publish_theme_tree_version,
+    stamp_graph_revision_by_subject,
     update_job_progress,
 )
 from app.workflows.digest.curriculum.state import CurriculumDeriveState
@@ -224,40 +221,38 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
             )
             digest_logger.info("curriculum_activated", activated=activated)
 
-            if theme_tree_version_id is not None:
-                publish_theme_tree_version(session, version_id=theme_tree_version_id)
-                digest_logger.info("tree_version_published", version_id=theme_tree_version_id)
-
-            if prereq_dag_version_id is not None:
-                publish_prereq_dag_version(session, version_id=prereq_dag_version_id)
-                digest_logger.info("dag_version_published", version_id=prereq_dag_version_id)
-
-            snapshot_id: int | None = None
-            if theme_tree_version_id is not None or prereq_dag_version_id is not None:
-                max_version_no = session.exec(
-                    select(sqlfunc.max(CurriculumSnapshot.version_no)).where(
-                        CurriculumSnapshot.subject == subject,
-                    )
-                ).one()
-                snapshot = curriculum_repo.create_curriculum_snapshot(
-                    session,
-                    CurriculumSnapshot(
-                        subject=subject,
-                        version_no=(max_version_no or 0) + 1,
-                        status="draft",
-                        theme_tree_version_id=theme_tree_version_id,
-                        prereq_dag_version_id=prereq_dag_version_id,
-                    ),
+            snapshot_id = theme_tree_version_id or prereq_dag_version_id
+            if (
+                theme_tree_version_id is not None
+                and prereq_dag_version_id is not None
+                and theme_tree_version_id != prereq_dag_version_id
+            ):
+                raise ValueError(
+                    "theme tree and prereq dag must share the same curriculum build id"
                 )
-                snapshot_id = snapshot.id
+
+            curriculum_version_no: int | None = None
+            stamped_graph_entities = 0
+            if snapshot_id is not None:
                 publish_curriculum_snapshot(session, snapshot_id=snapshot_id)
-                digest_logger.info("curriculum_snapshot_published", snapshot_id=snapshot_id)
+                snapshot = session.get(CurriculumSnapshot, snapshot_id)
+                if snapshot is not None:
+                    curriculum_version_no = snapshot.version_no
+                    stamped_graph_entities = stamp_graph_revision_by_subject(
+                        session,
+                        subject=subject,
+                        version_no=curriculum_version_no,
+                    )
+                digest_logger.info(
+                    "curriculum_snapshot_published",
+                    snapshot_id=snapshot_id,
+                    curriculum_version_no=curriculum_version_no,
+                    stamped_graph_entities=stamped_graph_entities,
+                )
 
             archive_old_versions(
                 session,
                 subject=subject,
-                current_tree_version_id=theme_tree_version_id,
-                current_dag_version_id=prereq_dag_version_id,
                 current_snapshot_id=snapshot_id,
             )
             session.commit()
@@ -281,10 +276,9 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
                 "units_added": units_added,
                 "units_updated": units_updated,
             }
-            if theme_tree_version_id is not None:
-                update_kwargs["theme_tree_version_id"] = theme_tree_version_id
-            if prereq_dag_version_id is not None:
-                update_kwargs["prereq_dag_version_id"] = prereq_dag_version_id
+            if snapshot_id is not None:
+                update_kwargs["theme_tree_version_id"] = snapshot_id
+                update_kwargs["prereq_dag_version_id"] = snapshot_id
             curriculum_repo.update_curriculum_job(session, job_id, **update_kwargs)
 
             update_job_progress(
@@ -298,13 +292,21 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
                 "curriculum_finalize_complete",
                 units_added=units_added,
                 units_updated=units_updated,
-                tree_version_id=theme_tree_version_id,
-                dag_version_id=prereq_dag_version_id,
+                tree_version_id=snapshot_id,
+                dag_version_id=snapshot_id,
                 snapshot_id=snapshot_id,
+                curriculum_version_no=curriculum_version_no,
                 impact_changed_nodes=len(impact_set.changed_node_ids) if impact_set else 0,
                 impact_affected_units=len(impact_set.affected_unit_ids) if impact_set else 0,
             )
-            return {**state, "snapshot_id": snapshot_id, "error": None}
+            return {
+                **state,
+                "theme_tree_version_id": snapshot_id,
+                "prereq_dag_version_id": snapshot_id,
+                "snapshot_id": snapshot_id,
+                "curriculum_version_no": curriculum_version_no,
+                "error": None,
+            }
         except Exception as exc:
             digest_logger.error("curriculum_finalize_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"finalize_failed: {exc}"}

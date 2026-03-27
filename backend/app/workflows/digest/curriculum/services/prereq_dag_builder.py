@@ -524,6 +524,7 @@ async def derive_prereq_dag(
         }
 
         dep = UnitDependency(
+            subject=subject,
             dag_version_id=dag_version.id,  # type: ignore[arg-type]
             source_unit_id=edge_cand.source_unit_id,
             target_unit_id=edge_cand.target_unit_id,

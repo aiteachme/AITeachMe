@@ -18,6 +18,7 @@ class CurriculumDeriveState(TypedDict, total=False):
     theme_tree_version_id: int | None
     prereq_dag_version_id: int | None
     snapshot_id: int | None
+    curriculum_version_no: int | None
     error: str | None
 
 

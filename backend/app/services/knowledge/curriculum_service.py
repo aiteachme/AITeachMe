@@ -14,16 +14,14 @@ from app.core.exceptions import (
     TeachingUnitNotFoundError,
 )
 from app.models import (
-    CurriculumVersion,
+    Curriculum,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeNode,
-    PrereqDagVersion,
     RetrievalChunk,
     TaxonomyAnchor,
     TeachingUnit,
     ThemeTreeNode,
-    ThemeTreeVersion,
     UnitDependency,
 )
 from app.repositories import curriculum_repo, knowledge_repo
@@ -313,8 +311,8 @@ def get_current_curriculum_snapshot(
         subject=snapshot.subject,
         version_no=snapshot.version_no,
         status=snapshot.status,
-        theme_tree_version_id=snapshot.theme_tree_version_id,
-        prereq_dag_version_id=snapshot.prereq_dag_version_id,
+        theme_tree_version_id=snapshot.id,
+        prereq_dag_version_id=snapshot.id,
         syllabus_version_id=snapshot.syllabus_version_id,
         created_at=snapshot.created_at,
     )
@@ -339,42 +337,32 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
         session.delete(item)
     counts["knowledge_document"] = len(knowledge_documents)
 
-    tree_versions = list(session.exec(select(ThemeTreeVersion).where(ThemeTreeVersion.subject == subject)).all())
-    tree_version_ids = [item.id for item in tree_versions if item.id is not None]
+    curricula = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
+    curriculum_ids = [item.id for item in curricula if item.id is not None]
     tree_nodes: list[ThemeTreeNode] = []
-    if tree_version_ids:
+    if curriculum_ids:
         tree_nodes = list(
-            session.exec(select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id.in_(tree_version_ids))).all()
+            session.exec(select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id.in_(curriculum_ids))).all()
         )
         for item in tree_nodes:
             session.delete(item)
     counts["theme_tree_node"] = len(tree_nodes)
 
-    dag_versions = list(session.exec(select(PrereqDagVersion).where(PrereqDagVersion.subject == subject)).all())
-    dag_version_ids = [item.id for item in dag_versions if item.id is not None]
     dependencies: list[UnitDependency] = []
-    if dag_version_ids:
+    if curriculum_ids:
         dependencies = list(
-            session.exec(select(UnitDependency).where(UnitDependency.dag_version_id.in_(dag_version_ids))).all()
+            session.exec(select(UnitDependency).where(UnitDependency.dag_version_id.in_(curriculum_ids))).all()
         )
         for item in dependencies:
             session.delete(item)
     counts["unit_dependency"] = len(dependencies)
 
-    curriculum_versions = list(
-        session.exec(select(CurriculumVersion).where(CurriculumVersion.subject == subject)).all()
-    )
-    for item in curriculum_versions:
+    for item in curricula:
         session.delete(item)
-    counts["curriculum_version"] = len(curriculum_versions)
-
-    for item in tree_versions:
-        session.delete(item)
-    counts["theme_tree_version"] = len(tree_versions)
-
-    for item in dag_versions:
-        session.delete(item)
-    counts["prereq_dag_version"] = len(dag_versions)
+    counts["curriculum"] = len(curricula)
+    counts["curriculum_version"] = 0
+    counts["theme_tree_version"] = 0
+    counts["prereq_dag_version"] = 0
 
     anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
     for item in anchors:

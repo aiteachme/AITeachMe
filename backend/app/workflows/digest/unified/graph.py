@@ -412,6 +412,7 @@ def build_publish_outputs_node(*, context: WorkflowContext):
             "unified_publish_started",
             chapter_count=len(chapter_metadatas),
             snapshot_id=curriculum_state.get("snapshot_id"),
+            curriculum_version_no=curriculum_state.get("curriculum_version_no"),
         )
         doc_ids = publish_staged_knowledge_docs(
             subject=state["subject"],
@@ -419,6 +420,8 @@ def build_publish_outputs_node(*, context: WorkflowContext):
             chapter_assignments=list(doc_state.get("chapter_assignments", [])),
             user_prompt=state.get("user_prompt"),
             requested_at=state["requested_at"],
+            version_no=int(curriculum_state.get("curriculum_version_no") or 1),
+            build_session_id=state.get("build_session_id"),
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.info(

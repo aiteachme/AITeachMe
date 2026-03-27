@@ -8,10 +8,9 @@ from datetime import datetime
 from sqlmodel import Session, func, select
 
 from app.models import (
-    CurriculumVersion,
+    Curriculum,
     ExamPaper,
     ExamPaperItem,
-    PrereqDagVersion,
     QuestionTemplate,
     TeachingUnit,
     ThemeTreeNode,
@@ -244,7 +243,7 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
 def get_published_curriculum_version(
     session: Session,
     subject: str,
-) -> CurriculumVersion | None:
+) -> Curriculum | None:
     return curriculum_repo.get_current_curriculum_snapshot(session, subject)
 
 
@@ -269,22 +268,14 @@ def list_prereq_units(session: Session, unit_id: int) -> list[int]:
     if unit is None:
         return []
 
-    dag_id = session.exec(
-        select(PrereqDagVersion.id)
-        .where(
-            PrereqDagVersion.subject == unit.subject,
-            PrereqDagVersion.status == "published",
-        )
-        .order_by(PrereqDagVersion.version_no.desc())
-        .limit(1)
-    ).first()
-    if dag_id is None:
+    curriculum = get_published_curriculum_version(session, unit.subject)
+    if curriculum is None or curriculum.id is None:
         return []
 
     stmt = (
         select(UnitDependency.source_unit_id)
         .where(
-            UnitDependency.dag_version_id == dag_id,
+            UnitDependency.dag_version_id == curriculum.id,
             UnitDependency.target_unit_id == unit_id,
             UnitDependency.dependency_type == "prerequisite",
         )

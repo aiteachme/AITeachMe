@@ -56,6 +56,13 @@ load_raw_file → compute_fingerprint → classify_file → plan_parse → parse
 3. **LLM Vision OCR 补强**（`enhance_markdown_with_asset_ocr`）→ 对提取的图片逐张调 LLM 视觉模型
 4. **PDF 页面级 OCR 兜底**（`enhance_pdf_markdown_with_page_fallback`）→ 对低文字密度页面再做整页 OCR
 
+
+
+TODO 这里感觉的问题应该是直接把图片识别提取出来，而并不需要说图片搞出来了还要再让vlm看，应该确认哪些地方确实是只能是文本（电路图、集合图等）
+
+
+TODO 图片的往返什么鬼？？只有需要用到文档的时候顺带输入图片吧，而且也应该是下一个阶段吧，现在阶段读图片没用吧？只需要用ocr模型把图片提取出来
+
 步骤 3 和 4 是调用 LLM 多模态 API 的，**每张图片一次网络往返**，这是整个管线最慢的环节。一个 30 页的 PDF 如果有 20 张图片，OCR 阶段可能需要 30-60 秒甚至更久，用户在前端会一直看到 "解析中" 的状态。
 
 ### 3.2 优化思路
@@ -377,6 +384,9 @@ options.timeout_s = 150                 # 延长超时时间
 - 直接使用 `litellm.acompletion` 调用
 
 ---
+
+
+TODO 这里会不会搞太复杂了，如果有ocr模型的话直接使用ocr模型就行，没必要再跑这个解析那个分类啥的把？刚开始设计的时候没想到，这里本身ocr模型强大的话就直接有ocr模型，没有ocr模型就用omni模型，都没有那也只能用传统解析器了
 
 ## 10. LangGraph 节点与表写入（新架构）
 

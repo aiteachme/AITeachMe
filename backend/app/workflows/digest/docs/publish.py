@@ -138,6 +138,8 @@ def publish_staged_knowledge_docs(
     chapter_assignments: list[dict],
     user_prompt: str | None,
     requested_at: datetime,
+    version_no: int = 1,
+    build_session_id: str | None = None,
 ) -> list[int]:
     """Promote staged chapter markdown to live outputs and persist metadata."""
 
@@ -198,6 +200,10 @@ def publish_staged_knowledge_docs(
                 tags=json.dumps(tags, ensure_ascii=False),
                 source_file_ids=json.dumps(source_file_ids),
                 word_count=count_words(chapter_markdown),
+                version=version_no,
+                version_no=version_no,
+                build_session_id=build_session_id,
+                is_current=True,
                 status="published",
             )
         )

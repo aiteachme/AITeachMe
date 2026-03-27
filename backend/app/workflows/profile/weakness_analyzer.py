@@ -87,12 +87,12 @@ def _exam_weight_by_unit(
     subject: str,
 ) -> dict[int, float]:
     version = exams_repo.get_published_curriculum_version(session, subject)
-    if version is None or version.theme_tree_version_id is None:
+    if version is None or version.id is None:
         return {}
 
     nodes = list(
         session.exec(
-            select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id == version.theme_tree_version_id)
+            select(ThemeTreeNode).where(ThemeTreeNode.tree_version_id == version.id)
         ).all()
     )
     counts: dict[int, int] = {}
@@ -113,13 +113,13 @@ def _prereq_gap_units(
     unit_states: dict[int, UserKnowledgeState],
 ) -> set[int]:
     version = exams_repo.get_published_curriculum_version(session, subject)
-    if version is None or version.prereq_dag_version_id is None:
+    if version is None or version.id is None:
         return set()
 
     rows = list(
         session.exec(
             select(UnitDependency.source_unit_id, UnitDependency.target_unit_id).where(
-                UnitDependency.dag_version_id == version.prereq_dag_version_id,
+                UnitDependency.dag_version_id == version.id,
                 UnitDependency.dependency_type == "prerequisite",
             )
         ).all()

@@ -202,6 +202,7 @@ def _build_anchor_skeleton(session: Session, subject: str) -> list[AnchorSkeleto
 
 def _materialize_skeleton(
     session: Session,
+    subject: str,
     tree_version_id: int,
     skeletons: list[AnchorSkeleton],
     parent_tree_node_id: int | None = None,
@@ -215,6 +216,7 @@ def _materialize_skeleton(
             node = curriculum_repo.create_theme_tree_node(
                 session,
                 ThemeTreeNode(
+                    subject=subject,
                     tree_version_id=tree_version_id,
                     anchor_id=anchor.id,
                     parent_tree_node_id=parent_id,
@@ -236,6 +238,7 @@ def _materialize_skeleton(
 
 def _ensure_uncategorized_node(
     session: Session,
+    subject: str,
     tree_version_id: int,
     leaf_nodes: list[tuple[int, int | None, list[str]]],
 ) -> int:
@@ -246,6 +249,7 @@ def _ensure_uncategorized_node(
     node = curriculum_repo.create_theme_tree_node(
         session,
         ThemeTreeNode(
+            subject=subject,
             tree_version_id=tree_version_id,
             anchor_id=None,
             parent_tree_node_id=None,
@@ -361,8 +365,8 @@ async def derive_theme_tree(
         subject,
         expected_prev_version_no=prev_version_no,
     )
-    leaf_nodes = _materialize_skeleton(session, tree_version.id or 0, skeletons)
-    uncategorized_node_id = _ensure_uncategorized_node(session, tree_version.id or 0, leaf_nodes)
+    leaf_nodes = _materialize_skeleton(session, subject, tree_version.id or 0, skeletons)
+    uncategorized_node_id = _ensure_uncategorized_node(session, subject, tree_version.id or 0, leaf_nodes)
 
     active_units, _ = curriculum_repo.list_units_by_subject(session, subject, status="active", limit=10000, offset=0)
     pending_units, _ = curriculum_repo.list_units_by_subject(session, subject, status="pending", limit=10000, offset=0)

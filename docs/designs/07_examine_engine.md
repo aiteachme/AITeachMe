@@ -1,3 +1,19 @@
+TODO  exam的新形式，
+TODO 或者说是interact的新形式，自动生成html？或者自动做一个沙盒环境来明确的解析一些疑难杂症？比如该如何详细的熟悉git linux docker 指令，或者说一些编程题，一个简单的oj系统？或者leetcode系统，
+TODO 如果是像我上面这样说的话，那其实更多的应该是依托于用户输入的话，而不是上传的文件
+TODO 这下知识文档里，会有引经据典的说明下现在的相关知识的不错的链接地址，然后知识图谱可以看到知识点和知识点的关系，并且表明一下课程之间的关系，解释下课程树
+TODO 沙盒模拟考试，和ai对话的考试方法
+
+
+TODO 生成html交互图是必然的，我们就是要比官方的方便！要比openai chatgpt 啥的方便，因我们自己装填上下文啥的，环境信息很足
+
+TODO 有的功能比较难实现，能不能先改成skills的实现方式？就是我们让我们的流程直接兼容skills模式，不知道会不会很难？
+
+TODO exams要有覆盖知识点，对于知识点也要有介绍啥的之类的内容
+
+TODO 这里的agent系统如何调试？another idea？如何调试agent系统 !IDEA!
+
+
 # 07. Examine 引擎
 
 ## 1. 目标与职责
@@ -59,7 +75,7 @@ Examine 的高价值不在“题目多”，而在“能知道哪里不会、为
 
 新测评链路应优先围绕：
 
-- `curriculum_version`
+- `curriculum`
 - `teaching_unit`
 - `question_template`
 
@@ -152,7 +168,7 @@ Examine 的高价值不在“题目多”，而在“能知道哪里不会、为
 | 模块 | 读 DB | 写 DB | 写 FS |
 | --- | --- | --- | --- |
 | `question_builder.py` | `teaching_unit`、知识节点 | `question_template` | 无 |
-| `paper_assembler.py` | `question_template`、`curriculum_version`、`subject.profile_json`、`user_knowledge_state` | `exam_paper`、`exam_paper_item` | 无 |
+| `paper_assembler.py` | `question_template`、`curriculum`、`subject.profile_json`、`user_knowledge_state` | `exam_paper`、`exam_paper_item` | 无 |
 | `exam_grade_workflow.py` | `exam_paper`、`exam_paper_item` | `exam_paper.status`、`exam_paper_item` | 无 |
 | `answer_grader.py` | `exam_paper_item`、知识节点 | `exam_paper_item` | 无 |
 | `workflows/profile/mastery_updater.py` | `exam_paper*` | `user_knowledge_state` | 无 |

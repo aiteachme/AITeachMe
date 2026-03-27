@@ -74,6 +74,7 @@ def create_curriculum_derive_initial_state(
         "theme_tree_version_id": None,
         "prereq_dag_version_id": None,
         "snapshot_id": None,
+        "curriculum_version_no": None,
         "error": None,
     }
 

@@ -15,7 +15,12 @@
 
 AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一个以 `Subject` 为工作空间边界的本地优先教学系统。主链路可以概括为：
 
-`RawFile -> Raw Markdown / Assets -> RetrievalChunk -> Knowledge Document / Knowledge Graph -> Teaching Unit -> Curriculum Version -> Chat / Exams / Profile`
+`RawFile -> Raw Markdown / Assets -> RetrievalChunk -> Knowledge Document / Knowledge Graph -> Teaching Unit -> Curriculum -> Chat / Exams / Profile`
+
+
+TODO 这里如果用ra的时候使用了不同的模型那不是直接无效了
+
+
 
 按系统分层看，当前主要由五层组成：
 
@@ -42,19 +47,19 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 
 - `UploadPage`
 - `KnowledgeDocsPage`
-- `SummaryPage`
+- `KnowledgeGraphPage`
 - `ChatPage`
-- `ExamPage`
-- `AnalysisPage`
+- `ExamsPage`
+- `ProfilePage`
 
 这些页面对应完整学习闭环：
 
 - `UploadPage`：资料进入系统
 - `KnowledgeDocsPage`：阅读 AI 整理后的知识文档
-- `SummaryPage`：查看图谱、主题树、先修图等结构化视图
+- `KnowledgeGraphPage`：查看图谱、主题树、先修图等结构化视图
 - `ChatPage`：进行教学型对话
-- `ExamPage`：发起测评与查看试卷
-- `AnalysisPage`：查看掌握度、复习任务和薄弱点
+- `ExamsPage`：发起测评与查看试卷
+- `ProfilePage`：查看掌握度、复习任务和薄弱点
 
 ### 3.2 前端分层方式
 
@@ -99,7 +104,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - `schemas/`
   API 请求/响应模型和通用传输结构。
 - `core/`
-  配置、数据库初始化、日志、LLM、Embedding、异常等基础设施。
+  配置、数据库初始化、日志、LLM、Embedding、异常等基础设施。加上一系列的agent的基础能力
 
 ### 4.2 路由资源组
 
@@ -118,7 +123,7 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 其中：
 
 - `exams` / `profile` 是当前正式对外资源组。
-- 旧 exam/profile 表和过渡命名仍有代码残留，但不是新的接口收敛方向。
+- 旧 exam/profile 表和过渡命名仍有代码残留，但不是新的接口收敛方向。（旧表旧接口最好都剔除干净）
 
 ### 4.3 workflows 的角色
 
@@ -127,6 +132,16 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 - `services/*` 只做触发、参数整理、持久化适配和返回封装。
 - 真正的状态流与节点编排放在 `workflows/*`。
 - 各工作流优先保持统一骨架：`graph.py`、`runtime.py`、`state.py`、`events.py`、`exports.py`。
+
+
+TODO 这里的几个文件都是干啥的也解释下？
+graph.py: 定义工作流的图结构，包括节点和边的关系
+runtime.py: 负责工作流的运行时管理，包括调度和执行
+state.py: 管理工作流的状态，包括节点状态和全局状态
+events.py: 处理工作流中的事件，包括触发和监听
+exports.py: 定义工作流的输出接口，用于结果导出和外部调用
+
+
 
 这意味着后续新功能应优先进入已有 workflow，而不是重新在路由或 service 中堆流程逻辑。
 
@@ -143,11 +158,15 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 负责两类结构化产出：
 
 - 面向用户的知识文档
-- 面向系统的知识图谱、Teaching Unit、Curriculum Version
+- 面向系统的知识图谱、Teaching Unit、Curriculum
+
+这里的“版本”不再指独立的 `theme_tree_version / prereq_dag_version / curriculum_version` 三套表，而是指统一收敛到 `curriculum.version_no`、`knowledge_document.version_no`、`knowledge_node.build_revision_no`、`knowledge_edge.build_revision_no` 上的共享构建版号。
 
 ### 5.3 Interact
 
 负责把 `retrieval_chunk`、聊天历史、用户级画像、学科级画像和细粒度学习状态装配成教学型对话，并通过 SSE 流式返回结果。
+
+TODO interact的时候可以像openclaw那样也加上用户的SOUL.md USER.md
 
 ### 5.4 Examine
 
@@ -173,10 +192,10 @@ AITeachMe 当前不是“前端调一个聊天接口”的轻应用，而是一�
 | --- | --- | --- | --- |
 | `UploadPage` | `files` | `file_service` | `workflows/ingest/*` |
 | `KnowledgeDocsPage` | `knowledge` | `knowledge/digest_service` | `workflows/digest/docs/*` |
-| `SummaryPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
+| `KnowledgeGraphPage` | `knowledge` | `knowledge/graph_query_service`、`knowledge/curriculum_service` | 消费 `workflows/digest/kg/*` 与 `workflows/digest/curriculum/*` 产物 |
 | `ChatPage` | `chats` | `chats_service` | `workflows/interact/*` |
-| `ExamPage` | `exams` | `exams_service` | `workflows/examine/*` |
-| `AnalysisPage` | `profile` | `profile_service` | `workflows/profile/*` |
+| `ExamsPage` | `exams` | `exams_service` | `workflows/examine/*` |
+| `ProfilePage` | `profile` | `profile_service` | `workflows/profile/*` |
 
 ---
 
@@ -252,6 +271,8 @@ service 不是最终流程容器，复杂业务要以 workflow 状态流为准�
 - `user.profile_json` 负责跨学科稳定画像
 - `subject.profile_json` 负责学科级学习画像
 - `user_knowledge_state` 负责细粒度学习状态
+
+TODO 这里都结合一下？作为用户的上下文
 
 ### 8.5 结构化真相与可调试产物并存
 

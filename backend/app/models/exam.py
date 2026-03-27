@@ -38,7 +38,7 @@ class QuestionTemplate(SQLModel, table=True):
     status: str = Field(default="active")
     curriculum_version_id: int | None = Field(
         default=None,
-        foreign_key="curriculum_version.id",
+        foreign_key="curriculum.id",
         index=True,
     )
     created_at: datetime = Field(default_factory=utcnow)
@@ -54,7 +54,7 @@ class ExamPaper(SQLModel, table=True):
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
-    curriculum_version_id: int = Field(foreign_key="curriculum_version.id", index=True)
+    curriculum_version_id: int = Field(foreign_key="curriculum.id", index=True)
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)

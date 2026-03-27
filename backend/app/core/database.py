@@ -14,12 +14,10 @@ from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
-    CurriculumVersion,
-    PrereqDagVersion,
+    Curriculum,
     TaxonomyAnchor,
     TeachingUnit,
     ThemeTreeNode,
-    ThemeTreeVersion,
     UnitDependency,
 )
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
@@ -54,11 +52,9 @@ _SCHEMA_MODELS = (
     KnowledgeEdge,
     TeachingUnit,
     TaxonomyAnchor,
-    ThemeTreeVersion,
     ThemeTreeNode,
-    PrereqDagVersion,
     UnitDependency,
-    CurriculumVersion,
+    Curriculum,
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,

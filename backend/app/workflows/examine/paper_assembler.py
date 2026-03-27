@@ -1,6 +1,6 @@
 """组卷器：Phase B 组卷 + 快照。
 
-Reads DB: ``question_template*``, ``curriculum_snapshot``, ``user_knowledge_state``,
+Reads DB: ``question_template*``, ``curriculum``, ``user_knowledge_state``,
 ``review_task`` and related curriculum memberships.
 Writes DB: ``exam_paper`` and ``exam_paper_item``.
 Writes FS: none.
@@ -227,13 +227,13 @@ def _build_mock_final_unit_allocation(
     snapshot: CurriculumSnapshot,
     num_questions: int,
 ) -> dict[int, int]:
-    if snapshot.theme_tree_version_id is None:
+    if snapshot.id is None:
         return {}
 
     tree_nodes = list(
         session.exec(
             select(ThemeTreeNode).where(
-                ThemeTreeNode.tree_version_id == snapshot.theme_tree_version_id
+                ThemeTreeNode.tree_version_id == snapshot.id
             )
         ).all()
     )
