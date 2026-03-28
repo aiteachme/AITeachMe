@@ -1,5 +1,2 @@
-"""工具注册与调用。"""
-from app.core.tools.definition import ToolDefinition
-from app.core.tools.registry import ToolRegistry, get_tool_registry
-from app.core.tools.decorator import tool
-__all__ = ["ToolDefinition", "ToolRegistry", "get_tool_registry", "tool"]
+"""兼容性 shim — 实际实现已移至 app.platform.tools。"""
+from app.platform.tools import ToolDefinition, ToolRegistry, get_tool_registry, tool  # noqa: F401
