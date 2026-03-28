@@ -1,4 +1,4 @@
-"""系统初始化接口 schema。"""
+﻿"""系统初始化接口 schema。"""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ class RuntimeUser(BaseModel):
     user_id: str = Field(description="用户 ID。")
     email: str | None = Field(default=None, description="邮箱。")
     is_local: bool = Field(description="是否为本地模式用户。")
+    device_key: str | None = Field(default=None, description="设备标识。")
+    is_authenticated: bool = Field(default=False, description="是否已完成账号登录。")
 
 
 class InitData(BaseModel):

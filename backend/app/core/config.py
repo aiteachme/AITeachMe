@@ -1,4 +1,4 @@
-"""应用配置。"""
+﻿"""应用配置。"""
 
 from __future__ import annotations
 
@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     rag_similarity_threshold: float = 0.3
     chat_history_turns: int = 10
     app_mode: str = "local"
-    auth_enabled: bool = False
+    auth_enabled: bool = True
+    auth_token_secret: str = "aiteachme-dev-token-secret"
+    auth_token_ttl_hours: int = 24 * 30
     app_version: str = "0.2.0"
 
     # ── AI 基础设施配置 ──
@@ -99,7 +101,7 @@ class Settings(BaseSettings):
     def auth_ready(self) -> bool:
         """鉴权能力是否就绪。"""
 
-        return False
+        return True
 
     def require_llm_api_key(self) -> str:
         """读取并校验 LLM API Key。"""

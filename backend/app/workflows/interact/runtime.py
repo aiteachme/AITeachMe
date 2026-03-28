@@ -25,6 +25,7 @@ from app.workflows.interact.support.streaming import SSEEventEmitter
 def create_interact_initial_state(
     *,
     subject: str,
+    user_id: str,
     session_id: str | None,
     question: str,
     selected_context: str | None = None,
@@ -34,6 +35,7 @@ def create_interact_initial_state(
 
     return {
         "subject": subject,
+        "user_id": user_id,
         "session_id": session_id,
         "question": question,
         "selected_context": selected_context,
@@ -46,6 +48,7 @@ def create_interact_initial_state(
 async def run_interact_workflow(
     *,
     subject: str,
+    user_id: str,
     session_id: str | None,
     question: str,
     session: Session,
@@ -74,6 +77,7 @@ async def run_interact_workflow(
         ),
         initial_state=create_interact_initial_state(
             subject=subject,
+            user_id=user_id,
             session_id=session_id,
             question=question,
             selected_context=selected_context,
@@ -115,6 +119,7 @@ async def stream_chat_workflow(
     request: Request,
     session: Session,
     subject: str,
+    user_id: str,
     session_id: str | None,
     question: str,
     selected_context: str | None = None,
@@ -135,6 +140,7 @@ async def stream_chat_workflow(
             session=session,
             source_chunk_id=source_chunk_id,
             subject=subject,
+            user_id=user_id,
         )
     )
     async for payload in emitter.stream(request=request, workflow_task=workflow_task):
@@ -152,10 +158,12 @@ async def _execute_interact_workflow(
     session: Session,
     source_chunk_id: int | None,
     subject: str,
+    user_id: str,
 ) -> None:
     try:
         result = await run_interact_workflow(
             subject=subject,
+            user_id=user_id,
             session_id=session_id,
             question=question,
             session=session,

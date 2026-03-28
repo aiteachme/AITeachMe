@@ -165,7 +165,7 @@ async def api_trigger_exam_generate(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamGenerateResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     job = await trigger_exam_generate(
         session,
         subject=normalized,
@@ -193,7 +193,7 @@ async def api_get_exam_history(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ExamHistoryItem]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     history = await get_exam_history(
         session,
         subject=normalized,
@@ -223,7 +223,7 @@ async def api_get_question_bank(
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[QuestionBankItemResponse]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     items = await get_question_bank(session, subject=normalized, user_id=user.user_id)
     return ok_response([_to_question_bank_item_response(item) for item in items])
 
@@ -241,7 +241,7 @@ async def api_get_exam_detail(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     detail = await get_exam_paper_detail(
         session,
         subject=normalized,
@@ -264,7 +264,7 @@ async def api_delete_exam(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDeleteResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     await delete_exam_paper(
         session,
         subject=normalized,
@@ -288,7 +288,7 @@ async def api_submit_exam(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
 
     answers: dict[int | str, str] = {}
     for answer in body.answers:
@@ -327,7 +327,7 @@ async def api_trigger_exam_grade(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamGradeResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
 
     await get_exam_paper_detail(
         session,

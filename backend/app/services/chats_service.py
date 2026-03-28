@@ -1,4 +1,4 @@
-"""Chat service adapters."""
+﻿"""Chat service adapters."""
 
 from __future__ import annotations
 
@@ -48,18 +48,21 @@ def list_chat_sessions(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     page: int,
     size: int,
 ) -> PaginatedData[ChatSessionItem]:
     items, total = list_sessions_by_subject(
         session,
         subject,
+        user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
     )
     counts = count_messages_by_session_ids(
         session,
         subject=subject,
+        user_id=user_id,
         session_ids=[item.id for item in items],
     )
     return build_paginated_data(
@@ -80,12 +83,14 @@ def create_session(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     title: str | None = None,
     source: str | None = None,
 ) -> ChatSessionItem:
     created = create_chat_session(
         session,
         subject=subject,
+        user_id=user_id,
         source=source,
         title=(title or "New Chat").strip() or "New Chat",
     )
@@ -96,6 +101,7 @@ def list_chat_threads(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     page: int,
     size: int,
     source: str | None = "quick_chat",
@@ -103,6 +109,7 @@ def list_chat_threads(
     turn_heads, total = list_thread_turn_heads_by_subject(
         session,
         subject,
+        user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
         source=source,
@@ -112,6 +119,7 @@ def list_chat_threads(
     messages = list_messages_by_turn_ids(
         session,
         subject=subject,
+        user_id=user_id,
         turn_ids=turn_ids,
     )
     messages_by_turn: dict[str, list[ChatMessage]] = {}
@@ -136,11 +144,13 @@ def delete_session(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     session_id: str,
 ) -> ChatSessionDeleteData:
     deleted_message_count = delete_chat_session(
         session,
         subject=subject,
+        user_id=user_id,
         session_id=session_id,
     )
     return ChatSessionDeleteData(
@@ -153,6 +163,7 @@ def list_chat_history(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     page: int,
     size: int,
     session_id: str | None = None,
@@ -160,6 +171,7 @@ def list_chat_history(
     items, total = list_messages_by_subject(
         session,
         subject,
+        user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
         session_id=session_id,
@@ -176,11 +188,13 @@ def clear_chat_history(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     session_id: str | None = None,
 ) -> ChatClearData:
     deleted_count = clear_messages_by_subject(
         session,
         subject,
+        user_id=user_id,
         session_id=session_id,
     )
     return ChatClearData(cleared=True, deleted_count=deleted_count)
@@ -191,6 +205,7 @@ async def chat_stream(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     session_id: str | None,
     question: str,
     source: str | None = None,
@@ -201,6 +216,7 @@ async def chat_stream(
     resolved_session = _resolve_chat_session(
         session,
         subject=subject,
+        user_id=user_id,
         session_id=session_id,
         question=question,
         source=source,
@@ -211,6 +227,7 @@ async def chat_stream(
             request=request,
             session=session,
             subject=subject,
+            user_id=user_id,
             chat_session=resolved_session,
             question=question,
             source=source,
@@ -225,6 +242,7 @@ async def chat_stream(
         request=request,
         session=session,
         subject=subject,
+        user_id=user_id,
         session_id=resolved_session.id,
         question=question,
         selected_context=selected_context,
@@ -240,6 +258,7 @@ async def chat_stream(
             touch_chat_session(
                 session,
                 subject=subject,
+                user_id=user_id,
                 session_id=resolved_session.id,
                 title=_build_session_title(question) if _is_placeholder_title(resolved_session.title) else None,
             )
@@ -256,6 +275,7 @@ async def _stream_direct_chat(
     request: Request,
     session: Session,
     subject: str,
+    user_id: str,
     chat_session: ChatSession,
     question: str,
     source: str,
@@ -299,6 +319,7 @@ async def _stream_direct_chat(
     create_message_pair(
         session,
         subject=subject,
+        user_id=user_id,
         session_id=chat_session.id,
         user_content=question,
         assistant_content=assistant_content,
@@ -312,6 +333,7 @@ async def _stream_direct_chat(
     touch_chat_session(
         session,
         subject=subject,
+        user_id=user_id,
         session_id=chat_session.id,
         title=_build_session_title(question) if _is_placeholder_title(chat_session.title) else None,
     )
@@ -330,6 +352,7 @@ def _resolve_chat_session(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     session_id: str | None,
     question: str,
     source: str | None,
@@ -338,6 +361,7 @@ def _resolve_chat_session(
         existing = get_chat_session(
             session,
             subject=subject,
+            user_id=user_id,
             session_id=session_id.strip(),
         )
         if existing:
@@ -346,6 +370,7 @@ def _resolve_chat_session(
     return create_chat_session(
         session,
         subject=subject,
+        user_id=user_id,
         source=source,
         title=_build_session_title(question),
     )

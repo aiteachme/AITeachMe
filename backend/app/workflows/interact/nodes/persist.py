@@ -47,6 +47,7 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session):
         _, assistant_message = create_message_pair(
             session,
             subject=state["subject"],
+            user_id=state["user_id"],
             session_id=session_id,
             user_content=state["question"],
             assistant_content=assistant_response,

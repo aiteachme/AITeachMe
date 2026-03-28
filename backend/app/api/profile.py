@@ -83,7 +83,7 @@ async def api_get_mastery_overview(
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryOverviewResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     overview = await get_mastery_overview(session, subject=normalized, user_id=user.user_id)
     return ok_response(_to_mastery_overview_response(overview))
 
@@ -101,7 +101,7 @@ async def api_get_unit_mastery_detail(
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryStateResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     state = await get_unit_mastery_detail(
         session,
         subject=normalized,
@@ -124,7 +124,7 @@ async def api_get_node_mastery_detail(
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryStateResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     state = await get_node_mastery_detail(
         session,
         subject=normalized,
@@ -146,7 +146,7 @@ async def api_get_review_tasks(
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[ReviewTaskResponse]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     tasks = await get_review_tasks(session, subject=normalized, user_id=user.user_id)
     return ok_response([_to_review_task_response(item) for item in tasks])
 
@@ -164,7 +164,7 @@ async def api_complete_review_task(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ReviewTaskResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     task = await complete_review_task(
         session,
         subject=normalized,

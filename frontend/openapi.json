@@ -96,7 +96,7 @@
           "auth"
         ],
         "summary": "注册",
-        "description": "云端鉴权预留接口。",
+        "description": "基于 device_key 的匿名身份升级为邮箱账号。",
         "operationId": "register_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -119,8 +119,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -130,11 +140,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -148,7 +168,7 @@
           "auth"
         ],
         "summary": "登录",
-        "description": "云端鉴权预留接口。",
+        "description": "邮箱密码登录，并绑定当前 device_key。",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -171,8 +191,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -182,11 +212,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -200,7 +240,7 @@
           "auth"
         ],
         "summary": "登出",
-        "description": "云端鉴权预留接口。",
+        "description": "清除登录态后回到 device_key 匿名身份。",
         "operationId": "logout_api_v1_auth_logout_post",
         "requestBody": {
           "content": {
@@ -223,8 +263,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "422": {
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
@@ -233,12 +273,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -252,7 +292,7 @@
           "auth"
         ],
         "summary": "当前用户",
-        "description": "云端鉴权预留接口。",
+        "description": "读取当前 token/device_key 对应的用户会话信息。",
         "operationId": "user_api_v1_auth_user_post",
         "requestBody": {
           "content": {
@@ -275,8 +315,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,11 +326,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -7577,6 +7627,24 @@
             "type": "boolean",
             "title": "Is Local",
             "description": "是否为本地模式用户。"
+          },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Key",
+            "description": "设备标识。"
+          },
+          "is_authenticated": {
+            "type": "boolean",
+            "title": "Is Authenticated",
+            "description": "是否已完成账号登录。",
+            "default": false
           }
         },
         "type": "object",
