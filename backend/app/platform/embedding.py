@@ -14,8 +14,8 @@ import time
 import litellm
 import structlog
 
-from app.core.config import get_settings
-from app.core.exceptions import LLMCallError
+from app.infra.config import get_settings
+from app.infra.exceptions import LLMCallError
 
 logger = structlog.get_logger()
 

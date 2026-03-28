@@ -4,7 +4,7 @@
 
 对外使用::
 
-    from app.core.events import emit_event, get_events
+    from app.teaching.events import emit_event, get_events
 
     # 记录事件
     await emit_event("exam_completed", user_id="u1", subject="math",
@@ -68,7 +68,7 @@ class _EventStore:
         self._initialized = False
 
     def _get_conn(self):
-        from app.core.database import get_engine
+        from app.infra.database import get_engine
         return get_engine().raw_connection()
 
     def _ensure_table(self) -> None:

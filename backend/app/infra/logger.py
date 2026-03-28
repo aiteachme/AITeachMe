@@ -11,7 +11,7 @@ import sys
 
 import structlog
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 
 
 def configure_logging(log_level: str = "INFO") -> None:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.retrieval import retrieve_context

@@ -10,7 +10,7 @@ from enum import Enum
 
 import structlog
 
-from app.core.reasoning import ReasoningStrategy
+from app.platform.reasoning import ReasoningStrategy
 
 logger = structlog.get_logger()
 

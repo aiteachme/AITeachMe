@@ -10,8 +10,8 @@ from fastapi import Request
 from pydantic import TypeAdapter
 from sqlmodel import Session
 
-from app.core.llm import acompletion_stream
-from app.core.model_router import TaskType
+from app.platform.llm import acompletion_stream
+from app.platform.model_router import TaskType
 from app.models import ChatMessage, ChatSession
 from app.repositories.chats_repo import (
     clear_messages_by_subject,

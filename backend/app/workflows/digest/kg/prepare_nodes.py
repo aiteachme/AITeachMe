@@ -6,8 +6,8 @@ import asyncio
 
 from sqlmodel import select
 
-from app.core.config import get_settings
-from app.core.database import managed_session
+from app.infra.config import get_settings
+from app.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 
 
 class TaskType(str, Enum):

@@ -20,7 +20,7 @@ from math import floor
 import structlog
 from sqlmodel import Session, select
 
-from app.core.exceptions import NoPublishedCurriculumSnapshotError
+from app.infra.exceptions import NoPublishedCurriculumSnapshotError
 from app.models import (
     ExamMode,
     ExamPaper,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import structlog
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.services.upload_support import build_asset_dir, build_raw_markdown_path

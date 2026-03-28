@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
 from app.services.presenters import mastery_to_text

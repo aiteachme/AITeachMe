@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 
 
 def get_data_dir() -> Path:

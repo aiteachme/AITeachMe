@@ -4,7 +4,7 @@
 
 对外只需一行调用::
 
-    from app.core.agent_loop import run_agent_loop
+    from app.platform.agent_loop import run_agent_loop
     result = await run_agent_loop(messages, tools=["search_kb"])
     answer = result.final_answer
 """
@@ -19,8 +19,8 @@ from typing import Any, AsyncGenerator
 
 import structlog
 
-from app.core.model_router import TaskType
-from app.core.tracing import get_tracer
+from app.platform.model_router import TaskType
+from app.infra.tracing import get_tracer
 
 logger = structlog.get_logger()
 
@@ -94,7 +94,7 @@ async def run_agent_loop(
 
     Example::
 
-        from app.core.agent_loop import run_agent_loop
+        from app.platform.agent_loop import run_agent_loop
         result = await run_agent_loop(
             messages=[{"role": "user", "content": "什么是特征值？"}],
             tools=["search_kb"],
@@ -102,7 +102,7 @@ async def run_agent_loop(
         print(result.final_answer)
     """
 
-    from app.core.llm import acompletion, acompletion_with_tools
+    from app.platform.llm import acompletion, acompletion_with_tools
     from app.platform.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
@@ -190,12 +190,12 @@ async def run_agent_loop_stream(
 
     Example::
 
-        from app.core.agent_loop import run_agent_loop_stream
+        from app.platform.agent_loop import run_agent_loop_stream
         async for chunk in run_agent_loop_stream(messages, tools=["search_kb"]):
             print(chunk, end="")
     """
 
-    from app.core.llm import acompletion_stream, acompletion_with_tools
+    from app.platform.llm import acompletion_stream, acompletion_with_tools
     from app.platform.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()

@@ -7,8 +7,8 @@
 
 对外使用::
 
-    from app.core.teaching import teaching_function, run_teaching_function
-    from app.core.teaching import list_teaching_functions
+    from app.teaching.teaching import teaching_function, run_teaching_function
+    from app.teaching.teaching import list_teaching_functions
 
     @teaching_function("explain", "对概念进行详细解释")
     async def explain(concept: str, style: str = "类比") -> str:
@@ -161,7 +161,7 @@ def list_teaching_functions(category: str | None = None) -> list[dict]:
 async def _explain_concept(concept: str, style: str = "类比") -> str:
     """解释概念。"""
     try:
-        from app.core.llm import acompletion
+        from app.platform.llm import acompletion
         return await acompletion(messages=[
             {"role": "system", "content": f"你是一位优秀的教师。请用{style}的方式，用中文通俗地解释以下概念。"},
             {"role": "user", "content": concept},
@@ -175,7 +175,7 @@ async def _explain_concept(concept: str, style: str = "类比") -> str:
 async def _check_understanding(concept: str, depth: int = 1) -> str:
     """追问检查理解。"""
     try:
-        from app.core.llm import acompletion
+        from app.platform.llm import acompletion
         return await acompletion(messages=[
             {"role": "system", "content": "你是一位苏格拉底式教师。请针对学生刚学的概念提出追问，"
                                           "检验他们是否真正理解了核心要义。不要直接揭示答案。"},
@@ -190,7 +190,7 @@ async def _check_understanding(concept: str, depth: int = 1) -> str:
 async def _generate_practice(topic: str, difficulty: str = "中等", count: int = 3) -> str:
     """生成练习题。"""
     try:
-        from app.core.llm import acompletion
+        from app.platform.llm import acompletion
         return await acompletion(messages=[
             {"role": "system", "content": f"你是出题专家。请围绕主题出{count}道{difficulty}难度的练习题，"
                                           "包含答案和解析。"},
@@ -205,7 +205,7 @@ async def _generate_practice(topic: str, difficulty: str = "中等", count: int 
 async def _summarize_session(conversation: str) -> str:
     """总结学习会话。"""
     try:
-        from app.core.llm import acompletion
+        from app.platform.llm import acompletion
         return await acompletion(messages=[
             {"role": "system", "content": "请总结以下学习对话的要点，列出：\n"
                                           "1. 学到的核心概念\n2. 仍需加强的地方\n3. 建议下一步"},

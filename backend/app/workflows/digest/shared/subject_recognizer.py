@@ -7,7 +7,7 @@ from collections import Counter
 
 import structlog
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.models.subject import Subject
 from app.workflows.digest.shared.models import (
     FastTopicHints,

@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.models.curriculum import TeachingUnit, ThemeTreeNode, UnitTreeMembership
 from app.models.knowledge_graph import KnowledgeNode
 from app.repositories import curriculum_repo, kg_repo

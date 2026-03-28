@@ -10,8 +10,8 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.core.config import get_settings
-from app.core.exceptions import VectorExtensionUnavailableError
+from app.infra.config import get_settings
+from app.infra.exceptions import VectorExtensionUnavailableError
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from app.core.strategies import StrategyMode
+from app.platform.strategies import StrategyMode
 from app.schemas.chats import ChatContextItem
 from app.schemas.llm import ChatMessage
 from app.workflows.interact.support.types import (

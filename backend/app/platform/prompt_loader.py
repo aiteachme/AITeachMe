@@ -4,7 +4,7 @@
 
 ```python
 from app.workflows.interact.prompts import SYSTEM_PROMPT_TUTOR
-from app.core.prompt_loader import populate_prompt
+from app.platform.prompt_loader import populate_prompt
 
 prompt = populate_prompt(
     SYSTEM_PROMPT_TUTOR,

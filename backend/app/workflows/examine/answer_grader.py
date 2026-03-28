@@ -10,9 +10,9 @@ import structlog
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from app.core.llm import acompletion
-from app.core.model_router import TaskType
-from app.core.prompt_loader import populate_prompt
+from app.platform.llm import acompletion
+from app.platform.model_router import TaskType
+from app.platform.prompt_loader import populate_prompt
 from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, KnowledgeNode, QuestionType
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER

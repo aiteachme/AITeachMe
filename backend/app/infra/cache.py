@@ -8,7 +8,7 @@ from hashlib import md5
 
 import structlog
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 
 logger = structlog.get_logger()
 

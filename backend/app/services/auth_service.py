@@ -12,8 +12,8 @@ import time
 from fastapi import Response
 from sqlmodel import Session
 
-from app.core.config import get_settings
-from app.core.exceptions import AITeachMeError, AuthDisabledError
+from app.infra.config import get_settings
+from app.infra.exceptions import AITeachMeError, AuthDisabledError
 from app.models import User
 from app.repositories.user_repo import (
     attach_device_key,

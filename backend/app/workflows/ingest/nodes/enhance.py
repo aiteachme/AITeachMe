@@ -14,7 +14,7 @@ from pathlib import Path
 
 import structlog
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.services.upload_support import build_asset_dir, build_raw_markdown_path, resolve_storage_key_path

@@ -8,7 +8,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
-from app.core.database import require_vec_ready
+from app.infra.database import require_vec_ready
 from app.models import RawFile, RetrievalChunk
 from app.utils.time import utcnow
 

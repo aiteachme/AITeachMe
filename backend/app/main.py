@@ -15,10 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_settings
-from app.core.database import init_db
-from app.core.exceptions import AITeachMeError
-from app.core.logger import configure_logging
+from app.infra.config import get_settings
+from app.infra.database import init_db
+from app.infra.exceptions import AITeachMeError
+from app.infra.logger import configure_logging
 
 logger = structlog.get_logger()
 

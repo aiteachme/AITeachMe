@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.core.llm import acompletion_stream
-from app.core.model_router import TaskType
+from app.platform.llm import acompletion_stream
+from app.platform.model_router import TaskType
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.streaming import SSEEventEmitter

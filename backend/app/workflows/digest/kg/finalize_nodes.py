@@ -7,7 +7,7 @@ import traceback
 import uuid
 from collections.abc import Awaitable, Callable
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.repositories import kg_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,

@@ -25,7 +25,7 @@ class SQLiteMemoryStore:
 
     def _get_conn(self):
         """获取原始 SQLite 连接（绕过 SQLAlchemy ORM）。"""
-        from app.core.database import get_engine
+        from app.infra.database import get_engine
 
         engine = get_engine()
         return engine.raw_connection()

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import structlog
 
-from app.core.exceptions import FileParseError
+from app.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:

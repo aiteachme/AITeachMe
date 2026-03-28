@@ -9,9 +9,9 @@ from typing import Generator
 from fastapi import Depends, Request, Response
 from sqlmodel import Session
 
-from app.core.config import get_settings
-from app.core.database import managed_session
-from app.core.exceptions import AITeachMeError
+from app.infra.config import get_settings
+from app.infra.database import managed_session
+from app.infra.exceptions import AITeachMeError
 from app.services.auth_service import (
     create_guest_user,
     resolve_guest_user_from_token,

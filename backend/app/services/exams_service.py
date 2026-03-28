@@ -12,7 +12,7 @@ from http import HTTPStatus
 import structlog
 from sqlmodel import Session, select
 
-from app.core.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
+from app.infra.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
 from app.models import (
     ExamMode,
     ExamPaper,

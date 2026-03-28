@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel
 import structlog
 
-from app.core.exceptions import FileParseError
+from app.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages
 from app.workflows.ingest.parsing.types import ParserRunOptions

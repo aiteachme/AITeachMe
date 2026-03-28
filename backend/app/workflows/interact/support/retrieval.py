@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.config import get_settings
-from app.core.embedding import aembed_texts
-from app.core.reranker import rerank_chunks
-from app.core.retrievers import RetrievalConfig, RetrievalPipeline, RetrievedChunk
+from app.infra.config import get_settings
+from app.platform.embedding import aembed_texts
+from app.platform.reranker import rerank_chunks
+from app.platform.retrievers import RetrievalConfig, RetrievalPipeline, RetrievedChunk
 from app.repositories.knowledge.knowledge_repo import vector_search
 from app.services.presenters import require_id
 from app.workflows.interact.support.types import RetrievedContext

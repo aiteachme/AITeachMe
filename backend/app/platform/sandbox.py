@@ -8,7 +8,7 @@
 
 对外使用::
 
-    from app.core.sandbox import create_sandbox, SandboxType
+    from app.platform.sandbox import create_sandbox, SandboxType
 
     # 真实执行
     sb = await create_sandbox(SandboxType.TERMINAL)
@@ -20,7 +20,7 @@
     history = sb.get_history()
 
     # 练习模式
-    from app.core.sandbox import create_exercise_sandbox
+    from app.platform.sandbox import create_exercise_sandbox
     sb = await create_exercise_sandbox(exercise={...})
     result = await sb.execute("git add .")
     grade = sb.grade()
@@ -428,7 +428,7 @@ class LocalTerminalSandbox(BaseSandbox):
         if not self._alive:
             return ExecutionResult(error="沙箱未初始化", exit_code=-1)
 
-        from app.core.security import check_action_safety
+        from app.platform.security import check_action_safety
         decision = await check_action_safety("execute_code", {"command": command})
         if not decision.allowed:
             return ExecutionResult(error=f"安全拦截：{decision.reason}", exit_code=-2)

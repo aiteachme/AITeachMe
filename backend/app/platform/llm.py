@@ -19,10 +19,10 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
     instructor = None
 
-from app.core.tracing import LLMCallRecord, get_tracker
-from app.core.config import get_settings
-from app.core.exceptions import LLMCallError, LLMTimeoutError
-from app.core.model_router import TaskType, get_task_profile
+from app.infra.tracing import LLMCallRecord, get_tracker
+from app.infra.config import get_settings
+from app.infra.exceptions import LLMCallError, LLMTimeoutError
+from app.platform.model_router import TaskType, get_task_profile
 from app.schemas.llm import ChatMessage
 
 logger = structlog.get_logger()

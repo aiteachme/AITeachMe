@@ -5,8 +5,8 @@
 
 对外使用::
 
-    from app.core.security import SecurityLevel, require_confirmation
-    from app.core.security import check_action_safety
+    from app.platform.security import SecurityLevel, require_confirmation
+    from app.platform.security import check_action_safety
 
     # 方式 1：装饰器
     @tool("execute_code", "执行代码")

@@ -4,7 +4,7 @@
 
 对外使用::
 
-    from app.core.checker import check_answer, load_rubric
+    from app.teaching.checker import check_answer, load_rubric
 
     rubric = load_rubric("math/eigenvalue")
     result = await check_answer(
@@ -166,7 +166,7 @@ async def check_with_llm(
 {{"score": 得分(0~{full}), "passed": true/false, "feedback": "一句话反馈", "criteria_scores": {{"维度名": 得分}}}}"""
 
     try:
-        from app.core.llm import acompletion
+        from app.platform.llm import acompletion
 
         raw = await acompletion(
             messages=[{"role": "user", "content": prompt}],

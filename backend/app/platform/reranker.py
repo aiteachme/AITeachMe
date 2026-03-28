@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import structlog
 
-from app.core.config import get_settings
-from app.core.retrievers import RetrievedChunk
+from app.infra.config import get_settings
+from app.platform.retrievers import RetrievedChunk
 
 logger = structlog.get_logger()
 

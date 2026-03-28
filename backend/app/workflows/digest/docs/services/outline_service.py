@@ -9,8 +9,8 @@ from pathlib import Path
 
 import structlog
 
-from app.core.llm import acompletion
-from app.core.model_router import TaskType
+from app.platform.llm import acompletion
+from app.platform.model_router import TaskType
 from app.workflows.digest.kg.services.chunker import chunk_markdown
 from app.workflows.digest.prompts.docgen_prompts import (
     GLOBAL_OUTLINE_PROMPT,

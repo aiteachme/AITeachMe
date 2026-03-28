@@ -17,7 +17,7 @@ import structlog
 from app.workflows.digest.curriculum.services.prereq_dag_builder import derive_prereq_dag
 from app.workflows.digest.curriculum.services.theme_tree_builder import derive_theme_tree
 from app.workflows.digest.curriculum.services.unit_builder import derive_teaching_units
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.models.curriculum import CurriculumSnapshot, TeachingUnit
 from app.repositories import curriculum_repo
 from app.utils.job_helpers import (

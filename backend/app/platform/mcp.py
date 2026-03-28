@@ -5,7 +5,7 @@ MCP 是 Anthropic 提出的标准协议，用于让 LLM 安全地访问外部数
 
 对外使用::
 
-    from app.core.mcp import MCPManager, get_mcp_manager
+    from app.platform.mcp import MCPManager, get_mcp_manager
 
     mgr = get_mcp_manager()
     await mgr.connect("sqlite", {"path": "/data/notes.db"})

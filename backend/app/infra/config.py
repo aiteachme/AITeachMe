@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.exceptions import MissingLLMApiKeyError
+from app.infra.exceptions import MissingLLMApiKeyError
 
 _EMBEDDING_DIM_MAP: dict[str, int] = {
     "text-embedding-v3": 1536,
