@@ -84,7 +84,7 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
             global_outline_text = build_global_outline_summary(outline_tree)
             source_text = "\n\n---\n\n".join(source_contents) if source_contents else "(no source content)"
             async with strategy.chapter_semaphore:
-                final_markdown = await write_chapter(
+                rewritten_markdown = await write_chapter(
                     chapter_title=chapter_title,
                     chapter_index=chapter_index,
                     total_chapters=total_chapters,
@@ -99,13 +99,24 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
                     subject_context=subject_context,
                     teaching_style_hint=teaching_style_hint,
                 )
-                review_result = await review_chapter(
-                    final_markdown,
+                second_review = await review_chapter(
+                    rewritten_markdown,
                     source_summary + coverage_hints,
                     user_prompt=user_prompt,
                     subject_context=subject_context,
                 )
             llm_calls_total += 2
+            # BUG-4 fix: only use rewrite if second review passed or is better than first
+            if second_review.get("passed", False) or second_review.get("review_skipped", False):
+                final_markdown = rewritten_markdown
+                review_result = second_review
+            else:
+                node_logger.warning(
+                    "docgen_rewrite_rejected",
+                    chapter_index=chapter_index,
+                    reason="second_review_also_failed",
+                )
+                # Keep original markdown (first draft) which at least was closer to source
 
         review_ms = int((perf_counter() - started_at) * 1000)
         node_logger.info(
