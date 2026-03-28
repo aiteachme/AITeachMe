@@ -66,7 +66,11 @@ export function TopBar({ className }: TopBarProps) {
           method: "POST",
           data: {},
         });
-        setAuthUser(response.data.current_user ?? null);
+        const currentUser = response.data.current_user ?? null;
+        if (!currentUser?.is_authenticated) {
+          localStorage.removeItem("token");
+        }
+        setAuthUser(currentUser);
       } catch {
         setAuthUser(null);
       }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Response
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
@@ -13,22 +13,10 @@ from app.services.auth_service import (
     build_session_from_context,
     login_user,
     register_user,
+    set_guest_cookie_for_user,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-
-
-def _require_device_key(user: CurrentUserContext) -> str:
-    device_key = (user.device_key or "").strip()
-    if not device_key:
-        from app.core.exceptions import AITeachMeError
-
-        raise AITeachMeError(
-            detail="当前请求缺少 device_key，请刷新页面后重试。",
-            status_code=400,
-            error_code="DEVICE_KEY_REQUIRED",
-        )
-    return device_key
 
 
 @router.post(
@@ -39,16 +27,20 @@ def _require_device_key(user: CurrentUserContext) -> str:
     responses=build_error_responses([400, 409, 422, 500]),
 )
 async def register(
+    response: Response,
     body: RegisterRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[AuthSessionData]:
     data = register_user(
         session,
+        current_user_id=user.user_id,
         email=body.email,
         password=body.password,
-        device_key=_require_device_key(user),
+        device_key=user.device_key,
     )
+    if data.current_user is not None:
+        set_guest_cookie_for_user(response, user_id=data.current_user.user_id)
     return ok_response(data)
 
 
@@ -60,6 +52,7 @@ async def register(
     responses=build_error_responses([400, 401, 422, 500]),
 )
 async def login(
+    response: Response,
     body: LoginRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
@@ -68,8 +61,10 @@ async def login(
         session,
         email=body.email,
         password=body.password,
-        device_key=_require_device_key(user),
+        device_key=user.device_key,
     )
+    if data.current_user is not None:
+        set_guest_cookie_for_user(response, user_id=data.current_user.user_id)
     return ok_response(data)
 
 
@@ -81,10 +76,12 @@ async def login(
     responses=build_error_responses([422, 500]),
 )
 async def logout(
+    response: Response,
     _: LogoutRequest = Body(default=LogoutRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
 ) -> ApiResponse[AuthSessionData]:
     # 无状态 token：服务端不保存会话，前端删除 token 即可。
+    set_guest_cookie_for_user(response, user_id=user.user_id)
     return ok_response(
         build_session_from_context(
             user_id=user.user_id,
@@ -103,9 +100,11 @@ async def logout(
     responses=build_error_responses([401, 422, 500]),
 )
 async def user(
+    response: Response,
     _: LogoutRequest = Body(default=LogoutRequest()),
     current: CurrentUserContext = Depends(get_current_user_context),
 ) -> ApiResponse[AuthSessionData]:
+    set_guest_cookie_for_user(response, user_id=current.user_id)
     return ok_response(
         build_session_from_context(
             user_id=current.user_id,

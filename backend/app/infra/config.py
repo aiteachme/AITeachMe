@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     auth_enabled: bool = True
     auth_token_secret: str = "aiteachme-dev-token-secret"
     auth_token_ttl_hours: int = 24 * 30
+    guest_token_ttl_hours: int = 24 * 30
+    guest_cookie_name: str = "atm_guest_token"
+    guest_cookie_secure: bool = False
+    guest_cookie_samesite: str = "lax"
     app_version: str = "0.2.0"
 
     # ── AI 基础设施配置 ──

@@ -6,13 +6,18 @@ import re
 from dataclasses import dataclass
 from typing import Generator
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, Response
 from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.core.database import managed_session
 from app.core.exceptions import AITeachMeError
-from app.services.auth_service import get_or_create_guest_user, resolve_user_from_token
+from app.services.auth_service import (
+    create_guest_user,
+    resolve_guest_user_from_token,
+    resolve_user_from_token,
+    set_guest_cookie_for_user,
+)
 from app.utils.subject import validate_subject as _validate_subject
 
 _DEVICE_KEY_HEADER = "x-device-key"
@@ -68,19 +73,29 @@ def _extract_bearer_token(request: Request) -> str | None:
     return None
 
 
+def _extract_guest_token(request: Request) -> str | None:
+    settings = get_settings()
+    raw = (request.cookies.get(settings.guest_cookie_name) or "").strip()
+    return raw or None
+
+
 def get_current_user_context(
     request: Request,
+    response: Response,
     session: Session = Depends(get_db),
 ) -> CurrentUserContext:
-    """返回当前运行时用户。优先 token，其次 device_key。"""
+    """返回当前运行时用户。优先 access token，其次 guest token。"""
 
     settings = get_settings()
     device_key = _extract_device_key(request)
     token = _extract_bearer_token(request)
+    guest_token = _extract_guest_token(request)
 
     if token:
         user = resolve_user_from_token(session, token)
         if user is not None:
+            # 维持一个游客 token，便于前端退出登录后回到同一浏览器游客身份。
+            set_guest_cookie_for_user(response, user_id=user.id)
             return CurrentUserContext(
                 user_id=user.id,
                 email=user.email,
@@ -89,31 +104,27 @@ def get_current_user_context(
                 is_authenticated=True,
                 auth_source="token",
             )
-        # token 失效时，如携带 device_key 则自动回落到设备匿名身份，避免阻塞匿名可用性。
-        if not device_key:
-            raise AITeachMeError(
-                detail="登录态已失效，请重新登录。",
-                status_code=401,
-                error_code="AUTH_TOKEN_INVALID",
+
+    if guest_token:
+        user = resolve_guest_user_from_token(session, guest_token)
+        if user is not None:
+            set_guest_cookie_for_user(response, user_id=user.id)
+            return CurrentUserContext(
+                user_id=user.id,
+                email=None,
+                is_local=settings.is_local_mode,
+                device_key=(device_key or user.device_key),
+                is_authenticated=False,
+                auth_source="guest_token",
             )
 
-    if device_key:
-        user = get_or_create_guest_user(session, device_key=device_key)
-        return CurrentUserContext(
-            user_id=user.id,
-            email=None,
-            is_local=settings.is_local_mode,
-            device_key=device_key,
-            is_authenticated=False,
-            auth_source="device",
-        )
-
-    # 兼容旧客户端（尚未发送 device_key）
+    user = create_guest_user(session, device_key=device_key)
+    set_guest_cookie_for_user(response, user_id=user.id)
     return CurrentUserContext(
-        user_id="local",
+        user_id=user.id,
         email=None,
         is_local=settings.is_local_mode,
-        device_key=None,
+        device_key=(device_key or user.device_key),
         is_authenticated=False,
-        auth_source="fallback",
+        auth_source="guest_bootstrap",
     )

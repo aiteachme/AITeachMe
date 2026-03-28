@@ -7,6 +7,7 @@ const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 const instance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true,
 });
 
 export interface ApiErrorPayload {
@@ -200,6 +201,7 @@ export async function postSseJson<TBody>(
   try {
     const response = await fetch(buildApiUrl(url), {
       method: "POST",
+      credentials: "include",
       headers,
       body: JSON.stringify(body),
       signal: options.signal,

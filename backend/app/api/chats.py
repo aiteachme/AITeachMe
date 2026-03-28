@@ -33,6 +33,7 @@ from app.services.chats_service import (
     list_chat_threads,
     list_chat_sessions,
 )
+from app.services.auth_service import set_guest_cookie_for_user
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
@@ -55,7 +56,7 @@ async def send_chat(
     direct_mode = bool(body.source and body.source.strip())
     if not direct_mode:
         get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
-    return StreamingResponse(
+    stream_response = StreamingResponse(
         chat_stream(
             request,
             session,
@@ -75,6 +76,8 @@ async def send_chat(
             "X-Accel-Buffering": "no",
         },
     )
+    set_guest_cookie_for_user(stream_response, user_id=user.user_id)
+    return stream_response
 
 
 @router.post(

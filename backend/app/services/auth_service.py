@@ -9,6 +9,7 @@ import json
 import secrets
 import time
 
+from fastapi import Response
 from sqlmodel import Session
 
 from app.core.config import get_settings
@@ -16,7 +17,8 @@ from app.core.exceptions import AITeachMeError, AuthDisabledError
 from app.models import User
 from app.repositories.user_repo import (
     attach_device_key,
-    get_or_create_user_by_device_key,
+    create_user,
+    get_user_by_device_key,
     get_user_by_email,
     get_user_by_id,
     get_user_by_username,
@@ -27,6 +29,7 @@ from app.utils.time import utcnow
 
 _PASSWORD_SCHEME = "pbkdf2_sha256"
 _PASSWORD_ITERATIONS = 120_000
+_GUEST_TOKEN_KIND = "guest"
 
 
 def ensure_auth_enabled() -> None:
@@ -133,6 +136,25 @@ def issue_access_token(*, user: User, device_key: str | None = None) -> str:
     return f"{payload_b64}.{_b64url_encode(signature)}"
 
 
+def issue_guest_token(*, user_id: str) -> str:
+    settings = get_settings()
+    now = int(time.time())
+    payload = {
+        "sub": user_id,
+        "typ": _GUEST_TOKEN_KIND,
+        "iat": now,
+        "exp": now + max(60, settings.guest_token_ttl_hours * 3600),
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    payload_b64 = _b64url_encode(payload_json)
+    signature = hmac.new(
+        settings.auth_token_secret.encode("utf-8"),
+        payload_b64.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return f"{payload_b64}.{_b64url_encode(signature)}"
+
+
 def decode_access_token(token: str) -> dict[str, object] | None:
     settings = get_settings()
     try:
@@ -165,6 +187,41 @@ def decode_access_token(token: str) -> dict[str, object] | None:
     return payload
 
 
+def decode_guest_token(token: str) -> dict[str, object] | None:
+    settings = get_settings()
+    try:
+        payload_b64, signature_b64 = token.split(".", 1)
+    except ValueError:
+        return None
+
+    expected = hmac.new(
+        settings.auth_token_secret.encode("utf-8"),
+        payload_b64.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    try:
+        provided = _b64url_decode(signature_b64)
+    except Exception:
+        return None
+    if not hmac.compare_digest(expected, provided):
+        return None
+
+    try:
+        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    token_type = payload.get("typ")
+    exp = payload.get("exp")
+    if token_type != _GUEST_TOKEN_KIND:
+        return None
+    if not isinstance(exp, int) or exp < int(time.time()):
+        return None
+    return payload
+
+
 def resolve_user_from_token(session: Session, token: str) -> User | None:
     payload = decode_access_token(token)
     if payload is None:
@@ -175,16 +232,73 @@ def resolve_user_from_token(session: Session, token: str) -> User | None:
     return get_user_by_id(session, user_id)
 
 
-def get_or_create_guest_user(session: Session, *, device_key: str) -> User:
-    return get_or_create_user_by_device_key(session, device_key=device_key)
+def resolve_guest_user_from_token(session: Session, token: str) -> User | None:
+    payload = decode_guest_token(token)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id.strip():
+        return None
+    return get_user_by_id(session, user_id)
+
+
+def _build_guest_username(session: Session) -> str:
+    base = f"guest_{secrets.token_hex(6)}"
+    username = base
+    suffix = 1
+    while get_user_by_username(session, username) is not None:
+        suffix += 1
+        username = f"{base}_{suffix}"
+    return username
+
+
+def create_guest_user(session: Session, *, device_key: str | None = None) -> User:
+    normalized_device_key = (device_key or "").strip() or None
+    if normalized_device_key and get_user_by_device_key(session, normalized_device_key) is not None:
+        # device_key 仅用于设备标记，不参与匿名身份复用；冲突时跳过绑定即可。
+        normalized_device_key = None
+    return create_user(
+        session,
+        username=_build_guest_username(session),
+        device_key=normalized_device_key,
+        is_registered=False,
+    )
+
+
+def _normalize_cookie_samesite(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized not in {"lax", "strict", "none"}:
+        return "lax"
+    return normalized
+
+
+def set_guest_cookie(response: Response, *, guest_token: str) -> None:
+    settings = get_settings()
+    max_age = max(60, settings.guest_token_ttl_hours * 3600)
+    response.set_cookie(
+        key=settings.guest_cookie_name,
+        value=guest_token,
+        max_age=max_age,
+        httponly=True,
+        secure=settings.guest_cookie_secure,
+        samesite=_normalize_cookie_samesite(settings.guest_cookie_samesite),
+        path="/",
+    )
+
+
+def set_guest_cookie_for_user(response: Response, *, user_id: str) -> str:
+    token = issue_guest_token(user_id=user_id)
+    set_guest_cookie(response, guest_token=token)
+    return token
 
 
 def register_user(
     session: Session,
     *,
+    current_user_id: str | None,
     email: str,
     password: str,
-    device_key: str,
+    device_key: str | None,
 ) -> AuthSessionData:
     ensure_auth_enabled()
     normalized_email = _normalize_email(email)
@@ -197,18 +311,14 @@ def register_user(
             error_code="AUTH_EMAIL_ALREADY_REGISTERED",
         )
 
-    user = get_or_create_user_by_device_key(session, device_key=device_key)
+    user = get_user_by_id(session, current_user_id) if current_user_id else None
+    if user is None:
+        user = create_guest_user(session, device_key=device_key)
     if user.is_registered:
-        if user.email == normalized_email:
-            raise AITeachMeError(
-                detail="当前设备已绑定该邮箱，请直接登录。",
-                status_code=409,
-                error_code="AUTH_DEVICE_ALREADY_REGISTERED",
-            )
         raise AITeachMeError(
-            detail="当前设备已绑定其他账号，请先登录后再切换。",
+            detail="当前会话已绑定账号，请直接登录或先退出。",
             status_code=409,
-            error_code="AUTH_DEVICE_ALREADY_REGISTERED",
+            error_code="AUTH_SESSION_ALREADY_REGISTERED",
         )
 
     if not user.username or user.username.startswith("guest_"):
@@ -218,11 +328,13 @@ def register_user(
     user.email = normalized_email
     user.password_hash = hash_password(password)
     user.is_registered = True
-    user.device_key = device_key
     user.updated_at = utcnow()
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    if device_key:
+        user = attach_device_key(session, user=user, device_key=device_key)
 
     token = issue_access_token(user=user, device_key=device_key)
     return build_auth_session_data(user=user, access_token=token)
@@ -233,7 +345,7 @@ def login_user(
     *,
     email: str,
     password: str,
-    device_key: str,
+    device_key: str | None,
 ) -> AuthSessionData:
     ensure_auth_enabled()
     normalized_email = _normalize_email(email)
@@ -245,7 +357,8 @@ def login_user(
             error_code="AUTH_INVALID_CREDENTIALS",
         )
 
-    user = attach_device_key(session, user=user, device_key=device_key)
+    if device_key:
+        user = attach_device_key(session, user=user, device_key=device_key)
     token = issue_access_token(user=user, device_key=device_key)
     return build_auth_session_data(user=user, access_token=token)
 
