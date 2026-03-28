@@ -40,6 +40,18 @@ _QUESTION_PATTERN = re.compile(
 _TABLE_PATTERN = re.compile(r"^\s*\|.+\|.+\|\s*$", re.MULTILINE)
 _IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\([^)]+\)", re.IGNORECASE)
 _NOISE_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f□■◆◇●○]")
+# RISK-4 FIX: 用于在噪声检测前剥离公式块和代码块
+_STRIP_FORMULA_BLOCK = re.compile(r"\$\$[^$]+\$\$", re.DOTALL)
+_STRIP_INLINE_FORMULA = re.compile(r"\$[^$\n]+\$")
+_STRIP_CODE_BLOCK = re.compile(r"```[^`]*```", re.DOTALL)
+
+
+def _strip_structured_content(content: str) -> str:
+    """剥离公式块、行内公式和代码块，用于纯净噪声检测。"""
+    text = _STRIP_FORMULA_BLOCK.sub("", content)
+    text = _STRIP_INLINE_FORMULA.sub("", text)
+    text = _STRIP_CODE_BLOCK.sub("", text)
+    return text
 
 
 def compute_material_stats(sections: list[SectionPacket]) -> MaterialStats:
@@ -73,10 +85,12 @@ def compute_material_stats(sections: list[SectionPacket]) -> MaterialStats:
         # 表格
         table_count += len(_TABLE_PATTERN.findall(content))
 
-        # OCR 噪声
-        noise_chars = len(_NOISE_CHARS.findall(content))
-        if len(content) > 0 and noise_chars / len(content) > 0.1:
-            noisy_sections += 1
+        # RISK-4 FIX: OCR 噪声检测 — 先剥离公式和代码块，再统计噪声字符比例
+        stripped = _strip_structured_content(content)
+        if stripped:
+            noise_chars = len(_NOISE_CHARS.findall(stripped))
+            if noise_chars / len(stripped) > 0.1:
+                noisy_sections += 1
 
     n = max(len(sections), 1)
     return MaterialStats(

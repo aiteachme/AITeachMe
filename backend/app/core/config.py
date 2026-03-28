@@ -26,7 +26,11 @@ _DEFAULT_EMBEDDING_DIM = 1536
 class Settings(BaseSettings):
     """从环境变量加载应用配置。"""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"),  # 优先根目录 .env，兼容子目录 .env
+        env_file_encoding="utf-8",
+        extra="ignore",  # 忽略未定义的变量（如前端的 VITE_* 变量）
+    )
 
     llm_api_key: str | None = None
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"

@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import functools
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -65,7 +66,19 @@ class SecurityRule:
 # ── 规则注册表 ────────────────────────────────────────────────
 
 _rules: dict[str, SecurityRule] = {}
-_call_counts: dict[str, int] = {}
+# BUG-5 FIX: 使用 ContextVar 替代全局 dict，确保每个异步请求有独立的调用计数
+_call_counts_var: contextvars.ContextVar[dict[str, int]] = contextvars.ContextVar(
+    "security_call_counts", default=None,  # type: ignore[arg-type]
+)
+
+
+def _get_call_counts() -> dict[str, int]:
+    """获取当前请求上下文的调用计数字典（惰性初始化）。"""
+    counts = _call_counts_var.get(None)
+    if counts is None:
+        counts = {}
+        _call_counts_var.set(counts)
+    return counts
 
 # 内置默认规则
 _DEFAULT_RULES: list[SecurityRule] = [
@@ -120,9 +133,10 @@ async def check_action_safety(
                     reason=f"参数包含被禁止的模式: {pattern}",
                 )
 
-    # 2. 检查调用频率
+    # 2. 检查调用频率（基于请求级上下文隔离）
+    counts = _get_call_counts()
     if rule.max_calls_per_session > 0:
-        count = _call_counts.get(tool_name, 0)
+        count = counts.get(tool_name, 0)
         if count >= rule.max_calls_per_session:
             return SafetyDecision(
                 allowed=False,
@@ -139,8 +153,8 @@ async def check_action_safety(
             reason="此操作需要用户确认",
         )
 
-    # 记录调用次数
-    _call_counts[tool_name] = _call_counts.get(tool_name, 0) + 1
+    # 记录调用次数（写入当前请求上下文）
+    counts[tool_name] = counts.get(tool_name, 0) + 1
 
     return SafetyDecision(allowed=True, level=rule.level)
 
@@ -183,6 +197,5 @@ def require_confirmation(level: SecurityLevel = SecurityLevel.HIGH) -> Callable:
 
 
 def reset_session_counts() -> None:
-    """重置会话调用计数（新会话开始时调用）。"""
-    global _call_counts
-    _call_counts = {}
+    """重置当前请求上下文的调用计数（新会话开始时调用）。"""
+    _call_counts_var.set({})

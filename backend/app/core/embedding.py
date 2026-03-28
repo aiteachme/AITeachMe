@@ -2,7 +2,8 @@
 
 支持：
 - 自动分批处理（防止超限）
-- 失败重试
+- 自动兼容不同 API 提供商（DashScope / OpenAI / 硅基流动等）
+- 失败自动降级重试
 - 调用追踪
 """
 
@@ -18,6 +19,60 @@ from app.core.config import get_settings
 from app.core.exceptions import LLMCallError
 
 logger = structlog.get_logger()
+
+# 全局：让 litellm 尽可能丢弃不支持的参数
+litellm.drop_params = True
+
+
+def _build_model_name(embedding_model: str) -> str:
+    """构建 litellm 路由所需的 model 名称。
+
+    如果用户已经在 EMBEDDING_MODEL 中写好了 provider 前缀
+    （如 ``openai/text-embedding-3-small`` 或 ``dashscope/qwen3-embedding-0.6b``），
+    就直接使用；否则默认加 ``openai/`` 前缀，以兼容 OpenAI 兼容协议
+    （DashScope compatible-mode / SiliconFlow / aihubmix 等）。
+    """
+    if "/" in embedding_model:
+        return embedding_model
+    return f"openai/{embedding_model}"
+
+
+async def _call_embedding(
+    model: str,
+    batch: list[str],
+    api_base: str,
+    api_key: str,
+) -> list[list[float]]:
+    """调用 litellm embedding，自动处理 encoding_format 兼容性。
+
+    策略：
+    1. 先用 encoding_format="float" 调用（大多数 API 都支持）
+    2. 如果报 400（参数不支持），降级不带 encoding_format 重试
+    """
+    try:
+        response = await litellm.aembedding(
+            model=model,
+            input=batch,
+            api_base=api_base,
+            api_key=api_key,
+            encoding_format="float",
+        )
+        return [item["embedding"] for item in response.data]
+    except litellm.exceptions.BadRequestError as exc:
+        # encoding_format 不被支持，降级重试
+        if "encoding_format" in str(exc):
+            logger.info(
+                "embedding_encoding_format_fallback",
+                reason="API 不支持 encoding_format 参数，降级重试",
+            )
+            response = await litellm.aembedding(
+                model=model,
+                input=batch,
+                api_base=api_base,
+                api_key=api_key,
+            )
+            return [item["embedding"] for item in response.data]
+        raise
 
 
 async def aembed_texts(
@@ -38,6 +93,7 @@ async def aembed_texts(
     settings = get_settings()
     api_key = settings.require_llm_api_key()
     batch_size = batch_size or settings.embedding_batch_size
+    model = _build_model_name(settings.embedding_model)
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []
@@ -49,19 +105,19 @@ async def aembed_texts(
         batch = texts[batch_start:batch_end]
 
         try:
-            response = await litellm.aembedding(
-                model=f"openai/{settings.embedding_model}",
-                input=batch,
+            batch_vectors = await _call_embedding(
+                model=model,
+                batch=batch,
                 api_base=settings.llm_base_url,
                 api_key=api_key,
             )
-            batch_vectors = [item["embedding"] for item in response.data]
             all_vectors.extend(batch_vectors)
         except Exception as exc:
             logger.error(
                 "embedding_batch_failed",
                 batch_idx=batch_idx,
                 batch_size=len(batch),
+                model=model,
                 error=str(exc),
             )
             raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
@@ -75,6 +131,7 @@ async def aembed_texts(
         elapsed_s=round(time.monotonic() - start, 2),
         text_count=len(texts),
         batch_count=total_batches,
+        model=model,
         embedding_dim=len(all_vectors[0]) if all_vectors else 0,
     )
     return all_vectors

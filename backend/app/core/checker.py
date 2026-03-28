@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -137,6 +138,27 @@ async def check_keywords(
     )
 
 
+# BUG-6 FIX: 剥离大模型常见的 Markdown 代码块包裹和前缀后缀杂言
+_JSON_FENCE_RE = re.compile(
+    r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL
+)
+
+
+def _clean_json_payload(raw: str) -> str:
+    """清洗 LLM 返回的 JSON：去除 Markdown 代码围栏和前后缀杂言。"""
+    # 1. 尝试提取 ```json ... ``` 代码块内容
+    match = _JSON_FENCE_RE.search(raw)
+    if match:
+        return match.group(1).strip()
+    # 2. 尝试找到第一个 { 和最后一个 } 之间的内容
+    first_brace = raw.find("{")
+    last_brace = raw.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        return raw[first_brace : last_brace + 1]
+    # 3. 原样返回（后续 json.loads 会报错，由调用方处理）
+    return raw.strip()
+
+
 async def check_with_llm(
     question: str,
     student_answer: str,
@@ -171,8 +193,17 @@ async def check_with_llm(
         raw = await acompletion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
+            response_format={"type": "json_object"},
         )
-        parsed = json.loads(raw)
+    except Exception as exc:
+        # LLM 调用本身失败（网络/超时），退回关键词匹配
+        logger.warning("llm_grading_call_failed", error=str(exc))
+        return await check_keywords(student_answer, expected, rubric=rubric)
+
+    # 解析 LLM 返回的 JSON
+    try:
+        cleaned = _clean_json_payload(raw)
+        parsed = json.loads(cleaned)
         return CheckResult(
             passed=parsed.get("passed", False),
             score=float(parsed.get("score", 0)),
@@ -180,8 +211,13 @@ async def check_with_llm(
             feedback=parsed.get("feedback", ""),
             criteria_scores=parsed.get("criteria_scores", {}),
         )
-    except Exception as exc:
-        logger.warning("llm_grading_failed", error=str(exc))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        # JSON 解析失败，说明模型吐了非标格式，退回关键词但记录警告
+        logger.warning(
+            "llm_grading_json_parse_failed",
+            raw_preview=raw[:200],
+            error=str(exc),
+        )
         return await check_keywords(student_answer, expected, rubric=rubric)
 
 

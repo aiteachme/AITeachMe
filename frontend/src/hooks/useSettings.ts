@@ -5,6 +5,7 @@ export interface AppSettings {
   useMock: boolean;
   providerBaseUrl: string;
   providerApiKey: string;
+  debugMode: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -12,6 +13,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   useMock: import.meta.env.VITE_USE_MOCK === "true",
   providerBaseUrl: "",
   providerApiKey: "",
+  debugMode: false,
 };
 
 export function useSettings() {
