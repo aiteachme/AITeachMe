@@ -1,4 +1,4 @@
-﻿"""Helpers for staging and publishing knowledge docs in unified builds."""
+"""Helpers for staging and publishing knowledge docs in unified builds."""
 
 from __future__ import annotations
 
@@ -60,18 +60,10 @@ def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
 def build_merged_markdown(chapters: list[dict]) -> str:
     """Merge chapter markdown into the published knowledge-doc layout."""
 
-    toc = [
+    header = [
         "# 知识文档总览",
         "",
-        "## 目录",
-        "",
     ]
-    for chapter in chapters:
-        title = chapter.get("title", "")
-        chapter_index = chapter.get("chapter_index", 0)
-        toc.append(f"- 第{chapter_index}章 {title}")
-        for section_title in chapter.get("section_titles", [])[:12]:
-            toc.append(f"  - {section_title}")
 
     separator = "\n\n---\n\n"
     body: list[str] = []
@@ -91,7 +83,7 @@ def build_merged_markdown(chapters: list[dict]) -> str:
             )
         else:
             body.append(markdown)
-    return "\n".join(toc) + separator + separator.join(body) + "\n"
+    return "\n".join(header) + separator + separator.join(body) + "\n"
 
 
 async def stage_knowledge_docs(
