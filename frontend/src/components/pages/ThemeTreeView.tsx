@@ -5,11 +5,7 @@ import {
   FolderTree,
   BookOpen,
 } from "lucide-react";
-import type {
-  KnowledgeOverviewThemeNode as ThemeTreeNodeResponse,
-  KnowledgeOverviewThemeTree as ThemeTreeResponse,
-  KnowledgeOverviewThemeUnit as TreeUnitItem,
-} from "../../api/knowledgeOverview";
+import type { ThemeTreeNodeResponse, ThemeTreeResponse, TreeUnitItem } from "../../api/generated/model";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 

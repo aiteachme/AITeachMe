@@ -15,10 +15,7 @@ import {
 import {
   graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
 } from "../../api/generated/knowledge";
-import type {
-  KnowledgeOverviewGraph as FullGraphResponse,
-  KnowledgeOverviewNode as KnowledgeNodeResponse,
-} from "../../api/knowledgeOverview";
+import type { FullGraphResponse, KnowledgeNodeResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";

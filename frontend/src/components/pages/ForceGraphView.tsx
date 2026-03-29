@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost } from "../../api/generated/knowledge";
-import type { KnowledgeOverviewGraph as FullGraphResponse } from "../../api/knowledgeOverview";
+import type { FullGraphResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
