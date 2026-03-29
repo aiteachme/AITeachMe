@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-29T14:40:40.802130",
-  "total_commits_analyzed": 252,
+  "generated_at": "2026-03-29T15:08:38.822975",
+  "total_commits_analyzed": 255,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2017,6 +2017,30 @@
       "code_lines": 62897,
       "other_lines": 22181,
       "message": "erge branch 'main' of github.com:aiteachme/AiTeach"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "5980430",
+      "total_lines": 85078,
+      "code_lines": 62897,
+      "other_lines": 22181,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "177769e",
+      "total_lines": 85079,
+      "code_lines": 62898,
+      "other_lines": 22181,
+      "message": "fix: 跨域"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "abb0471",
+      "total_lines": 85079,
+      "code_lines": 62898,
+      "other_lines": 22181,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
