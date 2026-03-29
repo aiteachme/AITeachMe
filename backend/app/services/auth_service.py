@@ -1,4 +1,4 @@
-﻿"""Authentication service: device-aware guest and email/password login."""
+"""Authentication service: device-aware guest and email/password login."""
 
 from __future__ import annotations
 
@@ -6,15 +6,22 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
+import smtplib
+import ssl
 import time
+from datetime import timedelta
+from email.message import EmailMessage
+from email.utils import formataddr
 
+import structlog
 from fastapi import Response
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.infra.config import get_settings
 from app.infra.exceptions import AITeachMeError, AuthDisabledError
-from app.models import User
+from app.models import EmailVerificationCode, User
 from app.repositories.user_repo import (
     attach_device_key,
     create_user,
@@ -23,13 +30,18 @@ from app.repositories.user_repo import (
     get_user_by_id,
     get_user_by_username,
 )
-from app.schemas.auth import AuthSessionData
+from app.schemas.auth import AuthSessionData, SendEmailCodeData
 from app.schemas.system import RuntimeUser
 from app.utils.time import utcnow
+
+logger = structlog.get_logger()
 
 _PASSWORD_SCHEME = "pbkdf2_sha256"
 _PASSWORD_ITERATIONS = 120_000
 _GUEST_TOKEN_KIND = "guest"
+_VERIFICATION_PURPOSE_REGISTER = "register"
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+_EMAIL_CODE_RE = re.compile(r"^[A-Za-z0-9]{4,16}$")
 
 
 def ensure_auth_enabled() -> None:
@@ -55,7 +67,30 @@ def _normalize_email(email: str) -> str:
             status_code=400,
             error_code="AUTH_INVALID_EMAIL",
         )
+    if not _EMAIL_RE.fullmatch(normalized):
+        raise AITeachMeError(
+            detail="邮箱格式不正确。",
+            status_code=400,
+            error_code="AUTH_INVALID_EMAIL",
+        )
     return normalized
+
+
+def _normalize_verification_code(raw_code: str) -> str:
+    code = raw_code.strip()
+    if not _EMAIL_CODE_RE.fullmatch(code):
+        raise AITeachMeError(
+            detail="验证码格式不正确。",
+            status_code=400,
+            error_code="AUTH_INVALID_EMAIL_CODE",
+        )
+    return code
+
+
+def _hash_email_verification_code(*, email: str, purpose: str, code: str) -> str:
+    secret = get_settings().auth_token_secret
+    payload = f"{purpose}:{email}:{code}:{secret}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _build_username_from_email(email: str) -> str:
@@ -72,6 +107,265 @@ def _ensure_unique_username(session: Session, base: str) -> str:
         suffix += 1
         username = f"{base}_{suffix}"
     return username
+
+
+def _ensure_smtp_ready() -> None:
+    settings = get_settings()
+    host = (settings.smtp_host or "").strip()
+    from_email = (settings.smtp_from_email or "").strip()
+    username = (settings.smtp_username or "").strip()
+    password = settings.smtp_password or ""
+
+    if not host or not from_email:
+        raise AITeachMeError(
+            detail="SMTP 未配置完整，请检查 SMTP_HOST 与 SMTP_FROM_EMAIL。",
+            status_code=503,
+            error_code="AUTH_SMTP_NOT_CONFIGURED",
+        )
+    if username and not password:
+        raise AITeachMeError(
+            detail="SMTP 用户名已配置，但缺少 SMTP 密码。",
+            status_code=503,
+            error_code="AUTH_SMTP_NOT_CONFIGURED",
+        )
+    if settings.smtp_use_ssl and settings.smtp_use_starttls:
+        raise AITeachMeError(
+            detail="SMTP_USE_SSL 与 SMTP_USE_STARTTLS 不能同时开启。",
+            status_code=503,
+            error_code="AUTH_SMTP_NOT_CONFIGURED",
+        )
+
+
+def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: int) -> None:
+    settings = get_settings()
+    _ensure_smtp_ready()
+
+    host = (settings.smtp_host or "").strip()
+    port = settings.smtp_port
+    username = (settings.smtp_username or "").strip() or None
+    password = settings.smtp_password or ""
+    from_email = (settings.smtp_from_email or "").strip()
+    from_name = settings.smtp_from_name.strip() or "AITeachMe"
+    timeout_s = max(3, settings.smtp_timeout_s)
+    ttl_min = max(1, int(round(ttl_seconds / 60)))
+
+    msg = EmailMessage()
+    msg["Subject"] = "AITeachMe 邮箱验证码"
+    msg["From"] = formataddr((from_name, from_email))
+    msg["To"] = to_email
+    msg.set_content(
+        "\n".join(
+            [
+                "你好，",
+                "",
+                f"你的验证码是：{code}",
+                f"有效期：{ttl_min} 分钟",
+                "",
+                "如果这不是你的操作，请忽略这封邮件。",
+                "",
+                "AITeachMe",
+            ]
+        ),
+        charset="utf-8",
+    )
+
+    ssl_context = ssl.create_default_context()
+    try:
+        if settings.smtp_use_ssl:
+            with smtplib.SMTP_SSL(
+                host=host,
+                port=port,
+                timeout=timeout_s,
+                context=ssl_context,
+            ) as client:
+                if username is not None:
+                    client.login(username, password)
+                client.send_message(msg)
+            return
+
+        with smtplib.SMTP(host=host, port=port, timeout=timeout_s) as client:
+            client.ehlo()
+            if settings.smtp_use_starttls:
+                client.starttls(context=ssl_context)
+                client.ehlo()
+            if username is not None:
+                client.login(username, password)
+            client.send_message(msg)
+    except smtplib.SMTPException as exc:
+        logger.warning("email_verification_send_failed", error=str(exc))
+        raise AITeachMeError(
+            detail="验证码邮件发送失败，请稍后重试。",
+            status_code=502,
+            error_code="AUTH_EMAIL_CODE_SEND_FAILED",
+        ) from exc
+    except OSError as exc:
+        logger.warning("email_verification_smtp_unavailable", error=str(exc))
+        raise AITeachMeError(
+            detail="SMTP 服务暂不可用，请稍后重试。",
+            status_code=503,
+            error_code="AUTH_SMTP_UNAVAILABLE",
+        ) from exc
+
+
+def _query_latest_pending_verification(
+    session: Session,
+    *,
+    email: str,
+    purpose: str,
+) -> EmailVerificationCode | None:
+    stmt = (
+        select(EmailVerificationCode)
+        .where(
+            EmailVerificationCode.email == email,
+            EmailVerificationCode.purpose == purpose,
+            EmailVerificationCode.consumed_at.is_(None),
+        )
+        .order_by(
+            EmailVerificationCode.created_at.desc(),
+            EmailVerificationCode.id.desc(),
+        )
+    )
+    return session.exec(stmt).first()
+
+
+def send_register_email_verification_code(
+    session: Session,
+    *,
+    email: str,
+) -> SendEmailCodeData:
+    ensure_auth_enabled()
+    settings = get_settings()
+    normalized_email = _normalize_email(email)
+
+    existing = get_user_by_email(session, normalized_email)
+    if existing is not None and existing.is_registered:
+        raise AITeachMeError(
+            detail="该邮箱已被注册，请直接登录。",
+            status_code=409,
+            error_code="AUTH_EMAIL_ALREADY_REGISTERED",
+        )
+
+    now = utcnow()
+    resend_interval_s = max(1, settings.auth_email_code_resend_interval_s)
+    latest = _query_latest_pending_verification(
+        session,
+        email=normalized_email,
+        purpose=_VERIFICATION_PURPOSE_REGISTER,
+    )
+    if latest is not None and latest.expires_at > now:
+        elapsed_s = int((now - latest.created_at).total_seconds())
+        remaining_s = resend_interval_s - elapsed_s
+        if remaining_s > 0:
+            raise AITeachMeError(
+                detail=f"验证码发送过于频繁，请 {remaining_s} 秒后重试。",
+                status_code=429,
+                error_code="AUTH_EMAIL_CODE_RATE_LIMITED",
+            )
+
+    ttl_s = max(60, settings.auth_email_code_ttl_s)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    code_hash = _hash_email_verification_code(
+        email=normalized_email,
+        purpose=_VERIFICATION_PURPOSE_REGISTER,
+        code=code,
+    )
+    record = EmailVerificationCode(
+        email=normalized_email,
+        purpose=_VERIFICATION_PURPOSE_REGISTER,
+        code_hash=code_hash,
+        expires_at=now + timedelta(seconds=ttl_s),
+    )
+
+    session.add(record)
+    try:
+        _send_email_verification_message(
+            to_email=normalized_email,
+            code=code,
+            ttl_seconds=ttl_s,
+        )
+    except Exception:
+        session.rollback()
+        raise
+    session.commit()
+
+    return SendEmailCodeData(
+        expires_in_s=ttl_s,
+        resend_after_s=resend_interval_s,
+    )
+
+
+def _consume_register_email_code(
+    session: Session,
+    *,
+    email: str,
+    verification_code: str,
+) -> None:
+    settings = get_settings()
+    now = utcnow()
+    code = _normalize_verification_code(verification_code)
+
+    latest = _query_latest_pending_verification(
+        session,
+        email=email,
+        purpose=_VERIFICATION_PURPOSE_REGISTER,
+    )
+    if latest is None:
+        raise AITeachMeError(
+            detail="请先发送邮箱验证码。",
+            status_code=400,
+            error_code="AUTH_EMAIL_CODE_REQUIRED",
+        )
+
+    if latest.expires_at <= now:
+        latest.consumed_at = now
+        latest.updated_at = now
+        session.add(latest)
+        session.commit()
+        raise AITeachMeError(
+            detail="验证码已过期，请重新发送。",
+            status_code=400,
+            error_code="AUTH_EMAIL_CODE_EXPIRED",
+        )
+
+    max_attempts = max(1, settings.auth_email_code_max_attempts)
+    if latest.attempt_count >= max_attempts:
+        latest.consumed_at = now
+        latest.updated_at = now
+        session.add(latest)
+        session.commit()
+        raise AITeachMeError(
+            detail="验证码错误次数过多，请重新发送。",
+            status_code=400,
+            error_code="AUTH_EMAIL_CODE_TOO_MANY_ATTEMPTS",
+        )
+
+    provided_hash = _hash_email_verification_code(
+        email=email,
+        purpose=_VERIFICATION_PURPOSE_REGISTER,
+        code=code,
+    )
+    if not hmac.compare_digest(latest.code_hash, provided_hash):
+        latest.attempt_count += 1
+        if latest.attempt_count >= max_attempts:
+            latest.consumed_at = now
+        latest.updated_at = now
+        session.add(latest)
+        session.commit()
+        if latest.attempt_count >= max_attempts:
+            raise AITeachMeError(
+                detail="验证码错误次数过多，请重新发送。",
+                status_code=400,
+                error_code="AUTH_EMAIL_CODE_TOO_MANY_ATTEMPTS",
+            )
+        raise AITeachMeError(
+            detail="验证码错误。",
+            status_code=400,
+            error_code="AUTH_INVALID_EMAIL_CODE",
+        )
+
+    latest.consumed_at = now
+    latest.updated_at = now
+    session.add(latest)
 
 
 def hash_password(password: str) -> str:
@@ -298,13 +592,14 @@ def register_user(
     current_user_id: str | None,
     email: str,
     password: str,
+    verification_code: str,
     device_key: str | None,
 ) -> AuthSessionData:
     ensure_auth_enabled()
     normalized_email = _normalize_email(email)
 
     existing_by_email = get_user_by_email(session, normalized_email)
-    if existing_by_email is not None:
+    if existing_by_email is not None and existing_by_email.is_registered:
         raise AITeachMeError(
             detail="该邮箱已被注册，请直接登录。",
             status_code=409,
@@ -320,6 +615,12 @@ def register_user(
             status_code=409,
             error_code="AUTH_SESSION_ALREADY_REGISTERED",
         )
+
+    _consume_register_email_code(
+        session,
+        email=normalized_email,
+        verification_code=verification_code,
+    )
 
     if not user.username or user.username.startswith("guest_"):
         base = _build_username_from_email(normalized_email)

@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     guest_cookie_name: str = "atm_guest_token"
     guest_cookie_secure: bool = False
     guest_cookie_samesite: str = "lax"
+    smtp_host: str | None = None
+    smtp_port: int = 465
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "AITeachMe"
+    smtp_use_ssl: bool = True
+    smtp_use_starttls: bool = False
+    smtp_timeout_s: int = 15
+    auth_email_code_ttl_s: int = 600
+    auth_email_code_resend_interval_s: int = 60
+    auth_email_code_max_attempts: int = 5
     app_version: str = "0.2.0"
 
     # ── AI 基础设施配置 ──

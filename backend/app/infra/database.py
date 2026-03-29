@@ -20,6 +20,7 @@ from app.models.curriculum import (
     ThemeTreeNode,
     UnitDependency,
 )
+from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
@@ -44,6 +45,7 @@ _vec_ready: bool | None = None
 _vec_error: str | None = None
 _SCHEMA_MODELS = (
     User,
+    EmailVerificationCode,
     Subject,
     RawFile,
     RetrievalChunk,

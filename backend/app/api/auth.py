@@ -7,12 +7,20 @@ from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
-from app.schemas.auth import AuthSessionData, LoginRequest, LogoutRequest, RegisterRequest
+from app.schemas.auth import (
+    AuthSessionData,
+    LoginRequest,
+    LogoutRequest,
+    RegisterRequest,
+    SendEmailCodeData,
+    SendEmailCodeRequest,
+)
 from app.schemas.common import ApiResponse, ok_response
 from app.services.auth_service import (
     build_session_from_context,
     login_user,
     register_user,
+    send_register_email_verification_code,
     set_guest_cookie_for_user,
 )
 
@@ -20,11 +28,30 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post(
+    "/email/send-code",
+    response_model=ApiResponse[SendEmailCodeData],
+    summary="发送注册邮箱验证码",
+    description="向邮箱发送 6 位验证码，用于注册前校验。",
+    responses=build_error_responses([400, 409, 422, 429, 500, 503]),
+)
+async def send_email_code(
+    body: SendEmailCodeRequest = Body(...),
+    _: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[SendEmailCodeData]:
+    data = send_register_email_verification_code(
+        session,
+        email=body.email,
+    )
+    return ok_response(data)
+
+
+@router.post(
     "/register",
     response_model=ApiResponse[AuthSessionData],
     summary="注册",
     description="基于 device_key 的匿名身份升级为邮箱账号。",
-    responses=build_error_responses([400, 409, 422, 500]),
+    responses=build_error_responses([400, 409, 422, 500, 503]),
 )
 async def register(
     response: Response,
@@ -37,6 +64,7 @@ async def register(
         current_user_id=user.user_id,
         email=body.email,
         password=body.password,
+        verification_code=body.verification_code,
         device_key=user.device_key,
     )
     if data.current_user is not None:

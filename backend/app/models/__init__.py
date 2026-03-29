@@ -32,6 +32,7 @@ from app.models.enums import (
     WeaknessReason,
     validate_status_transition,
 )
+from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
@@ -51,6 +52,7 @@ __all__ = [
     "Difficulty",
     "DigestStep",
     "DocGenStep",
+    "EmailVerificationCode",
     "ErrorCauseLabel",
     "ExamMode",
     "ExamPaper",

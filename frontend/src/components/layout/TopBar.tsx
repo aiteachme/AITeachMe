@@ -16,6 +16,11 @@ type AuthSessionData = {
   current_user?: RuntimeUser | null;
 };
 
+type SendEmailCodeData = {
+  expires_in_s: number;
+  resend_after_s: number;
+};
+
 type ApiResponse<T> = {
   code: number;
   message: string;
@@ -35,8 +40,14 @@ export function TopBar({ className }: TopBarProps) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [authVerificationCode, setAuthVerificationCode] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [isSendCodeSubmitting, setIsSendCodeSubmitting] = useState(false);
+  const [sendCodeCooldownS, setSendCodeCooldownS] = useState(0);
+  const [codeExpiresInS, setCodeExpiresInS] = useState<number | null>(null);
+  const [sendCodeInfo, setSendCodeInfo] = useState<string | null>(null);
+  const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -78,6 +89,36 @@ export function TopBar({ className }: TopBarProps) {
     void fetchCurrentUser();
   }, []);
 
+  useEffect(() => {
+    const hasTimer = sendCodeCooldownS > 0 || (codeExpiresInS ?? 0) > 0;
+    if (!hasTimer) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setSendCodeCooldownS((prev) => (prev > 0 ? prev - 1 : 0));
+      setCodeExpiresInS((prev) => {
+        if (prev == null) return null;
+        return prev > 0 ? prev - 1 : 0;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [sendCodeCooldownS, codeExpiresInS]);
+
+  useEffect(() => {
+    if (authMode !== "register" || !codeSentToEmail) {
+      return;
+    }
+    const normalizedCurrentEmail = authEmail.trim().toLowerCase();
+    if (normalizedCurrentEmail && normalizedCurrentEmail === codeSentToEmail) {
+      return;
+    }
+    setAuthVerificationCode("");
+    setSendCodeCooldownS(0);
+    setCodeExpiresInS(null);
+    setSendCodeInfo(null);
+    setCodeSentToEmail(null);
+  }, [authEmail, authMode, codeSentToEmail]);
+
   const handleLogout = async () => {
     localStorage.removeItem("token");
     try {
@@ -98,14 +139,58 @@ export function TopBar({ className }: TopBarProps) {
     setAuthMode(mode);
     setAuthError(null);
     setAuthPassword("");
+    setAuthVerificationCode("");
+    setSendCodeCooldownS(0);
+    setCodeExpiresInS(null);
+    setSendCodeInfo(null);
+    setCodeSentToEmail(null);
     setIsAuthModalOpen(true);
   };
 
   const closeAuthModal = () => {
-    if (isAuthSubmitting) return;
+    if (isAuthSubmitting || isSendCodeSubmitting) return;
     setIsAuthModalOpen(false);
     setAuthError(null);
     setAuthPassword("");
+    setAuthVerificationCode("");
+    setSendCodeCooldownS(0);
+    setCodeExpiresInS(null);
+    setSendCodeInfo(null);
+    setCodeSentToEmail(null);
+  };
+
+  const handleSendVerificationCode = async () => {
+    if (authMode !== "register") {
+      return;
+    }
+    if (isSendCodeSubmitting || sendCodeCooldownS > 0) {
+      return;
+    }
+
+    const emailValue = authEmail.trim();
+    if (!emailValue) {
+      setAuthError("请先输入邮箱，再发送验证码。");
+      return;
+    }
+
+    setIsSendCodeSubmitting(true);
+    setAuthError(null);
+    try {
+      const response = await apiClient<ApiResponse<SendEmailCodeData>>({
+        url: "/api/v1/auth/email/send-code",
+        method: "POST",
+        data: { email: emailValue },
+      });
+      const payload = response.data;
+      setSendCodeCooldownS(Math.max(0, payload.resend_after_s ?? 0));
+      setCodeExpiresInS(Math.max(0, payload.expires_in_s ?? 0));
+      setSendCodeInfo("验证码已发送，请查收邮箱。");
+      setCodeSentToEmail(emailValue.toLowerCase());
+    } catch (error) {
+      setAuthError(getApiErrorMessage(error, "验证码发送失败，请稍后重试。"));
+    } finally {
+      setIsSendCodeSubmitting(false);
+    }
   };
 
   const handleAuthSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -117,14 +202,33 @@ export function TopBar({ className }: TopBarProps) {
       setAuthError("请输入有效邮箱，且密码至少 6 位。");
       return;
     }
+    if (authMode === "register") {
+      const codeValue = authVerificationCode.trim();
+      if (!codeValue) {
+        setAuthError("注册需要先输入邮箱验证码。");
+        return;
+      }
+      if (codeSentToEmail !== emailValue.toLowerCase()) {
+        setAuthError("邮箱已变更，请先重新发送验证码。");
+        return;
+      }
+    }
 
     setIsAuthSubmitting(true);
     setAuthError(null);
     try {
+      const requestData =
+        authMode === "login"
+          ? { email: emailValue, password: passwordValue }
+          : {
+              email: emailValue,
+              password: passwordValue,
+              verification_code: authVerificationCode.trim(),
+            };
       const response = await apiClient<ApiResponse<AuthSessionData>>({
         url: authMode === "login" ? "/api/v1/auth/login" : "/api/v1/auth/register",
         method: "POST",
-        data: { email: emailValue, password: passwordValue },
+        data: requestData,
       });
       const token = response.data.access_token;
       if (token) {
@@ -133,6 +237,11 @@ export function TopBar({ className }: TopBarProps) {
       setAuthUser(response.data.current_user ?? null);
       setIsAuthModalOpen(false);
       setAuthPassword("");
+      setAuthVerificationCode("");
+      setSendCodeCooldownS(0);
+      setCodeExpiresInS(null);
+      setSendCodeInfo(null);
+      setCodeSentToEmail(null);
       setIsMobileMenuOpen(false);
       setIsDropdownOpen(false);
     } catch (error) {
@@ -419,6 +528,41 @@ export function TopBar({ className }: TopBarProps) {
             />
           </div>
 
+          {authMode === "register" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700" htmlFor="auth-verification-code">
+                邮箱验证码
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="auth-verification-code"
+                  type="text"
+                  value={authVerificationCode}
+                  onChange={(event) => setAuthVerificationCode(event.target.value)}
+                  autoComplete="one-time-code"
+                  placeholder="请输入 6 位验证码"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendVerificationCode}
+                  disabled={isSendCodeSubmitting || sendCodeCooldownS > 0}
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSendCodeSubmitting
+                    ? "发送中..."
+                    : sendCodeCooldownS > 0
+                      ? `${sendCodeCooldownS}s后重发`
+                      : "发送验证码"}
+                </button>
+              </div>
+              {sendCodeInfo && <p className="text-xs text-emerald-600">{sendCodeInfo}</p>}
+              {codeExpiresInS !== null && codeExpiresInS > 0 && (
+                <p className="text-xs text-slate-500">验证码剩余有效期：{codeExpiresInS}s</p>
+              )}
+            </div>
+          )}
+
           {authError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {authError}
@@ -439,6 +583,12 @@ export function TopBar({ className }: TopBarProps) {
               onClick={() => {
                 setAuthMode(authMode === "login" ? "register" : "login");
                 setAuthError(null);
+                setAuthPassword("");
+                setAuthVerificationCode("");
+                setSendCodeCooldownS(0);
+                setCodeExpiresInS(null);
+                setSendCodeInfo(null);
+                setCodeSentToEmail(null);
               }}
               className="text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
             >
