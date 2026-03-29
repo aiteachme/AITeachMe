@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-23T12:09:25.964374",
-  "total_commits_analyzed": 219,
+  "generated_at": "2026-03-29T14:35:31.362368",
+  "total_commits_analyzed": 249,
   "stats": [
     {
       "date": "2026-03-11",
@@ -1753,6 +1753,246 @@
       "code_lines": 44238,
       "other_lines": 12455,
       "message": "fix: 解决动画刷新两次的问题"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "3c6409f",
+      "total_lines": 56693,
+      "code_lines": 44238,
+      "other_lines": 12455,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "520aabd",
+      "total_lines": 56705,
+      "code_lines": 44247,
+      "other_lines": 12458,
+      "message": "style: 增加解析latex"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "4751fa6",
+      "total_lines": 56705,
+      "code_lines": 44247,
+      "other_lines": 12458,
+      "message": "docs: 添加合并文档"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "72c412e",
+      "total_lines": 56705,
+      "code_lines": 44247,
+      "other_lines": 12458,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-03-23",
+      "commit": "5abce7b",
+      "total_lines": 57660,
+      "code_lines": 45054,
+      "other_lines": 12606,
+      "message": "fix: 修复复杂 PDF 解析遗漏图片占位图"
+    },
+    {
+      "date": "2026-03-24",
+      "commit": "9fa0b8c",
+      "total_lines": 61869,
+      "code_lines": 48202,
+      "other_lines": 13667,
+      "message": "fix: 修正 digest 统一构建主链与发布时序"
+    },
+    {
+      "date": "2026-03-25",
+      "commit": "1cc6fde",
+      "total_lines": 64425,
+      "code_lines": 50342,
+      "other_lines": 14083,
+      "message": "chore: 暂存"
+    },
+    {
+      "date": "2026-03-25",
+      "commit": "36e3466",
+      "total_lines": 64632,
+      "code_lines": 50588,
+      "other_lines": 14044,
+      "message": "docs: 细化文档"
+    },
+    {
+      "date": "2026-03-25",
+      "commit": "7c9a9dc",
+      "total_lines": 64659,
+      "code_lines": 50612,
+      "other_lines": 14047,
+      "message": "docs: 细化文档2"
+    },
+    {
+      "date": "2026-03-25",
+      "commit": "9943c37",
+      "total_lines": 63147,
+      "code_lines": 49505,
+      "other_lines": 13642,
+      "message": "refacotr: 整理db"
+    },
+    {
+      "date": "2026-03-26",
+      "commit": "5a2bfe0",
+      "total_lines": 64605,
+      "code_lines": 50475,
+      "other_lines": 14130,
+      "message": "refacotr: 暂存最新版本"
+    },
+    {
+      "date": "2026-03-26",
+      "commit": "68382ff",
+      "total_lines": 62884,
+      "code_lines": 49168,
+      "other_lines": 13716,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-03-26",
+      "commit": "ef51095",
+      "total_lines": 64732,
+      "code_lines": 50563,
+      "other_lines": 14169,
+      "message": "docs: 临时更新"
+    },
+    {
+      "date": "2026-03-26",
+      "commit": "204ad74",
+      "total_lines": 62997,
+      "code_lines": 49249,
+      "other_lines": 13748,
+      "message": "Merge branch 'dev_ywl_index' of github.com:aiteach"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "b23bbbf",
+      "total_lines": 63003,
+      "code_lines": 49136,
+      "other_lines": 13867,
+      "message": "docs: 收敛数据库与引擎主设计文档"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "3aa6ff3",
+      "total_lines": 63249,
+      "code_lines": 49345,
+      "other_lines": 13904,
+      "message": "refactor: 收口 exam/profile 命名并固化掌握度约束"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "be03a44",
+      "total_lines": 65092,
+      "code_lines": 50768,
+      "other_lines": 14324,
+      "message": "feat: 优化ingest"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "5a610f4",
+      "total_lines": 65617,
+      "code_lines": 51136,
+      "other_lines": 14481,
+      "message": "feat: 优化ingest"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "eb1d3bf",
+      "total_lines": 67923,
+      "code_lines": 52879,
+      "other_lines": 15044,
+      "message": "feat: 增强基础层能力"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "ef4260b",
+      "total_lines": 60771,
+      "code_lines": 47560,
+      "other_lines": 13211,
+      "message": "refactor: 收口 digest 运行时旧表依赖并对齐 20 张主表模型"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "6568cba",
+      "total_lines": 60854,
+      "code_lines": 47627,
+      "other_lines": 13227,
+      "message": "fix: 本地 SQLite 启动时自动重建漂移 schema"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "47386f3",
+      "total_lines": 60960,
+      "code_lines": 47664,
+      "other_lines": 13296,
+      "message": "refactor: 重构数据库：收敛 curriculum 单表版本模型并统一共享版号文档"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "5e067fd",
+      "total_lines": 71842,
+      "code_lines": 55619,
+      "other_lines": 16223,
+      "message": "feat(core): 新增8个教学基础设施模块 + LEARNER.md用户档案 + 未来学习形式"
+    },
+    {
+      "date": "2026-03-27",
+      "commit": "5d26288",
+      "total_lines": 71842,
+      "code_lines": 55619,
+      "other_lines": 16223,
+      "message": "chore: 优化配置模板"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "5b6cdd9",
+      "total_lines": 69225,
+      "code_lines": 53787,
+      "other_lines": 15438,
+      "message": "合并 ingest 两阶段加速并保留本地数据库与架构重构"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "151455f",
+      "total_lines": 70835,
+      "code_lines": 54937,
+      "other_lines": 15898,
+      "message": "feat(digest): 教学引擎核心模块 + 文档重构"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "05fb9d7",
+      "total_lines": 70869,
+      "code_lines": 54961,
+      "other_lines": 15908,
+      "message": "fix(ingest+digest): 修复 Phase2 重解析失效 + 审校门控 + 后台任务追"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "eb692f0",
+      "total_lines": 71327,
+      "code_lines": 55357,
+      "other_lines": 15970,
+      "message": "chore: 调整env路径"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "91d52d0",
+      "total_lines": 71909,
+      "code_lines": 55810,
+      "other_lines": 16099,
+      "message": "feat: 添加3d词云，测试"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "aff0c49",
+      "total_lines": 85078,
+      "code_lines": 62897,
+      "other_lines": 22181,
+      "message": "fix: 3d word cloud"
     }
   ]
 }
