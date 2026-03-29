@@ -28,6 +28,7 @@ class UnifiedDigestState(TypedDict, total=False):
     curriculum_state: dict[str, Any]
     coverage_report: CoverageReport
     repair_result: RepairResult
+    graph_ready: bool
     shared_prepare_ms: int
     lane_ms: int
     doc_lane_ms: int

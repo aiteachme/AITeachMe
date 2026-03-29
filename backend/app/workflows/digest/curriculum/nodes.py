@@ -60,12 +60,12 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
             curriculum_repo.update_curriculum_job(session, job_id, status="processing")
 
             if impact_set is None:
-                digest_logger.warning(
-                    "curriculum_no_impact_set",
+                digest_logger.error(
+                    "curriculum_missing_impact_set",
                     impact_changed_nodes=0,
                     impact_affected_units=0,
                 )
-                return {**state, "derived_unit_ids": [], "error": None}
+                return {**state, "error": "derive_units_failed: missing_impact_set"}
 
             derive_result = await derive_teaching_units(
                 session,
@@ -74,6 +74,13 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
                 curriculum_job_id=job_id,
             )
             derived_unit_ids = [unit.id for unit in derive_result.units if unit.id is not None]
+            if not derived_unit_ids:
+                digest_logger.error(
+                    "curriculum_units_empty",
+                    impact_changed_nodes=len(impact_set.changed_node_ids),
+                    impact_affected_units=len(impact_set.affected_unit_ids),
+                )
+                return {**state, "error": "derive_units_failed: no_teaching_units_derived"}
             digest_logger.info(
                 "derive_units_complete",
                 units_count=len(derived_unit_ids),
@@ -118,12 +125,19 @@ async def derive_theme_tree_node(state: CurriculumDeriveState) -> CurriculumDeri
                 current_step="derive_theme_tree",
             )
             if impact_set is None:
-                digest_logger.warning(
-                    "theme_tree_no_impact_set",
+                digest_logger.error(
+                    "theme_tree_missing_impact_set",
                     impact_changed_nodes=0,
                     impact_affected_units=0,
                 )
-                return {**state, "theme_tree_version_id": None}
+                return {**state, "error": "derive_theme_tree_failed: missing_impact_set"}
+            if not state.get("derived_unit_ids"):
+                digest_logger.error(
+                    "theme_tree_missing_derived_units",
+                    impact_changed_nodes=len(impact_set.changed_node_ids),
+                    impact_affected_units=len(impact_set.affected_unit_ids),
+                )
+                return {**state, "error": "derive_theme_tree_failed: no_derived_units"}
 
             previous_tree = curriculum_repo.get_current_theme_tree_version(session, subject)
             tree_version = await derive_theme_tree(
@@ -169,12 +183,19 @@ async def derive_prereq_dag_node(state: CurriculumDeriveState) -> CurriculumDeri
                 current_step="derive_prereq_dag",
             )
             if impact_set is None:
-                digest_logger.warning(
-                    "prereq_dag_no_impact_set",
+                digest_logger.error(
+                    "prereq_dag_missing_impact_set",
                     impact_changed_nodes=0,
                     impact_affected_units=0,
                 )
-                return {**state, "prereq_dag_version_id": None}
+                return {**state, "error": "derive_prereq_dag_failed: missing_impact_set"}
+            if not state.get("derived_unit_ids"):
+                digest_logger.error(
+                    "prereq_dag_missing_derived_units",
+                    impact_changed_nodes=len(impact_set.changed_node_ids),
+                    impact_affected_units=len(impact_set.affected_unit_ids),
+                )
+                return {**state, "error": "derive_prereq_dag_failed: no_derived_units"}
 
             previous_dag = curriculum_repo.get_current_prereq_dag_version(session, subject)
             dag_version = await derive_prereq_dag(
@@ -213,6 +234,18 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
             impact_set = state.get("impact_set")
             theme_tree_version_id = state.get("theme_tree_version_id")
             prereq_dag_version_id = state.get("prereq_dag_version_id")
+            derived_unit_ids = list(state.get("derived_unit_ids", []))
+
+            if not derived_unit_ids:
+                digest_logger.error("curriculum_finalize_empty_units")
+                return {**state, "error": "finalize_failed: no_derived_units"}
+            if theme_tree_version_id is None or prereq_dag_version_id is None:
+                digest_logger.error(
+                    "curriculum_finalize_missing_versions",
+                    theme_tree_version_id=theme_tree_version_id,
+                    prereq_dag_version_id=prereq_dag_version_id,
+                )
+                return {**state, "error": "finalize_failed: missing_curriculum_versions"}
 
             activated = activate_curriculum_entities_by_job(
                 session,
@@ -305,6 +338,7 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
                 "prereq_dag_version_id": snapshot_id,
                 "snapshot_id": snapshot_id,
                 "curriculum_version_no": curriculum_version_no,
+                "curriculum_ready": True,
                 "error": None,
             }
         except Exception as exc:

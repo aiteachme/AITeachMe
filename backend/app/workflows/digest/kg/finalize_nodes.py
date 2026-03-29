@@ -7,7 +7,10 @@ import traceback
 import uuid
 from collections.abc import Awaitable, Callable
 
+from sqlmodel import select
+
 from app.core.database import managed_session
+from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,
@@ -48,6 +51,26 @@ def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
     return TopicAnchorSnapshot(anchors=anchors)
 
 
+def _count_active_graph_entities(*, session, subject: str) -> tuple[int, int]:
+    active_node_count = len(
+        session.exec(
+            select(KnowledgeNode.id).where(
+                KnowledgeNode.subject == subject,
+                KnowledgeNode.status == "active",
+            )
+        ).all()
+    )
+    active_edge_count = len(
+        session.exec(
+            select(KnowledgeEdge.id).where(
+                KnowledgeEdge.subject == subject,
+                KnowledgeEdge.status == "active",
+            )
+        ).all()
+    )
+    return active_node_count, active_edge_count
+
+
 def build_finalize_graph_node(
     *,
     trigger_curriculum_derive: Callable[..., Awaitable[None]],
@@ -61,12 +84,36 @@ def build_finalize_graph_node(
                 job_id = state["job_id"]
                 subject = state["subject"]
                 build_session_id = state.get("build_session_id", "")
+                topic_snapshot = _build_topic_snapshot(state)
+                resolved_node_count = max(
+                    len(state.get("candidate_name_to_resolved_node_id", {})),
+                    len(state.get("cluster_id_to_resolved_node_id", {})),
+                )
+                graph_ready = bool(topic_snapshot.anchors and resolved_node_count > 0)
+                if not graph_ready:
+                    digest_logger.error(
+                        "kg_workflow_finalize_empty_graph",
+                        topic_anchor_count=len(topic_snapshot.anchors),
+                        resolved_node_count=resolved_node_count,
+                        impact_set_present=state.get("impact_set") is not None,
+                    )
+                    return {
+                        **state,
+                        "topic_anchor_snapshot": topic_snapshot,
+                        "graph_ready": False,
+                        "resolved_node_count": resolved_node_count,
+                        "error": "finalize_failed: graph_not_usable",
+                    }
+
                 activated = activate_graph_entities_by_job(
                     session,
                     job_id=job_id,
                     subject=subject,
                 )
-                topic_snapshot = _build_topic_snapshot(state)
+                active_node_count, active_edge_count = _count_active_graph_entities(
+                    session=session,
+                    subject=subject,
+                )
                 if build_session_id:
                     unified_session = get_unified_build_session(build_session_id)
                     unified_session.publish_topic_anchor_snapshot(topic_snapshot)
@@ -91,6 +138,9 @@ def build_finalize_graph_node(
                     activated=activated,
                     curriculum_job_id=curriculum_job_id,
                     topic_anchor_count=len(topic_snapshot.anchors),
+                    resolved_node_count=resolved_node_count,
+                    active_node_count=active_node_count,
+                    active_edge_count=active_edge_count,
                 )
                 asyncio.create_task(
                     trigger_curriculum_derive(
@@ -103,6 +153,10 @@ def build_finalize_graph_node(
                 return {
                     **state,
                     "topic_anchor_snapshot": topic_snapshot,
+                    "graph_ready": True,
+                    "resolved_node_count": resolved_node_count,
+                    "active_node_count": active_node_count,
+                    "active_edge_count": active_edge_count,
                     "error": None,
                 }
             except Exception as exc:

@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.core.config import get_settings
+from app.core.runtime_paths import get_runtime_data_dir
 
 
 def get_data_dir() -> Path:
     """Return the runtime data root directory."""
 
-    return Path(get_settings().data_dir).resolve()
+    return get_runtime_data_dir()
 
 
 def build_subject_dir(subject: str) -> Path:

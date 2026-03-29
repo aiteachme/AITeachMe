@@ -304,7 +304,7 @@ async def derive_teaching_units(
     nodes, edges = extract_local_subgraph(session, subject, impact_set)
     if not nodes:
         logger.info("no_nodes_for_unit_derivation", subject=subject)
-        return TeachingUnitDeriveResult()
+        raise ValueError("no_graph_nodes_available_for_unit_derivation")
 
     node_infos = _build_node_infos(nodes)
     adjacency = _build_adjacency(edges)

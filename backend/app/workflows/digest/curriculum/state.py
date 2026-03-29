@@ -19,6 +19,7 @@ class CurriculumDeriveState(TypedDict, total=False):
     prereq_dag_version_id: int | None
     snapshot_id: int | None
     curriculum_version_no: int | None
+    curriculum_ready: bool
     error: str | None
 
 

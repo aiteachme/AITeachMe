@@ -1,4 +1,11 @@
-"""Unified digest build runtime coordinator."""
+"""Unified digest build runtime coordinator.
+
+.. deprecated::
+    This module is superseded by ``app.workflows.digest.unified.runtime``.
+    The active build entry-point is ``run_unified_digest_build`` in that module,
+    called from ``app.services.knowledge.digest_service``.
+    Do NOT use the ``run_unified_digest_build`` function from this file.
+"""
 
 from __future__ import annotations
 

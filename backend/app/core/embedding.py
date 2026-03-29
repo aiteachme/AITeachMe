@@ -122,8 +122,8 @@ async def aembed_texts(
             )
             raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
 
-        # 批次间限流
-        if batch_idx < total_batches - 1:
+        # 批次间限流 (单批次无需延迟)
+        if total_batches > 1 and batch_idx < total_batches - 1:
             await asyncio.sleep(settings.embedding_batch_delay_s)
 
     logger.info(

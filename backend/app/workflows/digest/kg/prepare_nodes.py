@@ -22,10 +22,10 @@ from app.workflows.digest.kg.support import workflow_logger
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
-
 def _resolve_extract_parallelism() -> int:
     settings = get_settings()
-    return max(1, min(10, settings.llm_concurrency_limit))
+    # Use dedicated config, bounded between 1 and llm_concurrency_limit
+    return max(1, min(settings.kg_extract_max_parallelism, settings.llm_concurrency_limit))
 
 
 def _build_taxonomy_hints(chapter_priors: ChapterPriors | None) -> set[str]:
@@ -160,7 +160,10 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             subject_context = ""
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
-                chapter_priors = await unified_session.wait_for_chapter_priors(timeout_ms=300)
+                settings = get_settings()
+                chapter_priors = await unified_session.wait_for_chapter_priors(
+                    timeout_ms=settings.digest_chapter_priors_timeout_ms
+                )
                 if unified_session.shared_inputs and unified_session.shared_inputs.subject_profile:
                     subject_context = unified_session.shared_inputs.subject_profile.build_context_string()
 
@@ -206,6 +209,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             all_candidate_edges: list[tuple[CandidateEdge, int]] = []
             success_chunk_count = 0
             failed_chunk_count = 0
+            failure_samples: list[dict[str, str | int]] = []
             semaphore = asyncio.Semaphore(extract_parallelism)
 
             async def _extract_single(index: int, chunk_id: int):
@@ -219,13 +223,14 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             chunk_content=chunk.content,
                             chunk_title=chunk.title,
                             header_path=chunk.header_path,
-                            doc_source_type=chunk.source_type,
+                            doc_source_type=getattr(chunk, "source_type", None),
                             subject_context=subject_context,
                         )
                     _apply_taxonomy_hints(result, taxonomy_hints)
                     edge_payload = [(edge, chunk_id) for edge in result.edges]
                     return index, chunk_id, result, edge_payload, None
                 except Exception as exc:
+                    digest_logger.warning("kg_chunk_extraction_failed", chunk_id=chunk_id, error=str(exc))
                     return index, chunk_id, ChunkExtractionResult(), [], str(exc)
 
             tasks = [
@@ -239,9 +244,13 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
 
                 if error == "missing":
                     failed_chunk_count += 1
+                    if len(failure_samples) < 5:
+                        failure_samples.append({"chunk_id": chunk_id, "error": "missing"})
                     digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
                 elif error is not None:
                     failed_chunk_count += 1
+                    if len(failure_samples) < 5:
+                        failure_samples.append({"chunk_id": chunk_id, "error": error[:180]})
                     digest_logger.warning(
                         "kg_extract_chunk_failed",
                         chunk_id=chunk_id,
@@ -269,16 +278,48 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 progress=40,
                 current_step="extract",
             )
+            total_nodes = sum(len(result.nodes) for result in ordered_results)
+            total_edges = len(all_candidate_edges)
             digest_logger.info(
                 "kg_workflow_extract_complete",
                 total_chunks=len(chunk_ids),
                 success_chunk_count=success_chunk_count,
                 failed_chunk_count=failed_chunk_count,
                 results_count=len(ordered_results),
-                total_nodes=sum(len(result.nodes) for result in ordered_results),
-                total_edges=len(all_candidate_edges),
+                total_nodes=total_nodes,
+                total_edges=total_edges,
                 parallelism=extract_parallelism,
+                failure_samples=failure_samples,
             )
+            if chunk_ids and success_chunk_count == 0:
+                error_message = "extract_failed: all_chunk_extractions_failed"
+                digest_logger.error(
+                    "kg_workflow_extract_zero_success",
+                    total_chunks=len(chunk_ids),
+                    failed_chunk_count=failed_chunk_count,
+                    failure_samples=failure_samples,
+                )
+                return {
+                    **state,
+                    "candidates": ordered_results,
+                    "all_candidate_edges": all_candidate_edges,
+                    "error": error_message,
+                }
+            if chunk_ids and total_nodes == 0:
+                error_message = "extract_failed: zero_candidate_nodes"
+                digest_logger.error(
+                    "kg_workflow_extract_zero_nodes",
+                    total_chunks=len(chunk_ids),
+                    success_chunk_count=success_chunk_count,
+                    failed_chunk_count=failed_chunk_count,
+                    failure_samples=failure_samples,
+                )
+                return {
+                    **state,
+                    "candidates": ordered_results,
+                    "all_candidate_edges": all_candidate_edges,
+                    "error": error_message,
+                }
             return {
                 **state,
                 "candidates": ordered_results,

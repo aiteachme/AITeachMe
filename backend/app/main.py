@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.exceptions import AITeachMeError
 from app.core.logger import configure_logging
+from app.core.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
 
 logger = structlog.get_logger()
 
@@ -71,8 +72,8 @@ def _register_middlewares(app: FastAPI) -> None:
 
 
 def _register_static_mounts(app: FastAPI) -> None:
-    data_dir = Path(get_settings().data_dir).resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
+    log_legacy_runtime_path_warnings()
+    data_dir = get_runtime_data_dir()
     app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 
 

@@ -116,6 +116,26 @@ def route_after_step(state: UnifiedDigestState) -> str:
     return "fail" if state.get("error") else "continue"
 
 
+def _topic_anchor_count(kg_state: dict | None) -> int:
+    if not kg_state:
+        return 0
+    snapshot = kg_state.get("topic_anchor_snapshot")
+    anchors = getattr(snapshot, "anchors", None)
+    return len(anchors or [])
+
+
+def _graph_is_ready(kg_state: dict | None) -> bool:
+    if not kg_state:
+        return False
+    return bool(kg_state.get("graph_ready")) and _topic_anchor_count(kg_state) > 0
+
+
+def _curriculum_is_ready(curriculum_state: dict | None) -> bool:
+    if not curriculum_state:
+        return False
+    return bool(curriculum_state.get("curriculum_ready")) and curriculum_state.get("snapshot_id") is not None
+
+
 def build_prepare_shared_node(*, context: WorkflowContext):
     """Prepare shared inputs and canonical chunks."""
 
@@ -226,6 +246,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             **state,
             "doc_state": doc_state,
             "kg_state": kg_state,
+            "graph_ready": _graph_is_ready(kg_state),
             "lane_ms": max(doc_lane_ms, kg_lane_ms),
             "doc_lane_ms": doc_lane_ms,
             "kg_lane_ms": kg_lane_ms,
@@ -243,6 +264,14 @@ def build_consistency_node(*, context: WorkflowContext):
         kg_state = state.get("kg_state")
         if doc_state is None or kg_state is None:
             return {**state, "error": "Unified consistency missing lane results."}
+        if not _graph_is_ready(kg_state):
+            return {
+                **state,
+                "error": (
+                    "Unified consistency failed: graph lane completed without a usable graph. "
+                    f"topic_anchor_count={_topic_anchor_count(kg_state)}"
+                ),
+            }
         coverage_report = await check_consistency(doc_state, kg_state)
         logger.info(
             "unified_consistency_gate_completed",
@@ -292,6 +321,8 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
         kg_state = state.get("kg_state")
         if kg_state is None:
             return {**state, "error": "Unified curriculum missing graph state."}
+        if not _graph_is_ready(kg_state):
+            return {**state, "error": "Unified curriculum blocked: graph output is empty."}
 
         logger.info(
             "unified_curriculum_started",
@@ -312,10 +343,10 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
             }
 
         curriculum_state = curriculum_result.require_value()
-        if curriculum_state.get("snapshot_id") is None:
+        if not _curriculum_is_ready(curriculum_state):
             return {
                 **state,
-                "error": "Curriculum derive completed without a published snapshot.",
+                "error": "Curriculum derive completed without a usable curriculum snapshot.",
             }
 
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -346,12 +377,10 @@ def build_rebuild_docs_node(*, context: WorkflowContext):
         materialized = state.get("materialized")
         if doc_state is None:
             return {**state, "error": "Unified rebuild missing docs state."}
-        if curriculum_state is None or curriculum_state.get("theme_tree_version_id") is None:
-            logger.warning("unified_rebuild_skipped_missing_theme_tree")
-            return state
+        if not _curriculum_is_ready(curriculum_state) or curriculum_state.get("theme_tree_version_id") is None:
+            return {**state, "error": "Unified rebuild missing a usable curriculum theme tree."}
         if shared_inputs is None or materialized is None:
-            logger.warning("unified_rebuild_skipped_missing_shared_inputs")
-            return state
+            return {**state, "error": "Unified rebuild missing shared inputs."}
 
         theme_tree_version_id = int(curriculum_state["theme_tree_version_id"])
         logger.info(
@@ -366,7 +395,7 @@ def build_rebuild_docs_node(*, context: WorkflowContext):
         )
         if not chapter_metadatas:
             logger.warning("unified_curriculum_book_rebuild_empty")
-            return state
+            return {**state, "error": "Unified rebuild produced no curriculum-aligned chapters."}
 
         existing_chapters = list(doc_state.get("chapter_metadatas", []))
         if existing_chapters and len(chapter_metadatas) < len(existing_chapters):
@@ -421,10 +450,13 @@ def build_publish_outputs_node(*, context: WorkflowContext):
         logger = context.get_logger().bind(node="publish_outputs")
         doc_state = state.get("doc_state")
         curriculum_state = state.get("curriculum_state")
+        kg_state = state.get("kg_state")
         if doc_state is None:
             return {**state, "error": "Unified publish missing docs state."}
-        if curriculum_state is None or curriculum_state.get("snapshot_id") is None:
-            return {**state, "error": "Unified publish missing curriculum snapshot."}
+        if not _graph_is_ready(kg_state):
+            return {**state, "error": "Unified publish blocked: graph output is empty."}
+        if not _curriculum_is_ready(curriculum_state):
+            return {**state, "error": "Unified publish missing a usable curriculum snapshot."}
 
         chapter_metadatas = list(doc_state.get("chapter_metadatas", []))
         if not chapter_metadatas:

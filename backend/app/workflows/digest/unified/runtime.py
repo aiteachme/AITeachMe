@@ -101,6 +101,50 @@ async def run_unified_digest_build(
     doc_state = final_state.get("doc_state", {})
     kg_state = final_state.get("kg_state", {})
     curriculum_state = final_state.get("curriculum_state", {})
+    graph_ready = bool(final_state.get("graph_ready") or kg_state.get("graph_ready"))
+    curriculum_ready = bool(curriculum_state.get("curriculum_ready")) and curriculum_state.get("snapshot_id") is not None
+    if not graph_ready:
+        error_message = "Unified digest completed without a usable graph output."
+        await bus.publish(
+            UnifiedBuildFailedEvent(
+                subject=subject,
+                build_session_id=build_session_id,
+                error_message=error_message,
+            )
+        )
+        return UnifiedBuildResult(
+            subject=subject,
+            build_session_id=build_session_id,
+            success=False,
+            error=error_message,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+            shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
+            doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
+            kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
+            repair_ms=int(final_state.get("repair_ms", 0)),
+            curriculum_ms=int(final_state.get("curriculum_ms", 0)),
+        )
+    if not curriculum_ready:
+        error_message = "Unified digest completed without a usable curriculum snapshot."
+        await bus.publish(
+            UnifiedBuildFailedEvent(
+                subject=subject,
+                build_session_id=build_session_id,
+                error_message=error_message,
+            )
+        )
+        return UnifiedBuildResult(
+            subject=subject,
+            build_session_id=build_session_id,
+            success=False,
+            error=error_message,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+            shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
+            doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
+            kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
+            repair_ms=int(final_state.get("repair_ms", 0)),
+            curriculum_ms=int(final_state.get("curriculum_ms", 0)),
+        )
     coverage_report = final_state.get("coverage_report")
     repair_result = final_state.get("repair_result")
     unified_result = UnifiedBuildResult(
@@ -112,7 +156,7 @@ async def run_unified_digest_build(
         chunk_count=len(kg_state.get("chunk_ids", [])),
         new_node_count=len(kg_state.get("new_node_ids", [])),
         new_edge_count=len(kg_state.get("new_edge_ids", [])),
-        curriculum_ready=bool(curriculum_state and not curriculum_state.get("error")),
+        curriculum_ready=curriculum_ready,
         coverage_report=coverage_report,
         repair_applied=bool(repair_result and repair_result.llm_calls_used > 0),
         elapsed_ms=int((perf_counter() - started_at) * 1000),

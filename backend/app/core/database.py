@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Generator
 
 import sqlalchemy as sa
@@ -12,6 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
+from app.core.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -139,11 +139,8 @@ def _load_vec_extension(dbapi_conn) -> None:
                 logger.warning("sqlite_extension_disable_failed", error=str(exc))
 
 
-def _get_db_path() -> Path:
-    settings = get_settings()
-    db_dir = Path(settings.data_dir)
-    db_dir.mkdir(parents=True, exist_ok=True)
-    return db_dir / "aiteachme.db"
+def _get_db_path():
+    return get_sqlite_db_path()
 
 
 def _is_allowed_runtime_table(table_name: str) -> bool:
@@ -287,6 +284,7 @@ def init_db() -> None:
     """Initialize the local database schema and vector table."""
 
     settings = get_settings()
+    log_legacy_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)

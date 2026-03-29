@@ -9,8 +9,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import time
-from typing import AsyncGenerator, TypeVar
+from typing import Any, AsyncGenerator, TypeVar
 
 import litellm
 import structlog
@@ -32,6 +34,7 @@ T = TypeVar("T")
 # 保留原始常量作为兜底
 _MAX_RETRIES = 3
 _TIMEOUT_S = 60
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 
 # 全局并发限制：防止 workflows 用 asyncio.gather 同时发太多 LLM 请求
 # 通过环境变量 LLM_CONCURRENCY_LIMIT 调整，默认 10
@@ -80,6 +83,93 @@ def _build_completion_kwargs(
     completion_kwargs.update(extra_kwargs)
     return completion_kwargs
 
+
+
+
+def _model_json_schema(response_model: type[T]) -> dict[str, Any]:
+    schema_builder = getattr(response_model, "model_json_schema", None)
+    if callable(schema_builder):
+        return schema_builder()
+    legacy_builder = getattr(response_model, "schema", None)
+    if callable(legacy_builder):
+        return legacy_builder()
+    return {}
+
+
+def _build_structured_fallback_messages(
+    response_model: type[T],
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    schema = json.dumps(
+        _model_json_schema(response_model),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    fallback_instruction = (
+        "Return only valid JSON that can be parsed directly. "
+        "Do not include markdown code fences, commentary, or extra text. "
+        f"The JSON must satisfy this schema: {schema}"
+    )
+    return [
+        *messages,
+        {"role": "user", "content": fallback_instruction},
+    ]
+
+
+def _structured_model_validate(response_model: type[T], payload: Any) -> T:
+    validator = getattr(response_model, "model_validate", None)
+    if callable(validator):
+        return validator(payload)
+    legacy_validator = getattr(response_model, "parse_obj", None)
+    if callable(legacy_validator):
+        return legacy_validator(payload)
+    return response_model(**payload)
+
+
+def _extract_json_candidates(raw_text: str) -> list[str]:
+    stripped = (raw_text or "").strip()
+    candidates: list[str] = []
+    if stripped:
+        candidates.append(stripped)
+
+    for match in _JSON_FENCE_RE.finditer(raw_text or ""):
+        fenced = match.group(1).strip()
+        if fenced:
+            candidates.append(fenced)
+
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = stripped.find(opener)
+        end = stripped.rfind(closer)
+        if start != -1 and end != -1 and end >= start:
+            candidates.append(stripped[start : end + 1])
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = candidate.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _parse_structured_response_text(response_model: type[T], raw_text: str) -> T:
+    candidates = _extract_json_candidates(raw_text)
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            errors.append(f"json_decode_error:{exc.msg}")
+            continue
+        try:
+            return _structured_model_validate(response_model, payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            errors.append(f"model_validate_error:{exc}")
+
+    reason = errors[0] if errors else "empty_or_non_json_response"
+    raise LLMCallError(reason=f"structured_parse_failed: {reason}")
 
 def _track_call(
     *,
@@ -219,17 +309,24 @@ async def acompletion_structured(
         response_model: Pydantic 响应模型。
         messages: 消息列表。
         task_type: 任务类型，用于模型路由。
-        **kwargs: 透传给 Instructor 的其他参数。
+        **kwargs: 透传给 Instructor 或 LiteLLM 的额外参数。
     """
 
     settings = get_settings()
     api_key = settings.require_llm_api_key()
     profile = get_task_profile(task_type)
-    model_name = f"openai/{profile.model}"
-    if instructor is None:
-        raise LLMCallError(reason="instructor is not installed")
-    client = instructor.from_litellm(litellm.acompletion)
+    use_instructor = instructor is not None
+    client = instructor.from_litellm(litellm.acompletion) if use_instructor else None
     last_error: Exception | None = None
+
+    if not use_instructor:
+        logger.warning(
+            "llm_structured_instructor_unavailable",
+            response_model=response_model.__name__,
+            model=profile.model,
+            task_type=task_type.value,
+            fallback_mode="json_prompt",
+        )
 
     async with _get_semaphore():
         for attempt in range(1, profile.max_retries + 1):
@@ -248,16 +345,33 @@ async def acompletion_structured(
                 model=profile.model,
                 task_type=task_type.value,
                 timeout_s=profile.timeout_s,
+                mode="instructor" if use_instructor else "json_prompt",
             )
             try:
-                result = await asyncio.wait_for(
-                    client.chat.completions.create(
-                        response_model=response_model,
-                        max_retries=0,
-                        **call_kwargs,
-                    ),
-                    timeout=profile.timeout_s + 2,
-                )
+                prompt_t = 0
+                completion_t = 0
+                total_t = 0
+                if use_instructor:
+                    result = await asyncio.wait_for(
+                        client.chat.completions.create(
+                            response_model=response_model,
+                            max_retries=0,
+                            **call_kwargs,
+                        ),
+                        timeout=profile.timeout_s + 2,
+                    )
+                else:
+                    call_kwargs["messages"] = _build_structured_fallback_messages(
+                        response_model,
+                        call_kwargs["messages"],
+                    )
+                    response = await asyncio.wait_for(
+                        litellm.acompletion(**call_kwargs),
+                        timeout=profile.timeout_s + 2,
+                    )
+                    prompt_t, completion_t, total_t = _extract_usage(response)
+                    raw_content = response.choices[0].message.content or ""
+                    result = _parse_structured_response_text(response_model, raw_content)
                 logger.info(
                     "llm_structured_complete",
                     attempt=attempt,
@@ -265,12 +379,16 @@ async def acompletion_structured(
                     response_model=response_model.__name__,
                     model=profile.model,
                     task_type=task_type.value,
+                    mode="instructor" if use_instructor else "json_prompt",
                 )
                 _track_call(
                     task_type=task_type.value,
                     model=profile.model,
                     start=start,
                     success=True,
+                    prompt_tokens=prompt_t,
+                    completion_tokens=completion_t,
+                    total_tokens=total_t,
                 )
                 return result
             except asyncio.TimeoutError:
@@ -283,6 +401,7 @@ async def acompletion_structured(
                     model=profile.model,
                     task_type=task_type.value,
                     timeout_s=profile.timeout_s,
+                    mode="instructor" if use_instructor else "json_prompt",
                 )
             except Exception as exc:
                 last_error = exc
@@ -294,6 +413,7 @@ async def acompletion_structured(
                     model=profile.model,
                     task_type=task_type.value,
                     error=str(exc),
+                    mode="instructor" if use_instructor else "json_prompt",
                 )
 
             if attempt < profile.max_retries:

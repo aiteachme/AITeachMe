@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     llm_cache_ttl_s: int = 3600
     llm_cache_max_entries: int = 1000
     llm_concurrency_limit: int = 20
-    embedding_batch_size: int = 20
+    embedding_batch_size: int = 10
     embedding_batch_delay_s: float = 0.1
     default_token_budget: int = 4000
     docgen_max_parallel_chapters: int = 20
@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # ── Digest 模型分级配置 ──
     llm_model_light: str | None = None  # 轻量任务（大纲、审阅、元数据）
     llm_model_extract: str | None = None  # 抽取任务（KG 实体/关系）
+
+    # ── Digest 构建加速配置 ──
+    digest_chapter_priors_timeout_ms: int = 0
+    kg_extract_max_parallelism: int = 20
 
     @property
     def embedding_dim(self) -> int:

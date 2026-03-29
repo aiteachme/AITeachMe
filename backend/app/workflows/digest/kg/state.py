@@ -34,5 +34,9 @@ class KGDigestState(TypedDict, total=False):
     updated_edge_ids: list[int]
     impact_set: ImpactSet | None
     topic_anchor_snapshot: Any
+    graph_ready: bool
+    resolved_node_count: int
+    active_node_count: int
+    active_edge_count: int
     lock_acquired: bool
     error: str | None

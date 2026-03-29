@@ -6,6 +6,7 @@ import { FilesPage } from "./pages/FilesPage";
 import { ExamsPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
+import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 
 const queryClient = new QueryClient();
 
@@ -17,7 +18,7 @@ function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<HomePage />} />
             <Route path="subject/:subjectId/files" element={<FilesPage />} />
-            <Route path="subject/:subjectId/knowledge-graph" element={<Navigate to="../knowledge-docs" replace />} />
+            <Route path="subject/:subjectId/knowledge-graph" element={<KnowledgeGraphPage />} />
             <Route path="subject/:subjectId/exams" element={<ExamsPage />} />
             <Route path="subject/:subjectId/profile" element={<ProfilePage />} />
             <Route path="subject/:subjectId/knowledge-docs" element={<KnowledgeDocsPage />} />
