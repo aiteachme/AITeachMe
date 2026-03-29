@@ -61,6 +61,7 @@ def _register_middlewares(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
+            "https://aiteachme.cn/",
             "https://aiteachme.pages.dev",
             "http://localhost:5173",
             "http://localhost:3000",
