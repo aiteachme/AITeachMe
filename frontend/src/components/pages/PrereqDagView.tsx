@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 import { GitBranch, ArrowRight, BookOpen } from "lucide-react";
-import type {
-  KnowledgeOverviewDependency as UnitDependencyItem,
-  KnowledgeOverviewPrereqDag as PrereqDagResponse,
-  KnowledgeOverviewUnit as TeachingUnitResponse,
-} from "../../api/knowledgeOverview";
+import type { UnitDependencyItem, PrereqDagResponse, TeachingUnitResponse } from "../../api/generated/model";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 

@@ -11,8 +11,12 @@ import {
   Trash2
 } from "lucide-react";
 
-import { fetchKnowledgeOverview } from "../../api/knowledgeOverview";
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
+import {
+  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
+  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
+} from "../../api/generated/knowledge";
+import type { KnowledgeOverviewResponse } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../../api/client";
 
 import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
@@ -49,7 +53,10 @@ export function KnowledgeGraphSidePanel({
     error: overviewError,
   } = useQuery({
     queryKey: ["knowledge-overview", subjectId],
-    queryFn: () => fetchKnowledgeOverview(subjectId),
+    queryFn: async () => {
+      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
+      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
+    },
     enabled: Boolean(subjectId), 
     retry: false,
   });

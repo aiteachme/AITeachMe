@@ -126,6 +126,46 @@ def _structured_model_validate(response_model: type[T], payload: Any) -> T:
     return response_model(**payload)
 
 
+def _repair_truncated_json(raw: str) -> str | None:
+    """Try to fix truncated JSON by appending missing closing brackets/braces.
+
+    Handles the common case where LLM tool_call arguments are cut off mid-string,
+    e.g. ``{"title": "foo", "items": ["a", "b"`` → ``{"title": "foo", "items": ["a", "b"]}``.
+    """
+    stripped = raw.rstrip()
+    if not stripped:
+        return None
+    # Find latest unmatched openers
+    stack: list[str] = []
+    in_string = False
+    escape_next = False
+    for char in stripped:
+        if escape_next:
+            escape_next = False
+            continue
+        if char == "\\":
+            escape_next = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char in ("{", "["):
+            stack.append("}" if char == "{" else "]")
+        elif char in ("}", "]"):
+            if stack and stack[-1] == char:
+                stack.pop()
+    if not stack:
+        return None  # Already balanced – nothing to repair
+    # If we're in the middle of a string, close it first
+    if in_string:
+        stripped += '"'
+    # Append missing closers in reverse order
+    stripped += "".join(reversed(stack))
+    return stripped
+
+
 def _extract_json_candidates(raw_text: str) -> list[str]:
     stripped = (raw_text or "").strip()
     candidates: list[str] = []
@@ -142,6 +182,11 @@ def _extract_json_candidates(raw_text: str) -> list[str]:
         end = stripped.rfind(closer)
         if start != -1 and end != -1 and end >= start:
             candidates.append(stripped[start : end + 1])
+
+    # Try to repair truncated JSON as a last resort
+    repaired = _repair_truncated_json(stripped)
+    if repaired and repaired != stripped:
+        candidates.append(repaired)
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -352,14 +397,36 @@ async def acompletion_structured(
                 completion_t = 0
                 total_t = 0
                 if use_instructor:
-                    result = await asyncio.wait_for(
-                        client.chat.completions.create(
-                            response_model=response_model,
-                            max_retries=0,
-                            **call_kwargs,
-                        ),
-                        timeout=profile.timeout_s + 2,
-                    )
+                    try:
+                        result = await asyncio.wait_for(
+                            client.chat.completions.create(
+                                response_model=response_model,
+                                max_retries=0,
+                                **call_kwargs,
+                            ),
+                            timeout=profile.timeout_s + 2,
+                        )
+                    except Exception as instructor_exc:
+                        # Instructor parse failed — try to salvage from tool_call args
+                        logger.warning(
+                            "llm_structured_instructor_parse_failed_trying_repair",
+                            response_model=response_model.__name__,
+                            error=str(instructor_exc)[:200],
+                        )
+                        # Re-call without instructor to get raw response for JSON repair
+                        raw_response = await asyncio.wait_for(
+                            litellm.acompletion(**call_kwargs),
+                            timeout=profile.timeout_s + 2,
+                        )
+                        prompt_t, completion_t, total_t = _extract_usage(raw_response)
+                        # Try tool_call arguments first
+                        raw_text = ""
+                        tool_calls = getattr(raw_response.choices[0].message, "tool_calls", None)
+                        if tool_calls:
+                            raw_text = tool_calls[0].function.arguments or ""
+                        if not raw_text:
+                            raw_text = raw_response.choices[0].message.content or ""
+                        result = _parse_structured_response_text(response_model, raw_text)
                 else:
                     call_kwargs["messages"] = _build_structured_fallback_messages(
                         response_model,

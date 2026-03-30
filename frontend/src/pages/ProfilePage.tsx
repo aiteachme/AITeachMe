@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Award, BookOpen, Loader2, Target, TrendingUp, Sparkles } from "lucide-react";
@@ -6,11 +6,9 @@ import { motion } from "framer-motion";
 
 import { apiClient } from "../api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import {
-  fetchKnowledgeOverview,
-  type KnowledgeOverviewNode as KnowledgeNodeResponse,
-  type KnowledgeOverviewUnit as TeachingUnitResponse,
-} from "../api/knowledgeOverview";
+import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "../api/generated/knowledge";
+import type { KnowledgeNodeResponse, KnowledgeOverviewResponse, TeachingUnitResponse } from "../api/generated/model";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 interface ApiResponse<T> {
   code: number;
@@ -148,10 +146,11 @@ async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> 
 async function fetchKnowledgeMappings(
   subject: string,
 ): Promise<{ nodes: KnowledgeNodeResponse[]; units: TeachingUnitResponse[] }> {
-  const overview = await fetchKnowledgeOverview(subject);
+  const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subject, { full: true });
+  const overview = unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
   return {
-    nodes: overview.graph?.nodes ?? [],
-    units: overview.units ?? [],
+    nodes: overview?.graph?.nodes ?? [],
+    units: overview?.units ?? [],
   };
 }
 

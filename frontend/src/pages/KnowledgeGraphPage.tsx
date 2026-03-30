@@ -12,8 +12,12 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
-import { fetchKnowledgeOverview } from "../api/knowledgeOverview";
+import {
+  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
+  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
+} from "../api/generated/knowledge";
+import type { KnowledgeOverviewResponse } from "../api/generated/model";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
 import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
@@ -47,7 +51,10 @@ export function KnowledgeGraphPage() {
     error: overviewError,
   } = useQuery({
     queryKey: ["knowledge-overview", subjectId],
-    queryFn: () => fetchKnowledgeOverview(subjectId),
+    queryFn: async () => {
+      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
+      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
+    },
     enabled: Boolean(subjectId),
     retry: false,
   });
@@ -152,7 +159,6 @@ export function KnowledgeGraphPage() {
             <WordCloud3D
               subjectLabel={subjectLabel}
               nodes={wordCloudNodes}
-              height={520}
             />
           </Suspense>
         ) : null}

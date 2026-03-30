@@ -14,8 +14,12 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { fetchKnowledgeOverview } from "../../api/knowledgeOverview";
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
+import {
+  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
+  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
+} from "../../api/generated/knowledge";
+import type { KnowledgeOverviewResponse } from "../../api/generated/model";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../../api/client";
 
 import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
@@ -50,7 +54,10 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
     error: overviewError,
   } = useQuery({
     queryKey: ["knowledge-overview", subjectId],
-    queryFn: () => fetchKnowledgeOverview(subjectId),
+    queryFn: async () => {
+      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
+      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
+    },
     enabled: Boolean(subjectId) && isOpen, 
     retry: false,
   });

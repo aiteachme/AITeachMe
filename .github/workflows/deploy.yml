@@ -42,13 +42,13 @@ jobs:
 
       - name: Trigger Cloudflare Pages (Frontend) Build
         run: |
-          curl -X POST "$CLOUDFLARE_PAGES_DEPLOY_HOOK_URL"
+          curl -X POST ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
 
       - name: Trigger Render (Backend) Build
         id: trigger_render
         run: |
           echo "🚀 触发 Render 后端部署..."
-          RESPONSE=$(curl -s -X POST "$RENDER_DEPLOY_HOOK_URL")
+          RESPONSE=$(curl -s -X POST ${{ secrets.RENDER_DEPLOY_KEY }})
           echo "Response: $RESPONSE"
           echo "✅ 部署已触发，开始监测状态..."
 

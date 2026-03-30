@@ -244,14 +244,16 @@ export function Sidebar() {
         <div className="border-b border-slate-100 p-4 flex items-center justify-between h-16 shrink-0">
           <AnimatePresence mode="popLayout">
             {!isCollapsed && (
-              <motion.h1
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden"
-              >
-                AI 赛博私教
-              </motion.h1>
+              <Link to="/" className="block hover:opacity-80 transition-opacity cursor-pointer">
+                <motion.h1
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden"
+                >
+                  AI 赛博私教
+                </motion.h1>
+              </Link>
             )}
           </AnimatePresence>
           <button

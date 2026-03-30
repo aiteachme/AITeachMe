@@ -38,6 +38,11 @@ interface TocItem {
   level: number;
 }
 
+interface TocTreeNode {
+  item: TocItem;
+  children: TocTreeNode[];
+}
+
 type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface Comment {
@@ -201,6 +206,44 @@ function extractText(node: React.ReactNode): string {
   return "";
 }
 
+/** Build a hierarchical tree from a flat TocItem list (Feishu-style) */
+function buildTocTree(items: TocItem[]): TocTreeNode[] {
+  const roots: TocTreeNode[] = [];
+  const stack: TocTreeNode[] = [];
+
+  for (const item of items) {
+    const node: TocTreeNode = { item, children: [] };
+    // Pop stack until we find a parent with a smaller level
+    while (stack.length > 0 && stack[stack.length - 1].item.level >= item.level) {
+      stack.pop();
+    }
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+    stack.push(node);
+  }
+
+  return roots;
+}
+
+/** Find ancestor IDs for a given heading id in the tree */
+function findAncestorIds(roots: TocTreeNode[], targetId: string): string[] {
+  const path: string[] = [];
+  const search = (nodes: TocTreeNode[]): boolean => {
+    for (const node of nodes) {
+      if (node.item.id === targetId) return true;
+      path.push(node.item.id);
+      if (search(node.children)) return true;
+      path.pop();
+    }
+    return false;
+  };
+  search(roots);
+  return path;
+}
+
 function moveRecordKey<T>(
   record: Record<string, T>,
   fromKey: string,
@@ -318,12 +361,12 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
   const makeHeading = (level: HeadingLevel) => {
     const Tag = `h${level}` as const;
     const styles: Record<number, string> = {
-      1: "text-[26px] font-bold text-slate-900 mt-8 mb-4 pb-3 border-b border-slate-200",
-      2: "text-[22px] font-semibold text-slate-800 mt-7 mb-3",
-      3: "text-[18px] font-semibold text-slate-800 mt-5 mb-2",
-      4: "text-base font-semibold text-slate-700 mt-4 mb-2",
-      5: "text-[15px] font-semibold text-slate-700 mt-3.5 mb-2",
-      6: "text-sm font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1.5",
+      1: "text-[28px] font-bold text-slate-900 mt-10 mb-5 pb-3.5 border-b border-slate-200/80",
+      2: "text-[24px] font-semibold text-slate-800 mt-9 mb-4",
+      3: "text-[20px] font-semibold text-slate-800 mt-7 mb-3",
+      4: "text-[17px] font-semibold text-slate-700 mt-5 mb-2.5",
+      5: "text-[15px] font-semibold text-slate-700 mt-4 mb-2",
+      6: "text-sm font-semibold uppercase tracking-wide text-slate-500 mt-3.5 mb-1.5",
     };
     return ({ children }: { children?: React.ReactNode }) => {
       const text = extractText(children);
@@ -348,19 +391,19 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
         h5: makeHeading(5),
         h6: makeHeading(6),
         p: ({ children }) => (
-          <p className="text-[15px] text-slate-700 leading-[1.8] mb-4">{children}</p>
+          <p className="text-[15px] text-slate-700 leading-[2] mb-4">{children}</p>
         ),
         ul: ({ children }) => (
-          <ul className="list-disc text-[15px] text-slate-700 mb-4 space-y-1.5 pl-6">{children}</ul>
+          <ul className="list-disc text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal text-[15px] text-slate-700 mb-4 space-y-1.5 pl-6">{children}</ol>
+          <ol className="list-decimal text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ol>
         ),
         li: ({ children }) => (
-          <li className="leading-[1.8] [&>p]:inline [&>p]:mb-0">{children}</li>
+          <li className="leading-[2] [&>p]:inline [&>p]:mb-0">{children}</li>
         ),
         blockquote: ({ children }) => (
-          <blockquote className="border-l-4 border-blue-200 bg-blue-50/40 pl-4 pr-3 py-2 text-slate-600 my-4 rounded-r-lg">
+          <blockquote className="border-l-[3px] border-blue-300/70 bg-blue-50/30 pl-4 pr-3 py-2.5 text-slate-600 my-5 rounded-r-lg">
             {children}
           </blockquote>
         ),
@@ -371,33 +414,33 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
             return <code className={cn("font-mono text-[13px]", className)}>{children}</code>;
           }
           return (
-            <code className={cn("bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-sm font-mono", className)}>
+            <code className={cn("bg-slate-100/80 text-slate-800 rounded-md px-1.5 py-0.5 text-sm font-mono", className)}>
               {children}
             </code>
           );
         },
         pre: ({ children }) => (
-          <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto text-sm my-4 leading-relaxed">
+          <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 overflow-x-auto text-sm my-5 leading-relaxed">
             {children}
           </pre>
         ),
         table: ({ children }) => (
-          <div className="overflow-x-auto my-4">
-            <table className="min-w-full text-sm border border-slate-200 rounded-lg">{children}</table>
+          <div className="overflow-x-auto my-5 rounded-xl border border-slate-200">
+            <table className="min-w-full text-sm">{children}</table>
           </div>
         ),
         thead: ({ children }) => (
-          <thead className="bg-slate-50 border-b border-slate-200">{children}</thead>
+          <thead className="bg-slate-50/80 border-b border-slate-200">{children}</thead>
         ),
         th: ({ children }) => (
-          <th className="px-4 py-2.5 text-left font-semibold text-slate-700">{children}</th>
+          <th className="px-4 py-3 text-left font-semibold text-slate-700">{children}</th>
         ),
         td: ({ children }) => (
-          <td className="px-4 py-2.5 text-slate-600 border-t border-slate-100">{children}</td>
+          <td className="px-4 py-3 text-slate-600 border-t border-slate-100">{children}</td>
         ),
-        hr: () => <hr className="my-6 border-slate-200" />,
+        hr: () => <hr className="my-8 border-slate-200/60" />,
         a: ({ href, children }) => (
-          <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+          <a href={href} className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">
             {children}
           </a>
         ),
@@ -832,6 +875,7 @@ export function KnowledgeDocsPage() {
   const [threadHeightsById, setThreadHeightsById] = useState<Record<string, number>>({});
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [isCommentCollapsed, setIsCommentCollapsed] = useState(false);
+  const [collapsedTocIds, setCollapsedTocIds] = useState<Set<string>>(new Set());
 
   // Floating selection toolbar state
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
@@ -854,6 +898,7 @@ export function KnowledgeDocsPage() {
   const selectedRangeRef = useRef<Range | null>(null);
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
+  const tocNavRef = useRef<HTMLElement>(null);
   const streamControllersRef = useRef(new Map<string, AbortController>());
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
@@ -863,6 +908,40 @@ export function KnowledgeDocsPage() {
     () => toc.find((item) => item.id === activeHeading) ?? null,
     [activeHeading, toc]
   );
+
+  // Build hierarchical tree from flat TOC (Feishu-style)
+  const tocTree = useMemo(() => buildTocTree(toc), [toc]);
+
+  // Auto-expand ancestors of active heading
+  useEffect(() => {
+    if (!activeHeading || tocTree.length === 0) return;
+    const ancestors = findAncestorIds(tocTree, activeHeading);
+    if (ancestors.length === 0) return;
+    setCollapsedTocIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of ancestors) {
+        if (next.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [activeHeading, tocTree]);
+
+  // Auto-scroll TOC sidebar to keep active item visible
+  useEffect(() => {
+    if (!activeHeading || !tocNavRef.current) return;
+    const activeBtn = tocNavRef.current.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
+    if (!activeBtn) return;
+    const nav = tocNavRef.current;
+    const navRect = nav.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    if (btnRect.top < navRect.top + 8 || btnRect.bottom > navRect.bottom - 8) {
+      activeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeHeading]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -1020,21 +1099,27 @@ export function KnowledgeDocsPage() {
     };
   }, [subjectId]);
 
-  // Track active heading on scroll using the single scroll container
+  // Track active heading on scroll with throttle (Feishu-style)
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
+    let rafPending = false;
     const handleScroll = () => {
-      const headings = container.querySelectorAll("[data-heading-id]");
-      let current = "";
-      for (const el of headings) {
-        const rect = el.getBoundingClientRect();
-        if (rect.top <= 120) {
-          current = el.getAttribute("data-heading-id") ?? "";
+      if (rafPending) return;
+      rafPending = true;
+      window.requestAnimationFrame(() => {
+        rafPending = false;
+        const headings = container.querySelectorAll("[data-heading-id]");
+        let current = "";
+        for (const el of headings) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 120) {
+            current = el.getAttribute("data-heading-id") ?? "";
+          }
         }
-      }
-      setActiveHeading(current);
+        setActiveHeading(current);
+      });
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
@@ -2016,42 +2101,107 @@ export function KnowledgeDocsPage() {
     }
   }, [closeDrawer, isCompactPanels]);
 
-  const tocNav = (
-    <nav className="toc-scroll flex-1 overflow-y-auto py-2 pr-2">
-      {toc.map((item) => {
-        const count = commentsForAnchor(item.id);
-        return (
-          <button
-            key={item.id}
-            onClick={() => handleTocItemClick(item.id)}
+  const toggleTocCollapse = useCallback((id: string) => {
+    setCollapsedTocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const renderTocNodes = useCallback((nodes: TocTreeNode[], depth: number = 0): React.ReactNode => {
+    return nodes.map((node) => {
+      const { item } = node;
+      const hasChildren = node.children.length > 0;
+      const isCollapsed = collapsedTocIds.has(item.id);
+      const isActive = activeHeading === item.id;
+      const count = commentsForAnchor(item.id);
+      const indent = depth * 16;
+
+      return (
+        <div key={item.id}>
+          <div
+            data-toc-id={item.id}
             className={cn(
-              "group w-full text-left px-2 py-1.5 rounded-md text-[13px] transition-all duration-150 flex items-center gap-1",
-              item.level === 1 && "font-semibold text-slate-900 mt-2 first:mt-0",
-              item.level === 2 && "pl-4 text-slate-700",
-              item.level === 3 && "pl-7 text-slate-500",
-              item.level >= 4 && "pl-9 text-slate-400",
-              activeHeading === item.id
-                ? "bg-blue-50 text-blue-700 font-medium"
-                : "hover:bg-slate-100"
+              "group flex items-center rounded-md transition-all duration-150 relative",
+              isActive
+                ? "bg-blue-50/80 text-blue-700"
+                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900"
             )}
+            style={{ paddingLeft: indent + 4 }}
           >
-            {item.level > 1 && (
-              <ChevronRight
-                className={cn(
-                  "w-3 h-3 shrink-0",
-                  activeHeading === item.id ? "text-blue-400" : "text-slate-300"
-                )}
-              />
+            {/* Left active indicator (Feishu-style) */}
+            {isActive && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2.5px] h-4 rounded-full bg-blue-500" />
             )}
-            <span className="truncate flex-1">{item.text}</span>
+
+            {/* Expand/collapse arrow */}
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTocCollapse(item.id);
+                }}
+                className={cn(
+                  "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
+                  isActive ? "text-blue-500 hover:bg-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+                )}
+              >
+                <ChevronRight
+                  className={cn(
+                    "w-3.5 h-3.5 transition-transform duration-200",
+                    !isCollapsed && "rotate-90"
+                  )}
+                />
+              </button>
+            ) : (
+              <span className="w-5 shrink-0" />
+            )}
+
+            {/* Title text */}
+            <button
+              type="button"
+              onClick={() => handleTocItemClick(item.id)}
+              className={cn(
+                "flex-1 min-w-0 text-left py-1.5 pr-1 text-[13px] truncate transition-colors",
+                isActive ? "font-semibold" : "font-normal",
+                item.level === 1 && "font-semibold text-[13.5px]"
+              )}
+            >
+              {item.text}
+            </button>
+
+            {/* Comment count badge */}
             {count > 0 && (
-              <span className="shrink-0 w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] flex items-center justify-center font-medium">
+              <span className="shrink-0 w-4 h-4 mr-1 rounded-full bg-blue-100 text-blue-600 text-[10px] flex items-center justify-center font-medium">
                 {count}
               </span>
             )}
-          </button>
-        );
-      })}
+          </div>
+
+          {/* Children (collapsible) */}
+          {hasChildren && !isCollapsed && (
+            <div className="overflow-hidden">
+              {renderTocNodes(node.children, depth + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  }, [activeHeading, collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse]);
+
+  const tocNav = (
+    <nav ref={tocNavRef} className="toc-scroll flex-1 overflow-y-auto py-2 pr-1">
+      {tocTree.length > 0 ? (
+        renderTocNodes(tocTree)
+      ) : (
+        <div className="px-3 py-4 text-xs text-slate-400 text-center">暂无目录</div>
+      )}
     </nav>
   );
 
@@ -2301,7 +2451,7 @@ export function KnowledgeDocsPage() {
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
           graphViewMode === "hidden" ? "w-full" : 
-          graphViewMode === "split" ? "w-1/2 border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
+          graphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
         )}
       >
         {!isCompactPanels && (
@@ -2319,7 +2469,7 @@ export function KnowledgeDocsPage() {
               </button>
             </aside>
           ) : (
-            <aside className="w-64 h-[calc(100vh-7rem)] max-h-[780px] flex flex-col overflow-hidden">
+            <aside className="w-[16%] min-w-[200px] max-w-[280px] h-[calc(100vh-7rem)] max-h-[820px] flex flex-col overflow-hidden">
               <div className="px-2 h-10 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-slate-900">
                   <FileText className="w-4 h-4" />
@@ -2429,7 +2579,7 @@ export function KnowledgeDocsPage() {
 
       <div
         ref={scrollRef}
-        className="h-full overflow-y-auto relative"
+        className="h-full overflow-y-auto relative doc-scroll-container content-scroll"
         onMouseUp={handleTextSelect}
       >
         <div
@@ -2442,13 +2592,13 @@ export function KnowledgeDocsPage() {
               ? null
               : isTocCollapsed
                 ? "lg:pl-20"
-                : "lg:pl-[18.5rem]"
+                : "lg:pl-[17%]"
           )}
         >
           <div className="mx-auto max-w-[1800px] px-6 py-8">
             <div
               ref={contentAreaRef}
-              className="mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
+              className="feishu-doc-content mx-auto flex min-h-full w-full max-w-[1380px] items-start gap-3"
               >
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
@@ -2482,7 +2632,7 @@ export function KnowledgeDocsPage() {
                   )}
                 </article>
                 {!isCompactPanels && !isCommentCollapsed && (
-                  <aside className="hidden lg:block w-80 shrink-0 py-8">
+                  <aside className="hidden lg:block w-[22%] min-w-[260px] max-w-[380px] shrink-0 py-8">
                     {commentPanel}
                   </aside>
                 )}
@@ -2590,7 +2740,7 @@ export function KnowledgeDocsPage() {
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
           graphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
-          graphViewMode === "split" ? "w-1/2" : "w-full"
+          graphViewMode === "split" ? "w-[35%]" : "w-full"
         )}
       >
         {subjectId && graphViewMode !== "hidden" && (
