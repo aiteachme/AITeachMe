@@ -21,35 +21,35 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
-const NODE_COLORS: Record<string, { bg: string; border: string; label: string }> = {
-  Topic: { bg: "#dbeafe", border: "#3b82f6", label: "主题" },
-  topic: { bg: "#dbeafe", border: "#3b82f6", label: "主题" },
-  Concept: { bg: "#f3e8ff", border: "#a855f7", label: "概念" },
-  concept: { bg: "#f3e8ff", border: "#a855f7", label: "概念" },
-  Method: { bg: "#fef3c7", border: "#f59e0b", label: "方法" },
-  method: { bg: "#fef3c7", border: "#f59e0b", label: "方法" },
-  Definition: { bg: "#d1fae5", border: "#10b981", label: "定义" },
-  definition: { bg: "#d1fae5", border: "#10b981", label: "定义" },
-  Example: { bg: "#fce7f3", border: "#ec4899", label: "示例" },
-  example: { bg: "#fce7f3", border: "#ec4899", label: "示例" },
-  Theorem: { bg: "#e0e7ff", border: "#6366f1", label: "定理" },
-  theorem: { bg: "#e0e7ff", border: "#6366f1", label: "定理" },
-  Formula: { bg: "#cffafe", border: "#06b6d4", label: "公式" },
-  formula: { bg: "#cffafe", border: "#06b6d4", label: "公式" },
+const NODE_COLORS: Record<string, { fill: string; label: string }> = {
+  Topic: { fill: "#3b82f6", label: "主题" },
+  topic: { fill: "#3b82f6", label: "主题" },
+  Concept: { fill: "#8b5cf6", label: "概念" },
+  concept: { fill: "#8b5cf6", label: "概念" },
+  Method: { fill: "#f59e0b", label: "方法" },
+  method: { fill: "#f59e0b", label: "方法" },
+  Definition: { fill: "#10b981", label: "定义" },
+  definition: { fill: "#10b981", label: "定义" },
+  Example: { fill: "#ec4899", label: "示例" },
+  example: { fill: "#ec4899", label: "示例" },
+  Theorem: { fill: "#6366f1", label: "定理" },
+  theorem: { fill: "#6366f1", label: "定理" },
+  Formula: { fill: "#06b6d4", label: "公式" },
+  formula: { fill: "#06b6d4", label: "公式" },
 };
 
-const DEFAULT_COLOR = { bg: "#f1f5f9", border: "#64748b", label: "其他" };
+const DEFAULT_COLOR = { fill: "#64748b", label: "其他" };
 
 const EDGE_COLORS: Record<string, string> = {
   prerequisite: "#ef4444",
-  relates_to: "#6366f1",
-  contains: "#10b981",
-  derives_from: "#f59e0b",
-  example_of: "#ec4899",
-  part_of: "#3b82f6",
+  relates_to: "#818cf8",
+  contains: "#34d399",
+  derives_from: "#fbbf24",
+  example_of: "#f472b6",
+  part_of: "#60a5fa",
 };
 
-const DEFAULT_EDGE_COLOR = "#cbd5e1";
+const DEFAULT_EDGE_COLOR = "#94a3b8";
 
 interface GraphNode {
   id: number;
@@ -110,6 +110,7 @@ function NodeDetailSidebar({
   if (!data) return null;
 
   const color = NODE_COLORS[data.node_type] ?? DEFAULT_COLOR;
+  const colorStyle = { backgroundColor: `${color.fill}18`, color: color.fill };
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
@@ -122,7 +123,7 @@ function NodeDetailSidebar({
             <h3 className="text-lg font-semibold text-slate-800">
               <MarkdownViewer content={data.canonical_name} />
             </h3>
-            <span className="rounded px-1.5 py-0.5 text-xs" style={{ backgroundColor: color.bg, color: color.border }}>
+            <span className="rounded px-1.5 py-0.5 text-xs" style={colorStyle}>
               {color.label}
             </span>
           </div>
@@ -341,36 +342,54 @@ export function ForceGraphView({
       const isNeighbor = hoveredNodeId !== null && neighborMap.get(hoveredNodeId)?.has(node.id);
       const isDimmed = hoveredNodeId !== null && !isHovered && !isNeighbor;
 
-      const baseRadius = 5 + node.confidence * 3;
-      const radius = isHovered || isSelected ? baseRadius * 1.3 : baseRadius;
-      const alpha = isDimmed ? 0.15 : 1;
+      const baseRadius = 8 + node.confidence * 8;
+      const radius = isHovered || isSelected ? baseRadius * 1.2 : baseRadius;
+      const alpha = isDimmed ? 0.12 : 1;
 
       ctx.save();
       ctx.globalAlpha = alpha;
 
+      // Outer glow for hovered/selected
       if (isHovered || isSelected) {
-        ctx.shadowColor = color.border;
-        ctx.shadowBlur = 12;
+        ctx.shadowColor = color.fill;
+        ctx.shadowBlur = 18;
       }
 
+      // Solid filled circle
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = color.bg;
+      ctx.fillStyle = color.fill;
       ctx.fill();
 
-      ctx.strokeStyle = color.border;
-      ctx.lineWidth = isHovered || isSelected ? 2 : 1;
+      // White border
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = isHovered || isSelected ? 3 : 2;
       ctx.stroke();
 
       ctx.shadowBlur = 0;
 
-      if (globalScale > 1.2 || isHovered || isSelected || isNeighbor) {
-        const fontSize = Math.max(10 / globalScale, 2.5);
-        ctx.font = `${isHovered || isSelected ? "bold " : ""}${fontSize}px sans-serif`;
+      // Label
+      const showLabel = globalScale > 0.8 || isHovered || isSelected || isNeighbor;
+      if (showLabel) {
+        const label = node.canonical_name;
+        const fontSize = Math.max(11 / globalScale, 3);
+        ctx.font = `${isHovered || isSelected ? "600 " : "500 "}${fontSize}px system-ui, -apple-system, sans-serif`;
         ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = isDimmed ? "#94a3b8" : "#334155";
-        ctx.fillText(node.canonical_name, x, y + radius + 2);
+
+        // Short labels go inside the node, long labels below
+        const fitsInside = label.length <= 4 && globalScale > 1.5;
+        if (fitsInside) {
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(label, x, y);
+        } else {
+          ctx.textBaseline = "top";
+          // Text shadow for readability
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(label, x + 0.5, y + radius + 3.5);
+          ctx.fillStyle = isDimmed ? "#94a3b8" : "#1e293b";
+          ctx.fillText(label, x, y + radius + 3);
+        }
       }
 
       ctx.restore();
@@ -388,35 +407,55 @@ export function ForceGraphView({
         hoveredNodeId !== null && (source.id === hoveredNodeId || target.id === hoveredNodeId);
       const isDimmed = hoveredNodeId !== null && !isHighlighted;
 
+      const edgeColor = EDGE_COLORS[link.edge_type] ?? DEFAULT_EDGE_COLOR;
+
       ctx.save();
-      ctx.globalAlpha = isDimmed ? 0.06 : isHighlighted ? 0.9 : 0.3;
-      ctx.strokeStyle = EDGE_COLORS[link.edge_type] ?? DEFAULT_EDGE_COLOR;
-      ctx.lineWidth = isHighlighted ? 1.5 : 0.5;
+      ctx.globalAlpha = isDimmed ? 0.04 : isHighlighted ? 1 : 0.25;
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = isHighlighted ? 2 : 0.8;
+
+      // Slight curve for visual appeal
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const curvature = 0.15;
+      const mx = (source.x + target.x) / 2 - dy * curvature;
+      const my = (source.y + target.y) / 2 + dx * curvature;
 
       ctx.beginPath();
       ctx.moveTo(source.x, source.y);
-      ctx.lineTo(target.x, target.y);
+      ctx.quadraticCurveTo(mx, my, target.x, target.y);
       ctx.stroke();
 
-      if (isHighlighted) {
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len > 0) {
-          const ux = dx / len;
-          const uy = dy / len;
-          const targetRadius = 5 + (target.confidence ?? 0.5) * 3;
-          const ax = target.x - ux * (targetRadius + 3);
-          const ay = target.y - uy * (targetRadius + 3);
-          const arrowSize = 3;
-          ctx.beginPath();
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(ax - arrowSize * ux + arrowSize * 0.5 * uy, ay - arrowSize * uy - arrowSize * 0.5 * ux);
-          ctx.lineTo(ax - arrowSize * ux - arrowSize * 0.5 * uy, ay - arrowSize * uy + arrowSize * 0.5 * ux);
-          ctx.closePath();
-          ctx.fillStyle = EDGE_COLORS[link.edge_type] ?? DEFAULT_EDGE_COLOR;
-          ctx.fill();
-        }
+      // Arrow at target
+      if (len > 0) {
+        const ux = dx / len;
+        const uy = dy / len;
+        const targetRadius = 8 + (target.confidence ?? 0.5) * 8 + 3;
+        const ax = target.x - ux * targetRadius;
+        const ay = target.y - uy * targetRadius;
+        const arrowSize = isHighlighted ? 5 : 3.5;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - arrowSize * ux + arrowSize * 0.5 * uy, ay - arrowSize * uy - arrowSize * 0.5 * ux);
+        ctx.lineTo(ax - arrowSize * ux - arrowSize * 0.5 * uy, ay - arrowSize * uy + arrowSize * 0.5 * ux);
+        ctx.closePath();
+        ctx.fillStyle = edgeColor;
+        ctx.fill();
+      }
+
+      // Edge type label on hover
+      if (isHighlighted && len > 40) {
+        const labelX = mx;
+        const labelY = my;
+        ctx.globalAlpha = 0.85;
+        ctx.font = "500 9px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(labelX - 20, labelY - 6, 40, 12);
+        ctx.fillStyle = edgeColor;
+        ctx.fillText(link.edge_type, labelX, labelY);
       }
 
       ctx.restore();
@@ -512,7 +551,7 @@ export function ForceGraphView({
             nodeId="id"
             nodeCanvasObject={paintNode as any}
             nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
-              const r = 5 + (node.confidence ?? 0.5) * 3 + 2;
+              const r = 8 + (node.confidence ?? 0.5) * 8 + 3;
               ctx.beginPath();
               ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, 2 * Math.PI);
               ctx.fillStyle = color;
@@ -530,24 +569,24 @@ export function ForceGraphView({
             enablePanInteraction={true}
           />
 
-          <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+          <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur-sm">
             <p className="mb-1.5 text-[10px] font-medium text-slate-400">节点类型</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {Object.entries(NODE_COLORS)
                 .filter(([k]) => k[0] === k[0].toUpperCase())
                 .map(([key, val]) => (
-                  <div key={key} className="flex items-center gap-1">
+                  <div key={key} className="flex items-center gap-1.5">
                     <span
-                      className="h-2.5 w-2.5 rounded-full border"
-                      style={{ backgroundColor: val.bg, borderColor: val.border }}
+                      className="h-3 w-3 rounded-full border-2 border-white shadow-sm"
+                      style={{ backgroundColor: val.fill }}
                     />
-                    <span className="text-[10px] text-slate-500">{val.label}</span>
+                    <span className="text-[10px] text-slate-600">{val.label}</span>
                   </div>
                 ))}
             </div>
           </div>
 
-          <div className="absolute bottom-3 right-3 flex gap-1 rounded-lg border border-slate-200 bg-white/90 p-1 shadow-sm backdrop-blur-sm">
+          <div className="absolute bottom-3 left-[180px] flex gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm backdrop-blur-sm">
             <button
               onClick={handleZoomIn}
               className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"

@@ -31,17 +31,17 @@ const WordCloud3D = lazy(() => import("../components/pages/WordCloud3D"));
 type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
 const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
   { id: "word-cloud", label: "知识宇宙", icon: <Box className="h-4 w-4" />, desc: "3D 交互式词云，可视化学科知识版图" },
   { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织的课程结构" },
   { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序和依赖关系" },
-  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
 ];
 
 export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("word-cloud");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const {

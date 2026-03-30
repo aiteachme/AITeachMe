@@ -203,7 +203,7 @@ export function KnowledgeGraphView({
   subject: string;
   overviewGraph: FullGraphResponse | null;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);

@@ -12,137 +12,234 @@ interface WordCloud3DProps {
   height?: number;
 }
 
-interface BaseWord {
+interface PlacedWord {
+  name: string;
   color: string;
   confidence: number;
   fontSize: number;
-  name: string;
   x: number;
   y: number;
   z: number;
 }
 
-interface RenderWord extends BaseWord {
-  blurPx: number;
-  glowColor: string;
-  opacity: number;
-  scale: number;
+interface RenderWord extends PlacedWord {
   screenX: number;
   screenY: number;
-  zIndex: number;
+  scale: number;
+  opacity: number;
+  depth: number;
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  Topic: "#8b5cf6",
-  topic: "#8b5cf6",
-  Concept: "#6366f1",
-  concept: "#6366f1",
-  Method: "#f59e0b",
-  method: "#f59e0b",
-  Definition: "#10b981",
-  definition: "#10b981",
-  Example: "#ec4899",
-  example: "#ec4899",
-  Theorem: "#3b82f6",
-  theorem: "#3b82f6",
-  Formula: "#06b6d4",
-  formula: "#06b6d4",
+  Topic: "#a78bfa",
+  topic: "#a78bfa",
+  Concept: "#818cf8",
+  concept: "#818cf8",
+  Method: "#fbbf24",
+  method: "#fbbf24",
+  Definition: "#34d399",
+  definition: "#34d399",
+  Example: "#f472b6",
+  example: "#f472b6",
+  Theorem: "#60a5fa",
+  theorem: "#60a5fa",
+  Formula: "#22d3ee",
+  formula: "#22d3ee",
 };
 
 const DEFAULT_COLOR = "#94a3b8";
 const MAX_VISIBLE_WORDS = 80;
-const SPHERE_RADIUS = 320;
-const AUTO_ROTATE_SPEED = 0.003;
-const TILT_RESET_X = -0.16;
-const SPRING_FACTOR = 0.07;
+const AUTO_ROTATE_SPEED = 0.002;
+const TILT_X = -0.15;
+const SPRING_FACTOR = 0.06;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const normalized = hex.replace("#", "");
-  const chunkSize = normalized.length === 3 ? 1 : 2;
-  const raw = normalized.length === 3
-    ? normalized.split("").map((char) => char.repeat(2))
-    : normalized.match(/.{1,2}/g) ?? ["94", "a3", "b8"];
-  const [r, g, b] = raw.map((chunk) => Number.parseInt(chunk.slice(0, chunkSize === 1 ? 1 : 2), 16));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function buildWordSphere(nodes: WordCloudNode[]): BaseWord[] {
+function buildWordSphere(nodes: WordCloudNode[], radius: number): PlacedWord[] {
   return nodes.slice(0, MAX_VISIBLE_WORDS).map((node, index, visibleNodes) => {
     const total = visibleNodes.length;
     const step = index + 0.5;
     const phi = Math.acos(1 - (2 * step) / Math.max(total, 1));
     const theta = GOLDEN_ANGLE * index;
-    const emphasis = clamp(node.confidence, 0.15, 1);
-    const radius = SPHERE_RADIUS - emphasis * 26;
+    const emphasis = clamp(node.confidence, 0.1, 1);
+    const r = radius * (0.85 + emphasis * 0.15);
     const color = TYPE_COLORS[node.nodeType] || DEFAULT_COLOR;
 
     return {
       name: node.name,
       confidence: emphasis,
       color,
-      fontSize: 10 + emphasis * 6,
-      x: Math.cos(theta) * Math.sin(phi) * radius,
-      y: Math.sin(theta) * Math.sin(phi) * radius * 0.72,
-      z: Math.cos(phi) * radius,
+      fontSize: 11 + emphasis * 15,
+      x: Math.cos(theta) * Math.sin(phi) * r,
+      y: Math.sin(theta) * Math.sin(phi) * r * 0.75,
+      z: Math.cos(phi) * r,
     };
   });
 }
 
-function rotateWord(word: BaseWord, rotateX: number, rotateY: number): RenderWord {
-  const cosY = Math.cos(rotateY);
-  const sinY = Math.sin(rotateY);
-  const cosX = Math.cos(rotateX);
-  const sinX = Math.sin(rotateX);
+function projectWord(word: PlacedWord, rotX: number, rotY: number, radius: number): RenderWord {
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  const cosX = Math.cos(rotX);
+  const sinX = Math.sin(rotX);
 
-  const rotatedX = word.x * cosY + word.z * sinY;
-  const rotatedZ = word.z * cosY - word.x * sinY;
-  const rotatedY = word.y * cosX - rotatedZ * sinX;
-  const depthZ = word.y * sinX + rotatedZ * cosX;
-  const depth = clamp((depthZ + SPHERE_RADIUS) / (SPHERE_RADIUS * 2), 0, 1);
+  const rx = word.x * cosY + word.z * sinY;
+  const rz = word.z * cosY - word.x * sinY;
+  const ry = word.y * cosX - rz * sinX;
+  const dz = word.y * sinX + rz * cosX;
+  const depth = clamp((dz + radius) / (radius * 2), 0, 1);
 
   return {
     ...word,
-    screenX: rotatedX,
-    screenY: rotatedY,
-    scale: 0.6 + depth * 0.5 + word.confidence * 0.12,
-    opacity: 0.2 + depth * 0.78,
-    blurPx: (1 - depth) * 1.2,
-    glowColor: hexToRgba(word.color, 0.18 + depth * 0.32),
-    zIndex: Math.round(depth * 100),
+    screenX: rx,
+    screenY: ry,
+    scale: 0.5 + depth * 0.6,
+    opacity: 0.15 + depth * 0.85,
+    depth,
   };
 }
 
 export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
-  const containerHeight = height ?? "calc(100vh - 14rem)";
-  const [rotation, setRotation] = useState({ x: TILT_RESET_X, y: 0 });
-  const targetRotationRef = useRef({ x: TILT_RESET_X, y: 0 });
-  const rotationRef = useRef({ x: TILT_RESET_X, y: 0 });
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 600, h: 400 });
+  const rotationRef = useRef({ x: TILT_X, y: 0 });
+  const targetRotRef = useRef({ x: TILT_X, y: 0 });
+  const isDraggingRef = useRef(false);
 
-  const words = useMemo(() => buildWordSphere(nodes), [nodes]);
-  const renderedWords = useMemo(
-    () => words.map((word) => rotateWord(word, rotation.x, rotation.y)).sort((left, right) => left.zIndex - right.zIndex),
-    [rotation.x, rotation.y, words],
-  );
-
+  // Measure container
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) setSize({ w, h });
+    };
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const sphereRadius = Math.min(size.w, size.h) * 0.38;
+  const words = useMemo(() => buildWordSphere(nodes, sphereRadius), [nodes, sphereRadius]);
+
+  const topTypes = useMemo(() => {
+    return Object.entries(
+      nodes.reduce<Record<string, number>>((acc, n) => {
+        acc[n.nodeType] = (acc[n.nodeType] || 0) + 1;
+        return acc;
+      }, {}),
+    )
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [nodes]);
+
+  // Animation loop — Canvas rendering
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || words.length === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     let rafId = 0;
 
-    const animate = () => {
-      const nextX = rotationRef.current.x + (targetRotationRef.current.x - rotationRef.current.x) * SPRING_FACTOR;
-      const nextY = rotationRef.current.y + (targetRotationRef.current.y - rotationRef.current.y) * SPRING_FACTOR + AUTO_ROTATE_SPEED;
-      rotationRef.current = { x: nextX, y: nextY };
-      setRotation(rotationRef.current);
-      rafId = window.requestAnimationFrame(animate);
+    const render = () => {
+      const rot = rotationRef.current;
+      const target = targetRotRef.current;
+
+      rot.x += (target.x - rot.x) * SPRING_FACTOR;
+      rot.y += (target.y - rot.y) * SPRING_FACTOR;
+      if (!isDraggingRef.current) {
+        target.y += AUTO_ROTATE_SPEED;
+      }
+
+      const dpr = window.devicePixelRatio || 1;
+      const cw = size.w;
+      const ch = size.h;
+      canvas.width = cw * dpr;
+      canvas.height = ch * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Background
+      ctx.clearRect(0, 0, cw, ch);
+
+      // Ambient glow
+      const grad = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, sphereRadius * 1.3);
+      grad.addColorStop(0, "rgba(139, 92, 246, 0.06)");
+      grad.addColorStop(0.5, "rgba(99, 102, 241, 0.03)");
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, cw, ch);
+
+      // Orbit ring
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(cw / 2, ch / 2, sphereRadius, sphereRadius * 0.65, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Project and sort
+      const projected = words
+        .map((w) => projectWord(w, rot.x, rot.y, sphereRadius))
+        .sort((a, b) => a.depth - b.depth);
+
+      const cx = cw / 2;
+      const cy = ch / 2;
+
+      for (const w of projected) {
+        const fs = w.fontSize * w.scale;
+        ctx.save();
+        ctx.globalAlpha = w.opacity;
+        ctx.font = `600 ${fs}px system-ui, -apple-system, "Noto Sans SC", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Glow
+        const glowAlpha = 0.15 + w.depth * 0.25;
+        ctx.shadowColor = w.color;
+        ctx.shadowBlur = 8 + w.depth * 10;
+        ctx.fillStyle = w.color.replace(")", `, ${glowAlpha})`).replace("rgb", "rgba");
+
+        // Draw text
+        ctx.fillStyle = w.color;
+        ctx.fillText(w.name, cx + w.screenX, cy + w.screenY);
+
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+
+      rafId = requestAnimationFrame(render);
     };
 
-    rafId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(rafId);
-  }, []);
+    rafId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(rafId);
+  }, [words, size, sphereRadius]);
+
+  // Mouse interaction
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ox = (e.clientX - rect.left) / rect.width - 0.5;
+    const oy = (e.clientY - rect.top) / rect.height - 0.5;
+    targetRotRef.current = {
+      x: clamp(TILT_X - oy * 0.6, -0.5, 0.4),
+      y: rotationRef.current.y + ox * 0.1,
+    };
+    isDraggingRef.current = true;
+  };
+
+  const handleMouseLeave = () => {
+    targetRotRef.current = { x: TILT_X, y: rotationRef.current.y };
+    isDraggingRef.current = false;
+  };
+
+  const containerHeight = height ?? "calc(100vh - 14rem)";
 
   if (nodes.length === 0) {
     return (
@@ -157,96 +254,52 @@ export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
               <path d="M8 12h8M12 8v8" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-slate-400">No graph data yet</p>
-          <p className="mt-1 text-xs text-slate-600">Build the knowledge assets to render the word cloud.</p>
+          <p className="text-sm font-medium text-slate-400">暂无图谱数据</p>
+          <p className="mt-1 text-xs text-slate-600">构建知识资产后自动生成词云</p>
         </div>
       </div>
     );
   }
 
-  const topTypes = Object.entries(
-    nodes.reduce<Record<string, number>>((accumulator, node) => {
-      const type = node.nodeType;
-      accumulator[type] = (accumulator[type] || 0) + 1;
-      return accumulator;
-    }, {}),
-  )
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 4);
-
   return (
     <div
+      ref={containerRef}
       className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-950 via-[#0a0a1a] to-slate-950"
       style={{ height: containerHeight }}
-      onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const offsetX = (event.clientX - rect.left) / rect.width - 0.5;
-        const offsetY = (event.clientY - rect.top) / rect.height - 0.5;
-        targetRotationRef.current = {
-          x: clamp(TILT_RESET_X - offsetY * 0.7, -0.58, 0.42),
-          y: rotationRef.current.y + offsetX * 0.14,
-        };
-      }}
-      onMouseLeave={() => {
-        targetRotationRef.current = { x: TILT_RESET_X, y: rotationRef.current.y };
-      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-700/12 blur-[120px]" />
-        <div className="absolute left-[18%] top-[18%] h-40 w-40 rounded-full bg-cyan-500/8 blur-[90px]" />
-        <div className="absolute bottom-[14%] right-[16%] h-48 w-48 rounded-full bg-indigo-500/10 blur-[100px]" />
-        <div className="absolute left-1/2 top-1/2 h-[540px] w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/6" />
-        <div className="absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
-      </div>
+      {/* Canvas fills the entire container */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 h-full w-full"
+        style={{ width: "100%", height: "100%" }}
+      />
 
-      <div className="pointer-events-none absolute left-0 right-0 top-0 p-5">
+      {/* Top-left badge */}
+      <div className="pointer-events-none absolute left-0 right-0 top-0 p-4">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 animate-pulse rounded-full bg-fuchsia-500" />
-          <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+          <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
             Knowledge Universe
           </span>
         </div>
       </div>
 
-      <div className="absolute inset-0 overflow-hidden [perspective:1400px]">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-slate-950/45 px-5 py-4 text-center shadow-[0_0_40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Subject Core</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{subjectLabel}</p>
-          <p className="mt-1 text-xs text-slate-400">{nodes.length} nodes orbiting in focus</p>
-        </div>
-
-        {renderedWords.map((word, index) => (
-          <div
-            key={`${word.name}-${index}`}
-            className="pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-white/8 px-2 py-0.5 text-center font-medium tracking-[0.02em] backdrop-blur-sm"
-            style={{
-              transform: `translate(calc(-50% + ${word.screenX}px), calc(-50% + ${word.screenY}px)) scale(${word.scale})`,
-              color: word.color,
-              opacity: word.opacity,
-              fontSize: `${word.fontSize}px`,
-              zIndex: word.zIndex,
-              filter: `blur(${word.blurPx}px)`,
-              backgroundColor: "rgba(2, 6, 23, 0.38)",
-              boxShadow: `0 0 20px ${word.glowColor}`,
-              textShadow: `0 0 18px ${word.glowColor}`,
-            }}
-          >
-            {word.name}
-          </div>
-        ))}
-      </div>
-
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 to-transparent p-5 pt-10">
+      {/* Bottom info bar */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 to-transparent p-4 pt-10">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-lg font-bold text-white/90">{subjectLabel}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{nodes.length} nodes - move cursor to rotate</p>
+            <p className="text-base font-bold text-white/90">{subjectLabel}</p>
+            <p className="mt-0.5 text-[10px] text-slate-500">
+              {nodes.length} 个知识节点 · 鼠标移动旋转
+            </p>
           </div>
           <div className="flex gap-3">
             {topTypes.map(([type, count]) => (
               <div key={type} className="flex items-center gap-1.5">
                 <span
-                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  className="inline-block h-2 w-2 rounded-full"
                   style={{ backgroundColor: TYPE_COLORS[type] || DEFAULT_COLOR }}
                 />
                 <span className="text-[10px] text-slate-500">
