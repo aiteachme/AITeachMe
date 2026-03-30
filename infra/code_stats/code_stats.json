@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-30T02:08:26.799858",
-  "total_commits_analyzed": 260,
+  "generated_at": "2026-03-30T19:18:22.502227",
+  "total_commits_analyzed": 269,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2081,6 +2081,78 @@
       "code_lines": 63176,
       "other_lines": 22663,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "039eceb",
+      "total_lines": 85839,
+      "code_lines": 63176,
+      "other_lines": 22663,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "a0d3016",
+      "total_lines": 85857,
+      "code_lines": 63191,
+      "other_lines": 22666,
+      "message": "style: 入口页面和上传页面类似逻辑"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "0064746",
+      "total_lines": 86180,
+      "code_lines": 63471,
+      "other_lines": 22709,
+      "message": "fix: 1) LLM JSON 截断修复，2) 知识文档页面布局被侧边栏压缩。"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "2dc656a",
+      "total_lines": 85278,
+      "code_lines": 63087,
+      "other_lines": 22191,
+      "message": "fix: 加固后端运行时并对齐前端 API 类型"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "ce6fbca",
+      "total_lines": 86383,
+      "code_lines": 63663,
+      "other_lines": 22720,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "ac964dc",
+      "total_lines": 85962,
+      "code_lines": 63436,
+      "other_lines": 22526,
+      "message": "refactor(backend): 修复分层违规，纯工具函数下沉到 utils/"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "278158e",
+      "total_lines": 89396,
+      "code_lines": 66364,
+      "other_lines": 23032,
+      "message": "feat: 统一 digest 运行时观测结构并补充各 lane 耗时与 Token summary"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "343cb29",
+      "total_lines": 88917,
+      "code_lines": 66080,
+      "other_lines": 22837,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl_index"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "abb4473",
+      "total_lines": 88917,
+      "code_lines": 66080,
+      "other_lines": 22837,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
