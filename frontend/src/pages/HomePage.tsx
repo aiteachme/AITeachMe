@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,16 +20,31 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { cn } from "../lib/utils";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
+import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 
-// --- Form State ---
-interface FormState {
-  requirement: string;
+// --- Auto-generate subject name ---
+function generateSubjectName(files: File[], prompt: string): string {
+  // Priority 1: If files exist, use first file's name (without extension)
+  if (files.length > 0) {
+    const baseName = files[0].name.replace(/\.[^/.]+$/, "").trim();
+    if (baseName) return baseName;
+  }
+  // Priority 2: If prompt text exists, take first 20 chars of first line
+  const trimmed = prompt.trim();
+  if (trimmed) {
+    const firstLine = trimmed.split(/[\r\n]/)[0].trim();
+    return firstLine.length > 20 ? firstLine.slice(0, 20) + "…" : firstLine;
+  }
+  // Priority 3: Fallback to timestamp-based name
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `学科_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
 }
 
 export function HomePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormState>({ requirement: "" });
+  const [prompt, setPrompt] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +63,11 @@ export function HomePage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async ({ name, description }: { name: string; description: string }) => {
       const created = unwrapOrvalResponse(
         await createSubjectApiApiV1SubjectsAddPost({
           name,
-          description: "", // Send empty description
+          description, // Store the learning prompt as subject description
         })
       );
       if (!created) throw new Error("创建学科失败");
@@ -61,11 +76,11 @@ export function HomePage() {
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setError(null);
-      // Pass the uploaded files to the files workspace for parsing and review.
+      // Navigate to FilesPage with files and prompt — unified behavior
       navigate(`/subject/${created.subject_id}/files`, {
         state: { 
           initialFiles: selectedFiles,
-          initialPrompt: form.requirement 
+          initialPrompt: prompt.trim() 
         }
       });
     },
@@ -74,16 +89,13 @@ export function HomePage() {
     },
   });
 
-  const canGenerate = !!form.requirement.trim() || selectedFiles.length > 0;
+  const canGenerate = prompt.trim().length > 0 || selectedFiles.length > 0;
 
   const handleGenerate = () => {
     if (!canGenerate) return;
     setError(null);
-    let name = form.requirement.trim();
-    if (!name && selectedFiles.length > 0) {
-      name = selectedFiles[0].name.replace(/\.[^/.]+$/, "") || "新建学科";
-    }
-    createMutation.mutate(name);
+    const name = generateSubjectName(selectedFiles, prompt);
+    createMutation.mutate({ name, description: prompt.trim() });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -91,10 +103,6 @@ export function HomePage() {
       e.preventDefault();
       handleGenerate();
     }
-  };
-
-  const updateForm = (val: string) => {
-    setForm({ requirement: val });
   };
 
 
@@ -109,8 +117,17 @@ export function HomePage() {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleFileDrop = useCallback((droppedFiles: File[]) => {
+    setSelectedFiles(prev => [...prev, ...droppedFiles]);
+  }, []);
+
 
   return (
+    <>
+    <FullPageDropOverlay
+      onDrop={handleFileDrop}
+      disabled={createMutation.isPending}
+    />
     <div className="min-h-[100dvh] w-full flex flex-col items-center p-4 pt-16 md:p-8 md:pt-24 overflow-x-hidden relative">
       
       {/* ═══ Background Decor ═══ */}
@@ -162,13 +179,13 @@ export function HomePage() {
               <span className="text-sm font-semibold text-slate-700">你好，学习者 👋</span>
             </div>
 
-            {/* Textarea */}
+            {/* Textarea — Learning prompt / goal */}
             <textarea
               ref={textareaRef}
-              placeholder="你想学什么？输入学科名称，例如：高等数学、Python 核心编程..."
+              placeholder="描述你的学习目标（可选），例如：期末考试复习重点、考研知识梳理、Python 核心编程入门..."
               className="w-full resize-none border-0 bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none min-h-[120px] max-h-[250px]"
-              value={form.requirement}
-              onChange={(e) => updateForm(e.target.value)}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
               disabled={createMutation.isPending}
@@ -203,7 +220,7 @@ export function HomePage() {
                     className="hidden" 
                     ref={fileInputRef} 
                     onChange={handleFileChange}
-                    accept=".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg"
+                    accept=".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
                   />
                   <button
                     type="button"
@@ -343,6 +360,7 @@ export function HomePage() {
         AITeachMe Open Source Project
       </div>
     </div>
+    </>
   );
 }
 
