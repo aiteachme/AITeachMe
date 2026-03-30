@@ -112,6 +112,7 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const effectiveCollapsed = !isMobileOpen && isCollapsed;
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["subjects"],
@@ -189,7 +190,7 @@ export function Sidebar() {
   });
 
   const toggleSubject = (subjectId: string) => {
-    if (isCollapsed) setIsCollapsed(false);
+    if (effectiveCollapsed) setIsCollapsed(false);
     setExpandedSubjects((prev) => {
       const next = new Set(prev);
       if (next.has(subjectId)) next.delete(subjectId);
@@ -234,16 +235,16 @@ export function Sidebar() {
       )}
 
       <motion.aside
-        animate={{ width: isCollapsed ? 76 : 280 }}
+        animate={{ width: effectiveCollapsed ? 76 : 280 }}
         transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-sm lg:static overflow-hidden shrink-0",
+          "fixed inset-y-0 left-0 z-40 relative flex flex-col border-r border-slate-200 bg-white shadow-sm lg:static overflow-hidden lg:overflow-visible shrink-0",
           isMobileOpen ? "translate-x-0 w-[280px]" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <div className="border-b border-slate-100 p-4 flex items-center justify-between h-16 shrink-0">
           <AnimatePresence mode="popLayout">
-            {!isCollapsed && (
+            {!effectiveCollapsed && (
               <Link to="/" className="block hover:opacity-80 transition-opacity cursor-pointer">
                 <motion.h1
                   initial={{ opacity: 0, x: -10 }}
@@ -256,33 +257,36 @@ export function Sidebar() {
               </Link>
             )}
           </AnimatePresence>
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-colors mx-auto lg:mx-0"
-          >
-            {isCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
-          </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="absolute right-0 top-1/2 z-20 hidden h-16 w-8 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-[0_16px_30px_-20px_rgba(15,23,42,0.45)] transition-all hover:border-slate-300 hover:text-slate-800 lg:flex"
+          title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
+        >
+          {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </button>
 
         <div className="space-y-2 p-3 shrink-0">
           <Button
             onClick={() => {
-              if (isCollapsed) setIsCollapsed(false);
+              if (effectiveCollapsed) setIsCollapsed(false);
               setShowNewForm(!showNewForm);
             }}
             variant="outline"
             className={cn(
               "w-full bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-all shadow-sm",
-              isCollapsed ? "justify-center px-0 h-10 w-10 mx-auto" : "justify-start px-3"
+              effectiveCollapsed ? "justify-center px-0 h-10 w-10 mx-auto" : "justify-start px-3"
             )}
-            title={isCollapsed ? "新建学科" : undefined}
+            title={effectiveCollapsed ? "新建学科" : undefined}
           >
             <Plus className="h-4 w-4 shrink-0 shadow-sm" />
-            {!isCollapsed && <span className="ml-2 font-medium">新建学科</span>}
+            {!effectiveCollapsed && <span className="ml-2 font-medium">新建学科</span>}
           </Button>
 
           <AnimatePresence>
-            {!isCollapsed && showNewForm && (
+            {!effectiveCollapsed && showNewForm && (
               <NewSubjectForm
                 onSubmit={(name, desc) => {
                   setCreateError(undefined);
@@ -299,7 +303,7 @@ export function Sidebar() {
             )}
           </AnimatePresence>
 
-          {subjectActionError && !isCollapsed && (
+          {subjectActionError && !effectiveCollapsed && (
             <p className="px-1 text-xs text-red-500 font-medium">{subjectActionError}</p>
           )}
         </div>
@@ -308,7 +312,7 @@ export function Sidebar() {
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-6 text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
-              {!isCollapsed && <span className="mt-2 text-xs font-medium">加载中...</span>}
+              {!effectiveCollapsed && <span className="mt-2 text-xs font-medium">加载中...</span>}
             </div>
           )}
 
@@ -319,11 +323,11 @@ export function Sidebar() {
                   onClick={() => toggleSubject(subject.subject_id)}
                   className={cn(
                     "flex flex-1 items-center rounded-lg py-2 transition-all hover:bg-slate-100",
-                    isCollapsed ? "justify-center px-0 mx-auto w-10" : "px-3"
+                    effectiveCollapsed ? "justify-center px-0 mx-auto w-10" : "px-3"
                   )}
-                  title={isCollapsed ? subject.name : undefined}
+                  title={effectiveCollapsed ? subject.name : undefined}
                 >
-                  {isCollapsed ? (
+                  {effectiveCollapsed ? (
                     <div className="w-6 h-6 rounded bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs">
                       {subject.name.charAt(0).toUpperCase()}
                     </div>
@@ -338,7 +342,7 @@ export function Sidebar() {
                     </>
                   )}
                 </button>
-                {!isCollapsed && (
+                {!effectiveCollapsed && (
                   <button
                     onClick={() => openDeleteModal(subject)}
                     disabled={deletePreviewMutation.isPending || deleteMutation.isPending}
@@ -351,7 +355,7 @@ export function Sidebar() {
               </div>
 
               <AnimatePresence>
-                {!isCollapsed && expandedSubjects.has(subject.subject_id) && (
+                {!effectiveCollapsed && expandedSubjects.has(subject.subject_id) && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}

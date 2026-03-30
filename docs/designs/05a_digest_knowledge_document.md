@@ -676,3 +676,51 @@ TODO 这里好几个必须包含，应该没必要吧！！为什么必须包含
 - 能清楚定义从 `SectionPacket` 升级到 `ContentPrimitive / TopicCluster / ChapterBlueprint` 的必要性
 - 能清楚定义 `sprint | systematic` 两种模式的差异
 - 能清楚定义最终对外是 `document package`，不是单一 markdown 文件
+## 12. Draft Visibility And Publish Semantics Update (2026-03-30)
+
+This update documents the current runtime contract for the docs lane and supersedes any older wording that implied the user could only see the final merged book after publish.
+
+### Staging and preview semantics
+
+- The docs lane now writes a staging draft as soon as chapter assembly for the current build is available.
+- That draft is surfaced through the same `/api/v1/subjects/{subject}/knowledge/docs` endpoint via:
+  - `draft_markdown`
+  - `draft_updated_at`
+  - `build.draft_available`
+- The preview is intentionally read-only. It exists to improve visibility, not to redefine what counts as the official knowledge document.
+
+### Live publish still stays unified
+
+- Final live switching still requires the unified digest to pass through graph readiness, curriculum derivation, and publish coordination.
+- In other words, `draft != live`.
+- The official `exists + markdown + updated_at` pair still represents the curriculum-aligned published document package.
+
+### Runtime stages relevant to the docs lane
+
+- `prepare_shared`: source profiling and mode decision have started
+- `doc_lane_staged`: staging markdown is available for preview
+- `graph_ready`: graph output is usable and publish can continue toward curriculum
+- `curriculum_deriving`: the system is generating units / theme tree / prereq structure
+- `publishing`: the live document package is being switched
+
+### Implication for docs-lane design
+
+- The lane must optimize for “show something correct enough early” without violating the invariant that only unified publish can change the official book.
+- The lane should therefore separate:
+  - staging assembly for visibility
+  - unified publish for truth
+
+### Interaction with fast pass
+
+- `MaterialProfile` and `DigestModeDecision` are now shared upstream signals, not docs-lane-only ideas.
+- For question-heavy materials, the rest of the digest system may take faster structural paths so the docs lane receives cleaner, earlier signals from the overall unified run.
+
+## 2026-03-31 Docs Lane Observability Addendum
+
+The knowledge-document lane now owns a stable summary contract for performance review.
+
+- `docgen_timing_summary` must be emitted for success and runtime failure.
+- Required fields: `status`, `error_message`, `workflow_elapsed_ms`, `load_ms`, `cleanse_ms`, `outline_ms`, `draft_ms`, `review_ms`, `metadata_ms`, `finalize_ms`, chapter counts, and draft visibility.
+- Required token fields: total tokens, tokens by model, tokens by task type, call counts by model/task type, latency totals, and light-vs-heavy model mix.
+- Chapter-level slow-item reporting is limited to Top-K output so the summary stays readable while remaining actionable.
+- Future doc sub-components should append data through the common summary helpers instead of extending the HTTP response contract.

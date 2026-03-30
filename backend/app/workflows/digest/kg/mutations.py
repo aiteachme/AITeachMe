@@ -23,6 +23,7 @@ def create_new_node(
     subject: str,
     clustered_candidate: ClusteredCandidate,
     job_id: int,
+    auto_commit: bool = True,
 ) -> KnowledgeNode:
     representative = clustered_candidate.representative
     node = KnowledgeNode(
@@ -32,7 +33,7 @@ def create_new_node(
         normalized_name=normalize_name(representative.name),
         status="pending",
     )
-    node = kg_repo.create_knowledge_node(session, node)
+    node = kg_repo.create_knowledge_node(session, node, auto_commit=auto_commit)
 
     revision = KnowledgeRevision(
         node_id=node.id,  # type: ignore[arg-type]
@@ -43,8 +44,9 @@ def create_new_node(
         revision_reason="new_evidence",
         is_current=True,
     )
-    kg_repo.create_knowledge_revision(session, revision)
-    session.refresh(node)
+    kg_repo.create_knowledge_revision(session, revision, auto_commit=auto_commit)
+    if auto_commit:
+        session.refresh(node)
 
     alias = KnowledgeAlias(
         node_id=node.id,  # type: ignore[arg-type]
@@ -53,7 +55,7 @@ def create_new_node(
         source="llm",
         is_primary=True,
     )
-    kg_repo.create_alias(session, alias)
+    kg_repo.create_alias(session, alias, auto_commit=auto_commit)
     return node
 
 
@@ -63,6 +65,7 @@ def create_updated_revision(
     node_id: int,
     clustered_candidate: ClusteredCandidate,
     job_id: int,
+    auto_commit: bool = True,
 ) -> None:
     result = kg_repo.get_node_with_current_revision(session, node_id)
     if result is None:
@@ -86,10 +89,11 @@ def create_updated_revision(
         revision_reason="new_evidence",
         is_current=True,
     )
-    kg_repo.create_knowledge_revision(session, revision)
+    kg_repo.create_knowledge_revision(session, revision, auto_commit=auto_commit)
     node.updated_at = utcnow()
     session.add(node)
-    session.commit()
+    if auto_commit:
+        session.commit()
 
 
 def create_alias_if_new(
@@ -98,6 +102,7 @@ def create_alias_if_new(
     node_id: int,
     alias_name: str,
     job_id: int,
+    auto_commit: bool = True,
 ) -> None:
     normalized_alias = normalize_name(alias_name)
     existing_aliases = kg_repo.list_aliases_by_node(session, node_id)
@@ -113,6 +118,7 @@ def create_alias_if_new(
             source="llm",
             is_primary=False,
         ),
+        auto_commit=auto_commit,
     )
 
 
@@ -123,6 +129,7 @@ def create_node_evidence(
     node_id: int,
     chunk_id: int,
     job_id: int,
+    auto_commit: bool = True,
 ) -> None:
     chunk = session.get(DocumentChunk, chunk_id)
     if chunk is None:
@@ -140,6 +147,7 @@ def create_node_evidence(
             extraction_method="llm",
             field_scope="summary",
         ),
+        auto_commit=auto_commit,
     )
 
 
@@ -150,6 +158,7 @@ def create_edge_evidence(
     edge_id: int,
     chunk_id: int,
     job_id: int,
+    auto_commit: bool = True,
 ) -> None:
     chunk = session.get(DocumentChunk, chunk_id)
     if chunk is None:
@@ -167,6 +176,7 @@ def create_edge_evidence(
             extraction_method="llm",
             field_scope="edge_description",
         ),
+        auto_commit=auto_commit,
     )
 
 

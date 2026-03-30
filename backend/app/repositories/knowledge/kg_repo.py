@@ -46,10 +46,18 @@ def release_subject_build_lock(session: Session, subject: str) -> None:
     del session, subject
 
 
-def create_knowledge_node(session: Session, node: KnowledgeNode) -> KnowledgeNode:
+def create_knowledge_node(
+    session: Session,
+    node: KnowledgeNode,
+    *,
+    auto_commit: bool = True,
+) -> KnowledgeNode:
     session.add(node)
-    session.commit()
-    session.refresh(node)
+    if auto_commit:
+        session.commit()
+        session.refresh(node)
+    else:
+        session.flush()
     return node
 
 
@@ -139,7 +147,12 @@ def get_node_with_current_revision(session: Session, node_id: int) -> tuple[Know
     return node, revision
 
 
-def create_alias(session: Session, alias: KnowledgeAlias) -> KnowledgeAlias:
+def create_alias(
+    session: Session,
+    alias: KnowledgeAlias,
+    *,
+    auto_commit: bool = True,
+) -> KnowledgeAlias:
     node = session.get(KnowledgeNode, alias.node_id)
     if node is None:
         return alias
@@ -158,7 +171,8 @@ def create_alias(session: Session, alias: KnowledgeAlias) -> KnowledgeAlias:
     )
     node.aliases_json = _dump_json_list(payload)
     session.add(node)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return alias
 
 
@@ -217,10 +231,18 @@ def list_aliases_by_node(session: Session, node_id: int) -> list[KnowledgeAlias]
     return items
 
 
-def create_knowledge_edge(session: Session, edge: KnowledgeEdge) -> KnowledgeEdge:
+def create_knowledge_edge(
+    session: Session,
+    edge: KnowledgeEdge,
+    *,
+    auto_commit: bool = True,
+) -> KnowledgeEdge:
     session.add(edge)
-    session.commit()
-    session.refresh(edge)
+    if auto_commit:
+        session.commit()
+        session.refresh(edge)
+    else:
+        session.flush()
     return edge
 
 
@@ -283,7 +305,12 @@ def list_all_edges_by_subject(
     return list(session.exec(stmt).all())
 
 
-def create_knowledge_revision(session: Session, revision: KnowledgeRevision) -> KnowledgeRevision:
+def create_knowledge_revision(
+    session: Session,
+    revision: KnowledgeRevision,
+    *,
+    auto_commit: bool = True,
+) -> KnowledgeRevision:
     node = session.get(KnowledgeNode, revision.node_id)
     if node is None:
         return revision
@@ -295,7 +322,8 @@ def create_knowledge_revision(session: Session, revision: KnowledgeRevision) -> 
     node.current_revision_id = revision.id
     node.updated_at = utcnow()
     session.add(node)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return revision
 
 
@@ -303,7 +331,12 @@ def deactivate_old_revisions(session: Session, node_id: int) -> None:
     del session, node_id
 
 
-def create_edge_revision(session: Session, revision: EdgeRevision) -> EdgeRevision:
+def create_edge_revision(
+    session: Session,
+    revision: EdgeRevision,
+    *,
+    auto_commit: bool = True,
+) -> EdgeRevision:
     edge = session.get(KnowledgeEdge, revision.edge_id)
     if edge is None:
         return revision
@@ -315,7 +348,8 @@ def create_edge_revision(session: Session, revision: EdgeRevision) -> EdgeRevisi
     edge.current_revision_id = revision.id
     edge.updated_at = utcnow()
     session.add(edge)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return revision
 
 
@@ -323,7 +357,12 @@ def deactivate_old_edge_revisions(session: Session, edge_id: int) -> None:
     del session, edge_id
 
 
-def create_evidence_link(session: Session, link: EvidenceLink) -> EvidenceLink:
+def create_evidence_link(
+    session: Session,
+    link: EvidenceLink,
+    *,
+    auto_commit: bool = True,
+) -> EvidenceLink:
     payload = {
         "document_id": link.document_id,
         "chunk_id": link.chunk_id,
@@ -343,7 +382,8 @@ def create_evidence_link(session: Session, link: EvidenceLink) -> EvidenceLink:
             refs.append(payload)
             node.evidence_refs_json = _dump_json_list(refs)
             session.add(node)
-            session.commit()
+            if auto_commit:
+                session.commit()
     elif link.entity_type == "edge":
         edge = session.get(KnowledgeEdge, link.entity_id)
         if edge is not None:
@@ -351,7 +391,8 @@ def create_evidence_link(session: Session, link: EvidenceLink) -> EvidenceLink:
             refs.append(payload)
             edge.evidence_refs_json = _dump_json_list(refs)
             session.add(edge)
-            session.commit()
+            if auto_commit:
+                session.commit()
     return link
 
 

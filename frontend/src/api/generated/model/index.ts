@@ -96,6 +96,7 @@ export * from './clearKnowledgeResponseDeletedCounts';
 export * from './curriculumSnapshotResponse';
 export * from './difficultyValue';
 export * from './docGenBuildData';
+export * from './docGenBuildStatusResponse';
 export * from './docGenBuildRequest';
 export * from './docGenGetResponse';
 export * from './errorResponse';

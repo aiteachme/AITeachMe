@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
@@ -25,8 +25,13 @@ import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
-import { KnowledgeGraphSidePanel } from "../components/pages/KnowledgeGraphSidePanel";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
+
+const KnowledgeGraphSidePanel = lazy(() =>
+  import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
+    default: module.KnowledgeGraphSidePanel,
+  })),
+);
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -136,13 +141,57 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
+interface DocGenBuildStatus {
+  status?: string | null;
+  requested_at?: string | null;
+  stage?: string | null;
+  error_message?: string | null;
+  draft_available?: boolean;
+}
+
 interface DocGenGetResponse {
   exists: boolean;
   markdown?: string;
   updated_at?: string | null;
   source_file_uids?: string[];
   prompt?: string | null;
+  draft_markdown?: string;
+  draft_updated_at?: string | null;
+  build?: DocGenBuildStatus | null;
 }
+
+type DocViewMode = "live" | "draft";
+
+const ACTIVE_DOC_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
+
+const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
+  build_accepted: 8,
+  prepare_shared: 24,
+  doc_lane_staged: 62,
+  graph_ready: 74,
+  curriculum_deriving: 86,
+  publishing: 94,
+  completed: 100,
+};
+
+const DOC_BUILD_STAGE_CAP: Record<string, number> = {
+  build_accepted: 20,
+  prepare_shared: 48,
+  doc_lane_staged: 76,
+  graph_ready: 86,
+  curriculum_deriving: 93,
+  publishing: 97,
+};
+
+const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
+  build_accepted: "已接收知识构建请求",
+  prepare_shared: "正在分析材料结构与内容画像",
+  doc_lane_staged: "文档草稿已生成，正在等待统一发布",
+  graph_ready: "知识图谱已就绪，正在推导课程结构",
+  curriculum_deriving: "正在生成教学单元、主题树与先修关系",
+  publishing: "正在发布正式版知识文档",
+  completed: "最新知识文档已发布",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -175,6 +224,108 @@ function parseIsoTimestamp(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatDocTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function resolveDocBuildStatusText(
+  build: DocGenBuildStatus | null | undefined,
+  hasLiveVersion: boolean,
+  hasDraftVersion: boolean,
+): string {
+  if (!build) {
+    if (hasLiveVersion) {
+      return "当前显示已发布的正式版知识文档";
+    }
+    return "等待发起新的知识文档构建";
+  }
+
+  if (build.status === "failed") {
+    return build.error_message?.trim() ? `构建失败：${build.error_message}` : "知识构建失败，请稍后重试";
+  }
+
+  if (build.status === "cancelled") {
+    return "本轮知识构建已取消";
+  }
+
+  if (build.status === "completed") {
+    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成";
+  }
+
+  const stage = build.stage?.trim();
+  if (stage && DOC_BUILD_STAGE_TEXT[stage]) {
+    return DOC_BUILD_STAGE_TEXT[stage];
+  }
+
+  if (hasDraftVersion && !hasLiveVersion) {
+    return "本轮草稿已生成，正在等待图谱与课程结构对齐";
+  }
+
+  if (hasLiveVersion) {
+    return "正在更新知识文档";
+  }
+
+  return "正在生成知识文档";
+}
+
+function resolveDocBuildProgressFloor(
+  build: DocGenBuildStatus | null | undefined,
+  hasDraftVersion: boolean,
+): number {
+  if (!build) {
+    return hasDraftVersion ? 62 : 0;
+  }
+
+  if (build.status === "completed") {
+    return 100;
+  }
+
+  const stage = build.stage?.trim();
+  if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) {
+    return DOC_BUILD_STAGE_PROGRESS[stage];
+  }
+
+  if (hasDraftVersion || build.draft_available) {
+    return 62;
+  }
+
+  return 8;
+}
+
+function resolveDocBuildProgressCap(
+  build: DocGenBuildStatus | null | undefined,
+  hasDraftVersion: boolean,
+): number {
+  if (!build) {
+    return hasDraftVersion ? 78 : 45;
+  }
+
+  if (build.status === "completed") {
+    return 100;
+  }
+
+  const stage = build.stage?.trim();
+  if (stage && DOC_BUILD_STAGE_CAP[stage] !== undefined) {
+    return DOC_BUILD_STAGE_CAP[stage];
+  }
+
+  if (hasDraftVersion || build.draft_available) {
+    return 78;
+  }
+
+  return 45;
 }
 
 const COMPACT_PANEL_BREAKPOINT = 1536;
@@ -532,15 +683,92 @@ function DocUpdatingBanner({
   progress,
   statusText,
   isFetching,
+  viewMode,
+  hasLiveVersion,
+  hasDraftVersion,
+  liveUpdatedAt,
+  draftUpdatedAt,
+  onViewModeChange,
 }: {
   progress: number;
   statusText: string;
   isFetching: boolean;
+  viewMode: DocViewMode;
+  hasLiveVersion: boolean;
+  hasDraftVersion: boolean;
+  liveUpdatedAt?: string | null;
+  draftUpdatedAt?: string | null;
+  onViewModeChange: (mode: DocViewMode) => void;
 }) {
+  const title =
+    viewMode === "draft"
+      ? "当前显示：本轮草稿预览"
+      : hasDraftVersion
+        ? "当前显示：正式版，可切换查看本轮草稿"
+        : "正在更新知识文档";
+  const description =
+    viewMode === "draft"
+      ? "草稿仅用于预览当前构建结果，正式版仍以 unified publish 成功后的版本为准。"
+      : hasDraftVersion
+        ? "正式版会持续可用；如果想提前看本轮结果，可以切换到草稿预览。"
+        : hasLiveVersion
+          ? "当前会继续显示旧正式版，等新正式版发布后这里会自动刷新。"
+          : "文档草稿一旦可用，这里会直接切换显示预览内容。";
+  const liveLabel = formatDocTimestamp(liveUpdatedAt);
+  const draftLabel = formatDocTimestamp(draftUpdatedAt);
+
   return (
     <section className="mb-5 rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-slate-900">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
+        </div>
+        {(hasLiveVersion || hasDraftVersion) && (
+          <div className="inline-flex rounded-full border border-sky-200 bg-white/80 p-1 shadow-sm">
+            <button
+              type="button"
+              disabled={!hasLiveVersion}
+              onClick={() => hasLiveVersion && onViewModeChange("live")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                viewMode === "live"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : hasLiveVersion
+                    ? "text-slate-600 hover:text-slate-900"
+                    : "cursor-not-allowed text-slate-300",
+              )}
+            >
+              正式版
+            </button>
+            <button
+              type="button"
+              disabled={!hasDraftVersion}
+              onClick={() => hasDraftVersion && onViewModeChange("draft")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                viewMode === "draft"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : hasDraftVersion
+                    ? "text-slate-600 hover:text-slate-900"
+                    : "cursor-not-allowed text-slate-300",
+              )}
+            >
+              本轮草稿
+            </button>
+          </div>
+        )}
+      </div>
+      {(liveLabel || draftLabel) && (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+          {liveLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">正式版更新于 {liveLabel}</span> : null}
+          {draftLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">草稿更新于 {draftLabel}</span> : null}
+        </div>
+      )}
+      <div className="hidden">
       <p className="text-sm font-medium text-slate-900">正在更新知识文档</p>
       <p className="mt-1 text-xs text-slate-600">旧版本会继续显示，等新一轮 merged 文档发布后这里会自动刷新。</p>
+      </div>
       <div className="mt-3">
         <DocBuildProgress
           progress={progress}
@@ -584,6 +812,15 @@ function DocLoadErrorState({
         重试加载
       </button>
     </section>
+  );
+}
+
+function GraphPanelFallback() {
+  return (
+    <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      正在加载知识图谱面板...
+    </div>
   );
 }
 
@@ -777,6 +1014,7 @@ export function KnowledgeDocsPage() {
     () => parseIsoTimestamp(requestedAt),
     [requestedAt],
   );
+  const [docViewMode, setDocViewMode] = useState<DocViewMode>("live");
   const [buildProgress, setBuildProgress] = useState(0);
   const [buildStatusText, setBuildStatusText] = useState("正在整理知识文档...");
   const docMarkdownQuery = useQuery({
@@ -793,72 +1031,153 @@ export function KnowledgeDocsPage() {
     },
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
-      if (requestedAtMs === null) {
+      const data = query.state.data;
+      const build = data?.build;
+      const buildStatus = build?.status ?? null;
+      if (buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)) {
+        return 2500;
+      }
+
+      if (buildStatus === "failed" || buildStatus === "cancelled" || buildStatus === "completed") {
         return false;
       }
-      const data = query.state.data;
+
+      const requestedBuildMs = parseIsoTimestamp(build?.requested_at) ?? requestedAtMs;
+      if (requestedBuildMs === null) {
+        return false;
+      }
+
       const updatedAtMs = parseIsoTimestamp(data?.updated_at);
-      const isReady =
-        Boolean(data?.exists) &&
-        updatedAtMs !== null &&
-        updatedAtMs >= requestedAtMs;
+      const isReady = updatedAtMs !== null && updatedAtMs >= requestedBuildMs;
       return isReady ? false : 2500;
     },
   });
-  const markdown = docMarkdownQuery.data?.markdown ?? "";
-  const hasDocMarkdown = Boolean(docMarkdownQuery.data?.exists && markdown.trim().length > 0);
-  const publishedUpdatedAtMs = useMemo(
-    () => parseIsoTimestamp(docMarkdownQuery.data?.updated_at),
-    [docMarkdownQuery.data?.updated_at],
+  const liveMarkdown = docMarkdownQuery.data?.markdown ?? "";
+  const draftMarkdown = docMarkdownQuery.data?.draft_markdown ?? "";
+  const buildMeta = docMarkdownQuery.data?.build ?? null;
+  const buildStatus = buildMeta?.status ?? null;
+  const liveUpdatedAt = docMarkdownQuery.data?.updated_at ?? null;
+  const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
+  const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
+  const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
+  const buildRequestedAtMs = useMemo(
+    () => parseIsoTimestamp(buildMeta?.requested_at),
+    [buildMeta?.requested_at],
   );
+  const publishedUpdatedAtMs = useMemo(
+    () => parseIsoTimestamp(liveUpdatedAt),
+    [liveUpdatedAt],
+  );
+  const targetRequestedAtMs = requestedAtMs ?? buildRequestedAtMs;
+  const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
+  const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isRequestedBuildReady =
-    requestedAtMs !== null &&
-    publishedUpdatedAtMs !== null &&
-    publishedUpdatedAtMs >= requestedAtMs;
+    targetRequestedAtMs !== null
+      ? publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      : buildStatus === "completed" && hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
-    requestedAtMs !== null && !isRequestedBuildReady;
+    targetRequestedAtMs !== null && !isRequestedBuildReady && !isBuildFailure;
+  const effectiveDocViewMode: DocViewMode =
+    !hasLiveDocMarkdown && hasDraftDocMarkdown
+      ? "draft"
+      : docViewMode === "draft" && hasDraftDocMarkdown
+        ? "draft"
+        : "live";
+  const renderedMarkdown = effectiveDocViewMode === "draft" ? draftMarkdown : liveMarkdown;
+  const hasRenderedMarkdown = Boolean(renderedMarkdown.trim());
   const showDocGeneratingState =
-    !docMarkdownQuery.isError && !hasDocMarkdown && isWaitingForRequestedBuild;
+    !docMarkdownQuery.isError &&
+    !hasLiveDocMarkdown &&
+    !hasDraftDocMarkdown &&
+    (isBuildActive || isWaitingForRequestedBuild);
+  const showDocBuildFailureState =
+    !docMarkdownQuery.isError &&
+    !hasLiveDocMarkdown &&
+    !hasDraftDocMarkdown &&
+    isBuildFailure;
   const showDocEmptyState =
-    !docMarkdownQuery.isError && !hasDocMarkdown && !isWaitingForRequestedBuild;
-  const showDocUpdatingBanner = hasDocMarkdown && isWaitingForRequestedBuild;
+    !docMarkdownQuery.isError &&
+    !hasLiveDocMarkdown &&
+    !hasDraftDocMarkdown &&
+    !isBuildActive &&
+    !isWaitingForRequestedBuild &&
+    !isBuildFailure;
+  const showDocUpdatingBanner =
+    !docMarkdownQuery.isError &&
+    hasRenderedMarkdown &&
+    (isBuildActive || effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
 
   useEffect(() => {
-    if (isRequestedBuildReady) {
+    if (!hasLiveDocMarkdown && hasDraftDocMarkdown) {
+      setDocViewMode("draft");
+      return;
+    }
+
+    if (hasLiveDocMarkdown && !hasDraftDocMarkdown) {
+      setDocViewMode("live");
+      return;
+    }
+
+    if (buildStatus === "completed" && hasLiveDocMarkdown) {
+      setDocViewMode("live");
+    }
+  }, [buildStatus, hasDraftDocMarkdown, hasLiveDocMarkdown]);
+
+  useEffect(() => {
+    const nextStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
+    const progressFloor = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown);
+    setBuildStatusText(nextStatusText);
+
+    if (buildStatus === "completed" || isRequestedBuildReady) {
       setBuildProgress(100);
-      setBuildStatusText("最新知识文档已发布");
       return;
     }
 
-    if (!isWaitingForRequestedBuild) {
-      setBuildProgress(0);
-      setBuildStatusText("等待发起新的知识文档构建");
+    if (isBuildFailure) {
+      setBuildProgress(progressFloor);
       return;
     }
 
-    setBuildStatusText(hasDocMarkdown ? "正在发布更新后的知识文档..." : "正在生成知识文档...");
-    setBuildProgress((prev) => (prev > 0 ? prev : 10));
+    if (!isBuildActive && !isWaitingForRequestedBuild) {
+      setBuildProgress(progressFloor);
+      return;
+    }
+
+    const progressCap = resolveDocBuildProgressCap(buildMeta, hasDraftDocMarkdown);
+    setBuildProgress((prev) => {
+      const base = prev > 0 ? prev : progressFloor;
+      return Math.max(base, progressFloor);
+    });
 
     const timer = window.setInterval(() => {
       setBuildProgress((prev) => {
-        if (prev >= 90) {
-          return 90;
+        if (prev >= progressCap) {
+          return progressCap;
         }
         if (prev < 20) {
-          return Math.min(90, prev + 6);
+          return Math.min(progressCap, prev + 6);
         }
         if (prev < 50) {
-          return Math.min(90, prev + 4);
+          return Math.min(progressCap, prev + 4);
         }
         if (prev < 75) {
-          return Math.min(90, prev + 2.5);
+          return Math.min(progressCap, prev + 2.5);
         }
-        return Math.min(90, prev + 1.2);
+        return Math.min(progressCap, prev + 1.2);
       });
     }, 600);
 
     return () => window.clearInterval(timer);
-  }, [hasDocMarkdown, isRequestedBuildReady, isWaitingForRequestedBuild]);
+  }, [
+    buildMeta,
+    buildStatus,
+    hasDraftDocMarkdown,
+    hasLiveDocMarkdown,
+    isBuildActive,
+    isBuildFailure,
+    isRequestedBuildReady,
+    isWaitingForRequestedBuild,
+  ]);
 
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
@@ -888,6 +1207,8 @@ export function KnowledgeDocsPage() {
 
   type GraphViewMode = "hidden" | "split" | "full";
   const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>("hidden");
+  const effectiveGraphViewMode: GraphViewMode =
+    isCompactPanels && graphViewMode !== "hidden" ? "full" : graphViewMode;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -903,6 +1224,24 @@ export function KnowledgeDocsPage() {
 
   const isTocVisible = isCompactPanels ? activeDrawer === "toc" : !isTocCollapsed;
   const isCommentVisible = isCompactPanels ? activeDrawer === "comment" : !isCommentCollapsed;
+
+  const openGraphPanel = useCallback(() => {
+    setGraphViewMode((prev) => {
+      if (isCompactPanels) {
+        return prev === "hidden" ? "full" : "full";
+      }
+      return prev === "hidden" ? "split" : "full";
+    });
+  }, [isCompactPanels]);
+
+  const closeGraphPanel = useCallback(() => {
+    setGraphViewMode((prev) => {
+      if (isCompactPanels) {
+        return "hidden";
+      }
+      return prev === "full" ? "split" : "hidden";
+    });
+  }, [isCompactPanels]);
 
   const activeTocItem = useMemo(
     () => toc.find((item) => item.id === activeHeading) ?? null,
@@ -961,7 +1300,7 @@ export function KnowledgeDocsPage() {
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [markdown]);
+  }, [renderedMarkdown]);
 
   useEffect(() => {
     const syncCompactMode = () => {
@@ -1125,7 +1464,7 @@ export function KnowledgeDocsPage() {
     container.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [markdown]);
+  }, [renderedMarkdown]);
 
   const flashHeading = useCallback((node: HTMLElement) => {
     const headingId = node.getAttribute("data-heading-id") ?? node.id;
@@ -1975,7 +2314,7 @@ export function KnowledgeDocsPage() {
   }, [activeCommentThreadId, commentThreads]);
 
   useEffect(() => {
-    if (!hasDocMarkdown || commentThreads.length === 0) {
+    if (!hasRenderedMarkdown || commentThreads.length === 0) {
       return;
     }
     setSelectionHighlights((prev) => {
@@ -2003,7 +2342,7 @@ export function KnowledgeDocsPage() {
       }
       return changed ? next.slice(0, 200) : prev;
     });
-  }, [buildSelectionSegmentsFromText, commentThreads, hasDocMarkdown]);
+  }, [buildSelectionSegmentsFromText, commentThreads, hasRenderedMarkdown]);
 
   const activeCommentIndex = useMemo(() => {
     if (commentThreadIds.length === 0) return -1;
@@ -2450,8 +2789,8 @@ export function KnowledgeDocsPage() {
       <div 
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
-          graphViewMode === "hidden" ? "w-full" : 
-          graphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
+          effectiveGraphViewMode === "hidden" ? "w-full" : 
+          effectiveGraphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
         )}
       >
         {!isCompactPanels && (
@@ -2616,6 +2955,13 @@ export function KnowledgeDocsPage() {
                       progress={buildProgress}
                       statusText={buildStatusText}
                     />
+                  ) : showDocBuildFailureState ? (
+                    <DocLoadErrorState
+                      message={buildStatusText}
+                      onRetry={() => {
+                        void docMarkdownQuery.refetch();
+                      }}
+                    />
                   ) : showDocEmptyState ? (
                     <DocEmptyState />
                   ) : (
@@ -2625,9 +2971,15 @@ export function KnowledgeDocsPage() {
                           progress={buildProgress}
                           statusText={buildStatusText}
                           isFetching={docMarkdownQuery.isFetching}
+                          viewMode={effectiveDocViewMode}
+                          hasLiveVersion={hasLiveDocMarkdown}
+                          hasDraftVersion={hasDraftDocMarkdown}
+                          liveUpdatedAt={liveUpdatedAt}
+                          draftUpdatedAt={draftUpdatedAt}
+                          onViewModeChange={setDocViewMode}
                         />
                       )}
-                      <DocMarkdown content={markdown} />
+                      <DocMarkdown content={renderedMarkdown} />
                     </>
                   )}
                 </article>
@@ -2709,26 +3061,26 @@ export function KnowledgeDocsPage() {
       <div 
         className={cn(
           "absolute top-1/2 -translate-y-1/2 z-[70] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-center justify-center gap-[2px]",
-          graphViewMode === "hidden" ? "right-0 opacity-90 hover:opacity-100" : 
-          graphViewMode === "split" ? "left-1/2 -translate-x-1/2 opacity-60 hover:opacity-100" : 
+          effectiveGraphViewMode === "hidden" ? "right-0 opacity-90 hover:opacity-100" : 
+          effectiveGraphViewMode === "split" ? "right-[35%] translate-x-1/2 opacity-60 hover:opacity-100" : 
           "left-0 opacity-90 hover:opacity-100"
         )}
       >
-        {graphViewMode !== "full" && (
+        {effectiveGraphViewMode !== "full" && (
           <button 
-            onClick={() => setGraphViewMode(graphViewMode === "hidden" ? "split" : "full")}
+            onClick={openGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={graphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
+            title={effectiveGraphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
           >
             <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
           </button>
         )}
         
-        {graphViewMode !== "hidden" && (
+        {effectiveGraphViewMode !== "hidden" && (
           <button 
-            onClick={() => setGraphViewMode(graphViewMode === "full" ? "split" : "hidden")}
+            onClick={closeGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={graphViewMode === "full" ? "分屏视图" : "收起图谱"}
+            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "收起图谱" : "分屏视图") : "收起图谱"}
           >
             <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
           </button>
@@ -2739,14 +3091,16 @@ export function KnowledgeDocsPage() {
       <div 
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
-          graphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
-          graphViewMode === "split" ? "w-[35%]" : "w-full"
+          effectiveGraphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
+          effectiveGraphViewMode === "split" ? "w-[35%]" : "w-full"
         )}
       >
-        {subjectId && graphViewMode !== "hidden" && (
-          <KnowledgeGraphSidePanel 
-            subjectId={subjectId} 
-          />
+        {subjectId && effectiveGraphViewMode !== "hidden" && (
+          <Suspense fallback={<GraphPanelFallback />}>
+            <KnowledgeGraphSidePanel 
+              subjectId={subjectId} 
+            />
+          </Suspense>
         )}
       </div>
 

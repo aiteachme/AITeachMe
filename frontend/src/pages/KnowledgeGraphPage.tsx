@@ -14,19 +14,23 @@ import {
 
 import {
   knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
 } from "../api/generated/knowledge";
-import type { KnowledgeOverviewResponse } from "../api/generated/model";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
 import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
-import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
-import { PrereqDagView } from "../components/pages/PrereqDagView";
-import { ThemeTreeView } from "../components/pages/ThemeTreeView";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
+import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../lib/knowledgeOverview";
 
 const WordCloud3D = lazy(() => import("../components/pages/WordCloud3D"));
+const ThemeTreeView = lazy(() =>
+  import("../components/pages/ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
+);
+const PrereqDagView = lazy(() =>
+  import("../components/pages/PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
+);
+const KnowledgeGraphView = lazy(() =>
+  import("../components/pages/KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
+);
 
 type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
@@ -37,12 +41,34 @@ const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; d
   { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
 ];
 
+function TabFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      {message}
+    </div>
+  );
+}
+
 export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("word-cloud");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const overviewInclude = useMemo(() => {
+    switch (activeTab) {
+      case "theme-tree":
+        return OVERVIEW_INCLUDE_PRESETS.themeTree;
+      case "prereq-dag":
+        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
+      case "knowledge-graph":
+        return OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+      case "word-cloud":
+      default:
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
+    }
+  }, [activeTab]);
 
   const {
     data: overview,
@@ -50,11 +76,8 @@ export function KnowledgeGraphPage() {
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: ["knowledge-overview", subjectId],
-    queryFn: async () => {
-      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
-      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
-    },
+    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
     enabled: Boolean(subjectId),
     retry: false,
   });
@@ -76,15 +99,6 @@ export function KnowledgeGraphPage() {
   }, [subjectId]);
 
   // 从 overview.graph.nodes 构建 3D 词云数据
-  const wordCloudNodes = useMemo(() => {
-    const graphNodes = overview?.graph?.nodes ?? [];
-    return graphNodes.map((n: { canonical_name: string; node_type: string; confidence: number }) => ({
-      name: n.canonical_name,
-      nodeType: n.node_type,
-      confidence: n.confidence,
-    }));
-  }, [overview]);
-
   return (
     <DigestBuildProvider subject={subjectId}>
       <div className="space-y-6">
@@ -158,19 +172,27 @@ export function KnowledgeGraphPage() {
           >
             <WordCloud3D
               subjectLabel={subjectLabel}
-              nodes={wordCloudNodes}
+              graph={overview?.graph ?? null}
             />
           </Suspense>
         ) : null}
 
-        {activeTab === "theme-tree" ? <ThemeTreeView overviewData={overview?.theme_tree ?? null} /> : null}
+        {activeTab === "theme-tree" ? (
+          <Suspense fallback={<TabFallback message="正在加载主题树视图..." />}>
+            <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
+          </Suspense>
+        ) : null}
 
         {activeTab === "prereq-dag" ? (
-          <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+          <Suspense fallback={<TabFallback message="正在加载先修依赖视图..." />}>
+            <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+          </Suspense>
         ) : null}
 
         {activeTab === "knowledge-graph" ? (
-          <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+          <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
+            <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+          </Suspense>
         ) : null}
 
         {/* ---- 清空确认对话框 ---- */}

@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
     instructor = None
 
-from app.core.tracing import LLMCallRecord, get_tracker
+from app.core.tracing import LLMCallRecord, get_llm_trace_context, get_tracker
 from app.core.config import get_settings
 from app.core.exceptions import LLMCallError, LLMTimeoutError
 from app.core.model_router import TaskType, get_task_profile
@@ -233,6 +233,7 @@ def _track_call(
     if not settings.llm_observability_enabled:
         return
 
+    trace_context = get_llm_trace_context()
     record = LLMCallRecord(
         task_type=task_type,
         model=model,
@@ -242,6 +243,11 @@ def _track_call(
         latency_s=round(time.monotonic() - start, 3),
         success=success,
         error=error,
+        subject=trace_context.subject,
+        build_session_id=trace_context.build_session_id,
+        workflow=trace_context.workflow,
+        lane=trace_context.lane,
+        node=trace_context.node,
     )
     get_tracker().record(record)
 
@@ -264,6 +270,7 @@ async def acompletion(
     api_key = settings.require_llm_api_key()
     profile = get_task_profile(task_type)
     last_error: Exception | None = None
+    call_started_at = time.monotonic()
 
     async with _get_semaphore():
         for attempt in range(1, profile.max_retries + 1):
@@ -298,7 +305,7 @@ async def acompletion(
                 _track_call(
                     task_type=task_type.value,
                     model=profile.model,
-                    start=start,
+                    start=call_started_at,
                     success=True,
                     prompt_tokens=prompt_t,
                     completion_tokens=completion_t,
@@ -332,7 +339,7 @@ async def acompletion(
     _track_call(
         task_type=task_type.value,
         model=profile.model,
-        start=time.monotonic(),
+        start=call_started_at,
         success=False,
         error=str(last_error),
     )
@@ -363,6 +370,7 @@ async def acompletion_structured(
     use_instructor = instructor is not None
     client = instructor.from_litellm(litellm.acompletion) if use_instructor else None
     last_error: Exception | None = None
+    call_started_at = time.monotonic()
 
     if not use_instructor:
         logger.warning(
@@ -406,6 +414,7 @@ async def acompletion_structured(
                             ),
                             timeout=profile.timeout_s + 2,
                         )
+                        prompt_t, completion_t, total_t = _extract_usage(result)
                     except Exception as instructor_exc:
                         # Instructor parse failed — try to salvage from tool_call args
                         logger.warning(
@@ -451,7 +460,7 @@ async def acompletion_structured(
                 _track_call(
                     task_type=task_type.value,
                     model=profile.model,
-                    start=start,
+                    start=call_started_at,
                     success=True,
                     prompt_tokens=prompt_t,
                     completion_tokens=completion_t,
@@ -489,7 +498,7 @@ async def acompletion_structured(
     _track_call(
         task_type=task_type.value,
         model=profile.model,
-        start=time.monotonic(),
+        start=call_started_at,
         success=False,
         error=str(last_error),
     )
@@ -597,6 +606,7 @@ async def acompletion_with_tools(
     api_key = settings.require_llm_api_key()
     profile = get_task_profile(task_type)
     last_error: Exception | None = None
+    call_started_at = time.monotonic()
 
     async with _get_semaphore():
         for attempt in range(1, profile.max_retries + 1):
@@ -636,7 +646,7 @@ async def acompletion_with_tools(
                 _track_call(
                     task_type=task_type.value,
                     model=profile.model,
-                    start=start,
+                    start=call_started_at,
                     success=True,
                     prompt_tokens=prompt_t,
                     completion_tokens=completion_t,
@@ -667,11 +677,10 @@ async def acompletion_with_tools(
     _track_call(
         task_type=task_type.value,
         model=profile.model,
-        start=time.monotonic(),
+        start=call_started_at,
         success=False,
         error=str(last_error),
     )
     if isinstance(last_error, LLMTimeoutError):
         raise last_error
     raise LLMCallError(reason=str(last_error)) from last_error
-

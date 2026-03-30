@@ -8,6 +8,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.docs.nodes.cleanse_node import build_cleanse_node
 from app.workflows.digest.docs.nodes.draft_node import build_draft_chapter_node
 from app.workflows.digest.docs.nodes.finalize_node import build_finalize_assemble_node
@@ -26,16 +27,96 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(DocGenState)
     strategy = DocGenExecutionStrategy.from_settings()
 
-    workflow.add_node("load_files", build_load_files_node(context=context, strategy=strategy))
-    workflow.add_node("cleanse", build_cleanse_node(context=context, strategy=strategy))
-    workflow.add_node("outline_map", build_outline_map_node(context=context))
-    workflow.add_node("outline_reduce", build_outline_reduce_node(context=context, strategy=strategy))
-    workflow.add_node("draft_chapter", build_draft_chapter_node(context=context, strategy=strategy))
-    workflow.add_node("collect_drafts", build_collect_drafts_node(context=context))
-    workflow.add_node("review_chapter", build_review_chapter_node(context=context, strategy=strategy))
-    workflow.add_node("collect_reviews", build_collect_reviews_node(context=context))
-    workflow.add_node("extract_metadata", build_extract_metadata_node(context=context, strategy=strategy))
-    workflow.add_node("finalize_assemble", build_finalize_assemble_node(context=context))
+    workflow.add_node(
+        "load_files",
+        wrap_digest_node(
+            build_load_files_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="load_files",
+        ),
+    )
+    workflow.add_node(
+        "cleanse",
+        wrap_digest_node(
+            build_cleanse_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="cleanse",
+        ),
+    )
+    workflow.add_node(
+        "outline_map",
+        wrap_digest_node(
+            build_outline_map_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="outline_map",
+        ),
+    )
+    workflow.add_node(
+        "outline_reduce",
+        wrap_digest_node(
+            build_outline_reduce_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="outline_reduce",
+        ),
+    )
+    workflow.add_node(
+        "draft_chapter",
+        wrap_digest_node(
+            build_draft_chapter_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="draft_chapter",
+        ),
+    )
+    workflow.add_node(
+        "collect_drafts",
+        wrap_digest_node(
+            build_collect_drafts_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="collect_drafts",
+        ),
+    )
+    workflow.add_node(
+        "review_chapter",
+        wrap_digest_node(
+            build_review_chapter_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="review_chapter",
+        ),
+    )
+    workflow.add_node(
+        "collect_reviews",
+        wrap_digest_node(
+            build_collect_reviews_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="collect_reviews",
+        ),
+    )
+    workflow.add_node(
+        "extract_metadata",
+        wrap_digest_node(
+            build_extract_metadata_node(context=context, strategy=strategy),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="extract_metadata",
+        ),
+    )
+    workflow.add_node(
+        "finalize_assemble",
+        wrap_digest_node(
+            build_finalize_assemble_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="docs",
+            node_name="finalize_assemble",
+        ),
+    )
 
     workflow.set_entry_point("load_files")
     workflow.add_conditional_edges("load_files", route_after_step, {"continue": "cleanse", "fail": END})
@@ -166,6 +247,8 @@ def fan_out_to_metadata(state: DocGenState) -> list[Send]:
                         "source_file_ids": source_file_ids,
                         "chunk_uids": chunk_uids,
                     },
+                    "subject": state["subject"],
+                    "build_session_id": state.get("build_session_id", ""),
                     "requested_at": state["requested_at"],
                 },
             )

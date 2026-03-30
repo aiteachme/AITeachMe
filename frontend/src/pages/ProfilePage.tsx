@@ -6,42 +6,15 @@ import { motion } from "framer-motion";
 
 import { apiClient } from "../api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
-import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "../api/generated/knowledge";
-import type { KnowledgeNodeResponse, KnowledgeOverviewResponse, TeachingUnitResponse } from "../api/generated/model";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-  message?: string;
-}
-
-interface MasteryStateResponse {
-  target_kind: "unit" | "node";
-  teaching_unit_id: number | null;
-  knowledge_node_id: number | null;
-  mastery_score: number;
-  review_priority: number;
-  total_attempts: number;
-  correct_attempts: number;
-}
-
-interface MasteryOverviewResponse {
-  weak_unit_count: number;
-  weak_node_count: number;
-  unit_states: MasteryStateResponse[];
-  node_states: MasteryStateResponse[];
-}
-
-interface ReviewTaskResponse {
-  status: string;
-  priority: number;
-  scheduled_at: string;
-  target_kind: "unit" | "node";
-  teaching_unit_id: number | null;
-  knowledge_node_id: number | null;
-  reason?: string | null;
-}
+import type {
+  KnowledgeNodeResponse,
+  MasteryOverviewResponse,
+  MasteryStateResponse,
+  ReviewTaskResponse,
+  TeachingUnitResponse,
+} from "../api/generated/model";
+import type { ApiResponse } from "../api/types";
+import { fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../lib/knowledgeOverview";
 
 interface DisplayMasteryState extends MasteryStateResponse {
   display_name: string;
@@ -111,10 +84,17 @@ function formatReason(reason?: string | null): string {
   return mapping[reason] ?? reason;
 }
 
-function formatDate(value: string): string {
+function formatDate(value?: string | null): string {
+  if (!value) return "尽快";
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleDateString("zh-CN");
+}
+
+function toSortableTime(value?: string | null): number {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
 }
 
 function resolveMasteryTargetId(state: MasteryStateResponse): number {
@@ -132,7 +112,16 @@ async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewRes
     method: "GET",
     url: `/api/v1/subjects/${subject}/profile/mastery`,
   });
-  return res.data;
+  return (
+    res.data ?? {
+      subject,
+      user_id: "",
+      weak_unit_count: 0,
+      weak_node_count: 0,
+      unit_states: [],
+      node_states: [],
+    }
+  );
 }
 
 async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> {
@@ -146,8 +135,7 @@ async function fetchReviewTasks(subject: string): Promise<ReviewTaskResponse[]> 
 async function fetchKnowledgeMappings(
   subject: string,
 ): Promise<{ nodes: KnowledgeNodeResponse[]; units: TeachingUnitResponse[] }> {
-  const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subject, { full: true });
-  const overview = unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
+  const overview = await fetchKnowledgeOverview(subject, OVERVIEW_INCLUDE_PRESETS.profileMappings);
   return {
     nodes: overview?.graph?.nodes ?? [],
     units: overview?.units ?? [],
@@ -244,7 +232,7 @@ export function ProfilePage() {
       .filter((task) => task.status === "pending")
       .sort((a, b) => {
         if (a.priority !== b.priority) return b.priority - a.priority;
-        return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+        return toSortableTime(a.scheduled_at) - toSortableTime(b.scheduled_at);
       });
 
     if (pendingTasks.length > 0) {

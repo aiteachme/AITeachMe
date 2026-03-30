@@ -336,3 +336,13 @@ TODO 这里改改，未来也并不需增量更新，现在想的还是版本号
 - 能清楚定义 `TopicMapSnapshot / ConceptDependencySnapshot / CurriculumBlueprintSignal / GraphImpactSet`
 - 能清楚说明图谱对 docs 和 curriculum 的服务关系
 - 能清楚定义增量更新时的影响域与重建边界
+
+## 2026-03-31 KG Lane Observability Addendum
+
+The knowledge-graph lane now follows the shared digest observability contract.
+
+- `kg_digest_timing_summary` must be emitted for success and runtime failure.
+- Required timing fields: `workflow_elapsed_ms`, `acquire_lock_ms`, `prepare_ms`, `extract_ms`, `cluster_ms`, `resolve_nodes_ms`, `resolve_edges_ms`, `impact_ms`, and `finalize_ms`.
+- Required extraction and resolution counters: fast-path chunk count, LLM extract chunk count, no-match counts, unresolved endpoints, persistence timings, and Top-K slow chunks.
+- Required token fields: total tokens, extract/resolve token totals, tokens by model, tokens by task type, call counts, latency totals, and light-vs-heavy mix.
+- New graph-processing modules should report through the shared summary helpers so downstream dashboards can compare builds without lane-specific adapters.

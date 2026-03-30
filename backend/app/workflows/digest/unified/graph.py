@@ -9,6 +9,7 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings
+from app.services.knowledge.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult
 from app.workflows.digest.docs.publish import (
@@ -23,6 +24,7 @@ from app.workflows.digest.runtime import (
     run_docgen_workflow,
     run_graph_digest_workflow,
 )
+from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
 from app.workflows.digest.unified.consistency import bounded_repair, check_consistency
 from app.workflows.digest.unified.materialize import materialize_shared_inputs
@@ -38,15 +40,92 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the unified digest graph."""
 
     workflow = StateGraph(UnifiedDigestState)
-    workflow.add_node("prepare_shared", build_prepare_shared_node(context=context))
-    workflow.add_node("run_parallel_lanes", build_parallel_lanes_node(context=context))
-    workflow.add_node("consistency_gate", build_consistency_node(context=context))
-    workflow.add_node("bounded_repair", build_repair_node(context=context))
-    workflow.add_node("derive_curriculum", build_derive_curriculum_node(context=context))
-    workflow.add_node("rebuild_docs", build_rebuild_docs_node(context=context))
-    workflow.add_node("publish_outputs", build_publish_outputs_node(context=context))
-    workflow.add_node("cleanup", build_cleanup_node(context=context))
-    workflow.add_node("fail", build_fail_node(context=context))
+    workflow.add_node(
+        "prepare_shared",
+        wrap_digest_node(
+            build_prepare_shared_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="prepare_shared",
+        ),
+    )
+    workflow.add_node(
+        "run_parallel_lanes",
+        wrap_digest_node(
+            build_parallel_lanes_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="run_parallel_lanes",
+            timing_field="parallel_lanes_ms",
+        ),
+    )
+    workflow.add_node(
+        "consistency_gate",
+        wrap_digest_node(
+            build_consistency_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="consistency_gate",
+            timing_field="consistency_ms",
+        ),
+    )
+    workflow.add_node(
+        "bounded_repair",
+        wrap_digest_node(
+            build_repair_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified_repair",
+            node_name="bounded_repair",
+        ),
+    )
+    workflow.add_node(
+        "derive_curriculum",
+        wrap_digest_node(
+            build_derive_curriculum_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="derive_curriculum",
+        ),
+    )
+    workflow.add_node(
+        "rebuild_docs",
+        wrap_digest_node(
+            build_rebuild_docs_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="rebuild_docs",
+            timing_field="rebuild_docs_ms",
+        ),
+    )
+    workflow.add_node(
+        "publish_outputs",
+        wrap_digest_node(
+            build_publish_outputs_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="publish_outputs",
+            timing_field="publish_ms",
+        ),
+    )
+    workflow.add_node(
+        "cleanup",
+        wrap_digest_node(
+            build_cleanup_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="cleanup",
+            timing_field="cleanup_ms",
+        ),
+    )
+    workflow.add_node(
+        "fail",
+        wrap_digest_node(
+            build_fail_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="unified",
+            node_name="fail",
+        ),
+    )
 
     workflow.set_entry_point("prepare_shared")
     workflow.add_conditional_edges(
@@ -103,7 +182,7 @@ def create_unified_initial_state(
         "file_ids": file_ids,
         "user_prompt": user_prompt,
         "requested_at": requested_at,
-        "build_session_id": "",
+        "build_session_id": uuid4().hex,
         "graph_job_id": _new_runtime_job_id(),
         "curriculum_job_id": _new_runtime_job_id(),
         "error": None,
@@ -145,11 +224,22 @@ def build_prepare_shared_node(*, context: WorkflowContext):
         subject = state["subject"]
         file_ids = state["file_ids"]
         logger.info("unified_prepare_shared_started", subject=subject, file_count=len(file_ids))
-        shared_inputs = await prepare_shared_inputs(subject, file_ids)
+        update_knowledge_build_status(
+            subject,
+            requested_at=state["requested_at"],
+            status="running",
+            stage="prepare_shared",
+            error_message=None,
+        )
+        shared_inputs = await prepare_shared_inputs(
+            subject,
+            file_ids,
+            user_prompt=state.get("user_prompt"),
+        )
         if not shared_inputs.source_packets or not shared_inputs.section_packets:
             return {**state, "error": "No shared digest inputs were produced."}
 
-        materialized = await materialize_shared_inputs(subject=subject, shared_inputs=shared_inputs)
+        materialized = await materialize_shared_inputs(`r`n            subject=subject,`r`n            shared_inputs=shared_inputs,`r`n            build_session_id=state["build_session_id"],`r`n        )
         session = create_unified_build_session(
             subject=subject,
             file_ids=file_ids,
@@ -239,9 +329,21 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             build_session_id=build_session_id,
             doc_lane_ms=doc_lane_ms,
             kg_lane_ms=kg_lane_ms,
-            doc_count=len(doc_state.get("doc_ids", [])),
+            staged_chapter_count=len(doc_state.get("chapter_metadatas", [])),
+            draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
+            published_doc_count=len(doc_state.get("doc_ids", [])),
             chunk_count=len(kg_state.get("chunk_ids", [])),
         )
+        if _graph_is_ready(kg_state):
+            update_knowledge_build_status(
+                subject,
+                requested_at=requested_at,
+                status="running",
+                stage="graph_ready",
+                error_message=None,
+                draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
+                staged_chapter_count=len(doc_state.get("chapter_metadatas", [])),
+            )
         return {
             **state,
             "doc_state": doc_state,
@@ -329,12 +431,20 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
             curriculum_job_id=state["curriculum_job_id"],
             graph_job_id=state["graph_job_id"],
         )
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="curriculum_deriving",
+            error_message=None,
+        )
         curriculum_result = await run_curriculum_derive_workflow(
             subject=state["subject"],
             graph_job_id=state["graph_job_id"],
             curriculum_job_id=state["curriculum_job_id"],
             event_bus=context.event_bus,
             impact_set=kg_state.get("impact_set"),
+            build_session_id=state.get("build_session_id"),
         )
         if curriculum_result.failed:
             return {
@@ -467,6 +577,15 @@ def build_publish_outputs_node(*, context: WorkflowContext):
             chapter_count=len(chapter_metadatas),
             snapshot_id=curriculum_state.get("snapshot_id"),
             curriculum_version_no=curriculum_state.get("curriculum_version_no"),
+        )
+        update_knowledge_build_status(
+            state["subject"],
+            requested_at=state["requested_at"],
+            status="running",
+            stage="publishing",
+            error_message=None,
+            draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
+            staged_chapter_count=len(chapter_metadatas),
         )
         doc_ids = publish_staged_knowledge_docs(
             subject=state["subject"],

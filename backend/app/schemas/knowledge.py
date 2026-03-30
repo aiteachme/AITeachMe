@@ -89,6 +89,16 @@ class DocGenBuildData(BaseModel):
     requested_at: datetime = Field(description="Build request timestamp.")
 
 
+class DocGenBuildStatusResponse(BaseModel):
+    """Runtime metadata for the current or most recent docs build."""
+
+    status: str = Field(description="accepted / running / completed / failed / cancelled")
+    requested_at: datetime = Field(description="Build request timestamp.")
+    stage: str = Field(description="Current lifecycle stage for the build.")
+    error_message: str | None = Field(default=None, description="Build failure or cancellation reason.")
+    draft_available: bool = Field(default=False, description="Whether the current staging draft can be previewed.")
+
+
 class DocGenGetResponse(BaseModel):
     """Knowledge docs get response."""
 
@@ -97,6 +107,9 @@ class DocGenGetResponse(BaseModel):
     updated_at: datetime | None = Field(default=None, description="Last updated time of the merged markdown.")
     source_file_uids: list[str] = Field(default_factory=list, description="Source raw file UIDs used by the published docs.")
     prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
+    draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
+    draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
+    build: DocGenBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
 
 
 class KnowledgeNodeResponse(BaseModel):

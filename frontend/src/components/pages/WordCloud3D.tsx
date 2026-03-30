@@ -1,260 +1,428 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Billboard, Text } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 
-interface WordCloudNode {
-  name: string;
-  nodeType: string;
-  confidence: number;
-}
+import type { FullGraphResponse } from "../../api/generated/model";
 
 interface WordCloud3DProps {
   subjectLabel: string;
-  nodes: WordCloudNode[];
-  height?: number;
+  graph: FullGraphResponse | null;
+  height?: number | string;
 }
 
-interface BaseWord {
+interface RankedNode {
+  id: number;
+  label: string;
+  shortLabel: string;
+  nodeType: string;
   color: string;
-  confidence: number;
+  salience: number;
+  degree: number;
+  radius: number;
+  speed: number;
+  phase: number;
+  verticalOffset: number;
+  bobAmplitude: number;
   fontSize: number;
-  name: string;
-  x: number;
-  y: number;
-  z: number;
 }
 
-interface RenderWord extends BaseWord {
-  blurPx: number;
-  glowColor: string;
-  opacity: number;
-  scale: number;
-  screenX: number;
-  screenY: number;
-  zIndex: number;
+interface ParticleNode {
+  position: [number, number, number];
+  color: string;
+  size: number;
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  Topic: "#8b5cf6",
-  topic: "#8b5cf6",
-  Concept: "#6366f1",
-  concept: "#6366f1",
-  Method: "#f59e0b",
-  method: "#f59e0b",
-  Definition: "#10b981",
-  definition: "#10b981",
-  Example: "#ec4899",
-  example: "#ec4899",
-  Theorem: "#3b82f6",
-  theorem: "#3b82f6",
-  Formula: "#06b6d4",
-  formula: "#06b6d4",
+  Topic: "#0f172a",
+  topic: "#0f172a",
+  Concept: "#0369a1",
+  concept: "#0369a1",
+  Definition: "#0284c7",
+  definition: "#0284c7",
+  Formula: "#0f766e",
+  formula: "#0f766e",
+  Method: "#ea580c",
+  method: "#ea580c",
+  Theorem: "#1d4ed8",
+  theorem: "#1d4ed8",
+  Example: "#7c3aed",
+  example: "#7c3aed",
 };
 
-const DEFAULT_COLOR = "#94a3b8";
-const MAX_VISIBLE_WORDS = 80;
-const SPHERE_RADIUS = 320;
-const AUTO_ROTATE_SPEED = 0.003;
-const TILT_RESET_X = -0.16;
-const SPRING_FACTOR = 0.07;
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const TYPE_WEIGHTS: Record<string, number> = {
+  Topic: 1.35,
+  topic: 1.35,
+  Concept: 1.25,
+  concept: 1.25,
+  Definition: 1.05,
+  definition: 1.05,
+  Formula: 1.1,
+  formula: 1.1,
+  Method: 1.0,
+  method: 1.0,
+  Theorem: 1.08,
+  theorem: 1.08,
+  Example: 0.82,
+  example: 0.82,
+};
+
+const DEFAULT_COLOR = "#64748b";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const normalized = hex.replace("#", "");
-  const chunkSize = normalized.length === 3 ? 1 : 2;
-  const raw = normalized.length === 3
-    ? normalized.split("").map((char) => char.repeat(2))
-    : normalized.match(/.{1,2}/g) ?? ["94", "a3", "b8"];
-  const [r, g, b] = raw.map((chunk) => Number.parseInt(chunk.slice(0, chunkSize === 1 ? 1 : 2), 16));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+function seededUnit(index: number, salt: number): number {
+  const raw = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+  return raw - Math.floor(raw);
 }
 
-function buildWordSphere(nodes: WordCloudNode[]): BaseWord[] {
-  return nodes.slice(0, MAX_VISIBLE_WORDS).map((node, index, visibleNodes) => {
-    const total = visibleNodes.length;
-    const step = index + 0.5;
-    const phi = Math.acos(1 - (2 * step) / Math.max(total, 1));
-    const theta = GOLDEN_ANGLE * index;
-    const emphasis = clamp(node.confidence, 0.15, 1);
-    const radius = SPHERE_RADIUS - emphasis * 26;
-    const color = TYPE_COLORS[node.nodeType] || DEFAULT_COLOR;
-
-    return {
-      name: node.name,
-      confidence: emphasis,
-      color,
-      fontSize: 10 + emphasis * 6,
-      x: Math.cos(theta) * Math.sin(phi) * radius,
-      y: Math.sin(theta) * Math.sin(phi) * radius * 0.72,
-      z: Math.cos(phi) * radius,
-    };
-  });
+function truncateLabel(label: string): string {
+  return label.length > 14 ? `${label.slice(0, 13)}…` : label;
 }
 
-function rotateWord(word: BaseWord, rotateX: number, rotateY: number): RenderWord {
-  const cosY = Math.cos(rotateY);
-  const sinY = Math.sin(rotateY);
-  const cosX = Math.cos(rotateX);
-  const sinX = Math.sin(rotateX);
+function buildVisualState(graph: FullGraphResponse | null) {
+  const nodes = graph?.nodes ?? [];
+  const edges = graph?.edges ?? [];
+  const degreeMap = new Map<number, number>();
 
-  const rotatedX = word.x * cosY + word.z * sinY;
-  const rotatedZ = word.z * cosY - word.x * sinY;
-  const rotatedY = word.y * cosX - rotatedZ * sinX;
-  const depthZ = word.y * sinX + rotatedZ * cosX;
-  const depth = clamp((depthZ + SPHERE_RADIUS) / (SPHERE_RADIUS * 2), 0, 1);
+  for (const edge of edges) {
+    degreeMap.set(edge.source_node_id, (degreeMap.get(edge.source_node_id) ?? 0) + 1);
+    degreeMap.set(edge.target_node_id, (degreeMap.get(edge.target_node_id) ?? 0) + 1);
+  }
 
-  return {
-    ...word,
-    screenX: rotatedX,
-    screenY: rotatedY,
-    scale: 0.6 + depth * 0.5 + word.confidence * 0.12,
-    opacity: 0.2 + depth * 0.78,
-    blurPx: (1 - depth) * 1.2,
-    glowColor: hexToRgba(word.color, 0.18 + depth * 0.32),
-    zIndex: Math.round(depth * 100),
-  };
-}
-
-export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
-  const containerHeight = height ?? "calc(100vh - 14rem)";
-  const [rotation, setRotation] = useState({ x: TILT_RESET_X, y: 0 });
-  const targetRotationRef = useRef({ x: TILT_RESET_X, y: 0 });
-  const rotationRef = useRef({ x: TILT_RESET_X, y: 0 });
-
-  const words = useMemo(() => buildWordSphere(nodes), [nodes]);
-  const renderedWords = useMemo(
-    () => words.map((word) => rotateWord(word, rotation.x, rotation.y)).sort((left, right) => left.zIndex - right.zIndex),
-    [rotation.x, rotation.y, words],
+  const maxDegree = Math.max(
+    1,
+    ...nodes.map((node) => degreeMap.get(node.id) ?? 0),
   );
 
-  useEffect(() => {
-    let rafId = 0;
+  const ranked = nodes
+    .map((node, index) => {
+      const degree = degreeMap.get(node.id) ?? 0;
+      const degreeScore = degree / maxDegree;
+      const typeWeight = TYPE_WEIGHTS[node.node_type] ?? 0.92;
+      const salience = clamp(
+        node.confidence * 0.42 + degreeScore * 0.42 + Math.min(typeWeight / 1.35, 1) * 0.16,
+        0.12,
+        1,
+      );
 
-    const animate = () => {
-      const nextX = rotationRef.current.x + (targetRotationRef.current.x - rotationRef.current.x) * SPRING_FACTOR;
-      const nextY = rotationRef.current.y + (targetRotationRef.current.y - rotationRef.current.y) * SPRING_FACTOR + AUTO_ROTATE_SPEED;
-      rotationRef.current = { x: nextX, y: nextY };
-      setRotation(rotationRef.current);
-      rafId = window.requestAnimationFrame(animate);
+      return {
+        id: node.id,
+        index,
+        label: node.canonical_name,
+        shortLabel: truncateLabel(node.canonical_name),
+        nodeType: node.node_type,
+        color: TYPE_COLORS[node.node_type] ?? DEFAULT_COLOR,
+        salience,
+        degree,
+      };
+    })
+    .sort((left, right) => right.salience - left.salience || right.degree - left.degree);
+
+  const labelCount = Math.min(45, Math.max(30, Math.ceil(ranked.length * 0.34)));
+  const labels: RankedNode[] = ranked.slice(0, labelCount).map((node, index) => {
+    const layer = index % 3;
+    const radius = 3.1 + layer * 1.05 + (1 - node.salience) * 0.95;
+    const phase = (index / Math.max(labelCount, 1)) * Math.PI * 2 + seededUnit(index, 1) * 0.65;
+    const verticalOffset = -2 + layer * 1.85 + seededUnit(index, 2) * 0.7;
+
+    return {
+      ...node,
+      radius,
+      phase,
+      verticalOffset,
+      speed: 0.07 + node.salience * 0.11,
+      bobAmplitude: 0.12 + seededUnit(index, 3) * 0.16,
+      fontSize: 0.34 + node.salience * 0.34,
     };
+  });
 
-    rafId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(rafId);
-  }, []);
+  const particles: ParticleNode[] = ranked.slice(labelCount).map((node, index) => {
+    const radius = 3.6 + seededUnit(index, 4) * 2.9;
+    const theta = seededUnit(index, 5) * Math.PI * 2;
+    const phi = Math.acos(1 - 2 * seededUnit(index, 6));
+    const x = Math.cos(theta) * Math.sin(phi) * radius;
+    const y = Math.cos(phi) * radius * 0.85;
+    const z = Math.sin(theta) * Math.sin(phi) * radius;
 
-  if (nodes.length === 0) {
-    return (
-      <div
-        className="flex items-center justify-center rounded-2xl border border-slate-800 bg-slate-950"
-        style={{ height: containerHeight }}
-      >
-        <div className="text-center text-slate-500">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-800">
-            <svg className="h-5 w-5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 12h8M12 8v8" />
-            </svg>
-          </div>
-          <p className="text-sm font-medium text-slate-400">No graph data yet</p>
-          <p className="mt-1 text-xs text-slate-600">Build the knowledge assets to render the word cloud.</p>
-        </div>
-      </div>
-    );
-  }
+    return {
+      position: [x, y, z],
+      color: node.color,
+      size: 0.022 + node.salience * 0.028,
+    };
+  });
 
   const topTypes = Object.entries(
     nodes.reduce<Record<string, number>>((accumulator, node) => {
-      const type = node.nodeType;
-      accumulator[type] = (accumulator[type] || 0) + 1;
+      accumulator[node.node_type] = (accumulator[node.node_type] ?? 0) + 1;
       return accumulator;
     }, {}),
   )
     .sort((left, right) => right[1] - left[1])
     .slice(0, 4);
 
+  return {
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    labels,
+    particles,
+    topTypes,
+  };
+}
+
+function ParticleShell({ particles }: { particles: ParticleNode[] }) {
+  const ref = useRef<THREE.Points>(null);
+  const [positions, colors] = useMemo(() => {
+    const positionArray = new Float32Array(particles.length * 3);
+    const colorArray = new Float32Array(particles.length * 3);
+
+    particles.forEach((particle, index) => {
+      const [x, y, z] = particle.position;
+      positionArray[index * 3] = x;
+      positionArray[index * 3 + 1] = y;
+      positionArray[index * 3 + 2] = z;
+
+      const color = new THREE.Color(particle.color);
+      colorArray[index * 3] = color.r;
+      colorArray[index * 3 + 1] = color.g;
+      colorArray[index * 3 + 2] = color.b;
+    });
+
+    return [positionArray, colorArray];
+  }, [particles]);
+
+  useFrame((_, delta) => {
+    if (!ref.current) return;
+    ref.current.rotation.y += delta * 0.035;
+    ref.current.rotation.x = Math.sin(performance.now() * 0.00008) * 0.08;
+  });
+
+  return (
+    <points ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.08}
+        vertexColors
+        transparent
+        opacity={0.44}
+        sizeAttenuation
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+function WordOrbit({
+  word,
+  onHover,
+  onLeave,
+}: {
+  word: RankedNode;
+  onHover: (word: RankedNode) => void;
+  onLeave: () => void;
+}) {
+  const ref = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    const elapsed = state.clock.elapsedTime;
+    const angle = elapsed * word.speed + word.phase;
+    ref.current.position.set(
+      Math.cos(angle) * word.radius,
+      word.verticalOffset + Math.sin(angle * 1.4) * word.bobAmplitude,
+      Math.sin(angle) * word.radius,
+    );
+  });
+
+  return (
+    <group ref={ref}>
+      <Billboard follow>
+        <Text
+          fontSize={word.fontSize}
+          color={word.color}
+          anchorX="center"
+          anchorY="middle"
+          outlineColor="#f8fafc"
+          outlineWidth={0.018}
+          letterSpacing={0.01}
+          onPointerOver={(event) => {
+            event.stopPropagation();
+            onHover(word);
+          }}
+          onPointerOut={(event) => {
+            event.stopPropagation();
+            onLeave();
+          }}
+        >
+          {word.shortLabel}
+        </Text>
+      </Billboard>
+    </group>
+  );
+}
+
+function KnowledgeCloudScene({
+  labels,
+  particles,
+  onHover,
+  onLeave,
+}: {
+  labels: RankedNode[];
+  particles: ParticleNode[];
+  onHover: (word: RankedNode) => void;
+  onLeave: () => void;
+}) {
+  const rigRef = useRef<THREE.Group>(null);
+
+  useFrame((state, delta) => {
+    if (!rigRef.current) return;
+    const targetX = state.pointer.y * 0.18;
+    const targetY = state.pointer.x * 0.28;
+    rigRef.current.rotation.x = THREE.MathUtils.damp(rigRef.current.rotation.x, targetX, 4, delta);
+    rigRef.current.rotation.y = THREE.MathUtils.damp(rigRef.current.rotation.y, targetY, 4, delta);
+  });
+
+  return (
+    <>
+      <fog attach="fog" args={["#f8fbff", 9, 18]} />
+      <ambientLight intensity={1.05} />
+      <directionalLight position={[6, 8, 6]} intensity={1.7} color="#f8fafc" />
+      <pointLight position={[-5, -3, 5]} intensity={1.4} color="#7dd3fc" />
+      <group ref={rigRef}>
+        <mesh>
+          <icosahedronGeometry args={[1.28, 5]} />
+          <meshStandardMaterial
+            color="#f8fafc"
+            emissive="#7dd3fc"
+            emissiveIntensity={0.26}
+            roughness={0.18}
+            metalness={0.08}
+            transparent
+            opacity={0.96}
+          />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[1.9, 0.03, 18, 120]} />
+          <meshBasicMaterial color="#93c5fd" transparent opacity={0.34} />
+        </mesh>
+        <mesh rotation={[Math.PI / 3, Math.PI / 7, 0]}>
+          <torusGeometry args={[2.55, 0.02, 18, 120]} />
+          <meshBasicMaterial color="#c4b5fd" transparent opacity={0.22} />
+        </mesh>
+        <ParticleShell particles={particles} />
+        {labels.map((word) => (
+          <WordOrbit
+            key={word.id}
+            word={word}
+            onHover={onHover}
+            onLeave={onLeave}
+          />
+        ))}
+      </group>
+    </>
+  );
+}
+
+export function WordCloud3D({ subjectLabel, graph, height }: WordCloud3DProps) {
+  const [hoveredWord, setHoveredWord] = useState<RankedNode | null>(null);
+  const visualState = useMemo(() => buildVisualState(graph), [graph]);
+  const containerStyle =
+    typeof height === "number"
+      ? { height: `${height}px` }
+      : { height: height ?? "calc(100vh - 14rem)" };
+
+  if (visualState.nodeCount === 0) {
+    return (
+      <div
+        className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top,#ffffff_0%,#eff6ff_45%,#e2e8f0_100%)]"
+        style={containerStyle}
+      >
+        <div className="text-center text-slate-500">
+          <p className="text-sm font-semibold text-slate-700">暂无知识图谱数据</p>
+          <p className="mt-2 text-xs text-slate-500">完成 digest 构建后，这里会生成空间词云与核心知识分布。</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-950 via-[#0a0a1a] to-slate-950"
-      style={{ height: containerHeight }}
-      onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const offsetX = (event.clientX - rect.left) / rect.width - 0.5;
-        const offsetY = (event.clientY - rect.top) / rect.height - 0.5;
-        targetRotationRef.current = {
-          x: clamp(TILT_RESET_X - offsetY * 0.7, -0.58, 0.42),
-          y: rotationRef.current.y + offsetX * 0.14,
-        };
-      }}
-      onMouseLeave={() => {
-        targetRotationRef.current = { x: TILT_RESET_X, y: rotationRef.current.y };
-      }}
+      className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_45%,#eef6ff_100%)] shadow-[0_24px_70px_-44px_rgba(15,23,42,0.35)]"
+      style={containerStyle}
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-700/12 blur-[120px]" />
-        <div className="absolute left-[18%] top-[18%] h-40 w-40 rounded-full bg-cyan-500/8 blur-[90px]" />
-        <div className="absolute bottom-[14%] right-[16%] h-48 w-48 rounded-full bg-indigo-500/10 blur-[100px]" />
-        <div className="absolute left-1/2 top-1/2 h-[540px] w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/6" />
-        <div className="absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
+        <div className="absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0)_100%)]" />
+        <div className="absolute left-1/2 top-[18%] h-52 w-52 -translate-x-1/2 rounded-full bg-sky-200/45 blur-3xl" />
+        <div className="absolute right-[12%] top-[26%] h-44 w-44 rounded-full bg-indigo-200/35 blur-3xl" />
+        <div className="absolute left-[10%] bottom-[18%] h-40 w-40 rounded-full bg-cyan-200/35 blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: "linear-gradient(rgba(148,163,184,0.28) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.28) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
       </div>
 
-      <div className="pointer-events-none absolute left-0 right-0 top-0 p-5">
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-fuchsia-500" />
-          <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-            Knowledge Universe
-          </span>
+      <div className="absolute inset-0">
+        <Canvas camera={{ position: [0, 0, 9.6], fov: 42 }}>
+          <KnowledgeCloudScene
+            labels={visualState.labels}
+            particles={visualState.particles}
+            onHover={setHoveredWord}
+            onLeave={() => setHoveredWord(null)}
+          />
+        </Canvas>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-5">
+        <div className="rounded-full border border-slate-200/70 bg-white/80 px-3 py-1 text-[11px] font-medium tracking-[0.24em] text-slate-500 backdrop-blur">
+          AITeachMe KNOWLEDGE SPACE
         </div>
+        {hoveredWord ? (
+          <div className="max-w-[240px] rounded-2xl border border-slate-200/80 bg-white/88 px-4 py-3 text-right shadow-sm backdrop-blur">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">{hoveredWord.nodeType}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{hoveredWord.label}</p>
+            <p className="mt-1 text-xs text-slate-500">连接度 {hoveredWord.degree} · 显著性 {Math.round(hoveredWord.salience * 100)}%</p>
+          </div>
+        ) : (
+          <div className="rounded-full border border-slate-200/70 bg-white/70 px-3 py-1 text-xs text-slate-500 backdrop-blur">
+            悬停查看完整标签
+          </div>
+        )}
       </div>
 
-      <div className="absolute inset-0 overflow-hidden [perspective:1400px]">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-slate-950/45 px-5 py-4 text-center shadow-[0_0_40px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Subject Core</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{subjectLabel}</p>
-          <p className="mt-1 text-xs text-slate-400">{nodes.length} nodes orbiting in focus</p>
+      <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+        <div className="rounded-full border border-white/80 bg-white/72 px-6 py-2 text-[11px] tracking-[0.28em] text-slate-500 shadow-[0_18px_40px_-28px_rgba(14,116,144,0.35)] backdrop-blur">
+          SUBJECT CORE
         </div>
-
-        {renderedWords.map((word, index) => (
-          <div
-            key={`${word.name}-${index}`}
-            className="pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-white/8 px-2 py-0.5 text-center font-medium tracking-[0.02em] backdrop-blur-sm"
-            style={{
-              transform: `translate(calc(-50% + ${word.screenX}px), calc(-50% + ${word.screenY}px)) scale(${word.scale})`,
-              color: word.color,
-              opacity: word.opacity,
-              fontSize: `${word.fontSize}px`,
-              zIndex: word.zIndex,
-              filter: `blur(${word.blurPx}px)`,
-              backgroundColor: "rgba(2, 6, 23, 0.38)",
-              boxShadow: `0 0 20px ${word.glowColor}`,
-              textShadow: `0 0 18px ${word.glowColor}`,
-            }}
-          >
-            {word.name}
-          </div>
-        ))}
+        <h3 className="mt-4 max-w-[320px] text-center text-3xl font-semibold tracking-tight text-slate-900">
+          {subjectLabel}
+        </h3>
+        <p className="mt-2 text-center text-sm text-slate-500">
+          仅展示最重要的 {visualState.labels.length} 个知识词，弱信号退化为粒子层
+        </p>
       </div>
 
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 to-transparent p-5 pt-10">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-lg font-bold text-white/90">{subjectLabel}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{nodes.length} nodes - move cursor to rotate</p>
-          </div>
-          <div className="flex gap-3">
-            {topTypes.map(([type, count]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: TYPE_COLORS[type] || DEFAULT_COLOR }}
-                />
-                <span className="text-[10px] text-slate-500">
-                  {type} {count}
-                </span>
-              </div>
-            ))}
-          </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-4 p-5">
+        <div className="rounded-2xl border border-white/70 bg-white/82 px-4 py-3 shadow-sm backdrop-blur">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Graph Snapshot</p>
+          <p className="mt-2 text-sm text-slate-600">
+            {visualState.nodeCount} nodes · {visualState.edgeCount} edges
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {visualState.topTypes.map(([type, count]) => (
+            <div
+              key={type}
+              className="rounded-full border border-white/70 bg-white/82 px-3 py-1.5 text-xs text-slate-600 shadow-sm backdrop-blur"
+            >
+              <span
+                className="mr-2 inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: TYPE_COLORS[type] ?? DEFAULT_COLOR }}
+              />
+              {type} · {count}
+            </div>
+          ))}
         </div>
       </div>
     </div>
