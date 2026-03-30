@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -24,24 +20,32 @@ from app.core.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path
 logger = structlog.get_logger()
 
 
+def _maybe_export_openapi_schema(app: FastAPI) -> None:
+    settings = get_settings()
+    if not settings.export_openapi_on_startup:
+        return
+
+    try:
+        import sys
+        from pathlib import Path
+
+        script_dir = Path(__file__).parent.parent / "scripts"
+        sys.path.insert(0, str(script_dir))
+        import export_api_docs
+
+        export_api_docs.export_openapi_schema(app)
+        sys.path.pop(0)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("export_openapi_failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
     init_db()
-    
-    # 自动导出 OpenAPI 接口文档到 frontend
-    try:
-        import sys
-        from pathlib import Path
-        script_dir = Path(__file__).parent.parent / "scripts"
-        sys.path.insert(0, str(script_dir))
-        import export_api_docs
-        export_api_docs.export_openapi_schema(app)
-        sys.path.pop(0)
-    except Exception as e:
-        logger.error("export_openapi_failed", error=str(e))
-        
+    _maybe_export_openapi_schema(app)
+
     logger.info("app_started")
     yield
     logger.info("app_shutdown")
@@ -61,7 +65,7 @@ def _register_middlewares(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "https://aiteachme.cn/",
+            "https://aiteachme.cn",
             "https://aiteachme.pages.dev",
             "http://localhost:5173",
             "http://localhost:3000",

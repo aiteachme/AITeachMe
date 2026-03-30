@@ -18,6 +18,11 @@ import {
   X,
 } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import type {
+  ApiResponseChatSessionCreateData,
+  ApiResponsePaginatedDataChatSessionItem,
+  ChatSessionItem,
+} from "../../api/generated/model";
 import { ChatCitationModal } from "../chat/ChatCitationModal";
 import { ChatComposer } from "../chat/ChatComposer";
 import { ChatTranscript } from "../chat/ChatTranscript";
@@ -28,29 +33,6 @@ import { cn } from "../../lib/utils";
 interface SubjectAiAssistantProviderProps {
   subjectId: string | null;
   children: ReactNode;
-}
-
-interface ChatSessionItem {
-  id: string;
-  title: string;
-  source?: string | null;
-  message_count: number;
-  created_at: string;
-  updated_at: string;
-  last_message_at: string;
-}
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-}
-
-interface PaginatedData<T> {
-  items: T[];
-}
-
-interface ChatSessionCreateData {
-  session: ChatSessionItem;
 }
 
 interface OpenAssistantOptions {
@@ -118,7 +100,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
     setSessionsLoaded(false);
     setSessionsError(null);
     try {
-      const res = await apiClient<ApiResponse<PaginatedData<ChatSessionItem>>>({
+      const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
         method: "POST",
         url: `/api/v1/subjects/${subjectId}/chats/sessions/list`,
         data: {
@@ -186,12 +168,15 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
       return;
     }
     try {
-      const res = await apiClient<ApiResponse<ChatSessionCreateData>>({
+      const res = await apiClient<ApiResponseChatSessionCreateData>({
         method: "POST",
         url: `/api/v1/subjects/${subjectId}/chats/sessions/create`,
         data: {},
       });
-      const created = res.data.session;
+      const created = res.data?.session;
+      if (!created) {
+        throw new Error("创建会话成功，但响应缺少 session 数据。");
+      }
       setSessions((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
       setSelectedSessionId(created.id);
       setSessionsError(null);

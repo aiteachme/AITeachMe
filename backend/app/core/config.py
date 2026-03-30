@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     app_mode: str = "local"
     auth_enabled: bool = False
     app_version: str = "0.2.0"
+    export_openapi_on_startup: bool = False
 
     # ── AI 基础设施配置 ──
     model_overrides: dict[str, str] = {}

@@ -3,14 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, FileText, Loader2, Play, Sparkles } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import type { DocGenBuildData } from "../../api/generated/model";
+import type { ApiResponse } from "../../api/types";
 import type { FileRecord } from "../../types/files";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-}
 
 interface DigestBuildContextValue {
   subject: string;
@@ -20,13 +17,6 @@ interface FilesData {
   items: FileRecord[];
 }
 
-interface KnowledgeBuildData {
-  accepted_file_uids: string[];
-  prompt: string | null;
-  ready_file_count: number;
-  requested_at: string;
-}
-
 const DigestBuildContext = createContext<DigestBuildContextValue | null>(null);
 
 async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
@@ -34,16 +24,16 @@ async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
     method: "GET",
     url: `/api/v1/subjects/${subject}/files`,
   });
-  return (response.data.items ?? []).filter((file) => file.markdown_ready);
+  return (response.data?.items ?? []).filter((file) => file.markdown_ready);
 }
 
-async function buildKnowledge(subject: string, fileUids: string[]): Promise<KnowledgeBuildData> {
-  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
+async function buildKnowledge(subject: string, fileUids: string[]): Promise<DocGenBuildData> {
+  const response = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/build`,
     data: { file_uids: fileUids },
   });
-  return response.data;
+  return response.data ?? { requested_at: new Date().toISOString() };
 }
 
 export function DigestBuildProvider({
@@ -105,11 +95,11 @@ export function DigestBuildButton() {
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
-      setLastBuildError("");
-      setLastBuildMessage(
-        `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${data.accepted_file_uids.length} 份文件。`,
-      );
-    },
+        setLastBuildError("");
+        setLastBuildMessage(
+          `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${(data.accepted_file_uids ?? []).length} 份文件。`,
+        );
+      },
     onError: (error) => {
       setLastBuildMessage("");
       setLastBuildError(getApiErrorMessage(error, "触发知识构建失败。"));

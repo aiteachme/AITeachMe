@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
+import type { DocGenBuildData } from "../api/generated/model";
+import type { ApiResponse } from "../api/types";
 import { Button } from "../components/ui/Button";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
@@ -34,18 +36,6 @@ import { Modal } from "../components/ui/Modal";
 import { useSettings } from "../hooks/useSettings";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-}
-
-interface KnowledgeBuildData {
-  accepted_file_uids: string[];
-  prompt: string | null;
-  ready_file_count: number;
-  requested_at: string;
-}
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
@@ -58,7 +48,7 @@ async function fetchFiles(subject: string): Promise<FilesData> {
     method: "GET",
     url: `/api/v1/subjects/${subject}/files`,
   });
-  return response.data;
+  return response.data ?? { subject, total: 0, ready_count: 0, processing_count: 0, failed_count: 0, items: [] };
 }
 
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
@@ -73,7 +63,7 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
   });
-  return response.data;
+  return response.data ?? { subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }
 
 async function deleteFile(subject: string, fileUid: string): Promise<void> {
@@ -84,13 +74,13 @@ async function deleteFile(subject: string, fileUid: string): Promise<void> {
   });
 }
 
-async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<KnowledgeBuildData> {
-  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
+async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
+  const response = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/build`,
     data: { prompt },
   });
-  return response.data;
+  return response.data ?? { requested_at: new Date().toISOString() };
 }
 
 /* ── 工具函数 ── */

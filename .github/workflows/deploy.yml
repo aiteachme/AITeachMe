@@ -9,24 +9,50 @@ jobs:
   deploy:
     name: Trigger Cloudflare & Render Hooks
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_PAGES_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_HOOK_URL }}
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
 
     steps:
+      - name: Validate deploy secrets
+        run: |
+          missing=0
+
+          if [ -z "$CLOUDFLARE_PAGES_DEPLOY_HOOK_URL" ]; then
+            echo "❌ 缺少 CLOUDFLARE_PAGES_DEPLOY_HOOK_URL"
+            missing=1
+          fi
+
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "❌ 缺少 RENDER_DEPLOY_HOOK_URL"
+            missing=1
+          fi
+
+          if [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "❌ 缺少 RENDER_SERVICE_ID"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "请在 GitHub Secrets 中配置缺失的部署参数。"
+            exit 1
+          fi
+
       - name: Trigger Cloudflare Pages (Frontend) Build
         run: |
-          curl -X POST "https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/7a535f14-d72e-48b4-9341-484a01539a06"
+          curl -X POST "$CLOUDFLARE_PAGES_DEPLOY_HOOK_URL"
 
       - name: Trigger Render (Backend) Build
         id: trigger_render
         run: |
           echo "🚀 触发 Render 后端部署..."
-          RESPONSE=$(curl -s -X POST "https://api.render.com/deploy/srv-d6ore72a214c73f6mk60?key=pvdsQm6bSbo")
+          RESPONSE=$(curl -s -X POST "$RENDER_DEPLOY_HOOK_URL")
           echo "Response: $RESPONSE"
           echo "✅ 部署已触发，开始监测状态..."
 
       - name: Wait for Render Deployment
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE_ID: srv-d6ore72a214c73f6mk60
         run: |
           echo "⏳ 等待 Render 部署完成..."
 
@@ -42,7 +68,7 @@ jobs:
           ELAPSED=0
 
           while [ $ELAPSED -lt $MAX_WAIT ]; do
-            DEPLOY_INFO=$(curl -s "https://api.render.com/v1/services/${SERVICE_ID}/deploys?limit=1" \
+            DEPLOY_INFO=$(curl -s "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys?limit=1" \
               -H "Accept: application/json" \
               -H "Authorization: Bearer ${RENDER_API_KEY}")
 

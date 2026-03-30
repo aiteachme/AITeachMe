@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { ApiResponse } from "./types";
 import type {
   CurriculumSnapshotResponse,
   FullGraphResponse,
@@ -45,11 +46,6 @@ export interface KnowledgeOverviewResponse {
   graph: KnowledgeOverviewGraph | null;
   units: KnowledgeOverviewUnit[];
   stats: KnowledgeOverviewStats;
-}
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
 }
 
 export interface FetchKnowledgeOverviewOptions {

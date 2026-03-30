@@ -4,92 +4,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Clock, FileQuestion, Loader2, Trash2, XCircle, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { apiClient } from "../api/client";
+import type {
+  ExamGenerateResponse,
+  ExamGradeResponse,
+  ExamHistoryItem,
+  ExamPaperDeleteResponse,
+  ExamPaperDetailResponse,
+  ExamPaperItemResponse,
+  QuestionBankItemResponse,
+} from "../api/generated/model";
+import type { ApiResponse, PaginatedData } from "../api/types";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-  message?: string;
-}
-
-interface PaginatedData<T> {
-  items: T[];
-  total: number;
-  page: number;
-  size: number;
-}
-
-interface JobResult {
-  id: number;
-  status: string;
-  error_message?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface ExamGenerateResult extends JobResult {
-  subject?: string;
-  user_id?: string;
-  exam_mode?: string;
-  num_questions?: number;
-  exam_paper_id: number | null;
-}
-
-interface ExamGradeResult extends JobResult {}
-
-interface ExamPaperItem {
-  id: number;
-  item_order: number;
-  question_type: string;
-  difficulty: string;
-  stem: string;
-  options: string[] | null;
-  explanation: string;
-  user_answer: string | null;
-  is_correct: boolean | null;
-  score_obtained: number | null;
-  score_max: number | null;
-  error_cause_label: string | null;
-}
-
-interface ExamPaperDetail {
-  id: number;
-  status: string;
-  exam_mode: string;
-  total_items: number;
-  score_obtained: number | null;
-  total_score: number | null;
-  created_at: string;
+type ExamGenerateResult = ExamGenerateResponse;
+type ExamGradeResult = ExamGradeResponse;
+type ExamPaperItem = ExamPaperItemResponse;
+type ExamPaperDetail = Omit<ExamPaperDetailResponse, "items"> & {
   items: ExamPaperItem[];
-}
-
-interface ExamHistoryItem {
-  id: number;
-  exam_mode: string;
-  status: string;
-  total_items: number;
-  score_obtained: number | null;
-  total_score: number | null;
-  created_at: string;
-}
-
-interface DeleteExamResult {
-  deleted: boolean;
-  exam_paper_id: number;
-}
-
-interface QuestionBankItem {
-  question_template_id: number;
-  stem: string;
-  question_type: string;
-  difficulty: string;
-  teaching_unit_id: number;
-  times_asked: number;
-  last_asked_at: string;
-  last_exam_paper_id: number;
-}
+};
+type DeleteExamResult = ExamPaperDeleteResponse;
+type QuestionBankItem = QuestionBankItemResponse;
 
 type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
 
@@ -172,6 +107,13 @@ function toMessage(error: unknown): string {
   return "请求失败";
 }
 
+function normalizeExamPaper(detail: ExamPaperDetailResponse): ExamPaperDetail {
+  return {
+    ...detail,
+    items: detail.items ?? [],
+  };
+}
+
 async function fetchExamDetail(subject: string, examPaperId: number): Promise<ExamPaperDetail> {
   const res = await apiClient<ApiResponse<ExamPaperDetail>>(
     {
@@ -182,7 +124,11 @@ async function fetchExamDetail(subject: string, examPaperId: number): Promise<Ex
       timeout: EXAM_REQUEST_TIMEOUT_MS,
     },
   );
-  return res.data;
+  const detail = res.data;
+  if (!detail) {
+    throw new Error("试卷详情响应为空。");
+  }
+  return normalizeExamPaper(detail);
 }
 
 async function generateExamPaper(
@@ -208,6 +154,9 @@ async function generateExamPaper(
   );
 
   const result = res.data;
+  if (!result) {
+    throw new Error("试卷生成响应为空。");
+  }
   onStatus?.(result.status);
 
   if (result.status !== "completed") {
@@ -252,6 +201,9 @@ async function submitAndGradeExam(
   );
 
   const gradeResult = gradeRes.data;
+  if (!gradeResult) {
+    throw new Error("判分响应为空。");
+  }
   if (gradeResult.status !== "completed") {
     throw new Error(gradeResult.error_message ?? "判分失败");
   }
@@ -270,7 +222,7 @@ async function fetchHistory(subject: string): Promise<ExamHistoryItem[]> {
       timeout: EXAM_REQUEST_TIMEOUT_MS,
     },
   );
-  return res.data.items;
+  return res.data?.items ?? [];
 }
 
 async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
@@ -283,7 +235,7 @@ async function fetchQuestionBank(subject: string): Promise<QuestionBankItem[]> {
       timeout: EXAM_REQUEST_TIMEOUT_MS,
     },
   );
-  return res.data;
+  return res.data ?? [];
 }
 
 async function deleteExamPaper(subject: string, examPaperId: number): Promise<DeleteExamResult> {
@@ -296,7 +248,11 @@ async function deleteExamPaper(subject: string, examPaperId: number): Promise<De
       timeout: EXAM_REQUEST_TIMEOUT_MS,
     },
   );
-  return res.data;
+  const result = res.data;
+  if (!result) {
+    throw new Error("删除试卷响应为空。");
+  }
+  return result;
 }
 
 export function ExamsPage() {
