@@ -12,13 +12,13 @@ from pydantic import BaseModel, Field
 from app.core.database import managed_session
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
-from app.services.knowledge.docgen_store import (
+from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_published_knowledge_docs_files,
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
-from app.services.upload_support import (
+from app.utils.path_helpers import (
     build_knowledge_doc_build_path,
     build_knowledge_doc_path,
     build_knowledge_docs_build_dir,

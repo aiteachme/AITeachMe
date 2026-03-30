@@ -22,7 +22,7 @@ from app.repositories.files_repo import (
     list_raw_files_by_uids,
 )
 from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
-from app.services.knowledge.docgen_store import (
+from app.utils.docgen_store import (
     KnowledgeBuildLock,
     KnowledgeBuildRuntimeStatus,
     acquire_knowledge_build_lock,
@@ -33,8 +33,8 @@ from app.services.knowledge.docgen_store import (
     release_knowledge_build_lock,
     update_knowledge_build_status,
 )
-from app.services.presenters import require_id, require_uid
-from app.services.upload_support import (
+from app.utils.presenters import require_id, require_uid
+from app.utils.path_helpers import (
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )

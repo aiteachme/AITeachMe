@@ -96,14 +96,42 @@
 
 ### 3.6 Core 层
 
-`backend/app/core/*` 提供基础设施能力：
+`backend/app/core/*` 提供应用基础设施能力：
 
-- 配置
-- 数据库初始化
-- LLM / Embedding
-- Search / Memory / Skills / Tools / Sandbox
+- 配置（`config.py`）
+- 数据库初始化（`database.py`）
+- 异常定义（`exceptions.py`）
+- 日志（`logger.py`）
+- 运行时路径（`runtime_paths.py`）
+
+Core 只包含 5 个纯基础模块，不承载任何 AI 或业务逻辑。
+
+### 3.7 Infra 层
+
+`backend/app/infra/*` 提供 AI 平台引擎能力：
+
+- LLM / Embedding / Model Router
+- Agent Loop / Strategies / MCP
+- Memory / Search / Skills / Tools
+- Context / Checker / Teaching / Events
+- Security / Sandbox / Guardrails
+- Token Budget / Cache / Prompt Loader / Tracing / Reasoning
 
 它服务五大引擎，但不直接承载业务真相。
+
+### 3.8 Utils 层
+
+`backend/app/utils/*` 提供各层共用的纯工具函数：
+
+- `path_helpers.py`：运行时路径构建（核心路径 helper）
+- `presenters.py`：格式化与校验辅助
+- `time.py` / `subject.py` / `job_helpers.py` / `kg_helpers.py`
+
+Utils 只依赖 `core/`，可被任何层引用。
+
+### 分层依赖方向
+
+`api → services → workflows → infra → core`，`utils/` 可被任何层横向引用。
 
 ---
 
@@ -211,7 +239,7 @@ Profile 负责：
 
 ## 6. 运行时目录
 
-当前真实目录由 `backend/app/services/upload_support.py` 定义：
+当前真实目录由 `backend/app/utils/path_helpers.py` 定义：
 
 ```text
 backend/data/<subject>/
@@ -253,3 +281,10 @@ backend/data/<subject>/
 - digest / curriculum / exams / profile 继续沿用本地收敛后的数据库主线
 - workflow 仍是复杂业务的编排中心
 - 当前正式运行底座仍然是本地优先的 SQLite + sqlite-vec + 文件系统
+## Canonical Layering Notes
+
+- `core/` remains the minimal foundation layer. Canonical AI runtime modules now live in `infra/`, not in `core/`.
+- `infra/` is the canonical home for `llm`, `tracing`, `model_router`, and `prompt_loader`.
+- `utils/` is the canonical home for cross-layer pure helpers such as `path_helpers`, `presenters`, and `docgen_store`.
+- No new top-level `app/common` layer is introduced. Shared orchestration helpers continue to live under `workflows/common`.
+- Cross-layer helper shims are intentionally not retained under `services/`; canonical helper imports should go directly to `app.infra.*` and `app.utils.*`.

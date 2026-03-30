@@ -11,7 +11,7 @@ import structlog
 from app.core.database import managed_session
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.services.upload_support import build_asset_dir, build_raw_markdown_path
+from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path
 from app.workflows.digest.services.material_profiler import (
     build_material_profile,
     decide_digest_mode,

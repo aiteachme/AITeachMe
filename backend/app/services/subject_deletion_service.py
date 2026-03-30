@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -28,7 +28,7 @@ from app.models import (
 from app.repositories.knowledge import knowledge_repo
 from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
-from app.services.upload_support import build_asset_name_prefix, build_subject_dir, delete_asset_files
+from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files
 
 logger = structlog.get_logger()
 

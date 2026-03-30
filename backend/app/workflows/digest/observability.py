@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.core.config import get_settings
-from app.core.tracing import get_tracker, llm_trace_scope
+from app.infra.tracing import get_tracker, llm_trace_scope
 
 logger = structlog.get_logger(__name__)
 

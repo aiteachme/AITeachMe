@@ -15,14 +15,17 @@
 
 后端主顺序：
 
-`api -> services -> workflows -> repositories -> models -> schemas -> core`
+`api → services → workflows → infra → core`（辅助层：`utils` / `repositories` / `models` / `schemas`）
 
 原因：
 
 - `api` 告诉你对外资源长什么样
 - `services` 告诉你请求怎么被转成用例
 - `workflows` 告诉你复杂流程真实怎么跑
+- `infra` 告诉你 AI 引擎（LLM / 搜索 / 记忆 / 工具）怎么封装
+- `core` 告诉你应用基础设施怎么启动
 - `repositories/models` 告诉你数据最终怎么落
+- `utils` 是各层共用的纯工具函数，可被任何层引用
 
 ---
 
@@ -51,7 +54,36 @@
 | `repositories/` | 查询与持久化帮助 |
 | `models/` | 业务表模型 |
 | `schemas/` | API 请求 / 响应模型 |
-| `core/` | LLM、Search、Memory、Sandbox 等基础设施 |
+| `core/` | 应用基础设施（config, database, exceptions, logger, runtime_paths） |
+| `infra/` | AI 平台引擎（LLM, embedding, agent, tools, search, memory, guardrails 等） |
+| `utils/` | 纯工具函数（path_helpers, presenters, time, subject, job_helpers, kg_helpers） |
+
+### 4.1 分层依赖规则
+
+```text
+┌────────────────────────────────────────────────┐
+│  api/          ← HTTP 入口                     │
+│    ↓                                           │
+│  services/     ← 业务编排                      │
+│    ↓                                           │
+│  workflows/    ← 引擎编排                      │
+│    ↓                                           │
+│  infra/        ← AI 引擎                       │
+│    ↓                                           │
+│  core/         ← 应用基础设施                   │
+│                                                │
+│  utils/        ← 纯工具（可被任何层引用）        │
+│  models/       ← 数据模型（可被 repos 以上引用） │
+│  schemas/      ← API 模型（仅 api/services 引用）│
+│  repositories/ ← 持久化（仅 services 以上引用）  │
+└────────────────────────────────────────────────┘
+```
+
+**核心规则**：
+- 上层可以 import 下层，反之 **不可**
+- `utils/` 是横切层，只依赖 `core/`，不依赖任何业务层
+- `infra/` 可以 import `core/`，**不可** import `services/` 或 `workflows/`
+- `models/` 只依赖 `core/` 和 `utils/`，**不可** import `services/` 或更上层
 
 其中最需要优先读的是 `workflows/`，因为复杂主链路已经正式迁到这里。
 
@@ -74,7 +106,7 @@
 
 ## 6. Subject 目录真实布局
 
-当前真实目录由 `backend/app/services/upload_support.py` 定义：
+当前真实目录由 `backend/app/utils/path_helpers.py` 定义：
 
 ```text
 backend/data/<subject>/
@@ -104,7 +136,7 @@ backend/data/<subject>/
 
 ## 7. 主要路径 helper
 
-当前最重要的 helper 位于 `backend/app/services/upload_support.py`：
+当前最重要的 helper 位于 `backend/app/utils/path_helpers.py`：
 
 - `build_raw_dir()`
 - `build_raw_file_path()`
@@ -118,6 +150,9 @@ backend/data/<subject>/
 - `resolve_storage_key_path()`
 
 这些 helper 才是运行时路径真相，文档和代码都应以它们为准。
+
+> **注意**：旧的 `services/upload_support.py` 已删除。
+> 新代码 **必须** 从 `app.utils.path_helpers` 导入。
 
 ---
 
@@ -188,6 +223,16 @@ backend/data/<subject>/
 当前仓库的关键事实是：
 
 - 复杂流程真相在 `workflows/`
+- AI 引擎封装在 `infra/`
+- 应用基础设施在 `core/`（仅 5 个模块）
 - 数据真相在数据库
 - 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns`
-- 真实路径命名必须服从 `upload_support.py`
+- 真实路径命名必须服从 `utils/path_helpers.py`
+- 依赖方向：`api → services → workflows → infra → core`，`utils/` 可被任意层引用
+## Canonical Runtime Helpers
+
+- `app.utils.path_helpers` is the canonical source for runtime path construction.
+- `app.utils.docgen_store` is the canonical source for knowledge-doc build lock, manifest, and runtime build-status helpers.
+- Legacy helper entrypoints under `services/` have been deleted; imports should go directly to `app.utils.path_helpers`, `app.utils.presenters`, and `app.utils.docgen_store`.
+- `knowledge_markdowns/build_status.json` is now a formal runtime artifact beside `manifest.json` and `.build.lock`.
+- No new top-level `app/common` package is introduced; workflow shared orchestration remains under `workflows/common`.

@@ -8,7 +8,7 @@ from time import perf_counter
 
 import structlog
 
-from app.services.upload_support import build_docgen_intermediate_latest_dir
+from app.utils.path_helpers import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.cleanse_service import (
     llm_heal_full,

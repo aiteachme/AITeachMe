@@ -1,4 +1,4 @@
-﻿"""File service layer."""
+"""File service layer."""
 
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ from app.schemas.files import (
     FilesData,
     FilesUploadData,
 )
-from app.services.presenters import require_id, require_uid
-from app.services.upload_support import (
+from app.utils.presenters import require_id, require_uid
+from app.utils.path_helpers import (
     build_asset_dir,
     build_asset_name_prefix,
     build_raw_file_path,

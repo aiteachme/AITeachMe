@@ -9,7 +9,7 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings
-from app.services.knowledge.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult
 from app.workflows.digest.docs.publish import (
@@ -239,7 +239,11 @@ def build_prepare_shared_node(*, context: WorkflowContext):
         if not shared_inputs.source_packets or not shared_inputs.section_packets:
             return {**state, "error": "No shared digest inputs were produced."}
 
-        materialized = await materialize_shared_inputs(`r`n            subject=subject,`r`n            shared_inputs=shared_inputs,`r`n            build_session_id=state["build_session_id"],`r`n        )
+        materialized = await materialize_shared_inputs(
+            subject=subject,
+            shared_inputs=shared_inputs,
+            build_session_id=state["build_session_id"],
+        )
         session = create_unified_build_session(
             subject=subject,
             file_ids=file_ids,

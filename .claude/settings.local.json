@@ -34,7 +34,15 @@
       "mcp__chrome-devtools__take_screenshot",
       "mcp__chrome-devtools__fill",
       "Bash(D:/miniconda/envs/atm/python.exe -m py_compile app/workflows/digest/kg/services/extractor.py)",
-      "Bash(D:/miniconda/envs/atm/python.exe -m py_compile app/workflows/digest/kg/prepare_nodes.py)"
+      "Bash(D:/miniconda/envs/atm/python.exe -m py_compile app/workflows/digest/kg/prepare_nodes.py)",
+      "WebSearch",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:www.sourcetrail.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(python -c \"from app.core.config import get_settings; from app.infra.llm import acompletion; print\\(''OK: both imports work''\\)\")",
+      "Bash(where python3:*)",
+      "Bash(where python:*)"
     ]
   }
 }

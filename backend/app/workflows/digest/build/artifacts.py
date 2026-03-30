@@ -10,7 +10,7 @@ from typing import Any, TypeVar
 import structlog
 from pydantic import BaseModel
 
-from app.services.upload_support import build_subject_dir
+from app.utils.path_helpers import build_subject_dir
 
 logger = structlog.get_logger()
 

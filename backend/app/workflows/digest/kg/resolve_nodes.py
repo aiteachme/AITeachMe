@@ -9,7 +9,7 @@ from time import perf_counter
 from sqlmodel import select
 
 from app.core.database import managed_session
-from app.core.embedding import aembed_texts
+from app.infra.embedding import aembed_texts
 from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress

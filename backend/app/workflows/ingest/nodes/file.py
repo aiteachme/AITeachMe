@@ -15,7 +15,7 @@ from pathlib import Path
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import (
+from app.utils.path_helpers import (
     build_asset_dir,
     build_asset_name_prefix,
     build_raw_markdown_path,

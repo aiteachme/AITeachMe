@@ -48,8 +48,25 @@ AITeachMe/
 ├── datasets/          # 数据集与样本
 ├── models/            # AI 模型资源
 ├── configs/           # 配置模板
-└── infra/             # 基础设施配置
+└── infra/             # 部署与基础设施配置
 ```
+
+### 后端分层架构
+
+```text
+backend/app/
+├── api/            # HTTP 资源入口（路由、请求校验）
+├── services/       # 用例入口（业务编排、结果封装）
+├── workflows/      # 五大引擎编排（Ingest/Digest/Interact/Examine/Profile）
+├── repositories/   # 查询与持久化
+├── models/         # 业务表模型（SQLAlchemy）
+├── schemas/        # API 请求/响应模型（Pydantic）
+├── core/           # 应用基础设施（config, database, exceptions, logger, runtime_paths）
+├── infra/          # AI 平台引擎（LLM, embedding, agent, tools, search, memory 等）
+└── utils/          # 通用工具函数
+```
+
+**依赖方向**：`api → services → workflows → infra → core`，`infra/` 可以 import `core/`，反之不可。
 
 详细架构说明请参考 [项目目录架构规范](./docs/standards/standard-01-project-directory-architecture.md)
 
