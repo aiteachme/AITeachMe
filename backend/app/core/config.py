@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.core.exceptions import MissingLLMApiKeyError
 
 _EMBEDDING_DIM_MAP: dict[str, int] = {
+    "text-embedding-v4": 1024,
     "text-embedding-v3": 1536,
     "text-embedding-v2": 1536,
     "text-embedding-ada-002": 1536,

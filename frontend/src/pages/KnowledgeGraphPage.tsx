@@ -159,7 +159,6 @@ export function KnowledgeGraphPage() {
             <WordCloud3D
               subjectLabel={subjectLabel}
               nodes={wordCloudNodes}
-              height={520}
             />
           </Suspense>
         ) : null}

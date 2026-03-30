@@ -2451,7 +2451,7 @@ export function KnowledgeDocsPage() {
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex flex-col shrink-0 bg-white shadow-[10px_0_20px_-10px_rgba(0,0,0,0.05)] z-10",
           graphViewMode === "hidden" ? "w-full" : 
-          graphViewMode === "split" ? "w-1/2 border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
+          graphViewMode === "split" ? "w-[65%] border-r border-slate-200" : "w-0 overflow-hidden opacity-0"
         )}
       >
         {!isCompactPanels && (
@@ -2740,7 +2740,7 @@ export function KnowledgeDocsPage() {
         className={cn(
           "relative h-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] bg-slate-50 shrink-0 border-l border-slate-200/50",
           graphViewMode === "hidden" ? "w-0 overflow-hidden opacity-0" : 
-          graphViewMode === "split" ? "w-1/2" : "w-full"
+          graphViewMode === "split" ? "w-[35%]" : "w-full"
         )}
       >
         {subjectId && graphViewMode !== "hidden" && (

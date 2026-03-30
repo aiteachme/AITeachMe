@@ -50,9 +50,9 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const DEFAULT_COLOR = "#94a3b8";
-const MAX_VISIBLE_WORDS = 56;
-const SPHERE_RADIUS = 190;
-const AUTO_ROTATE_SPEED = 0.0036;
+const MAX_VISIBLE_WORDS = 80;
+const SPHERE_RADIUS = 320;
+const AUTO_ROTATE_SPEED = 0.003;
 const TILT_RESET_X = -0.16;
 const SPRING_FACTOR = 0.07;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -85,7 +85,7 @@ function buildWordSphere(nodes: WordCloudNode[]): BaseWord[] {
       name: node.name,
       confidence: emphasis,
       color,
-      fontSize: 13 + emphasis * 9,
+      fontSize: 10 + emphasis * 6,
       x: Math.cos(theta) * Math.sin(phi) * radius,
       y: Math.sin(theta) * Math.sin(phi) * radius * 0.72,
       z: Math.cos(phi) * radius,
@@ -109,15 +109,16 @@ function rotateWord(word: BaseWord, rotateX: number, rotateY: number): RenderWor
     ...word,
     screenX: rotatedX,
     screenY: rotatedY,
-    scale: 0.72 + depth * 0.68 + word.confidence * 0.16,
-    opacity: 0.24 + depth * 0.72,
-    blurPx: (1 - depth) * 0.8,
+    scale: 0.6 + depth * 0.5 + word.confidence * 0.12,
+    opacity: 0.2 + depth * 0.78,
+    blurPx: (1 - depth) * 1.2,
     glowColor: hexToRgba(word.color, 0.18 + depth * 0.32),
     zIndex: Math.round(depth * 100),
   };
 }
 
-export function WordCloud3D({ subjectLabel, nodes, height = 520 }: WordCloud3DProps) {
+export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
+  const containerHeight = height ?? "calc(100vh - 14rem)";
   const [rotation, setRotation] = useState({ x: TILT_RESET_X, y: 0 });
   const targetRotationRef = useRef({ x: TILT_RESET_X, y: 0 });
   const rotationRef = useRef({ x: TILT_RESET_X, y: 0 });
@@ -147,7 +148,7 @@ export function WordCloud3D({ subjectLabel, nodes, height = 520 }: WordCloud3DPr
     return (
       <div
         className="flex items-center justify-center rounded-2xl border border-slate-800 bg-slate-950"
-        style={{ height }}
+        style={{ height: containerHeight }}
       >
         <div className="text-center text-slate-500">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-800">
@@ -176,7 +177,7 @@ export function WordCloud3D({ subjectLabel, nodes, height = 520 }: WordCloud3DPr
   return (
     <div
       className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-950 via-[#0a0a1a] to-slate-950"
-      style={{ height }}
+      style={{ height: containerHeight }}
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const offsetX = (event.clientX - rect.left) / rect.width - 0.5;
@@ -191,11 +192,11 @@ export function WordCloud3D({ subjectLabel, nodes, height = 520 }: WordCloud3DPr
       }}
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-700/12 blur-[100px]" />
-        <div className="absolute left-[18%] top-[18%] h-32 w-32 rounded-full bg-cyan-500/8 blur-[70px]" />
-        <div className="absolute bottom-[14%] right-[16%] h-40 w-40 rounded-full bg-indigo-500/10 blur-[80px]" />
-        <div className="absolute left-1/2 top-1/2 h-[340px] w-[340px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/6" />
-        <div className="absolute left-1/2 top-1/2 h-[250px] w-[250px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
+        <div className="absolute left-1/2 top-1/2 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-700/12 blur-[120px]" />
+        <div className="absolute left-[18%] top-[18%] h-40 w-40 rounded-full bg-cyan-500/8 blur-[90px]" />
+        <div className="absolute bottom-[14%] right-[16%] h-48 w-48 rounded-full bg-indigo-500/10 blur-[100px]" />
+        <div className="absolute left-1/2 top-1/2 h-[540px] w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/6" />
+        <div className="absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5" />
       </div>
 
       <div className="pointer-events-none absolute left-0 right-0 top-0 p-5">
@@ -217,7 +218,7 @@ export function WordCloud3D({ subjectLabel, nodes, height = 520 }: WordCloud3DPr
         {renderedWords.map((word, index) => (
           <div
             key={`${word.name}-${index}`}
-            className="pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-white/8 px-2.5 py-1 text-center font-medium tracking-[0.02em] backdrop-blur-sm"
+            className="pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-white/8 px-2 py-0.5 text-center font-medium tracking-[0.02em] backdrop-blur-sm"
             style={{
               transform: `translate(calc(-50% + ${word.screenX}px), calc(-50% + ${word.screenY}px)) scale(${word.scale})`,
               color: word.color,
