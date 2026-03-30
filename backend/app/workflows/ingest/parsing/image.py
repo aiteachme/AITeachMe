@@ -8,8 +8,8 @@ from pathlib import Path
 import structlog
 
 from app.core.exceptions import FileParseError
-from app.core.llm import acompletion
-from app.core.prompt_loader import populate_prompt
+from app.infra.llm import acompletion
+from app.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
@@ -87,7 +87,7 @@ async def parse_image_bytes_with_llm_vision(
     ]
 
     try:
-        from app.core.model_router import TaskType
+        from app.infra.model_router import TaskType
         # 使用 OCR 专用配置覆盖
         import litellm
         response = await litellm.acompletion(

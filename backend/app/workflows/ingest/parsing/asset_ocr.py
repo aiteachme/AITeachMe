@@ -11,7 +11,7 @@ from urllib.parse import unquote
 from pydantic import BaseModel
 import structlog
 
-from app.services.upload_support import list_asset_files
+from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
 from app.workflows.ingest.parsing.utils import MIME_MAP

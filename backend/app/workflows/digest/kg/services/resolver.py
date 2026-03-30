@@ -25,9 +25,9 @@ from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_ENTITY_MATCH,
     USER_PROMPT_KG_ENTITY_MATCH,
 )
-from app.core.embedding import aembed_texts
-from app.core.llm import acompletion_structured
-from app.core.prompt_loader import populate_prompt
+from app.infra.embedding import aembed_texts
+from app.infra.llm import acompletion_structured
+from app.infra.prompt_loader import populate_prompt
 from app.models.knowledge_graph import (
     EdgeRevision,
     EvidenceLink,

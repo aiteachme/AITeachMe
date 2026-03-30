@@ -9,8 +9,8 @@ import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, or_, select
 
-from app.core.llm import acompletion_structured
-from app.core.prompt_loader import populate_prompt
+from app.infra.llm import acompletion_structured
+from app.infra.prompt_loader import populate_prompt
 from app.models.curriculum import TeachingUnit, TeachingUnitMembership, TeachingUnitRevision
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import curriculum_repo

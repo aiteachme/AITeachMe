@@ -7,8 +7,8 @@ import re
 
 import structlog
 
-from app.core.llm import acompletion
-from app.core.model_router import TaskType
+from app.infra.llm import acompletion
+from app.infra.model_router import TaskType
 from app.workflows.digest.prompts.docgen_prompts import CLEANSE_PROMPT
 
 logger = structlog.get_logger()

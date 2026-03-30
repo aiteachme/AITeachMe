@@ -7,7 +7,7 @@ from uuid import uuid4
 import structlog
 
 from app.core.database import managed_session
-from app.core.embedding import aembed_texts
+from app.infra.embedding import aembed_texts
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 from app.repositories import knowledge_repo

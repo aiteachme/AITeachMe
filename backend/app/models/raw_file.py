@@ -69,13 +69,13 @@ class RawFile(SQLModel, table=True):
 
     @property
     def storage_key(self) -> str:
-        from app.services.upload_support import to_storage_key
+        from app.utils.path_helpers import to_storage_key
 
         return to_storage_key(self.file_path)
 
     @storage_key.setter
     def storage_key(self, value: str) -> None:
-        from app.services.upload_support import resolve_storage_key_path
+        from app.utils.path_helpers import resolve_storage_key_path
 
         self.file_path = str(resolve_storage_key_path(value))
 

@@ -21,15 +21,15 @@ from app.repositories.files_repo import (
     list_raw_files_by_uids,
 )
 from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
-from app.services.knowledge.docgen_store import (
+from app.utils.docgen_store import (
     KnowledgeBuildLock,
     acquire_knowledge_build_lock,
     clear_docgen_staging,
     read_knowledge_manifest,
     release_knowledge_build_lock,
 )
-from app.services.presenters import require_id, require_uid
-from app.services.upload_support import build_merged_knowledge_base_path
+from app.utils.presenters import require_id, require_uid
+from app.utils.path_helpers import build_merged_knowledge_base_path
 from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.time import utcnow
 from app.workflows.digest.unified import run_unified_digest_build

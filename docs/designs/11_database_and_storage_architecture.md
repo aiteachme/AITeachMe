@@ -38,7 +38,7 @@ backend/data/
 
 说明：
 
-- 这些目录名来自 `upload_support.py`
+- 这些目录名来自 `utils/path_helpers.py`
 - 当前代码真实目录名是复数形式
 - `assets/` 是 subject 根目录，单文件资产继续按 `<file_id>/` 分桶
 

@@ -15,7 +15,7 @@ import time
 from app.core.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import list_asset_files
+from app.utils.path_helpers import list_asset_files
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.nodes.common import workflow_logger
 from app.workflows.ingest.parsing.orchestrator import fast_parse_file

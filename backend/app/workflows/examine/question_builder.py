@@ -11,9 +11,9 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.core.llm import acompletion_structured
-from app.core.model_router import TaskType
-from app.core.prompt_loader import populate_prompt
+from app.infra.llm import acompletion_structured
+from app.infra.model_router import TaskType
+from app.infra.prompt_loader import populate_prompt
 from app.models import Difficulty, KnowledgeNode, QuestionTemplate, QuestionType, TeachingUnit
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM
