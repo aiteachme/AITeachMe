@@ -1,20 +1,24 @@
-﻿"""Exam API endpoints."""
+"""Exam API endpoints."""
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Path, Query
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
+from app.models import KnowledgeNode
+from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
-    ExamGenerateResponse,
     ExamGenerateRequest,
+    ExamGenerateResponse,
     ExamGradeResponse,
     ExamHistoryItem,
+    ExamNodeLinkResponse,
     ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
@@ -22,9 +26,9 @@ from app.schemas.exams import (
     QuestionBankItemResponse,
 )
 from app.services.exams_service import (
-    ExamPaperDetail,
     ExamGenerationResult,
     ExamGradingResult,
+    ExamPaperDetail,
     QuestionBankItem,
     delete_exam_paper,
     get_exam_history,
@@ -39,7 +43,7 @@ from app.services.subject_service import get_subject_record
 router = APIRouter(prefix="/api/v1/subjects/{subject}/exams", tags=["exams"])
 
 
-def _parse_json_list(raw: str | None) -> list:
+def _parse_json_list(raw: str | None) -> list[Any]:
     if not raw:
         return []
     try:
@@ -47,6 +51,16 @@ def _parse_json_list(raw: str | None) -> list:
     except json.JSONDecodeError:
         return []
     return value if isinstance(value, list) else []
+
+
+def _parse_json_object(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _to_exam_generate_response(job: ExamGenerationResult) -> ExamGenerateResponse:
@@ -63,6 +77,7 @@ def _to_exam_generate_response(job: ExamGenerationResult) -> ExamGenerateRespons
         exam_paper_id=job.exam_paper_id,
         theme_tree_node_id=job.theme_tree_node_id,
         teaching_unit_ids=[int(item) for item in _parse_json_list(job.teaching_unit_ids_json)],
+        sample_file_uids=[str(item) for item in _parse_json_list(job.sample_file_uids_json)],
     )
 
 
@@ -97,12 +112,74 @@ def _to_exam_history_item(paper) -> ExamHistoryItem:
     )
 
 
-def _to_exam_paper_detail_response(detail: ExamPaperDetail) -> ExamPaperDetailResponse:
+def _build_node_link_responses(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    raw_links: list[Any],
+) -> list[ExamNodeLinkResponse]:
+    node_cache: dict[int, str] = {}
+    mastery_cache: dict[int, float | None] = {}
+    responses: list[ExamNodeLinkResponse] = []
+
+    for raw_link in raw_links:
+        if not isinstance(raw_link, dict):
+            continue
+        raw_node_id = raw_link.get("knowledge_node_id")
+        if isinstance(raw_node_id, int):
+            node_id = raw_node_id
+        elif isinstance(raw_node_id, str) and raw_node_id.isdigit():
+            node_id = int(raw_node_id)
+        else:
+            continue
+
+        if node_id not in node_cache:
+            node = session.get(KnowledgeNode, node_id)
+            node_cache[node_id] = node.canonical_name if node is not None else f"Node {node_id}"
+        if node_id not in mastery_cache:
+            state = profile_repo.get_knowledge_state(
+                session,
+                user_id=user_id,
+                subject=subject,
+                knowledge_node_id=node_id,
+            )
+            mastery_cache[node_id] = state.mastery_score if state is not None else None
+
+        coverage_weight = raw_link.get("coverage_weight", 0.0)
+        try:
+            normalized_weight = float(coverage_weight)
+        except (TypeError, ValueError):
+            normalized_weight = 0.0
+
+        responses.append(
+            ExamNodeLinkResponse(
+                knowledge_node_id=node_id,
+                knowledge_node_name=node_cache[node_id],
+                coverage_weight=normalized_weight,
+                role=str(raw_link.get("role", "primary")),
+                mastery_score=mastery_cache[node_id],
+            )
+        )
+    return responses
+
+
+def _to_exam_paper_detail_response(session: Session, detail: ExamPaperDetail) -> ExamPaperDetailResponse:
     paper = detail.paper
+    selection_context = _parse_json_object(paper.selection_context_json)
+    reveal_correct_answer = paper.status == "graded"
     items: list[ExamPaperItemResponse] = []
+
     for item in detail.items:
         options = _parse_json_list(item.options_snapshot_json)
         attempts = detail.attempts_by_item_id.get(item.id or -1)
+        raw_links = _parse_json_list(item.node_refs_json)
+        node_links = _build_node_link_responses(
+            session,
+            subject=paper.subject,
+            user_id=paper.user_id,
+            raw_links=raw_links,
+        )
         items.append(
             ExamPaperItemResponse(
                 id=item.id or 0,
@@ -112,9 +189,10 @@ def _to_exam_paper_detail_response(detail: ExamPaperDetail) -> ExamPaperDetailRe
                 difficulty=item.difficulty,
                 stem=item.stem_snapshot,
                 options=[str(option) for option in options] if options else None,
+                correct_answer=item.answer_snapshot if reveal_correct_answer else None,
                 explanation=item.explanation_snapshot,
                 teaching_unit_id=item.teaching_unit_id,
-                node_links=_parse_json_list(item.node_refs_json),
+                node_links=node_links,
                 user_answer=(attempts.answer_content if attempts is not None else None),
                 is_correct=(attempts.is_correct if attempts is not None else None),
                 score_obtained=(attempts.score_obtained if attempts is not None else None),
@@ -135,6 +213,7 @@ def _to_exam_paper_detail_response(detail: ExamPaperDetail) -> ExamPaperDetailRe
         submitted_at=paper.submitted_at,
         graded_at=paper.graded_at,
         created_at=paper.created_at,
+        selection_context=selection_context,
         items=items,
     )
 
@@ -149,6 +228,8 @@ def _to_question_bank_item_response(item: QuestionBankItem) -> QuestionBankItemR
         times_asked=item.times_asked,
         last_asked_at=item.last_asked_at,
         last_exam_paper_id=item.last_exam_paper_id,
+        knowledge_points=item.knowledge_points,
+        style_summary=item.style_summary,
     )
 
 
@@ -173,6 +254,9 @@ async def api_trigger_exam_generate(
         exam_mode=body.exam_mode,
         num_questions=body.num_questions,
         user_prompt=body.user_prompt,
+        style_prompt=body.style_prompt,
+        focus_prompt=body.focus_prompt,
+        sample_file_uids=body.sample_file_uids,
         theme_tree_node_id=body.theme_tree_node_id,
         teaching_unit_ids=body.teaching_unit_ids,
     )
@@ -248,7 +332,7 @@ async def api_get_exam_detail(
         user_id=user.user_id,
         exam_paper_id=exam_paper_id,
     )
-    return ok_response(_to_exam_paper_detail_response(detail))
+    return ok_response(_to_exam_paper_detail_response(session, detail))
 
 
 @router.post(
@@ -310,7 +394,7 @@ async def api_submit_exam(
         user_id=user.user_id,
         exam_paper_id=exam_paper_id,
     )
-    return ok_response(_to_exam_paper_detail_response(detail))
+    return ok_response(_to_exam_paper_detail_response(session, detail))
 
 
 @router.post(
@@ -328,7 +412,6 @@ async def api_trigger_exam_grade(
 ) -> ApiResponse[ExamGradeResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized)
-
     await get_exam_paper_detail(
         session,
         subject=normalized,

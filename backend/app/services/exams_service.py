@@ -1,4 +1,4 @@
-﻿"""Exam domain service layer."""
+"""Exam domain service layer."""
 
 from __future__ import annotations
 
@@ -13,11 +13,14 @@ import structlog
 from sqlmodel import Session, select
 
 from app.core.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
+from app.infra.tracing import llm_trace_scope
 from app.models import (
     ExamMode,
     ExamPaper,
     ExamPaperItem,
     ExamPaperStatus,
+    KnowledgeNode,
+    QuestionTemplate,
     QuestionType,
     validate_status_transition,
 )
@@ -25,6 +28,7 @@ from app.repositories import exams_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.time import utcnow
 from app.workflows.examine.answer_grader import grade_paper
+from app.workflows.examine.context import build_exam_style_profile
 from app.workflows.examine.paper_assembler import assemble_paper
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
@@ -50,6 +54,8 @@ class QuestionBankItem:
     times_asked: int
     last_asked_at: datetime
     last_exam_paper_id: int
+    knowledge_points: list[str]
+    style_summary: str | None
 
 
 @dataclass(frozen=True)
@@ -78,6 +84,7 @@ class ExamGenerationResult:
     exam_paper_id: int | None
     theme_tree_node_id: int | None
     teaching_unit_ids_json: str
+    sample_file_uids_json: str
 
 
 @dataclass(frozen=True)
@@ -112,7 +119,7 @@ async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.
 
     if lock.locked():
         _raise_conflict(
-            "当前已有试卷生成任务进行中，请稍候再试。",
+            "当前已有试卷生成任务进行中，请稍后再试。",
             error_code="EXAM_GENERATE_JOB_ACTIVE",
         )
     await lock.acquire()
@@ -146,6 +153,26 @@ def _normalize_answers_payload(*, answers: dict[int | str, str]) -> dict[int, st
     return normalized
 
 
+def _parse_json_list(raw: str | None) -> list[object]:
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    return decoded if isinstance(decoded, list) else []
+
+
+def _parse_json_object(raw: str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
 def _extract_requested_question_count(user_prompt: str | None) -> int | None:
     if not user_prompt:
         return None
@@ -163,22 +190,35 @@ def _choose_default_question_count(mode: str) -> int:
         ExamMode.WEAKPOINT_BOOST.value: 10,
         ExamMode.REVIEW.value: 8,
         ExamMode.MOCK_FINAL.value: 20,
+        ExamMode.REAL_EXAM.value: 24,
     }
     return defaults.get(mode, 10)
 
 
-def _choose_preferred_question_types(mode: str, user_prompt: str | None) -> list[str]:
+def _choose_preferred_question_types(
+    mode: str,
+    user_prompt: str | None,
+    style_profile=None,
+) -> list[str]:
     prompt = (user_prompt or "").lower()
     picked: list[str] = []
     if any(key in prompt for key in ["选择", "单选", "choice", "mcq"]):
         picked.append(QuestionType.SINGLE_CHOICE.value)
     if any(key in prompt for key in ["填空", "blank"]):
         picked.append(QuestionType.FILL_BLANK.value)
-    if any(key in prompt for key in ["简答", "问答", "解答", "分析", "证明", "essay"]):
+    if any(key in prompt for key in ["简答", "问答", "解答", "分析", "论述", "essay"]):
         picked.append(QuestionType.SHORT_ANSWER.value)
 
     if picked:
         return list(dict.fromkeys(picked))
+
+    profile_types = [
+        str(item).strip()
+        for item in getattr(style_profile, "preferred_question_types", []) or []
+        if str(item).strip()
+    ]
+    if profile_types:
+        return list(dict.fromkeys(profile_types))
 
     defaults_by_mode = {
         ExamMode.DIAGNOSTIC.value: [
@@ -200,6 +240,11 @@ def _choose_preferred_question_types(mode: str, user_prompt: str | None) -> list
             QuestionType.FILL_BLANK.value,
             QuestionType.SHORT_ANSWER.value,
         ],
+        ExamMode.REAL_EXAM.value: [
+            QuestionType.SINGLE_CHOICE.value,
+            QuestionType.FILL_BLANK.value,
+            QuestionType.SHORT_ANSWER.value,
+        ],
     }
     return defaults_by_mode.get(
         mode,
@@ -212,9 +257,9 @@ def _estimate_questions_per_unit(*, num_questions: int, unit_count: int, mode: s
         return 3
     spread_units = max(1, min(unit_count, 8))
     baseline = (num_questions + spread_units - 1) // spread_units
-    if mode == ExamMode.MOCK_FINAL.value:
+    if mode in {ExamMode.MOCK_FINAL.value, ExamMode.REAL_EXAM.value}:
         baseline = max(baseline, 4)
-    return max(2, min(10, baseline))
+    return max(2, min(12, baseline))
 
 
 def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
@@ -223,25 +268,142 @@ def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
     return str(exam_mode).strip().lower()
 
 
+def _resolve_auto_build_unit_ids(
+    session: Session,
+    *,
+    subject: str,
+    teaching_unit_ids: list[int] | None,
+) -> list[int]:
+    if teaching_unit_ids:
+        normalized = sorted({int(item) for item in teaching_unit_ids if int(item) > 0})
+        if normalized:
+            return normalized
+
+    active_ids = exams_repo.list_teaching_unit_ids_by_subject(
+        session,
+        subject=subject,
+        status="active",
+    )
+    if active_ids:
+        return active_ids
+
+    return exams_repo.list_teaching_unit_ids_by_subject(
+        session,
+        subject=subject,
+        status=None,
+    )
+
+
+def _summarize_style_hint(selection_hints_json: str | None) -> str | None:
+    hints = _parse_json_object(selection_hints_json)
+    style_profile = hints.get("style_profile")
+    if not isinstance(style_profile, dict):
+        return None
+
+    parts: list[str] = []
+    title_hint = style_profile.get("title_hint")
+    if isinstance(title_hint, str) and title_hint.strip():
+        parts.append(title_hint.strip())
+
+    format_hint = style_profile.get("format_hint")
+    if isinstance(format_hint, str) and format_hint.strip() and format_hint != "standard":
+        parts.append(format_hint.strip())
+
+    focus_prompt = style_profile.get("focus_prompt")
+    if isinstance(focus_prompt, str) and focus_prompt.strip():
+        parts.append(focus_prompt.strip())
+
+    if not parts:
+        notes = style_profile.get("notes")
+        if isinstance(notes, list):
+            for note in notes:
+                if isinstance(note, str) and note.strip():
+                    parts.append(note.strip())
+                    break
+
+    if not parts:
+        return None
+    return " | ".join(parts[:2])
+
+
+def _resolve_template_knowledge_points(
+    session: Session,
+    *,
+    template_ids: list[int],
+) -> dict[int, list[str]]:
+    if not template_ids:
+        return {}
+
+    templates = list(
+        session.exec(
+            select(QuestionTemplate).where(QuestionTemplate.id.in_(template_ids))
+        ).all()
+    )
+    node_ids: set[int] = set()
+    refs_by_template: dict[int, list[dict[str, object]]] = {}
+    for template in templates:
+        if template.id is None:
+            continue
+        refs = [item for item in _parse_json_list(template.node_refs_json) if isinstance(item, dict)]
+        refs_by_template[int(template.id)] = refs
+        for ref in refs:
+            raw_node_id = ref.get("knowledge_node_id")
+            if isinstance(raw_node_id, int) and raw_node_id > 0:
+                node_ids.add(raw_node_id)
+
+    nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(node_ids))).all()) if node_ids else []
+    node_name_by_id = {int(node.id): node.canonical_name for node in nodes if node.id is not None}
+
+    result: dict[int, list[str]] = {}
+    for template_id, refs in refs_by_template.items():
+        names: list[str] = []
+        for ref in refs:
+            raw_node_id = ref.get("knowledge_node_id")
+            if isinstance(raw_node_id, int) and raw_node_id in node_name_by_id:
+                names.append(node_name_by_id[raw_node_id])
+        deduped = list(dict.fromkeys(name for name in names if name))
+        result[template_id] = deduped
+    return result
+
+
 async def trigger_question_build(
     session: Session,
     *,
     subject: str,
+    user_id: str,
     unit_ids: list[int],
     questions_per_unit: int,
+    exam_mode: str,
+    preferred_question_types: list[str] | None = None,
+    user_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    style_profile: ExamStyleProfile | None = None,
 ) -> QuestionBuildResult:
     runtime_job_id = _new_runtime_job_id()
     created_at = utcnow()
     resolved_questions_per_unit = max(1, int(questions_per_unit))
 
     try:
-        state = await QuestionBuildWorkflow.run(
+        with llm_trace_scope(
             subject=subject,
-            unit_ids=unit_ids,
-            questions_per_unit=resolved_questions_per_unit,
-            job_id=runtime_job_id,
-            session=session,
-        )
+            build_session_id=str(runtime_job_id),
+            workflow="examine.question_build",
+            lane="question_build",
+            node="generate_templates",
+        ):
+            state = await QuestionBuildWorkflow.run(
+                subject=subject,
+                user_id=user_id,
+                unit_ids=unit_ids,
+                questions_per_unit=resolved_questions_per_unit,
+                job_id=runtime_job_id,
+                exam_mode=exam_mode,
+                preferred_question_types=preferred_question_types or [],
+                user_prompt=user_prompt,
+                focus_prompt=focus_prompt,
+                style_profile=style_profile,
+                session=session,
+            )
         error = state.get("error")
         updated_at = utcnow()
         return QuestionBuildResult(
@@ -256,6 +418,13 @@ async def trigger_question_build(
         )
     except Exception as exc:  # noqa: BLE001
         updated_at = utcnow()
+        logger.error(
+            "trigger_question_build_failed",
+            subject=subject,
+            user_id=user_id,
+            error=str(exc),
+            exc_info=True,
+        )
         return QuestionBuildResult(
             id=runtime_job_id,
             subject=subject,
@@ -281,33 +450,6 @@ async def get_question_build_job_status(
     )
 
 
-def _resolve_auto_build_unit_ids(
-    session: Session,
-    *,
-    subject: str,
-    teaching_unit_ids: list[int] | None,
-) -> list[int]:
-    if teaching_unit_ids:
-        normalized = sorted({int(item) for item in teaching_unit_ids if int(item) > 0})
-        if normalized:
-            return normalized
-
-    active_ids = exams_repo.list_teaching_unit_ids_by_subject(
-        session,
-        subject=subject,
-        status="active",
-    )
-    if active_ids:
-        return active_ids
-
-    all_ids = exams_repo.list_teaching_unit_ids_by_subject(
-        session,
-        subject=subject,
-        status=None,
-    )
-    return all_ids
-
-
 async def trigger_exam_generate(
     session: Session,
     *,
@@ -316,87 +458,126 @@ async def trigger_exam_generate(
     exam_mode: ExamMode | str,
     num_questions: int | None = None,
     user_prompt: str | None = None,
+    style_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    sample_file_uids: list[str] | None = None,
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
 ) -> ExamGenerationResult:
     mode = _resolve_generate_mode(exam_mode)
-    prompt_requested_count = _extract_requested_question_count(user_prompt)
-    resolved_num_questions = (
-        prompt_requested_count
-        or (int(num_questions) if num_questions is not None else None)
-        or _choose_default_question_count(mode)
-    )
-    preferred_question_types = _choose_preferred_question_types(mode, user_prompt)
     runtime_job_id = _new_runtime_job_id()
     created_at = utcnow()
+    build_session_id = f"exam_generate_{runtime_job_id}"
     lock = await _acquire_exam_generate_lock(subject=subject, user_id=user_id)
+
     try:
+        snapshot = exams_repo.get_published_curriculum_version(session, subject)
+        if snapshot is None:
+            raise NoPublishedCurriculumSnapshotError(subject)
+
+        style_profile = build_exam_style_profile(
+            session,
+            subject=subject,
+            sample_file_uids=sample_file_uids,
+            style_prompt=style_prompt,
+            focus_prompt=focus_prompt,
+            user_prompt=user_prompt,
+            exam_mode=mode,
+        )
+        prompt_requested_count = _extract_requested_question_count(user_prompt)
+        resolved_num_questions = (
+            prompt_requested_count
+            or (int(num_questions) if num_questions is not None else None)
+            or style_profile.recommended_question_count
+            or _choose_default_question_count(mode)
+        )
+        preferred_question_types = _choose_preferred_question_types(mode, user_prompt, style_profile)
         build_unit_ids = _resolve_auto_build_unit_ids(
             session,
             subject=subject,
             teaching_unit_ids=teaching_unit_ids,
         )
-        questions_per_unit = _estimate_questions_per_unit(
-            num_questions=resolved_num_questions,
-            unit_count=len(build_unit_ids),
-            mode=mode,
-        )
-
-        snapshot = exams_repo.get_published_curriculum_version(session, subject)
-        if snapshot is None:
-            raise NoPublishedCurriculumSnapshotError(subject)
         if not build_unit_ids:
             _raise_conflict(
                 "当前学科没有可用教学单元，无法自动构题。",
                 error_code="EXAM_GENERATE_NO_TEACHING_UNITS",
             )
 
-        required_template_count = max(1, int(resolved_num_questions))
-        build_job: QuestionBuildResult | None = None
-        template_count_before = exams_repo.count_active_question_templates(
-            session,
-            subject=subject,
-            question_types=set(preferred_question_types) if preferred_question_types else None,
+        questions_per_unit = _estimate_questions_per_unit(
+            num_questions=max(1, int(resolved_num_questions)),
+            unit_count=len(build_unit_ids),
+            mode=mode,
         )
-        if template_count_before < required_template_count:
-            build_job = await trigger_question_build(
+        required_template_count = max(1, int(resolved_num_questions))
+        force_contextual_build = bool(
+            (style_prompt or "").strip()
+            or (focus_prompt or "").strip()
+            or (sample_file_uids or [])
+            or mode == ExamMode.REAL_EXAM.value
+        )
+        build_job: QuestionBuildResult | None = None
+
+        with llm_trace_scope(
+            subject=subject,
+            build_session_id=build_session_id,
+            workflow="examine.generate",
+            lane="generation",
+            node="trigger_exam_generate",
+        ):
+            template_count_before = exams_repo.count_active_question_templates(
                 session,
                 subject=subject,
-                unit_ids=build_unit_ids,
-                questions_per_unit=questions_per_unit,
+                question_types=set(preferred_question_types) if preferred_question_types else None,
             )
-        else:
-            logger.info(
-                "exam_generate_skip_question_build",
-                runtime_job_id=runtime_job_id,
+            if force_contextual_build or template_count_before < required_template_count:
+                build_job = await trigger_question_build(
+                    session,
+                    subject=subject,
+                    user_id=user_id,
+                    unit_ids=build_unit_ids,
+                    questions_per_unit=questions_per_unit,
+                    exam_mode=mode,
+                    preferred_question_types=preferred_question_types,
+                    user_prompt=user_prompt,
+                    focus_prompt=focus_prompt,
+                    style_profile=style_profile,
+                )
+            else:
+                logger.info(
+                    "exam_generate_skip_question_build",
+                    runtime_job_id=runtime_job_id,
+                    subject=subject,
+                    user_id=user_id,
+                    template_count=template_count_before,
+                    required_template_count=required_template_count,
+                )
+
+            template_count = exams_repo.count_active_question_templates(
+                session,
+                subject=subject,
+                question_types=set(preferred_question_types) if preferred_question_types else None,
+            )
+            if template_count <= 0 and build_job is not None and build_job.status == "failed":
+                raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
+            if template_count <= 0:
+                raise ValueError("自动构题后仍没有可用题模板。")
+
+            paper = assemble_paper(
+                session,
                 subject=subject,
                 user_id=user_id,
-                template_count=template_count_before,
-                required_template_count=required_template_count,
+                exam_mode=mode,
+                num_questions=max(1, int(resolved_num_questions)),
+                theme_tree_node_id=theme_tree_node_id,
+                teaching_unit_ids=(teaching_unit_ids or (build_unit_ids if mode == ExamMode.PRACTICE.value else None)),
+                preferred_question_types=preferred_question_types,
+                style_profile=style_profile,
+                user_prompt=user_prompt,
+                focus_prompt=focus_prompt,
+                sample_file_uids=sample_file_uids or [],
             )
 
-        template_count = exams_repo.count_active_question_templates(
-            session,
-            subject=subject,
-            question_types=set(preferred_question_types) if preferred_question_types else None,
-        )
-        if template_count <= 0 and build_job is not None and build_job.status == "failed":
-            raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
-        if template_count <= 0:
-            raise ValueError("自动构题后仍没有可用题模板。")
-
-        paper = assemble_paper(
-            session,
-            subject=subject,
-            user_id=user_id,
-            exam_mode=mode,
-            num_questions=max(1, int(resolved_num_questions)),
-            theme_tree_node_id=theme_tree_node_id,
-            teaching_unit_ids=(build_unit_ids if mode == ExamMode.PRACTICE.value else teaching_unit_ids),
-            preferred_question_types=preferred_question_types,
-        )
         updated_at = utcnow()
-
         logger.info(
             "exam_generate_completed",
             runtime_job_id=runtime_job_id,
@@ -406,7 +587,10 @@ async def trigger_exam_generate(
             exam_mode=mode,
             num_questions=resolved_num_questions,
             teaching_unit_count=len(build_unit_ids),
+            sample_file_count=len(sample_file_uids or []),
             user_prompt_present=bool((user_prompt or "").strip()),
+            style_prompt_present=bool((style_prompt or "").strip()),
+            focus_prompt_present=bool((focus_prompt or "").strip()),
         )
         return ExamGenerationResult(
             id=runtime_job_id,
@@ -420,7 +604,8 @@ async def trigger_exam_generate(
             num_questions=max(1, int(resolved_num_questions)),
             exam_paper_id=paper.id,
             theme_tree_node_id=theme_tree_node_id,
-            teaching_unit_ids_json=json.dumps(build_unit_ids),
+            teaching_unit_ids_json=json.dumps(build_unit_ids, ensure_ascii=False),
+            sample_file_uids_json=json.dumps(sample_file_uids or [], ensure_ascii=False),
         )
     finally:
         lock.release()
@@ -512,6 +697,7 @@ async def trigger_exam_grade(
         _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
     runtime_job_id = _new_runtime_job_id()
     created_at = utcnow()
+    build_session_id = f"exam_grade_{runtime_job_id}"
 
     if paper.status == "graded":
         if not regrade:
@@ -541,7 +727,14 @@ async def trigger_exam_grade(
         session.commit()
         session.refresh(paper)
 
-        grade_result = await grade_paper(session, exam_paper_id)
+        with llm_trace_scope(
+            subject=paper.subject,
+            build_session_id=build_session_id,
+            workflow="examine.grade",
+            lane="grading",
+            node="grade_paper",
+        ):
+            grade_result = await grade_paper(session, exam_paper_id)
 
         states_updated = 0
         tasks_created = 0
@@ -632,6 +825,19 @@ async def get_question_bank(
         user_id=user_id,
     )
     agg: dict[int, QuestionBankItem] = {}
+    style_summary_by_template: dict[int, str | None] = {}
+    knowledge_points_by_template: dict[int, list[str]] = {}
+
+    template_ids = list({int(item.question_template_id) for item, _, _ in rows if item.question_template_id is not None})
+    if template_ids:
+        templates = list(session.exec(select(QuestionTemplate).where(QuestionTemplate.id.in_(template_ids))).all())
+        style_summary_by_template = {
+            int(template.id): _summarize_style_hint(template.selection_hints_json)
+            for template in templates
+            if template.id is not None
+        }
+        knowledge_points_by_template = _resolve_template_knowledge_points(session, template_ids=template_ids)
+
     for item, asked_at, exam_paper_id in rows:
         template_id = int(item.question_template_id)
         existing = agg.get(template_id)
@@ -645,8 +851,11 @@ async def get_question_bank(
                 times_asked=1,
                 last_asked_at=asked_at,
                 last_exam_paper_id=exam_paper_id,
+                knowledge_points=knowledge_points_by_template.get(template_id, []),
+                style_summary=style_summary_by_template.get(template_id),
             )
             continue
+
         latest_time = existing.last_asked_at
         latest_paper_id = existing.last_exam_paper_id
         if asked_at > existing.last_asked_at:
@@ -661,6 +870,8 @@ async def get_question_bank(
             times_asked=existing.times_asked + 1,
             last_asked_at=latest_time,
             last_exam_paper_id=latest_paper_id,
+            knowledge_points=existing.knowledge_points,
+            style_summary=existing.style_summary,
         )
     return sorted(agg.values(), key=lambda item: item.last_asked_at, reverse=True)
 
