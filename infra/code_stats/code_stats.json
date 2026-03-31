@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-31T17:26:27.839744",
-  "total_commits_analyzed": 282,
+  "generated_at": "2026-03-31T17:41:45.412650",
+  "total_commits_analyzed": 285,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2253,6 +2253,30 @@
     {
       "date": "2026-04-01",
       "commit": "d13c65c",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "2944a9e",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "bceb5f7",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "fix: delete_embeddings 添加 vec_ready 检查，防止旧数据库无表报错"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "6b09349",
       "total_lines": 89951,
       "code_lines": 66993,
       "other_lines": 22958,
