@@ -218,7 +218,7 @@ def bulk_insert_embeddings(
 
 
 def delete_embeddings_by_chunk_ids(session: Session, chunk_ids: list[int]) -> None:
-    if not chunk_ids:
+    if not chunk_ids or not is_vec_ready():
         return
 
     connection = session.connection()
