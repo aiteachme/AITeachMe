@@ -10,23 +10,24 @@ jobs:
     name: Trigger Cloudflare & Render Hooks
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_PAGES_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_HOOK_URL }}
-      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      RENDER_SERVICE_ID: srv-d6ore72a214c73f6mk60
 
     steps:
       - name: Validate deploy secrets
+        env:
+          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
+          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
         run: |
           missing=0
 
-          if [ -z "$CLOUDFLARE_PAGES_DEPLOY_HOOK_URL" ]; then
-            echo "❌ 缺少 CLOUDFLARE_PAGES_DEPLOY_HOOK_URL"
+          if [ -z "$CLOUDFLARE_DEPLOY_KEY" ]; then
+            echo "❌ 缺少 CLOUDFLARE_DEPLOY_KEY"
             missing=1
           fi
 
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "❌ 缺少 RENDER_DEPLOY_HOOK_URL"
+          if [ -z "$RENDER_DEPLOY_KEY" ]; then
+            echo "❌ 缺少 RENDER_DEPLOY_KEY"
             missing=1
           fi
 
