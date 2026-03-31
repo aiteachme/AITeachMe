@@ -136,7 +136,7 @@ backend/data/<subject>/
 
 ## 7. 主要路径 helper
 
-当前最重要的 helper 位于 `backend/app/utils/path_helpers.py`（原 `services/upload_support.py`，已迁移）：
+当前最重要的 helper 位于 `backend/app/utils/path_helpers.py`：
 
 - `build_raw_dir()`
 - `build_raw_file_path()`
@@ -151,7 +151,7 @@ backend/data/<subject>/
 
 这些 helper 才是运行时路径真相，文档和代码都应以它们为准。
 
-> **注意**：`services/upload_support.py` 仍存在但已转为 re-export shim。
+> **注意**：旧的 `services/upload_support.py` 已删除。
 > 新代码 **必须** 从 `app.utils.path_helpers` 导入。
 
 ---
@@ -229,3 +229,10 @@ backend/data/<subject>/
 - 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns`
 - 真实路径命名必须服从 `utils/path_helpers.py`
 - 依赖方向：`api → services → workflows → infra → core`，`utils/` 可被任意层引用
+## Canonical Runtime Helpers
+
+- `app.utils.path_helpers` is the canonical source for runtime path construction.
+- `app.utils.docgen_store` is the canonical source for knowledge-doc build lock, manifest, and runtime build-status helpers.
+- Legacy helper entrypoints under `services/` have been deleted; imports should go directly to `app.utils.path_helpers`, `app.utils.presenters`, and `app.utils.docgen_store`.
+- `knowledge_markdowns/build_status.json` is now a formal runtime artifact beside `manifest.json` and `.build.lock`.
+- No new top-level `app/common` package is introduced; workflow shared orchestration remains under `workflows/common`.

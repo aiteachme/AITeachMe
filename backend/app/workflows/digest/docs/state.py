@@ -40,4 +40,8 @@ class DocGenState(TypedDict, total=False):
     load_ms: int
     cleanse_ms: int
     finalize_ms: int
+    slowest_draft_chapters: list[dict[str, Any]]
+    slowest_review_chapters: list[dict[str, Any]]
+    timing_summary: dict[str, Any]
+    token_summary: dict[str, Any]
     error: str | None

@@ -13,20 +13,24 @@ import {
 
 import {
   knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
 } from "../../api/generated/knowledge";
-import type { KnowledgeOverviewResponse } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../../api/client";
+import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
 
 import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
-import { KnowledgeGraphView } from "./KnowledgeGraphView";
-import { PrereqDagView } from "./PrereqDagView";
-import { ThemeTreeView } from "./ThemeTreeView";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 
 const WordCloud3D = lazy(() => import("./WordCloud3D"));
+const ThemeTreeView = lazy(() =>
+  import("./ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
+);
+const PrereqDagView = lazy(() =>
+  import("./PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
+);
+const KnowledgeGraphView = lazy(() =>
+  import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
+);
 
 type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
@@ -37,6 +41,15 @@ const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; d
   { id: "knowledge-graph", label: "图谱", icon: <Network className="h-4 w-4" />, desc: "展示节点关系" },
 ];
 
+function TabFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      {message}
+    </div>
+  );
+}
+
 export function KnowledgeGraphSidePanel({ 
   subjectId,
 }: { 
@@ -45,6 +58,19 @@ export function KnowledgeGraphSidePanel({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const overviewInclude = useMemo(() => {
+    switch (activeTab) {
+      case "word-cloud":
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
+      case "theme-tree":
+        return OVERVIEW_INCLUDE_PRESETS.themeTree;
+      case "prereq-dag":
+        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
+      case "knowledge-graph":
+      default:
+        return OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+    }
+  }, [activeTab]);
 
   const {
     data: overview,
@@ -52,11 +78,8 @@ export function KnowledgeGraphSidePanel({
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: ["knowledge-overview", subjectId],
-    queryFn: async () => {
-      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
-      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
-    },
+    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
     enabled: Boolean(subjectId), 
     retry: false,
   });
@@ -77,7 +100,7 @@ export function KnowledgeGraphSidePanel({
 
   const wordCloudNodes = useMemo(() => {
     const graphNodes = overview?.graph?.nodes ?? [];
-    return graphNodes.map((node) => ({
+    return graphNodes.map((node: { canonical_name: string; node_type: string; confidence: number }) => ({
       name: node.canonical_name,
       nodeType: node.node_type,
       confidence: node.confidence,
@@ -164,12 +187,20 @@ export function KnowledgeGraphSidePanel({
                   </Suspense>
                 </div>
               )}
-              {activeTab === "theme-tree" && <ThemeTreeView overviewData={overview?.theme_tree ?? null} />}
+              {activeTab === "theme-tree" && (
+                <Suspense fallback={<TabFallback message="正在加载主题树视图..." />}>
+                  <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
+                </Suspense>
+              )}
               {activeTab === "prereq-dag" && (
-                <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+                <Suspense fallback={<TabFallback message="正在加载先修依赖视图..." />}>
+                  <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+                </Suspense>
               )}
               {activeTab === "knowledge-graph" && (
-                <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
+                  <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                </Suspense>
               )}
             </div>
           )}

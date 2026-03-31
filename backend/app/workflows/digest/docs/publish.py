@@ -15,6 +15,7 @@ from app.repositories.knowledge import docgen_repo
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_published_knowledge_docs_files,
+    update_knowledge_build_status,
     write_knowledge_manifest,
 )
 from app.utils.path_helpers import (
@@ -25,6 +26,8 @@ from app.utils.path_helpers import (
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )
+from app.utils.time import utcnow
+from app.workflows.common.runtime import cancel_tasks_and_drain
 
 
 class StagedKnowledgeDocs(BaseModel):
@@ -114,12 +117,24 @@ async def stage_knowledge_docs(
         )
         built_paths.append((chapter_index, chapter_title))
 
-    if chapter_write_tasks:
-        await asyncio.gather(*chapter_write_tasks)
+    try:
+        if chapter_write_tasks:
+            await asyncio.gather(*chapter_write_tasks)
+    except asyncio.CancelledError:
+        await cancel_tasks_and_drain(chapter_write_tasks)
+        raise
 
     merged_markdown = build_merged_markdown(sorted_chapters)
     build_merged_path = build_merged_knowledge_base_build_path(subject)
     await asyncio.to_thread(build_merged_path.write_text, merged_markdown, encoding="utf-8")
+    update_knowledge_build_status(
+        subject,
+        status="running",
+        stage="doc_lane_staged",
+        draft_available=bool(merged_markdown.strip()),
+        draft_updated_at=utcnow(),
+        staged_chapter_count=len(sorted_chapters),
+    )
     return StagedKnowledgeDocs(merged_markdown=merged_markdown, built_paths=built_paths)
 
 
@@ -169,6 +184,17 @@ def publish_staged_knowledge_docs(
         chapter_titles=[str(chapter.get("title", "")) for chapter in sorted_chapters],
     )
     write_knowledge_manifest(subject, manifest)
+    update_knowledge_build_status(
+        subject,
+        requested_at=requested_at,
+        status="running",
+        stage="publishing",
+        error_message=None,
+        draft_available=False,
+        draft_updated_at=None,
+        staged_chapter_count=len(sorted_chapters),
+        published_doc_count=len(sorted_chapters),
+    )
 
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
@@ -203,4 +229,15 @@ def publish_staged_knowledge_docs(
     with managed_session() as session:
         docgen_repo.delete_docs_by_subject(session, subject)
         created_docs = docgen_repo.bulk_create_knowledge_docs(session, docs_to_create)
+    update_knowledge_build_status(
+        subject,
+        requested_at=requested_at,
+        status="completed",
+        stage="completed",
+        error_message=None,
+        draft_available=False,
+        draft_updated_at=None,
+        staged_chapter_count=len(sorted_chapters),
+        published_doc_count=len(created_docs),
+    )
     return [doc.id for doc in created_docs if doc.id is not None]

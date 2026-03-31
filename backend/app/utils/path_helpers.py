@@ -154,6 +154,12 @@ def build_knowledge_manifest_path(subject: str) -> Path:
     return build_knowledge_markdown_dir(subject) / "manifest.json"
 
 
+def build_knowledge_build_status_path(subject: str) -> Path:
+    """Return the runtime build-status path for knowledge docs."""
+
+    return build_knowledge_markdown_dir(subject) / "build_status.json"
+
+
 def build_knowledge_build_lock_path(subject: str) -> Path:
     """Return the subject-level knowledge docs lock path."""
 

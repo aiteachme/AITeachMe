@@ -204,6 +204,7 @@ async def extract_candidates(
     header_path: str,
     doc_source_type: str | None = None,
     subject_context: str | None = None,
+    prefer_fast_path: bool = False,
 ) -> ChunkExtractionResult:
     """Extract candidate nodes and edges from one chunk."""
 
@@ -234,6 +235,15 @@ async def extract_candidates(
 
     used_question_fallback = False
     used_topic_fallback = False
+
+    if prefer_fast_path and question_fallback is not None:
+        logger.info(
+            "kg_extract_fast_path_used",
+            chunk_title=chunk_title,
+            header_path=header_path,
+            question_count=len(question_fallback.nodes) - 1,
+        )
+        return question_fallback
 
     try:
         result = await acompletion_structured(

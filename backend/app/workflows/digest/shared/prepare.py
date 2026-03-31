@@ -12,6 +12,10 @@ from app.core.database import managed_session
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path
+from app.workflows.digest.services.material_profiler import (
+    build_material_profile,
+    decide_digest_mode,
+)
 from app.workflows.digest.shared.asset_indexer import build_asset_registry
 from app.workflows.digest.shared.hint_extractor import extract_fast_topic_hints
 from app.workflows.digest.shared.models import ChunkIdentityMap, SharedInputs, SourcePacket
@@ -25,7 +29,12 @@ TABLE_PATTERN = re.compile(r"^\s*\|.+\|\s*$", re.MULTILINE)
 IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
 
 
-async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInputs:
+async def prepare_shared_inputs(
+    subject: str,
+    file_ids: list[int],
+    *,
+    user_prompt: str | None = None,
+) -> SharedInputs:
     """Prepare shared inputs once for a unified build."""
 
     logger.info("shared_prepare_started", subject=subject, file_count=len(file_ids))
@@ -58,6 +67,16 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
         section_packets=section_packets,
         fast_hints=fast_hints,
     )
+    material_profile = build_material_profile(
+        source_packets,
+        section_packets,
+        subject_profile,
+    )
+    digest_mode_decision = decide_digest_mode(
+        material_profile,
+        user_prompt=user_prompt,
+        subject_profile=subject_profile,
+    )
     shared_inputs = SharedInputs(
         source_packets=source_packets,
         section_packets=section_packets,
@@ -65,6 +84,8 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
         fast_hints=fast_hints,
         asset_registry=build_asset_registry(subject, source_packets),
         subject_profile=subject_profile,
+        material_profile=material_profile,
+        digest_mode_decision=digest_mode_decision,
     )
     logger.info(
         "shared_prepare_completed",
@@ -75,6 +96,9 @@ async def prepare_shared_inputs(subject: str, file_ids: list[int]) -> SharedInpu
         discipline=subject_profile.discipline,
         sub_discipline=subject_profile.sub_discipline,
         content_type=subject_profile.content_type,
+        digest_mode=digest_mode_decision.mode.value,
+        digest_mode_confidence=digest_mode_decision.confidence,
+        exercise_density=material_profile.stats.exercise_density,
     )
     return shared_inputs
 

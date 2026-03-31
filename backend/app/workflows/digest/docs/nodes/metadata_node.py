@@ -55,6 +55,7 @@ def build_extract_metadata_node(*, context: WorkflowContext, strategy: DocGenExe
                     "source_file_ids": reviewed.get("source_file_ids", []),
                     "chunk_uids": reviewed.get("chunk_uids", []),
                     "section_titles": reviewed.get("section_titles", []),
+                    "metadata_ms": metadata_ms,
                 }
             ],
             "metadata_ms": metadata_ms,

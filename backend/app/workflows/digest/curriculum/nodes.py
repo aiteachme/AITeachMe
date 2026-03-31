@@ -88,6 +88,13 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
                 impact_affected_units=len(impact_set.affected_unit_ids),
                 created_units=len(derive_result.created_unit_ids),
                 updated_units=len(derive_result.updated_unit_ids),
+                subgraph_load_ms=derive_result.subgraph_load_ms,
+                candidate_build_ms=derive_result.candidate_build_ms,
+                unit_naming_ms=derive_result.unit_naming_ms,
+                unit_persist_ms=derive_result.unit_persist_ms,
+                rule_named_unit_count=derive_result.rule_named_unit_count,
+                llm_named_unit_count=derive_result.llm_named_unit_count,
+                fallback_named_unit_count=derive_result.fallback_named_unit_count,
             )
 
             update_job_progress(
@@ -102,6 +109,15 @@ async def derive_units_node(state: CurriculumDeriveState) -> CurriculumDeriveSta
                 "derived_unit_ids": derived_unit_ids,
                 "created_unit_ids": list(derive_result.created_unit_ids),
                 "updated_unit_ids": list(derive_result.updated_unit_ids),
+                "subgraph_load_ms": derive_result.subgraph_load_ms,
+                "candidate_build_ms": derive_result.candidate_build_ms,
+                "unit_naming_ms": derive_result.unit_naming_ms,
+                "unit_persist_ms": derive_result.unit_persist_ms,
+                "rule_named_unit_count": derive_result.rule_named_unit_count,
+                "llm_named_unit_count": derive_result.llm_named_unit_count,
+                "fallback_named_unit_count": derive_result.fallback_named_unit_count,
+                "unit_naming_parallelism": derive_result.unit_naming_parallelism,
+                "slowest_unit_namings": list(derive_result.slowest_unit_namings),
                 "error": None,
             }
         except Exception as exc:

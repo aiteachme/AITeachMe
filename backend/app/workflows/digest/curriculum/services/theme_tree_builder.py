@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
 import structlog
 from pydantic import BaseModel, Field as PydanticField
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.infra.llm import acompletion_structured
 from app.infra.prompt_loader import populate_prompt
@@ -18,6 +19,7 @@ from app.models.curriculum import (
     ThemeTreeVersion,
     UnitTreeMembership,
 )
+from app.models.knowledge_graph import KnowledgeNode
 from app.repositories import curriculum_repo, kg_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
@@ -70,6 +72,16 @@ def _tokenize(text: str) -> set[str]:
     return {token.lower() for token in _WORD_RE.findall(text)}
 
 
+def _load_json_list(raw: str) -> list[dict[str, object]]:
+    try:
+        payload = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def _text_overlap_score(left: str, right: str) -> float:
     left_tokens = _tokenize(left)
     right_tokens = _tokenize(right)
@@ -79,27 +91,53 @@ def _text_overlap_score(left: str, right: str) -> float:
 
 
 def _load_unit_infos(session: Session, units: list[TeachingUnit]) -> dict[int, UnitInfo]:
+    member_node_ids_by_unit: dict[int, list[int]] = {}
+    all_member_node_ids: set[int] = set()
+    for unit in units:
+        unit_id = unit.id
+        if unit_id is None:
+            continue
+        member_node_ids: list[int] = []
+        for item in _load_json_list(unit.member_node_refs_json):
+            raw_node_id = item.get("knowledge_node_id")
+            if isinstance(raw_node_id, int):
+                member_node_ids.append(raw_node_id)
+        member_node_ids_by_unit[unit_id] = member_node_ids
+        all_member_node_ids.update(member_node_ids)
+
+    taxonomy_hints_by_node_id: dict[int, list[str]] = {}
+    if all_member_node_ids:
+        nodes = list(
+            session.exec(
+                select(KnowledgeNode).where(KnowledgeNode.id.in_(all_member_node_ids))
+            ).all()
+        )
+        for node in nodes:
+            if node.id is None:
+                continue
+            hints = [
+                str(item.get("quote_text", "")).strip()
+                for item in _load_json_list(node.evidence_refs_json)
+                if bool(item.get("is_active", True))
+                and str(item.get("evidence_role", "")) == "taxonomy_hint"
+                and str(item.get("quote_text", "")).strip()
+            ]
+            if hints:
+                taxonomy_hints_by_node_id[node.id] = hints
+
     infos: dict[int, UnitInfo] = {}
     for unit in units:
         unit_id = unit.id
         if unit_id is None:
             continue
-        memberships = curriculum_repo.list_memberships_by_unit(session, unit_id)
         taxonomy_hints: list[str] = []
-        for membership in memberships:
-            for evidence in kg_repo.list_evidence_by_entity(
-                session,
-                "node",
-                membership.knowledge_node_id,
-                is_active=True,
-            ):
-                if evidence.evidence_role == "taxonomy_hint" and evidence.quote_text:
-                    taxonomy_hints.append(evidence.quote_text)
+        for node_id in member_node_ids_by_unit.get(unit_id, []):
+            taxonomy_hints.extend(taxonomy_hints_by_node_id.get(node_id, []))
         infos[unit_id] = UnitInfo(
             unit_id=unit_id,
             title=unit.canonical_name,
             summary=unit.summary,
-            taxonomy_hints=taxonomy_hints,
+            taxonomy_hints=list(dict.fromkeys(taxonomy_hints)),
         )
     return infos
 
@@ -157,6 +195,7 @@ async def _auto_generate_anchors(
                 is_system=False,
                 status="active",
             ),
+            auto_commit=False,
         )
         created_any = True
         for chapter in sorted(module.chapters, key=lambda item: item.order):
@@ -173,10 +212,13 @@ async def _auto_generate_anchors(
                     is_system=False,
                     status="active",
                 ),
+                auto_commit=False,
             )
 
     if not created_any:
         curriculum_repo.get_uncategorized_anchor(session, subject)
+    else:
+        session.commit()
 
 
 def _build_anchor_skeleton(session: Session, subject: str) -> list[AnchorSkeleton]:
@@ -225,6 +267,7 @@ def _materialize_skeleton(
                     order_index=order_index,
                     summary="",
                 ),
+                auto_commit=False,
             )
             current_path = [*path, anchor.title]
             if is_leaf and node.id is not None:
@@ -258,6 +301,7 @@ def _ensure_uncategorized_node(
             order_index=9999,
             summary="",
         ),
+        auto_commit=False,
     )
     leaf_nodes.append((node.id or 0, None, ["未归类"]))
     return node.id or 0
@@ -372,6 +416,7 @@ async def derive_theme_tree(
     pending_units, _ = curriculum_repo.list_units_by_subject(session, subject, status="pending", limit=10000, offset=0)
     all_units = [*active_units, *pending_units]
     if not all_units:
+        session.commit()
         return tree_version
 
     unit_infos = _load_unit_infos(session, all_units)
@@ -407,8 +452,10 @@ async def derive_theme_tree(
                 membership_source=source,
                 score=score,
             ),
+            auto_commit=False,
         )
 
+    session.commit()
     logger.info(
         "derive_theme_tree_complete",
         subject=subject,

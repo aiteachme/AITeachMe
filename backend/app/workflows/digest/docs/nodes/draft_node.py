@@ -106,6 +106,7 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
                     "next_preview": next_preview,
                     "chunk_uids": chunk_uids,
                     "image_refs": list(chapter.get("image_refs", [])),
+                    "draft_ms": draft_ms,
                 }
             ],
             "draft_ms": draft_ms,

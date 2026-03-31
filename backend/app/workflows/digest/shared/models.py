@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.workflows.digest.shared.primitives import DigestModeDecision, MaterialProfile
+
 
 class SourcePacket(BaseModel):
     """A normalized source file payload prepared once per build."""
@@ -139,3 +141,5 @@ class SharedInputs(BaseModel):
     fast_hints: FastTopicHints = Field(default_factory=FastTopicHints)
     asset_registry: AssetRegistry = Field(default_factory=AssetRegistry)
     subject_profile: SubjectProfile = Field(default_factory=SubjectProfile)
+    material_profile: MaterialProfile = Field(default_factory=MaterialProfile)
+    digest_mode_decision: DigestModeDecision = Field(default_factory=DigestModeDecision)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path, Request
 from sqlmodel import Session
 
 from app.api.deps import get_db, normalize_subject_slug
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
 async def knowledge_build(
-    background_tasks: BackgroundTasks,
+    request: Request,
     subject: str = Path(...),
     body: DocGenBuildRequest = Body(...),
     session: Session = Depends(get_db),
@@ -65,12 +65,16 @@ async def knowledge_build(
         file_uids=body.file_uids,
         prompt=body.prompt,
     )
-    background_tasks.add_task(
-        run_unified_build_background,
+    request.app.state.background_task_registry.spawn(
+        run_unified_build_background(
+            subject=normalized,
+            file_ids=accepted_file_ids,
+            prompt=data.prompt,
+            requested_at=data.requested_at,
+        ),
+        kind="knowledge.build",
         subject=normalized,
-        file_ids=accepted_file_ids,
-        prompt=data.prompt,
-        requested_at=data.requested_at,
+        name=f"knowledge.build:{normalized}",
     )
     return ok_response(data)
 

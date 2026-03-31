@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 import structlog
@@ -23,18 +24,26 @@ from app.repositories.files_repo import (
 from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
 from app.utils.docgen_store import (
     KnowledgeBuildLock,
+    KnowledgeBuildRuntimeStatus,
     acquire_knowledge_build_lock,
     clear_docgen_staging,
+    read_knowledge_build_lock,
+    read_knowledge_build_status,
     read_knowledge_manifest,
     release_knowledge_build_lock,
+    update_knowledge_build_status,
 )
 from app.utils.presenters import require_id, require_uid
-from app.utils.path_helpers import build_merged_knowledge_base_path
+from app.utils.path_helpers import (
+    build_merged_knowledge_base_build_path,
+    build_merged_knowledge_base_path,
+)
 from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.time import utcnow
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
+_UNSET = object()
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -148,6 +157,41 @@ def _cleanup_pending_digest_outputs(subject: str) -> None:
         logger.exception("knowledge_pending_cleanup_failed", subject=subject)
 
 
+def _write_build_status(
+    subject: str,
+    *,
+    requested_at: datetime,
+    status: str,
+    stage: str,
+    error_message: str | None = None,
+    draft_available: bool | None = None,
+    draft_updated_at: datetime | None = None,
+    staged_chapter_count: int | None = None,
+    published_doc_count: int | None = None,
+    source_file_ids: list[int] | None = None,
+    prompt: str | None | object = _UNSET,
+) -> None:
+    update_kwargs: dict[str, object] = {
+        "requested_at": requested_at,
+        "status": status,
+        "stage": stage,
+        "error_message": error_message,
+    }
+    if draft_available is not None:
+        update_kwargs["draft_available"] = draft_available
+    if draft_updated_at is not None:
+        update_kwargs["draft_updated_at"] = draft_updated_at
+    if staged_chapter_count is not None:
+        update_kwargs["staged_chapter_count"] = staged_chapter_count
+    if published_doc_count is not None:
+        update_kwargs["published_doc_count"] = published_doc_count
+    if source_file_ids is not None:
+        update_kwargs["source_file_ids"] = source_file_ids
+    if prompt is not _UNSET:
+        update_kwargs["prompt"] = prompt
+    update_knowledge_build_status(subject, **update_kwargs)
+
+
 def trigger_docgen_build(
     session: Session,
     *,
@@ -176,6 +220,18 @@ def trigger_docgen_build(
         raise SubjectBuildLockConflictError(subject)
 
     clear_docgen_staging(subject)
+    _write_build_status(
+        subject,
+        requested_at=requested_at,
+        status="accepted",
+        stage="build_accepted",
+        error_message=None,
+        draft_available=False,
+        source_file_ids=accepted_file_ids,
+        prompt=cleaned_prompt,
+        staged_chapter_count=0,
+        published_doc_count=0,
+    )
     logger.info(
         "knowledge_build_requested",
         subject=subject,
@@ -259,6 +315,16 @@ async def run_unified_build_background(
 
     try:
         _clear_docgen_staging_safely(subject)
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="running",
+            stage="prepare_shared",
+            error_message=None,
+            draft_available=False,
+            source_file_ids=file_ids,
+            prompt=prompt,
+        )
         _cleanup_pending_digest_outputs(subject)
         result = await run_unified_digest_build(
             subject=subject,
@@ -268,9 +334,27 @@ async def run_unified_build_background(
         )
         if not result.success:
             _clear_docgen_staging_safely(subject)
+            _write_build_status(
+                subject,
+                requested_at=requested_at,
+                status="failed",
+                stage="failed",
+                error_message=result.error,
+                draft_available=False,
+                staged_chapter_count=0,
+            )
             build_logger.error("knowledge_unified_build_failed", error=result.error)
             return
 
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="completed",
+            stage="completed",
+            error_message=None,
+            draft_available=False,
+            published_doc_count=result.doc_count,
+        )
         build_logger.info(
             "knowledge_unified_build_completed",
             doc_count=result.doc_count,
@@ -279,8 +363,30 @@ async def run_unified_build_background(
             new_edge_count=result.new_edge_count,
             elapsed_ms=result.elapsed_ms,
         )
+    except asyncio.CancelledError:
+        _clear_docgen_staging_safely(subject)
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="cancelled",
+            stage="cancelled",
+            error_message="build_cancelled",
+            draft_available=False,
+            staged_chapter_count=0,
+        )
+        build_logger.warning("knowledge_unified_build_cancelled")
+        raise
     except Exception:
         _clear_docgen_staging_safely(subject)
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="failed",
+            stage="failed",
+            error_message="build_crashed",
+            draft_available=False,
+            staged_chapter_count=0,
+        )
         build_logger.exception("knowledge_unified_build_failed")
         return
     finally:
@@ -288,13 +394,18 @@ async def run_unified_build_background(
 
 
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
-    """Read the published merged markdown and manifest metadata."""
+    """Read live docs, staging draft preview, and runtime build metadata."""
 
     merged_path = build_merged_knowledge_base_path(subject)
+    draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)
+    build_lock = read_knowledge_build_lock(subject)
+    build_status = read_knowledge_build_status(subject)
     markdown = merged_path.read_text(encoding="utf-8") if merged_path.exists() else ""
+    draft_markdown = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
 
     updated_at: datetime | None = None
+    draft_updated_at: datetime | None = None
     source_file_uids: list[str] = []
 
     if manifest is not None:
@@ -307,12 +418,39 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     elif merged_path.exists():
         updated_at = datetime.fromtimestamp(merged_path.stat().st_mtime)
 
+    if build_status is not None and build_status.draft_updated_at is not None:
+        draft_updated_at = build_status.draft_updated_at
+    elif draft_path.exists():
+        draft_updated_at = datetime.fromtimestamp(draft_path.stat().st_mtime)
+
+    build_response = None
+    effective_build = build_status
+    if effective_build is None and build_lock is not None:
+        effective_build = KnowledgeBuildRuntimeStatus(
+            requested_at=build_lock.requested_at,
+            status="running",
+            stage="build_accepted",
+            source_file_ids=build_lock.source_file_ids,
+            prompt=build_lock.prompt,
+        )
+    if effective_build is not None:
+        build_response = {
+            "status": effective_build.status,
+            "requested_at": effective_build.requested_at,
+            "stage": effective_build.stage,
+            "error_message": effective_build.error_message,
+            "draft_available": bool(effective_build.draft_available or draft_markdown.strip()),
+        }
+
     return DocGenGetResponse(
         exists=bool(merged_path.exists() and markdown.strip()),
         markdown=markdown,
         updated_at=updated_at,
         source_file_uids=source_file_uids,
         prompt=manifest.prompt if manifest is not None else None,
+        draft_markdown=draft_markdown,
+        draft_updated_at=draft_updated_at,
+        build=build_response,
     )
 
 

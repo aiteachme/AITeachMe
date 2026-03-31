@@ -148,6 +148,7 @@ def build_finalize_graph_node(
                         graph_job_id=job_id,
                         curriculum_job_id=curriculum_job_id,
                         impact_set=state.get("impact_set"),
+                        build_session_id=build_session_id,
                     )
                 )
                 return {
@@ -231,6 +232,7 @@ async def trigger_curriculum_derive_safe(
     graph_job_id: int,
     curriculum_job_id: int,
     impact_set: object | None,
+    build_session_id: str | None,
     run_curriculum_derive_workflow: Callable[..., Awaitable[WorkflowResult[object]]],
 ) -> None:
     """Run curriculum derive in the background."""
@@ -241,6 +243,7 @@ async def trigger_curriculum_derive_safe(
             graph_job_id=graph_job_id,
             curriculum_job_id=curriculum_job_id,
             impact_set=impact_set,
+            build_session_id=build_session_id,
         )
         if result.failed:
             workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).error(

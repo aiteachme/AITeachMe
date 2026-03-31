@@ -388,3 +388,51 @@ Digest 后续需要监控的运行指标包括：
 - 知识文档以文档包发布，而不只是一个 merged markdown
 - docs lane 与 kg lane 通过 richer contract 协同，而不是只靠 `TopicAnchorSnapshot`
 - unified quality gate 同时覆盖一致性与教学质量
+## 11. Runtime Alignment Update (2026-03-30)
+
+This update records what is already wired into the current implementation, even if older sections below still describe the aspirational target state.
+
+### Shared prepare
+
+- `prepare_shared_inputs()` now emits both `material_profile` and `digest_mode_decision`.
+- Docs, KG, and curriculum lanes consume the same material-type judgement instead of repeating separate guesses later in the pipeline.
+
+### Fast path for exam-like materials
+
+- Question-dense or exam-paper-like inputs can now skip the heaviest KG extraction path for many chunks.
+- The fast path uses existing signals such as `question_block_count`, `exercise_density`, `content_type=exam_paper`, and `digest_mode_decision.mode`.
+- The design rule is: heavy LLM calls should be reserved for naming, planning, resolve ambiguity, and pedagogical synthesis, not for every obvious question block.
+
+### Unified build lifecycle
+
+The runtime now writes explicit stages instead of relying on vague completion logs:
+
+1. `accepted` / `build_accepted`
+2. `running` / `prepare_shared`
+3. `running` / `doc_lane_staged`
+4. `running` / `graph_ready`
+5. `running` / `curriculum_deriving`
+6. `publishing`
+7. `completed` / `failed` / `cancelled`
+
+### Throughput-oriented refactors already aligned with this document
+
+- KG mutation persistence is now batched instead of committing every single node, edge, alias, or evidence write.
+- Curriculum unit naming is no longer strictly serial; it uses bounded concurrency and a lighter task profile.
+- Theme-tree construction now preloads unit and evidence context to avoid membership-level N+1 lookups.
+
+### Background task ownership
+
+- API-triggered long workflows are now owned by an application-level background-task registry.
+- Shutdown sends cancellation to tracked tasks and waits briefly for cleanup.
+- Digest fan-out points are expected to propagate `CancelledError` instead of silently leaving detached subtasks alive.
+
+## 2026-03-31 Observability Addendum
+
+The digest runtime now treats timing and token observability as a shared cross-lane contract rather than ad-hoc logging inside each workflow.
+
+- Every digest build is scoped by `build_session_id`, and LLM calls inherit `subject`, `workflow`, `lane`, and `node` automatically from runtime context.
+- Every lane must emit exactly one summary log on completion and one partial summary on runtime failure. The summary must include `status`, `error_message`, `workflow_elapsed_ms`, per-step elapsed times, token totals, model/task-type mix, and Top-K slow items.
+- Unified digest must aggregate lane-level timing and token totals and publish a single `unified_digest_timing_summary` payload that can be used for regression comparisons.
+- New digest lanes should plug into the common helpers in `backend/app/workflows/digest/observability.py` instead of inventing a lane-specific logging format.
+- Runtime observability is token-based for now. Currency conversion is intentionally deferred until a stable pricing table is introduced.

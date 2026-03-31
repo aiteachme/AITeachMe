@@ -16,6 +16,7 @@ from app.core.database import init_db
 from app.core.exceptions import AITeachMeError
 from app.core.logger import configure_logging
 from app.core.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.core.task_registry import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
 
@@ -43,11 +44,13 @@ def _maybe_export_openapi_schema(app: FastAPI) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
+    app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
     _maybe_export_openapi_schema(app)
 
     logger.info("app_started")
     yield
+    await app.state.background_task_registry.shutdown(cancel_timeout_s=8.0)
     logger.info("app_shutdown")
 
 

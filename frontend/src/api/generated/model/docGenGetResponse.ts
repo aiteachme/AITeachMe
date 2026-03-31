@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.2.0
  */
 
+import type { DocGenBuildStatusResponse } from './docGenBuildStatusResponse';
+
 /**
  * Knowledge docs get response.
  */
@@ -20,4 +22,10 @@ export interface DocGenGetResponse {
   source_file_uids?: string[];
   /** User prompt used for the published docs. */
   prompt?: string | null;
+  /** Current staging draft markdown content, if available. */
+  draft_markdown?: string;
+  /** Last updated time of the staging draft markdown. */
+  draft_updated_at?: string | null;
+  /** Current or most recent build metadata. */
+  build?: DocGenBuildStatusResponse | null;
 }

@@ -37,10 +37,18 @@ def _dump_json_list(payload: list[dict[str, object]]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def create_teaching_unit(session: Session, unit: TeachingUnit) -> TeachingUnit:
+def create_teaching_unit(
+    session: Session,
+    unit: TeachingUnit,
+    *,
+    auto_commit: bool = True,
+) -> TeachingUnit:
     session.add(unit)
-    session.commit()
-    session.refresh(unit)
+    if auto_commit:
+        session.commit()
+        session.refresh(unit)
+    else:
+        session.flush()
     return unit
 
 
@@ -115,6 +123,8 @@ def list_units_by_subject(
 def create_unit_revision(
     session: Session,
     revision: TeachingUnitRevision,
+    *,
+    auto_commit: bool = True,
 ) -> TeachingUnitRevision:
     unit = session.get(TeachingUnit, revision.unit_id)
     if unit is None:
@@ -127,7 +137,8 @@ def create_unit_revision(
     unit.current_revision_id = revision.id
     unit.updated_at = utcnow()
     session.add(unit)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return revision
 
 
@@ -138,6 +149,8 @@ def deactivate_old_unit_revisions(session: Session, unit_id: int) -> None:
 def create_unit_membership(
     session: Session,
     membership: TeachingUnitMembership,
+    *,
+    auto_commit: bool = True,
 ) -> TeachingUnitMembership:
     unit = session.get(TeachingUnit, membership.unit_id)
     if unit is None:
@@ -154,7 +167,8 @@ def create_unit_membership(
     unit.member_node_refs_json = _dump_json_list(payload)
     unit.updated_at = utcnow()
     session.add(unit)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return membership
 
 
@@ -201,10 +215,18 @@ def update_curriculum_job(session: Session, job_id: int, **kwargs: object) -> No
     del session, job_id, kwargs
 
 
-def create_taxonomy_anchor(session: Session, anchor: TaxonomyAnchor) -> TaxonomyAnchor:
+def create_taxonomy_anchor(
+    session: Session,
+    anchor: TaxonomyAnchor,
+    *,
+    auto_commit: bool = True,
+) -> TaxonomyAnchor:
     session.add(anchor)
-    session.commit()
-    session.refresh(anchor)
+    if auto_commit:
+        session.commit()
+        session.refresh(anchor)
+    else:
+        session.flush()
     return anchor
 
 
@@ -341,16 +363,23 @@ def create_theme_tree_version_with_optimistic_lock(
 def create_theme_tree_node(
     session: Session,
     node: ThemeTreeNode,
+    *,
+    auto_commit: bool = True,
 ) -> ThemeTreeNode:
     session.add(node)
-    session.commit()
-    session.refresh(node)
+    if auto_commit:
+        session.commit()
+        session.refresh(node)
+    else:
+        session.flush()
     return node
 
 
 def create_unit_tree_membership(
     session: Session,
     membership: UnitTreeMembership,
+    *,
+    auto_commit: bool = True,
 ) -> UnitTreeMembership:
     tree_node = session.get(ThemeTreeNode, membership.tree_node_id)
     if tree_node is None:
@@ -367,7 +396,8 @@ def create_unit_tree_membership(
     )
     tree_node.unit_refs_json = _dump_json_list(payload)
     session.add(tree_node)
-    session.commit()
+    if auto_commit:
+        session.commit()
     return membership
 
 

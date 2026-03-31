@@ -137,6 +137,7 @@ def build_review_chapter_node(*, context: WorkflowContext, strategy: DocGenExecu
                     "section_titles": section_titles,
                     "formula_refs": formula_refs,
                     "chunk_uids": chunk_uids,
+                    "review_ms": review_ms,
                 }
             ],
             "review_ms": review_ms,

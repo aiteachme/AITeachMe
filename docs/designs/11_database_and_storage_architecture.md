@@ -167,3 +167,9 @@ backend/data/
 - Artifact：本地文件系统
 
 但 `storage_key` 和统一的路径 helper 已经把未来迁移到 PostgreSQL + pgvector + OSS/MinIO 的边界预留出来了。
+## Knowledge Runtime Artifacts
+
+- The knowledge-doc runtime store now includes `manifest.json`, `.build.lock`, and `build_status.json`.
+- `build_status.json` records the current or most recent knowledge build lifecycle and is part of the local artifact-store contract.
+- The canonical implementation for that runtime store lives in `app.utils.docgen_store`; old service-layer helper entrypoints are deleted rather than retained as shims.
+- This design does not introduce a new global `app/common` layer. Shared orchestration remains in `workflows/common`, while storage/path helpers stay in `utils/`.

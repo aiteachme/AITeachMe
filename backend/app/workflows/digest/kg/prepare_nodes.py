@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from time import perf_counter
 
 from sqlmodel import select
 
@@ -17,8 +18,10 @@ from app.workflows.digest.kg.services.extractor import (
     ChunkExtractionResult,
     extract_candidates,
 )
+from app.workflows.digest.observability import add_slow_item
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.common.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
@@ -158,8 +161,10 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             build_session_id = state.get("build_session_id", "")
             chapter_priors: ChapterPriors | None = None
             subject_context = ""
+            shared_inputs = None
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
+                shared_inputs = unified_session.shared_inputs
                 settings = get_settings()
                 chapter_priors = await unified_session.wait_for_chapter_priors(
                     timeout_ms=settings.digest_chapter_priors_timeout_ms
@@ -211,6 +216,35 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             failed_chunk_count = 0
             failure_samples: list[dict[str, str | int]] = []
             semaphore = asyncio.Semaphore(extract_parallelism)
+            chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
+            fast_path_chunk_count = 0
+            llm_extract_chunk_count = 0
+            slowest_chunks: list[dict[str, object]] = []
+
+            def _should_prefer_fast_path(chunk_id: int) -> bool:
+                if shared_inputs is None:
+                    return False
+                chunk_uid = chunk_id_to_chunk_uid.get(chunk_id)
+                if not chunk_uid:
+                    return False
+                section_index = shared_inputs.chunk_identity_map.chunk_uid_to_section.get(chunk_uid)
+                if section_index is None or section_index >= len(shared_inputs.section_packets):
+                    return False
+                section = shared_inputs.section_packets[section_index]
+                material_profile = shared_inputs.material_profile
+                digest_mode = shared_inputs.digest_mode_decision
+                exercise_density = material_profile.stats.exercise_density
+                return (
+                    section.question_block_count >= 2
+                    or (
+                        section.question_block_count >= 1
+                        and (
+                            shared_inputs.subject_profile.content_type == "exam_paper"
+                            or exercise_density >= 0.35
+                            or digest_mode.mode.value == "sprint"
+                        )
+                    )
+                )
 
             async def _extract_single(index: int, chunk_id: int):
                 chunk = chunk_map.get(chunk_id)
@@ -218,6 +252,8 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                     return index, chunk_id, ChunkExtractionResult(), [], "missing"
 
                 try:
+                    chunk_started_at = perf_counter()
+                    used_fast_path = _should_prefer_fast_path(chunk_id)
                     async with semaphore:
                         result = await extract_candidates(
                             chunk_content=chunk.content,
@@ -225,51 +261,88 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             header_path=chunk.header_path,
                             doc_source_type=getattr(chunk, "source_type", None),
                             subject_context=subject_context,
+                            prefer_fast_path=used_fast_path,
                         )
                     _apply_taxonomy_hints(result, taxonomy_hints)
                     edge_payload = [(edge, chunk_id) for edge in result.edges]
-                    return index, chunk_id, result, edge_payload, None
+                    return (
+                        index,
+                        chunk_id,
+                        result,
+                        edge_payload,
+                        None,
+                        int((perf_counter() - chunk_started_at) * 1000),
+                        used_fast_path,
+                    )
                 except Exception as exc:
                     digest_logger.warning("kg_chunk_extraction_failed", chunk_id=chunk_id, error=str(exc))
-                    return index, chunk_id, ChunkExtractionResult(), [], str(exc)
+                    return (
+                        index,
+                        chunk_id,
+                        ChunkExtractionResult(),
+                        [],
+                        str(exc),
+                        int((perf_counter() - chunk_started_at) * 1000),
+                        False,
+                    )
 
             tasks = [
                 asyncio.create_task(_extract_single(index, chunk_id))
                 for index, chunk_id in enumerate(chunk_ids)
             ]
             completed_count = 0
-            for task in asyncio.as_completed(tasks):
-                index, chunk_id, result, edge_payload, error = await task
-                ordered_results[index] = result
-
-                if error == "missing":
-                    failed_chunk_count += 1
-                    if len(failure_samples) < 5:
-                        failure_samples.append({"chunk_id": chunk_id, "error": "missing"})
-                    digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
-                elif error is not None:
-                    failed_chunk_count += 1
-                    if len(failure_samples) < 5:
-                        failure_samples.append({"chunk_id": chunk_id, "error": error[:180]})
-                    digest_logger.warning(
-                        "kg_extract_chunk_failed",
-                        chunk_id=chunk_id,
-                        error=error,
+            try:
+                for task in asyncio.as_completed(tasks):
+                    index, chunk_id, result, edge_payload, error, chunk_elapsed_ms, used_fast_path = await task
+                    ordered_results[index] = result
+                    chunk_title = str(chunk_map.get(chunk_id).title) if chunk_map.get(chunk_id) is not None else f"chunk_{chunk_id}"
+                    slowest_chunks = add_slow_item(
+                        slowest_chunks,
+                        item_id=str(chunk_id),
+                        title=chunk_title,
+                        elapsed_ms=chunk_elapsed_ms,
+                        metadata={
+                            "fast_path": used_fast_path,
+                            "node_count": len(result.nodes),
+                            "edge_count": len(result.edges),
+                        },
                     )
-                else:
-                    success_chunk_count += 1
-                    all_candidate_edges.extend(edge_payload)
 
-                completed_count += 1
-                if completed_count % 5 == 0 or completed_count == len(tasks):
-                    progress = 10 + int(30 * completed_count / len(tasks))
-                    update_job_progress(
-                        session,
-                        job_id=state["job_id"],
-                        job_type="graph",
-                        progress=min(progress, 40),
-                        current_step="extract",
-                    )
+                    if error == "missing":
+                        failed_chunk_count += 1
+                        if len(failure_samples) < 5:
+                            failure_samples.append({"chunk_id": chunk_id, "error": "missing"})
+                        digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
+                    elif error is not None:
+                        failed_chunk_count += 1
+                        if len(failure_samples) < 5:
+                            failure_samples.append({"chunk_id": chunk_id, "error": error[:180]})
+                        digest_logger.warning(
+                            "kg_extract_chunk_failed",
+                            chunk_id=chunk_id,
+                            error=error,
+                        )
+                    else:
+                        success_chunk_count += 1
+                        all_candidate_edges.extend(edge_payload)
+                        if used_fast_path:
+                            fast_path_chunk_count += 1
+                        else:
+                            llm_extract_chunk_count += 1
+
+                    completed_count += 1
+                    if completed_count % 5 == 0 or completed_count == len(tasks):
+                        progress = 10 + int(30 * completed_count / len(tasks))
+                        update_job_progress(
+                            session,
+                            job_id=state["job_id"],
+                            job_type="graph",
+                            progress=min(progress, 40),
+                            current_step="extract",
+                        )
+            except asyncio.CancelledError:
+                await cancel_tasks_and_drain(tasks)
+                raise
 
             update_job_progress(
                 session,
@@ -324,6 +397,11 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 **state,
                 "candidates": ordered_results,
                 "all_candidate_edges": all_candidate_edges,
+                "fast_path_chunk_count": fast_path_chunk_count,
+                "llm_extract_chunk_count": llm_extract_chunk_count,
+                "success_chunk_count": success_chunk_count,
+                "failed_chunk_count": failed_chunk_count,
+                "slowest_chunks": slowest_chunks,
             }
         except Exception as exc:
             digest_logger.error("kg_workflow_extract_failed", error=str(exc), exc_info=True)

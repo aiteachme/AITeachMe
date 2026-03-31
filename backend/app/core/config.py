@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 10
     embedding_batch_delay_s: float = 0.1
     default_token_budget: int = 4000
+    digest_timing_top_k: int = 5
+    digest_token_summary_enabled: bool = True
     docgen_max_parallel_chapters: int = 20
     docgen_io_parallelism: int = 20
     docgen_outline_fast_path_max_chunks: int = 1

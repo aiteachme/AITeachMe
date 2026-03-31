@@ -16,11 +16,9 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import {
   knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-  knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost,
 } from "../../api/generated/knowledge";
-import type { KnowledgeOverviewResponse } from "../../api/generated/model";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../../api/client";
+import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
 
 import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
@@ -43,6 +41,11 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("theme-tree");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const overviewInclude = activeTab === "theme-tree"
+    ? OVERVIEW_INCLUDE_PRESETS.themeTree
+    : activeTab === "prereq-dag"
+      ? OVERVIEW_INCLUDE_PRESETS.prereqDag
+      : OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
   
   // Ref for click outside to close (optional, if we want it to behave like a popover)
   const widgetRef = useRef<HTMLDivElement>(null);
@@ -53,11 +56,8 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: ["knowledge-overview", subjectId],
-    queryFn: async () => {
-      const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, { full: true });
-      return unwrapOrvalResponse<KnowledgeOverviewResponse>(raw);
-    },
+    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
     enabled: Boolean(subjectId) && isOpen, 
     retry: false,
   });
