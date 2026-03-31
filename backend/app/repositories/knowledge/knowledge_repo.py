@@ -1,4 +1,4 @@
-﻿"""Repository helpers for retrieval chunks and embeddings."""
+"""Repository helpers for retrieval chunks and embeddings."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
-from app.core.database import require_vec_ready
+from app.core.database import is_vec_ready
 from app.models import RawFile, RetrievalChunk
 from app.utils.time import utcnow
 
@@ -173,7 +173,9 @@ def bulk_insert_embeddings(
     chunk_ids: list[int],
     embeddings: list[list[float]],
 ) -> None:
-    require_vec_ready()
+    if not is_vec_ready():
+        logger.warning("bulk_insert_embeddings_skipped", reason="sqlite-vec unavailable")
+        return
     if not chunk_ids or not embeddings:
         return
     if len(chunk_ids) != len(embeddings):
@@ -248,7 +250,9 @@ def vector_search(
     *,
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
-    require_vec_ready()
+    if not is_vec_ready():
+        logger.warning("vector_search_skipped", reason="sqlite-vec unavailable", subject=subject)
+        return []
     if top_k <= 0:
         return []
 
