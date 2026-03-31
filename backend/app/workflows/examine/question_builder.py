@@ -1,55 +1,36 @@
-"""Question template builder."""
+﻿"""Question template builder aligned with digest outputs and profile signals."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from collections import defaultdict
 
 import structlog
 from pydantic import BaseModel, Field
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.infra.llm import acompletion_structured
 from app.infra.model_router import TaskType
 from app.infra.prompt_loader import populate_prompt
-from app.models import Difficulty, KnowledgeNode, QuestionTemplate, QuestionType, TeachingUnit
-from app.repositories import exams_repo
+from app.infra.tracing import llm_trace_scope
+from app.models import Difficulty, QuestionTemplate, QuestionType
 from app.schemas.llm import SYSTEM
 from app.utils.time import utcnow
+from app.workflows.examine.context import (
+    ExamStyleProfile,
+    NodeExamContext,
+    UnitExamContext,
+    build_unit_exam_contexts,
+    truncate_text,
+)
 from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
 
 logger = structlog.get_logger()
 
-
-def _stem_hash(stem: str) -> str:
-    return hashlib.sha256(stem.strip().encode("utf-8")).hexdigest()
-
-
-def _normalize_options(options: list[str] | None) -> str | None:
-    if not options:
-        return None
-    return json.dumps([str(item) for item in options], ensure_ascii=False)
-
-
-def validate_single_choice_options(options_json: str | None) -> bool:
-    if not options_json:
-        return False
-    try:
-        value = json.loads(options_json)
-    except json.JSONDecodeError:
-        return False
-    return isinstance(value, list) and len(value) >= 2
-
-
-@dataclass
-class _NodeContext:
-    node_id: int
-    node_name: str
-    content: str
-    coverage_weight: float
-    role: str
+_MAX_CONCURRENT_TEMPLATE_CALLS = 4
 
 
 class _GeneratedTemplateItem(BaseModel):
@@ -66,263 +47,354 @@ class _GeneratedTemplatePayload(BaseModel):
     questions: list[_GeneratedTemplateItem] = Field(min_length=1)
 
 
+def _stem_hash(stem: str) -> str:
+    return hashlib.sha256(stem.strip().encode("utf-8")).hexdigest()
+
+
 def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 
-def _pick_reference_sentence(node: _NodeContext) -> str:
-    raw = _clean_text(node.content)
-    if not raw:
-        return f"该知识点围绕“{node.node_name}”的定义、条件与应用。"
+def _normalize_options(options: list[str] | None) -> str | None:
+    if not options:
+        return None
+    cleaned = [_clean_text(item) for item in options if _clean_text(item)]
+    if len(cleaned) < 2:
+        return None
+    return json.dumps(cleaned, ensure_ascii=False)
 
-    candidates = [
-        _clean_text(part)
-        for part in re.split(r"[。！？；;\n]+", raw)
-        if _clean_text(part)
-    ]
+
+def _normalize_question_type(value: str, *, preferred_question_types: list[str]) -> str:
+    normalized = (value or "").strip().lower()
+    aliases = {
+        "choice": QuestionType.SINGLE_CHOICE.value,
+        "multiple_choice": QuestionType.SINGLE_CHOICE.value,
+        "single": QuestionType.SINGLE_CHOICE.value,
+        "blank": QuestionType.FILL_BLANK.value,
+        "fill": QuestionType.FILL_BLANK.value,
+        "fill_in_blank": QuestionType.FILL_BLANK.value,
+        "essay": QuestionType.SHORT_ANSWER.value,
+        "qa": QuestionType.SHORT_ANSWER.value,
+        "short": QuestionType.SHORT_ANSWER.value,
+    }
+    normalized = aliases.get(normalized, normalized)
+    valid = {item.value for item in QuestionType}
+    if normalized in valid:
+        return normalized
+    if preferred_question_types:
+        return preferred_question_types[0]
+    return QuestionType.SINGLE_CHOICE.value
+
+
+def _normalize_difficulty(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    aliases = {
+        "simple": Difficulty.EASY.value,
+        "basic": Difficulty.EASY.value,
+        "normal": Difficulty.MEDIUM.value,
+        "moderate": Difficulty.MEDIUM.value,
+        "challenging": Difficulty.HARD.value,
+    }
+    normalized = aliases.get(normalized, normalized)
+    valid = {item.value for item in Difficulty}
+    return normalized if normalized in valid else Difficulty.MEDIUM.value
+
+
+def validate_single_choice_options(options_json: str | None) -> bool:
+    if not options_json:
+        return False
+    try:
+        decoded = json.loads(options_json)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(decoded, list) or len(decoded) < 2:
+        return False
+    return len({_clean_text(str(item)).lower() for item in decoded if _clean_text(str(item))}) >= 2
+
+
+def _pick_reference_sentence(context: UnitExamContext, node: NodeExamContext) -> str:
+    source = "\n".join(
+        part for part in [node.summary, node.body, context.doc_excerpt, context.unit_summary] if part.strip()
+    )
+    sentences = [_clean_text(item) for item in re.split(r"[。！？!?\n]+", source) if _clean_text(item)]
+    if not sentences:
+        return node.node_name
     scored = sorted(
-        candidates,
-        key=lambda s: (
-            0 if 18 <= len(s) <= 90 else 1,
-            abs(len(s) - 48),
+        sentences,
+        key=lambda item: (
+            0 if 18 <= len(item) <= 90 else 1,
+            abs(len(item) - 48),
+            0 if node.node_name in item else 1,
         ),
     )
-    if not scored:
-        return f"该知识点围绕“{node.node_name}”的定义、条件与应用。"
-    picked = scored[0]
-    if len(picked) > 120:
-        picked = picked[:120].rstrip("，:：") + "..."
-    return picked
+    return truncate_text(scored[0], max_chars=120)
 
 
-def _build_fill_blank_stem(node_name: str, reference: str) -> tuple[str, str]:
-    if node_name and node_name in reference and len(node_name) >= 2:
-        cloze = reference.replace(node_name, "____", 1)
-        return f"【填空】请补全与该知识点相关的关键表述：{cloze}", node_name
-    return f"【填空】根据知识点说明：{reference}（关键词：____）", node_name or "核心概念"
+def _pick_question_type_sequence(
+    *,
+    preferred_question_types: list[str],
+    questions_per_unit: int,
+    style_profile: ExamStyleProfile,
+) -> list[str]:
+    if preferred_question_types:
+        base = preferred_question_types
+    elif style_profile.preferred_question_types:
+        base = style_profile.preferred_question_types
+    else:
+        base = [
+            QuestionType.SINGLE_CHOICE.value,
+            QuestionType.FILL_BLANK.value,
+            QuestionType.SHORT_ANSWER.value,
+        ]
+    sequence: list[str] = []
+    while len(sequence) < max(1, questions_per_unit):
+        sequence.extend(base)
+    return sequence[: max(1, questions_per_unit)]
+
+
+def _build_single_choice_template(
+    context: UnitExamContext,
+    node: NodeExamContext,
+    *,
+    difficulty: str,
+) -> _GeneratedTemplateItem:
+    reference = _pick_reference_sentence(context, node)
+    distractors = [item.node_name for item in context.node_contexts if item.node_id != node.node_id]
+    options = [
+        f"最符合资料表述的是：{reference}",
+        f"它主要讨论的是 {distractors[0]}。" if distractors else "它只是与本单元无关的背景信息。",
+        "它表示只要记住结论，不需要理解概念之间的关系。",
+        "它意味着所有同类题都可以不看条件直接套用。",
+    ]
+    return _GeneratedTemplateItem(
+        question_type=QuestionType.SINGLE_CHOICE.value,
+        difficulty=difficulty,
+        stem=f"关于“{node.node_name}”，下列哪一项最符合当前知识资料的表述？",
+        options=options,
+        answer=options[0],
+        explanation=f"依据知识文档与图谱锚点，{node.node_name} 的核心信息可概括为：{reference}",
+        knowledge_node_id=node.node_id,
+    )
+
+
+def _build_fill_blank_template(
+    context: UnitExamContext,
+    node: NodeExamContext,
+    *,
+    difficulty: str,
+) -> _GeneratedTemplateItem:
+    reference = _pick_reference_sentence(context, node)
+    if node.node_name and node.node_name in reference and len(node.node_name) >= 2:
+        stem = reference.replace(node.node_name, "____", 1)
+        answer = node.node_name
+    else:
+        stem = f"请根据本单元资料补全关键概念：{reference}，其中最核心的知识点是 ____。"
+        answer = node.node_name
+    return _GeneratedTemplateItem(
+        question_type=QuestionType.FILL_BLANK.value,
+        difficulty=difficulty,
+        stem=stem,
+        answer=answer,
+        explanation=f"空缺处对应的核心知识点是 {node.node_name}。",
+        knowledge_node_id=node.node_id,
+    )
+
+
+def _build_short_answer_template(
+    context: UnitExamContext,
+    node: NodeExamContext,
+    *,
+    difficulty: str,
+) -> _GeneratedTemplateItem:
+    reference = _pick_reference_sentence(context, node)
+    compare_target = next(
+        (item.node_name for item in context.node_contexts if item.node_id != node.node_id),
+        "相关知识点",
+    )
+    return _GeneratedTemplateItem(
+        question_type=QuestionType.SHORT_ANSWER.value,
+        difficulty=difficulty,
+        stem=(
+            f"请结合当前知识资料，说明“{node.node_name}”的核心含义，并指出它与“{compare_target}”"
+            "之间最值得注意的一点区别或联系。"
+        ),
+        answer=(
+            f"作答时应先概括 {node.node_name} 的定义或关键机制，再结合资料说明它与 {compare_target} 的"
+            f"联系、区别或使用场景。参考线索：{reference}"
+        ),
+        explanation="评分关注三个点：概念是否准确、关系是否说清、是否结合资料中的关键线索。",
+        knowledge_node_id=node.node_id,
+    )
 
 
 def _build_deterministic_templates(
+    context: UnitExamContext,
     *,
-    node_contexts: list[_NodeContext],
     questions_per_unit: int,
 ) -> list[_GeneratedTemplateItem]:
-    if not node_contexts:
+    if not context.node_contexts:
         return []
-
-    matrix: list[tuple[str, str]] = [
-        (QuestionType.SINGLE_CHOICE.value, Difficulty.EASY.value),
-        (QuestionType.SINGLE_CHOICE.value, Difficulty.MEDIUM.value),
-        (QuestionType.SINGLE_CHOICE.value, Difficulty.HARD.value),
-        (QuestionType.FILL_BLANK.value, Difficulty.EASY.value),
-        (QuestionType.FILL_BLANK.value, Difficulty.MEDIUM.value),
-        (QuestionType.FILL_BLANK.value, Difficulty.HARD.value),
-        (QuestionType.SHORT_ANSWER.value, Difficulty.EASY.value),
-        (QuestionType.SHORT_ANSWER.value, Difficulty.MEDIUM.value),
-        (QuestionType.SHORT_ANSWER.value, Difficulty.HARD.value),
-    ]
-
-    questions: list[_GeneratedTemplateItem] = []
-    for idx in range(max(1, questions_per_unit)):
-        qtype, difficulty = matrix[idx % len(matrix)]
-        node = node_contexts[idx % len(node_contexts)]
-        reference = _pick_reference_sentence(node)
-
-        if qtype == QuestionType.SINGLE_CHOICE.value:
-            stem = f"【单选】关于知识点《{node.node_name}》，以下哪一项最恰当？"
-            options = [
-                f"强调“{node.node_name}”的核心含义，并结合条件理解：{reference}",
-                f"把“{node.node_name}”当作不需要条件即可套用的结论",
-                f"只背结果，不需要理解“{node.node_name}”的适用场景",
-                "选择与该知识点无关的描述",
-            ]
-            answer = options[0]
-            explanation = f"正确思路是回到“{node.node_name}”的定义与条件，再结合题目情境判断。"
-        elif qtype == QuestionType.FILL_BLANK.value:
-            stem, answer = _build_fill_blank_stem(node.node_name, reference)
-            options = None
-            explanation = f"填空围绕“{node.node_name}”的关键词与核心结论。"
+    type_sequence = _pick_question_type_sequence(
+        preferred_question_types=context.preferred_question_types,
+        questions_per_unit=questions_per_unit,
+        style_profile=context.style_profile,
+    )
+    difficulties = [Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value]
+    drafts: list[_GeneratedTemplateItem] = []
+    for index, question_type in enumerate(type_sequence):
+        node = context.node_contexts[index % len(context.node_contexts)]
+        difficulty = difficulties[index % len(difficulties)]
+        if question_type == QuestionType.FILL_BLANK.value:
+            drafts.append(_build_fill_blank_template(context, node, difficulty=difficulty))
+        elif question_type == QuestionType.SHORT_ANSWER.value:
+            drafts.append(_build_short_answer_template(context, node, difficulty=difficulty))
         else:
-            stem = (
-                f"【简答】请用 2-3 句话说明《{node.node_name}》的核心概念，"
-                "并给出一个简短应用步骤。"
-            )
-            options = None
-            answer = (
-                f"示例要点：先说明“{node.node_name}”的定义，再写明适用条件，"
-                "最后给出一步应用。"
-            )
-            explanation = f"简答题重点考查你是否真正理解并会应用“{node.node_name}”。"
-
-        questions.append(
-            _GeneratedTemplateItem(
-                question_type=qtype,
-                difficulty=difficulty,
-                stem=stem,
-                options=options,
-                answer=answer,
-                explanation=explanation,
-                knowledge_node_id=node.node_id,
-            )
-        )
-    return questions
+            drafts.append(_build_single_choice_template(context, node, difficulty=difficulty))
+    return drafts
 
 
 async def _try_llm_generate_templates(
+    context: UnitExamContext,
     *,
-    subject: str,
-    node_contexts: list[_NodeContext],
     questions_per_unit: int,
+    semaphore: asyncio.Semaphore,
 ) -> list[_GeneratedTemplateItem] | None:
-    if not node_contexts:
-        return []
-
-    joined_knowledge = "\n\n".join(
-        f"## {item.node_name}\n{item.content[:1200]}"
-        for item in node_contexts
-    )
     prompt = populate_prompt(
         SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT,
-        subject=subject,
+        subject=context.subject,
         num_questions=questions_per_unit,
-        knowledge_text=joined_knowledge,
-        question_types=", ".join(item.value for item in QuestionType),
+        question_types=", ".join(context.preferred_question_types or [item.value for item in QuestionType]),
         difficulties=", ".join(item.value for item in Difficulty),
+        knowledge_packet=context.prompt_block(),
     )
 
     try:
-        payload = await acompletion_structured(
-            response_model=_GeneratedTemplatePayload,
-            messages=[{"role": SYSTEM, "content": prompt}],
-            task_type=TaskType.GENERATE,
-        )
+        async with semaphore:
+            with llm_trace_scope(
+                subject=context.subject,
+                workflow="examine.generate",
+                lane="question_build",
+                node=f"unit_{context.unit_id}",
+            ):
+                payload = await acompletion_structured(
+                    response_model=_GeneratedTemplatePayload,
+                    messages=[{"role": SYSTEM, "content": prompt}],
+                    task_type=TaskType.GENERATE,
+                )
         return payload.questions
     except Exception as exc:  # noqa: BLE001
-        logger.warning("question_builder_llm_failed", error=str(exc))
-        return None
-
-
-def _load_unit_node_contexts(session: Session, unit_id: int) -> list[_NodeContext]:
-    unit = session.get(TeachingUnit, unit_id)
-    if unit is None:
-        return []
-
-    try:
-        memberships = json.loads(unit.member_node_refs_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(memberships, list):
-        return []
-
-    contexts: list[_NodeContext] = []
-    for membership in memberships:
-        if not isinstance(membership, dict):
-            continue
-        raw_node_id = membership.get("knowledge_node_id")
-        if not isinstance(raw_node_id, int):
-            continue
-        node = session.get(KnowledgeNode, raw_node_id)
-        if node is None:
-            continue
-        text_parts = [node.canonical_name or "", node.summary or "", node.body or ""]
-        contexts.append(
-            _NodeContext(
-                node_id=node.id or raw_node_id,
-                node_name=node.canonical_name,
-                content="\n".join(part for part in text_parts if part).strip(),
-                coverage_weight=float(membership.get("weight", 1.0) or 1.0),
-                role=str(membership.get("role", "primary")),
-            )
+        logger.warning(
+            "question_builder_llm_failed",
+            subject=context.subject,
+            unit_id=context.unit_id,
+            unit_name=context.unit_name,
+            error=str(exc),
         )
-    return contexts
+        return None
 
 
 def _build_node_refs_json(
     *,
-    node_contexts: list[_NodeContext],
+    node_contexts: list[NodeExamContext],
     preferred_node_id: int | None,
 ) -> str:
+    refs = node_contexts
     if preferred_node_id is not None:
         preferred = [item for item in node_contexts if item.node_id == preferred_node_id]
         if preferred:
-            node_contexts = preferred
-
-    if not node_contexts:
-        return "[]"
-
-    total_weight = sum(max(0.0, item.coverage_weight) for item in node_contexts)
+            refs = preferred + [item for item in node_contexts if item.node_id != preferred_node_id]
+    total_weight = sum(max(0.0, item.coverage_weight) for item in refs)
     if total_weight <= 0:
-        total_weight = float(len(node_contexts))
-
+        total_weight = float(len(refs) or 1)
     payload = [
         {
             "knowledge_node_id": item.node_id,
-            "coverage_weight": max(0.0, item.coverage_weight) / total_weight,
+            "coverage_weight": round(max(0.0, item.coverage_weight) / total_weight, 4),
             "role": item.role,
         }
-        for item in node_contexts
+        for item in refs
     ]
     return json.dumps(payload, ensure_ascii=False)
 
 
-async def build_question_templates(
+def _build_selection_hints_json(
+    context: UnitExamContext,
+    *,
+    preferred_node_id: int | None,
+) -> str:
+    payload = {
+        "exam_mode": context.exam_mode,
+        "preferred_question_types": list(context.preferred_question_types),
+        "unit_mastery_score": context.unit_mastery_score,
+        "weak_node_names": list(context.weak_node_names),
+        "learning_objectives": list(context.learning_objectives[:5]),
+        "preferred_node_id": preferred_node_id,
+        "style_profile": context.style_profile.to_metadata(),
+        "focus_prompt": context.focus_prompt,
+        "user_prompt": context.user_prompt,
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _load_existing_hashes(
     session: Session,
     *,
     subject: str,
     unit_ids: list[int],
-    questions_per_unit: int = 9,
+) -> dict[int, set[str]]:
+    if not unit_ids:
+        return {}
+    rows = session.exec(
+        select(QuestionTemplate.teaching_unit_id, QuestionTemplate.stem_hash).where(
+            QuestionTemplate.subject == subject,
+            QuestionTemplate.teaching_unit_id.in_(unit_ids),
+        )
+    ).all()
+    result: dict[int, set[str]] = defaultdict(set)
+    for unit_id, stem_hash in rows:
+        if unit_id is None or not stem_hash:
+            continue
+        result[int(unit_id)].add(str(stem_hash))
+    return result
+
+
+def _prepare_template_drafts(
+    context: UnitExamContext,
+    *,
+    generated_items: list[_GeneratedTemplateItem],
+    existing_hashes: set[str],
 ) -> list[QuestionTemplate]:
-    """Build question templates by teaching units."""
+    prepared: list[QuestionTemplate] = []
+    now = utcnow()
 
-    created_templates: list[QuestionTemplate] = []
-    valid_question_types = {item.value for item in QuestionType}
-    valid_difficulties = {item.value for item in Difficulty}
+    for index, draft in enumerate(generated_items):
+        question_type = _normalize_question_type(
+            draft.question_type,
+            preferred_question_types=context.preferred_question_types,
+        )
+        difficulty = _normalize_difficulty(draft.difficulty)
 
-    for unit_id in unit_ids:
-        node_contexts = _load_unit_node_contexts(session, unit_id)
-        if not node_contexts:
-            logger.warning("question_builder_skip_unit_without_context", unit_id=unit_id, subject=subject)
+        stem = _clean_text(draft.stem)
+        answer = _clean_text(draft.answer)
+        explanation = _clean_text(draft.explanation)
+        if not stem or not answer or not explanation:
             continue
 
-        generated = await _try_llm_generate_templates(
-            subject=subject,
-            node_contexts=node_contexts,
-            questions_per_unit=questions_per_unit,
-        )
-        if generated is None:
-            generated = _build_deterministic_templates(
-                node_contexts=node_contexts,
-                questions_per_unit=questions_per_unit,
-            )
+        options_json = _normalize_options(draft.options)
+        if question_type == QuestionType.SINGLE_CHOICE.value and not validate_single_choice_options(options_json):
+            continue
 
-        for idx, draft in enumerate(generated):
-            question_type = (draft.question_type or "").strip().lower()
-            difficulty = (draft.difficulty or "").strip().lower()
-            if question_type not in valid_question_types:
-                continue
-            if difficulty not in valid_difficulties:
-                continue
+        stem_hash = _stem_hash(stem)
+        if stem_hash in existing_hashes:
+            continue
+        existing_hashes.add(stem_hash)
 
-            stem = _clean_text(draft.stem)
-            answer = _clean_text(draft.answer)
-            explanation = _clean_text(draft.explanation)
-            if not stem or not answer or not explanation:
-                continue
-
-            options_json = _normalize_options(draft.options)
-            if question_type == QuestionType.SINGLE_CHOICE.value and not validate_single_choice_options(options_json):
-                continue
-
-            stem_hash = _stem_hash(stem)
-            if exams_repo.find_template_by_stem_hash(session, subject, unit_id, stem_hash) is not None:
-                logger.info("question_builder_skip_duplicate_stem_hash", unit_id=unit_id, stem_hash=stem_hash)
-                continue
-
-            fallback_node = node_contexts[idx % len(node_contexts)].node_id
-            preferred_node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node
-            template = QuestionTemplate(
-                subject=subject,
-                teaching_unit_id=unit_id,
+        fallback_node_id = context.node_contexts[index % len(context.node_contexts)].node_id if context.node_contexts else None
+        preferred_node_id = draft.knowledge_node_id if draft.knowledge_node_id is not None else fallback_node_id
+        prepared.append(
+            QuestionTemplate(
+                subject=context.subject,
+                teaching_unit_id=context.unit_id,
                 question_type=question_type,
                 difficulty=difficulty,
                 stem=stem,
@@ -330,15 +402,118 @@ async def build_question_templates(
                 options_json=options_json,
                 answer=answer,
                 explanation=explanation,
-                status="active",
                 node_refs_json=_build_node_refs_json(
-                    node_contexts=node_contexts,
+                    node_contexts=context.node_contexts,
                     preferred_node_id=preferred_node_id,
                 ),
-                created_at=utcnow(),
-                updated_at=utcnow(),
+                selection_hints_json=_build_selection_hints_json(
+                    context,
+                    preferred_node_id=preferred_node_id,
+                ),
+                status="active",
+                created_at=now,
+                updated_at=now,
             )
-            persisted = exams_repo.create_question_template(session, template)
-            created_templates.append(persisted)
+        )
+    return prepared
 
-    return created_templates
+
+async def build_question_templates(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    unit_ids: list[int],
+    questions_per_unit: int = 9,
+    exam_mode: str = "diagnostic",
+    preferred_question_types: list[str] | None = None,
+    user_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    style_profile: ExamStyleProfile | None = None,
+) -> list[QuestionTemplate]:
+    """Build question templates by teaching units using digest and profile context."""
+
+    contexts = build_unit_exam_contexts(
+        session,
+        subject=subject,
+        user_id=user_id,
+        unit_ids=unit_ids,
+        questions_per_unit=questions_per_unit,
+        exam_mode=exam_mode,
+        preferred_question_types=preferred_question_types,
+        user_prompt=user_prompt,
+        focus_prompt=focus_prompt,
+        style_profile=style_profile,
+    )
+    if not contexts:
+        logger.warning("question_builder_no_generation_context", subject=subject)
+        return []
+
+    logger.info(
+        "question_builder_contexts_prepared",
+        subject=subject,
+        unit_count=len(contexts),
+        questions_per_unit=questions_per_unit,
+        exam_mode=exam_mode,
+    )
+
+    semaphore = asyncio.Semaphore(min(_MAX_CONCURRENT_TEMPLATE_CALLS, max(1, len(contexts))))
+    generated_results = await asyncio.gather(
+        *[
+            _try_llm_generate_templates(
+                context,
+                questions_per_unit=questions_per_unit,
+                semaphore=semaphore,
+            )
+            for context in contexts
+        ],
+        return_exceptions=True,
+    )
+
+    existing_hashes_by_unit = _load_existing_hashes(
+        session,
+        subject=subject,
+        unit_ids=[context.unit_id for context in contexts],
+    )
+
+    templates_to_create: list[QuestionTemplate] = []
+    llm_generated_unit_count = 0
+    fallback_unit_count = 0
+    for context, result in zip(contexts, generated_results):
+        if isinstance(result, Exception) or result is None:
+            fallback_unit_count += 1
+            generated_items = _build_deterministic_templates(
+                context,
+                questions_per_unit=questions_per_unit,
+            )
+        else:
+            llm_generated_unit_count += 1
+            generated_items = result
+
+        templates_to_create.extend(
+            _prepare_template_drafts(
+                context,
+                generated_items=generated_items,
+                existing_hashes=existing_hashes_by_unit.setdefault(context.unit_id, set()),
+            )
+        )
+
+    if not templates_to_create:
+        logger.warning("question_builder_zero_templates", subject=subject)
+        return []
+
+    for template in templates_to_create:
+        session.add(template)
+    session.flush()
+    session.commit()
+    for template in templates_to_create:
+        session.refresh(template)
+
+    logger.info(
+        "question_builder_persist_complete",
+        subject=subject,
+        created_count=len(templates_to_create),
+        llm_generated_unit_count=llm_generated_unit_count,
+        fallback_unit_count=fallback_unit_count,
+    )
+    return templates_to_create

@@ -1,73 +1,81 @@
 """Prompt templates for the examine workflow."""
 
 SYSTEM_PROMPT_EXAM_GENERATE = """
-你是一名专业的 {{ subject }} 出题老师，请生成一份结构化试卷。
-要求：
-1. 题目数量：{{ num_questions }}
-2. 支持题型：{{ question_types }}
-3. 支持难度：{{ difficulties }}
-4. 如果指定了 requested_knowledge_points，要优先覆盖这些知识点。
-5. 其次结合 weak_knowledge_points 优先考查学生薄弱项。
-6. 参考 available_knowledge_points 作为总体范围。
-7. 避免与以下近期错题题干高度重复：
-{{ recent_mistake_stems }}
-8. 每道题必须包含 question_key、type、stem、answer、explanation、knowledge_point、difficulty。
-9. 单选题 options 至少两个，answer 必须是选项之一。
-10. 题目中的数学公式必须使用 LaTeX 语法：行内公式用单美元符号包裹，独立公式用双美元符号包裹，不要用纯文本表示数学符号。
+You are building a structured exam blueprint for the subject: {{ subject }}.
+Return JSON only.
 
-指定知识点：
+Requirements:
+- Generate {{ num_questions }} questions.
+- Allowed question types: {{ question_types }}.
+- Allowed difficulty values: {{ difficulties }}.
+- The paper should align with the requested knowledge points, weak points, and recent mistakes.
+- Every question must be answerable from the provided teaching context.
+- Keep wording clear, exam-like, and specific.
+
+Requested knowledge points:
 {{ requested_knowledge_points }}
 
-可用知识点：
+Available knowledge points:
 {{ available_knowledge_points }}
 
-薄弱知识点：
+Weak knowledge points:
 {{ weak_knowledge_points }}
+
+Recent mistakes:
+{{ recent_mistake_stems }}
 """.strip()
 
 SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT = """
-你是一名专业的 {{ subject }} 出题老师，请仅根据下面的知识文本生成 {{ num_questions }} 道题。
-要求：
-1. 题型只能使用：{{ question_types }}
-2. 难度只能使用：{{ difficulties }}
-3. 题目必须基于给定知识文本，不要引入文本外知识。
-4. 输出必须可解析为结构：{"questions":[...]}。
-5. 每道题对象必须包含字段：
-   - question_type（single_choice/fill_blank/short_answer）
-   - difficulty（easy/medium/hard）
-   - stem（题干）
-   - options（仅 single_choice 需要；至少 2 个）
-   - answer（标准答案）
-   - explanation（简洁解析）
-   - knowledge_node_id（可选，若可识别对应知识节点则填写整数，否则留空）
-6. 单选题 answer 必须与 options 中某一项严格一致（按文本匹配）。
-7. 题目中的数学公式必须使用 LaTeX 语法：行内公式用单美元符号包裹（如 $f(x)=x^2$），独立公式用双美元符号包裹。不要用纯文本表示数学符号。
-8. 不要输出 markdown 代码块，不要输出额外解释。
+You are generating high-quality exam questions from curated teaching context.
+Return JSON only in the shape {"questions": [...]}.
 
-知识文本：
-{{ knowledge_text }}
+Requirements:
+- Generate exactly {{ num_questions }} questions.
+- Allowed question types: {{ question_types }}.
+- Allowed difficulty values: {{ difficulties }}.
+- Use only the provided knowledge packet.
+- Questions must feel like a real teacher-made paper, not flash cards.
+- Prefer clear stems, unambiguous answers, and concise explanations.
+- If the style profile mentions a sample paper, follow that tone and section style when reasonable.
+- Each question item must include:
+  - question_type
+  - difficulty
+  - stem
+  - options (only for single_choice)
+  - answer
+  - explanation
+  - knowledge_node_id (pick the best matching node when possible)
+
+Knowledge packet:
+{{ knowledge_packet }}
 """.strip()
 
 SYSTEM_PROMPT_SHORT_ANSWER_GRADE = """
-请判断下面学生的简答题回答是否“基本正确”。
-要求：
-1. 只返回 `1` 或 `0`
-2. `1` 表示基本正确，`0` 表示不正确
-3. 允许同义表达；核心概念正确且无关键性错误可判 `1`
-4. 不要输出任何多余内容
+Judge whether the user answer should receive full credit.
+Return only `1` or `0`.
 
-题目：
+Rules:
+- `1` means the answer is substantially correct.
+- `0` means the answer misses a key idea, contains a wrong claim, or is too incomplete.
+- Be strict but fair.
+- Use the knowledge context if it is helpful.
+
+Question:
 {{ stem }}
 
-参考答案：
+Reference answer:
 {{ answer }}
 
-学生答案：
+User answer:
 {{ user_answer }}
+
+Knowledge context:
+{{ knowledge_context }}
 """.strip()
 
 SYSTEM_PROMPT_ERROR_CAUSE_LABEL = """
-请从以下枚举中选择一个最匹配的错因标签，只返回标签字符串本身，不要解释：
+Pick the single best error cause label for the wrong answer.
+Return only one of these labels:
 concept_confusion
 calculation_error
 prerequisite_gap
@@ -76,31 +84,33 @@ incomplete_understanding
 method_misapplication
 unknown
 
-判定依据：
-- 题目：{{ stem }}
-- 正确答案：{{ answer }}
-- 学生答案：{{ user_answer }}
-- 知识上下文：{{ knowledge_context }}
+Question:
+{{ stem }}
+
+Reference answer:
+{{ answer }}
+
+User answer:
+{{ user_answer }}
+
+Knowledge context:
+{{ knowledge_context }}
 """.strip()
 
 SYSTEM_PROMPT_MISTAKE_ANALYSIS = """
-请分析学生答错的原因，并给出一句简洁的改进建议。
-要求：
-1. 控制在 100 字以内
-2. 语气像老师，简洁直接
-3. 不要重复题干
-4. 数学公式使用 LaTeX 语法：行内公式用单美元符号包裹，独立公式用双美元符号包裹。
+Write a concise mistake analysis in under 120 Chinese characters.
+Focus on why the answer is wrong and what to review next.
 
-题目：
+Question:
 {{ stem }}
 
-正确答案：
+Reference answer:
 {{ answer }}
 
-学生答案：
+User answer:
 {{ user_answer }}
 
-知识点：
+Knowledge point:
 {{ knowledge_point }}
 """.strip()
 

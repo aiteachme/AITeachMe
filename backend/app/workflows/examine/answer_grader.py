@@ -13,16 +13,19 @@ from sqlmodel import Session
 from app.infra.llm import acompletion
 from app.infra.model_router import TaskType
 from app.infra.prompt_loader import populate_prompt
-from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, KnowledgeNode, QuestionType
+from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, QuestionType
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER
 from app.utils.time import utcnow
+from app.workflows.examine.context import build_grading_knowledge_context
 from app.workflows.examine.prompts import (
     SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
     SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
 )
 
 logger = structlog.get_logger()
+
+_MAX_CONCURRENT_GRADE_LLM_CALLS = 4
 
 
 def normalize_answer(text: str) -> str:
@@ -49,33 +52,43 @@ class GradeResult(BaseModel):
     graded_items: list[GradeResultItem]
 
 
-def _build_knowledge_context(session: Session, exam_paper_item: ExamPaperItem) -> str:
+def _extract_node_ids(raw_refs: str | None) -> list[int]:
     try:
-        links = json.loads(exam_paper_item.node_refs_json or "[]")
+        decoded = json.loads(raw_refs or "[]")
     except json.JSONDecodeError:
-        links = []
-    if not isinstance(links, list):
-        return ""
+        return []
+    if not isinstance(decoded, list):
+        return []
 
     node_ids: list[int] = []
-    for item in links:
+    for item in decoded:
         if not isinstance(item, dict):
             continue
-        raw_id = item.get("knowledge_node_id")
-        if isinstance(raw_id, int):
-            node_ids.append(raw_id)
-        elif isinstance(raw_id, str) and raw_id.isdigit():
-            node_ids.append(int(raw_id))
+        raw_node_id = item.get("knowledge_node_id")
+        if isinstance(raw_node_id, int) and raw_node_id > 0:
+            node_ids.append(raw_node_id)
+        elif isinstance(raw_node_id, str) and raw_node_id.isdigit():
+            node_ids.append(int(raw_node_id))
+    return list(dict.fromkeys(node_ids))
 
-    if not node_ids:
-        return ""
 
-    names = [
-        node.canonical_name
-        for node_id in node_ids
-        if (node := session.get(KnowledgeNode, node_id)) is not None
-    ]
-    return ", ".join(names)
+def _build_knowledge_context(session: Session, exam_paper: ExamPaper, exam_paper_item: ExamPaperItem) -> str:
+    return build_grading_knowledge_context(
+        session,
+        subject=exam_paper.subject,
+        teaching_unit_id=exam_paper_item.teaching_unit_id,
+        node_ids=_extract_node_ids(exam_paper_item.node_refs_json),
+    )
+
+
+async def _run_bounded_llm_call(
+    semaphore: asyncio.Semaphore | None,
+    coro,
+):
+    if semaphore is None:
+        return await coro
+    async with semaphore:
+        return await coro
 
 
 async def _grade_short_answer_with_llm(
@@ -83,19 +96,25 @@ async def _grade_short_answer_with_llm(
     stem: str,
     correct_answer: str,
     user_answer: str,
+    knowledge_context: str,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> bool:
     prompt = populate_prompt(
         SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
         stem=stem,
         answer=correct_answer,
         user_answer=user_answer,
+        knowledge_context=knowledge_context or "none",
     )
-    result = await acompletion(
-        messages=[
-            {"role": SYSTEM, "content": "You are a strict but fair grader."},
-            {"role": USER, "content": prompt},
-        ],
-        task_type=TaskType.GRADE,
+    result = await _run_bounded_llm_call(
+        semaphore,
+        acompletion(
+            messages=[
+                {"role": SYSTEM, "content": "You are a strict but fair grader."},
+                {"role": USER, "content": prompt},
+            ],
+            task_type=TaskType.GRADE,
+        ),
     )
     return str(result).strip().startswith("1")
 
@@ -106,6 +125,7 @@ async def _infer_error_cause_label(
     correct_answer: str,
     user_answer: str,
     knowledge_context: str,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> str:
     prompt = populate_prompt(
         SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
@@ -115,12 +135,15 @@ async def _infer_error_cause_label(
         knowledge_context=knowledge_context or "none",
     )
     try:
-        result = await acompletion(
-            messages=[
-                {"role": SYSTEM, "content": "You diagnose likely learning mistake causes."},
-                {"role": USER, "content": prompt},
-            ],
-            task_type=TaskType.GRADE,
+        result = await _run_bounded_llm_call(
+            semaphore,
+            acompletion(
+                messages=[
+                    {"role": SYSTEM, "content": "You diagnose likely learning mistake causes."},
+                    {"role": USER, "content": prompt},
+                ],
+                task_type=TaskType.GRADE,
+            ),
         )
         normalized = str(result).strip().lower()
         allowed = {item.value for item in ErrorCauseLabel}
@@ -137,6 +160,7 @@ class _ItemContext:
     user_answer: str
     correct_answer: str
     question_type: str
+    knowledge_context: str = ""
     is_correct: bool | None = None
     error_cause_label: str | None = None
 
@@ -149,21 +173,19 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         raise ValueError(f"ExamPaper `{exam_paper_id}` not found.")
 
     items = exams_repo.list_items_by_paper(session, exam_paper_id)
+    objective_types = {QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value}
 
     graded_items: list[GradeResultItem] = []
     correct_items = 0
-
-    objective_types = {QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value}
     to_grade: list[_ItemContext] = []
+
     for item in items:
         if item.answer_content is None:
             continue
 
         if item.is_correct is not None:
             score_max = item.score_max if item.score_max is not None else 1.0
-            score_obtained = item.score_obtained
-            if score_obtained is None:
-                score_obtained = 1.0 if item.is_correct else 0.0
+            score_obtained = item.score_obtained if item.score_obtained is not None else (1.0 if item.is_correct else 0.0)
             if item.is_correct:
                 correct_items += 1
             graded_items.append(
@@ -186,61 +208,86 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
             )
         )
 
+    knowledge_contexts = {
+        index: _build_knowledge_context(session, exam_paper, entry.item)
+        for index, entry in enumerate(to_grade)
+        if entry.question_type == QuestionType.SHORT_ANSWER.value
+    }
+    for index, knowledge_context in knowledge_contexts.items():
+        to_grade[index].knowledge_context = knowledge_context
+
+    llm_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_GRADE_LLM_CALLS)
+
     short_answer_indices = [
-        idx
-        for idx, entry in enumerate(to_grade)
+        index
+        for index, entry in enumerate(to_grade)
         if entry.question_type not in objective_types
     ]
     if short_answer_indices:
-        short_answer_tasks = [
-            _grade_short_answer_with_llm(
-                stem=to_grade[idx].item.stem_snapshot,
-                correct_answer=to_grade[idx].correct_answer,
-                user_answer=to_grade[idx].user_answer,
-            )
-            for idx in short_answer_indices
-        ]
-        short_answer_results = await asyncio.gather(*short_answer_tasks, return_exceptions=True)
-        for idx, result in zip(short_answer_indices, short_answer_results):
+        logger.info(
+            "answer_grader_short_answer_batch_started",
+            exam_paper_id=exam_paper_id,
+            batch_size=len(short_answer_indices),
+            concurrency_limit=_MAX_CONCURRENT_GRADE_LLM_CALLS,
+        )
+        short_answer_results = await asyncio.gather(
+            *[
+                _grade_short_answer_with_llm(
+                    stem=to_grade[index].item.stem_snapshot,
+                    correct_answer=to_grade[index].correct_answer,
+                    user_answer=to_grade[index].user_answer,
+                    knowledge_context=to_grade[index].knowledge_context,
+                    semaphore=llm_semaphore,
+                )
+                for index in short_answer_indices
+            ],
+            return_exceptions=True,
+        )
+        for index, result in zip(short_answer_indices, short_answer_results):
             if isinstance(result, Exception):
                 logger.warning("answer_grader_short_answer_fallback", error=str(result))
-                to_grade[idx].is_correct = exact_match_grade(
-                    to_grade[idx].user_answer,
-                    to_grade[idx].correct_answer,
+                to_grade[index].is_correct = exact_match_grade(
+                    to_grade[index].user_answer,
+                    to_grade[index].correct_answer,
                 )
             else:
-                to_grade[idx].is_correct = bool(result)
+                to_grade[index].is_correct = bool(result)
 
     for entry in to_grade:
         if entry.is_correct is None:
             entry.is_correct = exact_match_grade(entry.user_answer, entry.correct_answer)
 
     wrong_short_answer_indices = [
-        idx
-        for idx, entry in enumerate(to_grade)
+        index
+        for index, entry in enumerate(to_grade)
         if entry.is_correct is False and entry.question_type == QuestionType.SHORT_ANSWER.value
     ]
     if wrong_short_answer_indices:
-        contexts = {
-            idx: _build_knowledge_context(session, to_grade[idx].item)
-            for idx in wrong_short_answer_indices
-        }
-        label_tasks = [
-            _infer_error_cause_label(
-                stem=to_grade[idx].item.stem_snapshot,
-                correct_answer=to_grade[idx].correct_answer,
-                user_answer=to_grade[idx].user_answer,
-                knowledge_context=contexts[idx],
-            )
-            for idx in wrong_short_answer_indices
-        ]
-        label_results = await asyncio.gather(*label_tasks, return_exceptions=True)
-        for idx, result in zip(wrong_short_answer_indices, label_results):
+        logger.info(
+            "answer_grader_error_label_batch_started",
+            exam_paper_id=exam_paper_id,
+            batch_size=len(wrong_short_answer_indices),
+            concurrency_limit=_MAX_CONCURRENT_GRADE_LLM_CALLS,
+        )
+        label_results = await asyncio.gather(
+            *[
+                _infer_error_cause_label(
+                    stem=to_grade[index].item.stem_snapshot,
+                    correct_answer=to_grade[index].correct_answer,
+                    user_answer=to_grade[index].user_answer,
+                    knowledge_context=to_grade[index].knowledge_context,
+                    semaphore=llm_semaphore,
+                )
+                for index in wrong_short_answer_indices
+            ],
+            return_exceptions=True,
+        )
+        for index, result in zip(wrong_short_answer_indices, label_results):
             if isinstance(result, Exception):
                 logger.warning("answer_grader_error_label_llm_failed", error=str(result))
-                to_grade[idx].error_cause_label = ErrorCauseLabel.UNKNOWN.value
+                to_grade[index].error_cause_label = ErrorCauseLabel.UNKNOWN.value
             else:
-                to_grade[idx].error_cause_label = str(result)
+                to_grade[index].error_cause_label = str(result)
 
     for entry in to_grade:
         if entry.is_correct:
@@ -252,6 +299,11 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         entry.item.score_max = 1.0
         entry.item.score_obtained = 1.0 if entry.is_correct else 0.0
         entry.item.error_cause_label = entry.error_cause_label
+        entry.item.feedback_text = (
+            None
+            if entry.is_correct
+            else (entry.knowledge_context[:300] if entry.knowledge_context else entry.item.explanation_snapshot)
+        )
         entry.item.graded_at = utcnow()
         entry.item.updated_at = utcnow()
         session.add(entry.item)

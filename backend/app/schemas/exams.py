@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -11,7 +12,10 @@ class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
     exam_mode: str = Field(description="Exam mode.")
-    user_prompt: str | None = Field(default=None, description="Optional user prompt for preference hints.")
+    user_prompt: str | None = Field(default=None, description="Optional user prompt for general generation hints.")
+    style_prompt: str | None = Field(default=None, description="Optional prompt that describes the desired paper style.")
+    focus_prompt: str | None = Field(default=None, description="Optional prompt describing key focus areas.")
+    sample_file_uids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file UIDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
     theme_tree_node_id: int | None = Field(default=None, description="Optional theme tree node scope.")
     teaching_unit_ids: list[int] | None = Field(default=None, description="Optional teaching unit scope.")
@@ -49,6 +53,7 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     exam_paper_id: int | None = None
     theme_tree_node_id: int | None = None
     teaching_unit_ids: list[int] = Field(default_factory=list)
+    sample_file_uids: list[str] = Field(default_factory=list)
 
 
 class ExamGradeResponse(RuntimeStatusResponse):
@@ -87,6 +92,16 @@ class QuestionBankItemResponse(BaseModel):
     times_asked: int
     last_asked_at: datetime
     last_exam_paper_id: int
+    knowledge_points: list[str] = Field(default_factory=list)
+    style_summary: str | None = None
+
+
+class ExamNodeLinkResponse(BaseModel):
+    knowledge_node_id: int
+    knowledge_node_name: str
+    coverage_weight: float
+    role: str
+    mastery_score: float | None = None
 
 
 class ExamPaperItemResponse(BaseModel):
@@ -97,9 +112,10 @@ class ExamPaperItemResponse(BaseModel):
     difficulty: str
     stem: str
     options: list[str] | None = None
+    correct_answer: str | None = None
     explanation: str
     teaching_unit_id: int
-    node_links: list[dict] = Field(default_factory=list)
+    node_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
     user_answer: str | None = None
     is_correct: bool | None = None
     score_obtained: float | None = None
@@ -119,4 +135,5 @@ class ExamPaperDetailResponse(BaseModel):
     submitted_at: datetime | None = None
     graded_at: datetime | None = None
     created_at: datetime
+    selection_context: dict[str, Any] = Field(default_factory=dict)
     items: list[ExamPaperItemResponse] = Field(default_factory=list)

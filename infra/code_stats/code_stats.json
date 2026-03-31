@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-30T19:18:22.502227",
-  "total_commits_analyzed": 269,
+  "generated_at": "2026-03-31T16:41:01.985639",
+  "total_commits_analyzed": 276,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2152,6 +2152,62 @@
       "total_lines": 88917,
       "code_lines": 66080,
       "other_lines": 22837,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-03-30",
+      "commit": "35173c4",
+      "total_lines": 88917,
+      "code_lines": 66080,
+      "other_lines": 22837,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "0d4e304",
+      "total_lines": 86054,
+      "code_lines": 63492,
+      "other_lines": 22562,
+      "message": "feat(frontend): 知识图谱页面视觉和交互三项升级"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "e513bca",
+      "total_lines": 86062,
+      "code_lines": 63498,
+      "other_lines": 22564,
+      "message": "fix: 跨域2"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "4d6a3a9",
+      "total_lines": 88867,
+      "code_lines": 66005,
+      "other_lines": 22862,
+      "message": "merge: 合并远程更新，解决 WordCloud3D 冲突"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "dddf6fd",
+      "total_lines": 88867,
+      "code_lines": 66005,
+      "other_lines": 22862,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "c7f65d9",
+      "total_lines": 89938,
+      "code_lines": 66983,
+      "other_lines": 22955,
+      "message": "merged main"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "2aa3e94",
+      "total_lines": 89938,
+      "code_lines": 66983,
+      "other_lines": 22955,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
