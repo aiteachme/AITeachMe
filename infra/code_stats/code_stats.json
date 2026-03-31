@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-31T16:55:00.353344",
-  "total_commits_analyzed": 279,
+  "generated_at": "2026-03-31T17:26:27.839744",
+  "total_commits_analyzed": 282,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2232,6 +2232,30 @@
       "total_lines": 89938,
       "code_lines": 66983,
       "other_lines": 22955,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "f1aded3",
+      "total_lines": 89938,
+      "code_lines": 66983,
+      "other_lines": 22955,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "65683a4",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "fix: pysqlite3 monkey-patch 解决 Render 平台 sqlite-ve"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "d13c65c",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
