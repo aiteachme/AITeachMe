@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-31T16:39:27.351664",
-  "total_commits_analyzed": 273,
+  "generated_at": "2026-03-31T16:41:01.985639",
+  "total_commits_analyzed": 276,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2185,6 +2185,30 @@
       "code_lines": 66005,
       "other_lines": 22862,
       "message": "merge: 合并远程更新，解决 WordCloud3D 冲突"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "dddf6fd",
+      "total_lines": 88867,
+      "code_lines": 66005,
+      "other_lines": 22862,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "c7f65d9",
+      "total_lines": 89938,
+      "code_lines": 66983,
+      "other_lines": 22955,
+      "message": "merged main"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "2aa3e94",
+      "total_lines": 89938,
+      "code_lines": 66983,
+      "other_lines": 22955,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
