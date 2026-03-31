@@ -62,14 +62,21 @@ def _build_app_metadata() -> dict[str, object]:
 
 
 def _register_middlewares(app: FastAPI) -> None:
+    settings = get_settings()
+    # 从环境变量读取允许的跨域来源（逗号分隔），或使用默认白名单
+    default_origins = [
+        "https://aiteachme.cn",
+        "https://www.aiteachme.cn",
+        "https://aiteachme.pages.dev",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+    configured = settings.cors_allowed_origins
+    origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "https://aiteachme.cn",
-            "https://aiteachme.pages.dev",
-            "http://localhost:5173",
-            "http://localhost:3000",
-        ],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

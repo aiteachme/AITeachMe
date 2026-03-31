@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     app_version: str = "0.2.0"
     export_openapi_on_startup: bool = False
+    cors_allowed_origins: str = ""  # 逗号分隔，留空使用默认白名单
 
     # ── AI 基础设施配置 ──
     model_overrides: dict[str, str] = {}
