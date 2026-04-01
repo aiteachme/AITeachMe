@@ -286,6 +286,7 @@ def get_current_curriculum_snapshot(
         .where(
             CurriculumSnapshot.subject == subject,
             CurriculumSnapshot.status == "published",
+            CurriculumSnapshot.is_current.is_(True),
         )
         .order_by(CurriculumSnapshot.version_no.desc(), CurriculumSnapshot.id.desc())
     )

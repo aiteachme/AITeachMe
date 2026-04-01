@@ -15,6 +15,7 @@ export interface ExamPaperItemResponse {
   difficulty: string;
   stem: string;
   options?: string[] | null;
+  correct_answer?: string | null;
   explanation: string;
   teaching_unit_id: number;
   node_links?: ExamPaperItemResponseNodeLinksItem[];

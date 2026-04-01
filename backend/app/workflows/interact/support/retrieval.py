@@ -29,10 +29,14 @@ async def retrieve_context(
 ) -> list[RetrievedContext]:
     """Retrieve prompt-ready context chunks for one chat question."""
 
+    normalized_query = query.strip()
+    if not normalized_query or top_k <= 0:
+        return []
+
     settings = get_settings()
     enable_rerank = bool(settings.rag_rerank_model)
 
-    query_embedding = await build_query_embedding(query)
+    query_embedding = await build_query_embedding(normalized_query)
     pipeline = RetrievalPipeline(
         vector_search_fn=lambda embedding, current_subject, current_top_k: _vector_search(
             session=session,
@@ -45,7 +49,7 @@ async def retrieve_context(
     # When reranking, fetch more candidates for better recall
     fetch_top_k = top_k * 3 if enable_rerank else top_k
     chunks = await pipeline.retrieve(
-        query,
+        normalized_query,
         subject,
         config=RetrievalConfig(
             top_k=fetch_top_k,
@@ -80,11 +84,14 @@ async def _vector_search(
 ) -> list[RetrievedChunk]:
     """Adapt repository vector search to the shared retrieval pipeline."""
 
+    if top_k <= 0:
+        return []
+
     results = vector_search(session, query_embedding, subject, top_k=top_k)
     return [
         RetrievedChunk(
             chunk_id=require_id(result.chunk.id, "RetrievalChunk.id"),
-            document_id=result.chunk.source_id,
+            document_id=result.chunk.document_id,
             title=result.chunk.title,
             header_path=result.chunk.header_path,
             content=result.chunk.content,

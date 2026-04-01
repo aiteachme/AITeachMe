@@ -19,5 +19,6 @@ export interface ExamPaperDetailResponse {
   submitted_at?: string | null;
   graded_at?: string | null;
   created_at: string;
-  items?: ExamPaperItemResponse[];
+  selection_context: { [key: string]: unknown };
+  items: ExamPaperItemResponse[];
 }

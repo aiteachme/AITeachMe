@@ -6,4 +6,10 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type ExamPaperItemResponseNodeLinksItem = { [key: string]: unknown };
+export interface ExamPaperItemResponseNodeLinksItem {
+  knowledge_node_id: number;
+  knowledge_node_name: string;
+  coverage_weight: number;
+  role: string;
+  mastery_score?: number | null;
+}
