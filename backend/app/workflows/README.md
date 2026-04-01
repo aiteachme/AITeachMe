@@ -62,3 +62,7 @@ workflows/<domain>/
 - 不需要把 `ingest` 硬改成 `kg/curriculum` 风格。
 - 也不需要把 `digest` 强压成 `nodes/parsing` 风格。
 - 真正要统一的是顶层入口形状和命名约定，而不是抹平业务差异。
+
+
+
+TODO 改流程代码的时候把langgraph对应图也都改一下
