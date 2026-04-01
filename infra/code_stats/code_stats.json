@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-01T03:38:43.996532",
-  "total_commits_analyzed": 288,
+  "generated_at": "2026-04-01T11:40:34.366659",
+  "total_commits_analyzed": 290,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2305,6 +2305,22 @@
       "code_lines": 66993,
       "other_lines": 22958,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "1dc6516",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "46553e4",
+      "total_lines": 91096,
+      "code_lines": 67696,
+      "other_lines": 23400,
+      "message": "feat: 修改exams, 添加14方案"
     }
   ]
 }
