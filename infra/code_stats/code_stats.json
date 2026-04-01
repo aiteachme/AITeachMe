@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-31T17:41:45.412650",
-  "total_commits_analyzed": 285,
+  "generated_at": "2026-04-01T03:38:43.996532",
+  "total_commits_analyzed": 288,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2277,6 +2277,30 @@
     {
       "date": "2026-04-01",
       "commit": "6b09349",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-03-31",
+      "commit": "386c888",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "5b0e7c3",
+      "total_lines": 89951,
+      "code_lines": 66993,
+      "other_lines": 22958,
+      "message": "fix: __future__ import 顺序修正"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "c77412c",
       "total_lines": 89951,
       "code_lines": 66993,
       "other_lines": 22958,
