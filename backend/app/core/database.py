@@ -1,5 +1,7 @@
 """Database bootstrap and session helpers."""
 
+from __future__ import annotations
+
 # Render 等平台预装 Python 未启用 SQLITE_ENABLE_LOAD_EXTENSION，
 # pysqlite3-binary 自带完整功能，替换系统 sqlite3 即可。
 try:
@@ -8,8 +10,6 @@ try:
     sys.modules["sqlite3"] = pysqlite3
 except ImportError:
     pass
-
-from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import Generator
