@@ -2,23 +2,11 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
-
-/** Pages that manage their own header + layout (no shared TopBar / padding) */
-const FULL_BLEED_SUFFIXES = [
-  "/doc",
-  "/upload",
-  "/exam",
-  "/analysis",
-  "/docs",
-  "/files",
-  "/exams",
-  "/profile",
-  "/knowledge-docs",
-];
+import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
 
 export function Layout() {
   const { pathname } = useLocation();
-  const isFullBleed = FULL_BLEED_SUFFIXES.some((s) => pathname.endsWith(s));
+  const isFullBleed = isFullBleedSubjectPath(pathname);
   const isHome = pathname === "/";
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
 

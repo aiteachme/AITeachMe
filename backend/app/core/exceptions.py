@@ -68,6 +68,19 @@ class SubjectInUseError(AITeachMeError):
         super().__init__(detail=f"学科 `{subject}` 下仍有内容，不能删除。")
 
 
+class KnowledgeClearConflictError(AITeachMeError):
+    error_code = "KNOWLEDGE_CLEAR_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str, blocking_details: str) -> None:
+        super().__init__(
+            detail=(
+                f"学科 `{subject}` 仍有关联的考试、画像或对话数据，"
+                f"暂不能直接清空知识。阻塞项：{blocking_details}。"
+            )
+        )
+
+
 class FileParseError(AITeachMeError):
     error_code = "FILE_PARSE_ERROR"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

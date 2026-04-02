@@ -6,11 +6,13 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.core.exceptions import KnowledgeClearConflictError
 from app.models import (
     Curriculum,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeNode,
+    QuestionTemplate,
     Subject,
     TaxonomyAnchor,
     TeachingUnit,
@@ -219,3 +221,33 @@ def test_clear_subject_knowledge_handles_self_referential_rows() -> None:
     assert session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject_id)).first() is None
     assert session.exec(select(KnowledgeDocument).where(KnowledgeDocument.subject == subject_id)).first() is None
     assert session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject_id)).first() is None
+
+
+def test_clear_subject_knowledge_rejects_when_exam_data_still_exists() -> None:
+    session = _make_session()
+    subject_id = "subj_exam1234abc"
+    _seed_subject_knowledge(session, subject_id=subject_id)
+    unit = session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject_id)).first()
+    assert unit is not None
+
+    session.add(
+        QuestionTemplate(
+            subject=subject_id,
+            teaching_unit_id=unit.id,
+            question_type="single_choice",
+            difficulty="medium",
+            stem="下面哪一项是一次方程？",
+            stem_hash="template-stem-hash-1",
+            answer="A",
+            explanation="测试阻塞清空知识时使用。",
+            status="active",
+        )
+    )
+    session.commit()
+
+    try:
+        clear_subject_knowledge(session, subject=subject_id)
+    except KnowledgeClearConflictError as exc:
+        assert "题模板" in exc.detail
+    else:
+        raise AssertionError("expected KnowledgeClearConflictError when exam data exists")

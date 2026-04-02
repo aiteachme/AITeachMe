@@ -798,6 +798,11 @@ export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse404 = {
   status: 404
 }
 
+export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
 export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -811,7 +816,7 @@ export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse500 = {
 export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponseSuccess = (knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse200) & {
   headers: Headers;
 };
-export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponseError = (knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse400 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse404 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse422 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse500) & {
+export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponseError = (knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse400 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse404 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse409 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse422 | knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse500) & {
   headers: Headers;
 };
 

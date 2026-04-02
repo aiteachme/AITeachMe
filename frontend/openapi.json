@@ -1456,6 +1456,16 @@
               }
             }
           },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {

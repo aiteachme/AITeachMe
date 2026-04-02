@@ -110,7 +110,7 @@ export function KnowledgeGraphPage() {
   // 从 overview.graph.nodes 构建 3D 词云数据
   return (
     <DigestBuildProvider subject={subjectId}>
-      <div className="space-y-6">
+      <div className="space-y-6 px-4 pt-20 pb-6 md:px-6 lg:px-8 max-w-7xl mx-auto">
         {/* ---- 页面标题栏（修复: 使用 flex-wrap + gap 防止重叠） ---- */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

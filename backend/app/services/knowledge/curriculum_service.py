@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
@@ -16,16 +15,13 @@ from app.core.exceptions import (
 )
 from app.models import (
     Curriculum,
-    KnowledgeDocument,
-    KnowledgeEdge,
     KnowledgeNode,
-    RetrievalChunk,
     TaxonomyAnchor,
     TeachingUnit,
     ThemeTreeNode,
     UnitDependency,
 )
-from app.repositories import curriculum_repo, knowledge_repo
+from app.repositories import curriculum_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     CurriculumSnapshotResponse,
@@ -53,10 +49,6 @@ def _load_json_list(payload: str) -> list[dict[str, object]]:
     if not isinstance(decoded, list):
         return []
     return [item for item in decoded if isinstance(item, dict)]
-
-
-def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> None:
-    session.exec(sa.delete(model).where(model.subject == subject))
 
 
 def get_teaching_units(
@@ -321,60 +313,3 @@ def get_current_curriculum_snapshot(
         syllabus_version_id=snapshot.syllabus_version_id,
         created_at=snapshot.created_at,
     )
-
-
-def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]:
-    counts: dict[str, int] = {}
-
-    chunks = list(session.exec(select(RetrievalChunk).where(RetrievalChunk.subject == subject)).all())
-    chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
-    if chunk_ids:
-        knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
-    for chunk in chunks:
-        session.delete(chunk)
-    counts["retrieval_chunk"] = len(chunks)
-    session.commit()
-
-    knowledge_documents = list(
-        session.exec(select(KnowledgeDocument).where(KnowledgeDocument.subject == subject)).all()
-    )
-    counts["knowledge_document"] = len(knowledge_documents)
-
-    tree_nodes = list(session.exec(select(ThemeTreeNode).where(ThemeTreeNode.subject == subject)).all())
-    counts["theme_tree_node"] = len(tree_nodes)
-
-    dependencies = list(session.exec(select(UnitDependency).where(UnitDependency.subject == subject)).all())
-    counts["unit_dependency"] = len(dependencies)
-
-    curricula = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
-    counts["curriculum"] = len(curricula)
-    counts["curriculum_version"] = 0
-    counts["theme_tree_version"] = 0
-    counts["prereq_dag_version"] = 0
-
-    anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
-    counts["taxonomy_anchor"] = len(anchors)
-
-    units = list(session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject)).all())
-    counts["teaching_unit"] = len(units)
-
-    edges = list(session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all())
-    counts["knowledge_edge"] = len(edges)
-
-    nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject)).all())
-    counts["knowledge_node"] = len(nodes)
-
-    for model in (
-        KnowledgeDocument,
-        ThemeTreeNode,
-        UnitDependency,
-        TaxonomyAnchor,
-        KnowledgeEdge,
-        KnowledgeNode,
-        TeachingUnit,
-        Curriculum,
-    ):
-        _bulk_delete_by_subject(session, model, subject=subject)
-    session.commit()
-    logger.info("subject_knowledge_cleared", subject=subject, counts=counts)
-    return counts

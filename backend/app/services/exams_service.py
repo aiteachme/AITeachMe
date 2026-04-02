@@ -437,19 +437,6 @@ async def trigger_question_build(
         )
 
 
-async def get_question_build_job_status(
-    session: Session,
-    *,
-    subject: str,
-    job_id: int,
-) -> QuestionBuildResult:
-    del session, subject
-    _raise_not_found(
-        f"题库构建任务 `{job_id}` 不存在（QuestionBuildJob 已移除）。",
-        error_code="QUESTION_BUILD_JOB_NOT_FOUND",
-    )
-
-
 async def trigger_exam_generate(
     session: Session,
     *,
