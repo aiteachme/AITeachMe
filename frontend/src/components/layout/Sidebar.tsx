@@ -101,7 +101,7 @@ const NewSubjectForm = memo(function NewSubjectForm({
 export function Sidebar() {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed on desktop
+  const [isCollapsed, setIsCollapsed] = useState(false); // Default expanded (LLM Arena style)
   const [showNewForm, setShowNewForm] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>();
   const [subjectActionError, setSubjectActionError] = useState<string | undefined>();
@@ -242,31 +242,34 @@ export function Sidebar() {
           isMobileOpen ? "translate-x-0 w-[280px]" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="border-b border-slate-100 p-4 flex items-center justify-between h-16 shrink-0">
+        <div className="border-b border-slate-100 px-4 flex items-center justify-between h-14 shrink-0">
           <AnimatePresence mode="popLayout">
             {!effectiveCollapsed && (
-              <Link to="/" className="block hover:opacity-80 transition-opacity cursor-pointer">
-                <motion.h1
+              <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
+                <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
-                  className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden"
+                  className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                 >
-                  AI 赛博私教
-                </motion.h1>
+                  <span className="text-lg">🎓</span>
+                  <span className="text-base font-bold text-slate-800 tracking-tight">AITeachMe</span>
+                  <span className="text-[9px] text-slate-400 font-medium">v1</span>
+                </motion.div>
               </Link>
             )}
           </AnimatePresence>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute right-0 top-1/2 z-20 hidden h-16 w-8 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-[0_16px_30px_-20px_rgba(15,23,42,0.45)] transition-all hover:border-slate-300 hover:text-slate-800 lg:flex"
-          title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
-        >
-          {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
+        {/* Toggle button moved to header */}
 
         <div className="space-y-2 p-3 shrink-0">
           <Button

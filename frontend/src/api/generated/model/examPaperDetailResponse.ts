@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
+import type { ExamPaperDetailResponseSelectionContext } from './examPaperDetailResponseSelectionContext';
 import type { ExamPaperItemResponse } from './examPaperItemResponse';
 
 export interface ExamPaperDetailResponse {
@@ -19,6 +20,6 @@ export interface ExamPaperDetailResponse {
   submitted_at?: string | null;
   graded_at?: string | null;
   created_at: string;
-  selection_context: { [key: string]: unknown };
-  items: ExamPaperItemResponse[];
+  selection_context?: ExamPaperDetailResponseSelectionContext;
+  items?: ExamPaperItemResponse[];
 }

@@ -24,8 +24,8 @@ from app.schemas.knowledge import (
     TeachingUnitDetailResponse,
     UnitDetailRequest,
 )
+from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.knowledge.curriculum_service import (
-    clear_subject_knowledge,
     get_teaching_unit_detail,
     manage_taxonomy_anchors,
 )
@@ -196,7 +196,7 @@ async def taxonomy_anchors(
     "/clear",
     response_model=ApiResponse[ClearKnowledgeResponse],
     summary="清空学科知识数据",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
 async def knowledge_clear(
     subject: str = Path(...),

@@ -5,7 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { ExamPaperItemResponseNodeLinksItem } from './examPaperItemResponseNodeLinksItem';
+import type { ExamNodeLinkResponse } from './examNodeLinkResponse';
 
 export interface ExamPaperItemResponse {
   id: number;
@@ -18,7 +18,7 @@ export interface ExamPaperItemResponse {
   correct_answer?: string | null;
   explanation: string;
   teaching_unit_id: number;
-  node_links?: ExamPaperItemResponseNodeLinksItem[];
+  node_links?: ExamNodeLinkResponse[];
   user_answer?: string | null;
   is_correct?: boolean | null;
   score_obtained?: number | null;

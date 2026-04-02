@@ -659,32 +659,32 @@
 - 能清楚定义从 `SectionPacket` 升级到 `ContentPrimitive / TopicCluster / ChapterBlueprint` 的必要性
 - 能清楚定义 `sprint | systematic` 两种模式的差异
 - 能清楚定义最终对外是 `document package`，不是单一 markdown 文件
-## 12. Draft Visibility And Publish Semantics Update (2026-03-30)
+## 12. 草稿可见性与发布语义更新（2026-03-30）
 
-This update documents the current runtime contract for the docs lane and supersedes any older wording that implied the user could only see the final merged book after publish.
+本节记录 docs lane 当前已经落地的运行时契约，并覆盖文档里那些曾暗示“用户只能在最终发布后看到 merged book”的旧描述。
 
-### Staging and preview semantics
+### staging 与预览语义
 
-- The docs lane now writes a staging draft as soon as chapter assembly for the current build is available.
-- That draft is surfaced through the same `/api/v1/subjects/{subject}/knowledge/docs` endpoint via:
+- docs lane 现在会在当前构建的章节装配结果可用后，尽早写出一份 staging draft。
+- 这份草稿通过同一个 `/api/v1/subjects/{subject}/knowledge/docs` 接口对外暴露，主要字段包括：
   - `draft_markdown`
   - `draft_updated_at`
   - `build.draft_available`
-- The preview is intentionally read-only. It exists to improve visibility, not to redefine what counts as the official knowledge document.
+- 草稿预览被明确设计为只读能力。它用于提升可见性，不用于重新定义“官方知识文档”的判定标准。
 
-### Live publish still stays unified
+### 正式发布仍然统一收口
 
-- Final live switching still requires the unified digest to pass through graph readiness, curriculum derivation, and publish coordination.
-- In other words, `draft != live`.
-- The official `exists + markdown + updated_at` pair still represents the curriculum-aligned published document package.
+- 最终 live 切换仍要求 unified digest 先后通过 graph readiness、curriculum derivation 与 publish coordination。
+- 换句话说，`draft != live`。
+- 对外正式生效的仍然是 `exists + markdown + updated_at` 这组字段，它代表与 curriculum 对齐后的已发布文档包。
 
-### Runtime stages relevant to the docs lane
+### 与 docs lane 相关的运行时阶段
 
-- `prepare_shared`: source profiling and mode decision have started
-- `doc_lane_staged`: staging markdown is available for preview
-- `graph_ready`: graph output is usable and publish can continue toward curriculum
-- `curriculum_deriving`: the system is generating units / theme tree / prereq structure
-- `publishing`: the live document package is being switched
+- `prepare_shared`：开始做源材料 profiling 与 mode decision
+- `doc_lane_staged`：staging markdown 已可预览
+- `graph_ready`：图谱结果已经可用于后续发布推进
+- `curriculum_deriving`：系统正在生成 units / theme tree / prerequisite 结构
+- `publishing`：正在切换 live 文档包
 
 ### Implication for docs-lane design
 
