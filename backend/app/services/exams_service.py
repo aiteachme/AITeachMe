@@ -37,8 +37,11 @@ from app.utils.time import seconds_between, utcnow
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.context import (
     ExamStyleProfile,
+    build_template_context_signature,
     build_exam_style_profile,
+    has_explicit_exam_context,
     normalize_difficulty_focus,
+    template_matches_request_context,
 )
 from app.workflows.examine.paper_assembler import assemble_paper
 from app.workflows.examine.paper_exporter import (
@@ -438,16 +441,52 @@ def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
     return normalize_exam_mode(exam_mode)
 
 
+def _resolve_requested_unit_scope(
+    session: Session,
+    *,
+    subject: str,
+    teaching_unit_ids: list[int] | None,
+    theme_tree_node_id: int | None,
+) -> list[int]:
+    allowed_ids = set(
+        exams_repo.list_teaching_unit_ids_by_subject(
+            session,
+            subject=subject,
+            status=None,
+        )
+    )
+    if teaching_unit_ids:
+        normalized = sorted(
+            {
+                int(item)
+                for item in teaching_unit_ids
+                if int(item) > 0 and int(item) in allowed_ids
+            }
+        )
+        return normalized
+
+    if theme_tree_node_id is None:
+        return []
+
+    resolved = exams_repo.resolve_teaching_units_from_theme_tree_node(session, theme_tree_node_id)
+    return sorted(int(unit_id) for unit_id in resolved if int(unit_id) in allowed_ids)
+
+
 def _resolve_auto_build_unit_ids(
     session: Session,
     *,
     subject: str,
     teaching_unit_ids: list[int] | None,
+    theme_tree_node_id: int | None,
 ) -> list[int]:
-    if teaching_unit_ids:
-        normalized = sorted({int(item) for item in teaching_unit_ids if int(item) > 0})
-        if normalized:
-            return normalized
+    requested_scope_ids = _resolve_requested_unit_scope(
+        session,
+        subject=subject,
+        teaching_unit_ids=teaching_unit_ids,
+        theme_tree_node_id=theme_tree_node_id,
+    )
+    if requested_scope_ids:
+        return requested_scope_ids
 
     active_ids = exams_repo.list_teaching_unit_ids_by_subject(
         session,
@@ -461,6 +500,36 @@ def _resolve_auto_build_unit_ids(
         session,
         subject=subject,
         status=None,
+    )
+
+
+def _count_effective_template_inventory(
+    session: Session,
+    *,
+    subject: str,
+    curriculum_version_id: int,
+    unit_ids: list[int],
+    preferred_question_types: list[str],
+    difficulty: str | None,
+    template_context_signature: str | None,
+    context_locked: bool,
+) -> int:
+    candidate_templates = exams_repo.list_active_question_templates(
+        session,
+        subject=subject,
+        curriculum_version_id=curriculum_version_id,
+        unit_ids=set(unit_ids) if unit_ids else None,
+        question_types=set(preferred_question_types) if preferred_question_types else None,
+        difficulty=difficulty,
+    )
+    return sum(
+        1
+        for template in candidate_templates
+        if template_matches_request_context(
+            template.selection_hints_json,
+            requested_context_signature=template_context_signature,
+            context_locked=context_locked,
+        )
     )
 
 
@@ -548,6 +617,12 @@ async def trigger_question_build(
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
     style_profile: ExamStyleProfile | None = None,
+    curriculum_version_id: int | None = None,
+    template_context_signature: str | None = None,
+    context_locked: bool = False,
+    scope_locked: bool = False,
+    focus_teaching_unit_ids: list[int] | None = None,
+    focus_node_ids: list[int] | None = None,
 ) -> QuestionBuildResult:
     runtime_job_id = _new_runtime_job_id()
     created_at = utcnow()
@@ -572,6 +647,12 @@ async def trigger_question_build(
                 user_prompt=user_prompt,
                 focus_prompt=focus_prompt,
                 style_profile=style_profile,
+                curriculum_version_id=curriculum_version_id,
+                template_context_signature=template_context_signature,
+                context_locked=context_locked,
+                scope_locked=scope_locked,
+                focus_teaching_unit_ids=focus_teaching_unit_ids or [],
+                focus_node_ids=focus_node_ids or [],
                 session=session,
             )
         error = state.get("error")
@@ -632,7 +713,7 @@ async def trigger_exam_generate(
 
     try:
         snapshot = exams_repo.get_published_curriculum_version(session, subject)
-        if snapshot is None:
+        if snapshot is None or snapshot.id is None:
             raise NoPublishedCurriculumSnapshotError(subject)
 
         style_profile_started_at = perf_counter()
@@ -656,10 +737,23 @@ async def trigger_exam_generate(
             or _choose_default_question_count(mode)
         )
         preferred_question_types = _choose_preferred_question_types(mode, user_prompt, style_profile)
+        resolved_scope_unit_ids = _resolve_requested_unit_scope(
+            session,
+            subject=subject,
+            teaching_unit_ids=teaching_unit_ids,
+            theme_tree_node_id=theme_tree_node_id,
+        )
+        scope_locked = bool(teaching_unit_ids) or theme_tree_node_id is not None
+        if scope_locked and not resolved_scope_unit_ids:
+            _raise_conflict(
+                "当前指定范围内没有可用教学单元，无法生成试卷。",
+                error_code="EXAM_GENERATE_EMPTY_SCOPE",
+            )
         build_unit_ids = _resolve_auto_build_unit_ids(
             session,
             subject=subject,
             teaching_unit_ids=teaching_unit_ids,
+            theme_tree_node_id=theme_tree_node_id,
         )
         if not build_unit_ids:
             _raise_conflict(
@@ -672,7 +766,7 @@ async def trigger_exam_generate(
             unit_count=len(build_unit_ids),
             mode=mode,
         )
-        if not teaching_unit_ids:
+        if not scope_locked:
             build_unit_ids = _prioritize_build_unit_ids(
                 session,
                 subject=subject,
@@ -684,10 +778,33 @@ async def trigger_exam_generate(
                 style_profile=style_profile,
             )
         required_template_count = max(1, int(resolved_num_questions))
-        force_contextual_build = bool(
-            (style_prompt or "").strip()
-            or (focus_prompt or "").strip()
-            or (sample_file_uids or [])
+        context_locked = has_explicit_exam_context(
+            style_prompt=style_prompt,
+            focus_prompt=focus_prompt,
+            sample_file_uids=sample_file_uids,
+            teaching_unit_ids=teaching_unit_ids,
+            theme_tree_node_id=theme_tree_node_id,
+        )
+        inventory_unit_ids = (
+            resolved_scope_unit_ids
+            if scope_locked
+            else (
+                build_unit_ids
+                if is_web_practice_mode(mode)
+                else exams_repo.list_teaching_unit_ids_by_subject(session, subject=subject, status="active")
+            )
+        )
+        template_context_signature = build_template_context_signature(
+            curriculum_version_id=snapshot.id,
+            exam_mode=mode,
+            preferred_question_types=preferred_question_types,
+            difficulty_focus=style_profile.difficulty_focus,
+            context_locked=context_locked,
+            scope_locked=scope_locked,
+            scope_unit_ids=resolved_scope_unit_ids,
+            style_prompt=style_prompt,
+            focus_prompt=focus_prompt,
+            sample_file_uids=sample_file_uids,
         )
         build_job: QuestionBuildResult | None = None
         question_build_ms = 0
@@ -701,13 +818,17 @@ async def trigger_exam_generate(
             lane="generation",
             node="trigger_exam_generate",
         ):
-            template_count_before = exams_repo.count_active_question_templates(
+            template_count_before = _count_effective_template_inventory(
                 session,
                 subject=subject,
-                question_types=set(preferred_question_types) if preferred_question_types else None,
+                curriculum_version_id=snapshot.id,
+                unit_ids=inventory_unit_ids,
+                preferred_question_types=preferred_question_types,
                 difficulty=template_count_difficulty,
+                template_context_signature=template_context_signature,
+                context_locked=context_locked,
             )
-            if force_contextual_build or template_count_before < required_template_count:
+            if template_count_before < required_template_count:
                 question_build_started_at = perf_counter()
                 build_job = await trigger_question_build(
                     session,
@@ -720,6 +841,12 @@ async def trigger_exam_generate(
                     user_prompt=user_prompt,
                     focus_prompt=focus_prompt,
                     style_profile=style_profile,
+                    curriculum_version_id=snapshot.id,
+                    template_context_signature=template_context_signature,
+                    context_locked=context_locked,
+                    scope_locked=scope_locked,
+                    focus_teaching_unit_ids=(resolved_scope_unit_ids or style_profile.focus_teaching_unit_ids),
+                    focus_node_ids=style_profile.focus_node_ids,
                 )
                 question_build_ms = _elapsed_ms(question_build_started_at)
             else:
@@ -732,11 +859,15 @@ async def trigger_exam_generate(
                     required_template_count=required_template_count,
                 )
 
-            template_count = exams_repo.count_active_question_templates(
+            template_count = _count_effective_template_inventory(
                 session,
                 subject=subject,
-                question_types=set(preferred_question_types) if preferred_question_types else None,
+                curriculum_version_id=snapshot.id,
+                unit_ids=inventory_unit_ids,
+                preferred_question_types=preferred_question_types,
                 difficulty=template_count_difficulty,
+                template_context_signature=template_context_signature,
+                context_locked=context_locked,
             )
             if template_count <= 0 and build_job is not None and build_job.status == "failed":
                 raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
@@ -750,14 +881,18 @@ async def trigger_exam_generate(
                 user_id=user_id,
                 exam_mode=mode,
                 num_questions=max(1, int(resolved_num_questions)),
+                curriculum_version_id=snapshot.id,
                 theme_tree_node_id=theme_tree_node_id,
-                teaching_unit_ids=(teaching_unit_ids or (build_unit_ids if is_web_practice_mode(mode) else None)),
+                teaching_unit_ids=(resolved_scope_unit_ids or (build_unit_ids if is_web_practice_mode(mode) else None)),
                 preferred_question_types=preferred_question_types,
                 preferred_difficulty=style_profile.difficulty_focus,
                 style_profile=style_profile,
                 user_prompt=user_prompt,
                 focus_prompt=focus_prompt,
                 sample_file_uids=sample_file_uids or [],
+                template_context_signature=template_context_signature,
+                context_locked=context_locked,
+                scope_locked=scope_locked,
             )
             assemble_paper_ms = _elapsed_ms(assemble_paper_started_at)
             export_ms = 0
@@ -844,7 +979,7 @@ async def trigger_exam_generate(
             num_questions=max(1, int(resolved_num_questions)),
             exam_paper_id=paper.id,
             theme_tree_node_id=theme_tree_node_id,
-            teaching_unit_ids_json=json.dumps(build_unit_ids, ensure_ascii=False),
+            teaching_unit_ids_json=json.dumps((resolved_scope_unit_ids or build_unit_ids), ensure_ascii=False),
             sample_file_uids_json=json.dumps(sample_file_uids or [], ensure_ascii=False),
         )
     finally:

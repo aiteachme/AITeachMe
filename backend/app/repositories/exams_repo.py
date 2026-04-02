@@ -222,6 +222,30 @@ def count_active_question_templates(
     return int(session.exec(stmt).one())
 
 
+def list_active_question_templates(
+    session: Session,
+    *,
+    subject: str,
+    curriculum_version_id: int | None = None,
+    unit_ids: set[int] | None = None,
+    question_types: set[str] | None = None,
+    difficulty: str | None = None,
+) -> list[QuestionTemplate]:
+    stmt = select(QuestionTemplate).where(
+        QuestionTemplate.subject == subject,
+        QuestionTemplate.status == "active",
+    )
+    if curriculum_version_id is not None:
+        stmt = stmt.where(QuestionTemplate.curriculum_version_id == curriculum_version_id)
+    if unit_ids:
+        stmt = stmt.where(QuestionTemplate.teaching_unit_id.in_(unit_ids))
+    if question_types:
+        stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))
+    if difficulty:
+        stmt = stmt.where(QuestionTemplate.difficulty == difficulty)
+    return list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
+
+
 def list_exam_item_snapshots_by_user(
     session: Session,
     *,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -237,13 +238,42 @@ def list_weak_node_summaries(
     ]
 
 
+def _extract_node_ids_from_refs(node_refs_json: str | None) -> set[int]:
+    if not node_refs_json:
+        return set()
+    try:
+        payload = json.loads(node_refs_json)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(payload, list):
+        return set()
+    return {
+        int(raw_node_id)
+        for row in payload
+        if isinstance(row, dict)
+        for raw_node_id in [row.get("knowledge_node_id")]
+        if isinstance(raw_node_id, int) and raw_node_id > 0
+    }
+
+
 def list_recent_wrong_attempt_summaries(
     session: Session,
     *,
     user_id: str,
     subject: str,
+    teaching_unit_id: int | None = None,
+    knowledge_node_ids: list[int] | None = None,
     limit: int = 5,
 ) -> list[dict[str, str]]:
+    candidate_limit = max(limit, 1)
+    target_node_ids = {
+        int(node_id)
+        for node_id in (knowledge_node_ids or [])
+        if int(node_id) > 0
+    }
+    if teaching_unit_id is not None or target_node_ids:
+        candidate_limit = max(candidate_limit * 8, 20)
+
     stmt = (
         select(
             ExamPaperItem.stem_snapshot,
@@ -251,6 +281,7 @@ def list_recent_wrong_attempt_summaries(
             ExamPaperItem.answer_snapshot,
             ExamPaperItem.error_cause_label,
             ExamPaperItem.explanation_snapshot,
+            ExamPaperItem.node_refs_json,
         )
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
@@ -259,11 +290,25 @@ def list_recent_wrong_attempt_summaries(
             ExamPaperItem.is_correct.is_(False),
         )
         .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
-        .limit(limit)
+        .limit(candidate_limit)
     )
+    if teaching_unit_id is not None:
+        stmt = stmt.where(ExamPaperItem.teaching_unit_id == teaching_unit_id)
     rows = session.exec(stmt).all()
+
+    ordered_rows = list(rows)
+    if target_node_ids:
+        overlapping_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
+        other_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
+        for row in rows:
+            if _extract_node_ids_from_refs(row[5]) & target_node_ids:
+                overlapping_rows.append(row)
+                continue
+            other_rows.append(row)
+        ordered_rows = overlapping_rows + other_rows
+
     items: list[dict[str, str]] = []
-    for stem, answer_content, correct_answer, error_label, explanation in rows:
+    for stem, answer_content, correct_answer, error_label, explanation, _node_refs_json in ordered_rows[:limit]:
         analysis = ""
         if error_label and error_label != "unknown":
             analysis = f"Possible error cause: {error_label}"

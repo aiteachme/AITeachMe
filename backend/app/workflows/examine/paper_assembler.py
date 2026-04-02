@@ -27,7 +27,7 @@ from app.models import (
 from app.models.curriculum import CurriculumSnapshot
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
-from app.workflows.examine.context import ExamStyleProfile
+from app.workflows.examine.context import ExamStyleProfile, template_matches_request_context
 
 logger = structlog.get_logger()
 
@@ -100,38 +100,28 @@ def _is_placeholder_template(template: QuestionTemplate) -> bool:
 
 
 def _build_unit_template_pool(
-    session: Session,
+    templates: list[QuestionTemplate],
     *,
-    subject: str,
     unit_filter: set[int] | None = None,
     question_type_filter: set[str] | None = None,
     preferred_difficulty: str | None = None,
     excluded_template_ids: set[int] | None = None,
 ) -> dict[int, list[QuestionTemplate]]:
-    stmt = select(QuestionTemplate).where(
-        QuestionTemplate.subject == subject,
-        QuestionTemplate.status == "active",
-    )
-    if unit_filter:
-        stmt = stmt.where(QuestionTemplate.teaching_unit_id.in_(unit_filter))
-    if question_type_filter:
-        stmt = stmt.where(QuestionTemplate.question_type.in_(question_type_filter))
-
-    rows = list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
     excluded = excluded_template_ids or set()
     pool: dict[int, list[QuestionTemplate]] = defaultdict(list)
-    for item in rows:
+    for item in templates:
         if item.id is None or item.id in excluded or _is_placeholder_template(item):
             continue
+        if unit_filter and item.teaching_unit_id not in unit_filter:
+            continue
+        if question_type_filter and item.question_type not in question_type_filter:
+            continue
+        if preferred_difficulty in {"easy", "medium", "hard"} and item.difficulty != preferred_difficulty:
+            continue
         pool[item.teaching_unit_id].append(item)
-    if preferred_difficulty in {"easy", "medium", "hard"}:
-        for templates in pool.values():
-            templates.sort(
-                key=lambda item: (
-                    0 if item.difficulty == preferred_difficulty else 1,
-                    item.id or 0,
-                )
-            )
+
+    for templates_by_unit in pool.values():
+        templates_by_unit.sort(key=lambda item: item.id or 0)
     return pool
 
 
@@ -209,6 +199,7 @@ def _build_curriculum_unit_allocation(
     *,
     snapshot: CurriculumSnapshot,
     num_questions: int,
+    allowed_unit_ids: set[int] | None = None,
 ) -> dict[int, int]:
     if snapshot.id is None:
         return {}
@@ -224,6 +215,8 @@ def _build_curriculum_unit_allocation(
     unit_weight: dict[int, int] = defaultdict(int)
     for node in tree_nodes:
         for unit_id in exams_repo.resolve_teaching_units_from_theme_tree_node(session, node.id or 0):
+            if allowed_unit_ids and int(unit_id) not in allowed_unit_ids:
+                continue
             unit_weight[int(unit_id)] += 1
 
     total_weight = sum(unit_weight.values())
@@ -318,6 +311,36 @@ def _normalize_preferred_difficulty(value: str | None) -> str | None:
     return None
 
 
+def _load_compatible_template_pool(
+    session: Session,
+    *,
+    subject: str,
+    curriculum_version_id: int,
+    template_context_signature: str | None,
+    context_locked: bool,
+) -> list[QuestionTemplate]:
+    current_templates = exams_repo.list_active_question_templates(
+        session,
+        subject=subject,
+        curriculum_version_id=curriculum_version_id,
+    )
+    return [
+        template
+        for template in current_templates
+        if template_matches_request_context(
+            template.selection_hints_json,
+            requested_context_signature=template_context_signature,
+            context_locked=context_locked,
+        )
+    ]
+
+
+def _template_reuse_policy(*, context_locked: bool) -> str:
+    if context_locked:
+        return "exact_context_signature"
+    return "generic_current_curriculum_only"
+
+
 def assemble_paper(
     session: Session,
     *,
@@ -325,6 +348,7 @@ def assemble_paper(
     user_id: str,
     exam_mode: ExamMode | str,
     num_questions: int,
+    curriculum_version_id: int | None = None,
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
     preferred_question_types: list[str] | None = None,
@@ -333,6 +357,9 @@ def assemble_paper(
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
     sample_file_uids: list[str] | None = None,
+    template_context_signature: str | None = None,
+    context_locked: bool = False,
+    scope_locked: bool = False,
     as_of: datetime | None = None,
 ) -> ExamPaper:
     mode = _normalize_exam_mode(exam_mode)
@@ -340,9 +367,17 @@ def assemble_paper(
     question_type_filter = {item for item in (preferred_question_types or []) if item}
     resolved_difficulty = _normalize_preferred_difficulty(preferred_difficulty)
 
-    curriculum_version = exams_repo.get_published_curriculum_version(session, subject)
-    if curriculum_version is None or curriculum_version.id is None:
-        raise NoPublishedCurriculumSnapshotError(subject)
+    if curriculum_version_id is None:
+        curriculum_version = exams_repo.get_published_curriculum_version(session, subject)
+        if curriculum_version is None or curriculum_version.id is None:
+            raise NoPublishedCurriculumSnapshotError(subject)
+        resolved_curriculum_version_id = curriculum_version.id
+        resolved_curriculum = curriculum_version
+    else:
+        resolved_curriculum_version_id = int(curriculum_version_id)
+        resolved_curriculum = session.get(CurriculumSnapshot, resolved_curriculum_version_id)
+        if resolved_curriculum is None:
+            raise NoPublishedCurriculumSnapshotError(subject)
 
     excluded_ids = set(
         exams_repo.list_recent_exam_template_ids_for_user(
@@ -352,9 +387,27 @@ def assemble_paper(
             limit=3,
         )
     )
+    compatible_templates = _load_compatible_template_pool(
+        session,
+        subject=subject,
+        curriculum_version_id=resolved_curriculum_version_id,
+        template_context_signature=template_context_signature,
+        context_locked=context_locked,
+    )
+    if not compatible_templates:
+        raise ValueError("自动组卷失败：当前上下文下没有可复用的题目模板。")
+
+    explicit_scope_units = _resolve_practice_units(
+        session,
+        theme_tree_node_id=theme_tree_node_id,
+        teaching_unit_ids=teaching_unit_ids,
+    )
+    if scope_locked and not explicit_scope_units:
+        raise ValueError("自动组卷失败：指定范围内没有可用教学单元。")
 
     used_template_ids: set[int] = set()
     selections: list[_Selection] = []
+    resolved_units_for_context: set[int] = set(explicit_scope_units)
     context_payload: dict[str, object] = {
         "selection_reasons": {},
         "target_theme_tree_node_id": theme_tree_node_id,
@@ -365,8 +418,11 @@ def assemble_paper(
         "user_prompt": user_prompt,
         "focus_prompt": focus_prompt,
         "style_profile": _style_metadata(style_profile),
+        "scope_locked": scope_locked,
+        "template_context_signature": template_context_signature,
+        "template_reuse_policy": _template_reuse_policy(context_locked=context_locked),
         "requested_difficulty": resolved_difficulty,
-        "resolved_teaching_unit_ids": [],
+        "resolved_teaching_unit_ids": sorted(explicit_scope_units) if scope_locked else [],
         "paper_title": (
             style_profile.title_hint
             if style_profile and style_profile.title_hint
@@ -376,137 +432,147 @@ def assemble_paper(
     }
 
     if is_web_practice_mode(mode):
-        resolved_units: set[int] = set()
-        unit_scope = _resolve_practice_units(
-            session,
-            theme_tree_node_id=theme_tree_node_id,
-            teaching_unit_ids=teaching_unit_ids,
-        )
-        if unit_scope:
-            resolved_units.update(unit_scope)
+        if explicit_scope_units:
             selections.extend(
                 _select_round_robin(
                     unit_to_templates=_build_unit_template_pool(
-                        session,
-                        subject=subject,
-                        unit_filter=unit_scope,
+                        compatible_templates,
+                        unit_filter=explicit_scope_units,
                         question_type_filter=question_type_filter or None,
                         preferred_difficulty=resolved_difficulty,
                         excluded_template_ids=excluded_ids,
                     ),
                     limit=num_questions,
                     used_template_ids=used_template_ids,
-                    reason="web_practice_scope",
+                    reason=("web_practice_scope_locked" if scope_locked else "web_practice_scope"),
                 )
             )
+        if not scope_locked:
+            due_states = profile_repo.list_due_knowledge_states(
+                session,
+                user_id=user_id,
+                subject=subject,
+                as_of=now,
+                target_kind="unit",
+            )
+            due_units = {
+                int(state.teaching_unit_id)
+                for state in due_states
+                if state.teaching_unit_id is not None
+            }
+            source_state_by_due_unit = {
+                int(state.teaching_unit_id): state.id
+                for state in due_states
+                if state.id is not None and state.teaching_unit_id is not None
+            }
+            if len(selections) < num_questions and due_units:
+                resolved_units_for_context.update(due_units)
+                selections.extend(
+                    _select_round_robin(
+                        unit_to_templates=_build_unit_template_pool(
+                            compatible_templates,
+                            unit_filter=due_units,
+                            question_type_filter=question_type_filter or None,
+                            preferred_difficulty=resolved_difficulty,
+                            excluded_template_ids=excluded_ids,
+                        ),
+                        limit=(num_questions - len(selections)),
+                        used_template_ids=used_template_ids,
+                        reason="review_due",
+                        source_state_by_unit=source_state_by_due_unit,
+                    )
+                )
 
-        due_states = profile_repo.list_due_knowledge_states(
-            session,
-            user_id=user_id,
-            subject=subject,
-            as_of=now,
-            target_kind="unit",
-        )
-        due_units = {
-            int(state.teaching_unit_id)
-            for state in due_states
-            if state.teaching_unit_id is not None
-        }
-        source_state_by_due_unit = {
-            int(state.teaching_unit_id): state.id
-            for state in due_states
-            if state.id is not None and state.teaching_unit_id is not None
-        }
-        if len(selections) < num_questions and due_units:
-            resolved_units.update(due_units)
-            selections.extend(
-                _select_round_robin(
-                    unit_to_templates=_build_unit_template_pool(
-                        session,
-                        subject=subject,
-                        unit_filter=due_units,
-                        question_type_filter=question_type_filter or None,
-                        preferred_difficulty=resolved_difficulty,
-                        excluded_template_ids=excluded_ids,
-                    ),
-                    limit=(num_questions - len(selections)),
-                    used_template_ids=used_template_ids,
-                    reason="review_due",
-                    source_state_by_unit=source_state_by_due_unit,
-                )
+            weak_states = profile_repo.list_weak_knowledge_states(
+                session,
+                user_id=user_id,
+                subject=subject,
+                threshold=0.8,
+                target_kind="unit",
             )
+            weak_units = {
+                int(state.teaching_unit_id)
+                for state in weak_states
+                if state.teaching_unit_id is not None
+            }
+            source_state_by_unit = {
+                int(state.teaching_unit_id): state.id
+                for state in weak_states
+                if state.id is not None and state.teaching_unit_id is not None
+            }
+            prereq_units: set[int] = set()
+            for unit_id in weak_units:
+                prereq_units.update(exams_repo.list_prereq_units(session, unit_id))
 
-        weak_states = profile_repo.list_weak_knowledge_states(
-            session,
-            user_id=user_id,
-            subject=subject,
-            threshold=0.8,
-            target_kind="unit",
-        )
-        weak_units = {
-            int(state.teaching_unit_id)
-            for state in weak_states
-            if state.teaching_unit_id is not None
-        }
-        source_state_by_unit = {
-            int(state.teaching_unit_id): state.id
-            for state in weak_states
-            if state.id is not None and state.teaching_unit_id is not None
-        }
-        prereq_units: set[int] = set()
-        for unit_id in weak_units:
-            prereq_units.update(exams_repo.list_prereq_units(session, unit_id))
-        remaining_after_due = max(0, num_questions - len(selections))
-        if remaining_after_due > 0 and (weak_units or prereq_units):
-            weak_count, prereq_count = _weighted_split(remaining_after_due, [0.75, 0.25])
-            selections.extend(
-                _select_round_robin(
-                    unit_to_templates=_build_unit_template_pool(
-                        session,
-                        subject=subject,
-                        unit_filter=weak_units or None,
-                        question_type_filter=question_type_filter or None,
-                        preferred_difficulty=resolved_difficulty,
-                        excluded_template_ids=excluded_ids,
-                    ),
-                    limit=weak_count,
-                    used_template_ids=used_template_ids,
-                    reason="weakpoint_boost",
-                    source_state_by_unit=source_state_by_unit,
+            remaining_after_due = max(0, num_questions - len(selections))
+            if remaining_after_due > 0 and (weak_units or prereq_units):
+                weak_count, prereq_count = _weighted_split(remaining_after_due, [0.75, 0.25])
+                selections.extend(
+                    _select_round_robin(
+                        unit_to_templates=_build_unit_template_pool(
+                            compatible_templates,
+                            unit_filter=weak_units or None,
+                            question_type_filter=question_type_filter or None,
+                            preferred_difficulty=resolved_difficulty,
+                            excluded_template_ids=excluded_ids,
+                        ),
+                        limit=weak_count,
+                        used_template_ids=used_template_ids,
+                        reason="weakpoint_boost",
+                        source_state_by_unit=source_state_by_unit,
+                    )
                 )
-            )
-            selections.extend(
-                _select_round_robin(
-                    unit_to_templates=_build_unit_template_pool(
-                        session,
-                        subject=subject,
-                        unit_filter=prereq_units or None,
-                        question_type_filter=question_type_filter or None,
-                        preferred_difficulty=resolved_difficulty,
-                        excluded_template_ids=excluded_ids,
-                    ),
-                    limit=prereq_count,
-                    used_template_ids=used_template_ids,
-                    reason="prereq_patch",
-                    source_state_by_unit=source_state_by_unit,
+                selections.extend(
+                    _select_round_robin(
+                        unit_to_templates=_build_unit_template_pool(
+                            compatible_templates,
+                            unit_filter=prereq_units or None,
+                            question_type_filter=question_type_filter or None,
+                            preferred_difficulty=resolved_difficulty,
+                            excluded_template_ids=excluded_ids,
+                        ),
+                        limit=prereq_count,
+                        used_template_ids=used_template_ids,
+                        reason="prereq_patch",
+                        source_state_by_unit=source_state_by_unit,
+                    )
                 )
-            )
 
-        pending_review_tasks = profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
-        context_payload["review_task_ids"] = [task.id for task in pending_review_tasks if task.id is not None]
-        context_payload["weakness_state_ids"] = [state.id for state in weak_states if state.id is not None]
-        resolved_units.update(weak_units)
-        resolved_units.update(prereq_units)
-        context_payload["resolved_teaching_unit_ids"] = sorted(resolved_units)
+            pending_review_tasks = profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
+            context_payload["review_task_ids"] = [task.id for task in pending_review_tasks if task.id is not None]
+            context_payload["weakness_state_ids"] = [state.id for state in weak_states if state.id is not None]
+            resolved_units_for_context.update(weak_units)
+            resolved_units_for_context.update(prereq_units)
+
+            if len(selections) < num_questions:
+                selections.extend(
+                    _select_round_robin(
+                        unit_to_templates=_build_unit_template_pool(
+                            compatible_templates,
+                            question_type_filter=question_type_filter or None,
+                            preferred_difficulty=resolved_difficulty,
+                            excluded_template_ids=excluded_ids,
+                        ),
+                        limit=(num_questions - len(selections)),
+                        used_template_ids=used_template_ids,
+                        reason="web_practice_default",
+                    )
+                )
     elif is_paper_exam_mode(mode):
         allocation = _build_curriculum_unit_allocation(
             session,
-            snapshot=curriculum_version,
+            snapshot=resolved_curriculum,
             num_questions=num_questions,
+            allowed_unit_ids=(explicit_scope_units or None),
         )
+        if explicit_scope_units and not allocation:
+            scoped_units = sorted(explicit_scope_units)
+            allocation = {unit_id: 0 for unit_id in scoped_units}
+            for index in range(num_questions):
+                allocation[scoped_units[index % len(scoped_units)]] += 1
+
         pool = _build_unit_template_pool(
-            session,
-            subject=subject,
+            compatible_templates,
             unit_filter=set(allocation.keys()) or None,
             question_type_filter=question_type_filter or None,
             preferred_difficulty=resolved_difficulty,
@@ -523,13 +589,13 @@ def assemble_paper(
                     reason="paper_exam_blueprint",
                 )
             )
+        resolved_units_for_context.update(allocation.keys())
         context_payload["resolved_teaching_unit_ids"] = sorted(allocation.keys())
     else:
         selections.extend(
             _select_round_robin(
                 unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
+                    compatible_templates,
                     question_type_filter=question_type_filter or None,
                     preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=excluded_ids,
@@ -540,12 +606,27 @@ def assemble_paper(
             )
         )
 
-    if len(selections) < num_questions:
+    if scope_locked:
+        if len(selections) < num_questions and excluded_ids:
+            selections.extend(
+                _select_round_robin(
+                    unit_to_templates=_build_unit_template_pool(
+                        compatible_templates,
+                        unit_filter=explicit_scope_units or None,
+                        question_type_filter=question_type_filter or None,
+                        preferred_difficulty=resolved_difficulty,
+                        excluded_template_ids=None,
+                    ),
+                    limit=(num_questions - len(selections)),
+                    used_template_ids=used_template_ids,
+                    reason="scope_locked_relaxed_exclusion",
+                )
+            )
+    elif len(selections) < num_questions:
         selections.extend(
             _select_round_robin(
                 unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
+                    compatible_templates,
                     question_type_filter=question_type_filter or None,
                     preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=excluded_ids,
@@ -556,12 +637,11 @@ def assemble_paper(
             )
         )
 
-    if len(selections) < num_questions and excluded_ids:
+    if not scope_locked and len(selections) < num_questions and excluded_ids:
         selections.extend(
             _select_round_robin(
                 unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
+                    compatible_templates,
                     question_type_filter=question_type_filter or None,
                     preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=None,
@@ -576,19 +656,25 @@ def assemble_paper(
         selections.extend(
             _select_round_robin(
                 unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
+                    compatible_templates,
+                    unit_filter=(explicit_scope_units or None) if scope_locked else None,
                     preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=None,
                 ),
                 limit=(num_questions - len(selections)),
                 used_template_ids=used_template_ids,
-                reason="fallback_any_type",
+                reason=("scope_locked_relaxed_type" if scope_locked else "fallback_any_type"),
             )
         )
 
-    if not selections:
-        raise ValueError("自动组卷失败：当前没有可用题目模板。")
+    if len(selections) < num_questions:
+        if scope_locked:
+            raise ValueError("自动组卷失败：指定范围内可用题目不足，请减少题量或先补充构题。")
+        raise ValueError("自动组卷失败：当前上下文下可用题目不足，请先补充构题。")
+
+    if not context_payload["resolved_teaching_unit_ids"]:
+        selected_unit_ids = {selection.template.teaching_unit_id for selection in selections}
+        context_payload["resolved_teaching_unit_ids"] = sorted(selected_unit_ids or resolved_units_for_context)
 
     if is_paper_exam_mode(mode):
         section_plan, selections = _build_paper_exam_section_plan(selections)
@@ -600,7 +686,7 @@ def assemble_paper(
             subject=subject,
             user_id=user_id,
             exam_mode=mode,
-            curriculum_version_id=curriculum_version.id,
+            curriculum_version_id=resolved_curriculum_version_id,
             status="draft",
             total_items=0,
             selection_context_json="{}",
@@ -676,5 +762,7 @@ def assemble_paper(
         exam_mode=mode,
         exam_paper_id=paper.id,
         total_items=paper.total_items,
+        scope_locked=scope_locked,
+        template_reuse_policy=context_payload["template_reuse_policy"],
     )
     return paper

@@ -439,3 +439,18 @@ Examine 当前会消费并回写 Profile：
 2. 让 `paper_exam` 支持更真实的题量、分值和 section 配比约束。
 3. 把 Examine 从同步请求升级成真正可轮询的后台作业，并补齐 token / cost observability。
 4. 继续收敛剩余的 context 构建查询，尤其是更深层的 unit/node/profile 联查与缓存。
+---
+
+## 15. 2026-04 Examine 补充约束
+
+- `build_unit_exam_contexts()` 当前会优先读取 KG 当前 revision 的节点 `summary/body`；只有 revision 不可用时才回退节点主表字段。
+- `recent_mistakes` 不再按全学科整包注入，而是先按当前 `teaching_unit_id` 过滤，再优先排序命中当前单元关联 node 的错题，只保留少量高相关历史。
+- `question_template.node_refs_json` 的目标语义已收紧为“每题 1 到 3 个强相关节点”，不再镜像整个教学单元 membership。
+- 主节点优先使用 LLM 返回且属于当前单元的 `knowledge_node_id`；失效时退回当前题目的首选节点；辅节点只在题干、答案、解释里显式命中其它节点名时写入。
+- 节点权重固定为“主节点占主导、辅节点分剩余权重”，最终归一化到 1.0，供 Profile 精确回写 node mastery。
+- `question_template.selection_hints_json` 现在还会写入 `context_signature`、`context_locked`、`scope_locked`、`focus_teaching_unit_ids`、`focus_node_ids`、`style_prompt_summary`、`focus_prompt_summary`，用于模板复用筛选。
+- 模板池默认只复用当前已发布 `curriculum.id` 下的 active 模板；旧 `curriculum_version_id` 模板不再默认参与组卷。
+- 请求里只要显式出现 `style_prompt / focus_prompt / sample_file_uids / teaching_unit_ids / theme_tree_node_id` 任一项，就会生成 `context_signature`，模板复用必须精确匹配该签名。
+- 显式 scope 锁定后，组卷只能在解析出的 `resolved_teaching_unit_ids` 内完成；不足时只允许放宽 recent exclusion 和题型过滤，不允许跨 scope 补题。
+- 无显式 scope 的普通 `web_practice` 仍保留 due / weak / prereq 策略，但 fallback 也只允许放宽 recent exclusion 和题型过滤，不允许放宽当前 curriculum 约束。
+- `exam_paper.selection_context_json` 现在明确还会暴露 `scope_locked`、`template_context_signature`、`template_reuse_policy`，继续保持 `dict[str, Any]` 兼容，不新增 API schema。

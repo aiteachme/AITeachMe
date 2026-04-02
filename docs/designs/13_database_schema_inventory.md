@@ -343,3 +343,9 @@ user
 - 真正需要独立查询的结构表继续保留
 - 其余 support 表尽量并回主表字段或 JSON
 - 以后真的出现历史版本刚需，再补 history/release 表
+## 0. 2026-04 Examine / Profile JSON 字段补充
+
+- 本批没有新增业务主表、没有新增列、没有引入迁移系统，继续在既有 schema 上演进。
+- `question_template.node_refs_json` 的目标语义已收紧为“每题精确绑定的少量强相关节点”，不再作为教学单元 membership 的镜像字段。
+- `question_template.selection_hints_json` 现在明确承担上下文约束元数据，至少会保存 `context_signature`、`context_locked`、`scope_locked`、`focus_teaching_unit_ids`、`focus_node_ids`、`style_prompt_summary`、`focus_prompt_summary`。
+- `exam_paper.selection_context_json` 继续保持 JSON 快照语义，本批新增的可观测字段主要是 `scope_locked`、`template_context_signature`、`template_reuse_policy`，不改 API schema。

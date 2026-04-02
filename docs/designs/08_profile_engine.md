@@ -272,3 +272,9 @@ Profile 负责把学习过程沉淀成可被其他引擎直接消费的状态层
 同时当前还多了一条 runtime 档案侧链：
 
 `做题 -> learning log / LEARNER.md 补写 -> Interact 上下文自动读入`
+## 0. 2026-04 Profile 闭环修正
+
+- 本批没有新增 schema，也没有新增 profile summary 主表，仍保持 `user.profile_json / subject.profile_json / user_knowledge_state` 三层结构。
+- `update_mastery_from_exam()` 的核心收益来自更精确的 `exam_paper_item.node_refs_json`：node mastery 现在只会由真正命中的节点回写，不再把同单元其它 membership 节点一起拉动。
+- unit mastery 仍按 `exam_paper_item.teaching_unit_id` 聚合，node mastery 按精确 `node_refs_json` 聚合；这一点是 Examine/Profile 闭环信号纯度的关键约束。
+- `subject.profile_json.focus_teaching_unit_ids / focus_node_ids` 仍继续作为 Examine 的出题先验，但本批没有改动对外 API，也没有新增额外画像读取接口。

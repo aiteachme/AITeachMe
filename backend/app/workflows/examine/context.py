@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.models import (
@@ -87,6 +89,7 @@ class ExamStyleProfile:
     recommended_question_count: int | None = None
     difficulty_focus: str | None = None
     focus_teaching_unit_ids: list[int] = field(default_factory=list)
+    focus_node_ids: list[int] = field(default_factory=list)
     style_prompt: str | None = None
     focus_prompt: str | None = None
     user_prompt: str | None = None
@@ -130,11 +133,31 @@ class ExamStyleProfile:
             "recommended_question_count": self.recommended_question_count,
             "difficulty_focus": self.difficulty_focus,
             "focus_teaching_unit_ids": list(self.focus_teaching_unit_ids),
+            "focus_node_ids": list(self.focus_node_ids),
             "style_prompt": self.style_prompt,
             "focus_prompt": self.focus_prompt,
             "user_prompt": self.user_prompt,
             "notes": list(self.notes),
         }
+
+
+class TemplateSelectionHints(BaseModel):
+    exam_mode: str | None = None
+    preferred_question_types: list[str] = Field(default_factory=list)
+    unit_mastery_score: float | None = None
+    weak_node_names: list[str] = Field(default_factory=list)
+    learning_objectives: list[str] = Field(default_factory=list)
+    preferred_node_id: int | None = None
+    style_profile: dict[str, object] = Field(default_factory=dict)
+    focus_prompt: str | None = None
+    user_prompt: str | None = None
+    context_signature: str | None = None
+    context_locked: bool = False
+    scope_locked: bool = False
+    focus_teaching_unit_ids: list[int] = Field(default_factory=list)
+    focus_node_ids: list[int] = Field(default_factory=list)
+    style_prompt_summary: str | None = None
+    focus_prompt_summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -243,6 +266,100 @@ def _unique_strings(values: list[str]) -> list[str]:
         seen.add(normalized)
         ordered.append(normalized)
     return ordered
+
+
+def _normalize_int_list(values: list[int] | None) -> list[int]:
+    if not values:
+        return []
+    ordered = sorted({int(item) for item in values if int(item) > 0})
+    return ordered
+
+
+def summarize_hint_text(text: str | None, *, max_chars: int = 120) -> str | None:
+    normalized = truncate_text(text or "", max_chars=max_chars)
+    return normalized or None
+
+
+def has_explicit_exam_context(
+    *,
+    style_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    sample_file_uids: list[str] | None = None,
+    teaching_unit_ids: list[int] | None = None,
+    theme_tree_node_id: int | None = None,
+) -> bool:
+    return any(
+        [
+            bool((style_prompt or "").strip()),
+            bool((focus_prompt or "").strip()),
+            bool(sample_file_uids),
+            bool(teaching_unit_ids),
+            theme_tree_node_id is not None,
+        ]
+    )
+
+
+def build_template_context_signature(
+    *,
+    curriculum_version_id: int | None,
+    exam_mode: str,
+    preferred_question_types: list[str] | None,
+    difficulty_focus: str | None,
+    context_locked: bool,
+    scope_locked: bool,
+    scope_unit_ids: list[int] | None = None,
+    style_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    sample_file_uids: list[str] | None = None,
+) -> str:
+    payload = {
+        "curriculum_version_id": int(curriculum_version_id or 0),
+        "exam_mode": normalize_exam_mode(exam_mode),
+        "preferred_question_types": _unique_strings(preferred_question_types or []),
+        "difficulty_focus": normalize_difficulty_focus(difficulty_focus),
+        "context_locked": context_locked,
+        "scope_locked": scope_locked,
+        "scope_unit_ids": (_normalize_int_list(scope_unit_ids) if scope_locked else []),
+        "style_prompt": ((style_prompt or "").strip() if context_locked else ""),
+        "focus_prompt": ((focus_prompt or "").strip() if context_locked else ""),
+        "sample_file_uids": (list(dict.fromkeys(sample_file_uids or [])) if context_locked else []),
+    }
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def load_template_selection_hints(raw: str | None) -> TemplateSelectionHints:
+    if not raw:
+        return TemplateSelectionHints()
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return TemplateSelectionHints()
+    if not isinstance(decoded, dict):
+        return TemplateSelectionHints()
+    try:
+        return TemplateSelectionHints.model_validate(decoded)
+    except Exception:
+        return TemplateSelectionHints()
+
+
+def template_matches_request_context(
+    raw_hints: str | None,
+    *,
+    requested_context_signature: str | None,
+    context_locked: bool,
+) -> bool:
+    hints = load_template_selection_hints(raw_hints)
+    if context_locked:
+        if not requested_context_signature:
+            return False
+        return hints.context_signature == requested_context_signature
+    return not hints.context_locked
 
 
 def normalize_difficulty_focus(value: str | None) -> str | None:
@@ -509,6 +626,11 @@ def build_exam_style_profile(
             if subject_profile is not None
             else []
         ),
+        focus_node_ids=(
+            list(subject_profile.focus_node_ids[:12])
+            if subject_profile is not None
+            else []
+        ),
         style_prompt=(style_prompt or "").strip() or None,
         focus_prompt=(focus_prompt or "").strip() or None,
         user_prompt=(user_prompt or "").strip() or None,
@@ -582,6 +704,18 @@ def _load_knowledge_nodes_by_id(
     return {int(node.id): node for node in rows if node.id is not None}
 
 
+def _load_node_content_map(
+    session: Session,
+    *,
+    node_ids: list[int],
+) -> dict[int, tuple[str, str]]:
+    content_by_id: dict[int, tuple[str, str]] = {}
+    for node_id in sorted({int(item) for item in node_ids if int(item) > 0}):
+        _, summary, body = _resolve_node_content(session, node_id)
+        content_by_id[node_id] = (summary, body)
+    return content_by_id
+
+
 def _load_unit_state_map(
     session: Session,
     *,
@@ -643,6 +777,7 @@ def _build_node_contexts_for_unit(
     unit_id: int,
     memberships_by_unit: dict[int, list[tuple[int, str, float]]],
     node_by_id: dict[int, KnowledgeNode],
+    node_content_by_id: dict[int, tuple[str, str]],
     node_state_by_id: dict[int, UserKnowledgeState],
     weak_node_ids: set[int],
 ) -> list[NodeExamContext]:
@@ -653,12 +788,16 @@ def _build_node_contexts_for_unit(
             continue
 
         mastery_state = node_state_by_id.get(node_id)
+        summary, body = node_content_by_id.get(
+            node_id,
+            (node.summary or "", node.body_markdown or node.body or ""),
+        )
         contexts.append(
             NodeExamContext(
                 node_id=node_id,
                 node_name=node.canonical_name,
-                summary=node.summary or "",
-                body=node.body_markdown or node.body or "",
+                summary=summary,
+                body=body,
                 role=role,
                 coverage_weight=score or 1.0,
                 mastery_score=(mastery_state.mastery_score if mastery_state is not None else None),
@@ -691,12 +830,6 @@ def build_unit_exam_contexts(
         user_prompt=user_prompt,
         exam_mode=mode,
     )
-    recent_mistakes = profile_repo.list_recent_wrong_attempt_summaries(
-        session,
-        user_id=user_id,
-        subject=subject,
-        limit=5,
-    )
     weak_node_ids = {
         int(state.knowledge_node_id)
         for state in profile_repo.list_weak_knowledge_states(
@@ -721,6 +854,7 @@ def build_unit_exam_contexts(
         for node_id, _, _ in memberships
     ]
     node_by_id = _load_knowledge_nodes_by_id(session, node_ids=all_node_ids)
+    node_content_by_id = _load_node_content_map(session, node_ids=all_node_ids)
     unit_state_by_id = _load_unit_state_map(
         session,
         user_id=user_id,
@@ -743,6 +877,7 @@ def build_unit_exam_contexts(
             unit_id=int(unit.id),
             memberships_by_unit=memberships_by_unit,
             node_by_id=node_by_id,
+            node_content_by_id=node_content_by_id,
             node_state_by_id=node_state_by_id,
             weak_node_ids=weak_node_ids,
         )
@@ -755,6 +890,14 @@ def build_unit_exam_contexts(
         search_terms = [unit.canonical_name, unit.title] + [item.node_name for item in node_contexts]
         doc_excerpt = _extract_doc_excerpt(doc_text, search_terms)
         weak_node_names = [item.node_name for item in node_contexts if item.is_weak]
+        recent_mistakes = profile_repo.list_recent_wrong_attempt_summaries(
+            session,
+            user_id=user_id,
+            subject=subject,
+            teaching_unit_id=int(unit.id),
+            knowledge_node_ids=[item.node_id for item in node_contexts],
+            limit=3,
+        )
         contexts.append(
             UnitExamContext(
                 subject=subject,
@@ -843,11 +986,17 @@ def build_grading_knowledge_context(
 __all__ = [
     "ExamStyleProfile",
     "NodeExamContext",
+    "TemplateSelectionHints",
     "UnitExamContext",
+    "build_template_context_signature",
     "build_exam_style_profile",
     "build_grading_knowledge_context",
     "build_unit_exam_contexts",
+    "has_explicit_exam_context",
+    "load_template_selection_hints",
     "normalize_difficulty_focus",
     "read_knowledge_doc_text",
+    "summarize_hint_text",
+    "template_matches_request_context",
     "truncate_text",
 ]

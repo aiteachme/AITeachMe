@@ -214,3 +214,9 @@
 
 当前 API 体系是“POST 主导 + 少量 GET 读取 + SSE 聊天主通道 + 后台任务注册器托管长流程”。  
 后续改动继续遵循“能复用现有接口就不新增接口”的收敛原则。
+## 0. 2026-04 Examine 可观察行为补充
+
+- 本批没有新增、删除或改名任何公开 route，也没有改 `backend/app/schemas/*` 的请求响应结构。
+- `ExamPaperDetailResponse.selection_context` 继续保持 `dict[str, Any]` 兼容，但 Examine 现在会额外写入 `scope_locked`、`template_context_signature`、`template_reuse_policy` 等调试字段。
+- 当请求显式携带 `style_prompt / focus_prompt / sample_file_uids / teaching_unit_ids / theme_tree_node_id` 任一项时，后端会生成 `context_signature`，模板复用必须精确匹配该上下文。
+- 当显式 `teaching_unit_ids` 或 `theme_tree_node_id` 锁定范围后，组卷不再跨范围 fallback；若范围内题目不足，会直接返回失败，而不是静默放宽到全学科。
