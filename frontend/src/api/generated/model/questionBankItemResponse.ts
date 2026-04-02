@@ -15,4 +15,6 @@ export interface QuestionBankItemResponse {
   times_asked: number;
   last_asked_at: string;
   last_exam_paper_id: number;
+  knowledge_points?: string[];
+  style_summary?: string | null;
 }

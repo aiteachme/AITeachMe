@@ -5,7 +5,6 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-
 import type { DocGenBuildStatusResponse } from './docGenBuildStatusResponse';
 
 /**
@@ -24,7 +23,7 @@ export interface DocGenGetResponse {
   prompt?: string | null;
   /** Current staging draft markdown content, if available. */
   draft_markdown?: string;
-  /** Last updated time of the staging draft markdown. */
+  /** Last updated time of the staging draft. */
   draft_updated_at?: string | null;
   /** Current or most recent build metadata. */
   build?: DocGenBuildStatusResponse | null;

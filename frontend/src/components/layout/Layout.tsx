@@ -41,7 +41,7 @@ export function Layout() {
                 <Outlet />
               </div>
             ) : (
-              <div className="container mx-auto p-4 md:p-6 lg:p-8 max-w-7xl min-h-full">
+              <div className="container mx-auto px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8 max-w-7xl min-h-full">
                 <Outlet />
               </div>
             )}

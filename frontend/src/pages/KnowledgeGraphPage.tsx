@@ -171,10 +171,10 @@ export function KnowledgeGraphPage() {
         {activeTab === "word-cloud" ? (
           <Suspense
             fallback={
-              <div className="flex h-[520px] items-center justify-center rounded-2xl border border-slate-800 bg-slate-950">
+              <div className="flex items-center justify-center rounded-xl" style={{ height: "calc(100vh - 16rem)", background: "radial-gradient(ellipse at 50% 45%, #0f0b2e 0%, #030108 100%)" }}>
                 <div className="flex items-center gap-2 text-slate-500">
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-sm">加载3D词云引擎...</span>
+                  <span className="text-sm">加载知识宇宙...</span>
                 </div>
               </div>
             }
@@ -182,6 +182,7 @@ export function KnowledgeGraphPage() {
             <WordCloud3D
               subjectLabel={subjectLabel}
               nodes={wordCloudNodes}
+              height="calc(100vh - 16rem)"
             />
           </Suspense>
         ) : null}
