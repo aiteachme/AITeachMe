@@ -28,12 +28,20 @@ class UnifiedDigestState(TypedDict, total=False):
     curriculum_state: dict[str, Any]
     coverage_report: CoverageReport
     repair_result: RepairResult
+    graph_ready: bool
     shared_prepare_ms: int
     lane_ms: int
+    parallel_lanes_ms: int
     doc_lane_ms: int
     kg_lane_ms: int
+    consistency_ms: int
     repair_ms: int
     curriculum_ms: int
+    rebuild_docs_ms: int
+    publish_ms: int
+    cleanup_ms: int
+    timing_report: dict[str, Any]
+    token_summary: dict[str, Any]
     error: str | None
 
 
@@ -58,3 +66,5 @@ class UnifiedBuildResult(BaseModel):
     kg_lane_ms: int = 0
     repair_ms: int = 0
     curriculum_ms: int = 0
+    timing_report: dict[str, Any] | None = None
+    token_summary: dict[str, Any] | None = None

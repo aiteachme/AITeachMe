@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
+from time import perf_counter
 
 import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, or_, select
 
-from app.platform.llm import acompletion_structured
-from app.platform.prompt_loader import populate_prompt
+from app.infra.config import get_settings
+from app.infra.llm import acompletion_structured
+from app.infra.model_router import TaskType
+from app.infra.prompt_loader import populate_prompt
 from app.models.curriculum import TeachingUnit, TeachingUnitMembership, TeachingUnitRevision
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import curriculum_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.utils.kg_helpers import compute_member_signature, normalize_name
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.observability import add_slow_item
 from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_UNIT_NAMING,
     USER_PROMPT_KG_UNIT_NAMING,
@@ -52,6 +57,15 @@ class TeachingUnitDeriveResult:
     units: list[TeachingUnit] = field(default_factory=list)
     created_unit_ids: list[int] = field(default_factory=list)
     updated_unit_ids: list[int] = field(default_factory=list)
+    subgraph_load_ms: int = 0
+    candidate_build_ms: int = 0
+    unit_naming_ms: int = 0
+    unit_persist_ms: int = 0
+    rule_named_unit_count: int = 0
+    llm_named_unit_count: int = 0
+    fallback_named_unit_count: int = 0
+    unit_naming_parallelism: int = 1
+    slowest_unit_namings: list[dict[str, object]] = field(default_factory=list)
 
 
 class UnitNamingResponse(BaseModel):
@@ -189,6 +203,43 @@ def _format_nodes(node_infos: dict[int, NodeInfo], node_ids: list[int]) -> str:
     return "\n".join(lines) if lines else "(none)"
 
 
+def _resolve_unit_naming_parallelism() -> int:
+    settings = get_settings()
+    return max(1, min(8, max(1, settings.llm_concurrency_limit // 2)))
+
+
+def _rule_based_unit_name(
+    node_infos: dict[int, NodeInfo],
+    candidate: UnitCandidate,
+) -> UnitNamingResponse | None:
+    core_names = [node_infos[node_id].canonical_name for node_id in candidate.core_node_ids]
+    support_names = [node_infos[node_id].canonical_name for node_id in candidate.support_node_ids[:2]]
+    example_count = len(candidate.example_node_ids)
+    if len(core_names) == 1 and len(candidate.all_node_ids) <= 4:
+        title = core_names[0]
+        summary_parts = [f"围绕 {title} 组织核心知识点"]
+        if support_names:
+            summary_parts.append(f"并补充 {', '.join(support_names)}")
+        if example_count:
+            summary_parts.append(f"附带 {example_count} 个例题/练习")
+        summary = "，".join(summary_parts) + "。"
+        return UnitNamingResponse(
+            title=title,
+            summary=summary,
+            learning_objectives=[
+                f"理解并能够讲清 {title} 的核心概念、方法与常见应用。",
+            ],
+        )
+    if len(core_names) == 2 and not candidate.example_node_ids and len(candidate.support_node_ids) <= 2:
+        title = " / ".join(core_names)
+        return UnitNamingResponse(
+            title=title,
+            summary=f"整合 {title} 两个紧密相关的核心知识点，形成一个可连续讲解与复习的教学单元。",
+            learning_objectives=[f"建立 {title} 之间的联系，并能在题目中综合使用。"],
+        )
+    return None
+
+
 async def _name_unit_with_llm(
     node_infos: dict[int, NodeInfo],
     candidate: UnitCandidate,
@@ -206,6 +257,7 @@ async def _name_unit_with_llm(
     return await acompletion_structured(
         response_model=UnitNamingResponse,
         messages=messages,
+        task_type=TaskType.DOCGEN_LIGHT,
     )
 
 
@@ -224,7 +276,13 @@ def _fallback_unit_name(
     )
 
 
-def _create_memberships(session: Session, unit: TeachingUnit, candidate: UnitCandidate) -> None:
+def _create_memberships(
+    session: Session,
+    unit: TeachingUnit,
+    candidate: UnitCandidate,
+    *,
+    auto_commit: bool,
+) -> None:
     role_groups = [
         (candidate.core_node_ids, "core", 1.0),
         (candidate.support_node_ids, "support", 0.6),
@@ -240,6 +298,7 @@ def _create_memberships(session: Session, unit: TeachingUnit, candidate: UnitCan
                     role=role,
                     score=score,
                 ),
+                auto_commit=auto_commit,
             )
 
 
@@ -248,6 +307,8 @@ def _upsert_unit(
     subject: str,
     candidate: UnitCandidate,
     naming: UnitNamingResponse,
+    *,
+    auto_commit: bool,
 ) -> tuple[TeachingUnit, bool]:
     signature_node_ids = candidate.core_node_ids or candidate.all_node_ids
     member_signature = compute_member_signature(signature_node_ids)
@@ -265,12 +326,13 @@ def _upsert_unit(
 
     if existing is not None:
         revision.unit_id = existing.id or 0
-        curriculum_repo.create_unit_revision(session, revision)
+        curriculum_repo.create_unit_revision(session, revision, auto_commit=auto_commit)
         existing.canonical_name = naming.title
         existing.normalized_name = normalize_name(naming.title)
         session.add(existing)
-        session.commit()
-        session.refresh(existing)
+        if auto_commit:
+            session.commit()
+            session.refresh(existing)
         return existing, False
 
     unit = curriculum_repo.create_teaching_unit(
@@ -283,11 +345,13 @@ def _upsert_unit(
             status="pending",
             confidence=1.0,
         ),
+        auto_commit=auto_commit,
     )
     revision.unit_id = unit.id or 0
-    curriculum_repo.create_unit_revision(session, revision)
-    session.refresh(unit)
-    _create_memberships(session, unit, candidate)
+    curriculum_repo.create_unit_revision(session, revision, auto_commit=auto_commit)
+    if auto_commit:
+        session.refresh(unit)
+    _create_memberships(session, unit, candidate, auto_commit=auto_commit)
     return unit, True
 
 
@@ -301,11 +365,14 @@ async def derive_teaching_units(
 
     del curriculum_job_id
 
+    subgraph_started_at = perf_counter()
     nodes, edges = extract_local_subgraph(session, subject, impact_set)
+    subgraph_load_ms = int((perf_counter() - subgraph_started_at) * 1000)
     if not nodes:
         logger.info("no_nodes_for_unit_derivation", subject=subject)
-        return TeachingUnitDeriveResult()
+        raise ValueError("no_graph_nodes_available_for_unit_derivation")
 
+    candidate_build_started_at = perf_counter()
     node_infos = _build_node_infos(nodes)
     adjacency = _build_adjacency(edges)
     components = _collect_components(list(node_infos.keys()), adjacency)
@@ -315,20 +382,76 @@ async def derive_teaching_units(
         for candidate in _slice_component(component, node_infos)
         if candidate.all_node_ids
     ]
+    candidate_build_ms = int((perf_counter() - candidate_build_started_at) * 1000)
 
-    result = TeachingUnitDeriveResult()
-    for candidate in candidates:
+    result = TeachingUnitDeriveResult(
+        subgraph_load_ms=subgraph_load_ms,
+        candidate_build_ms=candidate_build_ms,
+    )
+    semaphore = asyncio.Semaphore(_resolve_unit_naming_parallelism())
+    result.unit_naming_parallelism = _resolve_unit_naming_parallelism()
+    naming_started_at = perf_counter()
+
+    async def _resolve_naming(candidate: UnitCandidate) -> tuple[UnitNamingResponse, str, int]:
+        naming_item_started_at = perf_counter()
+        rule_based = _rule_based_unit_name(node_infos, candidate)
+        if rule_based is not None:
+            return (
+                rule_based,
+                "rule",
+                int((perf_counter() - naming_item_started_at) * 1000),
+            )
         try:
-            naming = await _name_unit_with_llm(node_infos, candidate)
+            async with semaphore:
+                naming = await _name_unit_with_llm(node_infos, candidate)
+            return (
+                naming,
+                "llm",
+                int((perf_counter() - naming_item_started_at) * 1000),
+            )
         except Exception:
             logger.warning(
                 "unit_naming_llm_failed",
                 core_node_ids=candidate.core_node_ids,
                 exc_info=True,
             )
-            naming = _fallback_unit_name(node_infos, candidate)
+            return (
+                _fallback_unit_name(node_infos, candidate),
+                "fallback",
+                int((perf_counter() - naming_item_started_at) * 1000),
+            )
 
-        unit, is_created = _upsert_unit(session, subject, candidate, naming)
+    namings = await asyncio.gather(*(_resolve_naming(candidate) for candidate in candidates))
+    result.unit_naming_ms = int((perf_counter() - naming_started_at) * 1000)
+
+    persist_started_at = perf_counter()
+    for index, (candidate, naming_payload) in enumerate(zip(candidates, namings, strict=False), start=1):
+        naming, naming_source, naming_elapsed_ms = naming_payload
+        if naming_source == "rule":
+            result.rule_named_unit_count += 1
+        elif naming_source == "llm":
+            result.llm_named_unit_count += 1
+        else:
+            result.fallback_named_unit_count += 1
+        result.slowest_unit_namings = add_slow_item(
+            result.slowest_unit_namings,
+            item_id=f"candidate_{index}",
+            title=naming.title,
+            elapsed_ms=naming_elapsed_ms,
+            metadata={
+                "source": naming_source,
+                "core_node_count": len(candidate.core_node_ids),
+                "support_node_count": len(candidate.support_node_ids),
+                "example_node_count": len(candidate.example_node_ids),
+            },
+        )
+        unit, is_created = _upsert_unit(
+            session,
+            subject,
+            candidate,
+            naming,
+            auto_commit=False,
+        )
         result.units.append(unit)
         if unit.id is None:
             continue
@@ -336,6 +459,11 @@ async def derive_teaching_units(
             result.created_unit_ids.append(unit.id)
         else:
             result.updated_unit_ids.append(unit.id)
+        if index % 20 == 0:
+            session.commit()
+
+    session.commit()
+    result.unit_persist_ms = int((perf_counter() - persist_started_at) * 1000)
 
     logger.info(
         "derive_teaching_units_complete",
@@ -343,6 +471,13 @@ async def derive_teaching_units(
         units_count=len(result.units),
         created_units=len(result.created_unit_ids),
         updated_units=len(result.updated_unit_ids),
+        subgraph_load_ms=result.subgraph_load_ms,
+        candidate_build_ms=result.candidate_build_ms,
+        unit_naming_ms=result.unit_naming_ms,
+        unit_persist_ms=result.unit_persist_ms,
+        rule_named_unit_count=result.rule_named_unit_count,
+        llm_named_unit_count=result.llm_named_unit_count,
+        fallback_named_unit_count=result.fallback_named_unit_count,
     )
     return result
 

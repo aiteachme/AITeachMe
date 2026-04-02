@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
+  Box,
   FolderTree,
   GitBranch,
   Loader2,
@@ -10,24 +11,44 @@ import {
   Trash2
 } from "lucide-react";
 
-import { fetchKnowledgeOverview } from "../../api/knowledgeOverview";
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
+import {
+  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
+} from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
+import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
 
 import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
-import { KnowledgeGraphView } from "./KnowledgeGraphView";
-import { PrereqDagView } from "./PrereqDagView";
-import { ThemeTreeView } from "./ThemeTreeView";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 
-type KnowledgeViewTab = "theme-tree" | "prereq-dag" | "knowledge-graph";
+const WordCloud3D = lazy(() => import("./WordCloud3D"));
+const ThemeTreeView = lazy(() =>
+  import("./ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
+);
+const PrereqDagView = lazy(() =>
+  import("./PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
+);
+const KnowledgeGraphView = lazy(() =>
+  import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
+);
+
+type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
 const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: "word-cloud", label: "词云", icon: <Box className="h-4 w-4" />, desc: "3D 词云展示知识分布" },
   { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织" },
   { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序" },
   { id: "knowledge-graph", label: "图谱", icon: <Network className="h-4 w-4" />, desc: "展示节点关系" },
 ];
+
+function TabFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      {message}
+    </div>
+  );
+}
 
 export function KnowledgeGraphSidePanel({ 
   subjectId,
@@ -37,6 +58,19 @@ export function KnowledgeGraphSidePanel({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const overviewInclude = useMemo(() => {
+    switch (activeTab) {
+      case "word-cloud":
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
+      case "theme-tree":
+        return OVERVIEW_INCLUDE_PRESETS.themeTree;
+      case "prereq-dag":
+        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
+      case "knowledge-graph":
+      default:
+        return OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+    }
+  }, [activeTab]);
 
   const {
     data: overview,
@@ -44,8 +78,8 @@ export function KnowledgeGraphSidePanel({
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: ["knowledge-overview", subjectId],
-    queryFn: () => fetchKnowledgeOverview(subjectId),
+    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
     enabled: Boolean(subjectId), 
     retry: false,
   });
@@ -58,6 +92,20 @@ export function KnowledgeGraphSidePanel({
       setShowClearConfirm(false);
     },
   });
+
+  const subjectLabel = useMemo(() => {
+    if (/^subj_[a-z0-9]+$/.test(subjectId)) return "知识";
+    return subjectId || "知识";
+  }, [subjectId]);
+
+  const wordCloudNodes = useMemo(() => {
+    const graphNodes = overview?.graph?.nodes ?? [];
+    return graphNodes.map((node: { canonical_name: string; node_type: string; confidence: number }) => ({
+      name: node.canonical_name,
+      nodeType: node.node_type,
+      confidence: node.confidence,
+    }));
+  }, [overview?.graph?.nodes]);
 
   return (
     <DigestBuildProvider subject={subjectId}>
@@ -101,16 +149,16 @@ export function KnowledgeGraphSidePanel({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 relative overflow-auto bg-white transition-colors duration-500">
+        <div className="flex-1 overflow-auto bg-white transition-colors duration-500">
           {overviewLoading && (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 z-10">
+            <div className="flex min-h-full items-center justify-center px-6 py-10 text-sm text-slate-500">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
               正在加载知识结构...
             </div>
           )}
 
           {overviewIsError && (
-            <div className="absolute inset-0 p-6">
+            <div className="p-6">
               <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
                 <div>
@@ -122,13 +170,37 @@ export function KnowledgeGraphSidePanel({
           )}
 
           {!overviewLoading && !overviewIsError && (
-            <div className="absolute inset-0">
-              {activeTab === "theme-tree" && <ThemeTreeView overviewData={overview?.theme_tree ?? null} />}
+            <div className="min-h-full">
+              {activeTab === "word-cloud" && (
+                <div className="p-4">
+                  <Suspense
+                    fallback={
+                      <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-800 bg-slate-950">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          加载 3D 词云中...
+                        </div>
+                      </div>
+                    }
+                  >
+                    <WordCloud3D subjectLabel={subjectLabel} nodes={wordCloudNodes} height={420} />
+                  </Suspense>
+                </div>
+              )}
+              {activeTab === "theme-tree" && (
+                <Suspense fallback={<TabFallback message="正在加载主题树视图..." />}>
+                  <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
+                </Suspense>
+              )}
               {activeTab === "prereq-dag" && (
-                <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+                <Suspense fallback={<TabFallback message="正在加载先修依赖视图..." />}>
+                  <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+                </Suspense>
               )}
               {activeTab === "knowledge-graph" && (
-                <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
+                  <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                </Suspense>
               )}
             </div>
           )}

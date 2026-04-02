@@ -1,1 +1,1 @@
-"""基础设施层：配置、数据库、日志、追踪、缓存、异常。"""
+"""Infra package for runtime, AI, and orchestration helpers."""

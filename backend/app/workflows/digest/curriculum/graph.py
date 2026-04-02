@@ -12,6 +12,7 @@ from app.workflows.digest.curriculum.nodes import (
     finalize_curriculum_node,
     route_after_step,
 )
+from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.curriculum.state import CurriculumDeriveState
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
 
@@ -20,11 +21,55 @@ def build_curriculum_derive_graph() -> StateGraph:
     """Build the LangGraph workflow for curriculum derivation."""
 
     workflow = StateGraph(CurriculumDeriveState)
-    workflow.add_node("derive_units", derive_units_node)
-    workflow.add_node("derive_theme_tree", derive_theme_tree_node)
-    workflow.add_node("derive_prereq_dag", derive_prereq_dag_node)
-    workflow.add_node("finalize_curriculum", finalize_curriculum_node)
-    workflow.add_node("fail_curriculum", fail_curriculum_node)
+    workflow.add_node(
+        "derive_units",
+        wrap_digest_node(
+            derive_units_node,
+            workflow_name="digest.curriculum",
+            lane="curriculum",
+            node_name="derive_units",
+            timing_field="derive_units_ms",
+        ),
+    )
+    workflow.add_node(
+        "derive_theme_tree",
+        wrap_digest_node(
+            derive_theme_tree_node,
+            workflow_name="digest.curriculum",
+            lane="curriculum",
+            node_name="derive_theme_tree",
+            timing_field="theme_tree_ms",
+        ),
+    )
+    workflow.add_node(
+        "derive_prereq_dag",
+        wrap_digest_node(
+            derive_prereq_dag_node,
+            workflow_name="digest.curriculum",
+            lane="curriculum",
+            node_name="derive_prereq_dag",
+            timing_field="prereq_dag_ms",
+        ),
+    )
+    workflow.add_node(
+        "finalize_curriculum",
+        wrap_digest_node(
+            finalize_curriculum_node,
+            workflow_name="digest.curriculum",
+            lane="curriculum",
+            node_name="finalize_curriculum",
+            timing_field="finalize_ms",
+        ),
+    )
+    workflow.add_node(
+        "fail_curriculum",
+        wrap_digest_node(
+            fail_curriculum_node,
+            workflow_name="digest.curriculum",
+            lane="curriculum",
+            node_name="fail_curriculum",
+        ),
+    )
 
     workflow.set_entry_point("derive_units")
     workflow.add_conditional_edges(
@@ -62,11 +107,13 @@ def create_curriculum_derive_initial_state(
     graph_job_id: int,
     curriculum_job_id: int,
     impact_set: ImpactSet | None = None,
+    build_session_id: str | None = None,
 ) -> CurriculumDeriveState:
     """Create the initial state for curriculum derivation."""
 
     return {
         "subject": subject,
+        "build_session_id": build_session_id or "",
         "graph_job_id": graph_job_id,
         "curriculum_job_id": curriculum_job_id,
         "impact_set": impact_set,

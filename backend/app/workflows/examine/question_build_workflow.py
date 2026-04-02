@@ -16,6 +16,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.infra.database import managed_session
+from app.infra.tracing import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.workflows.examine.question_builder import build_question_templates
@@ -105,56 +106,49 @@ async def generate_templates_node(
     *,
     session_override: Session | None = None,
 ) -> QuestionBuildState:
-    """Generate templates unit-by-unit; keep warnings and continue on per-unit failures."""
+    """Generate templates for all units in one parallel batch."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
         try:
             unit_ids = state.get("unit_ids", [])
             warnings = list(state.get("warnings", []))
-            created_template_ids: list[int] = list(state.get("created_template_ids", []))
-            templates_created = int(state.get("templates_created", 0))
             questions_per_unit = int(state.get("questions_per_unit", 1))
 
-            total_units = max(1, len(unit_ids))
-            for idx, unit_id in enumerate(unit_ids, start=1):
-                try:
-                    templates = await build_question_templates(
-                        session,
-                        subject=state["subject"],
-                        unit_ids=[unit_id],
-                        questions_per_unit=questions_per_unit,
-                    )
-                    templates_created += len(templates)
-                    created_template_ids.extend([item.id for item in templates if item.id is not None])
-                    if not templates:
-                        warnings.append(f"unit_generated_zero_templates:{unit_id}")
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"unit_generate_failed:{unit_id}:{exc}")
-                    workflow_logger.warning(
-                        "question_build_unit_generate_failed",
-                        unit_id=unit_id,
-                        error=str(exc),
-                    )
-
-                workflow_logger.debug(
-                    "question_build_unit_progress",
-                    processed_units=idx,
-                    total_units=total_units,
-                    templates_created=templates_created,
+            with llm_trace_scope(
+                subject=state["subject"],
+                build_session_id=str(state["job_id"]),
+                workflow="examine.question_build",
+                lane="question_build",
+                node="generate_templates",
+            ):
+                templates = await build_question_templates(
+                    session,
+                    subject=state["subject"],
+                    user_id=state.get("user_id", "local"),
+                    unit_ids=unit_ids,
+                    questions_per_unit=questions_per_unit,
+                    exam_mode=state.get("exam_mode", "diagnostic"),
+                    preferred_question_types=list(state.get("preferred_question_types", [])),
+                    user_prompt=state.get("user_prompt"),
+                    focus_prompt=state.get("focus_prompt"),
+                    style_profile=state.get("style_profile"),
                 )
+            created_template_ids = [item.id for item in templates if item.id is not None]
+            if not templates:
+                warnings.append("batch_generated_zero_templates")
 
             workflow_logger.info(
                 "question_build_generate_complete",
                 unit_count=len(unit_ids),
-                templates_created=templates_created,
+                templates_created=len(created_template_ids),
                 warning_count=len(warnings),
             )
             return {
                 **state,
-                "templates_created": templates_created,
+                "templates_created": len(created_template_ids),
                 "warnings": warnings,
-                "created_template_ids": sorted(set(created_template_ids)),
+                "created_template_ids": sorted(set(int(item) for item in created_template_ids)),
                 "error": None,
             }
         except Exception as exc:  # noqa: BLE001
@@ -254,18 +248,30 @@ def build_question_build_graph(*, session: Session | None = None) -> StateGraph:
 async def run_question_build_workflow(
     *,
     subject: str,
+    user_id: str,
     unit_ids: list[int],
     questions_per_unit: int,
     job_id: int,
+    exam_mode: str = "diagnostic",
+    preferred_question_types: list[str] | None = None,
+    user_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    style_profile=None,
     session: Session | None = None,
 ) -> QuestionBuildState:
     graph = build_question_build_graph(session=session)
     app = graph.compile()
     initial_state: QuestionBuildState = {
         "subject": subject,
+        "user_id": user_id,
         "unit_ids": unit_ids,
         "questions_per_unit": questions_per_unit,
         "job_id": job_id,
+        "exam_mode": exam_mode,
+        "preferred_question_types": preferred_question_types or [],
+        "user_prompt": user_prompt,
+        "focus_prompt": focus_prompt,
+        "style_profile": style_profile,
         "templates_created": 0,
         "warnings": [],
         "error": None,
@@ -286,15 +292,27 @@ class QuestionBuildWorkflow:
     async def run(
         *,
         subject: str,
+        user_id: str,
         unit_ids: list[int],
         questions_per_unit: int,
         job_id: int,
+        exam_mode: str = "diagnostic",
+        preferred_question_types: list[str] | None = None,
+        user_prompt: str | None = None,
+        focus_prompt: str | None = None,
+        style_profile=None,
         session: Session | None = None,
     ) -> QuestionBuildState:
         return await run_question_build_workflow(
             subject=subject,
+            user_id=user_id,
             unit_ids=unit_ids,
             questions_per_unit=questions_per_unit,
             job_id=job_id,
+            exam_mode=exam_mode,
+            preferred_question_types=preferred_question_types,
+            user_prompt=user_prompt,
+            focus_prompt=focus_prompt,
+            style_profile=style_profile,
             session=session,
         )

@@ -36,12 +36,12 @@
     background-color: transparent;
     color: rgb(15 23 42);
   }
-  30% {
-    background-color: rgba(59, 130, 246, 0.2);
+  25% {
+    background-color: rgba(59, 130, 246, 0.12);
     color: rgb(29, 78, 216);
   }
-  65% {
-    background-color: rgba(59, 130, 246, 0.12);
+  60% {
+    background-color: rgba(59, 130, 246, 0.06);
     color: rgb(37, 99, 235);
   }
   100% {
@@ -51,13 +51,20 @@
 }
 
 @layer utilities {
+  /* ----------- Feishu-style document scroll container ----------- */
+  .doc-scroll-container {
+    scroll-behavior: smooth;
+  }
+
+  /* ----------- TOC sidebar scroll ----------- */
   .toc-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+    scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+    scroll-behavior: smooth;
   }
 
   .toc-scroll::-webkit-scrollbar {
-    width: 8px;
+    width: 5px;
   }
 
   .toc-scroll::-webkit-scrollbar-track {
@@ -65,19 +72,75 @@
   }
 
   .toc-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(100, 116, 139, 0.35);
+    background-color: transparent;
     border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    transition: background-color 0.2s;
   }
 
   .toc-scroll:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(100, 116, 139, 0.65);
+    background-color: rgba(100, 116, 139, 0.35);
   }
 
+  /* ----------- Content area scrollbar ----------- */
+  .content-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .content-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .content-scroll::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+  }
+
+  .content-scroll:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.3);
+  }
+
+  /* ----------- Heading flash animation ----------- */
   .heading-flash {
-    animation: headingFlash 0.9s ease-out;
-    border-radius: 0.5rem;
+    animation: headingFlash 1.1s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 6px;
+    padding-left: 6px;
+    margin-left: -6px;
+  }
+
+  /* ----------- Feishu-style text selection ----------- */
+  .feishu-doc-content ::selection {
+    background-color: rgba(59, 130, 246, 0.16);
+    color: inherit;
+  }
+
+  .feishu-doc-content ::-moz-selection {
+    background-color: rgba(59, 130, 246, 0.16);
+    color: inherit;
+  }
+
+  /* ----------- TOC tree collapse animation ----------- */
+  .toc-children-enter {
+    overflow: hidden;
+    animation: tocExpand 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes tocExpand {
+    from {
+      max-height: 0;
+      opacity: 0;
+    }
+    to {
+      max-height: 2000px;
+      opacity: 1;
+    }
+  }
+
+  /* ----------- Table row hover effect ----------- */
+  .feishu-doc-content table tbody tr {
+    transition: background-color 0.15s ease;
+  }
+
+  .feishu-doc-content table tbody tr:hover {
+    background-color: rgba(241, 245, 249, 0.7);
   }
 }
-

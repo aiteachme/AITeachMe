@@ -17,7 +17,7 @@ import structlog
 from app.infra.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.services.upload_support import build_asset_dir, build_raw_markdown_path, resolve_storage_key_path
+from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path, resolve_storage_key_path
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.parsing.strategy import ParsePlan
@@ -91,7 +91,7 @@ def build_load_enhance_context_node():
                     except Exception:
                         pass
 
-                from app.services.upload_support import build_asset_name_prefix
+                from app.utils.path_helpers import build_asset_name_prefix
                 asset_name_prefix = build_asset_name_prefix(
                     filename=raw_file.original_filename,
                     file_uid=raw_file.uid,

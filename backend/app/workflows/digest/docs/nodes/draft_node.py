@@ -6,7 +6,7 @@ from time import perf_counter
 
 import structlog
 
-from app.services.upload_support import build_docgen_intermediate_latest_dir, build_knowledge_doc_build_path
+from app.utils.path_helpers import build_docgen_intermediate_latest_dir, build_knowledge_doc_build_path
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.writer_service import (
     build_global_outline_summary,
@@ -106,6 +106,7 @@ def build_draft_chapter_node(*, context: WorkflowContext, strategy: DocGenExecut
                     "next_preview": next_preview,
                     "chunk_uids": chunk_uids,
                     "image_refs": list(chapter.get("image_refs", [])),
+                    "draft_ms": draft_ms,
                 }
             ],
             "draft_ms": draft_ms,

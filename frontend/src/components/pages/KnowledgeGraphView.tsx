@@ -15,10 +15,7 @@ import {
 import {
   graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
 } from "../../api/generated/knowledge";
-import type {
-  KnowledgeOverviewGraph as FullGraphResponse,
-  KnowledgeOverviewNode as KnowledgeNodeResponse,
-} from "../../api/knowledgeOverview";
+import type { FullGraphResponse, KnowledgeNodeResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -206,7 +203,7 @@ export function KnowledgeGraphView({
   subject: string;
   overviewGraph: FullGraphResponse | null;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);

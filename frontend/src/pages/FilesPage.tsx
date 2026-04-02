@@ -15,41 +15,40 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
+  FileText,
+  FileImage,
+  FileCode,
+  FileType,
   Loader2,
   Paperclip,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
+import type { DocGenBuildData } from "../api/generated/model";
+import type { ApiResponse } from "../api/types";
 import { Button } from "../components/ui/Button";
+import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
+import { useSettings } from "../hooks/useSettings";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-}
-
-interface KnowledgeBuildData {
-  accepted_file_uids: string[];
-  prompt: string | null;
-  ready_file_count: number;
-  requested_at: string;
-}
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
 const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
+
+/* ── API helpers ── */
 
 async function fetchFiles(subject: string): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
     url: `/api/v1/subjects/${subject}/files`,
   });
-  return response.data;
+  return response.data ?? { subject, total: 0, ready_count: 0, processing_count: 0, failed_count: 0, items: [] };
 }
 
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
@@ -64,7 +63,7 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
   });
-  return response.data;
+  return response.data ?? { subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }
 
 async function deleteFile(subject: string, fileUid: string): Promise<void> {
@@ -75,20 +74,23 @@ async function deleteFile(subject: string, fileUid: string): Promise<void> {
   });
 }
 
-async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<KnowledgeBuildData> {
-  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
+async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
+  const response = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/build`,
     data: { prompt },
   });
-  return response.data;
+  return response.data ?? { requested_at: new Date().toISOString() };
 }
+
+/* ── 工具函数 ── */
 
 function getFileStatusMeta(file: FileRecord) {
   if (file.markdown_ready) {
     return {
       label: "已完成",
       tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
+      dotColor: "bg-emerald-500",
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
     };
   }
@@ -97,6 +99,7 @@ function getFileStatusMeta(file: FileRecord) {
     return {
       label: "解析失败",
       tone: "text-red-600 bg-red-50 border-red-200",
+      dotColor: "bg-red-500",
       icon: <AlertCircle className="h-4 w-4 text-red-500" />,
     };
   }
@@ -113,6 +116,7 @@ function getFileStatusMeta(file: FileRecord) {
     return {
       label,
       tone: "text-slate-700 bg-slate-50 border-slate-200",
+      dotColor: "bg-sky-500 animate-pulse",
       icon: <Loader2 className="h-4 w-4 animate-spin text-slate-500" />,
     };
   }
@@ -120,8 +124,19 @@ function getFileStatusMeta(file: FileRecord) {
   return {
     label: "等待处理",
     tone: "text-amber-600 bg-amber-50 border-amber-200",
+    dotColor: "bg-amber-500 animate-pulse",
     icon: <Loader2 className="h-4 w-4 animate-spin text-amber-500" />,
   };
+}
+
+function getFileIcon(file: FileRecord) {
+  const ext = file.filetype?.toLowerCase();
+  if (ext === "pdf") return <FileText className="h-5 w-5 text-red-400" />;
+  if (["png", "jpg", "jpeg", "webp"].includes(ext ?? "")) return <FileImage className="h-5 w-5 text-emerald-400" />;
+  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-5 w-5 text-violet-400" />;
+  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-5 w-5 text-blue-400" />;
+  if (["ppt", "pptx"].includes(ext ?? "")) return <FileType className="h-5 w-5 text-orange-400" />;
+  return <FileText className="h-5 w-5 text-slate-400" />;
 }
 
 function formatFileType(file: FileRecord): string {
@@ -129,32 +144,21 @@ function formatFileType(file: FileRecord): string {
 }
 
 function formatFileSize(bytes?: number | null): string {
-  if (bytes == null || !Number.isFinite(bytes)) {
-    return "未知";
-  }
-
+  if (bytes == null || !Number.isFinite(bytes)) return "未知";
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
   let unitIndex = 0;
-
   while (value >= 1024 && unitIndex < units.length - 1) {
     value /= 1024;
     unitIndex += 1;
   }
-
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function formatDateTime(value?: string | null): string {
-  if (!value) {
-    return "未记录";
-  }
-
+  if (!value) return "未记录";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
+  if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -165,18 +169,9 @@ function formatDateTime(value?: string | null): string {
 }
 
 function formatLanguage(language?: string | null): string {
-  if (!language) {
-    return "自动识别中";
-  }
-
-  if (language === "zh") {
-    return "中文";
-  }
-
-  if (language === "en") {
-    return "英文";
-  }
-
+  if (!language) return "自动识别中";
+  if (language === "zh") return "中文";
+  if (language === "en") return "英文";
   return language.toUpperCase();
 }
 
@@ -184,13 +179,13 @@ function getParserSummary(file: FileRecord): string {
   if (file.parser_used) {
     return `本文件已使用 ${file.parser_used} 完成解析，系统会优先产出 Markdown 文档，并保留可直接展示的图片等资源文件。`;
   }
-
   if (file.status === "failed") {
     return "本次解析未成功完成，请查看错误信息，必要时重新上传更清晰或更完整的资料。";
   }
-
   return "文件已进入自动解析流程，系统会根据格式选择合适的解析链路并持续更新结果。";
 }
+
+/* ── 页面外壳 ── */
 
 function PageWrapper({
   children,
@@ -237,12 +232,83 @@ function PageWrapper({
   );
 }
 
+/* ── 精简模式文件卡片 ── */
+
+function FileCard({
+  file,
+  onDelete,
+  isDeleting,
+}: {
+  file: FileRecord;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  const meta = getFileStatusMeta(file);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:shadow-md hover:border-slate-300"
+    >
+      {/* 文件类型图标 */}
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 border border-slate-100">
+        {getFileIcon(file)}
+      </div>
+
+      {/* 文件信息 */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium text-slate-900">{file.filename}</p>
+          <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none", meta.tone)}>
+            <span className={cn("h-1.5 w-1.5 rounded-full", meta.dotColor)} />
+            {meta.label}
+          </span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-400">
+          <span>{formatFileType(file)}</span>
+          <span>·</span>
+          <span>{formatFileSize(file.file_size_bytes)}</span>
+          {file.estimated_pages != null && (
+            <>
+              <span>·</span>
+              <span>{file.estimated_pages} 页</span>
+            </>
+          )}
+          {file.detected_language && (
+            <>
+              <span>·</span>
+              <span>{formatLanguage(file.detected_language)}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 删除按钮 */}
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={isDeleting}
+        className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
+        title="删除文件"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </motion.div>
+  );
+}
+
+/* ── 主页面组件 ── */
+
 export function FilesPage() {
   const { subjectId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { settings } = useSettings();
 
   const state = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
 
@@ -250,6 +316,8 @@ export function FilesPage() {
   const [selectedFileUid, setSelectedFileUid] = useState<string | null>(null);
   const [previewFileUid, setPreviewFileUid] = useState<string | null>(null);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
+
+  const debugMode = settings.debugMode;
 
   const { data: filesData, isLoading } = useQuery({
     queryKey: ["files", subjectId],
@@ -291,9 +359,7 @@ export function FilesPage() {
 
   const handleUpload = useCallback(
     async (selectedFiles: File[]) => {
-      if (!selectedFiles.length) {
-        return;
-      }
+      if (!selectedFiles.length) return;
       await uploadMutation.mutateAsync(selectedFiles);
     },
     [uploadMutation],
@@ -309,19 +375,13 @@ export function FilesPage() {
 
   useEffect(() => {
     if (!files.length) {
-      if (selectedFileUid !== null) {
-        setSelectedFileUid(null);
-      }
-      if (previewFileUid !== null) {
-        setPreviewFileUid(null);
-      }
+      if (selectedFileUid !== null) setSelectedFileUid(null);
+      if (previewFileUid !== null) setPreviewFileUid(null);
       return;
     }
-
     if (selectedFileUid === null || !files.some((file) => file.uid === selectedFileUid)) {
       setSelectedFileUid(files[0].uid);
     }
-
     if (previewFileUid !== null && !files.some((file) => file.uid === previewFileUid)) {
       setPreviewFileUid(null);
     }
@@ -381,11 +441,16 @@ export function FilesPage() {
 
   return (
     <>
+      <FullPageDropOverlay
+        onDrop={(droppedFiles) => void handleUpload(droppedFiles)}
+        disabled={uploadMutation.isPending}
+      />
       <PageWrapper
         title="文件工作台"
         subtitle="统一管理学科资料、查看解析进度、预览 Markdown 结果，并在解析完成后继续构建知识文档与知识图谱。"
         badgeText="Files"
       >
+        {/* ── 输入区域（始终显示） ── */}
         <div
           className={cn(PAPER_CARD, "p-2 focus-within:border-slate-300 focus-within:shadow-md")}
           onDrop={handleDrop}
@@ -400,63 +465,66 @@ export function FilesPage() {
           />
 
           <div className="flex flex-col gap-2 px-4 pb-2">
-            <AnimatePresence>
-              {files.length > 0 ? (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="flex flex-wrap gap-2 border-t border-slate-100 py-2"
-                >
-                  {files.map((file) => {
-                    const meta = getFileStatusMeta(file);
-                    const isSelected = selectedFile?.uid === file.uid;
-                    return (
-                      <motion.div
-                        key={file.uid}
-                        layout
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        onClick={() => setSelectedFileUid(file.uid)}
-                        className={cn(
-                          "group flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
-                          meta.tone,
-                          isSelected && "ring-2 ring-slate-300 ring-offset-1",
-                        )}
-                        title={meta.label}
-                      >
-                        {meta.icon}
-                        <span className="max-w-[180px] truncate">{file.filename}</span>
-                        {file.markdown_ready ? (
+            {/* 调试模式下的小标签 */}
+            {debugMode && (
+              <AnimatePresence>
+                {files.length > 0 ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="flex flex-wrap gap-2 border-t border-slate-100 py-2"
+                  >
+                    {files.map((file) => {
+                      const meta = getFileStatusMeta(file);
+                      const isSelected = selectedFile?.uid === file.uid;
+                      return (
+                        <motion.div
+                          key={file.uid}
+                          layout
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          onClick={() => setSelectedFileUid(file.uid)}
+                          className={cn(
+                            "group flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                            meta.tone,
+                            isSelected && "ring-2 ring-slate-300 ring-offset-1",
+                          )}
+                          title={meta.label}
+                        >
+                          {meta.icon}
+                          <span className="max-w-[180px] truncate">{file.filename}</span>
+                          {file.markdown_ready ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPreviewFileUid(file.uid);
+                              }}
+                              className="ml-1 p-0.5 opacity-60 transition-opacity hover:text-indigo-600 hover:opacity-100"
+                              title="预览解析结果"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setPreviewFileUid(file.uid);
+                              deleteMutation.mutate(file.uid);
                             }}
-                            className="ml-1 p-0.5 opacity-60 transition-opacity hover:text-indigo-600 hover:opacity-100"
-                            title="预览解析结果"
+                            className="ml-0.5 p-0.5 opacity-60 transition-opacity hover:text-red-500 hover:opacity-100"
+                            title="删除文件"
+                            disabled={deleteMutation.isPending}
                           >
-                            <Eye className="h-3.5 w-3.5" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteMutation.mutate(file.uid);
-                          }}
-                          className="ml-0.5 p-0.5 opacity-60 transition-opacity hover:text-red-500 hover:opacity-100"
-                          title="删除文件"
-                          disabled={deleteMutation.isPending}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </motion.div>
-                    );
-                  })}
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            )}
 
             <div className="flex flex-col gap-3 pt-1 md:flex-row md:items-center md:justify-between">
               <div className="flex flex-wrap items-center gap-3">
@@ -527,139 +595,203 @@ export function FilesPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {fileStats.map((item) => (
-            <div key={item.label} className={cn(PAPER_CARD, "px-4 py-4")}>
-              <p className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</p>
-              <p className={cn("mt-2 text-2xl font-bold", item.tone)}>{item.value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr,1.35fr]">
-          <section className={cn(PAPER_CARD, "p-5")}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">解析信息</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">文件解析信息</h2>
-              </div>
-              {selectedStatus ? (
-                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium", selectedStatus.tone)}>
-                  {selectedStatus.icon}
-                  {selectedStatus.label}
+        {/* ── 精简模式：美观的文件列表 ── */}
+        {!debugMode && files.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(PAPER_CARD, "overflow-hidden")}
+          >
+            {/* 列表头 */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-700">已上传资料</h2>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                  {files.length} 份
                 </span>
-              ) : null}
-            </div>
-
-            {!selectedFile ? (
-              <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                还没有文件。先上传资料后，这里会展示解析方法、解析时间和文件元信息。
+                {readyFiles.length > 0 && (
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">
+                    {readyFiles.length} 份已就绪
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="mt-5 space-y-5">
-                <div className="rounded-2xl bg-slate-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-slate-900">{selectedFile.filename}</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">{getParserSummary(selectedFile)}</p>
-                </div>
-
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  {parseFacts.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-slate-200 px-3 py-3">
-                      <dt className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</dt>
-                      <dd className="mt-1 text-sm font-medium text-slate-800">{item.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 px-3 py-3">
-                    <p className="text-xs font-medium tracking-[0.12em] text-slate-400">创建时间</p>
-                    <p className="mt-1 text-sm font-medium text-slate-800">{formatDateTime(selectedFile.created_at)}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 px-3 py-3">
-                    <p className="text-xs font-medium tracking-[0.12em] text-slate-400">流程状态</p>
-                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedFile.ingest_status || selectedFile.status}</p>
-                  </div>
-                </div>
-
-                {selectedFile.error_message ? (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    <p className="font-medium">错误信息</p>
-                    <p className="mt-1 leading-6">{selectedFile.error_message}</p>
-                  </div>
-                ) : null}
-
-                {selectedAssetCount > 0 ? (
-                  <div className="rounded-xl border border-slate-200 px-4 py-3">
-                    <p className="text-xs font-medium tracking-[0.12em] text-slate-400">提取资源</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedFile.assets?.map((asset) => (
-                        <a
-                          key={asset.url}
-                          href={asset.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200"
-                        >
-                          {asset.name}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </section>
-
-          <section className={cn(PAPER_CARD, "p-5")}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">结果预览</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">解析内容预览</h2>
-              </div>
-              {selectedFile?.markdown_ready ? (
-                <Button variant="outline" size="sm" onClick={() => setPreviewFileUid(selectedFile.uid)}>
-                  <Eye className="mr-1 h-4 w-4" />
-                  放大查看
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-              {selectedFile?.markdown_content ? (
-                <article className="prose prose-slate max-w-none">
-                  <MarkdownViewer
-                    content={selectedFile.markdown_content}
-                    assetBaseUrl={selectedFile.asset_base_url ?? undefined}
-                  />
-                </article>
-              ) : (
-                <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                  {selectedFile
-                    ? "当前文件的 Markdown 结果还没有准备好，等解析完成后这里会直接显示解析产物。"
-                    : "选择文件后，这里会展示对应的 Markdown 解析内容和图片引用效果。"}
-                </div>
+              {files.some((f) => !f.markdown_ready && f.status !== "failed") && (
+                <span className="flex items-center gap-1 text-xs text-sky-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  解析中
+                </span>
               )}
             </div>
-          </section>
-        </div>
 
+            {/* 滚动文件列表 */}
+            <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll">
+              <AnimatePresence>
+                {files.map((file) => (
+                  <FileCard
+                    key={file.uid}
+                    file={file}
+                    onDelete={() => deleteMutation.mutate(file.uid)}
+                    isDeleting={deleteMutation.isPending}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── 精简模式：空状态 ── */}
+        {!debugMode && files.length === 0 && !isLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 px-8 py-14 text-center"
+          >
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 mb-4">
+              <Paperclip className="h-7 w-7 text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-600">还没有上传任何文件</p>
+            <p className="mt-1 text-xs text-slate-400">
+              拖拽文件到页面任意位置，或点击上方"添加文件"开始上传
+            </p>
+          </motion.div>
+        )}
+
+        {/* ── 调试模式：统计卡片 ── */}
+        {debugMode && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {fileStats.map((item) => (
+              <div key={item.label} className={cn(PAPER_CARD, "px-4 py-4")}>
+                <p className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</p>
+                <p className={cn("mt-2 text-2xl font-bold", item.tone)}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── 调试模式：解析详情 + Markdown 双栏 ── */}
+        {debugMode && (
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr,1.35fr]">
+            <section className={cn(PAPER_CARD, "p-5")}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">解析信息</p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">文件解析信息</h2>
+                </div>
+                {selectedStatus ? (
+                  <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium", selectedStatus.tone)}>
+                    {selectedStatus.icon}
+                    {selectedStatus.label}
+                  </span>
+                ) : null}
+              </div>
+
+              {!selectedFile ? (
+                <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                  还没有文件。先上传资料后，这里会展示解析方法、解析时间和文件元信息。
+                </div>
+              ) : (
+                <div className="mt-5 space-y-5">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-slate-900">{selectedFile.filename}</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{getParserSummary(selectedFile)}</p>
+                  </div>
+
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {parseFacts.map((item) => (
+                      <div key={item.label} className="rounded-xl border border-slate-200 px-3 py-3">
+                        <dt className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-800">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 px-3 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">创建时间</p>
+                      <p className="mt-1 text-sm font-medium text-slate-800">{formatDateTime(selectedFile.created_at)}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 px-3 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">流程状态</p>
+                      <p className="mt-1 text-sm font-medium text-slate-800">{selectedFile.ingest_status || selectedFile.status}</p>
+                    </div>
+                  </div>
+
+                  {selectedFile.error_message ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      <p className="font-medium">错误信息</p>
+                      <p className="mt-1 leading-6">{selectedFile.error_message}</p>
+                    </div>
+                  ) : null}
+
+                  {selectedAssetCount > 0 ? (
+                    <div className="rounded-xl border border-slate-200 px-4 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">提取资源</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedFile.assets?.map((asset) => (
+                          <a
+                            key={asset.url}
+                            href={asset.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200"
+                          >
+                            {asset.name}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
+
+            <section className={cn(PAPER_CARD, "p-5")}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">结果预览</p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">解析内容预览</h2>
+                </div>
+                {selectedFile?.markdown_ready ? (
+                  <Button variant="outline" size="sm" onClick={() => setPreviewFileUid(selectedFile.uid)}>
+                    <Eye className="mr-1 h-4 w-4" />
+                    放大查看
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                {selectedFile?.markdown_content ? (
+                  <article className="prose prose-slate max-w-none">
+                    <MarkdownViewer
+                      content={selectedFile.markdown_content}
+                      assetBaseUrl={selectedFile.asset_base_url ?? undefined}
+                    />
+                  </article>
+                ) : (
+                  <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                    {selectedFile
+                      ? "当前文件的 Markdown 结果还没有准备好，等解析完成后这里会直接显示解析产物。"
+                      : "选择文件后，这里会展示对应的 Markdown 解析内容和图片引用效果。"}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* ── 底部统计 ── */}
         <div className="mt-6 flex flex-col items-center justify-center gap-2">
           {isLoading && files.length === 0 ? (
             <div className="flex items-center gap-1.5 text-sm text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" />
               正在加载文件...
             </div>
-          ) : files.length === 0 ? (
-            <div className="flex items-center gap-1.5 text-sm text-slate-400">
-              暂无文件。请拖拽文件到上方区域，或点击“添加文件”开始上传。
-            </div>
-          ) : (
+          ) : files.length > 0 ? (
             <div className="text-sm text-slate-400">
               共 <span className="font-semibold text-slate-700">{filesData?.total ?? files.length}</span> 份文件，
               已完成 <span className="font-semibold text-emerald-600">{filesData?.ready_count ?? readyFiles.length}</span> 份。
             </div>
-          )}
+          ) : null}
         </div>
       </PageWrapper>
 

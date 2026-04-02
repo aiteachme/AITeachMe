@@ -84,6 +84,7 @@ user
 
 4. `retrieval_chunk`
    统一检索切块表。直接挂在 `raw_file` 下，保存标题、层级、`header_path`、chunk 内容、向量引用信息。
+   当前代码应直接使用 `subject + document_id + title + header_path + content` 这组字段，不再假设旧版 `subject_id / source_id / chunk_role`。
 
 ### 4.3 知识文档与图谱
 

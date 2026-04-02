@@ -7,8 +7,8 @@ import re
 
 import structlog
 
-from app.platform.llm import acompletion
-from app.platform.model_router import TaskType
+from app.infra.llm import acompletion
+from app.infra.model_router import TaskType
 from app.workflows.digest.prompts.docgen_prompts import (
     METADATA_PROMPT,
     REVIEWER_PROMPT,
@@ -268,13 +268,21 @@ async def review_chapter(
             [{"role": "user", "content": prompt}],
             task_type=TaskType.DOCGEN_LIGHT,
         )
-        parsed = json.loads(_clean_json_payload(result))
     except Exception as exc:
-        logger.warning("review_chapter_failed", error=str(exc))
-        return {"passed": True, "issues": [], "suggestions": []}
+        # BUG-3 fix: LLM call failed (timeout/model error) — mark as skipped, NOT passed
+        logger.warning("review_chapter_llm_failed", error=str(exc))
+        return {"passed": False, "review_skipped": True, "issues": [f"审校调用失败: {exc}"], "suggestions": []}
+
+    try:
+        parsed = json.loads(_clean_json_payload(result))
+    except (json.JSONDecodeError, ValueError) as exc:
+        # JSON parse error — model returned non-JSON, soft pass with warning
+        logger.warning("review_chapter_parse_failed", error=str(exc))
+        return {"passed": True, "review_skipped": False, "issues": [], "suggestions": []}
 
     return {
         "passed": bool(parsed.get("passed", False)),
+        "review_skipped": False,
         "issues": [str(item) for item in parsed.get("issues", [])[:8]],
         "suggestions": [str(item) for item in parsed.get("suggestions", [])[:8]],
     }

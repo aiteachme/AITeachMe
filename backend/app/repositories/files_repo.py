@@ -9,7 +9,7 @@ from typing import Iterable
 from sqlmodel import Session, func, select
 
 from app.models import RawFile, RawFileAsset
-from app.services.upload_support import build_asset_dir, list_asset_files, to_storage_key
+from app.utils.path_helpers import build_asset_dir, list_asset_files, to_storage_key
 from app.utils.time import utcnow
 
 _UNSET = object()

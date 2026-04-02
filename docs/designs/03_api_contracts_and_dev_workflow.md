@@ -239,3 +239,45 @@ Knowledge Docs 本次同步要求：
 - Knowledge Docs 对外彻底无 `job_id`
 - 前端等待协议完全本地化
 - 后端只暴露“已发布结果”，不暴露 Docs 运行中状态
+\n## 10. Knowledge Docs response contract refresher\n\n* /api/v1/subjects/{subject}/knowledge/docs now returns both live/published markdown, the staging draft, and the runtime build status.\n* The draft fields (draft_markdown, draft_updated_at) expose a preview as soon as the docs lane writes the staging cache, even while other lanes are still running.\n* uild carries a DocGenBuildStatusResponse payload (status, equested_at, stage, error_message, draft_available) so clients can render progress without a separate polling channel.\n* Treat the draft preview as read-only: only the published exists/markdown pair controls downstream exports and official switching.\n\nThis contract keeps the UI responsive by always showing the last published document, surfacing the draft preview during in-flight builds, and exposing the lifecycle stage that the unified workflow has reached.\n
+## 11. Runtime Refresh (2026-03-30)
+
+This section supersedes any older wording in this document that implied `/knowledge/docs` only exposed the published book or that the frontend had to infer all progress exclusively from `requested_at`.
+
+- `POST /api/v1/subjects/{subject}/knowledge/docs` remains the only polling endpoint for knowledge-doc visibility.
+- The response now mixes three layers of state in one payload:
+  - live document: `exists`, `markdown`, `updated_at`, `source_file_uids`, `prompt`
+  - draft preview: `draft_markdown`, `draft_updated_at`
+  - runtime build metadata: `build.status`, `build.requested_at`, `build.stage`, `build.error_message`, `build.draft_available`
+- The draft preview is read-only. It improves visibility but never becomes the source of truth for live switching, exports, or downstream official consumption.
+- Final publish still happens only after the unified digest reaches a curriculum-aligned publish point.
+
+Current build-stage vocabulary used by the backend:
+
+1. `accepted` / `build_accepted`
+2. `running` / `prepare_shared`
+3. `running` / `doc_lane_staged`
+4. `running` / `graph_ready`
+5. `running` / `curriculum_deriving`
+6. `publishing`
+7. `completed` / `failed` / `cancelled`
+
+Frontend contract update:
+
+- If an old live document exists, keep rendering it while the new build is active.
+- If no live document exists but the doc lane has already staged a draft, render the draft preview instead of a long empty state.
+- Clients should keep polling `/knowledge/docs` while `build.status` is `accepted`, `running`, or `publishing`.
+
+Background task lifecycle update:
+
+- API-triggered long-running work is no longer left to ad-hoc `BackgroundTasks`.
+- The app now owns a background-task registry and uses it to spawn and track long workflows such as digest builds and parse jobs.
+- On application shutdown, the registry cancels outstanding tasks and waits briefly for cleanup so stale locks and half-dead jobs do not survive process exit.
+
+## 2026-03-31 Runtime Observability Note
+
+Digest timing and token summaries are currently runtime-only diagnostics.
+
+- They are written to workflow logs and runtime result objects.
+- They are intentionally not part of the public HTTP contract yet.
+- If a future API needs to expose them, it should do so as a dedicated observability resource rather than by inflating the existing knowledge-doc payloads.

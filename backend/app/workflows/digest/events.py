@@ -92,7 +92,9 @@ class DocGenCompletedEvent:
 
     subject: str
     requested_at: datetime
-    doc_count: int
+    staged_chapter_count: int
+    draft_available: bool
+    published_doc_count: int
     occurred_at: datetime = field(default_factory=utcnow)
 
 

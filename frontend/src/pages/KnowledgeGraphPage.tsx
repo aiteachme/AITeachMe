@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
+  Box,
   FolderTree,
   GitBranch,
   Loader2,
@@ -11,30 +12,63 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
-import { fetchKnowledgeOverview } from "../api/knowledgeOverview";
+import {
+  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
+} from "../api/generated/knowledge";
 import { getApiErrorMessage } from "../api/client";
 import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
-import { KnowledgeGraphView } from "../components/pages/KnowledgeGraphView";
-import { PrereqDagView } from "../components/pages/PrereqDagView";
-import { ThemeTreeView } from "../components/pages/ThemeTreeView";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
+import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../lib/knowledgeOverview";
 
-type KnowledgeViewTab = "theme-tree" | "prereq-dag" | "knowledge-graph";
+const WordCloud3D = lazy(() => import("../components/pages/WordCloud3D"));
+const ThemeTreeView = lazy(() =>
+  import("../components/pages/ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
+);
+const PrereqDagView = lazy(() =>
+  import("../components/pages/PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
+);
+const KnowledgeGraphView = lazy(() =>
+  import("../components/pages/KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
+);
+
+type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
 const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
+  { id: "word-cloud", label: "知识宇宙", icon: <Box className="h-4 w-4" />, desc: "3D 交互式词云，可视化学科知识版图" },
   { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织的课程结构" },
   { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序和依赖关系" },
-  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
 ];
+
+function TabFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      {message}
+    </div>
+  );
+}
 
 export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("theme-tree");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const overviewInclude = useMemo(() => {
+    switch (activeTab) {
+      case "theme-tree":
+        return OVERVIEW_INCLUDE_PRESETS.themeTree;
+      case "prereq-dag":
+        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
+      case "knowledge-graph":
+        return OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+      case "word-cloud":
+      default:
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
+    }
+  }, [activeTab]);
 
   const {
     data: overview,
@@ -42,8 +76,8 @@ export function KnowledgeGraphPage() {
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: ["knowledge-overview", subjectId],
-    queryFn: () => fetchKnowledgeOverview(subjectId),
+    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
     enabled: Boolean(subjectId),
     retry: false,
   });
@@ -57,15 +91,35 @@ export function KnowledgeGraphPage() {
     },
   });
 
+  // 从 subjectId 提取可读学科名
+  const subjectLabel = useMemo(() => {
+    // subjectId 如果是 subj_xxx 格式，用默认文字
+    if (/^subj_[a-z0-9]+$/.test(subjectId)) return "知识";
+    return subjectId || "知识";
+  }, [subjectId]);
+
+  const wordCloudNodes = useMemo(() => {
+    const graphNodes = overview?.graph?.nodes ?? [];
+    return graphNodes.map((node: { canonical_name: string; node_type: string; confidence: number }) => ({
+      name: node.canonical_name,
+      nodeType: node.node_type,
+      confidence: node.confidence,
+    }));
+  }, [overview?.graph?.nodes]);
+
+  // 从 overview.graph.nodes 构建 3D 词云数据
   return (
     <DigestBuildProvider subject={subjectId}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
+        {/* ---- 页面标题栏（修复: 使用 flex-wrap + gap 防止重叠） ---- */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
             <h1 className="text-3xl font-bold text-slate-900">知识图谱</h1>
-            <p className="mt-2 text-slate-500">这里展示主题树、先修依赖和知识图谱视图。点击开始知识构建会同时刷新知识文档与图谱。</p>
+            <p className="mt-2 text-sm text-slate-500">
+              这里展示知识宇宙、主题树、先修依赖和知识图谱视图。点击开始知识构建会同时刷新知识文档与图谱。
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <DigestBuildButton />
             <Button
               variant="outline"
@@ -79,6 +133,7 @@ export function KnowledgeGraphPage() {
           </div>
         </div>
 
+        {/* ---- 加载 / 错误状态 ---- */}
         {overviewLoading ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -93,6 +148,7 @@ export function KnowledgeGraphPage() {
           </div>
         ) : null}
 
+        {/* ---- Tab 切换 ---- */}
         <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
           {VIEW_TABS.map((tab) => (
             <button
@@ -111,16 +167,44 @@ export function KnowledgeGraphPage() {
           ))}
         </div>
 
-        {activeTab === "theme-tree" ? <ThemeTreeView overviewData={overview?.theme_tree ?? null} /> : null}
+        {/* ---- Tab 内容 ---- */}
+        {activeTab === "word-cloud" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-[520px] items-center justify-center rounded-2xl border border-slate-800 bg-slate-950">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">加载3D词云引擎...</span>
+                </div>
+              </div>
+            }
+          >
+            <WordCloud3D
+              subjectLabel={subjectLabel}
+              nodes={wordCloudNodes}
+            />
+          </Suspense>
+        ) : null}
+
+        {activeTab === "theme-tree" ? (
+          <Suspense fallback={<TabFallback message="正在加载主题树视图..." />}>
+            <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
+          </Suspense>
+        ) : null}
 
         {activeTab === "prereq-dag" ? (
-          <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+          <Suspense fallback={<TabFallback message="正在加载先修依赖视图..." />}>
+            <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+          </Suspense>
         ) : null}
 
         {activeTab === "knowledge-graph" ? (
-          <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+          <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
+            <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+          </Suspense>
         ) : null}
 
+        {/* ---- 清空确认对话框 ---- */}
         <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">

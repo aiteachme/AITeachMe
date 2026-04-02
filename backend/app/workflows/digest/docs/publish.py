@@ -1,4 +1,4 @@
-﻿"""Helpers for staging and publishing knowledge docs in unified builds."""
+"""Helpers for staging and publishing knowledge docs in unified builds."""
 
 from __future__ import annotations
 
@@ -12,12 +12,13 @@ from pydantic import BaseModel, Field
 from app.infra.database import managed_session
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
-from app.services.knowledge.docgen_store import (
+from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_published_knowledge_docs_files,
+    update_knowledge_build_status,
     write_knowledge_manifest,
 )
-from app.services.upload_support import (
+from app.utils.path_helpers import (
     build_knowledge_doc_build_path,
     build_knowledge_doc_path,
     build_knowledge_docs_build_dir,
@@ -25,6 +26,8 @@ from app.services.upload_support import (
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )
+from app.utils.time import utcnow
+from app.workflows.common.runtime import cancel_tasks_and_drain
 
 
 class StagedKnowledgeDocs(BaseModel):
@@ -60,18 +63,10 @@ def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
 def build_merged_markdown(chapters: list[dict]) -> str:
     """Merge chapter markdown into the published knowledge-doc layout."""
 
-    toc = [
+    header = [
         "# 知识文档总览",
         "",
-        "## 目录",
-        "",
     ]
-    for chapter in chapters:
-        title = chapter.get("title", "")
-        chapter_index = chapter.get("chapter_index", 0)
-        toc.append(f"- 第{chapter_index}章 {title}")
-        for section_title in chapter.get("section_titles", [])[:12]:
-            toc.append(f"  - {section_title}")
 
     separator = "\n\n---\n\n"
     body: list[str] = []
@@ -91,7 +86,7 @@ def build_merged_markdown(chapters: list[dict]) -> str:
             )
         else:
             body.append(markdown)
-    return "\n".join(toc) + separator + separator.join(body) + "\n"
+    return "\n".join(header) + separator + separator.join(body) + "\n"
 
 
 async def stage_knowledge_docs(
@@ -122,12 +117,24 @@ async def stage_knowledge_docs(
         )
         built_paths.append((chapter_index, chapter_title))
 
-    if chapter_write_tasks:
-        await asyncio.gather(*chapter_write_tasks)
+    try:
+        if chapter_write_tasks:
+            await asyncio.gather(*chapter_write_tasks)
+    except asyncio.CancelledError:
+        await cancel_tasks_and_drain(chapter_write_tasks)
+        raise
 
     merged_markdown = build_merged_markdown(sorted_chapters)
     build_merged_path = build_merged_knowledge_base_build_path(subject)
     await asyncio.to_thread(build_merged_path.write_text, merged_markdown, encoding="utf-8")
+    update_knowledge_build_status(
+        subject,
+        status="running",
+        stage="doc_lane_staged",
+        draft_available=bool(merged_markdown.strip()),
+        draft_updated_at=utcnow(),
+        staged_chapter_count=len(sorted_chapters),
+    )
     return StagedKnowledgeDocs(merged_markdown=merged_markdown, built_paths=built_paths)
 
 
@@ -177,6 +184,17 @@ def publish_staged_knowledge_docs(
         chapter_titles=[str(chapter.get("title", "")) for chapter in sorted_chapters],
     )
     write_knowledge_manifest(subject, manifest)
+    update_knowledge_build_status(
+        subject,
+        requested_at=requested_at,
+        status="running",
+        stage="publishing",
+        error_message=None,
+        draft_available=False,
+        draft_updated_at=None,
+        staged_chapter_count=len(sorted_chapters),
+        published_doc_count=len(sorted_chapters),
+    )
 
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
@@ -211,4 +229,15 @@ def publish_staged_knowledge_docs(
     with managed_session() as session:
         docgen_repo.delete_docs_by_subject(session, subject)
         created_docs = docgen_repo.bulk_create_knowledge_docs(session, docs_to_create)
+    update_knowledge_build_status(
+        subject,
+        requested_at=requested_at,
+        status="completed",
+        stage="completed",
+        error_message=None,
+        draft_available=False,
+        draft_updated_at=None,
+        staged_chapter_count=len(sorted_chapters),
+        published_doc_count=len(created_docs),
+    )
     return [doc.id for doc in created_docs if doc.id is not None]

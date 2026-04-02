@@ -8,9 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 import structlog
 
-from app.platform.llm import acompletion_structured
-from app.platform.model_router import TaskType
-from app.platform.prompt_loader import populate_prompt
+from app.infra.llm import acompletion_structured
+from app.infra.model_router import TaskType
+from app.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg.services.chunker import QuestionBlock, parse_question_blocks
 from app.workflows.digest.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
@@ -22,6 +22,7 @@ _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 _MAX_EXAMPLE_NAME_CHARS = 48
 _MAX_EXAMPLE_SUMMARY_CHARS = 800
+_MAX_TOPIC_SUMMARY_CHARS = 240
 
 
 class CandidateNode(BaseModel):
@@ -96,6 +97,59 @@ def _looks_like_question_chunk(chunk_content: str) -> bool:
     return len(parse_question_blocks(chunk_content)) >= 2
 
 
+def _split_header_path(header_path: str, chunk_title: str) -> list[str]:
+    raw_path = header_path or chunk_title
+    return [part.strip() for part in raw_path.split(">") if part and part.strip() and part.strip() != "(root)"]
+
+
+def _build_topic_fallback(
+    *,
+    chunk_content: str,
+    chunk_title: str,
+    header_path: str,
+) -> ChunkExtractionResult:
+    topic_name = _clean_topic_name(chunk_title, header_path)
+    summary = _truncate(_normalize_text(chunk_content), limit=_MAX_TOPIC_SUMMARY_CHARS)
+    if not summary:
+        summary = f"Topic fallback extracted from {header_path or chunk_title or topic_name}."
+
+    nodes = [
+        CandidateNode(
+            name=topic_name,
+            node_type="Topic",
+            local_summary=summary,
+            taxonomy_hint=topic_name,
+            parent_entity_name=None,
+        )
+    ]
+    edges: list[CandidateEdge] = []
+
+    path_parts = _split_header_path(header_path, chunk_title)
+    if len(path_parts) >= 2:
+        parent_name = _normalize_text(_QUESTION_RANGE_SUFFIX_RE.sub("", path_parts[-2]))
+        if parent_name and parent_name != topic_name:
+            nodes.insert(
+                0,
+                CandidateNode(
+                    name=parent_name,
+                    node_type="Topic",
+                    local_summary=f"Parent topic for {topic_name} extracted from document structure.",
+                    taxonomy_hint=parent_name,
+                    parent_entity_name=None,
+                ),
+            )
+            edges.append(
+                CandidateEdge(
+                    source_name=topic_name,
+                    target_name=parent_name,
+                    edge_type="part_of",
+                    description=f"{topic_name} is part of {parent_name}.",
+                )
+            )
+
+    return ChunkExtractionResult(nodes=nodes, edges=edges)
+
+
 def _build_question_fallback(
     *,
     chunk_content: str,
@@ -150,6 +204,7 @@ async def extract_candidates(
     header_path: str,
     doc_source_type: str | None = None,
     subject_context: str | None = None,
+    prefer_fast_path: bool = False,
 ) -> ChunkExtractionResult:
     """Extract candidate nodes and edges from one chunk."""
 
@@ -172,8 +227,23 @@ async def extract_candidates(
         chunk_title=chunk_title,
         header_path=header_path,
     )
+    topic_fallback = _build_topic_fallback(
+        chunk_content=chunk_content,
+        chunk_title=chunk_title,
+        header_path=header_path,
+    )
 
     used_question_fallback = False
+    used_topic_fallback = False
+
+    if prefer_fast_path and question_fallback is not None:
+        logger.info(
+            "kg_extract_fast_path_used",
+            chunk_title=chunk_title,
+            header_path=header_path,
+            question_count=len(question_fallback.nodes) - 1,
+        )
+        return question_fallback
 
     try:
         result = await acompletion_structured(
@@ -182,28 +252,44 @@ async def extract_candidates(
             task_type=TaskType.EXTRACT,
         )
     except Exception:
-        if question_fallback is None:
-            raise
-
-        logger.warning(
-            "kg_extract_question_fallback_after_error",
-            chunk_title=chunk_title,
-            header_path=header_path,
-            question_count=len(question_fallback.nodes) - 1,
-            exc_info=True,
-        )
-        result = question_fallback
-        used_question_fallback = True
-    else:
-        if not result.nodes and not result.edges and question_fallback is not None:
+        if question_fallback is not None:
             logger.warning(
-                "kg_extract_question_fallback_after_empty_result",
+                "kg_extract_question_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
                 question_count=len(question_fallback.nodes) - 1,
+                exc_info=True,
             )
             result = question_fallback
             used_question_fallback = True
+        else:
+            logger.warning(
+                "kg_extract_topic_fallback_after_error",
+                chunk_title=chunk_title,
+                header_path=header_path,
+                exc_info=True,
+            )
+            result = topic_fallback
+            used_topic_fallback = True
+    else:
+        if not result.nodes and not result.edges:
+            if question_fallback is not None:
+                logger.warning(
+                    "kg_extract_question_fallback_after_empty_result",
+                    chunk_title=chunk_title,
+                    header_path=header_path,
+                    question_count=len(question_fallback.nodes) - 1,
+                )
+                result = question_fallback
+                used_question_fallback = True
+            else:
+                logger.warning(
+                    "kg_extract_topic_fallback_after_empty_result",
+                    chunk_title=chunk_title,
+                    header_path=header_path,
+                )
+                result = topic_fallback
+                used_topic_fallback = True
 
     logger.info(
         "kg_extract_complete",
@@ -212,6 +298,7 @@ async def extract_candidates(
         node_count=len(result.nodes),
         edge_count=len(result.edges),
         used_question_fallback=used_question_fallback,
+        used_topic_fallback=used_topic_fallback,
         question_like_chunk=_looks_like_question_chunk(chunk_content),
     )
     return result

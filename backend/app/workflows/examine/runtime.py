@@ -1,11 +1,11 @@
-﻿"""Runtime helpers for the examine workflow."""
+"""Runtime helpers for the examine workflow."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.platform.llm import acompletion_structured
-from app.platform.prompt_loader import populate_prompt
+from app.infra.llm import acompletion_structured
+from app.infra.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionType
 from app.schemas.llm import SYSTEM
 from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT

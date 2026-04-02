@@ -1,14 +1,15 @@
-﻿"""Resolve graph candidates against the compressed graph schema."""
+"""Resolve graph candidates against the compressed graph schema."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from time import perf_counter
 
 from sqlmodel import select
 
 from app.infra.database import managed_session
-from app.platform.embedding import aembed_texts
+from app.infra.embedding import aembed_texts
 from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
@@ -287,7 +288,9 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             clustered_candidates = list(state.get("clustered_candidates", []))
             subject = state["subject"]
             job_id = state["job_id"]
+            resolution_index_started_at = perf_counter()
             resolution_index = await _build_resolution_index(subject)
+            resolution_index_ms = int((perf_counter() - resolution_index_started_at) * 1000)
             digest_logger.info(
                 "kg_resolution_index_built",
                 cluster_count=len(clustered_candidates),
@@ -295,6 +298,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 indexed_node_count=sum(
                     len(records) for records in resolution_index.records_by_type.values()
                 ),
+                resolution_index_ms=resolution_index_ms,
             )
 
             candidate_name_to_resolved_node_id: dict[str, int] = {}
@@ -302,6 +306,18 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             new_node_ids: list[int] = []
             updated_node_ids: list[int] = []
             merged_node_ids: list[int] = []
+            pending_write_count = 0
+            persist_started_at = perf_counter()
+            no_match_count = 0
+            secondary_no_match_count = 0
+
+            def _commit_pending_writes() -> None:
+                nonlocal pending_write_count
+                if pending_write_count <= 0:
+                    return
+                session.commit()
+                pending_write_count = 0
+            candidate_embedding_started_at = perf_counter()
             candidate_embeddings = (
                 await aembed_texts(
                     [
@@ -312,6 +328,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 if clustered_candidates
                 else []
             )
+            candidate_embedding_ms = int((perf_counter() - candidate_embedding_started_at) * 1000)
 
             for cluster_index, clustered_candidate in enumerate(clustered_candidates):
                 representative = clustered_candidate.representative
@@ -353,21 +370,27 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             node_id=node_id,
                             chunk_id=chunk_id,
                             job_id=job_id,
+                            auto_commit=False,
                         )
+                        pending_write_count += 1
                     for alias_name in result.new_aliases:
                         create_alias_if_new(
                             session,
                             node_id=node_id,
                             alias_name=alias_name,
                             job_id=job_id,
+                            auto_commit=False,
                         )
+                        pending_write_count += 1
                     if result.is_content_update:
                         create_updated_revision(
                             session,
                             node_id=node_id,
                             clustered_candidate=clustered_candidate,
                             job_id=job_id,
+                            auto_commit=False,
                         )
+                        pending_write_count += 1
                         updated_node_ids.append(node_id)
                 else:
                     node = create_new_node(
@@ -375,7 +398,9 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         subject=subject,
                         clustered_candidate=clustered_candidate,
                         job_id=job_id,
+                        auto_commit=False,
                     )
+                    pending_write_count += 3
                     node_id = node.id
                     if node_id is None:
                         continue
@@ -389,17 +414,25 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             node_id=node_id,
                             chunk_id=chunk_id,
                             job_id=job_id,
+                            auto_commit=False,
                         )
+                        pending_write_count += 1
                     new_node_ids.append(node_id)
 
-                digest_logger.info(
-                    "resolve_node_complete",
-                    name=representative.name,
-                    node_type=representative.node_type,
-                    decision=result.decision,
-                    matched_node_id=result.matched_node_id,
-                )
+                if result.decision == "no_match":
+                    no_match_count += 1
+                    if representative.node_type in _SECONDARY_NODE_TYPES:
+                        secondary_no_match_count += 1
+                if result.decision != "no_match" or representative.node_type not in _SECONDARY_NODE_TYPES:
+                    digest_logger.info(
+                        "resolve_node_complete",
+                        name=representative.name,
+                        node_type=representative.node_type,
+                        decision=result.decision,
+                        matched_node_id=result.matched_node_id,
+                    )
                 if clustered_candidates and (cluster_index + 1) % 20 == 0:
+                    _commit_pending_writes()
                     progress = 50 + int(15 * (cluster_index + 1) / len(clustered_candidates))
                     update_job_progress(
                         session,
@@ -409,6 +442,8 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         current_step="resolve_nodes",
                     )
 
+            _commit_pending_writes()
+            node_persist_ms = int((perf_counter() - persist_started_at) * 1000)
             update_job_progress(
                 session,
                 job_id=job_id,
@@ -436,6 +471,11 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 "new_node_ids": new_node_ids,
                 "updated_node_ids": updated_node_ids,
                 "merged_node_ids": merged_node_ids,
+                "resolution_index_ms": resolution_index_ms,
+                "candidate_embedding_ms": candidate_embedding_ms,
+                "node_persist_ms": node_persist_ms,
+                "no_match_count": no_match_count,
+                "secondary_no_match_count": secondary_no_match_count,
             }
         except Exception as exc:
             digest_logger.error("kg_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
@@ -456,6 +496,16 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
             cluster_id_to_resolved_node_id = state.get("cluster_id_to_resolved_node_id", {})
             new_edge_ids: list[int] = []
             updated_edge_ids: list[int] = []
+            pending_write_count = 0
+            persist_started_at = perf_counter()
+            unresolved_endpoint_count = 0
+
+            def _commit_pending_writes() -> None:
+                nonlocal pending_write_count
+                if pending_write_count <= 0:
+                    return
+                session.commit()
+                pending_write_count = 0
 
             for edge_candidate, chunk_id in all_candidate_edges:
                 matched_edge, is_new, confidence = resolve_edge(
@@ -467,14 +517,15 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     cluster_id_to_resolved_node_id,
                 )
                 if matched_edge is None:
+                    unresolved_endpoint_count += 1
                     continue
 
                 if is_new:
-                    edge = kg_repo.create_knowledge_edge(session, matched_edge)
+                    edge = kg_repo.create_knowledge_edge(session, matched_edge, auto_commit=False)
                     edge_id = edge.id
                     if edge_id is None:
                         continue
-                    revision = kg_repo.create_edge_revision(
+                    kg_repo.create_edge_revision(
                         session,
                         EdgeRevision(
                             edge_id=edge_id,
@@ -485,39 +536,46 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                             revision_reason="new_evidence",
                             is_current=True,
                         ),
+                        auto_commit=False,
                     )
-                    edge.current_revision_id = revision.id
+                    edge.current_revision_id = edge_id
                     edge.confidence = confidence
                     edge.updated_at = utcnow()
                     session.add(edge)
-                    session.commit()
                     create_edge_evidence(
                         session,
                         subject=subject,
                         edge_id=edge_id,
                         chunk_id=chunk_id,
                         job_id=job_id,
+                        auto_commit=False,
                     )
+                    pending_write_count += 3
                     new_edge_ids.append(edge_id)
-                    continue
+                else:
+                    edge_id = matched_edge.id
+                    if edge_id is None:
+                        continue
+                    create_edge_evidence(
+                        session,
+                        subject=subject,
+                        edge_id=edge_id,
+                        chunk_id=chunk_id,
+                        job_id=job_id,
+                        auto_commit=False,
+                    )
+                    active_evidence_count = kg_repo.count_active_evidence(session, "edge", edge_id)
+                    matched_edge.confidence = compute_edge_confidence(active_evidence_count)
+                    matched_edge.updated_at = utcnow()
+                    session.add(matched_edge)
+                    pending_write_count += 2
+                    updated_edge_ids.append(edge_id)
 
-                edge_id = matched_edge.id
-                if edge_id is None:
-                    continue
-                create_edge_evidence(
-                    session,
-                    subject=subject,
-                    edge_id=edge_id,
-                    chunk_id=chunk_id,
-                    job_id=job_id,
-                )
-                active_evidence_count = kg_repo.count_active_evidence(session, "edge", edge_id)
-                matched_edge.confidence = compute_edge_confidence(active_evidence_count)
-                matched_edge.updated_at = utcnow()
-                session.add(matched_edge)
-                session.commit()
-                updated_edge_ids.append(edge_id)
+                if (len(new_edge_ids) + len(updated_edge_ids)) % 25 == 0:
+                    _commit_pending_writes()
 
+            _commit_pending_writes()
+            edge_persist_ms = int((perf_counter() - persist_started_at) * 1000)
             update_job_progress(
                 session,
                 job_id=job_id,
@@ -540,6 +598,8 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                 **state,
                 "new_edge_ids": new_edge_ids,
                 "updated_edge_ids": updated_edge_ids,
+                "edge_persist_ms": edge_persist_ms,
+                "unresolved_endpoint_count": unresolved_endpoint_count,
             }
         except Exception as exc:
             digest_logger.error("kg_workflow_resolve_edges_failed", error=str(exc), exc_info=True)

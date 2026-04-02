@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Path, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Path, Request, UploadFile
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
     responses=build_error_responses([400, 404, 413, 422, 500]),
 )
 async def upload_files(
-    background_tasks: BackgroundTasks,
+    request: Request,
     subject: str = Path(...),
     files: list[UploadFile] = File(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -41,10 +41,14 @@ async def upload_files(
         files=files,
     )
     if parse_file_ids:
-        background_tasks.add_task(
-            run_parse_files_background,
+        request.app.state.background_task_registry.spawn(
+            run_parse_files_background(
+                subject=normalized_subject,
+                file_ids=parse_file_ids,
+            ),
+            kind="files.parse",
             subject=normalized_subject,
-            file_ids=parse_file_ids,
+            name=f"files.parse:{normalized_subject}",
         )
     return ok_response(data)
 

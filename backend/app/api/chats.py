@@ -1,4 +1,4 @@
-﻿"""聊天接口。"""
+"""聊天接口。"""
 
 from __future__ import annotations
 

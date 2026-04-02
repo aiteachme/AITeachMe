@@ -34,5 +34,31 @@ class KGDigestState(TypedDict, total=False):
     updated_edge_ids: list[int]
     impact_set: ImpactSet | None
     topic_anchor_snapshot: Any
+    graph_ready: bool
+    resolved_node_count: int
+    active_node_count: int
+    active_edge_count: int
+    acquire_lock_ms: int
+    prepare_ms: int
+    extract_ms: int
+    cluster_ms: int
+    resolve_nodes_ms: int
+    resolve_edges_ms: int
+    impact_ms: int
+    finalize_ms: int
+    resolution_index_ms: int
+    candidate_embedding_ms: int
+    node_persist_ms: int
+    edge_persist_ms: int
+    fast_path_chunk_count: int
+    llm_extract_chunk_count: int
+    success_chunk_count: int
+    failed_chunk_count: int
+    no_match_count: int
+    secondary_no_match_count: int
+    unresolved_endpoint_count: int
+    slowest_chunks: list[dict[str, Any]]
+    timing_summary: dict[str, Any]
+    token_summary: dict[str, Any]
     lock_acquired: bool
     error: str | None

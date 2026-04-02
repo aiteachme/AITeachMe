@@ -13,7 +13,7 @@ from sqlmodel import Session
 from app.infra.config import get_settings
 from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
-from app.services.presenters import mastery_to_text
+from app.utils.presenters import mastery_to_text
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.types import (

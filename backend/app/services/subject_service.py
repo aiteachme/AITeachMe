@@ -17,7 +17,7 @@ from app.services.subject_deletion_service import (
     build_subject_delete_preview,
     delete_subject_with_all_content,
 )
-from app.services.presenters import require_id
+from app.utils.presenters import require_id
 from app.utils.subject import generate_subject_id, validate_subject_id
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from app.workflows.examine.answer_grader import GradeResult
 from app.workflows.profile.mastery_updater import MasteryUpdateResult
@@ -18,9 +18,15 @@ class ExamineWorkflowState(TypedDict, total=False):
 
 class QuestionBuildState(TypedDict, total=False):
     subject: str
+    user_id: str
     unit_ids: list[int]
     questions_per_unit: int
     job_id: int
+    exam_mode: str
+    preferred_question_types: list[str]
+    user_prompt: str | None
+    focus_prompt: str | None
+    style_profile: Any
     templates_created: int
     warnings: list[str]
     error: str | None

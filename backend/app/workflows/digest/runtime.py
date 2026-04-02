@@ -9,6 +9,12 @@ from app.workflows.common.context import WorkflowContext
 from app.workflows.common.events import InProcessEventBus
 from app.workflows.common.result import WorkflowResult, err_result
 from app.workflows.common.runtime import run_state_graph
+from app.workflows.digest.observability import (
+    build_curriculum_lane_summary,
+    build_docs_lane_summary,
+    build_kg_lane_summary,
+    build_token_summary,
+)
 from app.workflows.digest.events import (
     CurriculumDeriveCompletedEvent,
     CurriculumDeriveFailedEvent,
@@ -54,6 +60,7 @@ async def run_graph_digest_workflow(
         graph_job_id: int,
         curriculum_job_id: int,
         impact_set: ImpactSet | None,
+        build_session_id: str | None,
     ) -> None:
         await trigger_curriculum_derive_safe(
             subject=subject,
@@ -64,6 +71,7 @@ async def run_graph_digest_workflow(
                 event_bus=bus,
                 **kwargs,
             ),
+            build_session_id=build_session_id,
         )
 
     async def noop_curriculum_trigger(**_: object) -> None:
@@ -73,7 +81,7 @@ async def run_graph_digest_workflow(
         workflow_name="digest.graph",
         subject=subject,
         event_bus=bus,
-        metadata={"job_id": job_id},
+        metadata={"job_id": job_id, "build_session_id": build_session_id or ""},
     )
     result = await run_state_graph(
         workflow_name="digest.graph",
@@ -91,6 +99,16 @@ async def run_graph_digest_workflow(
         context=context,
     )
     if result.failed:
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="kg")
+        context.get_logger().bind(node="runtime").info(
+            "kg_digest_timing_summary",
+            **build_kg_lane_summary(
+                {},
+                token_summary=token_summary,
+                status="failed",
+                error_message=result.error.detail,
+            ),
+        )
         await bus.publish(
             DigestGraphFailedEvent(
                 subject=subject,
@@ -102,6 +120,16 @@ async def run_graph_digest_workflow(
         return result
 
     final_state = result.require_value()
+    kg_token_summary = build_token_summary(
+        build_session_id=final_state.get("build_session_id") or build_session_id or None,
+        lane="kg",
+    )
+    final_state["token_summary"] = kg_token_summary.model_dump()
+    final_state["timing_summary"] = build_kg_lane_summary(final_state, token_summary=kg_token_summary)
+    context.get_logger().bind(node="runtime").info(
+        "kg_digest_timing_summary",
+        **final_state["timing_summary"],
+    )
     error_message = final_state.get("error")
     if error_message:
         await bus.publish(
@@ -136,6 +164,7 @@ async def run_curriculum_derive_workflow(
     curriculum_job_id: int,
     event_bus: InProcessEventBus | None = None,
     impact_set: ImpactSet | None = None,
+    build_session_id: str | None = None,
 ) -> WorkflowResult[CurriculumDeriveState]:
     """Run the curriculum derive workflow."""
 
@@ -144,7 +173,11 @@ async def run_curriculum_derive_workflow(
         workflow_name="digest.curriculum",
         subject=subject,
         event_bus=bus,
-        metadata={"graph_job_id": graph_job_id, "curriculum_job_id": curriculum_job_id},
+        metadata={
+            "graph_job_id": graph_job_id,
+            "curriculum_job_id": curriculum_job_id,
+            "build_session_id": build_session_id or "",
+        },
     )
     result = await run_state_graph(
         workflow_name="digest.curriculum",
@@ -154,10 +187,21 @@ async def run_curriculum_derive_workflow(
             graph_job_id=graph_job_id,
             curriculum_job_id=curriculum_job_id,
             impact_set=impact_set,
+            build_session_id=build_session_id,
         ),
         context=context,
     )
     if result.failed:
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="curriculum")
+        context.get_logger().bind(node="runtime").info(
+            "curriculum_timing_summary",
+            **build_curriculum_lane_summary(
+                {},
+                token_summary=token_summary,
+                status="failed",
+                error_message=result.error.detail,
+            ),
+        )
         await bus.publish(
             CurriculumDeriveFailedEvent(
                 subject=subject,
@@ -169,6 +213,19 @@ async def run_curriculum_derive_workflow(
         return result
 
     final_state = result.require_value()
+    curriculum_token_summary = build_token_summary(
+        build_session_id=final_state.get("build_session_id") or build_session_id or None,
+        lane="curriculum",
+    )
+    final_state["token_summary"] = curriculum_token_summary.model_dump()
+    final_state["timing_summary"] = build_curriculum_lane_summary(
+        final_state,
+        token_summary=curriculum_token_summary,
+    )
+    context.get_logger().bind(node="runtime").info(
+        "curriculum_timing_summary",
+        **final_state["timing_summary"],
+    )
     error_message = final_state.get("error")
     if error_message:
         await bus.publish(
@@ -213,7 +270,10 @@ async def run_docgen_workflow(
         workflow_name="digest.docgen",
         subject=subject,
         event_bus=bus,
-        metadata={"requested_at": requested_at.isoformat()},
+        metadata={
+            "requested_at": requested_at.isoformat(),
+            "build_session_id": build_session_id or "",
+        },
     )
     result = await run_state_graph(
         workflow_name="digest.docgen",
@@ -228,6 +288,16 @@ async def run_docgen_workflow(
         context=context,
     )
     if result.failed:
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docs")
+        context.get_logger().bind(node="runtime").info(
+            "docgen_timing_summary",
+            **build_docs_lane_summary(
+                {},
+                token_summary=token_summary,
+                status="failed",
+                error_message=result.error.detail,
+            ),
+        )
         await bus.publish(
             DocGenFailedEvent(
                 subject=subject,
@@ -238,6 +308,16 @@ async def run_docgen_workflow(
         return result
 
     final_state = result.require_value()
+    docs_token_summary = build_token_summary(
+        build_session_id=final_state.get("build_session_id") or build_session_id or None,
+        lane="docs",
+    )
+    final_state["token_summary"] = docs_token_summary.model_dump()
+    final_state["timing_summary"] = build_docs_lane_summary(final_state, token_summary=docs_token_summary)
+    context.get_logger().bind(node="runtime").info(
+        "docgen_timing_summary",
+        **final_state["timing_summary"],
+    )
     error_message = final_state.get("error")
     if error_message:
         await bus.publish(
@@ -257,7 +337,9 @@ async def run_docgen_workflow(
         DocGenCompletedEvent(
             subject=subject,
             requested_at=requested_at,
-            doc_count=len(final_state.get("doc_ids", [])),
+            staged_chapter_count=len(final_state.get("chapter_metadatas", [])),
+            draft_available=bool(str(final_state.get("merged_markdown", "")).strip()),
+            published_doc_count=len(final_state.get("doc_ids", [])),
         )
     )
     return result

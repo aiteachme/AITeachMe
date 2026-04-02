@@ -33,7 +33,7 @@ Ingest 不直接产出知识图谱或课程结构。
 | API | `backend/app/api/files.py` |
 | service | `backend/app/services/file_service.py` |
 | workflow | `backend/app/workflows/ingest/*` |
-| 路径 helper | `backend/app/services/upload_support.py` |
+| 路径 helper | `backend/app/utils/path_helpers.py` |
 | 主要业务表 | `raw_file` |
 
 ---
@@ -185,7 +185,7 @@ Digest 消费的不是 `RawFile` 本身，而是：
 1. 两阶段 ingest 方法层以远程分支方案为准。
 2. `raw_file`、目录 helper、文件落点以本地重构为准。
 3. 任何新的 ingest 优化，都不能再把数据库拉回旧的多表版本设计。
-4. 任何文档说明，都必须以 `upload_support.py` 的真实目录命名为准。
+4. 任何文档说明，都必须以 `utils/path_helpers.py` 的真实目录命名为准。
 
 ---
 

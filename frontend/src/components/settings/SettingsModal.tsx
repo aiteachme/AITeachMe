@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Settings2, Box, HelpCircle } from "lucide-react";
+import { X, Settings2, Box, HelpCircle, Bug } from "lucide-react";
 import { useSettings, AppSettings } from "../../hooks/useSettings";
 
 interface SettingsModalProps {
@@ -44,6 +44,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       useMock: import.meta.env.VITE_USE_MOCK === "true",
       providerBaseUrl: "",
       providerApiKey: "",
+      debugMode: false,
     });
     setTestResult({ status: 'idle' });
   };
@@ -244,6 +245,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 }`}
                               >
                                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${localSettings.useMock ? "translate-x-4" : "translate-x-0.5"}`} />
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between py-2 border-t border-zinc-100 mt-1 pt-4">
+                              <div>
+                                <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
+                                  <Bug className="w-3.5 h-3.5 text-amber-500" />
+                                  开发者调试模式
+                                </div>
+                                <div className="text-xs text-zinc-400 mt-0.5">
+                                  开启后可在文件页查看解析详情、元数据和 Markdown 结果
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setLocalSettings(prev => ({ ...prev, debugMode: !prev.debugMode }))}
+                                title="切换调试模式"
+                                aria-label="切换调试模式"
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 ml-4 ${
+                                  localSettings.debugMode ? "bg-amber-500" : "bg-zinc-200"
+                                }`}
+                              >
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${localSettings.debugMode ? "translate-x-4" : "translate-x-0.5"}`} />
                               </button>
                             </div>
                           </div>

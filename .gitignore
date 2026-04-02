@@ -49,7 +49,7 @@ data/**
 .env.local
 
 # orval
-/frontend/src/api/generated/
+# /frontend/src/api/generated/
 
 
 .history

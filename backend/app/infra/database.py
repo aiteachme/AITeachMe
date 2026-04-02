@@ -1,6 +1,15 @@
-﻿"""Database bootstrap and session helpers."""
+"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
+
+# Render 等平台预装 Python 未启用 SQLITE_ENABLE_LOAD_EXTENSION，
+# pysqlite3-binary 自带完整功能，替换系统 sqlite3 即可。
+try:
+    import pysqlite3
+    import sys
+    sys.modules["sqlite3"] = pysqlite3
+except ImportError:
+    pass
 
 from contextlib import contextmanager
 from pathlib import Path
@@ -12,6 +21,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.infra.config import get_settings
 from app.infra.exceptions import VectorExtensionUnavailableError
+from app.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -141,11 +151,8 @@ def _load_vec_extension(dbapi_conn) -> None:
                 logger.warning("sqlite_extension_disable_failed", error=str(exc))
 
 
-def _get_db_path() -> Path:
-    settings = get_settings()
-    db_dir = Path(settings.data_dir)
-    db_dir.mkdir(parents=True, exist_ok=True)
-    return db_dir / "aiteachme.db"
+def _get_db_path():
+    return get_sqlite_db_path()
 
 
 def _is_allowed_runtime_table(table_name: str) -> bool:
@@ -289,6 +296,7 @@ def init_db() -> None:
     """Initialize the local database schema and vector table."""
 
     settings = get_settings()
+    log_legacy_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)

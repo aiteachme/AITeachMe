@@ -1,4 +1,4 @@
-﻿"""File service layer."""
+"""File service layer."""
 
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ from app.schemas.files import (
     FilesData,
     FilesUploadData,
 )
-from app.services.presenters import require_id, require_uid
-from app.services.upload_support import (
+from app.utils.presenters import require_id, require_uid
+from app.utils.path_helpers import (
     build_asset_dir,
     build_asset_name_prefix,
     build_raw_file_path,
@@ -394,6 +394,9 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
             batch_logger.info("file_parse_background_dispatch", file_id=file_id)
             try:
                 result = await run_parse_file_workflow(subject=subject, file_id=file_id)
+            except asyncio.CancelledError:
+                batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
+                raise
             except Exception as exc:
                 batch_logger.exception(
                     "file_parse_background_crashed",
@@ -414,8 +417,12 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
                     parser_chain=error_metadata.get("parser_chain"),
                 )
 
-    await asyncio.gather(*[asyncio.create_task(_run_one(file_id)) for file_id in file_ids])
-    batch_logger.info("file_parse_background_completed")
+    try:
+        await asyncio.gather(*(_run_one(file_id) for file_id in file_ids))
+        batch_logger.info("file_parse_background_completed")
+    except asyncio.CancelledError:
+        batch_logger.warning("file_parse_background_cancelled")
+        raise
 
 
 def list_subject_files(

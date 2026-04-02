@@ -15,7 +15,7 @@ from pathlib import Path
 from app.infra.database import managed_session
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
-from app.services.upload_support import to_storage_key
+from app.utils.path_helpers import to_storage_key
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.events import (
     IngestFileFastParsedEvent,

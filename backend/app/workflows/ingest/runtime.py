@@ -13,7 +13,7 @@ import structlog
 from app.infra.database import managed_session
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
-from app.services.upload_support import (
+from app.utils.path_helpers import (
     build_asset_dir,
     build_asset_name_prefix,
     build_raw_markdown_path,
@@ -46,6 +46,9 @@ except ImportError:
 logger = structlog.get_logger()
 
 _PAGE_RE = re.compile(r"(?:page|p|slide|s)[_\-]?(\d{1,4})", re.IGNORECASE)
+
+# Track background tasks to prevent GC collection (RISK-2 fix)
+_background_tasks: set[asyncio.Task] = set()
 
 
 def create_parse_file_initial_state(*, subject: str, file_id: int) -> IngestParseState:
@@ -221,15 +224,24 @@ async def _run_deep_enhance_background(
                     raw_quality = await parse_pdf_with_pymupdf4llm(
                         file_path, asset_dir, quality_options,
                     )
-                    quality_md = canonicalize_markdown(raw_quality)
+                    # BUG-2 fix: canonicalize_markdown returns CanonicalMarkdownResult, extract .markdown
+                    quality_result = canonicalize_markdown(
+                        raw_quality,
+                        asset_dir=asset_dir,
+                        asset_link_prefix=f"../assets/{file_id}",
+                        asset_name_prefix=asset_name_prefix,
+                    )
+                    quality_md = quality_result.markdown
                     # Only use quality version if it has reasonable content
                     if quality_md and len(quality_md.strip()) > len(markdown.strip()) * 0.5:
+                        # BUG-1 fix: capture old length before reassignment
+                        old_chars = len(markdown)
                         markdown = quality_md
                         markdown_path.write_text(markdown, encoding="utf-8")
                         enhance_logger.info(
                             "quality_reparse_completed",
                             parser="pymupdf4llm",
-                            chars_before=len(markdown),
+                            chars_before=old_chars,
                             chars_after=len(quality_md),
                         )
             except Exception as exc:
@@ -608,13 +620,16 @@ async def run_parse_file_workflow(
 
         if parse_result.needs_enhance:
             logger.info("dispatching_deep_enhance_background", subject=subject, file_id=file_id)
-            asyncio.create_task(
+            # RISK-2 fix: track task reference to prevent GC collection
+            task = asyncio.create_task(
                 _run_deep_enhance_background(
                     subject=subject,
                     file_id=file_id,
                     event_bus=event_bus,
                 )
             )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         return ok_result(
             {

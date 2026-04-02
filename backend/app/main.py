@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -19,30 +15,42 @@ from app.infra.config import get_settings
 from app.infra.database import init_db
 from app.infra.exceptions import AITeachMeError
 from app.infra.logger import configure_logging
+from app.infra.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.infra.task_registry import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
+
+
+def _maybe_export_openapi_schema(app: FastAPI) -> None:
+    settings = get_settings()
+    if not settings.export_openapi_on_startup:
+        return
+
+    try:
+        import sys
+        from pathlib import Path
+
+        script_dir = Path(__file__).parent.parent / "scripts"
+        sys.path.insert(0, str(script_dir))
+        import export_api_docs
+
+        export_api_docs.export_openapi_schema(app)
+        sys.path.pop(0)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("export_openapi_failed", error=str(exc))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
+    app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
-    
-    # 自动导出 OpenAPI 接口文档到 frontend
-    try:
-        import sys
-        from pathlib import Path
-        script_dir = Path(__file__).parent.parent / "scripts"
-        sys.path.insert(0, str(script_dir))
-        import export_api_docs
-        export_api_docs.export_openapi_schema(app)
-        sys.path.pop(0)
-    except Exception as e:
-        logger.error("export_openapi_failed", error=str(e))
-        
+    _maybe_export_openapi_schema(app)
+
     logger.info("app_started")
     yield
+    await app.state.background_task_registry.shutdown(cancel_timeout_s=8.0)
     logger.info("app_shutdown")
 
 
@@ -57,13 +65,21 @@ def _build_app_metadata() -> dict[str, object]:
 
 
 def _register_middlewares(app: FastAPI) -> None:
+    settings = get_settings()
+    # 从环境变量读取允许的跨域来源（逗号分隔），或使用默认白名单
+    default_origins = [
+        "https://aiteachme.cn",
+        "https://www.aiteachme.cn",
+        "https://aiteachme.pages.dev",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+    configured = settings.cors_allowed_origins
+    origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "https://aiteachme.pages.dev",
-            "http://localhost:5173",
-            "http://localhost:3000",
-        ],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -71,8 +87,8 @@ def _register_middlewares(app: FastAPI) -> None:
 
 
 def _register_static_mounts(app: FastAPI) -> None:
-    data_dir = Path(get_settings().data_dir).resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
+    log_legacy_runtime_path_warnings()
+    data_dir = get_runtime_data_dir()
     app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 
 
