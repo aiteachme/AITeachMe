@@ -84,6 +84,7 @@ def _expire_outdated_pending_reviews(
     *,
     user_id: str,
     subject: str,
+    auto_commit: bool = True,
 ) -> None:
     now = utcnow()
     changed = False
@@ -97,7 +98,10 @@ def _expire_outdated_pending_reviews(
         session.add(state)
         changed = True
     if changed:
-        session.commit()
+        if auto_commit:
+            session.commit()
+        else:
+            session.flush()
 
 
 def schedule_reviews(
@@ -105,10 +109,17 @@ def schedule_reviews(
     user_id: str,
     subject: str,
     updated_state_ids: list[int],
+    *,
+    auto_commit: bool = True,
 ) -> list[UserKnowledgeState]:
     """Update review fields on mastery states."""
 
-    _expire_outdated_pending_reviews(session, user_id=user_id, subject=subject)
+    _expire_outdated_pending_reviews(
+        session,
+        user_id=user_id,
+        subject=subject,
+        auto_commit=auto_commit,
+    )
 
     now = utcnow()
     persisted_states: list[UserKnowledgeState] = []
@@ -157,7 +168,10 @@ def schedule_reviews(
         session.add(state)
         persisted_states.append(state)
 
-    session.commit()
-    for state in persisted_states:
-        session.refresh(state)
+    if auto_commit:
+        session.commit()
+        for state in persisted_states:
+            session.refresh(state)
+    else:
+        session.flush()
     return persisted_states

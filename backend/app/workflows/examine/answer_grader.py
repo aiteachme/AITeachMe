@@ -17,7 +17,10 @@ from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, QuestionType
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER
 from app.utils.time import utcnow
-from app.workflows.examine.context import build_grading_knowledge_context
+from app.workflows.examine.context import (
+    build_grading_knowledge_context,
+    read_knowledge_doc_text,
+)
 from app.workflows.examine.prompts import (
     SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
     SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
@@ -25,7 +28,7 @@ from app.workflows.examine.prompts import (
 
 logger = structlog.get_logger()
 
-_MAX_CONCURRENT_GRADE_LLM_CALLS = 4
+_MAX_CONCURRENT_GRADE_LLM_CALLS = 12
 
 
 def normalize_answer(text: str) -> str:
@@ -72,12 +75,19 @@ def _extract_node_ids(raw_refs: str | None) -> list[int]:
     return list(dict.fromkeys(node_ids))
 
 
-def _build_knowledge_context(session: Session, exam_paper: ExamPaper, exam_paper_item: ExamPaperItem) -> str:
+def _build_knowledge_context(
+    session: Session,
+    exam_paper: ExamPaper,
+    exam_paper_item: ExamPaperItem,
+    *,
+    knowledge_doc_text: str,
+) -> str:
     return build_grading_knowledge_context(
         session,
         subject=exam_paper.subject,
         teaching_unit_id=exam_paper_item.teaching_unit_id,
         node_ids=_extract_node_ids(exam_paper_item.node_refs_json),
+        knowledge_doc_text=knowledge_doc_text,
     )
 
 
@@ -165,7 +175,12 @@ class _ItemContext:
     error_cause_label: str | None = None
 
 
-async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
+async def grade_paper(
+    session: Session,
+    exam_paper_id: int,
+    *,
+    auto_commit: bool = True,
+) -> GradeResult:
     """Grade all items for a paper and persist grading fields."""
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
@@ -208,8 +223,14 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
             )
         )
 
+    knowledge_doc_text = read_knowledge_doc_text(exam_paper.subject)
     knowledge_contexts = {
-        index: _build_knowledge_context(session, exam_paper, entry.item)
+        index: _build_knowledge_context(
+            session,
+            exam_paper,
+            entry.item,
+            knowledge_doc_text=knowledge_doc_text,
+        )
         for index, entry in enumerate(to_grade)
         if entry.question_type == QuestionType.SHORT_ANSWER.value
     }
@@ -329,8 +350,11 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
     exam_paper.score_obtained = float(correct_items)
     exam_paper.updated_at = utcnow()
     session.add(exam_paper)
-    session.commit()
-    session.refresh(exam_paper)
+    if auto_commit:
+        session.commit()
+        session.refresh(exam_paper)
+    else:
+        session.flush()
 
     return GradeResult(
         exam_paper_id=exam_paper_id,

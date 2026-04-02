@@ -8,11 +8,15 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
+from math import ceil
+from time import perf_counter
 
 import structlog
 from sqlmodel import Session, select
 
+from app.core.database import managed_session
 from app.core.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
+from app.infra.memory import append_to_learner_section, log_learning_event, sync_profile_to_doc
 from app.infra.tracing import llm_trace_scope
 from app.models import (
     ExamMode,
@@ -22,17 +26,30 @@ from app.models import (
     KnowledgeNode,
     QuestionTemplate,
     QuestionType,
+    is_paper_exam_mode,
+    is_web_practice_mode,
+    normalize_exam_mode,
     validate_status_transition,
 )
-from app.repositories import exams_repo
+from app.repositories import exams_repo, profile_repo
 from app.schemas.common import PaginatedData, build_paginated_data
-from app.utils.time import utcnow
+from app.utils.time import seconds_between, utcnow
 from app.workflows.examine.answer_grader import grade_paper
-from app.workflows.examine.context import build_exam_style_profile
+from app.workflows.examine.context import (
+    ExamStyleProfile,
+    build_exam_style_profile,
+    normalize_difficulty_focus,
+)
 from app.workflows.examine.paper_assembler import assemble_paper
+from app.workflows.examine.paper_exporter import (
+    compile_tex_to_pdf_artifact,
+    export_exam_paper_artifacts,
+)
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
 from app.workflows.profile.review_scheduler import schedule_reviews
+from app.workflows.profile.subject_profile import refresh_subject_profile_summary
+from app.workflows.profile.user_profile import refresh_user_profile_summary
 
 logger = structlog.get_logger()
 
@@ -103,10 +120,186 @@ class ExamGradingResult:
 
 _exam_generate_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _exam_generate_locks_guard = asyncio.Lock()
+_paper_export_tasks: set[asyncio.Task[None]] = set()
 
 
 def _new_runtime_job_id() -> int:
     return (int(utcnow().timestamp() * 1_000_000) % 2_000_000_000) + 1
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return max(0, int(round((perf_counter() - started_at) * 1000)))
+
+
+def _track_background_task(task: asyncio.Task[None]) -> None:
+    _paper_export_tasks.add(task)
+    task.add_done_callback(_paper_export_tasks.discard)
+
+
+def _resolve_template_count_difficulty(difficulty: str | None) -> str | None:
+    normalized = normalize_difficulty_focus(difficulty)
+    if normalized in {"easy", "medium", "hard"}:
+        return normalized
+    return None
+
+
+def _prioritize_build_unit_ids(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+    candidate_unit_ids: list[int],
+    mode: str,
+    required_question_count: int,
+    questions_per_unit: int,
+    style_profile: ExamStyleProfile,
+) -> list[int]:
+    if len(candidate_unit_ids) <= 1:
+        return candidate_unit_ids
+
+    desired_unit_count = max(1, ceil(required_question_count / max(1, questions_per_unit)))
+    desired_unit_count += 2 if is_paper_exam_mode(mode) else 1
+    desired_unit_count = min(
+        len(candidate_unit_ids),
+        max(4 if is_web_practice_mode(mode) else 6, desired_unit_count),
+        8 if is_web_practice_mode(mode) else 12,
+    )
+
+    prioritized: list[int] = []
+    seen: set[int] = set()
+
+    def _append(values: list[int]) -> None:
+        for value in values:
+            if value not in candidate_unit_ids or value in seen:
+                continue
+            seen.add(value)
+            prioritized.append(value)
+
+    _append([int(item) for item in style_profile.focus_teaching_unit_ids if int(item) > 0])
+    due_states = profile_repo.list_due_knowledge_states(
+        session,
+        user_id=user_id,
+        subject=subject,
+        as_of=utcnow(),
+        target_kind="unit",
+    )
+    _append([
+        int(state.teaching_unit_id)
+        for state in due_states
+        if state.teaching_unit_id is not None
+    ])
+    weak_states = profile_repo.list_weak_knowledge_states(
+        session,
+        user_id=user_id,
+        subject=subject,
+        threshold=0.8,
+        target_kind="unit",
+    )
+    _append([
+        int(state.teaching_unit_id)
+        for state in weak_states
+        if state.teaching_unit_id is not None
+    ])
+    _append(candidate_unit_ids)
+    return prioritized[:desired_unit_count]
+
+
+async def _compile_paper_export_async(
+    *,
+    exam_paper_id: int,
+    tex_path: str,
+    runtime_job_id: int,
+    subject: str,
+    user_id: str,
+) -> None:
+    started_at = perf_counter()
+    try:
+        pdf_path, compiler, compile_log_path = await asyncio.to_thread(
+            compile_tex_to_pdf_artifact,
+            tex_path,
+        )
+
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+            if paper is None:
+                return
+
+            selection_context = _parse_json_object(paper.selection_context_json)
+            export_artifacts = selection_context.get("export_artifacts")
+            if not isinstance(export_artifacts, dict):
+                export_artifacts = {}
+                selection_context["export_artifacts"] = export_artifacts
+
+            export_artifacts["pdf_path"] = pdf_path
+            export_artifacts["compiler"] = compiler
+            export_artifacts["compile_log_path"] = compile_log_path
+            export_artifacts["pdf_compile_status"] = "completed" if pdf_path else "failed"
+            paper.selection_context_json = json.dumps(selection_context, ensure_ascii=False)
+            paper.updated_at = utcnow()
+            session.add(paper)
+            session.commit()
+
+        logger.info(
+            "exam_generate_paper_pdf_compile_finished",
+            runtime_job_id=runtime_job_id,
+            subject=subject,
+            user_id=user_id,
+            exam_paper_id=exam_paper_id,
+            pdf_path=pdf_path,
+            compiler=compiler,
+            compile_log_path=compile_log_path,
+            compile_elapsed_ms=_elapsed_ms(started_at),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "exam_generate_paper_pdf_compile_failed",
+            runtime_job_id=runtime_job_id,
+            subject=subject,
+            user_id=user_id,
+            exam_paper_id=exam_paper_id,
+            tex_path=tex_path,
+            error=str(exc),
+        )
+
+
+async def _sync_exam_learning_memory(
+    *,
+    paper: ExamPaper,
+    score_percent: float,
+    correct_count: int,
+    total_count: int,
+) -> None:
+    summary = (
+        f"{paper.subject} 完成{('考试卷' if is_paper_exam_mode(paper.exam_mode) else '在线测验')}，"
+        f"得分 {correct_count}/{total_count}（{score_percent:.1f} 分）"
+    )
+    note_line = f"- {summary}"
+    advice_line = f"- {paper.subject}：最近一次作答得分 {score_percent:.1f} 分，可据此调整下一轮讲解与练习难度。"
+
+    await log_learning_event(
+        paper.user_id,
+        event_type="exam",
+        subject=paper.subject,
+        summary=summary,
+        metadata={
+            "exam_paper_id": paper.id,
+            "exam_mode": paper.exam_mode,
+            "correct_count": correct_count,
+            "total_count": total_count,
+            "score_percent": round(score_percent, 2),
+        },
+    )
+    await sync_profile_to_doc(paper.user_id)
+    await append_to_learner_section(
+        paper.user_id,
+        "最近学习主题",
+        note_line,
+    )
+    await append_to_learner_section(
+        paper.user_id,
+        "教学备注",
+        advice_line,
+    )
 
 
 async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.Lock:
@@ -185,12 +378,8 @@ def _extract_requested_question_count(user_prompt: str | None) -> int | None:
 
 def _choose_default_question_count(mode: str) -> int:
     defaults = {
-        ExamMode.DIAGNOSTIC.value: 12,
-        ExamMode.PRACTICE.value: 10,
-        ExamMode.WEAKPOINT_BOOST.value: 10,
-        ExamMode.REVIEW.value: 8,
-        ExamMode.MOCK_FINAL.value: 20,
-        ExamMode.REAL_EXAM.value: 24,
+        ExamMode.WEB_PRACTICE.value: 10,
+        ExamMode.PAPER_EXAM.value: 24,
     }
     return defaults.get(mode, 10)
 
@@ -220,36 +409,19 @@ def _choose_preferred_question_types(
     if profile_types:
         return list(dict.fromkeys(profile_types))
 
-    defaults_by_mode = {
-        ExamMode.DIAGNOSTIC.value: [
+    if is_paper_exam_mode(mode):
+        return [
             QuestionType.SINGLE_CHOICE.value,
             QuestionType.FILL_BLANK.value,
             QuestionType.SHORT_ANSWER.value,
-        ],
-        ExamMode.PRACTICE.value: [
-            QuestionType.SINGLE_CHOICE.value,
-            QuestionType.FILL_BLANK.value,
-        ],
-        ExamMode.WEAKPOINT_BOOST.value: [
-            QuestionType.SINGLE_CHOICE.value,
-            QuestionType.SHORT_ANSWER.value,
-        ],
-        ExamMode.REVIEW.value: [QuestionType.SINGLE_CHOICE.value],
-        ExamMode.MOCK_FINAL.value: [
+        ]
+    if is_web_practice_mode(mode):
+        return [
             QuestionType.SINGLE_CHOICE.value,
             QuestionType.FILL_BLANK.value,
             QuestionType.SHORT_ANSWER.value,
-        ],
-        ExamMode.REAL_EXAM.value: [
-            QuestionType.SINGLE_CHOICE.value,
-            QuestionType.FILL_BLANK.value,
-            QuestionType.SHORT_ANSWER.value,
-        ],
-    }
-    return defaults_by_mode.get(
-        mode,
-        [QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value],
-    )
+        ]
+    return [QuestionType.SINGLE_CHOICE.value, QuestionType.FILL_BLANK.value]
 
 
 def _estimate_questions_per_unit(*, num_questions: int, unit_count: int, mode: str) -> int:
@@ -257,15 +429,13 @@ def _estimate_questions_per_unit(*, num_questions: int, unit_count: int, mode: s
         return 3
     spread_units = max(1, min(unit_count, 8))
     baseline = (num_questions + spread_units - 1) // spread_units
-    if mode in {ExamMode.MOCK_FINAL.value, ExamMode.REAL_EXAM.value}:
+    if is_paper_exam_mode(mode):
         baseline = max(baseline, 4)
     return max(2, min(12, baseline))
 
 
 def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
-    if isinstance(exam_mode, ExamMode):
-        return exam_mode.value
-    return str(exam_mode).strip().lower()
+    return normalize_exam_mode(exam_mode)
 
 
 def _resolve_auto_build_unit_ids(
@@ -443,6 +613,7 @@ async def trigger_exam_generate(
     subject: str,
     user_id: str,
     exam_mode: ExamMode | str,
+    difficulty: str | None = None,
     num_questions: int | None = None,
     user_prompt: str | None = None,
     style_prompt: str | None = None,
@@ -451,6 +622,8 @@ async def trigger_exam_generate(
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
 ) -> ExamGenerationResult:
+    started_at = perf_counter()
+    raw_mode = exam_mode.value if isinstance(exam_mode, ExamMode) else str(exam_mode or "")
     mode = _resolve_generate_mode(exam_mode)
     runtime_job_id = _new_runtime_job_id()
     created_at = utcnow()
@@ -462,15 +635,19 @@ async def trigger_exam_generate(
         if snapshot is None:
             raise NoPublishedCurriculumSnapshotError(subject)
 
+        style_profile_started_at = perf_counter()
         style_profile = build_exam_style_profile(
             session,
             subject=subject,
+            user_id=user_id,
             sample_file_uids=sample_file_uids,
             style_prompt=style_prompt,
             focus_prompt=focus_prompt,
             user_prompt=user_prompt,
+            difficulty=difficulty,
             exam_mode=mode,
         )
+        style_profile_ms = _elapsed_ms(style_profile_started_at)
         prompt_requested_count = _extract_requested_question_count(user_prompt)
         resolved_num_questions = (
             prompt_requested_count
@@ -495,14 +672,27 @@ async def trigger_exam_generate(
             unit_count=len(build_unit_ids),
             mode=mode,
         )
+        if not teaching_unit_ids:
+            build_unit_ids = _prioritize_build_unit_ids(
+                session,
+                subject=subject,
+                user_id=user_id,
+                candidate_unit_ids=build_unit_ids,
+                mode=mode,
+                required_question_count=max(1, int(resolved_num_questions)),
+                questions_per_unit=questions_per_unit,
+                style_profile=style_profile,
+            )
         required_template_count = max(1, int(resolved_num_questions))
         force_contextual_build = bool(
             (style_prompt or "").strip()
             or (focus_prompt or "").strip()
             or (sample_file_uids or [])
-            or mode == ExamMode.REAL_EXAM.value
         )
         build_job: QuestionBuildResult | None = None
+        question_build_ms = 0
+        assemble_paper_ms = 0
+        template_count_difficulty = _resolve_template_count_difficulty(style_profile.difficulty_focus)
 
         with llm_trace_scope(
             subject=subject,
@@ -515,8 +705,10 @@ async def trigger_exam_generate(
                 session,
                 subject=subject,
                 question_types=set(preferred_question_types) if preferred_question_types else None,
+                difficulty=template_count_difficulty,
             )
             if force_contextual_build or template_count_before < required_template_count:
+                question_build_started_at = perf_counter()
                 build_job = await trigger_question_build(
                     session,
                     subject=subject,
@@ -529,6 +721,7 @@ async def trigger_exam_generate(
                     focus_prompt=focus_prompt,
                     style_profile=style_profile,
                 )
+                question_build_ms = _elapsed_ms(question_build_started_at)
             else:
                 logger.info(
                     "exam_generate_skip_question_build",
@@ -543,12 +736,14 @@ async def trigger_exam_generate(
                 session,
                 subject=subject,
                 question_types=set(preferred_question_types) if preferred_question_types else None,
+                difficulty=template_count_difficulty,
             )
             if template_count <= 0 and build_job is not None and build_job.status == "failed":
                 raise ValueError(build_job.error_message or "自动构题失败，且没有可用题模板。")
             if template_count <= 0:
                 raise ValueError("自动构题后仍没有可用题模板。")
 
+            assemble_paper_started_at = perf_counter()
             paper = assemble_paper(
                 session,
                 subject=subject,
@@ -556,15 +751,71 @@ async def trigger_exam_generate(
                 exam_mode=mode,
                 num_questions=max(1, int(resolved_num_questions)),
                 theme_tree_node_id=theme_tree_node_id,
-                teaching_unit_ids=(teaching_unit_ids or (build_unit_ids if mode == ExamMode.PRACTICE.value else None)),
+                teaching_unit_ids=(teaching_unit_ids or (build_unit_ids if is_web_practice_mode(mode) else None)),
                 preferred_question_types=preferred_question_types,
+                preferred_difficulty=style_profile.difficulty_focus,
                 style_profile=style_profile,
                 user_prompt=user_prompt,
                 focus_prompt=focus_prompt,
                 sample_file_uids=sample_file_uids or [],
             )
+            assemble_paper_ms = _elapsed_ms(assemble_paper_started_at)
+            export_ms = 0
+            if is_paper_exam_mode(mode):
+                export_started_at = perf_counter()
+                export_result = export_exam_paper_artifacts(
+                    session,
+                    paper=paper,
+                    compile_pdf=False,
+                )
+                export_context = _parse_json_object(paper.selection_context_json)
+                export_payload = export_result.model_dump()
+                export_payload["pdf_compile_status"] = "pending"
+                export_context["export_artifacts"] = export_payload
+                paper.selection_context_json = json.dumps(export_context, ensure_ascii=False)
+                paper.updated_at = utcnow()
+                session.add(paper)
+                session.commit()
+                session.refresh(paper)
+                export_ms = _elapsed_ms(export_started_at)
+                logger.info(
+                    "exam_generate_paper_export_staged",
+                    runtime_job_id=runtime_job_id,
+                    subject=subject,
+                    user_id=user_id,
+                    exam_paper_id=paper.id,
+                    markdown_path=export_result.markdown_path,
+                    tex_path=export_result.tex_path,
+                    export_ms=export_ms,
+                )
+                if export_result.tex_path and paper.id is not None:
+                    compile_task = asyncio.create_task(
+                        _compile_paper_export_async(
+                            exam_paper_id=int(paper.id),
+                            tex_path=export_result.tex_path,
+                            runtime_job_id=runtime_job_id,
+                            subject=subject,
+                            user_id=user_id,
+                        )
+                    )
+                    _track_background_task(compile_task)
 
         updated_at = utcnow()
+        logger.info(
+            "exam_generate_timing_summary",
+            runtime_job_id=runtime_job_id,
+            subject=subject,
+            user_id=user_id,
+            raw_exam_mode=raw_mode,
+            exam_mode=mode,
+            workflow_elapsed_ms=_elapsed_ms(started_at),
+            style_profile_ms=style_profile_ms,
+            question_build_ms=question_build_ms,
+            assemble_paper_ms=assemble_paper_ms,
+            paper_export_ms=(export_ms if is_paper_exam_mode(mode) else 0),
+            question_build_triggered=build_job is not None,
+            question_build_status=(build_job.status if build_job is not None else "skipped"),
+        )
         logger.info(
             "exam_generate_completed",
             runtime_job_id=runtime_job_id,
@@ -578,6 +829,8 @@ async def trigger_exam_generate(
             user_prompt_present=bool((user_prompt or "").strip()),
             style_prompt_present=bool((style_prompt or "").strip()),
             focus_prompt_present=bool((focus_prompt or "").strip()),
+            difficulty_focus=style_profile.difficulty_focus,
+            build_unit_ids=build_unit_ids,
         )
         return ExamGenerationResult(
             id=runtime_job_id,
@@ -652,6 +905,9 @@ async def submit_exam_answers(
 
     paper.status = "submitted"
     paper.submitted_at = utcnow()
+    duration_seconds = seconds_between(paper.submitted_at, paper.created_at)
+    if duration_seconds is not None:
+        paper.duration_seconds = duration_seconds
     paper.updated_at = utcnow()
     session.add(paper)
     session.commit()
@@ -679,6 +935,7 @@ async def trigger_exam_grade(
     exam_paper_id: int,
     regrade: bool = False,
 ) -> ExamGradingResult:
+    started_at = perf_counter()
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None:
         _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
@@ -714,6 +971,7 @@ async def trigger_exam_grade(
         session.commit()
         session.refresh(paper)
 
+        grade_started_at = perf_counter()
         with llm_trace_scope(
             subject=paper.subject,
             build_session_id=build_session_id,
@@ -721,21 +979,54 @@ async def trigger_exam_grade(
             lane="grading",
             node="grade_paper",
         ):
-            grade_result = await grade_paper(session, exam_paper_id)
+            grade_result = await grade_paper(
+                session,
+                exam_paper_id,
+                auto_commit=False,
+            )
+        grade_paper_ms = _elapsed_ms(grade_started_at)
 
         states_updated = 0
         tasks_created = 0
-        mastery_consumed = bool(regrade)
+        mastery_consumed = False
+        mastery_update_ms = 0
+        review_schedule_ms = 0
+        subject_profile_refresh_ms = 0
+        user_profile_refresh_ms = 0
         if not regrade:
-            mastery_result = update_mastery_from_exam(session, exam_paper_id)
+            mastery_started_at = perf_counter()
+            mastery_result = update_mastery_from_exam(
+                session,
+                exam_paper_id,
+                auto_commit=False,
+            )
+            mastery_update_ms = _elapsed_ms(mastery_started_at)
             states_updated = mastery_result.states_updated
+            review_started_at = perf_counter()
             review_tasks = schedule_reviews(
                 session,
                 user_id=paper.user_id,
                 subject=paper.subject,
                 updated_state_ids=mastery_result.updated_state_ids,
+                auto_commit=False,
             )
+            review_schedule_ms = _elapsed_ms(review_started_at)
             tasks_created = len(review_tasks)
+            subject_profile_started_at = perf_counter()
+            refresh_subject_profile_summary(
+                session,
+                subject=paper.subject,
+                auto_commit=False,
+            )
+            subject_profile_refresh_ms = _elapsed_ms(subject_profile_started_at)
+            user_profile_started_at = perf_counter()
+            refresh_user_profile_summary(
+                session,
+                user_id=paper.user_id,
+                auto_commit=False,
+            )
+            user_profile_refresh_ms = _elapsed_ms(user_profile_started_at)
+            mastery_consumed = True
         else:
             logger.info(
                 "exam_grade_regrade_skip_mastery",
@@ -743,7 +1034,34 @@ async def trigger_exam_grade(
                 exam_paper_id=exam_paper_id,
             )
 
+        session.commit()
         updated_at = utcnow()
+        try:
+            await _sync_exam_learning_memory(
+                paper=paper,
+                score_percent=float(grade_result.score),
+                correct_count=int(grade_result.correct_items),
+                total_count=int(grade_result.total_items),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "exam_grade_learning_memory_sync_failed",
+                runtime_job_id=runtime_job_id,
+                exam_paper_id=exam_paper_id,
+                error=str(exc),
+            )
+        logger.info(
+            "exam_grade_timing_summary",
+            runtime_job_id=runtime_job_id,
+            exam_paper_id=exam_paper_id,
+            workflow_elapsed_ms=_elapsed_ms(started_at),
+            grade_paper_ms=grade_paper_ms,
+            mastery_update_ms=mastery_update_ms,
+            review_schedule_ms=review_schedule_ms,
+            subject_profile_refresh_ms=subject_profile_refresh_ms,
+            user_profile_refresh_ms=user_profile_refresh_ms,
+            regrade=regrade,
+        )
         logger.info(
             "exam_grade_completed",
             runtime_job_id=runtime_job_id,

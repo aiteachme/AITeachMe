@@ -91,7 +91,7 @@
 
 ## 5. 当前数据根目录
 
-默认数据根目录来自 `get_settings().data_dir`。
+默认数据根目录来自 `backend/app/core/runtime_paths.py` 的 `get_runtime_data_dir()`。
 
 在当前仓库的常见落点是：
 
@@ -114,6 +114,7 @@ backend/data/<subject>/
 ├─ raw_markdowns/
 ├─ assets/
 │  └─ <file_id>/
+├─ exam/
 ├─ knowledge_markdowns/
 │  └─ _build/
 ├─ temp/
@@ -127,6 +128,7 @@ backend/data/<subject>/
 | `raw_files/` | 原始上传文件 |
 | `raw_markdowns/` | ingest 产出的材料层 Markdown |
 | `assets/<file_id>/` | 单文件图片与附件资产 |
+| `exam/` | 考试卷导出产物（`md/tex/pdf`） |
 | `knowledge_markdowns/` | 已发布知识文档 |
 | `knowledge_markdowns/_build/` | 知识文档 staging 与中间产物 |
 | `temp/` | 临时文件 |
@@ -143,11 +145,10 @@ backend/data/<subject>/
 - `build_raw_markdown_dir()`
 - `build_raw_markdown_path()`
 - `build_asset_dir()`
+- `build_exam_dir()`
 - `build_knowledge_markdown_dir()`
 - `build_knowledge_doc_path()`
 - `build_knowledge_manifest_path()`
-- `to_storage_key()`
-- `resolve_storage_key_path()`
 
 这些 helper 才是运行时路径真相，文档和代码都应以它们为准。
 
@@ -174,8 +175,19 @@ backend/data/<subject>/
 ### 8.3 中间与调试产物
 
 - `knowledge_markdowns/_build/*`
+- `exam/*`
 - `temp/*`
 - `debug/*`
+
+### 8.4 用户级运行时画像文件
+
+- `backend/data/users/<user_id>/LEARNER.md`
+
+说明：
+
+- 它不是数据库主表，而是 memory/profile 的运行时伴生文档
+- 当前会被 Interact 上下文自动读入
+- 判卷完成后也会继续补写学习主题与教学备注
 
 ---
 

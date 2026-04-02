@@ -48,6 +48,8 @@ def _to_mastery_overview_response(overview) -> MasteryOverviewResponse:
         weak_node_count=overview.weak_node_count,
         unit_states=[_to_mastery_state_response(item) for item in overview.unit_states],
         node_states=[_to_mastery_state_response(item) for item in overview.node_states],
+        subject_profile=overview.subject_profile,
+        user_profile=overview.user_profile,
     )
 
 

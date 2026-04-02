@@ -32,7 +32,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import type { FileRecord, FilesUploadData } from "../types/files";
 
-type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final" | "real_exam";
+type ExamMode = "web_practice" | "paper_exam";
+type DifficultyMode = "" | "easy" | "medium" | "hard" | "mixed";
 
 type ExamGenerateResult = ExamGenerateResponse & { sample_file_uids?: string[] };
 type ExamNodeLink = {
@@ -56,6 +57,7 @@ type QuestionBankItem = QuestionBankItemResponse & {
 };
 type GenerateExamOptions = {
   examMode: ExamMode;
+  difficulty: DifficultyMode;
   userPrompt: string;
   stylePrompt: string;
   focusPrompt: string;
@@ -66,19 +68,27 @@ type PaperSection = { key: string; label: string; items: ExamPaperItem[] };
 
 type DeleteExamResult = ExamPaperDeleteResponse;
 
-const EXAM_REQUEST_TIMEOUT_MS = 120000;
+const EXAM_REQUEST_TIMEOUT_MS = 300000;
 const SAMPLE_ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.md,.markdown,.txt";
 const PAPER_CARD = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 const REAL_CARD = "rounded-[2rem] border border-stone-200 bg-[#fffdf8] shadow-[0_24px_80px_rgba(41,37,36,0.08)]";
 
 const EXAM_MODE_OPTIONS: Array<{ value: ExamMode; label: string; description: string }> = [
-  { value: "diagnostic", label: "诊断模式", description: "覆盖面优先，快速摸清薄弱项。" },
-  { value: "practice", label: "练习模式", description: "更适合日常刷题。" },
-  { value: "weakpoint_boost", label: "薄弱强化", description: "集中训练当前掌握度偏低的单元。" },
-  { value: "review", label: "复习模式", description: "围绕待复习内容做短测。" },
-  { value: "mock_final", label: "模拟考试", description: "按课程结构铺一套综合卷。" },
-  { value: "real_exam", label: "真实考试", description: "更像正式试卷，可打印演练。" },
+  { value: "web_practice", label: "测验", description: "在线做题，提交后自动判卷并更新学习画像。" },
+  { value: "paper_exam", label: "考试", description: "生成可打印考卷，适合线下手写作答与模拟实战。" },
 ];
+
+const DIFFICULTY_OPTIONS: Array<{ value: DifficultyMode; label: string; description: string }> = [
+  { value: "", label: "自动", description: "根据当前 profile 学习画像自动决定难度。" },
+  { value: "easy", label: "简单", description: "更偏基础题和稳妥练习。" },
+  { value: "medium", label: "中等", description: "默认训练强度，适合大多数场景。" },
+  { value: "hard", label: "困难", description: "更偏综合题、易混点和高区分度题。" },
+  { value: "mixed", label: "混合梯度", description: "整卷按简单到困难拉开层次，更适合考试卷。" },
+];
+
+function isPaperExamMode(mode: string): boolean {
+  return mode === "paper_exam" || mode === "real_exam" || mode === "mock_final";
+}
 
 function PageWrapper({ children, title, subtitle, badgeText }: { children: ReactNode; title: ReactNode; subtitle?: string; badgeText?: string }) {
   return (
@@ -126,6 +136,14 @@ function toDifficultyLabel(value: string): string {
 }
 
 function toModeLabel(value: string): string {
+  if (value === "web_practice") return "测验";
+  if (value === "paper_exam") return "考试";
+  if (value === "diagnostic") return "测验（诊断）";
+  if (value === "practice") return "测验（日常练习）";
+  if (value === "weakpoint_boost") return "测验（薄弱强化）";
+  if (value === "review") return "测验（复习）";
+  if (value === "mock_final") return "考试（模拟）";
+  if (value === "real_exam") return "考试（正式）";
   return EXAM_MODE_OPTIONS.find((item) => item.value === value)?.label ?? value;
 }
 
@@ -197,6 +215,7 @@ function buildSelectionHighlights(detail: ExamPaperDetail): string[] {
   const context = detail.selection_context ?? {};
   const lines: string[] = [];
   if (typeof context.paper_title === "string" && context.paper_title) lines.push(`试卷标题：${context.paper_title}`);
+  if (typeof context.requested_difficulty === "string" && context.requested_difficulty) lines.push(`指定难度：${toDifficultyLabel(context.requested_difficulty)}`);
   if (typeof context.focus_prompt === "string" && context.focus_prompt) lines.push(`重点提示：${context.focus_prompt}`);
   if (typeof context.user_prompt === "string" && context.user_prompt) lines.push(`生成备注：${context.user_prompt}`);
   const samples = readStringList(context.sample_file_uids);
@@ -224,6 +243,7 @@ async function uploadSampleFiles(subject: string, files: File[]): Promise<FileRe
 async function generateExamPaper(subject: string, options: GenerateExamOptions): Promise<ExamPaperDetail> {
   const subjectId = requireSubjectId(subject);
   const body: Record<string, unknown> = { exam_mode: options.examMode };
+  if (options.difficulty) body.difficulty = options.difficulty;
   if (options.userPrompt.trim()) body.user_prompt = options.userPrompt.trim();
   if (options.stylePrompt.trim()) body.style_prompt = options.stylePrompt.trim();
   if (options.focusPrompt.trim()) body.focus_prompt = options.focusPrompt.trim();
@@ -359,8 +379,9 @@ export function ExamsPage() {
   const [gradedPaper, setGradedPaper] = useState<ExamPaperDetail | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
 
-  const [examMode, setExamMode] = useState<ExamMode>("diagnostic");
+  const [examMode, setExamMode] = useState<ExamMode>("web_practice");
   const [numQuestions, setNumQuestions] = useState("");
+  const [difficulty, setDifficulty] = useState<DifficultyMode>("");
   const [userPrompt, setUserPrompt] = useState("");
   const [stylePrompt, setStylePrompt] = useState("");
   const [focusPrompt, setFocusPrompt] = useState("");
@@ -394,7 +415,15 @@ export function ExamsPage() {
   });
 
   const generateMutation = useMutation({
-    mutationFn: () => generateExamPaper(subjectId, { examMode, userPrompt, stylePrompt, focusPrompt, numQuestions: normalizeQuestionCountInput(numQuestions), sampleFileUids: sampleFiles.map((item) => item.uid) }),
+    mutationFn: () => generateExamPaper(subjectId, {
+      examMode,
+      difficulty,
+      userPrompt,
+      stylePrompt,
+      focusPrompt,
+      numQuestions: normalizeQuestionCountInput(numQuestions),
+      sampleFileUids: sampleFiles.map((item) => item.uid),
+    }),
     onMutate: () => {
       setNotice("");
       setStatusText("正在结合知识图谱、知识文档和学习画像生成试卷...");
@@ -486,10 +515,10 @@ export function ExamsPage() {
   }
 
   if (activePaper && !gradedPaper) {
-    const realExam = activePaper.exam_mode === "real_exam";
+    const realExam = isPaperExamMode(activePaper.exam_mode);
     const sections = realExam ? activePaperSections : [{ key: "all", label: "试题列表", items: activePaper.items }];
     return (
-      <PageWrapper title={`试卷 #${activePaper.id}`} subtitle="每道题都带着知识点映射，方便做完以后回看薄弱项。" badgeText={realExam ? "真实考试模式" : "考试进行中"}>
+      <PageWrapper title={`试卷 #${activePaper.id}`} subtitle="每道题都带着知识点映射，方便做完以后回看薄弱项。" badgeText={realExam ? "考试卷模式" : "测验进行中"}>
         <div className="flex flex-wrap justify-end gap-3">
           {realExam ? <Button variant="outline" className="rounded-full" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />打印试卷</Button> : null}
           <Button variant="ghost" className="rounded-full border border-slate-200 bg-white/80" onClick={() => { setActivePaper(null); setAnswers({}); }}>返回考试中心</Button>
@@ -512,10 +541,10 @@ export function ExamsPage() {
   }
 
   if (gradedPaper) {
-    const realExam = gradedPaper.exam_mode === "real_exam";
+    const realExam = isPaperExamMode(gradedPaper.exam_mode);
     const sections = realExam ? gradedPaperSections : [{ key: "all", label: "答题结果", items: gradedPaper.items }];
     return (
-      <PageWrapper title="答题结果" subtitle="系统会把结果回连到知识点与学习轨迹，方便下一轮继续练。" badgeText={realExam ? "真实考试批阅结果" : "AI 判卷完成"}>
+      <PageWrapper title="答题结果" subtitle="系统会把结果回连到知识点与学习轨迹，方便下一轮继续练。" badgeText={realExam ? "考试卷批阅结果" : "AI 判卷完成"}>
         <div className="flex flex-wrap justify-end gap-3">
           {realExam ? <Button variant="outline" className="rounded-full" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />打印成绩页</Button> : null}
           <Button variant="ghost" className="rounded-full border border-slate-200 bg-white/80" onClick={() => { setGradedPaper(null); setAnswers({}); }}>返回考试中心</Button>
@@ -565,53 +594,96 @@ export function ExamsPage() {
           <Card className={PAPER_CARD}>
             <CardHeader>
               <CardTitle>生成新试卷</CardTitle>
-              <CardDescription>考试模式、样卷风格和重点提示会一起进入出题链路，题目会回连到知识点与学习画像。</CardDescription>
+              <CardDescription>形式统一为两种：在线测验与可打印考卷。其余策略由系统在后端自动选题。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-slate-700">考试模式
-                  <select className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" value={examMode} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setExamMode(event.target.value as ExamMode)}>
-                    {EXAM_MODE_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                  </select>
-                  <div className="mt-2 text-xs text-slate-500">{selectedMode?.description}</div>
-                </label>
-                <label className="block text-sm text-slate-700">目标题量（可选）
-                  <input type="number" min={1} max={200} className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder={examMode === "real_exam" ? "例如 24" : "例如 12"} value={numQuestions} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setNumQuestions(event.target.value)} />
-                </label>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  {EXAM_MODE_OPTIONS.map((item) => (
+                    <Button
+                      key={item.value}
+                      type="button"
+                      variant={examMode === item.value ? "default" : "outline"}
+                      className={`rounded-full px-6 ${examMode === item.value ? "bg-slate-900 text-white" : "bg-white text-slate-700"}`}
+                      disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject}
+                      onClick={() => setExamMode(item.value)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="text-xs text-slate-500">{selectedMode?.description}</div>
               </div>
+
+              <label className="block text-sm text-slate-700">题量（可选）
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder={isPaperExamMode(examMode) ? "例如 24" : "例如 12"}
+                  value={numQuestions}
+                  disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject}
+                  onChange={(event) => setNumQuestions(event.target.value)}
+                />
+              </label>
 
               <label className="block text-sm text-slate-700">综合提示（可选）
                 <textarea rows={3} className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="例如：偏重操作系统与网络基础，整体难度中等，减少纯记忆题。" value={userPrompt} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setUserPrompt(event.target.value)} />
               </label>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-slate-700">样卷风格提示（可选）
-                  <textarea rows={4} className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="例如：更像学校正式闭卷试卷，选项干扰项要真实。" value={stylePrompt} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setStylePrompt(event.target.value)} />
-                </label>
-                <label className="block text-sm text-slate-700">考试重点提示（可选）
-                  <textarea rows={4} className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="例如：重点考协议分层、二进制表示和操作系统基础概念。" value={focusPrompt} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setFocusPrompt(event.target.value)} />
-                </label>
-              </div>
-
-              <div className="space-y-3 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50/70 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-slate-900">上传样卷（可选）</div>
-                    <div className="text-xs text-slate-500">系统会解析样卷结构与题型偏好，用来约束新试卷的出题风格。</div>
+              <details className="rounded-[1.75rem] border border-slate-200 bg-slate-50/60 p-4">
+                <summary className="cursor-pointer list-none text-sm font-medium text-slate-800">
+                  高级设置（可选）
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <label className="block text-sm text-slate-700">题目难度
+                      <select
+                        className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                        value={difficulty}
+                        disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject}
+                        onChange={(event) => setDifficulty(event.target.value as DifficultyMode)}
+                      >
+                        {DIFFICULTY_OPTIONS.map((item) => (
+                          <option key={item.label || "auto"} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-1.5 text-xs text-slate-500">
+                        {DIFFICULTY_OPTIONS.find((item) => item.value === difficulty)?.description}
+                      </div>
+                    </label>
+                    <label className="block text-sm text-slate-700">样卷风格提示
+                      <textarea rows={4} className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="例如：更像学校正式闭卷试卷，选项干扰项要真实。" value={stylePrompt} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setStylePrompt(event.target.value)} />
+                    </label>
+                    <label className="block text-sm text-slate-700">重点范围提示
+                      <textarea rows={4} className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="例如：重点考协议分层、二进制表示和操作系统基础概念。" value={focusPrompt} disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onChange={(event) => setFocusPrompt(event.target.value)} />
+                    </label>
                   </div>
-                  <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    {uploadSamplesMutation.isPending ? "上传中..." : "添加样卷"}
-                    <input type="file" accept={SAMPLE_ACCEPT} multiple className="hidden" onChange={handleSampleInputChange} disabled={uploadSamplesMutation.isPending || generateMutation.isPending || !hasSubject} />
-                  </label>
-                </div>
-                {sampleFiles.length ? <div className="grid gap-3 md:grid-cols-2">{sampleFiles.map((file) => <SampleChip key={file.uid} file={file} onRemove={() => setSampleFiles((prev) => prev.filter((item) => item.uid !== file.uid))} />)}</div> : <div className="text-sm text-slate-500">还没有上传样卷。你也可以只写提示词直接生成。</div>}
-              </div>
 
-              {examMode === "real_exam" ? <div className="rounded-[1.75rem] border border-stone-200 bg-[#fffaf0] p-4 text-sm text-stone-700"><div className="flex items-center gap-2 font-medium text-stone-900"><BookCheck className="h-4 w-4" />真实考试模式说明</div><p className="mt-2 leading-6">系统会优先按正式试卷结构排版，尽量输出更接近可打印的卷面效果，并把题目按题型分段展示。</p></div> : null}
+                  <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">上传样卷</div>
+                        <div className="text-xs text-slate-500">系统会解析样卷结构与题型偏好，用来约束新试卷风格。</div>
+                      </div>
+                      <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
+                        <UploadCloud className="mr-2 h-4 w-4" />
+                        {uploadSamplesMutation.isPending ? "上传中..." : "添加样卷"}
+                        <input type="file" accept={SAMPLE_ACCEPT} multiple className="hidden" onChange={handleSampleInputChange} disabled={uploadSamplesMutation.isPending || generateMutation.isPending || !hasSubject} />
+                      </label>
+                    </div>
+                    {sampleFiles.length ? <div className="grid gap-3 md:grid-cols-2">{sampleFiles.map((file) => <SampleChip key={file.uid} file={file} onRemove={() => setSampleFiles((prev) => prev.filter((item) => item.uid !== file.uid))} />)}</div> : <div className="text-sm text-slate-500">还没有上传样卷。你也可以只写提示词直接生成。</div>}
+                  </div>
+                </div>
+              </details>
+
+              {isPaperExamMode(examMode) ? <div className="rounded-[1.75rem] border border-stone-200 bg-[#fffaf0] p-4 text-sm text-stone-700"><div className="flex items-center gap-2 font-medium text-stone-900"><BookCheck className="h-4 w-4" />考试卷说明</div><p className="mt-2 leading-6">系统会生成可打印卷面，并在后端落盘到 `data/&lt;subject&gt;/exam`（含时间戳文件名、Markdown/TeX、可用时自动编译 PDF）。</p></div> : null}
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button className="rounded-full px-6" disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onClick={() => generateMutation.mutate()}>{generateMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />生成中...</> : "生成新试卷"}</Button>
+                <Button className="rounded-full px-6" disabled={generateMutation.isPending || uploadSamplesMutation.isPending || !hasSubject} onClick={() => generateMutation.mutate()}>{generateMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />生成中...</> : (isPaperExamMode(examMode) ? "一键生成考试卷" : "一键生成测验")}</Button>
                 {(generateMutation.isPending || uploadSamplesMutation.isPending) && <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />{statusText || "系统正在处理中..."}</div>}
               </div>
             </CardContent>

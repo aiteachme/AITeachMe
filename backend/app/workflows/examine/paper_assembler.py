@@ -20,6 +20,9 @@ from app.models import (
     QuestionTemplate,
     QuestionType,
     ThemeTreeNode,
+    is_paper_exam_mode,
+    is_web_practice_mode,
+    normalize_exam_mode,
 )
 from app.models.curriculum import CurriculumSnapshot
 from app.repositories import exams_repo, profile_repo
@@ -28,12 +31,12 @@ from app.workflows.examine.context import ExamStyleProfile
 
 logger = structlog.get_logger()
 
-_REAL_EXAM_SECTION_ORDER = [
+_PAPER_EXAM_SECTION_ORDER = [
     QuestionType.SINGLE_CHOICE.value,
     QuestionType.FILL_BLANK.value,
     QuestionType.SHORT_ANSWER.value,
 ]
-_REAL_EXAM_SECTION_LABELS = {
+_PAPER_EXAM_SECTION_LABELS = {
     QuestionType.SINGLE_CHOICE.value: "一、单项选择题",
     QuestionType.FILL_BLANK.value: "二、填空题",
     QuestionType.SHORT_ANSWER.value: "三、简答题",
@@ -85,9 +88,7 @@ def shuffle_single_choice_options(
 
 
 def _normalize_exam_mode(exam_mode: ExamMode | str) -> str:
-    if isinstance(exam_mode, ExamMode):
-        return exam_mode.value
-    return str(exam_mode).strip().lower()
+    return normalize_exam_mode(exam_mode)
 
 
 def _is_placeholder_template(template: QuestionTemplate) -> bool:
@@ -104,6 +105,7 @@ def _build_unit_template_pool(
     subject: str,
     unit_filter: set[int] | None = None,
     question_type_filter: set[str] | None = None,
+    preferred_difficulty: str | None = None,
     excluded_template_ids: set[int] | None = None,
 ) -> dict[int, list[QuestionTemplate]]:
     stmt = select(QuestionTemplate).where(
@@ -122,6 +124,14 @@ def _build_unit_template_pool(
         if item.id is None or item.id in excluded or _is_placeholder_template(item):
             continue
         pool[item.teaching_unit_id].append(item)
+    if preferred_difficulty in {"easy", "medium", "hard"}:
+        for templates in pool.values():
+            templates.sort(
+                key=lambda item: (
+                    0 if item.difficulty == preferred_difficulty else 1,
+                    item.id or 0,
+                )
+            )
     return pool
 
 
@@ -255,7 +265,7 @@ def _build_selection_reason_map(items: list[ExamPaperItem], selections: list[_Se
     return payload
 
 
-def _build_real_exam_section_plan(selections: list[_Selection]) -> tuple[list[dict[str, object]], list[_Selection]]:
+def _build_paper_exam_section_plan(selections: list[_Selection]) -> tuple[list[dict[str, object]], list[_Selection]]:
     grouped: dict[str, list[_Selection]] = defaultdict(list)
     for selection in selections:
         grouped[selection.template.question_type].append(selection)
@@ -263,14 +273,14 @@ def _build_real_exam_section_plan(selections: list[_Selection]) -> tuple[list[di
     ordered: list[_Selection] = []
     section_plan: list[dict[str, object]] = []
     cursor = 1
-    for question_type in _REAL_EXAM_SECTION_ORDER:
+    for question_type in _PAPER_EXAM_SECTION_ORDER:
         section_items = grouped.get(question_type, [])
         if not section_items:
             continue
         section_plan.append(
             {
                 "question_type": question_type,
-                "label": _REAL_EXAM_SECTION_LABELS.get(question_type, question_type),
+                "label": _PAPER_EXAM_SECTION_LABELS.get(question_type, question_type),
                 "start_order": cursor,
                 "count": len(section_items),
             }
@@ -281,7 +291,7 @@ def _build_real_exam_section_plan(selections: list[_Selection]) -> tuple[list[di
     leftovers = [
         selection
         for selection in selections
-        if selection.template.question_type not in _REAL_EXAM_SECTION_ORDER
+        if selection.template.question_type not in _PAPER_EXAM_SECTION_ORDER
     ]
     if leftovers:
         section_plan.append(
@@ -301,6 +311,13 @@ def _style_metadata(style_profile: ExamStyleProfile | None) -> dict[str, object]
     return style_profile.to_metadata() if style_profile is not None else {}
 
 
+def _normalize_preferred_difficulty(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if normalized in {"easy", "medium", "hard", "mixed"}:
+        return normalized
+    return None
+
+
 def assemble_paper(
     session: Session,
     *,
@@ -311,6 +328,7 @@ def assemble_paper(
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
     preferred_question_types: list[str] | None = None,
+    preferred_difficulty: str | None = None,
     style_profile: ExamStyleProfile | None = None,
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
@@ -320,6 +338,7 @@ def assemble_paper(
     mode = _normalize_exam_mode(exam_mode)
     now = as_of or utcnow()
     question_type_filter = {item for item in (preferred_question_types or []) if item}
+    resolved_difficulty = _normalize_preferred_difficulty(preferred_difficulty)
 
     curriculum_version = exams_repo.get_published_curriculum_version(session, subject)
     if curriculum_version is None or curriculum_version.id is None:
@@ -346,35 +365,77 @@ def assemble_paper(
         "user_prompt": user_prompt,
         "focus_prompt": focus_prompt,
         "style_profile": _style_metadata(style_profile),
+        "requested_difficulty": resolved_difficulty,
         "resolved_teaching_unit_ids": [],
         "paper_title": (
-            style_profile.title_hint if style_profile and style_profile.title_hint else f"{subject} {mode} exam"
+            style_profile.title_hint
+            if style_profile and style_profile.title_hint
+            else (f"{subject} 正式考卷" if is_paper_exam_mode(mode) else f"{subject} 在线测验")
         ),
         "section_plan": [],
     }
 
-    if mode == ExamMode.PRACTICE.value:
+    if is_web_practice_mode(mode):
+        resolved_units: set[int] = set()
         unit_scope = _resolve_practice_units(
             session,
             theme_tree_node_id=theme_tree_node_id,
             teaching_unit_ids=teaching_unit_ids,
         )
-        context_payload["resolved_teaching_unit_ids"] = sorted(unit_scope)
-        selections.extend(
-            _select_round_robin(
-                unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
-                    unit_filter=unit_scope or None,
-                    question_type_filter=question_type_filter or None,
-                    excluded_template_ids=excluded_ids,
-                ),
-                limit=num_questions,
-                used_template_ids=used_template_ids,
-                reason="practice_context",
+        if unit_scope:
+            resolved_units.update(unit_scope)
+            selections.extend(
+                _select_round_robin(
+                    unit_to_templates=_build_unit_template_pool(
+                        session,
+                        subject=subject,
+                        unit_filter=unit_scope,
+                        question_type_filter=question_type_filter or None,
+                        preferred_difficulty=resolved_difficulty,
+                        excluded_template_ids=excluded_ids,
+                    ),
+                    limit=num_questions,
+                    used_template_ids=used_template_ids,
+                    reason="web_practice_scope",
+                )
             )
+
+        due_states = profile_repo.list_due_knowledge_states(
+            session,
+            user_id=user_id,
+            subject=subject,
+            as_of=now,
+            target_kind="unit",
         )
-    elif mode == ExamMode.WEAKPOINT_BOOST.value:
+        due_units = {
+            int(state.teaching_unit_id)
+            for state in due_states
+            if state.teaching_unit_id is not None
+        }
+        source_state_by_due_unit = {
+            int(state.teaching_unit_id): state.id
+            for state in due_states
+            if state.id is not None and state.teaching_unit_id is not None
+        }
+        if len(selections) < num_questions and due_units:
+            resolved_units.update(due_units)
+            selections.extend(
+                _select_round_robin(
+                    unit_to_templates=_build_unit_template_pool(
+                        session,
+                        subject=subject,
+                        unit_filter=due_units,
+                        question_type_filter=question_type_filter or None,
+                        preferred_difficulty=resolved_difficulty,
+                        excluded_template_ids=excluded_ids,
+                    ),
+                    limit=(num_questions - len(selections)),
+                    used_template_ids=used_template_ids,
+                    reason="review_due",
+                    source_state_by_unit=source_state_by_due_unit,
+                )
+            )
+
         weak_states = profile_repo.list_weak_knowledge_states(
             session,
             user_id=user_id,
@@ -382,7 +443,11 @@ def assemble_paper(
             threshold=0.8,
             target_kind="unit",
         )
-        weak_units = {int(state.teaching_unit_id) for state in weak_states if state.teaching_unit_id is not None}
+        weak_units = {
+            int(state.teaching_unit_id)
+            for state in weak_states
+            if state.teaching_unit_id is not None
+        }
         source_state_by_unit = {
             int(state.teaching_unit_id): state.id
             for state in weak_states
@@ -391,98 +456,49 @@ def assemble_paper(
         prereq_units: set[int] = set()
         for unit_id in weak_units:
             prereq_units.update(exams_repo.list_prereq_units(session, unit_id))
-        transfer_units = {
-            unit_id
-            for unit_id in _build_unit_template_pool(
-                session,
-                subject=subject,
-                question_type_filter=question_type_filter or None,
-                excluded_template_ids=excluded_ids,
-            ).keys()
-            if unit_id not in weak_units and unit_id not in prereq_units
-        }
-        counts = _weighted_split(num_questions, [0.7, 0.2, 0.1])
+        remaining_after_due = max(0, num_questions - len(selections))
+        if remaining_after_due > 0 and (weak_units or prereq_units):
+            weak_count, prereq_count = _weighted_split(remaining_after_due, [0.75, 0.25])
+            selections.extend(
+                _select_round_robin(
+                    unit_to_templates=_build_unit_template_pool(
+                        session,
+                        subject=subject,
+                        unit_filter=weak_units or None,
+                        question_type_filter=question_type_filter or None,
+                        preferred_difficulty=resolved_difficulty,
+                        excluded_template_ids=excluded_ids,
+                    ),
+                    limit=weak_count,
+                    used_template_ids=used_template_ids,
+                    reason="weakpoint_boost",
+                    source_state_by_unit=source_state_by_unit,
+                )
+            )
+            selections.extend(
+                _select_round_robin(
+                    unit_to_templates=_build_unit_template_pool(
+                        session,
+                        subject=subject,
+                        unit_filter=prereq_units or None,
+                        question_type_filter=question_type_filter or None,
+                        preferred_difficulty=resolved_difficulty,
+                        excluded_template_ids=excluded_ids,
+                    ),
+                    limit=prereq_count,
+                    used_template_ids=used_template_ids,
+                    reason="prereq_patch",
+                    source_state_by_unit=source_state_by_unit,
+                )
+            )
 
-        selections.extend(
-            _select_round_robin(
-                unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
-                    unit_filter=weak_units or None,
-                    question_type_filter=question_type_filter or None,
-                    excluded_template_ids=excluded_ids,
-                ),
-                limit=counts[0],
-                used_template_ids=used_template_ids,
-                reason="weakpoint_boost",
-                source_state_by_unit=source_state_by_unit,
-            )
-        )
-        selections.extend(
-            _select_round_robin(
-                unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
-                    unit_filter=prereq_units or None,
-                    question_type_filter=question_type_filter or None,
-                    excluded_template_ids=excluded_ids,
-                ),
-                limit=counts[1],
-                used_template_ids=used_template_ids,
-                reason="prereq_patch",
-                source_state_by_unit=source_state_by_unit,
-            )
-        )
-        selections.extend(
-            _select_round_robin(
-                unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
-                    unit_filter=transfer_units or None,
-                    question_type_filter=question_type_filter or None,
-                    excluded_template_ids=excluded_ids,
-                ),
-                limit=counts[2],
-                used_template_ids=used_template_ids,
-                reason="transfer_expand",
-                source_state_by_unit=source_state_by_unit,
-            )
-        )
-        context_payload["weakness_state_ids"] = [state.id for state in weak_states if state.id is not None]
-        context_payload["resolved_teaching_unit_ids"] = sorted(weak_units | prereq_units | transfer_units)
-    elif mode == ExamMode.REVIEW.value:
-        due_states = profile_repo.list_due_knowledge_states(
-            session,
-            user_id=user_id,
-            subject=subject,
-            as_of=now,
-            target_kind="unit",
-        )
-        due_units = {int(state.teaching_unit_id) for state in due_states if state.teaching_unit_id is not None}
-        source_state_by_unit = {
-            int(state.teaching_unit_id): state.id
-            for state in due_states
-            if state.id is not None and state.teaching_unit_id is not None
-        }
-        selections.extend(
-            _select_round_robin(
-                unit_to_templates=_build_unit_template_pool(
-                    session,
-                    subject=subject,
-                    unit_filter=due_units or None,
-                    question_type_filter=question_type_filter or None,
-                    excluded_template_ids=excluded_ids,
-                ),
-                limit=num_questions,
-                used_template_ids=used_template_ids,
-                reason="review_due",
-                source_state_by_unit=source_state_by_unit,
-            )
-        )
         pending_review_tasks = profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject)
         context_payload["review_task_ids"] = [task.id for task in pending_review_tasks if task.id is not None]
-        context_payload["resolved_teaching_unit_ids"] = sorted(due_units)
-    elif mode in {ExamMode.MOCK_FINAL.value, ExamMode.REAL_EXAM.value}:
+        context_payload["weakness_state_ids"] = [state.id for state in weak_states if state.id is not None]
+        resolved_units.update(weak_units)
+        resolved_units.update(prereq_units)
+        context_payload["resolved_teaching_unit_ids"] = sorted(resolved_units)
+    elif is_paper_exam_mode(mode):
         allocation = _build_curriculum_unit_allocation(
             session,
             snapshot=curriculum_version,
@@ -493,6 +509,7 @@ def assemble_paper(
             subject=subject,
             unit_filter=set(allocation.keys()) or None,
             question_type_filter=question_type_filter or None,
+            preferred_difficulty=resolved_difficulty,
             excluded_template_ids=excluded_ids,
         )
         for unit_id, count in allocation.items():
@@ -503,7 +520,7 @@ def assemble_paper(
                     unit_to_templates={unit_id: pool.get(unit_id, [])},
                     limit=count,
                     used_template_ids=used_template_ids,
-                    reason=("real_exam_blueprint" if mode == ExamMode.REAL_EXAM.value else "mock_final_proportional"),
+                    reason="paper_exam_blueprint",
                 )
             )
         context_payload["resolved_teaching_unit_ids"] = sorted(allocation.keys())
@@ -514,11 +531,12 @@ def assemble_paper(
                     session,
                     subject=subject,
                     question_type_filter=question_type_filter or None,
+                    preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=excluded_ids,
                 ),
                 limit=num_questions,
                 used_template_ids=used_template_ids,
-                reason="diagnostic_coverage",
+                reason="web_practice_default",
             )
         )
 
@@ -529,6 +547,7 @@ def assemble_paper(
                     session,
                     subject=subject,
                     question_type_filter=question_type_filter or None,
+                    preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=excluded_ids,
                 ),
                 limit=(num_questions - len(selections)),
@@ -544,6 +563,7 @@ def assemble_paper(
                     session,
                     subject=subject,
                     question_type_filter=question_type_filter or None,
+                    preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=None,
                 ),
                 limit=(num_questions - len(selections)),
@@ -558,6 +578,7 @@ def assemble_paper(
                 unit_to_templates=_build_unit_template_pool(
                     session,
                     subject=subject,
+                    preferred_difficulty=resolved_difficulty,
                     excluded_template_ids=None,
                 ),
                 limit=(num_questions - len(selections)),
@@ -569,8 +590,8 @@ def assemble_paper(
     if not selections:
         raise ValueError("自动组卷失败：当前没有可用题目模板。")
 
-    if mode == ExamMode.REAL_EXAM.value:
-        section_plan, selections = _build_real_exam_section_plan(selections)
+    if is_paper_exam_mode(mode):
+        section_plan, selections = _build_paper_exam_section_plan(selections)
         context_payload["section_plan"] = section_plan
 
     paper = exams_repo.create_exam_paper(
@@ -586,6 +607,7 @@ def assemble_paper(
             created_at=utcnow(),
             updated_at=utcnow(),
         ),
+        auto_commit=False,
     )
     if paper.id is None:
         raise ValueError("ExamPaper.id should not be None after persistence.")
@@ -628,7 +650,11 @@ def assemble_paper(
             )
         )
 
-    created_items = exams_repo.create_exam_paper_items(session, items_to_create)
+    created_items = exams_repo.create_exam_paper_items(
+        session,
+        items_to_create,
+        auto_commit=False,
+    )
     paper.total_items = len(created_items)
     paper.status = "ready"
     paper.updated_at = utcnow()

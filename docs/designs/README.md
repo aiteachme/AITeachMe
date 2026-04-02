@@ -30,6 +30,7 @@
 | `11_database_and_storage_architecture.md` | 本地部署、中心化部署、存储抽象 |
 | `12_api_refactor_plan.md` | API 收敛计划 |
 | `13_database_schema_inventory.md` | 当前数据库唯一主设计文档 |
+| `future.md` | 未来学习形态与产品化路线（与当前代码能力映射） |
 
 ---
 
@@ -74,6 +75,8 @@
 - 数据库主线采用 `curriculum` 单表版本语义
 - 知识文档和知识图谱在同一轮 digest 中共享版本
 - 运行时目录采用 `raw_files / raw_markdowns / assets / knowledge_markdowns`
+- API 形态是“POST 主导 + 少量 GET 读取 + SSE 聊天主通道”，不是全 POST
+- Profile 已包含学科级与用户级双层摘要，并并入现有接口返回
 
 ---
 
@@ -85,3 +88,4 @@
 - 数据如何流动
 - 哪些对象是长期真相
 - 哪些状态只是运行时实现
+- 在不增加 API 复杂度前提下，未来优先演进哪些能力

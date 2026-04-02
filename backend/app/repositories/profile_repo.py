@@ -54,7 +54,12 @@ def _apply_state_target_filter(
     return stmt
 
 
-def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserKnowledgeState:
+def upsert_knowledge_state(
+    session: Session,
+    state: UserKnowledgeState,
+    *,
+    auto_commit: bool = True,
+) -> UserKnowledgeState:
     now = utcnow()
     target_kind, target_ref_id = _validate_target_ref(
         teaching_unit_id=state.teaching_unit_id,
@@ -106,7 +111,10 @@ def upsert_knowledge_state(session: Session, state: UserKnowledgeState) -> UserK
         )
 
     session.exec(stmt)
-    session.commit()
+    if auto_commit:
+        session.commit()
+    else:
+        session.flush()
     persisted = get_knowledge_state(
         session,
         user_id=state.user_id,
@@ -329,6 +337,7 @@ def complete_review_task(
     task_id: int,
     user_id: str,
     subject: str,
+    auto_commit: bool = True,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.id == task_id,
@@ -344,6 +353,9 @@ def complete_review_task(
     state.review_reason = None
     state.updated_at = utcnow()
     session.add(state)
-    session.commit()
-    session.refresh(state)
+    if auto_commit:
+        session.commit()
+        session.refresh(state)
+    else:
+        session.flush()
     return state

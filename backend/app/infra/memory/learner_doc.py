@@ -4,8 +4,7 @@
 可读可编辑的 Markdown 档案文件。
 
 文件位置：
-- 单用户模式：``~/.atm/LEARNER.md``
-- 多用户模式：``data/users/{user_id}/LEARNER.md``
+- 运行时统一落在：``backend/data/users/{user_id}/LEARNER.md``
 
 对外使用::
 
@@ -32,9 +31,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
 import structlog
+
+from app.core.runtime_paths import get_runtime_data_dir
+from app.infra.memory.api import get_user_profile
 
 logger = structlog.get_logger()
 
@@ -87,8 +88,8 @@ def get_learner_doc_path(user_id: str = "default") -> Path:
     """获取 LEARNER.md 文件路径。
 
     路径规则：
-    - user_id == "default" → ``~/.atm/LEARNER.md``
-    - 其他 → ``~/.atm/users/{user_id}/LEARNER.md``
+    - user_id == "default" → ``backend/data/users/default/LEARNER.md``
+    - 其他 → ``backend/data/users/{user_id}/LEARNER.md``
 
     Args:
         user_id: 用户标识。
@@ -96,10 +97,9 @@ def get_learner_doc_path(user_id: str = "default") -> Path:
     Returns:
         LEARNER.md 文件路径。
     """
-    base = Path.home() / ".atm"
-    if user_id == "default":
-        return base / "LEARNER.md"
-    return base / "users" / user_id / "LEARNER.md"
+    base = get_runtime_data_dir() / "users"
+    normalized_user_id = (user_id or "default").strip() or "default"
+    return base / normalized_user_id / "LEARNER.md"
 
 
 # ── 读写 API ─────────────────────────────────────────────────
@@ -257,8 +257,6 @@ async def sync_profile_to_doc(user_id: str = "default") -> None:
 
         await sync_profile_to_doc("u1")
     """
-    from app.infra.memory import get_user_profile
-
     profile = await get_user_profile(user_id)
 
     if profile.background:
@@ -279,7 +277,7 @@ async def sync_profile_to_doc(user_id: str = "default") -> None:
 
     if profile.weaknesses:
         await update_learner_section(user_id, "薄弱领域",
-                                     "\n".join(f"- w" for w in profile.weaknesses))
+                                     "\n".join(f"- {w}" for w in profile.weaknesses))
 
     if profile.insights:
         await update_learner_section(user_id, "教学备注",

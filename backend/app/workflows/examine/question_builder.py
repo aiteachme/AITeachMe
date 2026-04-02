@@ -10,13 +10,14 @@ from collections import defaultdict
 
 import structlog
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.infra.llm import acompletion_structured
 from app.infra.model_router import TaskType
 from app.infra.prompt_loader import populate_prompt
 from app.infra.tracing import llm_trace_scope
 from app.models import Difficulty, QuestionTemplate, QuestionType
+from app.repositories.knowledge import curriculum_repo
 from app.schemas.llm import SYSTEM
 from app.utils.time import utcnow
 from app.workflows.examine.context import (
@@ -30,7 +31,7 @@ from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
 
 logger = structlog.get_logger()
 
-_MAX_CONCURRENT_TEMPLATE_CALLS = 4
+_MAX_CONCURRENT_TEMPLATE_CALLS = 12
 
 
 class _GeneratedTemplateItem(BaseModel):
@@ -227,6 +228,17 @@ def _build_short_answer_template(
     )
 
 
+def _pick_difficulty_sequence(style_profile: ExamStyleProfile) -> list[str]:
+    focus = (style_profile.difficulty_focus or "").strip().lower()
+    if focus == Difficulty.EASY.value:
+        return [Difficulty.EASY.value, Difficulty.EASY.value, Difficulty.MEDIUM.value]
+    if focus == Difficulty.HARD.value:
+        return [Difficulty.MEDIUM.value, Difficulty.HARD.value, Difficulty.HARD.value]
+    if focus == "mixed":
+        return [Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value]
+    return [Difficulty.MEDIUM.value, Difficulty.EASY.value, Difficulty.HARD.value]
+
+
 def _build_deterministic_templates(
     context: UnitExamContext,
     *,
@@ -239,7 +251,7 @@ def _build_deterministic_templates(
         questions_per_unit=questions_per_unit,
         style_profile=context.style_profile,
     )
-    difficulties = [Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value]
+    difficulties = _pick_difficulty_sequence(context.style_profile)
     drafts: list[_GeneratedTemplateItem] = []
     for index, question_type in enumerate(type_sequence):
         node = context.node_contexts[index % len(context.node_contexts)]
@@ -358,11 +370,45 @@ def _load_existing_hashes(
     return result
 
 
+def _load_existing_template_counts(
+    session: Session,
+    *,
+    subject: str,
+    unit_ids: list[int],
+    preferred_question_types: list[str],
+    difficulty_focus: str | None,
+) -> dict[int, int]:
+    if not unit_ids:
+        return {}
+
+    stmt = (
+        select(QuestionTemplate.teaching_unit_id, func.count())
+        .where(
+            QuestionTemplate.subject == subject,
+            QuestionTemplate.status == "active",
+            QuestionTemplate.teaching_unit_id.in_(unit_ids),
+        )
+        .group_by(QuestionTemplate.teaching_unit_id)
+    )
+    if preferred_question_types:
+        stmt = stmt.where(QuestionTemplate.question_type.in_(preferred_question_types))
+    if difficulty_focus in {Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value}:
+        stmt = stmt.where(QuestionTemplate.difficulty == difficulty_focus)
+
+    rows = session.exec(stmt).all()
+    return {
+        int(unit_id): int(count)
+        for unit_id, count in rows
+        if unit_id is not None
+    }
+
+
 def _prepare_template_drafts(
     context: UnitExamContext,
     *,
     generated_items: list[_GeneratedTemplateItem],
     existing_hashes: set[str],
+    curriculum_version_id: int | None,
 ) -> list[QuestionTemplate]:
     prepared: list[QuestionTemplate] = []
     now = utcnow()
@@ -411,6 +457,7 @@ def _prepare_template_drafts(
                     preferred_node_id=preferred_node_id,
                 ),
                 status="active",
+                curriculum_version_id=curriculum_version_id,
                 created_at=now,
                 updated_at=now,
             )
@@ -425,7 +472,7 @@ async def build_question_templates(
     user_id: str,
     unit_ids: list[int],
     questions_per_unit: int = 9,
-    exam_mode: str = "diagnostic",
+    exam_mode: str = "web_practice",
     preferred_question_types: list[str] | None = None,
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
@@ -449,15 +496,43 @@ async def build_question_templates(
         logger.warning("question_builder_no_generation_context", subject=subject)
         return []
 
+    effective_question_types = list(
+        preferred_question_types
+        or (style_profile.preferred_question_types if style_profile is not None else [])
+    )
+    difficulty_focus = style_profile.difficulty_focus if style_profile is not None else None
+    existing_count_by_unit = _load_existing_template_counts(
+        session,
+        subject=subject,
+        unit_ids=[context.unit_id for context in contexts],
+        preferred_question_types=effective_question_types,
+        difficulty_focus=difficulty_focus,
+    )
+    pending_contexts = [
+        context
+        for context in contexts
+        if existing_count_by_unit.get(context.unit_id, 0) < questions_per_unit
+    ]
+    if not pending_contexts:
+        logger.info(
+            "question_builder_skip_existing_inventory",
+            subject=subject,
+            unit_count=len(contexts),
+            questions_per_unit=questions_per_unit,
+            difficulty_focus=difficulty_focus,
+        )
+        return []
+
     logger.info(
         "question_builder_contexts_prepared",
         subject=subject,
         unit_count=len(contexts),
+        pending_unit_count=len(pending_contexts),
         questions_per_unit=questions_per_unit,
         exam_mode=exam_mode,
     )
 
-    semaphore = asyncio.Semaphore(min(_MAX_CONCURRENT_TEMPLATE_CALLS, max(1, len(contexts))))
+    semaphore = asyncio.Semaphore(min(_MAX_CONCURRENT_TEMPLATE_CALLS, max(1, len(pending_contexts))))
     generated_results = await asyncio.gather(
         *[
             _try_llm_generate_templates(
@@ -465,7 +540,7 @@ async def build_question_templates(
                 questions_per_unit=questions_per_unit,
                 semaphore=semaphore,
             )
-            for context in contexts
+            for context in pending_contexts
         ],
         return_exceptions=True,
     )
@@ -473,13 +548,15 @@ async def build_question_templates(
     existing_hashes_by_unit = _load_existing_hashes(
         session,
         subject=subject,
-        unit_ids=[context.unit_id for context in contexts],
+        unit_ids=[context.unit_id for context in pending_contexts],
     )
+    current_curriculum = curriculum_repo.get_current_curriculum_snapshot(session, subject)
+    curriculum_version_id = current_curriculum.id if current_curriculum is not None else None
 
     templates_to_create: list[QuestionTemplate] = []
     llm_generated_unit_count = 0
     fallback_unit_count = 0
-    for context, result in zip(contexts, generated_results):
+    for context, result in zip(pending_contexts, generated_results):
         if isinstance(result, Exception) or result is None:
             fallback_unit_count += 1
             generated_items = _build_deterministic_templates(
@@ -495,6 +572,7 @@ async def build_question_templates(
                 context,
                 generated_items=generated_items,
                 existing_hashes=existing_hashes_by_unit.setdefault(context.unit_id, set()),
+                curriculum_version_id=curriculum_version_id,
             )
         )
 
