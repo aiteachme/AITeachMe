@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-02T13:50:09.984909",
-  "total_commits_analyzed": 297,
+  "generated_at": "2026-04-02T18:11:44.987364",
+  "total_commits_analyzed": 299,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2377,6 +2377,22 @@
       "code_lines": 67733,
       "other_lines": 23450,
       "message": "docs: 更新中心化部署文档"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "93ec342",
+      "total_lines": 91183,
+      "code_lines": 67733,
+      "other_lines": 23450,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "c9023ae",
+      "total_lines": 92540,
+      "code_lines": 68859,
+      "other_lines": 23681,
+      "message": "feat: 完善学科级向量绑定与知识构建降级流程"
     }
   ]
 }
