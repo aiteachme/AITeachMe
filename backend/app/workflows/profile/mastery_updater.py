@@ -175,7 +175,11 @@ def _merge_attempt_stats(
             question_type_counts[item.question_type] += 1
         if item.difficulty:
             difficulty_counts[item.difficulty] += 1
-        if not item.is_correct and item.error_cause_label:
+        if (
+            not item.is_correct
+            and item.error_cause_label
+            and item.error_cause_label != "unknown"
+        ):
             error_cause_counts[item.error_cause_label] += 1
         if item.hint_used:
             hint_used_count += 1

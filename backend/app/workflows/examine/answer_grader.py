@@ -136,7 +136,7 @@ async def _infer_error_cause_label(
     user_answer: str,
     knowledge_context: str,
     semaphore: asyncio.Semaphore | None = None,
-) -> str:
+) -> str | None:
     prompt = populate_prompt(
         SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
         stem=stem,
@@ -157,11 +157,11 @@ async def _infer_error_cause_label(
         )
         normalized = str(result).strip().lower()
         allowed = {item.value for item in ErrorCauseLabel}
-        if normalized in allowed:
+        if normalized in allowed and normalized != ErrorCauseLabel.UNKNOWN.value:
             return normalized
     except Exception as exc:  # noqa: BLE001
         logger.warning("answer_grader_error_label_llm_failed", error=str(exc))
-    return ErrorCauseLabel.UNKNOWN.value
+    return None
 
 
 @dataclass
@@ -306,15 +306,15 @@ async def grade_paper(
         for index, result in zip(wrong_short_answer_indices, label_results):
             if isinstance(result, Exception):
                 logger.warning("answer_grader_error_label_llm_failed", error=str(result))
-                to_grade[index].error_cause_label = ErrorCauseLabel.UNKNOWN.value
+                to_grade[index].error_cause_label = None
             else:
-                to_grade[index].error_cause_label = str(result)
+                to_grade[index].error_cause_label = str(result) if result is not None else None
 
     for entry in to_grade:
         if entry.is_correct:
             entry.error_cause_label = None
-        elif entry.error_cause_label is None:
-            entry.error_cause_label = ErrorCauseLabel.UNKNOWN.value
+        elif entry.question_type != QuestionType.SHORT_ANSWER.value:
+            entry.error_cause_label = None
 
         entry.item.is_correct = entry.is_correct
         entry.item.score_max = 1.0

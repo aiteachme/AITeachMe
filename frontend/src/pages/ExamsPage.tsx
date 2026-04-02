@@ -147,6 +147,16 @@ function toModeLabel(value: string): string {
   return EXAM_MODE_OPTIONS.find((item) => item.value === value)?.label ?? value;
 }
 
+function toErrorCauseLabel(value: string): string {
+  if (value === "concept_confusion") return "概念混淆";
+  if (value === "calculation_error") return "计算错误";
+  if (value === "prerequisite_gap") return "前置知识缺口";
+  if (value === "careless_mistake") return "粗心失误";
+  if (value === "incomplete_understanding") return "理解不完整";
+  if (value === "method_misapplication") return "方法误用";
+  return value;
+}
+
 function toHistoryActionLabel(status: string): string {
   if (status === "graded") return "查看结果";
   if (status === "ready" || status === "in_progress") return "进入答题";
@@ -567,7 +577,7 @@ export function ExamsPage() {
                         <div><span className="font-medium text-slate-900">你的答案：</span><MarkdownViewer content={item.user_answer ?? "（未作答）"} /></div>
                         {item.correct_answer ? <div><span className="font-medium text-slate-900">标准答案：</span><MarkdownViewer content={item.correct_answer} /></div> : null}
                         <div><span className="font-medium text-slate-900">解析：</span><MarkdownViewer content={item.explanation} /></div>
-                        {item.error_cause_label ? <div className="text-xs text-amber-600">错因标签：{item.error_cause_label}</div> : null}
+                        {item.error_cause_label ? <div className="text-xs text-amber-600">错因标签：{toErrorCauseLabel(item.error_cause_label)}</div> : null}
                         <NodeStrip item={item} />
                       </div>
                     </div>
