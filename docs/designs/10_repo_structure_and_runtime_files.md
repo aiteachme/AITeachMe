@@ -241,10 +241,10 @@ backend/data/<subject>/
 - 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns`
 - 真实路径命名必须服从 `utils/path_helpers.py`
 - 依赖方向：`api → services → workflows → infra → core`，`utils/` 可被任意层引用
-## Canonical Runtime Helpers
+## 12. 规范运行时辅助模块
 
-- `app.utils.path_helpers` is the canonical source for runtime path construction.
-- `app.utils.docgen_store` is the canonical source for knowledge-doc build lock, manifest, and runtime build-status helpers.
-- Legacy helper entrypoints under `services/` have been deleted; imports should go directly to `app.utils.path_helpers`, `app.utils.presenters`, and `app.utils.docgen_store`.
-- `knowledge_markdowns/build_status.json` is now a formal runtime artifact beside `manifest.json` and `.build.lock`.
-- No new top-level `app/common` package is introduced; workflow shared orchestration remains under `workflows/common`.
+- `app.utils.path_helpers` 是运行时路径构造的规范来源。
+- `app.utils.docgen_store` 是知识文档构建锁、manifest 与运行时构建状态辅助逻辑的规范来源。
+- `services/` 下旧的 helper 入口已经删除；调用方应直接依赖 `app.utils.path_helpers`、`app.utils.presenters`、`app.utils.docgen_store`。
+- `knowledge_markdowns/build_status.json` 现在是与 `manifest.json`、`.build.lock` 并列的正式运行时产物。
+- 不新增顶层 `app/common` 包；workflow 共享编排能力继续放在 `workflows/common`。

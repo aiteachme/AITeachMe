@@ -43,7 +43,7 @@
 
 ## 3. 当前各层职责
 
-## 3.1 Shared Prepare
+### 3.1 Shared Prepare
 
 负责一次性准备全局输入：
 
@@ -51,7 +51,7 @@
 - 生成材料画像和模式判断；
 - 为 docs/kg/curriculum 提供共享输入。
 
-## 3.2 Docs Lane
+### 3.2 Docs Lane
 
 负责知识文档构建与 staging：
 
@@ -59,7 +59,7 @@
 - 先写 `_build` 草稿，再等待 unified publish；
 - 向 `/knowledge/docs` 提供 `draft_*` 预览信息。
 
-## 3.3 KG Lane
+### 3.3 KG Lane
 
 负责知识图谱抽取与归并：
 
@@ -68,7 +68,7 @@
 - 持久化图谱快照；
 - 输出给后续 consistency/curriculum 的语义输入。
 
-## 3.4 Consistency + Repair
+### 3.4 Consistency + Repair
 
 负责跨 lane 一致性与局部修复：
 
@@ -76,7 +76,7 @@
 - 在预算内做 repair；
 - repair 不达标时本轮不切 live。
 
-## 3.5 Curriculum + Publish
+### 3.5 Curriculum + Publish
 
 负责课程结构与统一发布：
 
@@ -147,11 +147,11 @@ digest 运行时已统一输出 timing/token summary：
 
 ## 7. 与其他引擎的边界
 
-## 7.1 与 Ingest
+### 7.1 与 Ingest
 
 Digest 只消费“已有可用 markdown”的文件，不负责文件解析本身。
 
-## 7.2 与 Interact / Examine / Profile
+### 7.2 与 Interact / Examine / Profile
 
 Digest 提供三类稳定输入给下游：
 
@@ -165,18 +165,18 @@ Digest 提供三类稳定输入给下游：
 
 ## 8. 未来演进（在现有架构上增量）
 
-## 8.1 编排层
+### 8.1 编排层
 
 1. 从“统一流程”升级到显式 `Fast Pass / Deep Pass / Repair Pass` 分层预算。
 2. 增强 lane 可恢复能力（按 lane/step 重试，而不是整轮重跑）。
 3. 统一取消语义与超时治理，避免悬挂子任务。
 
-## 8.2 质量层
+### 8.2 质量层
 
 1. 将一致性检查扩展到教学质量检查（章节粒度、依赖顺序、例题/易错点配比）。
 2. 强化 bounded repair 预算与退出条件。
 
-## 8.3 观测层
+### 8.3 观测层
 
 1. 增加跨版本回归对比（同学科、同资料、同模式）。
 2. 在保持 API 简单前提下，增加独立观测读模型（可选）。
@@ -195,3 +195,31 @@ Digest 提供三类稳定输入给下游：
 
 当前 Digest 已经是“统一构建 + 分 lane 执行 + 统一发布 + 运行时可观测”的稳定主链路。  
 未来重点是提升恢复能力、教学质量门控和观测深度，而不是扩接口与扩表。
+
+---
+
+## 附录：近期落地补充
+
+### 已与本文档对齐的吞吐优化
+
+- KG 写入持久化已经改为批量提交，不再对每个 node、edge、alias、evidence 单独 commit。
+- curriculum 的 unit 命名不再是完全串行，而是采用有界并发和更轻量的任务配置。
+- theme tree 构建会预加载 unit 与 evidence 上下文，避免成员级别的 N+1 查询。
+
+### 后台任务归属
+
+- 由 API 触发的长流程现在统一归应用级 background-task registry 管理。
+- 应用关闭时会向已跟踪任务发出取消信号，并短暂等待清理完成。
+- digest 的 fan-out 分支应当继续传播 `CancelledError`，避免留下脱管子任务。
+
+### 2026-03-31 可观测性补充
+
+digest 运行时现在把耗时和 token 可观测性视为跨 lane 的共享契约，而不是各工作流内部各自为政的日志格式。
+
+- 每次 digest build 都以 `build_session_id` 作为范围，LLM 调用会自动继承 `subject`、`workflow`、`lane`、`node` 等运行时上下文。
+- 每条 lane 在成功完成时必须输出且只输出一条 summary 日志；在运行时失败时也必须输出一条 partial summary。
+- summary 至少应包含 `status`、`error_message`、`workflow_elapsed_ms`、分步骤耗时、token 总量、模型与任务类型分布，以及 Top-K 慢项。
+- unified digest 需要聚合各 lane 的耗时与 token 总量，并产出一个 `unified_digest_timing_summary` 负载，用于回归对比。
+- 新增 digest lane 时，应优先接入 `backend/app/workflows/digest/observability.py` 中的公共 helper，而不是再发明一套 lane 专属日志格式。
+- 当前运行时可观测性仍以 token 维度为主，货币成本换算会在定价表稳定后再引入。
+

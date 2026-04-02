@@ -190,6 +190,16 @@ def clear_published_knowledge_docs_files(subject: str) -> None:
         merged_path.unlink()
 
 
+def clear_knowledge_runtime_artifacts(subject: str) -> None:
+    """Remove published and staging knowledge-doc artifacts for one subject."""
+
+    clear_docgen_staging(subject)
+    clear_knowledge_build_status(subject)
+    clear_published_knowledge_docs_files(subject)
+    build_knowledge_manifest_path(subject).unlink(missing_ok=True)
+    release_knowledge_build_lock(subject)
+
+
 __all__ = [
     "KnowledgeBuildLock",
     "KnowledgeBuildRuntimeStatus",
@@ -198,6 +208,7 @@ __all__ = [
     "acquire_knowledge_build_lock",
     "clear_docgen_staging",
     "clear_knowledge_build_status",
+    "clear_knowledge_runtime_artifacts",
     "clear_published_knowledge_docs_files",
     "is_knowledge_build_locked",
     "read_knowledge_build_lock",

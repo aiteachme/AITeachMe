@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
@@ -60,6 +61,10 @@ def _count_rows(session: Session, model: type, *conditions: object) -> int:
 
 def _sum_counts(counts: dict[str, int], keys: list[str]) -> int:
     return sum(counts.get(key, 0) for key in keys)
+
+
+def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> None:
+    session.exec(sa.delete(model).where(model.subject == subject))
 
 
 def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str, int]:
@@ -143,9 +148,9 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
 
 def delete_subject_with_all_content(session: Session, *, subject: Subject) -> dict[str, int]:
     counts = collect_subject_delete_counts(session, subject=subject.slug)
+    _delete_profiles(session, subject=subject.slug)
     _delete_exam_records(session, subject=subject.slug)
     _delete_chat_messages(session, subject=subject.slug)
-    _delete_profiles(session, subject=subject.slug)
     _delete_knowledge_and_curriculum(session, subject=subject.slug)
     _delete_documents_and_chunks(session, subject=subject.slug)
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
@@ -165,18 +170,20 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
             .where(ExamPaper.subject == subject)
         ).all()
     )
+    papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
+    templates = list(session.exec(select(QuestionTemplate).where(QuestionTemplate.subject == subject)).all())
+
     for item in paper_items:
         session.delete(item)
 
-    papers = list(session.exec(select(ExamPaper).where(ExamPaper.subject == subject)).all())
     for paper in papers:
         session.delete(paper)
 
-    templates = list(session.exec(select(QuestionTemplate).where(QuestionTemplate.subject == subject)).all())
     for template in templates:
         session.delete(template)
 
-    session.commit()
+    if paper_items or papers or templates:
+        session.commit()
 
 
 def _delete_chat_messages(session: Session, *, subject: str) -> None:
@@ -204,31 +211,19 @@ def _delete_profiles(session: Session, *, subject: str) -> None:
 
 
 def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
-    knowledge_documents = list(
-        session.exec(select(KnowledgeDocument).where(KnowledgeDocument.subject == subject)).all()
-    )
-    for item in knowledge_documents:
-        session.delete(item)
-
-    tree_nodes = list(session.exec(select(ThemeTreeNode).where(ThemeTreeNode.subject == subject)).all())
-    for item in tree_nodes:
-        session.delete(item)
-
-    dependencies = list(session.exec(select(UnitDependency).where(UnitDependency.subject == subject)).all())
-    for item in dependencies:
-        session.delete(item)
-
-    units = list(session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject)).all())
-    curricula = list(
-        session.exec(select(Curriculum).where(Curriculum.subject == subject)).all()
-    )
-    anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
-    edges = list(session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all())
-    nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject)).all())
-
-    for item in curricula + anchors + edges + nodes + units:
-        session.delete(item)
-
+    # Use single-statement deletes for self-referential tables so SQLite checks
+    # the foreign keys after the whole statement instead of per-row flush order.
+    for model in (
+        KnowledgeDocument,
+        ThemeTreeNode,
+        UnitDependency,
+        TaxonomyAnchor,
+        KnowledgeEdge,
+        KnowledgeNode,
+        TeachingUnit,
+        Curriculum,
+    ):
+        _bulk_delete_by_subject(session, model, subject=subject)
     session.commit()
 
 

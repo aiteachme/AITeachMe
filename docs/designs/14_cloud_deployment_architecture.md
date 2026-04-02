@@ -1,1184 +1,806 @@
-# 14. 云端部署架构设计
+# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
-**状态**: 设计中  
-**最后更新**: 2026-04-01  
+**状态**: 待实现  
+**最后更新**: 2026-04-02  
 **负责人**: 系统架构
 
 ---
 
-## 1. 概述
+## 1. 文档目标
 
-本文档定义 AITeachMe 的生产环境部署架构，从本地 SQLite + 文件系统迁移到云原生基础设施：
+本文档用于指导后续把 AITeachMe 的云端部署补齐为：
 
-- **后端**: Render（Web Service）
-- **数据库**: PostgreSQL 15+ with pgvector 扩展
-- **对象存储**: 多吉云 OSS（S3 兼容）
-- **向量检索**: pgvector（替换 sqlite-vec）
+- Render Web Service
+- PostgreSQL 15+ + pgvector
+- DogeCloud OSS
 
-### 1.1 设计目标
+这份文档只解决“中心化方案如何实现”，不再把历史本地数据迁移作为首版目标。
 
-1. **环境兼容**: 单一代码库同时支持本地开发和云端生产
-2. **零数据丢失**: 从 SQLite 到 PostgreSQL 的安全迁移路径
-3. **可扩展性**: 支持多用户并发和大文件上传
-4. **成本优化**: 适合初创/MVP 阶段的预算约束
-5. **可观测性**: 结构化日志和错误追踪
+### 1.1 重要前提
 
----
+本方案固定采用以下前提：
 
-## 2. 架构对比
+- **本地服务** 与 **中心化服务** 是两套独立运行环境
+- 本地的 `aiteachme.db`、`backend/data/` **不要求强制迁移到云端**
+- 本地模式继续服务开发与调试
+- 云端模式作为独立生产部署目标
 
-### 2.1 当前架构（本地开发）
+因此，这次要做的不是“把旧本地库搬上云”，而是：
 
-```
-┌─────────────────────────────────────────────┐
-│  前端 (Vite 开发服务器)                      │
-│  http://localhost:5173                      │
-└─────────────────┬───────────────────────────┘
-                  │ HTTP/SSE
-┌─────────────────▼───────────────────────────┐
-│  后端 (FastAPI + Uvicorn)                   │
-│  http://localhost:8000                      │
-│  ┌─────────────────────────────────────┐    │
-│  │ SQLite + sqlite-vec                 │    │
-│  │ data/<subject>/aiteachme.db         │    │
-│  └─────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────┐    │
-│  │ 本地文件系统                         │    │
-│  │ data/<subject>/raw_files/           │    │
-│  │ data/<subject>/raw_markdowns/       │    │
-│  │ data/<subject>/assets/              │    │
-│  │ data/<subject>/knowledge_markdowns/ │    │
-│  └─────────────────────────────────────┘    │
-└─────────────────────────────────────────────┘
-```
+> 把代码改造成既能跑本地，也能跑中心化部署；  
+> 并保证两套模式在数据模型、表结构语义、文件 key 语义上保持兼容互通。
 
-### 2.2 目标架构（云端生产）
+### 1.2 为什么文档里同时出现 DogeCloud 和 S3
 
-```
-┌─────────────────────────────────────────────┐
-│  前端 (Cloudflare Pages)                    │
-│  https://aiteachme.pages.dev                │
-└─────────────────┬───────────────────────────┘
-                  │ HTTPS/SSE
-┌─────────────────▼───────────────────────────┐
-│  后端 (Render Web Service)                  │
-│  https://aiteachme.onrender.com             │
-│  ┌─────────────────────────────────────┐    │
-│  │ PostgreSQL 15 + pgvector            │    │
-│  │ (Render 托管数据库)                  │    │
-│  │ - 连接池 (asyncpg)                   │    │
-│  │ - SSL 加密                           │    │
-│  └─────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────┐    │
-│  │ 多吉云 OSS (S3 兼容)                 │    │
-│  │ - Bucket: aiteachme-prod            │    │
-│  │ - CDN 加速                           │    │
-│  │ - 预签名 URL 上传                    │    │
-│  └─────────────────────────────────────┘    │
-└─────────────────────────────────────────────┘
-```
+这里做一个固定区分：
+
+- **供应商选择**: DogeCloud OSS
+- **代码抽象协议**: S3-compatible storage
+
+也就是说：
+
+- 部署层面，当前就按 DogeCloud 来落
+- 代码层面，不把业务逻辑写死为 DogeCloud SDK 语义，而是通过 S3 兼容抽象来实现
+
+这样做的好处是：
+
+- 当前能直接接 DogeCloud
+- 后续如需换成 R2 / 阿里云 OSS / MinIO，不需要重写业务层
 
 ---
 
-## 3. 数据库迁移策略
+## 2. 固定决策
 
-### 3.1 核心变化
+以下决策在本文档内视为固定：
 
-#### 3.1.1 向量存储
-
-**当前 (sqlite-vec)**:
-```sql
--- 虚拟表，使用 vec0 扩展
-CREATE VIRTUAL TABLE chunk_embeddings USING vec0(
-    chunk_id INTEGER PRIMARY KEY,
-    embedding FLOAT[1024]
-);
-
--- 距离函数
-SELECT vec_distance_cosine(e.embedding, :query_vec) as distance
-FROM chunk_embeddings e;
-```
-
-**目标 (pgvector)**:
-```sql
--- 启用扩展
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- 普通表，使用 vector 列类型
-CREATE TABLE chunk_embeddings (
-    chunk_id INTEGER PRIMARY KEY REFERENCES retrieval_chunk(id) ON DELETE CASCADE,
-    embedding vector(1024),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- 创建索引加速相似度搜索
-CREATE INDEX ON chunk_embeddings USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
-
--- 距离查询（<=> 是余弦距离运算符）
-SELECT 1 - (e.embedding <=> :query_vec::vector) as score
-FROM chunk_embeddings e;
-```
-
-#### 3.1.2 JSON 字段优化
-
-**当前**: JSON 存储为 TEXT
-```python
-class KnowledgeDocument(SQLModel, table=True):
-    tags: str = Field(default="[]")  # JSON 字符串
-    source_file_ids: str = Field(default="[]")
-```
-
-**目标**: 原生 JSONB（可选优化，非必须）
-```python
-from sqlalchemy import Column
-from sqlalchemy.dialects.postgresql import JSONB
-
-class KnowledgeDocument(SQLModel, table=True):
-    tags: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
-    source_file_ids: list[int] = Field(default_factory=list, sa_column=Column(JSONB))
-```
-
-**注意**: 为了简化迁移，可以先保持 JSON 字段为字符串，后续再优化。
-
-#### 3.1.3 Upsert 语法
-
-**当前 (SQLite)**:
-```python
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
-stmt = sqlite_insert(UserKnowledgeState).values(...)
-stmt = stmt.on_conflict_do_update(
-    index_elements=["user_id", "subject"],
-    index_where=sa.text("knowledge_node_id IS NULL"),  # SQLite 特有
-    set_={...}
-)
-```
-
-**目标 (PostgreSQL)**:
-```python
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-stmt = pg_insert(UserKnowledgeState).values(...)
-stmt = stmt.on_conflict_do_update(
-    index_elements=["user_id", "subject"],
-    where=sa.text("knowledge_node_id IS NULL"),  # 注意：where 不是 index_where
-    set_={...}
-)
-```
-
-### 3.2 简化的迁移方案
-
-**核心思路**: 用配置开关控制数据库类型，最小化代码改动。
-
-#### 步骤 1: 添加数据库方言检测
-
-```python
-# app/core/database.py
-
-def get_db_dialect() -> str:
-    """获取当前数据库方言: 'sqlite' 或 'postgresql'"""
-    engine = get_engine()
-    return engine.dialect.name
-
-def is_postgres() -> bool:
-    """是否使用 PostgreSQL"""
-    return get_db_dialect() == "postgresql"
-
-def is_sqlite() -> bool:
-    """是否使用 SQLite"""
-    return get_db_dialect() == "sqlite"
-```
-
-#### 步骤 2: 向量搜索适配
-
-```python
-# app/repositories/knowledge/knowledge_repo.py
-
-def vector_search(
-    session: Session,
-    query_embedding: list[float],
-    subject: str,
-    *,
-    top_k: int = 5,
-) -> list[ChunkSearchResult]:
-    """向量检索（自动适配 SQLite 和 PostgreSQL）"""
-    
-    from app.core.database import is_postgres
-    
-    if is_postgres():
-        # PostgreSQL + pgvector
-        query = """
-            SELECT ce.chunk_id, 1 - (ce.embedding <=> :query_vec::vector) as score
-            FROM chunk_embeddings ce
-            JOIN retrieval_chunk c ON ce.chunk_id = c.id
-            WHERE c.subject = :subject AND c.is_active = true
-            ORDER BY ce.embedding <=> :query_vec::vector
-            LIMIT :top_k
-        """
-        rows = session.execute(
-            sa.text(query),
-            {
-                "query_vec": str(query_embedding),  # pgvector 接受字符串格式
-                "subject": subject,
-                "top_k": top_k,
-            }
-        ).fetchall()
-    else:
-        # SQLite + sqlite-vec（当前实现）
-        query = """
-            SELECT ce.chunk_id, ce.distance
-            FROM chunk_embeddings ce
-            WHERE ce.chunk_id IN (
-                SELECT c.id FROM retrieval_chunk c
-                WHERE c.subject = :subject AND c.is_active = 1
-            )
-            AND ce.embedding MATCH :query_embedding
-            AND k = :top_k
-            ORDER BY ce.distance
-        """
-        rows = session.execute(
-            sa.text(query),
-            {
-                "subject": subject,
-                "query_embedding": str(query_embedding),
-                "top_k": top_k,
-            }
-        ).fetchall()
-    
-    # 统一处理结果
-    results = []
-    for row in rows:
-        chunk = session.get(RetrievalChunk, row[0])
-        if chunk:
-            score = row[1] if is_postgres() else (1.0 / (1.0 + row[1]))
-            results.append(ChunkSearchResult(chunk=chunk, score=score))
-    
-    return results
-```
-
-#### 步骤 3: Upsert 适配
-
-```python
-# app/repositories/profile_repo.py
-
-def upsert_user_knowledge_state(session: Session, data: dict) -> UserKnowledgeState:
-    """插入或更新用户知识状态（自动适配数据库）"""
-    
-    from app.core.database import is_postgres
-    
-    if is_postgres():
-        from sqlalchemy.dialects.postgresql import insert as db_insert
-        where_clause = "where"
-    else:
-        from sqlalchemy.dialects.sqlite import insert as db_insert
-        where_clause = "index_where"
-    
-    stmt = db_insert(UserKnowledgeState).values(**data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["user_id", "subject"],
-        **{where_clause: sa.text("knowledge_node_id IS NULL")},
-        set_={k: v for k, v in data.items() if k not in ["user_id", "subject"]}
-    )
-    
-    session.execute(stmt)
-    session.commit()
-    
-    # 返回更新后的记录
-    return session.query(UserKnowledgeState).filter_by(
-        user_id=data["user_id"],
-        subject=data["subject"]
-    ).first()
-```
+| 主题 | 固定决策 | 说明 |
+| --- | --- | --- |
+| 云平台 | Render | 后端继续在 Render |
+| 中心化数据库 | PostgreSQL 15+ | 优先 Render PostgreSQL |
+| 向量引擎 | pgvector | 替代 sqlite-vec |
+| 对象存储 | DogeCloud OSS | 代码按 S3 抽象实现 |
+| 生产配置 | Render Dashboard env | 当前不强制 `render.yaml` |
+| 本地开发 | 继续保留 SQLite + 本地文件系统 | 不影响现有开发 |
+| 文件定位真相 | `storage_key` | 本地路径字段仅保留兼容含义 |
+| 删除策略 | 首版不引入全局 `is_deleted` | 内测阶段继续硬删除 |
+| 首版驱动 | `psycopg` | 不做 async ORM 重构 |
+| 切换方式 | 分阶段推进 | 不一次性爆改 |
+| 历史数据 | 不纳入首版强制迁移 | 如未来需要，再单独做导入工具 |
 
 ---
 
-## 4. 存储抽象层设计
+## 3. 本地与云端的兼容要求
 
-### 4.1 核心接口
+虽然本地和云端是独立环境，但两边必须满足“结构兼容、语义兼容”。
 
-```python
-# app/infra/storage/base.py
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import BinaryIO
+### 3.1 数据库兼容
 
-class StorageBackend(ABC):
-    """存储后端抽象接口"""
-    
-    @abstractmethod
-    async def write_file(self, key: str, content: bytes | BinaryIO) -> str:
-        """写入文件，返回存储键"""
-        ...
-    
-    @abstractmethod
-    async def read_file(self, key: str) -> bytes:
-        """根据存储键读取文件"""
-        ...
-    
-    @abstractmethod
-    async def delete_file(self, key: str) -> None:
-        """根据存储键删除文件"""
-        ...
-    
-    @abstractmethod
-    def get_public_url(self, key: str) -> str:
-        """获取文件的公开访问 URL"""
-        ...
-```
+必须保证：
 
-### 4.2 本地文件系统实现
+- 使用同一套 SQLModel 模型
+- 表名一致
+- 字段语义一致
+- 业务主键和唯一约束语义一致
+- 本地 SQLite 与云端 PostgreSQL 在业务层行为一致
 
-```python
-# app/infra/storage/local.py
-from pathlib import Path
+不要求：
 
-class LocalStorageBackend(StorageBackend):
-    """本地文件系统存储（开发环境）"""
-    
-    def __init__(self, base_dir: Path):
-        self.base_dir = base_dir
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-    
-    async def write_file(self, key: str, content: bytes | BinaryIO) -> str:
-        file_path = self.base_dir / key
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        if isinstance(content, bytes):
-            file_path.write_bytes(content)
-        else:
-            with file_path.open("wb") as f:
-                f.write(content.read())
-        
-        return key
-    
-    async def read_file(self, key: str) -> bytes:
-        file_path = self.base_dir / key
-        return file_path.read_bytes()
-    
-    async def delete_file(self, key: str) -> None:
-        file_path = self.base_dir / key
-        if file_path.exists():
-            file_path.unlink()
-    
-    def get_public_url(self, key: str) -> str:
-        # 返回本地开发服务器的相对 URL
-        return f"/_assets/{key}"
-```
+- 本地 SQLite 物理文件与 PostgreSQL 直接互转
+- 首版就提供自动导库工具
 
-### 4.3 多吉云 OSS 实现
+### 3.2 文件与工件兼容
 
-```python
-# app/infra/storage/dogecloud.py
-import boto3
-from botocore.config import Config
+必须保证：
 
-class DogeCloudStorageBackend(StorageBackend):
-    """多吉云 OSS 存储（S3 兼容）"""
-    
-    def __init__(
-        self,
-        access_key: str,
-        secret_key: str,
-        bucket: str,
-        endpoint: str,
-        cdn_domain: str | None = None,
-    ):
-        self.bucket = bucket
-        self.cdn_domain = cdn_domain
-        
-        # 创建 S3 客户端（多吉云兼容 S3 协议）
-        self.s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            endpoint_url=endpoint,
-            config=Config(signature_version="s3v4"),
-        )
-    
-    async def write_file(self, key: str, content: bytes | BinaryIO) -> str:
-        if isinstance(content, bytes):
-            self.s3_client.put_object(Bucket=self.bucket, Key=key, Body=content)
-        else:
-            self.s3_client.upload_fileobj(content, self.bucket, key)
-        return key
-    
-    async def read_file(self, key: str) -> bytes:
-        response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
-        return response["Body"].read()
-    
-    async def delete_file(self, key: str) -> None:
-        self.s3_client.delete_object(Bucket=self.bucket, Key=key)
-    
-    def get_public_url(self, key: str) -> str:
-        if self.cdn_domain:
-            # 使用 CDN 域名（推荐）
-            return f"https://{self.cdn_domain}/{key}"
-        else:
-            # 生成临时访问 URL
-            return self.s3_client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=3600,
-            )
-```
+- `storage_key` 规则一致
+- subject 下目录语义一致
+- 文档工件命名一致
+- 业务层以 `storage_key` 为核心寻址语义
 
-### 4.4 存储工厂
+不要求：
 
-```python
-# app/infra/storage/factory.py
-from app.core.config import get_settings
+- 本地路径字段在云端继续充当真实路径
+- 本地 `backend/data/` 目录直接复制到云端成为生产真相
 
-_storage_backend = None
+### 3.3 API 与行为兼容
 
-def get_storage_backend() -> StorageBackend:
-    """获取存储后端（单例模式）"""
-    global _storage_backend
-    
-    if _storage_backend is None:
-        settings = get_settings()
-        
-        if settings.storage_backend == "local":
-            from app.infra.storage.local import LocalStorageBackend
-            _storage_backend = LocalStorageBackend(base_dir=settings.data_dir)
-        
-        elif settings.storage_backend == "dogecloud":
-            from app.infra.storage.dogecloud import DogeCloudStorageBackend
-            _storage_backend = DogeCloudStorageBackend(
-                access_key=settings.dogecloud_access_key,
-                secret_key=settings.dogecloud_secret_key,
-                bucket=settings.dogecloud_bucket,
-                endpoint=settings.dogecloud_endpoint,
-                cdn_domain=settings.dogecloud_cdn_domain,
-            )
-        
-        else:
-            raise ValueError(f"未知的存储后端: {settings.storage_backend}")
-    
-    return _storage_backend
-```
+必须保证：
+
+- 相同 API 在 local/cloud 下语义一致
+- 上传、ingest、digest、interact、exams、profile 的业务结果一致
+- cloud 只是底层基础设施不同，不改变上层业务契约
+
+### 3.4 删除策略兼容
+
+首版中心化方案不要求引入全局软删除字段，例如：
+
+- `is_deleted`
+- `deleted_at`
+
+原因很明确：
+
+- 当前代码库整体按硬删除设计，删除逻辑已经大量使用 `session.delete(...)` 与批量 `DELETE`
+- 如果现在全局引入软删除，几乎所有查询都要补过滤条件
+- 唯一约束、索引、列表页、统计口径、subject 级联删除、OSS 清理语义都会一起变复杂
+- 当前中心化数据库先用于内测，这个复杂度不值得现在就背
+
+因此本方案的固定建议是：
+
+- 首版继续沿用硬删除
+- 不在所有业务表上普遍增加 `is_deleted`
+- 如后续确实需要“误删恢复”或“归档回看”，优先只在聚合根层做
+
+聚合根优先顺序建议为：
+
+1. `subject`
+2. `raw_file`
+
+而以下派生或级联表，首版不建议做软删除：
+
+- `retrieval_chunk`
+- `knowledge_document`
+- `knowledge_node`
+- `knowledge_edge`
+- `curriculum`
+- `theme_tree_node`
+- `unit_dependency`
+- `exam_paper_item`
+- `chat_message`
 
 ---
 
-## 5. 配置管理
+## 4. 当前代码现状
 
-### 5.1 环境变量配置
+### 4.1 数据库现状
+
+当前数据库实现位于 [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)：
+
+- `get_engine()` 固定创建 SQLite engine
+- `init_db()` 当前等价于初始化本地 SQLite
+- 启动时尝试加载 `sqlite-vec`
+- 还没有正式的 PostgreSQL engine 分支
+
+### 4.2 文件存储现状
+
+当前文件与工件依赖：
+
+- [`runtime_paths.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/runtime_paths.py)
+- [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
+- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+
+当前真相仍然是本地文件系统，不是中心化对象存储。
+
+### 4.3 模型现状
+
+[`raw_file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/raw_file.py) 当前同时包含：
+
+- 本地路径字段：`file_path` / `markdown_path` / `asset_dir`
+- 存储语义字段：`storage_backend` / `storage_uri`
+- 派生定位字段：`storage_key`
+
+问题不在于模型完全不支持云，而在于：
+
+- 业务代码仍大量默认本地路径可直接访问
+- `storage_key` 还没有成为全系统统一真相
+
+### 4.4 当前真正缺的东西
+
+目前真正缺的是：
+
+1. PostgreSQL 初始化与运行逻辑
+2. `pgvector` 写入与检索分支
+3. 正式的 `ArtifactStore`
+4. DogeCloud 的 S3 兼容存储实现
+5. 统一的 `storage_key` 驱动读写
+6. Cloud 模式下的工件管理
+7. 清晰的切换与回滚方案
+
+### 4.5 改造幅度判断
+
+这次改造不是“改几个 env 就上线”的级别，但也不是推倒重来。
+
+更准确的判断是：
+
+- 这是一次**后端基础设施层 + workflow I/O 层**的中等偏大改造
+- 主要变更集中在 backend，frontend 基本只需要确认 API 地址与部署联通
+- 难点不在“接一个 PostgreSQL 驱动”或“接一个 OSS SDK”，而在于把当前大量默认本地 `Path` 的实现收束到统一抽象层
+
+按当前代码触点粗看：
+
+- 与本地路径、`storage_key`、工件直读写相关的触点大约在 `50+` 个文件
+- 与 SQLite、`sqlite-vec`、engine 初始化、向量检索相关的触点大约在 `10+` 个文件
+
+但真正需要修改的不会等于全部命中数。更合理的实现规模预估是：
+
+- 必改核心文件：约 `10-15` 个
+- 新增抽象与适配文件：约 `4-6` 个
+- 连同联动适配、测试、联调辅助后，总触达文件通常会落在 `20-30` 个
+
+也就是说：
+
+- **改动不小**
+- **会改不少后端文件**
+- 但范围是有边界的，核心集中在数据库抽象、存储抽象、ingest/digest 文件链路、subject 删除清理这四块
+- 不属于前后端一起大翻修
+
+---
+
+## 5. 目标架构
+
+目标架构保持简单：
+
+```text
+前端（已部署）
+    ↓ HTTPS
+后端（Render Web Service）
+    ├── PostgreSQL 15+（Render PostgreSQL）
+    │   └── pgvector
+    └── DogeCloud OSS（S3 兼容）
+        ├── raw_files
+        ├── raw_markdowns
+        ├── assets
+        ├── knowledge_markdowns
+        └── build artifacts
+```
+
+职责划分固定如下：
+
+- PostgreSQL：结构化数据、外键、查询、向量索引
+- DogeCloud OSS：正式文件与正式工件
+- Render 本地临时磁盘：`temp/`、`debug/`、临时处理副本
+
+### 5.1 哪些内容必须进 OSS
+
+必须进入 OSS：
+
+- `raw_files/`
+- `raw_markdowns/`
+- `assets/<file_id>/`
+- `knowledge_markdowns/`
+- `knowledge_markdowns/_build/`
+- `manifest.json`
+- `build_status.json`
+
+不进入 OSS：
+
+- `temp/`
+- `debug/`
+- 运行时临时副本
+
+---
+
+## 6. 分阶段实施
+
+整个方案按 5 个阶段推进。  
+规则只有一条：
+
+> 上一阶段验收通过，才进入下一阶段。
+
+### 6.1 分阶段实施原则
+
+本方案之所以必须分阶段，不是为了“文档看起来更规范”，而是为了控制真实工程风险。
+
+固定原则如下：
+
+- 先抽象，再替换底层；不要在路径直读写仍然散落全项目时，直接接入 OSS
+- 先保证 local 不坏，再新增 cloud；不要一边改基础设施，一边破坏本地开发
+- 先让 PostgreSQL 单独可用，再接 OSS；不要把数据库问题和对象存储问题混成一个故障面
+- 先打通空环境，再考虑未来是否需要导入历史数据；不要把“首次上线可用”和“历史数据搬迁”绑死
+- 每一阶段都必须有可观测的验收结果，而不是只看代码是否“理论上能跑”
+
+如果不按这个顺序做，最容易出现的问题是：
+
+- PostgreSQL 问题和 OSS 问题叠在一起，定位困难
+- ingest/digest 在半抽象、半本地状态下出现隐性路径 bug
+- 删除逻辑在数据库删掉后，OSS 工件漏删，或者反过来先删文件后删库失败
+- 本地模式被云端改造误伤，导致团队日常开发也被拖慢
+
+---
+
+## 7. 阶段 1：配置与抽象层落地
+
+### 7.1 目标
+
+先让系统具备双模式基础：
+
+- `local` 模式继续跑 SQLite + 本地文件系统
+- `cloud` 模式具备接 PostgreSQL + DogeCloud OSS 的入口
+
+这一阶段不切生产，也不做历史数据导入。
+
+### 7.2 主要改动
+
+#### 配置层
+
+主要文件：
+
+- [`config.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/config.py)
+
+需要补齐的配置契约：
+
+| 变量名 | 说明 |
+| --- | --- |
+| `APP_MODE` | `local` / `cloud` |
+| `DATABASE_URL` | PostgreSQL 连接串 |
+| `STORAGE_BACKEND` | `local` / `s3` |
+| `S3_BUCKET` | DogeCloud bucket |
+| `S3_ENDPOINT` | DogeCloud S3 endpoint |
+| `S3_ACCESS_KEY` | AK |
+| `S3_SECRET_KEY` | SK |
+| `S3_REGION` | 可选 |
+| `S3_PUBLIC_BASE_URL` | 可选 CDN 域名 |
+
+过渡策略：
+
+- 短期可兼容 `DOGECLOUD_*`
+- 规范命名统一为 `S3_*`
+
+#### 数据库抽象
+
+主要文件：
+
+- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+
+应拆出：
+
+- `get_db_dialect()`
+- `is_sqlite()`
+- `is_postgres()`
+- `build_sqlite_engine()`
+- `build_postgres_engine()`
+- `init_local_db()`
+- `init_postgres_db()`
+- `ensure_sqlite_vec()`
+- `ensure_pgvector()`
+
+要求：
+
+- `init_db()` 不能再默认等价于初始化本地 SQLite
+- `cloud` 模式必须检查 PostgreSQL 与 `vector` 扩展
+
+#### 存储抽象
+
+新增目录：
+
+```text
+backend/app/infra/storage/
+├── __init__.py
+├── base.py
+├── local.py
+├── s3.py
+└── factory.py
+```
+
+`ArtifactStore` 最低接口固定为：
+
+```python
+read_bytes(storage_key) -> bytes
+write_bytes(storage_key, data) -> None
+delete(storage_key) -> None
+exists(storage_key) -> bool
+list_prefix(prefix) -> list[str]
+materialize_to_temp(storage_key) -> Path
+```
+
+### 7.3 路径与模型语义
+
+主要涉及：
+
+- [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
+- [`raw_file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/raw_file.py)
+- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+
+阶段 1 固定语义：
+
+- `storage_key` 成为统一文件定位真相
+- `file_path` / `markdown_path` / `asset_dir` 仅保留兼容语义
+- `docgen_store` 升级为“基于 store 的工件 helper”
+
+### 7.4 Render env 形态
+
+生产 env 直接录在 Render Dashboard：
 
 ```bash
-# .env.local (本地开发)
-STORAGE_BACKEND=local
-DATABASE_URL=sqlite:///./data/aiteachme.db
-DATA_DIR=./data
-
-# .env.production (生产环境 - Render)
-STORAGE_BACKEND=dogecloud
-DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname
-DOGECLOUD_ACCESS_KEY=xxx
-DOGECLOUD_SECRET_KEY=xxx
-DOGECLOUD_BUCKET=aiteachme-prod
-DOGECLOUD_ENDPOINT=https://s3-cn-south-1.dogecloud.com
-DOGECLOUD_CDN_DOMAIN=cdn.aiteachme.com
-```
-
-### 5.2 配置类更新
-
-```python
-# app/core/config.py
-from pydantic_settings import BaseSettings
-
-class Settings(BaseSettings):
-    # 数据库配置
-    database_url: str = Field(default="sqlite:///./data/aiteachme.db")
-    database_pool_size: int = Field(default=10)
-    database_max_overflow: int = Field(default=20)
-    database_pool_timeout: int = Field(default=30)
-    database_ssl_required: bool = Field(default=False)
-    
-    # 存储配置
-    storage_backend: str = Field(default="local")  # "local" | "dogecloud"
-    data_dir: Path = Field(default=Path("./data"))
-    
-    # 多吉云 OSS 配置
-    dogecloud_access_key: str = Field(default="")
-    dogecloud_secret_key: str = Field(default="")
-    dogecloud_bucket: str = Field(default="")
-    dogecloud_endpoint: str = Field(default="")
-    dogecloud_cdn_domain: str | None = Field(default=None)
-    
-    # 上传配置
-    max_upload_size_mb: int = Field(default=100)
-    upload_chunk_size_mb: int = Field(default=5)
-    presigned_url_expires_in: int = Field(default=3600)
-```
-
----
-
-## 6. 简化的迁移执行计划
-
-### 6.1 阶段 1: 添加数据库方言适配（第 1 周）
-
-**目标**: 让代码能够自动识别并适配不同的数据库类型。
-
-**步骤**:
-
-1. 在 `app/core/database.py` 添加方言检测函数：
-   ```python
-   def get_db_dialect() -> str:
-       """获取当前数据库方言"""
-       engine = get_engine()
-       return engine.dialect.name
-   
-   def is_postgres() -> bool:
-       return get_db_dialect() == "postgresql"
-   
-   def is_sqlite() -> bool:
-       return get_db_dialect() == "sqlite"
-   ```
-
-2. 修改 `app/repositories/knowledge/knowledge_repo.py` 的 `vector_search()` 函数：
-   - 添加 `if is_postgres()` 分支使用 pgvector 语法
-   - 保留 `else` 分支使用 sqlite-vec 语法
-
-3. 修改 `app/repositories/profile_repo.py` 的 upsert 函数：
-   - 根据数据库类型选择 `sqlite_insert` 或 `pg_insert`
-   - 根据数据库类型使用 `index_where` 或 `where` 参数
-
-4. **测试**: 确保本地 SQLite 环境仍然正常工作
-
-### 6.2 阶段 2: 本地测试 PostgreSQL（第 2 周）
-
-**目标**: 在本地环境验证 PostgreSQL 兼容性。
-
-**步骤**:
-
-1. 启动本地 PostgreSQL（使用 Docker）：
-   ```bash
-   docker run -d \
-     --name aiteachme-postgres \
-     -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_DB=aiteachme \
-     -p 5432:5432 \
-     pgvector/pgvector:pg15
-   ```
-
-2. 安装 PostgreSQL 依赖：
-   ```bash
-   pip install asyncpg psycopg2-binary
-   ```
-
-3. 创建 `.env.postgres` 测试配置：
-   ```bash
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiteachme
-   STORAGE_BACKEND=local
-   DATA_DIR=./data
-   ```
-
-4. 初始化 PostgreSQL 数据库：
-   ```bash
-   # 创建表结构
-   python -m app.core.database init
-   
-   # 启用 pgvector 扩展
-   psql -h localhost -U postgres -d aiteachme -c "CREATE EXTENSION IF NOT EXISTS vector;"
-   ```
-
-5. 测试基本功能：
-   - 上传文件
-   - 生成知识文档
-   - 向量检索
-   - 聊天对话
-
-6. **如果测试通过**: PostgreSQL 适配完成 ✅
-
-### 6.3 阶段 3: 添加存储抽象层（第 3 周）
-
-**目标**: 让文件存储可以切换到云端 OSS。
-
-**步骤**:
-
-1. 创建存储抽象层目录结构：
-   ```bash
-   mkdir -p backend/app/infra/storage
-   touch backend/app/infra/storage/__init__.py
-   touch backend/app/infra/storage/base.py
-   touch backend/app/infra/storage/local.py
-   touch backend/app/infra/storage/dogecloud.py
-   touch backend/app/infra/storage/factory.py
-   ```
-
-2. 实现 `base.py`（StorageBackend 接口）
-
-3. 实现 `local.py`（LocalStorageBackend）
-
-4. 实现 `factory.py`（get_storage_backend 工厂函数）
-
-5. 修改文件操作代码使用 StorageBackend：
-   - `app/workflows/ingest/runtime.py` - 文件上传和解析
-   - `app/utils/path_helpers.py` - 路径处理
-   - `app/api/files.py` - 文件下载
-
-6. **测试**: 确保本地文件系统模式仍然正常工作
-
-### 6.4 阶段 4: 集成多吉云 OSS（第 4 周）
-
-**目标**: 在本地环境测试多吉云 OSS 存储。
-
-**步骤**:
-
-1. 注册多吉云账号并创建 OSS bucket：
-   - 访问 https://www.dogecloud.com/
-   - 创建 bucket: `aiteachme-test`
-   - 获取 AccessKey 和 SecretKey
-
-2. 安装 boto3（S3 客户端）：
-   ```bash
-   pip install boto3
-   ```
-
-3. 实现 `dogecloud.py`（DogeCloudStorageBackend）
-
-4. 创建 `.env.dogecloud` 测试配置：
-   ```bash
-   DATABASE_URL=sqlite:///./data/aiteachme.db
-   STORAGE_BACKEND=dogecloud
-   DOGECLOUD_ACCESS_KEY=你的AccessKey
-   DOGECLOUD_SECRET_KEY=你的SecretKey
-   DOGECLOUD_BUCKET=aiteachme-test
-   DOGECLOUD_ENDPOINT=https://s3-cn-south-1.dogecloud.com
-   ```
-
-5. 测试文件上传到 OSS：
-   ```bash
-   # 使用 dogecloud 配置启动
-   export $(cat .env.dogecloud | xargs)
-   uvicorn app.main:app --reload
-   ```
-
-6. 验证功能：
-   - 上传文件到 OSS
-   - 从 OSS 读取文件
-   - 生成公开访问 URL
-
-7. **如果测试通过**: OSS 集成完成 ✅
-
-### 6.5 阶段 5: 生产环境部署（第 5 周）
-
-**目标**: 部署到 Render 云平台。
-
-**步骤**:
-
-1. **准备 Render 账号**：
-   - 注册 https://render.com/
-   - 绑定 GitHub 仓库
-
-2. **创建 PostgreSQL 数据库**：
-   - 在 Render Dashboard 创建 PostgreSQL 数据库
-   - 选择 Starter 套餐（$7/月）
-   - 区域选择 Singapore
-   - 记录数据库连接字符串
-
-3. **启用 pgvector 扩展**：
-   ```sql
-   -- 在 Render 的 PostgreSQL Shell 中执行
-   CREATE EXTENSION IF NOT EXISTS vector;
-   ```
-
-4. **创建多吉云生产 bucket**：
-   - 创建 bucket: `aiteachme-prod`
-   - 配置 CORS 允许前端域名
-   - 启用 CDN 加速（可选）
-
-5. **创建 Web Service**：
-   - 在 Render Dashboard 创建 Web Service
-   - 连接 GitHub 仓库
-   - 选择 Starter 套餐（$7/月）
-   - 设置构建命令: `pip install -e ./backend`
-   - 设置启动命令: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-6. **配置环境变量**（在 Render Web Service 设置中）：
-   ```
-   DATABASE_URL=<从 PostgreSQL 数据库复制>
-   STORAGE_BACKEND=dogecloud
-   DOGECLOUD_ACCESS_KEY=<你的 AccessKey>
-   DOGECLOUD_SECRET_KEY=<你的 SecretKey>
-   DOGECLOUD_BUCKET=aiteachme-prod
-   DOGECLOUD_ENDPOINT=https://s3-cn-south-1.dogecloud.com
-   LLM_API_KEY=<你的 LLM API Key>
-   LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-   LLM_MODEL=qwen-plus-latest
-   ```
-
-7. **部署后端**：
-   - 点击 "Manual Deploy" 触发首次部署
-   - 等待构建完成（约 5-10 分钟）
-   - 检查日志确认启动成功
-
-8. **更新前端配置**：
-   - 在 Cloudflare Pages 设置中更新环境变量：
-     ```
-     VITE_API_URL=https://aiteachme.onrender.com
-     ```
-   - 重新部署前端
-
-9. **验证生产环境**：
-   - 访问前端 URL
-   - 测试文件上传
-   - 测试知识文档生成
-   - 测试聊天功能
-
-10. **监控和优化**：
-    - 查看 Render 日志
-    - 监控数据库连接数
-    - 监控 OSS 流量
-
----
-
-## 7. Render 部署配置
-
-### 7.1 render.yaml（推荐方式）
-
-在项目根目录创建 `render.yaml`：
-
-```yaml
-services:
-  - type: web
-    name: aiteachme-backend
-    env: python
-    region: singapore
-    plan: starter
-    buildCommand: "cd backend && pip install -e ."
-    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: aiteachme-db
-          property: connectionString
-      - key: STORAGE_BACKEND
-        value: dogecloud
-      - key: DOGECLOUD_ACCESS_KEY
-        sync: false  # 需要在 Render Dashboard 手动设置
-      - key: DOGECLOUD_SECRET_KEY
-        sync: false
-      - key: DOGECLOUD_BUCKET
-        value: aiteachme-prod
-      - key: DOGECLOUD_ENDPOINT
-        value: https://s3-cn-south-1.dogecloud.com
-      - key: LLM_API_KEY
-        sync: false
-      - key: LLM_BASE_URL
-        value: https://dashscope.aliyuncs.com/compatible-mode/v1
-      - key: LLM_MODEL
-        value: qwen-plus-latest
-    healthCheckPath: /api/health
-
-databases:
-  - name: aiteachme-db
-    databaseName: aiteachme
-    plan: starter
-    region: singapore
-    postgresMajorVersion: 15
-```
-
-### 7.2 健康检查端点
-
-确保 `app/api/health.py` 已实现：
-
-```python
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from datetime import datetime
-
-router = APIRouter()
-
-@router.get("/health")
-async def health_check():
-    """健康检查端点（Render 用于监控服务状态）"""
-    try:
-        # 检查数据库连接
-        from app.core.database import get_engine
-        engine = get_engine()
-        with engine.connect() as conn:
-            conn.execute("SELECT 1")
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "database": "connected",
-            },
-        )
-    except Exception as e:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        )
-```
-
----
-
-## 8. 成本估算
-
-### 8.1 Render 费用（月）
-
-| 服务 | 套餐 | 费用 |
-|------|------|------|
-| Web Service | Starter (512MB RAM) | $7 |
-| PostgreSQL | Starter (1GB 存储) | $7 |
-| **合计** | | **$14/月** |
-
-### 8.2 多吉云 OSS 费用（月）
-
-| 资源 | 单价 | 预估用量 | 费用 |
-|------|------|----------|------|
-| 存储 | ¥0.12/GB/月 | 10GB | ¥1.2 |
-| 流量 | ¥0.15/GB | 50GB | ¥7.5 |
-| 请求 | ¥0.01/万次 | 10万次 | ¥0.1 |
-| **合计** | | | **¥8.8/月 (~$1.2)** |
-
-### 8.3 总月度成本
-
-**约 $15/月**，可支撑 100-500 用户的 MVP 阶段。
-
----
-
-## 9. 监控与可观测性
-
-### 9.1 结构化日志
-
-确保使用结构化日志（当前项目已配置 structlog）：
-
-```python
-# app/core/logger.py
-import structlog
-
-logger = structlog.get_logger()
-
-# 使用示例
-logger.info("file_uploaded", file_id=123, size_mb=5.2, subject="math")
-logger.error("vector_search_failed", subject="physics", error=str(e))
-```
-
-### 9.2 关键指标监控
-
-在 Render Dashboard 中监控：
-
-- **CPU 使用率**: 应 < 80%
-- **内存使用率**: 应 < 80%
-- **响应时间**: P95 应 < 500ms
-- **错误率**: 应 < 1%
-- **数据库连接数**: 应 < 连接池大小的 80%
-
-### 9.3 告警设置（可选）
-
-可以集成 Sentry 进行错误追踪：
-
-```python
-# app/main.py
-import sentry_sdk
-
-settings = get_settings()
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment="production",
-        traces_sample_rate=0.1,
-    )
-```
-
----
-
-## 10. 安全考虑
-
-### 10.1 数据库安全
-
-- ✅ PostgreSQL 连接使用 SSL/TLS 加密
-- ✅ 数据库密码通过环境变量管理，不提交到代码仓库
-- ✅ 启用连接池防止连接耗尽
-- ✅ 定期备份（Render 自动每日备份）
-
-### 10.2 存储安全
-
-- ✅ OSS bucket 设置 CORS 策略，只允许前端域名访问
-- ✅ 使用 CDN 加速并隐藏真实 OSS 地址
-- ✅ 文件上传大小限制（默认 100MB）
-- ✅ 文件类型白名单验证
-
-### 10.3 API 安全
-
-- ✅ 上传接口限流（防止滥用）
-- ✅ 文件大小验证
-- ✅ Content-Type 验证
-- ✅ JWT token 过期时间设置
-
----
-
-## 11. 回滚计划
-
-如果生产部署失败：
-
-1. **立即回滚**: 在 Render Dashboard 点击 "Rollback to previous version"
-2. **数据库恢复**: 从 Render 自动备份恢复 PostgreSQL
-3. **存储回滚**: OSS 文件不可变，无需回滚
-4. **前端回滚**: 在 Cloudflare Pages 回滚到上一个部署版本
-
----
-
-## 12. 成功指标
-
-### 12.1 性能指标
-
-- API 响应时间 < 500ms (P95)
-- 文件上传成功率 > 99%
-- 向量检索延迟 < 200ms
-
-### 12.2 可靠性指标
-
-- 服务可用性 > 99.5%
-- 零数据丢失事件
-- 数据库连接池利用率 < 80%
-
-### 12.3 成本指标
-
-- 月度基础设施成本 < $20
-- 每用户存储成本 < $0.10
-
----
-
-## 13. 下一步行动
-
-### 立即开始（本周）
-
-1. ✅ 已修复 vector search 的 schema bug
-2. ⏳ 在 `app/core/database.py` 添加数据库方言检测函数
-3. ⏳ 修改 `vector_search()` 函数支持 PostgreSQL
-
-### 短期目标（2-3 周）
-
-4. ⏳ 本地测试 PostgreSQL + pgvector
-5. ⏳ 实现存储抽象层
-6. ⏳ 本地测试多吉云 OSS
-
-### 中期目标（1-2 个月）
-
-7. ⏳ 注册 Render 账号并创建服务
-8. ⏳ 配置生产环境变量
-9. ⏳ 部署到生产环境
-10. ⏳ 监控和优化
-
----
-
-## 附录 A: 多吉云 OSS 配置指南
-
-### 步骤 1: 注册和创建 Bucket
-
-1. 访问 https://www.dogecloud.com/ 注册账号
-2. 进入控制台 → 对象存储 → 创建 Bucket
-3. Bucket 名称: `aiteachme-prod`（或 `aiteachme-test` 用于测试）
-4. 区域选择: 华南（深圳）或就近区域
-5. 访问权限: 私有（推荐）
-
-### 步骤 2: 获取访问凭证
-
-1. 进入控制台 → 访问控制 → AccessKey 管理
-2. 创建新的 AccessKey
-3. 记录 `AccessKeyId` 和 `AccessKeySecret`（只显示一次，务必保存）
-
-### 步骤 3: 配置 CORS（允许前端上传）
-
-在 Bucket 设置中配置 CORS 规则：
-
-```json
-{
-  "CORSRules": [
-    {
-      "AllowedOrigins": [
-        "https://aiteachme.pages.dev",
-        "http://localhost:5173"
-      ],
-      "AllowedMethods": ["GET", "POST", "PUT", "HEAD"],
-      "AllowedHeaders": ["*"],
-      "ExposeHeaders": ["ETag"],
-      "MaxAgeSeconds": 3600
-    }
-  ]
-}
-```
-
-### 步骤 4: 启用 CDN 加速（可选）
-
-1. 在 Bucket 设置中启用 CDN
-2. 绑定自定义域名（如 `cdn.aiteachme.com`）
-3. 配置 HTTPS 证书（Let's Encrypt 免费证书）
-
-### 步骤 5: 测试连接
-
-使用 Python 测试连接：
-
-```python
-import boto3
-
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id="你的AccessKeyId",
-    aws_secret_access_key="你的AccessKeySecret",
-    endpoint_url="https://s3-cn-south-1.dogecloud.com",
-)
-
-# 测试上传
-s3.put_object(
-    Bucket="aiteachme-test",
-    Key="test.txt",
-    Body=b"Hello DogeCloud!",
-)
-
-# 测试下载
-response = s3.get_object(Bucket="aiteachme-test", Key="test.txt")
-print(response["Body"].read())  # 输出: b'Hello DogeCloud!'
-```
-
----
-
-## 附录 B: PostgreSQL 本地测试指南
-
-### 使用 Docker 启动 PostgreSQL
-
-```bash
-# 启动 PostgreSQL + pgvector
-docker run -d \
-  --name aiteachme-postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=aiteachme \
-  -p 5432:5432 \
-  pgvector/pgvector:pg15
-
-# 查看日志
-docker logs -f aiteachme-postgres
-
-# 进入 PostgreSQL Shell
-docker exec -it aiteachme-postgres psql -U postgres -d aiteachme
-```
-
-### 启用 pgvector 扩展
-
-```sql
--- 在 psql 中执行
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- 验证扩展已安装
-\dx
-
--- 测试向量操作
-SELECT '[1,2,3]'::vector <=> '[4,5,6]'::vector AS cosine_distance;
-```
-
-### 创建测试表
-
-```sql
--- 创建向量表
-CREATE TABLE test_embeddings (
-    id SERIAL PRIMARY KEY,
-    content TEXT,
-    embedding vector(1024)
-);
-
--- 插入测试数据
-INSERT INTO test_embeddings (content, embedding)
-VALUES ('test', array_fill(0.1, ARRAY[1024])::vector);
-
--- 测试向量检索
-SELECT id, content, embedding <=> array_fill(0.1, ARRAY[1024])::vector AS distance
-FROM test_embeddings
-ORDER BY distance
-LIMIT 5;
-```
-
-### 配置本地环境
-
-创建 `.env.postgres` 文件：
-
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiteachme
-STORAGE_BACKEND=local
-DATA_DIR=./data
-LLM_API_KEY=你的LLM_API_KEY
+APP_MODE=cloud
+DATABASE_URL=postgresql+psycopg://<user>:<password>@<host>:5432/<db>
+STORAGE_BACKEND=s3
+
+S3_BUCKET=aiteachme-prod
+S3_ENDPOINT=https://<dogecloud-s3-endpoint>
+S3_ACCESS_KEY=<access-key>
+S3_SECRET_KEY=<secret-key>
+S3_REGION=<optional-region>
+S3_PUBLIC_BASE_URL=https://<optional-cdn-domain>
+
+LLM_API_KEY=<key>
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen-plus-latest
+EMBEDDING_MODEL=text-embedding-v3
 ```
 
-启动后端：
+### 7.5 阶段 1 验收
 
-```bash
-# 加载 PostgreSQL 配置
-export $(cat .env.postgres | xargs)
+- 本地模式不受影响
+- 新配置项已落地
+- `ArtifactStore` 抽象已存在
+- PostgreSQL 分支已具备初始化入口
+- 新代码不再扩散硬编码本地路径
 
-# 初始化数据库表
-python -c "from app.core.database import init_db; init_db()"
+### 7.6 阶段 1 预计触达文件
 
-# 启动服务
-cd backend
-uvicorn app.main:app --reload --port 8000
-```
+这一阶段是“立规矩”的阶段，改动不会最多，但会决定后面四个阶段是否顺畅。
+
+必改核心文件通常包括：
+
+- [`config.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/config.py)
+- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
+- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+- [`raw_file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/raw_file.py)
+
+新增文件通常包括：
+
+- `backend/app/infra/storage/__init__.py`
+- `backend/app/infra/storage/base.py`
+- `backend/app/infra/storage/local.py`
+- `backend/app/infra/storage/s3.py`
+- `backend/app/infra/storage/factory.py`
+
+这一阶段结束后，代码应达到一个很关键的状态：
+
+- 虽然 cloud 还没有完全打通
+- 但系统已经具备“以统一抽象承接后续改造”的能力
+- 后面 PostgreSQL 与 OSS 的接入不会继续把本地路径假设扩散到更多文件
 
 ---
 
-## 附录 C: 常见问题排查
+## 8. 阶段 2：数据库接入 PostgreSQL
 
-### 问题 1: pgvector 扩展未安装
+### 8.1 目标
 
-**症状**: 执行 SQL 时报错 `type "vector" does not exist`
+让 cloud 模式正式使用 PostgreSQL + pgvector。
 
-**解决**:
+### 8.2 Render 侧准备
+
+在 Render 创建 PostgreSQL，并执行：
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
+SELECT extname FROM pg_extension WHERE extname = 'vector';
 ```
 
-### 问题 2: 数据库连接失败
+### 8.3 主要改动
 
-**症状**: `could not connect to server: Connection refused`
+主要涉及：
 
-**排查**:
-1. 检查 PostgreSQL 是否启动: `docker ps`
-2. 检查端口是否正确: `5432`
-3. 检查 DATABASE_URL 格式: `postgresql://user:pass@host:port/dbname`
+- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`knowledge_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/knowledge/knowledge_repo.py)
+- [`profile.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/profile.py)
 
-### 问题 3: OSS 上传失败
+固定要求：
 
-**症状**: `403 Forbidden` 或 `SignatureDoesNotMatch`
+- 使用同步 `psycopg`
+- 检索逻辑按 dialect 分支
+- 不引入 async ORM 重构
 
-**排查**:
-1. 检查 AccessKey 和 SecretKey 是否正确
-2. 检查 Bucket 名称是否正确
-3. 检查 Endpoint 是否正确（注意区域）
-4. 检查 CORS 配置是否允许前端域名
+### 8.4 向量策略
 
-### 问题 4: Render 部署失败
+固定策略：
 
-**症状**: 构建或启动失败
+- PostgreSQL 使用 `pgvector`
+- 首版只需要支持“云端数据写入后可正常建向量并查询”
+- 不要求兼容搬运 `sqlite-vec` 物理表
 
-**排查**:
-1. 查看 Render 构建日志
-2. 检查 `buildCommand` 和 `startCommand` 是否正确
-3. 检查环境变量是否都已设置
-4. 检查 Python 版本是否匹配（3.11）
+### 8.5 阶段 2 验收
 
-### 问题 5: 向量检索返回空结果
+- PostgreSQL 可建表
+- `vector` 扩展可用
+- 检索链路可在 PostgreSQL 下运行
+- local/cloud 两种模式都能正常启动
 
-**症状**: `vector_search()` 返回空列表
+### 8.6 阶段 2 预计触达文件
 
-**排查**:
-1. 检查 `chunk_embeddings` 表是否有数据
-2. 检查 `retrieval_chunk` 表的 `is_active` 字段
-3. 检查 `subject` 参数是否正确
-4. 检查向量维度是否匹配（1024）
+这一阶段的重点不是普通 CRUD，而是把“SQLite 专属假设”收敛掉。
+
+高优先级文件通常包括：
+
+- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`knowledge_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/knowledge/knowledge_repo.py)
+- [`profile_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/profile_repo.py)
+- [`profile.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/profile.py)
+- [`main.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/main.py)
+
+需要重点复核的内容包括：
+
+- SQLite 专属 upsert 写法是否需要 PostgreSQL 分支
+- `sqlite_where` 这类方言相关索引定义是否需要补 PostgreSQL 等价语义
+- 向量表、向量列、向量查询语法是否已完全切到 `pgvector`
+- 启动初始化过程是否已从“默认本地 SQLite”变成“按当前方言初始化”
+
+这一阶段的工程特点是：
+
+- 文件数不会像阶段 3 那么多
+- 但数据库语义出错的代价更大
+- 因此必须配套最小化验证，而不是只看服务能否启动
+
+---
+
+## 9. 阶段 3：对象存储接入 DogeCloud OSS
+
+### 9.1 目标
+
+让 cloud 模式下的正式文件与正式工件进入 DogeCloud OSS。
+
+### 9.2 供应商与抽象关系
+
+这一阶段固定采用：
+
+- 供应商：DogeCloud OSS
+- 代码实现：`S3ArtifactStore`
+- 环境变量命名：`S3_*`
+
+禁止把 DogeCloud 细节写死进业务层；  
+只允许出现在：
+
+- env 值
+- endpoint 配置
+- 部署文档
+
+### 9.3 主要改动
+
+主要涉及：
+
+- [`file_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/file_service.py)
+- [`subject_deletion_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/subject_deletion_service.py)
+- ingest workflow 相关文件
+- digest docs publish 相关文件
+- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+
+固定策略：
+
+- 正式文件写 OSS
+- 临时文件仍落本地临时目录
+- 需要 `Path` 的地方通过 `materialize_to_temp()`
+- 删除 subject 时同时清 PostgreSQL 数据与 OSS prefix
+
+### 9.4 阶段 3 验收
+
+- 上传后文件真实进入 DogeCloud OSS
+- ingest 能从 OSS 读取原始文件
+- digest 能把正式工件写入 OSS
+- subject 删除能清理对应 OSS prefix
+- local 模式仍正常
+
+### 9.5 阶段 3 预计触达文件
+
+这一阶段通常是**改动面最大**的一阶段，因为它会真正碰到 ingest、digest、文件服务、删除清理等多条链路。
+
+高优先级文件通常包括：
+
+- [`file_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/file_service.py)
+- [`subject_deletion_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/subject_deletion_service.py)
+- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+- [`runtime.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/runtime.py)
+- [`file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/nodes/file.py)
+- [`enhance.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/nodes/enhance.py)
+- [`finalize.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/nodes/finalize.py)
+- [`publish.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/docs/publish.py)
+- [`prepare.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/shared/prepare.py)
+- [`support.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/digest/kg/support.py)
+
+这一步需要特别注意两类代码：
+
+- 直接 `Path(...).read_text()` / `read_bytes()` / `write_text()` 的位置
+- 默认认为 `raw_file.file_path`、`markdown_path`、`asset_dir` 一定指向本地可访问路径的代码
+
+合理的落地方式不是强行把所有解析器改成“原生支持 OSS 流”，而是：
+
+- 正式文件长期存 OSS
+- 运行时需要本地路径的解析器，通过 `materialize_to_temp()` 获取临时副本
+- 解析结束后再把正式产物通过 store 层回写
+
+这样做虽然不是理论上最极致的“全流式对象存储”，但对当前项目最稳，也最容易落地。
+
+---
+
+## 10. 阶段 4：云端初始化与联调
+
+### 10.1 目标
+
+这一阶段不做“历史数据迁移”，只做：
+
+- 新云环境初始化
+- 新云环境端到端联调
+- 验证 local/cloud 结构兼容
+
+### 10.2 验证方式
+
+在 cloud 模式下，从空环境开始验证以下能力：
+
+1. 创建学科
+2. 上传新文件
+3. 完成 ingest
+4. 完成 digest
+5. 完成 interact
+6. 完成 exams / profile 基本链路
+7. 删除学科并清理 OSS 工件
+
+### 10.3 需要确认的兼容点
+
+必须确认：
+
+- 表结构语义与本地模式一致
+- 唯一约束与索引语义一致
+- `storage_key` 规则一致
+- 工件命名一致
+- 上层 API 行为一致
+
+### 10.4 如未来要做数据导入
+
+如后续真要把本地 `aiteachme.db` 或 `backend/data/` 导入云端，应作为**独立专题**处理，而不是本方案的首版阻塞项。  
+也就是说：
+
+- 可以未来再写导入工具
+- 但当前不把它作为必须交付物
+
+### 10.5 阶段 4 验收
+
+- 云端空环境可独立完成全链路
+- 本地与云端结构语义兼容
+- 不依赖历史本地数据也能正常运行
+
+### 10.6 联调检查清单
+
+阶段 4 的目标不是“看服务活着”，而是确认中心化模式真的可用。
+
+联调时至少要覆盖：
+
+- 学科创建是否成功写入 PostgreSQL
+- 上传文件后，DB 记录与 OSS 对象是否都存在
+- ingest 是否能正确读取原始文件、生成 markdown、登记资产
+- digest 是否能写出知识文档与运行时工件
+- interact 是否能在 PostgreSQL 检索链路下拿到合理上下文
+- exams / profile 是否没有被数据库方言切换误伤
+- 删除学科后，数据库记录与 OSS prefix 是否同步清理
+
+如果这一阶段出现问题，优先排查顺序建议为：
+
+1. env 配置是否完整
+2. PostgreSQL `vector` 扩展是否可用
+3. `storage_key` 是否稳定
+4. store 层读写是否正确
+5. workflow 中是否仍残留本地路径硬依赖
+
+---
+
+## 11. 阶段 5：生产切换与回滚
+
+### 11.1 切换前条件
+
+必须全部满足：
+
+- PostgreSQL 已验证
+- DogeCloud OSS 已验证
+- Cloud 模式代码已稳定
+- 空环境联调已通过
+- 冒烟测试清单已通过
+
+### 11.2 切换步骤
+
+固定顺序：
+
+1. 在 Render Dashboard 配好 cloud 模式 env
+2. Manual Deploy 新后端
+3. 运行冒烟验证
+4. 确认前端访问正常
+5. 正式切生产流量
+
+由于本地与云端独立，不需要做“最后一次本地数据增量迁移”。
+
+### 11.3 前端是否需要改动
+
+只有后端域名变化时才需要改：
+
+```bash
+VITE_API_URL=https://<backend-domain>
+```
+
+### 11.4 回滚策略
+
+如果 cloud 模式失败：
+
+1. Render env 切回旧模式
+2. 重新部署旧版本
+3. 保留 PostgreSQL 与 OSS 环境用于排查
+
+回滚目标是恢复服务，不是销毁新环境。
+
+---
+
+## 12. Agent 实施顺序
+
+为保证 agent 可稳定执行，顺序固定为：
+
+1. 阶段 1：配置与抽象层
+2. 阶段 2：PostgreSQL
+3. 阶段 3：DogeCloud OSS
+4. 阶段 4：云端空环境联调
+5. 阶段 5：生产切换
+
+### 12.1 禁止事项
+
+首版禁止做以下事情：
+
+- 不要同时引入 async ORM 重构
+- 不要把 DogeCloud 细节写死进业务层
+- 不要把 `temp/`、`debug/` 强行中心化
+- 不要把“历史数据迁移”塞进首版阻塞项
+- 不要在阶段 1 未完成前直接切 Render 生产 env
+
+### 12.2 改动规模与工期预估
+
+按当前代码现状，这次改造的工程量可以保守估计为“单人连续开发下的 `2-3` 周级别任务”。
+
+更细一点的拆分如下：
+
+| 阶段 | 主要内容 | 粗略工期 |
+| --- | --- | --- |
+| 阶段 1 | 配置、数据库抽象、存储抽象、`storage_key` 语义收敛 | `3-4` 个工作日 |
+| 阶段 2 | PostgreSQL + `pgvector` 接入、数据库方言适配 | `3-5` 个工作日 |
+| 阶段 3 | DogeCloud OSS 接入、ingest/digest/store 适配 | `4-6` 个工作日 |
+| 阶段 4 | Render 云端空环境联调、冒烟、问题修补 | `2-3` 个工作日 |
+| 阶段 5 | 正式切换、回滚预案确认、发布窗口执行 | `1` 个工作日 |
+
+综合来看：
+
+- 理想顺利情况下：约 `10-12` 个工作日
+- 稳妥估计情况下：约 `13-19` 个工作日
+
+其中最容易额外吃时间的地方通常是：
+
+- PostgreSQL 与 SQLite 在索引、upsert、约束语义上的差异
+- ingest 链路里仍残留的本地路径假设
+- DogeCloud S3 兼容细节与 SDK 参数校准
+- Render 云端联调时暴露出的环境变量或权限问题
+
+如果由 agent 按文档分阶段执行，这个工期可以明显更可控；  
+但前提是每一阶段都先完成验收，而不是把 1-5 阶段并行乱改。
+
+### 12.3 文件改动规模预估
+
+按当前代码触点判断，比较合理的文件规模预估是：
+
+- 必改核心文件：约 `10-15` 个
+- 新增抽象与适配文件：约 `4-6` 个
+- 连同联动适配、测试、联调辅助后：总触达约 `20-30` 个文件
+
+需要明确的是：
+
+- 这里的“大部分改动”发生在 backend
+- frontend 不会成为这次中心化改造的主战场
+- 真正最重的链路是 ingest / digest / subject 删除，不是普通接口层
+
+---
+
+## 13. 总体验收
+
+最终认为“中心化方案落地”，必须满足：
+
+- 本地模式仍正常
+- 云端模式可独立运行
+- PostgreSQL 成为云端正式数据库
+- DogeCloud OSS 成为云端正式文件真相
+- `storage_key` 成为统一文件定位语义
+- 上传、ingest、digest、interact、exams、profile、subject 删除全链路通过
+- Render 上 env 已稳定托管
+
+---
+
+## 14. 一句话结论
+
+后续实现时，应把 DogeCloud 视为**当前选定的 OSS 供应商**，把 S3 视为**代码层存储抽象协议**；  
+同时明确：**本地与云端是独立环境，不做强制历史迁移，只要求结构与语义兼容。**
 
 ---
 
 **文档结束**
-

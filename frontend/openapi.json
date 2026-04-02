@@ -1456,6 +1456,16 @@
               }
             }
           },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -5246,6 +5256,52 @@
           "prompt": "Generate review-oriented notes"
         }
       },
+      "DocGenBuildStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "accepted / running / completed / failed / cancelled"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "Build request timestamp."
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "Current lifecycle stage for the build."
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Build failure or cancellation reason."
+          },
+          "draft_available": {
+            "type": "boolean",
+            "title": "Draft Available",
+            "description": "Whether the current staging draft can be previewed.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "requested_at",
+          "stage"
+        ],
+        "title": "DocGenBuildStatusResponse",
+        "description": "Runtime metadata for the current or most recent docs build."
+      },
       "DocGenGetResponse": {
         "properties": {
           "exists": {
@@ -5291,6 +5347,36 @@
             ],
             "title": "Prompt",
             "description": "User prompt used for the published docs."
+          },
+          "draft_markdown": {
+            "type": "string",
+            "title": "Draft Markdown",
+            "description": "Current staging draft markdown content, if available.",
+            "default": ""
+          },
+          "draft_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Updated At",
+            "description": "Last updated time of the staging draft."
+          },
+          "build": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocGenBuildStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current or most recent build metadata."
           }
         },
         "type": "object",
@@ -5389,7 +5475,46 @@
               }
             ],
             "title": "User Prompt",
-            "description": "Optional user prompt for preference hints."
+            "description": "Optional user prompt for general generation hints."
+          },
+          "style_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Prompt",
+            "description": "Optional prompt that describes the desired paper style."
+          },
+          "focus_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Prompt",
+            "description": "Optional prompt describing key focus areas."
+          },
+          "sample_file_uids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample File Uids",
+            "description": "Optional uploaded sample-paper file UIDs."
           },
           "num_questions": {
             "anyOf": [
@@ -5515,6 +5640,13 @@
             },
             "type": "array",
             "title": "Teaching Unit Ids"
+          },
+          "sample_file_uids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample File Uids"
           }
         },
         "type": "object",
@@ -5692,6 +5824,45 @@
         ],
         "title": "ExamHistoryItem"
       },
+      "ExamNodeLinkResponse": {
+        "properties": {
+          "knowledge_node_id": {
+            "type": "integer",
+            "title": "Knowledge Node Id"
+          },
+          "knowledge_node_name": {
+            "type": "string",
+            "title": "Knowledge Node Name"
+          },
+          "coverage_weight": {
+            "type": "number",
+            "title": "Coverage Weight"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "knowledge_node_id",
+          "knowledge_node_name",
+          "coverage_weight",
+          "role"
+        ],
+        "title": "ExamNodeLinkResponse"
+      },
       "ExamPaperDeleteResponse": {
         "properties": {
           "deleted": {
@@ -5787,6 +5958,11 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "selection_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Selection Context"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/ExamPaperItemResponse"
@@ -5847,6 +6023,17 @@
             ],
             "title": "Options"
           },
+          "correct_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Answer"
+          },
           "explanation": {
             "type": "string",
             "title": "Explanation"
@@ -5857,8 +6044,7 @@
           },
           "node_links": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ExamNodeLinkResponse"
             },
             "type": "array",
             "title": "Node Links"
@@ -7398,6 +7584,24 @@
           "last_exam_paper_id": {
             "type": "integer",
             "title": "Last Exam Paper Id"
+          },
+          "knowledge_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Knowledge Points"
+          },
+          "style_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Summary"
           }
         },
         "type": "object",
