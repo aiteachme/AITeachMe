@@ -1,4 +1,4 @@
-"""FastAPI 应用入口。"""
+﻿"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "code": exc.status_code,
                 "error_code": exc.error_code,
                 "message": exc.detail,
-                "data": None,
+                "data": exc.data,
             },
         )
 
@@ -155,3 +155,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

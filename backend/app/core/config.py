@@ -94,7 +94,22 @@ class Settings(BaseSettings):
     def embedding_dim(self) -> int:
         """根据 embedding 模型推导维度。"""
 
-        return _EMBEDDING_DIM_MAP.get(self.embedding_model, _DEFAULT_EMBEDDING_DIM)
+        if not self.normalized_embedding_model:
+            return 0
+        return _EMBEDDING_DIM_MAP.get(self.normalized_embedding_model, _DEFAULT_EMBEDDING_DIM)
+
+    @property
+    def normalized_embedding_model(self) -> str | None:
+        """返回去空白后的 embedding 模型名。"""
+
+        value = (self.embedding_model or "").strip()
+        return value or None
+
+    @property
+    def embedding_configured(self) -> bool:
+        """当前是否配置了 embedding 模型。"""
+
+        return self.normalized_embedding_model is not None
 
     @property
     def is_cloud_mode(self) -> bool:

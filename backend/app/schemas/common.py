@@ -1,9 +1,9 @@
-"""通用响应与分页结构。"""
+﻿"""通用响应与分页结构。"""
 
 from __future__ import annotations
 
 from math import ceil
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,12 +22,24 @@ class ApiResponse(BaseModel, Generic[T]):
     data: T | None = Field(default=None, description="业务数据。")
 
 
-class ErrorResponse(ApiResponse[None]):
+class ErrorResponse(BaseModel):
     """统一错误响应结构。"""
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"code": 404, "message": "资源不存在", "data": None}}
+        json_schema_extra={
+            "example": {
+                "code": 404,
+                "message": "资源不存在",
+                "error_code": "RESOURCE_NOT_FOUND",
+                "data": None,
+            }
+        }
     )
+
+    code: int = Field(description="错误状态码。")
+    message: str = Field(description="错误消息。")
+    error_code: str | None = Field(default=None, description="稳定业务错误码。")
+    data: Any | None = Field(default=None, description="错误附带的结构化数据。")
 
 
 class HealthData(BaseModel):
@@ -78,3 +90,4 @@ def ok_response(data: T | None = None, message: str = "ok") -> ApiResponse[T]:
     """构造成功响应。"""
 
     return ApiResponse(code=0, message=message, data=data)
+

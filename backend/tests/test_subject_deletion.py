@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -20,7 +20,7 @@ from app.models import (
     UnitDependency,
     User,
 )
-from app.services.knowledge.curriculum_service import clear_subject_knowledge
+from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.subject_service import delete_subject_record
 
 
@@ -251,3 +251,4 @@ def test_clear_subject_knowledge_rejects_when_exam_data_still_exists() -> None:
         assert "题模板" in exc.detail
     else:
         raise AssertionError("expected KnowledgeClearConflictError when exam data exists")
+

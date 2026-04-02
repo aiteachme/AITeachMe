@@ -57,13 +57,14 @@ async def knowledge_build(
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildData]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    subject_record = get_subject_record(session, normalized)
 
     data, accepted_file_ids = trigger_docgen_build(
         session,
-        subject=normalized,
+        subject=subject_record,
         file_uids=body.file_uids,
         prompt=body.prompt,
+        embedding_resolution=body.embedding_resolution,
     )
     request.app.state.background_task_registry.spawn(
         run_unified_build_background(

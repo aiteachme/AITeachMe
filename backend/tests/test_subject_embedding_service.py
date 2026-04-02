@@ -1,0 +1,179 @@
+﻿from __future__ import annotations
+
+from unittest.mock import patch
+
+import sqlalchemy as sa
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
+
+from app.core.subject_embeddings import get_legacy_vector_table_name, get_subject_embedding_binding
+from app.models import RawFile, RetrievalChunk, Subject, User
+from app.services.subject_embedding_service import (
+    RuntimeEmbeddingConfig,
+    inspect_subject_build_precheck,
+    resolve_subject_build_vector_status,
+)
+
+
+def _make_session() -> Session:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @sa.event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_conn, connection_record) -> None:
+        del connection_record
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
+
+    SQLModel.metadata.create_all(engine)
+    return Session(engine, expire_on_commit=False)
+
+
+def _seed_subject(session: Session, *, subject_slug: str) -> Subject:
+    session.add(User(id="local", username="local"))
+    session.commit()
+
+    subject = Subject(user_id="local", slug=subject_slug, name="测试学科")
+    session.add(subject)
+    session.commit()
+    session.refresh(subject)
+    return subject
+
+
+def _seed_chunk(session: Session, *, subject_slug: str, vector_ref: str | None) -> RetrievalChunk:
+    raw_file = RawFile(
+        uid=f"raw-{subject_slug}",
+        subject=subject_slug,
+        filename="sample.md",
+        filetype="md",
+        file_path=f"/tmp/{subject_slug}.md",
+        status="completed",
+        ingest_status="completed",
+        markdown_content="# sample",
+    )
+    session.add(raw_file)
+    session.commit()
+    session.refresh(raw_file)
+
+    chunk = RetrievalChunk(
+        subject=subject_slug,
+        document_id=raw_file.id or 0,
+        title="sample",
+        level=1,
+        header_path="sample",
+        chunk_index=0,
+        digest_chunk_uid=f"chunk-{subject_slug}",
+        build_session_id="build-1",
+        content="sample content",
+        vector_ref=vector_ref,
+    )
+    session.add(chunk)
+    session.commit()
+    session.refresh(chunk)
+    return chunk
+
+
+def test_inspect_subject_build_precheck_returns_legacy_conflict() -> None:
+    session = _make_session()
+    subject = _seed_subject(session, subject_slug="subj_embed_legacy")
+    _seed_chunk(
+        session,
+        subject_slug=subject.slug,
+        vector_ref=get_legacy_vector_table_name(),
+    )
+
+    runtime = RuntimeEmbeddingConfig(
+        configured=True,
+        available=True,
+        embedding_model="text-embedding-v4",
+        embedding_dim=1024,
+    )
+
+    with patch(
+        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        return_value=runtime,
+    ), patch(
+        "app.services.subject_embedding_service.vector_table_exists",
+        return_value=True,
+    ):
+        conflict = inspect_subject_build_precheck(session, subject=subject)
+
+    assert conflict is not None
+    assert conflict.reason == "legacy_vector_table"
+    assert conflict.runtime_model == "text-embedding-v4"
+    assert conflict.runtime_dim == 1024
+    assert conflict.requires_full_rebuild is True
+
+
+def test_resolve_subject_build_vector_status_disable_marks_subject_disabled() -> None:
+    session = _make_session()
+    subject = _seed_subject(session, subject_slug="subj_embed_disable")
+
+    runtime = RuntimeEmbeddingConfig(
+        configured=True,
+        available=True,
+        embedding_model="text-embedding-v4",
+        embedding_dim=1024,
+    )
+
+    with patch(
+        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        return_value=runtime,
+    ):
+        status = resolve_subject_build_vector_status(
+            session,
+            subject=subject,
+            embedding_resolution="disable",
+        )
+
+    binding = get_subject_embedding_binding(subject)
+    assert binding is not None
+    assert binding.mode.value == "disabled"
+    assert status.mode == "disabled"
+    assert status.notice is not None
+
+
+def test_resolve_subject_build_vector_status_rebuild_rebinds_subject() -> None:
+    session = _make_session()
+    subject = _seed_subject(session, subject_slug="subj_embed_rebuild")
+
+    runtime = RuntimeEmbeddingConfig(
+        configured=True,
+        available=True,
+        embedding_model="text-embedding-v4",
+        embedding_dim=1024,
+    )
+
+    with patch(
+        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        return_value=runtime,
+    ), patch(
+        "app.services.subject_embedding_service.get_engine",
+        return_value=object(),
+    ), patch(
+        "app.services.subject_embedding_service.reset_subject_vec_table",
+    ) as reset_mock, patch(
+        "app.services.subject_embedding_service.vector_table_exists",
+        return_value=True,
+    ), patch(
+        "app.services.subject_embedding_service.get_vector_table_dim",
+        return_value=1024,
+    ):
+        status = resolve_subject_build_vector_status(
+            session,
+            subject=subject,
+            embedding_resolution="rebuild",
+        )
+
+    binding = get_subject_embedding_binding(subject)
+    assert binding is not None
+    assert binding.mode.value == "enabled"
+    assert binding.embedding_model == "text-embedding-v4"
+    assert binding.embedding_dim == 1024
+    assert status.mode == "enabled"
+    assert status.embedding_model == "text-embedding-v4"
+    reset_mock.assert_called_once()

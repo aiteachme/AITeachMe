@@ -1,4 +1,4 @@
-"""Database bootstrap and session helpers."""
+﻿"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ except ImportError:
     pass
 
 from contextlib import contextmanager
+from pathlib import Path
+import re
 from typing import Generator
 
 import sqlalchemy as sa
@@ -21,6 +23,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.core.config import get_settings
 from app.core.exceptions import VectorExtensionUnavailableError
 from app.core.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
+from app.core.subject_embeddings import build_subject_vector_table_name, get_legacy_vector_table_name
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -255,22 +258,98 @@ def get_engine() -> sa.Engine:
     return _engine
 
 
-def _ensure_vec_table(engine, *, embedding_dim: int) -> None:
+def quote_sqlite_identifier(identifier: str) -> str:
+    """Quote one SQLite identifier safely."""
+
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
+    """Check whether one vector table exists."""
+
+    row = connection.execute(
+        sa.text("SELECT name FROM sqlite_master WHERE name = :table_name"),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
+def get_vector_table_dim(connection: sa.Connection, table_name: str) -> int | None:
+    """Parse the configured vector dimension for one table."""
+
+    row = connection.execute(
+        sa.text("SELECT sql FROM sqlite_master WHERE name = :table_name"),
+        {"table_name": table_name},
+    ).first()
+    if row is None or row[0] is None:
+        return None
+
+    match = re.search(r"FLOAT\[(\d+)\]", str(row[0]))
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def ensure_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
+    """Ensure one subject-scoped sqlite-vec table exists with the requested dimension."""
+
+    table_name = build_subject_vector_table_name(subject)
     if not is_vec_ready():
         logger.warning(
-            "database_initialized_without_vec",
+            "database_vec_table_unavailable",
+            subject=subject,
+            table_name=table_name,
             embedding_dim=embedding_dim,
             vec_error=_vec_error,
         )
-        return
+        return table_name
 
-    with engine.begin() as conn:
-        conn.execute(
+    quoted_table_name = quote_sqlite_identifier(table_name)
+    with engine.begin() as connection:
+        existing_dim = get_vector_table_dim(connection, table_name)
+        if existing_dim is not None and existing_dim != embedding_dim:
+            connection.execute(sa.text(f"DROP TABLE IF EXISTS {quoted_table_name}"))
+        connection.execute(
             sa.text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings "
+                f"CREATE VIRTUAL TABLE IF NOT EXISTS {quoted_table_name} "
                 f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{embedding_dim}])"
             )
         )
+    return table_name
+
+
+def reset_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
+    """Drop and recreate the subject-scoped vector table."""
+
+    table_name = build_subject_vector_table_name(subject)
+    if not is_vec_ready():
+        logger.warning(
+            "database_vec_table_reset_skipped",
+            subject=subject,
+            table_name=table_name,
+            embedding_dim=embedding_dim,
+            vec_error=_vec_error,
+        )
+        return table_name
+
+    quoted_table_name = quote_sqlite_identifier(table_name)
+    with engine.begin() as connection:
+        connection.execute(sa.text(f"DROP TABLE IF EXISTS {quoted_table_name}"))
+        connection.execute(
+            sa.text(
+                f"CREATE VIRTUAL TABLE {quoted_table_name} "
+                f"USING vec0(chunk_id INTEGER PRIMARY KEY, embedding FLOAT[{embedding_dim}])"
+            )
+        )
+    return table_name
+
+
+def get_legacy_vector_table_dim(engine: sa.Engine) -> int | None:
+    """Return the legacy global table dimension if present."""
+
+    with engine.begin() as connection:
+        return get_vector_table_dim(connection, get_legacy_vector_table_name())
 
 
 def _ensure_default_local_user(engine) -> None:
@@ -290,18 +369,18 @@ def _ensure_default_local_user(engine) -> None:
 
 
 def init_db() -> None:
-    """Initialize the local database schema and vector table."""
+    """Initialize the local database schema and runtime helpers."""
 
     settings = get_settings()
     log_legacy_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
-    _ensure_vec_table(engine, embedding_dim=settings.embedding_dim)
     _ensure_default_local_user(engine)
 
     logger.info(
         "database_initialized",
+        embedding_model=settings.normalized_embedding_model,
         embedding_dim=settings.embedding_dim,
         table_count=len(_SCHEMA_TABLES),
         vec_ready=is_vec_ready(),
@@ -327,3 +406,4 @@ def managed_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+

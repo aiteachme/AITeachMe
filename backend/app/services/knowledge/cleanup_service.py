@@ -1,4 +1,4 @@
-"""Knowledge cleanup commands."""
+﻿"""Knowledge cleanup commands."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     chunks = list(session.exec(select(RetrievalChunk).where(RetrievalChunk.subject == subject)).all())
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
-        knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
+        knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
     counts["retrieval_chunk"] = len(chunks)
@@ -152,3 +152,4 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
+
