@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
+import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse';
 
 /**
  * Knowledge docs build response data.
@@ -18,4 +19,6 @@ export interface DocGenBuildData {
   ready_file_count?: number;
   /** Build request timestamp. */
   requested_at: string;
+  /** Current subject-level vector capability status. */
+  vector_status?: SubjectVectorStatusResponse;
 }

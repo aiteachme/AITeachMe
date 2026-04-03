@@ -27,13 +27,16 @@ import {
 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
-import type { DocGenBuildData } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
+import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
+import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { useSettings } from "../hooks/useSettings";
+import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -72,15 +75,6 @@ async function deleteFile(subject: string, fileUid: string): Promise<void> {
     url: `/api/v1/subjects/${subject}/files/delete`,
     data: { file_uid: fileUid },
   });
-}
-
-async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<DocGenBuildData> {
-  const response = await apiClient<ApiResponse<DocGenBuildData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: { prompt },
-  });
-  return response.data ?? { requested_at: new Date().toISOString() };
 }
 
 /* ── 工具函数 ── */
@@ -329,6 +323,13 @@ export function FilesPage() {
     },
   });
 
+  const { data: knowledgeDocState } = useQuery({
+    queryKey: buildKnowledgeDocStateQueryKey(subjectId),
+    queryFn: () => fetchKnowledgeDocState(subjectId),
+    enabled: Boolean(subjectId),
+    retry: false,
+  });
+
   const files = filesData?.items ?? [];
   const readyFiles = useMemo(() => files.filter((file) => file.markdown_ready), [files]);
   const selectedFile = useMemo(
@@ -350,8 +351,12 @@ export function FilesPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
-  const buildMutation = useMutation({
-    mutationFn: () => triggerKnowledgeBuild(subjectId, docPrompt.trim() || undefined),
+  const knowledgeBuild = useKnowledgeBuildFlow({
+    subjectId,
+    buildRequest: () => ({
+      prompt: docPrompt.trim() || undefined,
+    }),
+    fallbackErrorMessage: "知识构建失败",
     onSuccess: (data) => {
       navigate(`/subject/${subjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
@@ -459,12 +464,16 @@ export function FilesPage() {
           <textarea
             value={docPrompt}
             onChange={(event) => setDocPrompt(event.target.value)}
-            disabled={buildMutation.isPending}
+            disabled={knowledgeBuild.isPending}
             placeholder="可选：补充一句本次知识构建的目标，例如更偏向考前冲刺、知识梳理或错题回顾。"
             className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
           <div className="flex flex-col gap-2 px-4 pb-2">
+            <SubjectVectorNotice
+              status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
+            />
+
             {/* 调试模式下的小标签 */}
             {debugMode && (
               <AnimatePresence>
@@ -560,26 +569,26 @@ export function FilesPage() {
                   </span>
                 ) : null}
 
-                {buildMutation.isError ? (
+                {knowledgeBuild.errorMessage ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {getApiErrorMessage(buildMutation.error, "知识构建失败")}
+                    {knowledgeBuild.errorMessage}
                   </span>
                 ) : null}
               </div>
 
               <Button
                 size="lg"
-                onClick={() => buildMutation.mutate()}
-                disabled={readyFiles.length === 0 || buildMutation.isPending}
+                onClick={knowledgeBuild.submitBuild}
+                disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
                 className={cn(
                   "rounded-full px-6 shadow-sm transition-all duration-300",
-                  readyFiles.length > 0 && !buildMutation.isPending
+                  readyFiles.length > 0 && !knowledgeBuild.isPending
                     ? "bg-slate-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-slate-800"
                     : "bg-slate-100 text-slate-400",
                 )}
               >
-                {buildMutation.isPending ? (
+                {knowledgeBuild.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     正在提交构建...
@@ -828,6 +837,14 @@ export function FilesPage() {
           )}
         </div>
       </Modal>
+
+      <KnowledgeBuildResolutionModal
+        open={knowledgeBuild.precheckConflict !== null}
+        conflict={knowledgeBuild.precheckConflict}
+        isSubmitting={knowledgeBuild.isPending}
+        onClose={knowledgeBuild.closePrecheckConflict}
+        onResolve={knowledgeBuild.resolvePrecheckConflict}
+      />
     </>
   );
 }

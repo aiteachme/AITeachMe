@@ -418,6 +418,24 @@ export function getApiErrorMessage(
   return fallback;
 }
 
+export function getApiErrorCode(error: unknown): string | null {
+  const apiError = error as ApiErrorShape;
+  const errorCode = apiError.response?.data?.error_code;
+
+  return typeof errorCode === "string" && errorCode.trim() ? errorCode : null;
+}
+
+export function getApiErrorData<T>(error: unknown): T | null {
+  const apiError = error as ApiErrorShape;
+  const data = apiError.response?.data?.data;
+
+  if (data === undefined || data === null) {
+    return null;
+  }
+
+  return data as T;
+}
+
 export function isApiErrorStatus(
   error: unknown,
   status: number,

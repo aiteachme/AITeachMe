@@ -5206,6 +5206,10 @@
             "format": "date-time",
             "title": "Requested At",
             "description": "Build request timestamp."
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -5243,12 +5247,29 @@
             ],
             "title": "Prompt",
             "description": "Optional user instruction for doc generation."
+          },
+          "embedding_resolution": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rebuild",
+                  "disable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Resolution",
+            "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
           }
         },
         "type": "object",
         "title": "DocGenBuildRequest",
         "description": "Trigger knowledge-doc generation.",
         "example": {
+          "embedding_resolution": "rebuild",
           "file_uids": [
             "file_xxx",
             "file_yyy"
@@ -5377,6 +5398,10 @@
               }
             ],
             "description": "Current or most recent build metadata."
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -5391,26 +5416,46 @@
           "code": {
             "type": "integer",
             "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
+            "description": "错误状态码。"
           },
           "message": {
             "type": "string",
             "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
+            "description": "错误消息。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定业务错误码。"
           },
           "data": {
-            "type": "null",
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
             "title": "Data",
-            "description": "业务数据。"
+            "description": "错误附带的结构化数据。"
           }
         },
         "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
         "title": "ErrorResponse",
         "description": "统一错误响应结构。",
         "example": {
           "code": 404,
+          "error_code": "RESOURCE_NOT_FOUND",
           "message": "资源不存在"
         }
       },
@@ -7042,6 +7087,10 @@
           },
           "stats": {
             "$ref": "#/components/schemas/KnowledgeOverviewStats"
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -8030,6 +8079,55 @@
           "page": 1,
           "size": 20
         }
+      },
+      "SubjectVectorStatusResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "enabled / disabled",
+            "default": "enabled"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "User-facing vector capability notice."
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model",
+            "description": "Current subject-bound embedding model, if any."
+          },
+          "vector_table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Table",
+            "description": "Current subject-scoped vector table, if any."
+          }
+        },
+        "type": "object",
+        "title": "SubjectVectorStatusResponse",
+        "description": "Subject-level vector capability status shown to the UI."
       },
       "TaskStatusValue": {
         "type": "string",

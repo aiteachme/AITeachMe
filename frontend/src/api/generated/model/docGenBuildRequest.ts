@@ -14,4 +14,6 @@ export interface DocGenBuildRequest {
   file_uids?: string[] | null;
   /** Optional user instruction for doc generation. */
   prompt?: string | null;
+  /** Optional subject-level embedding resolution chosen after a precheck conflict. */
+  embedding_resolution?: 'rebuild' | 'disable' | null;
 }

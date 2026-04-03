@@ -177,6 +177,7 @@ export * from './subjectDetailRequest';
 export * from './subjectItem';
 export * from './subjectListRequest';
 export * from './subjectUpdateRequest';
+export * from './subjectVectorStatusResponse';
 export * from './submitData';
 export * from './taskStatusValue';
 export * from './taxonomyAnchorResponse';

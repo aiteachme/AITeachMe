@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
+﻿import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
@@ -21,10 +21,15 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useLocation, useParams } from "react-router-dom";
+import type {
+  DocGenBuildStatusResponse as DocGenBuildStatus,
+  DocGenGetResponse,
+} from "../api/generated/model";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -139,25 +144,6 @@ interface ThreadTurnItem {
   selected_text?: string | null;
   created_at: string;
   messages: ThreadMessageItem[];
-}
-
-interface DocGenBuildStatus {
-  status?: string | null;
-  requested_at?: string | null;
-  stage?: string | null;
-  error_message?: string | null;
-  draft_available?: boolean;
-}
-
-interface DocGenGetResponse {
-  exists: boolean;
-  markdown?: string;
-  updated_at?: string | null;
-  source_file_uids?: string[];
-  prompt?: string | null;
-  draft_markdown?: string;
-  draft_updated_at?: string | null;
-  build?: DocGenBuildStatus | null;
 }
 
 type DocViewMode = "live" | "draft";
@@ -2942,6 +2928,7 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
+                  <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -3108,4 +3095,6 @@ export function KnowledgeDocsPage() {
     </div>
   );
 }
+
+
 

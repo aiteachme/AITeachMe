@@ -26,21 +26,18 @@ import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddP
 import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
+import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { cn } from "../lib/utils";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
+import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as FilesPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
-
-interface KnowledgeBuildData {
-  accepted_file_uids: string[];
-  prompt: string | null;
-  ready_file_count: number;
-  requested_at: string;
-}
 
 async function fetchFiles(subject: string): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
@@ -68,15 +65,6 @@ async function deleteFile(subject: string, fileUid: string): Promise<void> {
     url: `/api/v1/subjects/${subject}/files/delete`,
     data: { file_uid: fileUid },
   });
-}
-
-async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<KnowledgeBuildData> {
-  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: { prompt },
-  });
-  return response.data;
 }
 
 /* ── Helpers ── */
@@ -207,6 +195,13 @@ export function HomePage() {
     },
   });
 
+  const { data: knowledgeDocState } = useQuery({
+    queryKey: buildKnowledgeDocStateQueryKey(activeSubjectId ?? ""),
+    queryFn: () => fetchKnowledgeDocState(activeSubjectId!),
+    enabled: Boolean(activeSubjectId),
+    retry: false,
+  });
+
   const files = filesData?.items ?? [];
   const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
 
@@ -249,8 +244,12 @@ export function HomePage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", activeSubjectId] }),
   });
 
-  const buildMutation = useMutation({
-    mutationFn: () => triggerKnowledgeBuild(activeSubjectId!, prompt.trim() || undefined),
+  const knowledgeBuild = useKnowledgeBuildFlow({
+    subjectId: activeSubjectId ?? "",
+    buildRequest: () => ({
+      prompt: prompt.trim() || undefined,
+    }),
+    fallbackErrorMessage: "知识构建失败，请重试。",
     onSuccess: (data) => {
       navigate(`/subject/${activeSubjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
@@ -443,16 +442,16 @@ export function HomePage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => buildMutation.mutate()}
-                    disabled={readyFiles.length === 0 || buildMutation.isPending}
+                    onClick={knowledgeBuild.submitBuild}
+                    disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
                     className={cn(
                       "shrink-0 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all px-5",
-                      readyFiles.length > 0 && !buildMutation.isPending
+                      readyFiles.length > 0 && !knowledgeBuild.isPending
                         ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
                         : "bg-slate-100 text-slate-400 cursor-not-allowed"
                     )}
                   >
-                    {buildMutation.isPending ? (
+                    {knowledgeBuild.isPending ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> <span className="text-sm font-bold">正在提交…</span></>
                     ) : (
                       <><span className="text-sm font-bold">构建知识产物</span><ArrowRight className="w-4 h-4 ml-0.5" /></>
@@ -464,9 +463,16 @@ export function HomePage() {
           </div>
         </motion.div>
 
+        {activeSubjectId ? (
+          <SubjectVectorNotice
+            status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
+            className="mt-4 w-full"
+          />
+        ) : null}
+
         {/* ── Error ── */}
         <AnimatePresence>
-          {(error || uploadMutation.isError || buildMutation.isError) && (
+          {(error || uploadMutation.isError || knowledgeBuild.errorMessage) && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -474,7 +480,7 @@ export function HomePage() {
               className="mt-4 w-full p-4 bg-red-50 border border-red-100 rounded-xl"
             >
               <p className="text-sm text-red-600 font-medium text-center">
-                {error || getApiErrorMessage(uploadMutation.error || buildMutation.error, "操作失败")}
+                {error || knowledgeBuild.errorMessage || getApiErrorMessage(uploadMutation.error, "操作失败")}
               </p>
             </motion.div>
           )}
@@ -613,6 +619,13 @@ export function HomePage() {
         AITeachMe Open Source Project
       </div>
     </div>
+    <KnowledgeBuildResolutionModal
+      open={knowledgeBuild.precheckConflict !== null}
+      conflict={knowledgeBuild.precheckConflict}
+      isSubmitting={knowledgeBuild.isPending}
+      onClose={knowledgeBuild.closePrecheckConflict}
+      onResolve={knowledgeBuild.resolvePrecheckConflict}
+    />
     </>
   );
 }

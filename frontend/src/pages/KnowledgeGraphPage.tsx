@@ -17,6 +17,7 @@ import {
 } from "../api/generated/knowledge";
 import { getApiErrorMessage } from "../api/client";
 import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../lib/knowledgeOverview";
@@ -147,6 +148,8 @@ export function KnowledgeGraphPage() {
             {getApiErrorMessage(overviewError, "知识概览加载失败")}
           </div>
         ) : null}
+
+        <SubjectVectorNotice status={overview?.vector_status} />
 
         {/* ---- Tab 切换 ---- */}
         <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
