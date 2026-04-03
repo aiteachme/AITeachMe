@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T14:18:09.253863",
-  "total_commits_analyzed": 340,
+  "generated_at": "2026-04-03T17:07:48.351430",
+  "total_commits_analyzed": 347,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2720,6 +2720,62 @@
       "total_lines": 105213,
       "code_lines": 79373,
       "other_lines": 25840,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "9766fc8",
+      "total_lines": 92988,
+      "code_lines": 69244,
+      "other_lines": 23744,
+      "message": "feat: 完善学科级向量绑定与知识构建降级流程"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "31577ac",
+      "total_lines": 100607,
+      "code_lines": 75770,
+      "other_lines": 24837,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "5d2e3ef",
+      "total_lines": 105213,
+      "code_lines": 79373,
+      "other_lines": 25840,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "0904a8c",
+      "total_lines": 105636,
+      "code_lines": 79747,
+      "other_lines": 25889,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "dead554",
+      "total_lines": 105636,
+      "code_lines": 79747,
+      "other_lines": 25889,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "3e49393",
+      "total_lines": 105049,
+      "code_lines": 79215,
+      "other_lines": 25834,
+      "message": "style: 改善interact ui和知识图谱ui"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "953dd9f",
+      "total_lines": 105472,
+      "code_lines": 79589,
+      "other_lines": 25883,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]

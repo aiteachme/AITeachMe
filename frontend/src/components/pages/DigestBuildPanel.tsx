@@ -1,5 +1,5 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Clock3,
@@ -10,10 +10,11 @@ import {
   Target,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage } from "../../api/client";
-import type { DocGenBuildData } from "../../api/generated/model";
+import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
+import { useKnowledgeBuildFlow } from "../../hooks/useKnowledgeBuildFlow";
 import type { FileRecord } from "../../types/files";
+import { KnowledgeBuildResolutionModal } from "./KnowledgeBuildResolutionModal";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -130,15 +131,6 @@ async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
     url: `/api/v1/subjects/${subject}/files`,
   });
   return (response.data?.items ?? []).filter((file) => file.markdown_ready);
-}
-
-async function buildKnowledge(subject: string, fileUids: string[]): Promise<DocGenBuildData> {
-  const response = await apiClient<ApiResponse<DocGenBuildData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: { file_uids: fileUids },
-  });
-  return response.data ?? { requested_at: new Date().toISOString() };
 }
 
 async function fetchKnowledgeDocsBuildState(subject: string): Promise<KnowledgeDocsBuildState> {
@@ -541,8 +533,12 @@ export function DigestBuildButton() {
     [readyFiles, selectedFileUids],
   );
 
-  const buildMutation = useMutation({
-    mutationFn: () => buildKnowledge(subject, Array.from(selectedFileUids)),
+  const knowledgeBuild = useKnowledgeBuildFlow({
+    subjectId: subject,
+    buildRequest: () => ({
+      file_uids: Array.from(selectedFileUids),
+    }),
+    fallbackErrorMessage: "触发知识构建失败。",
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subject] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
@@ -555,11 +551,17 @@ export function DigestBuildButton() {
         `已触发知识构建，本轮纳入 ${(data.accepted_file_uids ?? []).length} 份资料，文档和图谱会同步刷新。`,
       );
     },
-    onError: (error) => {
-      setLastBuildMessage("");
-      setLastBuildError(getApiErrorMessage(error, "触发知识构建失败。"));
-    },
   });
+
+  useEffect(() => {
+    if (!knowledgeBuild.errorMessage) {
+      return;
+    }
+    setLastBuildMessage("");
+    setLastBuildError(knowledgeBuild.errorMessage);
+  }, [knowledgeBuild.errorMessage]);
+
+  const isBuilding = knowledgeBuild.isPending;
 
   const toggleFile = (fileUid: string) => {
     setSelectedFileUids((previous) => {
@@ -573,8 +575,13 @@ export function DigestBuildButton() {
     });
   };
 
+  const openModal = () => {
+    setLastBuildError("");
+    setShowFileSelect(true);
+  };
+
   const closeModal = () => {
-    if (buildMutation.isPending) {
+    if (isBuilding) {
       return;
     }
     setShowFileSelect(false);
@@ -582,8 +589,8 @@ export function DigestBuildButton() {
 
   return (
     <>
-      <Button onClick={() => setShowFileSelect(true)} variant="outline" size="sm" disabled={buildMutation.isPending}>
-        {buildMutation.isPending ? (
+      <Button onClick={openModal} variant="outline" size="sm" disabled={isBuilding}>
+        {isBuilding ? (
           <>
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
             构建中...
@@ -656,14 +663,11 @@ export function DigestBuildButton() {
           ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={closeModal} disabled={buildMutation.isPending}>
+            <Button variant="outline" onClick={closeModal} disabled={isBuilding}>
               取消
             </Button>
-            <Button
-              onClick={() => buildMutation.mutate()}
-              disabled={selectedFileUids.size === 0 || buildMutation.isPending}
-            >
-              {buildMutation.isPending ? (
+            <Button onClick={knowledgeBuild.submitBuild} disabled={selectedFileUids.size === 0 || isBuilding}>
+              {isBuilding ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                   提交中...
@@ -678,6 +682,14 @@ export function DigestBuildButton() {
           </div>
         </div>
       </Modal>
+
+      <KnowledgeBuildResolutionModal
+        open={knowledgeBuild.precheckConflict !== null}
+        conflict={knowledgeBuild.precheckConflict}
+        isSubmitting={knowledgeBuild.isPending}
+        onClose={knowledgeBuild.closePrecheckConflict}
+        onResolve={knowledgeBuild.resolvePrecheckConflict}
+      />
     </>
   );
 }

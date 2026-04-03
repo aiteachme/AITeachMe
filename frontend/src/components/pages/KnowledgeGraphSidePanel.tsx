@@ -24,6 +24,7 @@ import {
   DigestBuildProvider,
 } from "./DigestBuildPanel";
 import { StudyPlanPanel } from "./StudyPlanPanel";
+import { SubjectVectorNotice } from "./SubjectVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -176,6 +177,7 @@ export function KnowledgeGraphSidePanel({
         <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
           <DigestBuildProgress compact />
           <StudyPlanPanel subject={subjectId} compact />
+          <SubjectVectorNotice status={overview?.vector_status} />
         </div>
 
         <div className="flex-1 overflow-auto bg-white p-3">

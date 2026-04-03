@@ -20,6 +20,7 @@ import {
   DigestBuildProvider,
 } from "../components/pages/DigestBuildPanel";
 import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import {
@@ -157,6 +158,7 @@ export function KnowledgeGraphPage() {
           <DigestBuildProgress />
           <StudyPlanPanel subject={subjectId} compact />
         </div>
+        <SubjectVectorNotice status={overview?.vector_status} />
 
         {overviewLoading ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">

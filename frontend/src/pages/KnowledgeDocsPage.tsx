@@ -21,11 +21,13 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useLocation, useParams } from "react-router-dom";
+import type { SubjectVectorStatusResponse } from "../api/generated/model";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -192,6 +194,7 @@ interface DocGenGetResponse {
   build?: DocGenBuildStatus | null;
   build_preview?: KnowledgeBuildPreview | null;
   build_metrics?: KnowledgeBuildMetrics | null;
+  vector_status?: SubjectVectorStatusResponse | null;
 }
 
 type DocViewMode = "live" | "draft";
@@ -3053,6 +3056,7 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
+                  <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {subjectId ? (
                     <StudyPlanPanel subject={subjectId} className="mb-6" />
                   ) : null}
