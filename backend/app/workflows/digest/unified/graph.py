@@ -238,6 +238,18 @@ def build_prepare_shared_node(*, context: WorkflowContext):
         )
         if not shared_inputs.source_packets or not shared_inputs.section_packets:
             return {**state, "error": "No shared digest inputs were produced."}
+        update_knowledge_build_status(
+            subject,
+            requested_at=state["requested_at"],
+            status="running",
+            stage="prepare_shared",
+            error_message=None,
+            digest_mode=shared_inputs.digest_mode_decision.mode.value,
+            mode_reason=shared_inputs.digest_mode_decision.reason,
+            total_chunks=len(shared_inputs.section_packets),
+            processed_chunks=0,
+            current_chunk=0,
+        )
 
         materialized = await materialize_shared_inputs(
             subject=subject,

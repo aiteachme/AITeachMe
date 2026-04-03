@@ -1,27 +1,35 @@
-import { lazy, Suspense, useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
-  Box,
   FolderTree,
   GitBranch,
   Loader2,
   Network,
-  Trash2
+  Orbit,
+  Trash2,
 } from "lucide-react";
 
-import {
-  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-} from "../../api/generated/knowledge";
+import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
-import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
-
-import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
-import { Modal } from "../ui/Modal";
+import {
+  OVERVIEW_INCLUDE_PRESETS,
+  buildKnowledgeOverviewQueryKey,
+  fetchKnowledgeOverview,
+} from "../../lib/knowledgeOverview";
+import {
+  DigestBuildButton,
+  DigestBuildProgress,
+  DigestBuildProvider,
+} from "./DigestBuildPanel";
+import { StudyPlanPanel } from "./StudyPlanPanel";
 import { Button } from "../ui/Button";
+import { Modal } from "../ui/Modal";
 
-const WordCloud3D = lazy(() => import("./WordCloud3D"));
+const SemanticUniverse = lazy(() =>
+  import("./SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
+);
 const ThemeTreeView = lazy(() =>
   import("./ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
 );
@@ -32,43 +40,68 @@ const KnowledgeGraphView = lazy(() =>
   import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
 );
 
-type KnowledgeViewTab = "word-cloud" | "theme-tree" | "prereq-dag" | "knowledge-graph";
+type KnowledgeViewTab = "semantic-universe" | "theme-tree" | "prereq-dag" | "knowledge-graph";
 
-const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
-  { id: "word-cloud", label: "词云", icon: <Box className="h-4 w-4" />, desc: "3D 词云展示知识分布" },
-  { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织" },
-  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序" },
-  { id: "knowledge-graph", label: "图谱", icon: <Network className="h-4 w-4" />, desc: "展示节点关系" },
+const VIEW_TABS: Array<{
+  id: KnowledgeViewTab;
+  label: string;
+  icon: ReactNode;
+  desc: string;
+}> = [
+  {
+    id: "semantic-universe",
+    label: "知识宇宙",
+    icon: <Orbit className="h-4 w-4" />,
+    desc: "稳定的语义星图。",
+  },
+  {
+    id: "theme-tree",
+    label: "主题树",
+    icon: <FolderTree className="h-4 w-4" />,
+    desc: "课程目录视角。",
+  },
+  {
+    id: "prereq-dag",
+    label: "先修图",
+    icon: <GitBranch className="h-4 w-4" />,
+    desc: "依赖和学习顺序。",
+  },
+  {
+    id: "knowledge-graph",
+    label: "专家图谱",
+    icon: <Network className="h-4 w-4" />,
+    desc: "底层知识图谱。",
+  },
 ];
 
 function TabFallback({ message }: { message: string }) {
   return (
-    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+    <div className="flex h-[360px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       {message}
     </div>
   );
 }
 
-export function KnowledgeGraphSidePanel({ 
+export function KnowledgeGraphSidePanel({
   subjectId,
-}: { 
+}: {
   subjectId: string;
 }) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
   const overviewInclude = useMemo(() => {
     switch (activeTab) {
-      case "word-cloud":
-        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
       case "theme-tree":
         return OVERVIEW_INCLUDE_PRESETS.themeTree;
       case "prereq-dag":
         return OVERVIEW_INCLUDE_PRESETS.prereqDag;
       case "knowledge-graph":
+      case "semantic-universe":
       default:
-        return OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
     }
   }, [activeTab]);
 
@@ -80,7 +113,7 @@ export function KnowledgeGraphSidePanel({
   } = useQuery({
     queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
     queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
-    enabled: Boolean(subjectId), 
+    enabled: Boolean(subjectId),
     retry: false,
   });
 
@@ -89,39 +122,33 @@ export function KnowledgeGraphSidePanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["docgen-content", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["study-plan", subjectId] });
       setShowClearConfirm(false);
     },
   });
 
   const subjectLabel = useMemo(() => {
-    if (/^subj_[a-z0-9]+$/.test(subjectId)) return "知识";
-    return subjectId || "知识";
+    if (/^subj_[a-z0-9]+$/i.test(subjectId)) {
+      return "知识宇宙";
+    }
+    return subjectId || "知识宇宙";
   }, [subjectId]);
-
-  const wordCloudNodes = useMemo(() => {
-    const graphNodes = overview?.graph?.nodes ?? [];
-    return graphNodes.map((node: { canonical_name: string; node_type: string; confidence: number }) => ({
-      name: node.canonical_name,
-      nodeType: node.node_type,
-      confidence: node.confidence,
-    }));
-  }, [overview?.graph?.nodes]);
 
   return (
     <DigestBuildProvider subject={subjectId}>
-      <div className="flex flex-col h-full w-full bg-white relative border-l border-slate-200/60 transition-colors duration-500">
-        {/* Toolbar: Tabs & Actions */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2 shrink-0 gap-4">
-          
-          {/* Left: View Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg">
+      <div className="flex h-full w-full flex-col bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
             {VIEW_TABS.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all ${
                   activeTab === tab.id
-                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/50"
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/70"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
                 title={tab.desc}
@@ -131,95 +158,86 @@ export function KnowledgeGraphSidePanel({
               </button>
             ))}
           </div>
-          
-          {/* Right: Actions */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <DigestBuildButton />
-            
-            <div className="h-4 w-px bg-slate-200 mx-1" />
 
+          <div className="flex items-center gap-1.5">
+            <DigestBuildButton />
+            <div className="mx-1 h-4 w-px bg-slate-200" />
             <button
+              type="button"
               onClick={() => setShowClearConfirm(true)}
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-              title="清空重新生成"
+              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500"
+              title="清空当前学科的知识结构"
             >
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-auto bg-white transition-colors duration-500 flex flex-col">
-          {overviewLoading && (
+        <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
+          <DigestBuildProgress compact />
+          <StudyPlanPanel subject={subjectId} compact />
+        </div>
+
+        <div className="flex-1 overflow-auto bg-white p-3">
+          {overviewLoading ? (
             <div className="flex min-h-full items-center justify-center px-6 py-10 text-sm text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               正在加载知识结构...
             </div>
-          )}
+          ) : null}
 
-          {overviewIsError && (
-            <div className="p-6">
-              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {overviewIsError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <div className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
                 <div>
-                  <p className="font-semibold mb-1">加载失败</p>
-                  <p>{getApiErrorMessage(overviewError, "获取知识概览时发生错误")}</p>
+                  <p className="mb-1 font-semibold">加载失败</p>
+                  <p>{getApiErrorMessage(overviewError, "获取知识概览时发生错误。")}</p>
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {!overviewLoading && !overviewIsError && (
-            <div className="flex-1 flex flex-col min-h-0">
-              {activeTab === "word-cloud" && (
-                <div className="flex-1 min-h-0 p-2">
-                  <Suspense
-                    fallback={
-                      <div className="flex h-full items-center justify-center rounded-xl border border-slate-800 bg-slate-950">
-                        <div className="flex items-center gap-2 text-sm text-slate-400">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          加载 3D 词云中...
-                        </div>
-                      </div>
-                    }
-                  >
-                    <WordCloud3D subjectLabel={subjectLabel} nodes={wordCloudNodes} />
-                  </Suspense>
-                </div>
-              )}
-              {activeTab === "theme-tree" && (
-                <Suspense fallback={<TabFallback message="正在加载主题树视图..." />}>
+          {!overviewLoading && !overviewIsError ? (
+            <>
+              {activeTab === "semantic-universe" ? (
+                <Suspense fallback={<TabFallback message="正在加载知识宇宙..." />}>
+                  <SemanticUniverse
+                    subjectLabel={subjectLabel}
+                    overviewGraph={overview?.graph ?? null}
+                    height="calc(100vh - 20rem)"
+                  />
+                </Suspense>
+              ) : null}
+
+              {activeTab === "theme-tree" ? (
+                <Suspense fallback={<TabFallback message="正在加载主题树..." />}>
                   <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
                 </Suspense>
-              )}
-              {activeTab === "prereq-dag" && (
-                <Suspense fallback={<TabFallback message="正在加载先修依赖视图..." />}>
+              ) : null}
+
+              {activeTab === "prereq-dag" ? (
+                <Suspense fallback={<TabFallback message="正在加载先修图..." />}>
                   <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
                 </Suspense>
-              )}
-              {activeTab === "knowledge-graph" && (
-                <div className="flex-1 min-h-0">
-                  <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
-                    <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
-                  </Suspense>
-                </div>
-              )}
-            </div>
-          )}
+              ) : null}
+
+              {activeTab === "knowledge-graph" ? (
+                <Suspense fallback={<TabFallback message="正在加载知识图谱..." />}>
+                  <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                </Suspense>
+              ) : null}
+            </>
+          ) : null}
         </div>
 
         <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-              <div className="text-sm text-red-700">
-                <p>此操作会删除该学科下已经构建的知识数据，包括：</p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-red-600">
-                  <li>知识图谱节点、边和证据</li>
-                  <li>教学单元、主题树和先修图</li>
-                  <li>课程快照等派生知识结构</li>
-                </ul>
-                <p className="mt-2 font-medium">已经生成的文档也将因结构变更而失效。</p>
+            <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+              <div className="text-sm text-rose-700">
+                <p>这会删除当前学科已经发布的知识图谱、教学单元、主题树、先修图以及相关快照。</p>
+                <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -229,7 +247,7 @@ export function KnowledgeGraphSidePanel({
               <Button
                 onClick={() => clearMutation.mutate()}
                 disabled={clearMutation.isPending}
-                className="bg-red-500 text-white hover:bg-red-600"
+                className="bg-rose-500 text-white hover:bg-rose-600"
               >
                 {clearMutation.isPending ? (
                   <>

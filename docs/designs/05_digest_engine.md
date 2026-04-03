@@ -1,439 +1,144 @@
-﻿TODO 一定要有检索的功能，用户要知道自己想学什么f
-TODO 对，检索更应该放在ingest模块 摄取模块包括网络检索、知识库检索以及上传内容的解析
-
-
 # 05. Digest 引擎总控设计
 
-## 1. 文档定位
+## 1. 定位
 
-本篇是 Digest 的总控文档，只负责讲三件事：
+Digest 是 AITeachMe 的“织网引擎”，负责把 ingest 已产出的规范化材料，重组为一套可发布、可学习、可被后续引擎消费的知识资产包。它不是单纯的“总结器”，而是统一编排以下三层结果：
 
-- unified digest 的顶层编排方式
-- 知识文档 lane、知识图谱 lane、curriculum lane 如何协同
-- 在质量、速度、成本之间如何做分层与门控
+- 面向学习者的知识文档
+- 面向系统的知识图谱与教学单元
+- 面向教学组织的 curriculum views（主题树、先修图、线性大纲、学习计划）
 
-本篇不再承担“把知识文档怎么写、知识图谱怎么建、课程树怎么讲透”的全部细节。更细的内容拆到：
+Digest 的目标优先级固定为：
 
-- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)
-- [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)
-
-Digest 的目标也不再是“把材料总结一下”，而是把 ingest 已经产出的原始资料，重组为一个稳定可发布的学习资产包：
-
-- 面向用户的知识文档包
-- 面向系统的知识图谱快照
-- 面向教学组织的 curriculum 信号与版本
+1. 语义结构正确
+2. 构建速度足够快，常规材料尽量控制在 5 分钟内可用
+3. 构建等待期可感知
+4. 对前端暴露尽可能少的接口
 
 ---
 
-## 2. 当前 Unified Digest 的问题与拆分原则
+## 2. 当前统一口径
 
-当前 `digest` 在工程上已经收口成 unified build，但设计上仍然有几个明显问题：
+### 2.1 后端主链路
 
-### 2.1 当前主要问题
+统一构建仍然走一条主链：
 
-- `05_digest_engine.md` 同时描述知识文档、知识图谱、curriculum、发布逻辑，导致单篇文档信息密度过高，读者很难快速定位职责边界。
-- 当前 unified consistency 主要校验 coverage gap、taxonomy drift 等“有没有覆盖到”，但还没有把“教学顺序对不对、章节粒度合不合理、例题和易错点够不够”纳入正式质量门控。
-- 当前 docs lane 和 kg lane 的共享契约仍然偏薄，尤其 `TopicAnchorSnapshot` 只能给出主题名、类型、置信度、chunk 映射，无法真正支撑高质量讲义规划。
-- 当前 build 主链路还是在“先生成文档初稿，再让 curriculum 对齐”，但未来目标应该是“知识文档、图谱、课程结构围绕同一份 blueprint 协同”。
+`prepare shared -> docs / kg -> curriculum -> publish`
 
-### 2.2 本次文档拆分原则
+但当前实现重点不再放在“拆更多 lane”，而是放在以下几个系统问题的治理：
 
-- 本篇只讲 unified digest 顶层真相，不重复细讲 05a 和 05b 的内部对象。
-- 任何状态对象、质量门控、发布语义，都必须先在总控文档中说明其全局角色，再由 05a / 05b 分别展开。
-- 未来如果 digest 再增加新的处理模式，优先扩展统一编排和对象契约，不再把新逻辑直接塞回单个 lane 的 prompt 或 fallback 模板。
+- 语义标题净化，避免 `Question 1`、`Question bank`、`第 1 题` 这类过程性标题进入主题骨架
+- typed resolution，避免仅按名称做跨类型、跨层级串线
+- chunk 物化增量化与 embedding 复用，避免每次全量重算
+- 教学单元、主题树、先修图围绕同一份知识图谱事实源构建
 
----
+### 2.2 模式决策
 
-## 3. 顶层编排总览
+Digest 继续支持两种教学模式：
 
-未来目标态的 unified digest 不再只是：
+- `sprint`：速成课，强调高频考点、题型、方法、易错点
+- `systematic`：系统课，强调完整依赖链、概念覆盖和课程结构
 
-`shared prepare -> doc/kg parallel -> consistency -> repair -> curriculum -> rebuild docs -> publish`
-
-而是要升级成三层机制：
-
-1. `Fast pass`
-2. `Deep pass`
-3. `Repair pass`
-
-### 3.1 Fast Pass
-
-目标是用规则、轻量模型和并发 I/O 快速完成基础结构化，不在这个阶段追求最终讲义质量。
-
-负责内容：
-
-- 原始材料画像
-- section / primitive 级切分
-- 图片、公式、表格、题目块定位
-- 粗粒度 topic clustering
-- 粗粒度依赖识别
-- 初步 curriculum 信号提取
-
-### 3.2 Deep Pass
-
-目标是只把昂贵的大模型预算花在真正需要智能重组的地方。
-
-负责内容：
-
-- topic cluster 命名与归并
-- document blueprint 规划
-- chapter blueprint 规划
-- 图谱歧义点 resolve
-- 章节讲义写作
-- 教学质量审校
-
-### 3.3 Repair Pass
-
-目标是 bounded repair，而不是出现问题就全量重跑。
-
-负责内容：
-
-- 修复失败章节
-- 修复高风险 cluster
-- 修复关键 coverage 缺口
-- 修复 graph/docs 的结构不一致 
+模式由后端根据材料画像自动判断，但前端不需要依赖额外模式接口。模式信息如需展示，只允许作为已有响应中的附属字段出现，不能为此新增专用 API。
 
 ---
 
-## 4. Shared Prepare 设计
+## 3. 接口原则
 
-Shared Prepare 仍然只执行一次，但未来职责要比当前更强。
+Digest 当前遵循“少 API、POST 优先”的约束。
 
-### 4.1 输入
+### 3.1 保留接口
 
-- `raw_file.markdown_path`
-- `raw_file.asset_dir`
-- ingest 已产出的规范化 markdown 与资源目录
+- `POST /api/v1/subjects/{subject}/knowledge/build`
+- `POST /api/v1/subjects/{subject}/knowledge/docs`
+- `POST /api/v1/subjects/{subject}/knowledge/overview`
+- `POST /api/v1/subjects/{subject}/knowledge/study-plan`
 
-### 4.2 当前已存在的核心产物
+### 3.2 不再推荐的接口形态
 
-- `SourcePacket`
-- `SectionPacket`
-- `ChunkIdentityMap`
-- `FastTopicHints`
-- `AssetRegistry`
+以下形态不再作为 digest 设计目标：
 
-### 4.3 目标态新增产物
+- 独立 `build-status` 接口
+- `GET /study-plan`
+- `PATCH /study-plan/checklist`
+- 为等待态额外新增 SSE 通道
 
-- `MaterialProfile`
-- `PrimitiveIndex`
-- `SectionFeatureMap`
-- `SourceReliabilitySummary`
+### 3.3 等待态原则
 
-### 4.4 Shared Prepare 的职责升级
+知识文档和图谱页的等待态统一复用：
 
-当前 `prepare_shared_inputs()` 只负责：
+- `POST /knowledge/build` 触发构建
+- `POST /knowledge/docs` 轮询文档与最小 build 状态
+- 前端本地生成平滑进度，不要求后端提供精确 ETA、chunk 计数或 sample cards
 
-- 读取 markdown
-- 规范化文本
-- 切 section
-- 提取 fast hints
-- 识别 subject profile
+后端对 `POST /knowledge/docs` 的 `build` 字段只需暴露最小可用集：
 
-未来它必须额外明确：
-
-- 哪些 section 是概念密集型，哪些是题目密集型
-- 哪些 section 更像定义、定理、方法、例题、警告、程序化说明
-- 哪些 source 重复度高、可信度低、OCR 噪声高
-- 哪些 chunk 适合成为章节主轴，哪些只适合做证据补充
-- 当前学科/子学科是什么，材料更像教材、题单还是讲义
-- 当前更适合走 `sprint` 还是 `systematic`，以及这个判断来自哪些证据
-
-### 4.5 设计约束
-
-- Shared Prepare 仍然不承担最终讲义编写。
-- Shared Prepare 输出的是“可复用、可缓存、可供多 lane 消费的材料画像”。
-- Shared Prepare 不直接切 live，也不写任何最终知识产物。
-- `subject recognition / material profiling / user prompt normalization / asset indexing` 应允许并行执行，先完成 Fast Pass，再进入 blueprint 规划。
+- `status`
+- `requested_at`
+- `stage`
+- `error_message`
+- `draft_available`
 
 ---
 
-## 5. Knowledge Document Lane 设计
+## 4. 统一产物
 
-知识文档 lane 的详细设计见 [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)。本篇只定义它在 unified digest 中的角色。
+Digest 的统一产物分三层。
 
-### 5.1 目标职责
+### 4.1 底层真相源：Knowledge Graph
 
-- 根据材料画像、图谱信号与模式配置，生成知识文档包
-- 输出可发布的章节文档、聚合文档与 manifest
-- 对用户呈现“系统课”或“速成课”两种模式
-- 两种模式共用同一套 shared prepare、图谱、curriculum 与文档包骨架，不拆成两套独立 workflow
+- 节点、边、证据是语义事实源
+- 节点内容通过 revision 承载
+- `taxonomy_hint` 必须进入可持久化元数据，而不是只停留在内存候选节点
 
-### 5.2 输入契约
+### 4.2 中层组织：Teaching Unit
 
-- `MaterialProfile`
-- `PrimitiveIndex`
-- `TopicMapSnapshot`
-- `CurriculumBlueprintSignal`
-- `DigestModeDecision`
-- `digest_mode = sprint | systematic`
+- 教学单元由知识图谱聚类而来
+- unit 是最小可讲授粒度
+- `Example`、`Definition` 作为 support 节点，不应该反向成为主题主锚点
 
-### 5.3 输出契约
+### 4.3 上层视图：Curriculum Views
 
-- `DocumentBlueprint`
-- `ChapterBlueprint[]`
-- `ChapterAuditReport[]`
-- `DocumentPackageManifest`
-- `chapter documents`
-- `subchapter documents`
-- `merged knowledge document`
-
-### 5.4 设计要求
-
-- docs lane 不能再只依赖标题归纳和 prompt 自由发挥。
-- docs lane 必须以 blueprint 为核心，不允许直接从 section packet 跳到成文讲义。
-- docs lane 的最终发布产物是 `document package`，不是只有一个 merged markdown。
+- 主题树：浏览和目录导航
+- 先修图：依赖与学习路径
+- 线性大纲：课程顺序
+- 学习计划：学习阶段 + checklist
 
 ---
 
-## 6. Knowledge Graph Lane 设计
+## 5. 前端展示约束
 
-知识图谱 lane 的详细设计见 [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)。本篇只定义它在 unified digest 中的角色。
+### 5.1 知识文档页
 
-### 6.1 目标职责
+- 右侧继续保留 AI 评论区
+- 学习计划在正文顶部内联展示
+- 构建等待态和更新 banner 只读 `POST /knowledge/docs`
 
-- 产出可被知识文档、curriculum、interact、examine 共同消费的语义底座
-- 维护主题、概念、方法、别名、依赖、证据之间的稳定关系
-- 在增量重建时输出受影响范围，而不是只生成一份静态图
+### 5.2 知识图谱页
 
-### 6.2 输入契约
+- 学习者默认视图改为稳定语义星图
+- 随机漂移的 3D 词云不再作为主方案
+- `DigestBuildProgress` 与 `StudyPlanPanel` 可在图谱页和侧边图谱面板展示，但都基于已有接口
 
-- `MaterialProfile`
-- `PrimitiveIndex`
-- `ChunkIdentityMap`
-- 可选的 `ChapterBlueprint` 先验
+### 5.3 Study Plan 交互
 
-### 6.3 输出契约
-
-- `TopicMapSnapshot`
-- `ConceptDependencySnapshot`
-- `CurriculumBlueprintSignal`
-- `GraphImpactSet`
-
-### 6.4 设计要求
-
-- kg lane 不再只服务于图谱展示页。
-- kg lane 必须显式服务于知识讲义规划、课程编排、未来 memory / skills / tools 等扩展能力。
-- kg lane 的输出不能再收敛为薄弱的 `TopicAnchorSnapshot`。
+- 学习计划保留一个单独的 `POST /study-plan`
+- 空请求体表示查询
+- 带 `item_id + completed` 表示更新后返回全量
+- 前端直接用全量响应刷新缓存，不拆局部接口
 
 ---
 
-## 7. Curriculum 生成与对 Docs 的反向约束
+## 6. 当前最重要的设计约束
 
-curriculum 仍然是 unified digest 的重要收口层，但它不应再只是图谱下游的附属产物。
-
-### 7.1 Curriculum 的目标角色
-
-- 把图谱中的主题与依赖关系转译成可教学组织的结构
-- 为知识文档提供“哪些主题应该成为章节主轴”的稳定约束
-- 为未来的 examine / profile 提供教学颗粒度一致的组织骨架
-
-### 7.2 对 Docs 的反向约束
-
-curriculum 未来要对知识文档提供三类约束：
-
-- 章节主轴约束：哪些主题必须成为主章节而不是埋在小节里
-- 依赖顺序约束：哪些内容必须先讲，哪些内容必须后讲
-- 聚合边界约束：哪些知识点适合合并成一个单元，哪些应该拆开
-
-### 7.3 设计原则
-
-- curriculum 不是直接把树渲染成讲义。
-- docs 也不能完全无视 curriculum。
-- 最终讲义要“受 curriculum 约束，但不机械复制 curriculum 节点名”。
+- 不再为了“看起来更实时”而堆更多专用接口
+- 优先保持知识图谱、主题树、学习计划三者语义一致
+- 任何性能优化都优先做在 embedding 复用、chunk 增量物化、聚类分桶和减少串行上
+- 任何等待体验优化都优先复用现有接口和前端本地状态，而不是扩接口
 
 ---
 
-## 8. 一致性校验、质量门控与 Bounded Repair
+## 7. 与子文档的关系
 
-当前 `unified/consistency.py` 主要围绕四类问题：
-
-- `doc_over_graph_gaps`
-- `graph_over_doc_gaps`
-- `orphan_signals`
-- `taxonomy_drifts`
-
-这套校验对于发现明显漏项有用，但还不够。
-
-### 8.1 目标态质量门控
-
-未来 unified digest 需要正式引入：
-
-- `DigestQualityReport`
-- `RepairPlan`
-
-并把质量门控扩展为两大类：
-
-### 8.2 结构一致性
-
-- docs 是否覆盖图谱主主题
-- 图谱是否存在无人消费的孤立主题
-- curriculum 是否与 docs 主轴严重漂移
-- graph/docs 是否引用了不同 chunk 边界
-
-### 8.3 教学质量
-
-- 章节顺序是否满足前置依赖
-- 章节粒度是否过粗或过细
-- 概念、方法、例题、易错点比例是否失衡
-- 公式保真是否达标
-- 速成课与系统课是否遵守各自质量门槛
-
-### 8.4 Bounded Repair 原则
-
-- 修失败章节，不修整本书
-- 修高风险 topic cluster，不重建所有 cluster
-- 修 manifest 缺口，不重新生成所有章节资源
-- repair 必须有预算上限，避免无限循环
-
----
-
-## 9. 速度、成本与质量的分层策略
-
-Digest 未来必须正面支持“上千页资料”的处理，而不是默认材料量永远较小。
-
-### 9.1 速度优先策略
-
-- 大规模文本先做层级压缩，不把全量原文直接送入同一个大 prompt
-- 先在 primitive / block / cluster 层完成大部分归并
-- 只把高价值节点送进 Deep Pass
-
-### 9.2 成本优先策略
-
-- 轻量结构化阶段优先规则和便宜模型
-- 大模型只做命名、重组、规划、审校
-- repair 优先局部重跑
-
-### 9.3 质量优先策略
-
-- 系统课模式优先保障依赖链、概念完整性和推导逻辑
-- 速成课模式优先保障题型归纳、易错点、复习抓手和压缩效率
-- 两种模式共享底层材料画像、图谱、curriculum 与发布结构，只在 chapter blueprint、提示词深度、证据预算和审校标准上做差异化
-
----
-
-## 10. 发布语义、失败恢复与运行指标
-
-### 10.1 发布语义
-
-未来统一发布语义保持如下约束：
-
-- docs、graph、curriculum 共用同一 `build_session_id`
-- 任一核心产物不达标，则整体不切 live
-- build 中间态只写 staging
-- 最终只发布同一批次一致的知识文档包、图谱快照和 curriculum 版本
-
-### 10.2 文档包发布形态
-
-知识文档最终发布为：
-
-- `chapter documents`
-- `subchapter documents`
-- `merged knowledge document`
-- `manifest`
-
-重建规则：
-
-- 每次正式重建都生成新的文档版本
-- 当前版本切到 `is_current = true`
-- 老版本不直接删除，只标记为 superseded
-
-`manifest` 至少包含：
-
-- `mode`
-- `chapter order`
-- `chapter type`
-- `source coverage`
-- `graph/topic references`
-- `curriculum alignment`
-
-### 10.3 失败恢复
-
-- graph 失败时，不发布 docs 半成品
-- docs 失败时，不发布 graph-only 的用户态知识文档
-- curriculum 失败时，本次 unified build 视为未完成
-- bounded repair 失败时，保留旧 live，不覆盖发布
-
-### 10.4 运行指标
-
-Digest 后续需要监控的运行指标包括：
-
-- source 数量、page 数、primitive 数
-- cluster 数、resolved topic 数
-- chapter 数、chapter audit 失败率
-- graph/docs consistency gap 数
-- 单次 build 总耗时、Deep Pass 耗时、Repair Pass 耗时
-
----
-
-## 11. 实施顺序与验收标准
-
-本轮只改设计文档，不改代码。后续实现建议按以下顺序推进：
-
-1. 先重写 docs lane 设计与对象契约
-2. 再升级 kg lane 输出契约
-3. 然后重写 unified consistency 和 repair 语义
-4. 最后再改前端 digest 模式选择和文档包消费
-
-### 11.1 文档层验收标准
-
-- 读者可以只看本篇，就理解 unified digest 的总控边界
-- 读者可以顺着本篇跳到 05a / 05b，不再被单文档信息堆叠淹没
-- 本篇明确规定了 `digest_mode`、`document package`、`TopicMapSnapshot` 等核心目标对象
-- 本篇明确规定了 Fast Pass / Deep Pass / Repair Pass 三层机制
-
-### 11.2 后续实现层验收标准
-
-- 前端能选择 `sprint | systematic`
-- 知识文档以文档包发布，而不只是一个 merged markdown
-- docs lane 与 kg lane 通过 richer contract 协同，而不是只靠 `TopicAnchorSnapshot`
-- unified quality gate 同时覆盖一致性与教学质量
-## 11. 运行时对齐更新（2026-03-30）
-
-本节用于记录当前实现里已经接通的运行时能力。即使文档前文某些段落仍偏向目标态描述，这里也以现状实现为准。
-
-### Shared prepare
-
-- `prepare_shared_inputs()` 现在会同时产出 `material_profile` 与 `digest_mode_decision`。
-- docs、KG、curriculum 三条 lane 共享同一份材料类型判断，不再在后续流程里重复各自猜测。
-
-### 面向题型材料的快速路径
-
-- 对于题目密度高、接近试卷形态的材料，系统现在可以让很多 chunk 跳过最重的 KG 抽取路径。
-- 快速路径依赖已有信号，例如 `question_block_count`、`exercise_density`、`content_type=exam_paper`、`digest_mode_decision.mode`。
-- 设计原则是：重型 LLM 调用应当保留给命名、规划、消歧和教学综合，而不是浪费在每个显而易见的题块上。
-
-### 统一构建生命周期
-
-运行时现在会显式写出阶段，而不是只靠模糊的完成日志推断：
-
-1. `accepted` / `build_accepted`
-2. `running` / `prepare_shared`
-3. `running` / `doc_lane_staged`
-4. `running` / `graph_ready`
-5. `running` / `curriculum_deriving`
-6. `publishing`
-7. `completed` / `failed` / `cancelled`
-
-### 已与本文档对齐的吞吐优化
-
-- KG 写入持久化已经改为批量提交，不再对每个 node、edge、alias、evidence 单独 commit。
-- curriculum 的 unit 命名不再是完全串行，而是采用有界并发和更轻量的任务配置。
-- theme tree 构建会预加载 unit 与 evidence 上下文，避免成员级别的 N+1 查询。
-
-### 后台任务归属
-
-- 由 API 触发的长流程现在统一归应用级 background-task registry 管理。
-- 应用关闭时会向已跟踪任务发出取消信号，并短暂等待清理完成。
-- digest 的 fan-out 分支应当继续传播 `CancelledError`，避免留下脱管子任务。
-
-## 2026-03-31 可观测性补充
-
-digest 运行时现在把耗时和 token 可观测性视为跨 lane 的共享契约，而不是各工作流内部各自为政的日志格式。
-
-- 每次 digest build 都以 `build_session_id` 作为范围，LLM 调用会自动继承 `subject`、`workflow`、`lane`、`node` 等运行时上下文。
-- 每条 lane 在成功完成时必须输出且只输出一条 summary 日志；在运行时失败时也必须输出一条 partial summary。
-- summary 至少应包含 `status`、`error_message`、`workflow_elapsed_ms`、分步骤耗时、token 总量、模型与任务类型分布，以及 Top-K 慢项。
-- unified digest 需要聚合各 lane 的耗时与 token 总量，并产出一个 `unified_digest_timing_summary` 负载，用于回归对比。
-- 新增 digest lane 时，应优先接入 `backend/app/workflows/digest/observability.py` 中的公共 helper，而不是再发明一套 lane 专属日志格式。
-- 当前运行时可观测性仍以 token 维度为主，货币成本换算会在定价表稳定后再引入。
+- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)：文档生成、等待态、学习计划在 docs 页的整合
+- [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)：知识图谱、typed resolution、语义星图与 curriculum 依赖

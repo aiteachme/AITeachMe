@@ -42,7 +42,11 @@
       "WebFetch(domain:deepwiki.com)",
       "Bash(python -c \"from app.core.config import get_settings; from app.infra.llm import acompletion; print\\(''OK: both imports work''\\)\")",
       "Bash(where python3:*)",
-      "Bash(where python:*)"
+      "Bash(where python:*)",
+      "Bash(xargs grep:*)",
+      "Bash(git -C \"/c/Project/Project1GIT/AITeachMe1\" diff -- \"backend/app/workflows/digest/curriculum/services/theme_tree_builder.py\" \"backend/app/workflows/digest/curriculum/services/unit_builder.py\" \"backend/app/workflows/digest/kg/prepare_nodes.py\" \"backend/app/workflows/digest/kg/services/extractor.py\" \"backend/app/workflows/digest/prompts/kg_prompts.py\" \"backend/app/schemas/knowledge.py\" \"backend/app/infra/embedding.py\" \"backend/app/utils/docgen_store.py\" \"frontend/src/components/pages/WordCloud3D.tsx\" \"frontend/package.json\")",
+      "Bash(git -C \"/c/Project/Project1GIT/AITeachMe1\" diff --stat)",
+      "Bash(git -C \"/c/Project/Project1GIT/AITeachMe1\" status --short)"
     ]
   }
 }

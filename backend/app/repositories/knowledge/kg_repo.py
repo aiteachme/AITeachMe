@@ -379,7 +379,8 @@ def create_evidence_link(
         node = session.get(KnowledgeNode, link.entity_id)
         if node is not None:
             refs = _load_json_list(node.evidence_refs_json)
-            refs.append(payload)
+            if payload not in refs:
+                refs.append(payload)
             node.evidence_refs_json = _dump_json_list(refs)
             session.add(node)
             if auto_commit:
@@ -388,7 +389,8 @@ def create_evidence_link(
         edge = session.get(KnowledgeEdge, link.entity_id)
         if edge is not None:
             refs = _load_json_list(edge.evidence_refs_json)
-            refs.append(payload)
+            if payload not in refs:
+                refs.append(payload)
             edge.evidence_refs_json = _dump_json_list(refs)
             session.add(edge)
             if auto_commit:

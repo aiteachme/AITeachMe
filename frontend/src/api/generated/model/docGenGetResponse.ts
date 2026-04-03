@@ -5,7 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { DocGenBuildStatusResponse } from './docGenBuildStatusResponse';
+import type { KnowledgeBuildStatusResponse } from './knowledgeBuildStatusResponse';
 
 /**
  * Knowledge docs get response.
@@ -26,5 +26,5 @@ export interface DocGenGetResponse {
   /** Last updated time of the staging draft. */
   draft_updated_at?: string | null;
   /** Current or most recent build metadata. */
-  build?: DocGenBuildStatusResponse | null;
+  build?: KnowledgeBuildStatusResponse | null;
 }

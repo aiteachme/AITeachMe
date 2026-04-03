@@ -12,11 +12,13 @@ from app.core.database import managed_session
 from app.models import RetrievalChunk
 from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
+from app.workflows.digest.kg.services.candidate_identity import candidate_lookup_keys
 from app.workflows.digest.kg.services.clusterer import cluster_candidates
 from app.workflows.digest.kg.services.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,
+    has_conceptual_content,
 )
 from app.workflows.digest.observability import add_slow_item
 from app.workflows.digest.kg.state import KGDigestState
@@ -25,10 +27,21 @@ from app.workflows.common.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
-def _resolve_extract_parallelism() -> int:
+def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
-    # Use dedicated config, bounded between 1 and llm_concurrency_limit
-    return max(1, min(settings.kg_extract_max_parallelism, settings.llm_concurrency_limit))
+    ceiling = settings.llm_concurrency_limit
+    configured = settings.kg_extract_max_parallelism
+    # Adaptive: scale parallelism with chunk count so small jobs don't
+    # over-subscribe and large jobs saturate the concurrency budget.
+    if chunk_count <= 0:
+        return max(1, min(configured, ceiling))
+    if chunk_count <= 20:
+        adaptive = min(chunk_count, 10)
+    elif chunk_count <= 100:
+        adaptive = min(chunk_count, 20)
+    else:
+        adaptive = min(chunk_count, 30)
+    return max(1, min(adaptive, configured, ceiling))
 
 
 def _build_taxonomy_hints(chapter_priors: ChapterPriors | None) -> set[str]:
@@ -61,7 +74,7 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
         representative = cluster.representative
-        if not representative.name:
+        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -157,11 +170,14 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
         digest_logger = workflow_logger(state)
         try:
             chunk_ids = list(state.get("chunk_ids", []))
-            extract_parallelism = min(_resolve_extract_parallelism(), max(1, len(chunk_ids)))
+            extract_parallelism = _resolve_extract_parallelism(len(chunk_ids))
             build_session_id = state.get("build_session_id", "")
             chapter_priors: ChapterPriors | None = None
             subject_context = ""
             shared_inputs = None
+            digest_mode = ""
+            sibling_topics = ""
+            chapter_topic_hints: list[str] = []
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
                 shared_inputs = unified_session.shared_inputs
@@ -171,6 +187,17 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 )
                 if unified_session.shared_inputs and unified_session.shared_inputs.subject_profile:
                     subject_context = unified_session.shared_inputs.subject_profile.build_context_string()
+                # Resolve digest mode for prompt context
+                if shared_inputs and shared_inputs.digest_mode_decision:
+                    digest_mode = shared_inputs.digest_mode_decision.mode.value
+                # Build sibling topics hint from chapter priors
+                if chapter_priors:
+                    all_terms: list[str] = []
+                    for ch in chapter_priors.chapters:
+                        chapter_topic_hints.append(ch.title)
+                        chapter_topic_hints.extend(ch.section_titles[:3])
+                        all_terms.extend(ch.key_terms[:3])
+                    sibling_topics = "、".join(all_terms[:15])
 
             taxonomy_hints = _build_taxonomy_hints(chapter_priors)
             digest_logger.info(
@@ -224,6 +251,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             def _should_prefer_fast_path(chunk_id: int) -> bool:
                 if shared_inputs is None:
                     return False
+                # Small material: never use fast path, always LLM extract
+                if len(chunk_ids) < 20:
+                    return False
                 chunk_uid = chunk_id_to_chunk_uid.get(chunk_id)
                 if not chunk_uid:
                     return False
@@ -231,19 +261,21 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 if section_index is None or section_index >= len(shared_inputs.section_packets):
                     return False
                 section = shared_inputs.section_packets[section_index]
-                material_profile = shared_inputs.material_profile
-                digest_mode = shared_inputs.digest_mode_decision
-                exercise_density = material_profile.stats.exercise_density
+                # Only use fast path for chunks that are overwhelmingly
+                # question-based (>= 3 question blocks) AND the material is
+                # clearly an exam paper.  Mixed content (concepts + questions)
+                # must go through LLM extraction to produce proper Concept /
+                # Method nodes instead of only Example nodes.
+                if section.question_block_count < 3:
+                    return False
+                # If the section contains conceptual content (definitions,
+                # theorems, formula blocks, or significant non-question text),
+                # it must go through LLM extraction even if question-heavy.
+                if has_conceptual_content(section.normalized_content):
+                    return False
                 return (
-                    section.question_block_count >= 2
-                    or (
-                        section.question_block_count >= 1
-                        and (
-                            shared_inputs.subject_profile.content_type == "exam_paper"
-                            or exercise_density >= 0.35
-                            or digest_mode.mode.value == "sprint"
-                        )
-                    )
+                    shared_inputs.subject_profile.content_type == "exam_paper"
+                    or shared_inputs.material_profile.stats.exercise_density >= 0.5
                 )
 
             async def _extract_single(index: int, chunk_id: int):
@@ -262,6 +294,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             doc_source_type=getattr(chunk, "source_type", None),
                             subject_context=subject_context,
                             prefer_fast_path=used_fast_path,
+                            sibling_topics=sibling_topics,
+                            digest_mode=digest_mode,
+                            chapter_topic_hints=chapter_topic_hints,
                         )
                     _apply_taxonomy_hints(result, taxonomy_hints)
                     edge_payload = [(edge, chunk_id) for edge in result.edges]
@@ -340,6 +375,29 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                             progress=min(progress, 40),
                             current_step="extract",
                         )
+                        # Update runtime status with discovered node stats
+                        total_nodes = sum(len(r.nodes) for r in ordered_results)
+                        type_counts: dict[str, int] = {}
+                        sample_nodes: list[dict[str, str]] = []
+                        for r in ordered_results:
+                            for n in r.nodes:
+                                type_counts[n.node_type] = type_counts.get(n.node_type, 0) + 1
+                                if len(sample_nodes) < 6 and n.node_type in ("Topic", "Concept", "Method"):
+                                    sample_nodes.append({"name": n.name, "type": n.node_type})
+                        try:
+                            from app.utils.docgen_store import update_knowledge_build_status
+                            update_knowledge_build_status(
+                                state["subject"],
+                                progress_pct=min(progress, 40),
+                                discovered_node_count=total_nodes,
+                                discovered_node_types=type_counts,
+                                sample_nodes=sample_nodes,
+                                processed_chunks=completed_count,
+                                total_chunks=len(chunk_ids),
+                                current_chunk=completed_count,
+                            )
+                        except Exception:
+                            pass  # non-critical
             except asyncio.CancelledError:
                 await cancel_tasks_and_drain(tasks)
                 raise
@@ -351,6 +409,18 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 progress=40,
                 current_step="extract",
             )
+            try:
+                from app.utils.docgen_store import update_knowledge_build_status
+
+                update_knowledge_build_status(
+                    state["subject"],
+                    progress_pct=40,
+                    processed_chunks=len(chunk_ids),
+                    total_chunks=len(chunk_ids),
+                    current_chunk=len(chunk_ids),
+                )
+            except Exception:
+                pass
             total_nodes = sum(len(result.nodes) for result in ordered_results)
             total_edges = len(all_candidate_edges)
             digest_logger.info(
@@ -438,10 +508,10 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 return {
                     **state,
                     "clustered_candidates": [],
-                    "candidate_name_to_cluster_id": {},
+                    "candidate_lookup_to_cluster_id": {},
                 }
 
-            clustered, name_to_cluster = await cluster_candidates(all_pairs)
+            clustered, lookup_to_cluster = await cluster_candidates(all_pairs)
             build_session_id = state.get("build_session_id", "")
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
@@ -464,7 +534,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
             return {
                 **state,
                 "clustered_candidates": clustered,
-                "candidate_name_to_cluster_id": name_to_cluster,
+                "candidate_lookup_to_cluster_id": lookup_to_cluster,
             }
         except Exception as exc:
             digest_logger.error("kg_workflow_cluster_failed", error=str(exc), exc_info=True)

@@ -1,348 +1,234 @@
 # 05B. Digest 知识图谱设计
 
-## 1. 文档定位
+## 1. 目标
 
-本篇专门定义 Digest 的知识图谱 lane，回答三个问题：
+Digest 的知识图谱不是图谱页的附属展示数据，而是整个系统的语义事实源。它要同时服务于：
 
-- 图谱为什么不能只停留在“抽节点和边”
-- 图谱怎样成为知识文档、curriculum、interact、examine 的语义底座
-- 图谱要向 docs lane 暴露什么 richer contract，才能支撑高质量讲义生成
+- 知识文档结构化生成
+- curriculum views（主题树、先修图、线性大纲、学习计划）
+- 后续的 interact / examine / profile
 
-本篇不承担 unified 编排细节，也不细讲知识文档写作细节。相关内容分别见：
+当前图谱设计的核心目标是：
 
-- [05_digest_engine.md](./05_digest_engine.md)
-- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)
+- 消灭 `Question*` 假主题
+- 消灭名称串线
+- 让教学单元和主题树建立在正确的图谱骨架上
+- 提升构建吞吐，避免随图谱规模退化
 
 ---
 
-## 2. 当前图谱链路的问题审计
+## 2. 三层结构
 
-当前 kg lane 的主链大致是：
+### 2.1 底层：Knowledge Graph
 
-`prepare -> extract -> cluster -> resolve_nodes -> resolve_edges -> analyze_impact -> finalize_graph`
+图谱真相源由三部分组成：
 
-这个结构已经比早期版本清晰很多，但仍有几个明显短板。
+- 节点
+- 边
+- 证据
 
-### 2.1 问题一：对 docs lane 暴露的接口太薄
+设计约束：
 
-当前 finalize 阶段主要构建的是 `TopicAnchorSnapshot`，里面只有：
+- Node 表承载身份、路由和状态
+- 节点内容由 revision 承载
+- 每次构建应尽量做增量更新，而不是全量重建
 
-- `topic_name`
+### 2.2 中层：Teaching Unit
+
+教学单元由知识节点聚类得到，是最小可讲授单位。
+
+约束：
+
+- unit 只包含语义紧密相关的一组知识点
+- `Topic / Concept / Method` 是主骨架
+- `Definition / Example` 作为 support 附着，不反向成为主锚点
+
+### 2.3 上层：Curriculum Views
+
+从教学单元派生：
+
+- 主题树
+- 先修图
+- 线性大纲
+- 学习计划
+
+图谱层负责提供稳定的事实源，不直接决定最终文案写法。
+
+---
+
+## 3. 当前重点修复
+
+### 3.1 语义标题净化
+
+图谱抽取阶段必须共享一套标题净化规则，过滤以下非语义标题：
+
+- `Question bank`
+- `Question 1`
+- `Question 12`
+- `第 1 题`
+- `Preamble`
+- `Page OCR`
+- `(root)`
+
+净化目标：
+
+- 不让题号或过程性标题成为正式主题树叶子
+- 不让 docs lane 和 kg lane 使用两套不同净化逻辑
+
+### 3.2 Question fallback 约束
+
+题库/试卷型材料的 fallback 结构固定为：
+
+- `Topic -> Concept/Method -> Example`
+
+其中：
+
+- Topic 必须是清洗后的语义主题，而不是题号
+- Example 只能作为叶子支撑节点
+- 如果无法确定主题，宁可回落到“典型题与综合应用”这类教学语义名，也不能回落到 `Question 7`
+
+### 3.3 Typed resolution
+
+当前图谱解析不允许再依赖“纯名称盲查”。
+
+节点与边解析至少要带上：
+
 - `node_type`
-- `confidence`
-- `chunk_uids`
+- `normalized_name`
+- 局部 bucket / local scope
 
-这对文档规划来说明显不够，因为它缺失：
+约束：
 
-- topic 的稳定别名
-- topic 的代表证据
-- topic 的核心公式与方法线索
-- topic 与 topic 之间的依赖
-- topic 是否适合成为章节主轴
+- 同名 `Topic / Concept / Method` 不允许互串
+- `Definition / Example` 的去重必须限制在父节点作用域内
+- 边端点解析优先使用候选节点类型、父子上下文和本批 cluster 结果
 
-### 2.2 问题二：当前 consistency 更偏 coverage，不偏教学
+### 3.4 taxonomy_hint 持久化
 
-当前 `unified/consistency.py` 能发现：
+`taxonomy_hint` 不能只存在于内存候选节点中，必须落进节点元数据或证据路径，否则：
 
-- docs 有没有覆盖 graph
-- graph 有没有没人用的主题
-- docs / graph 命名是否漂移
-
-但它看不到：
-
-- prerequisite 顺序是否合理
-- 某章是否只有概念没有例题
-- 某个 topic 是否应该上升成主章节
-- 某些边是否只是弱相关，而不该牵引 curriculum
-
-### 2.3 问题三：图谱还没有显式区分“显示价值”和“教学价值”
-
-当前所有 resolved node 在下游眼里都差不多，但现实里并不是：
-
-- 有些主题适合做章节主轴
-- 有些主题适合做辅助说明
-- 有些主题只是术语别名
-- 有些主题更像题型线索，而不是概念主干
-
-如果不区分这些角色，docs lane 只能被迫自己再猜一遍。
-
-### 2.4 问题四：impact 分析还没有真正驱动局部重建
-
-当前已有 `impact_set`，但设计上还没有把它完全扩展为：
-
-- 影响哪些 topic cluster
-- 影响哪些 chapter blueprint
-- 影响哪些 curriculum branch
-
-这会限制未来的 bounded repair 和增量重建能力。
+- teaching unit builder 读不到真实 hint
+- theme tree builder 无法稳定分桶
+- 上层 curriculum 只能退回脆弱的 connected component 策略
 
 ---
 
-## 3. 目标图谱对象模型
+## 4. 性能策略
 
-未来 kg lane 需要正式引入 richer object model。
+### 4.1 增量 chunk 物化
 
-### 3.1 `TopicMapSnapshot`
+当前图谱构建优先使用稳定 chunk UID / hash 做增量物化：
 
-这是 docs lane 的主要消费对象，至少包含：
+- 未变化 chunk 复用已有记录
+- 只对新增 chunk 做 embedding
+- 不再每次 delete-and-rebuild 全量 chunk
 
-- canonical topic name
-- aliases
-- node type
-- confidence
-- representative evidence
-- core formulas
-- related methods
-- example clues
-- chunk coverage
-- pedagogical salience
+### 4.2 embedding 复用
 
-### 3.2 `ConceptDependencySnapshot`
+节点解析阶段不再对全量 active/pending 节点重复 embedding。
 
-描述 topic 之间的关系，而不是只给一堆离散 node。
+原则：
 
-建议关系类型：
+- 未变化节点禁止反复重算 embedding
+- 只对新增候选或缓存失效项重算
+- embedding cache 是吞吐优化，不应该暴露成前端接口能力
 
-- `prerequisite`
-- `derives_from`
-- `applies_to`
-- `contrasts_with`
-- `supports`
-- `example_of`
+### 4.3 分桶聚类
 
-### 3.3 `CurriculumBlueprintSignal`
+聚类不再直接做同类型 O(n²) 全量比较，而是先分桶，再在桶内比较。
 
-描述某个 topic 在课程组织上的价值。
+推荐分桶维度：
 
-建议信号包括：
+- `node_type`
+- `taxonomy bucket`
+- token / lexical bucket
 
-- 是否适合做章节主轴
-- 是否适合做单元子节点
-- 是否更适合题型突破而非概念讲解
-- 是否在冲刺模式中应被上提
+目标：
 
-### 3.4 `GraphImpactSet`
-
-用于增量更新与 bounded repair，描述：
-
-- 哪些 canonical topic 受影响
-- 哪些 dependency 受影响
-- 哪些 curriculum branch 受影响
-- 哪些 docs chapter 应视为失效
+- 20 / 80 / 200 chunk 三档材料下，扩展趋势接近分桶增长而非平方膨胀
 
 ---
 
-## 4. 证据、别名与依赖关系模型
+## 5. 对前端的展示口径
 
-### 4.1 证据模型
+### 5.1 图谱主视图
 
-图谱中的节点不是抽象存在，它必须能回溯到证据。
+本轮学习者默认视图不是随机 3D 词云，而是稳定语义星图。
 
-每个 topic 至少需要区分：
+语义星图要求：
 
-- primary evidence
-- supporting evidence
-- example evidence
-- weak evidence
+- 按主题或 cluster 稳定布局
+- 支持类型过滤
+- 支持邻居高亮
+- 支持点击聚焦和侧栏联动
+- 不做随机漂移
 
-### 4.2 别名模型
+### 5.2 专家视图
 
-别名不是附属功能，而是 canonicalization 的核心。
+底层 force graph 仍可保留为专家视图，但不作为普通学习者默认入口。
 
-未来别名模型必须服务于：
+### 5.3 等待态
 
-- 跨 source 的术语归并
-- 中英文或不同教材表述的统一
-- docs lane 的命名稳定性
-- interact / retrieve 的召回增强
+图谱页若要展示构建中状态，也只复用：
 
-### 4.3 依赖关系模型
+- `POST /knowledge/build`
+- `POST /knowledge/docs`
 
-依赖边不能只表示“有关联”，而要尽量表达教学意义。
-
-优先保留的关系是：
-
-- 学习前置
-- 推导来源
-- 方法应用
-- 题型归属
-
-不应让图谱膨胀为无意义的弱语义网络。
-
-### 4.4 边的保留原则
-
-- 能直接支持 docs / curriculum / retrieval 的边优先保留
-- 仅有弱语义相关但无法稳定使用的边，宁可舍弃
-- 图谱宁可少而稳，也不要大而乱
+不增加独立图谱构建状态接口。
 
 ---
 
-## 5. 知识图谱构建流程
+## 6. 与 curriculum 的契约
 
-目标态流程如下：
+图谱层向 curriculum 输出的核心不是“一个大连通分量”，而是稳定的课程组织信号：
 
-`candidate extraction -> canonicalization -> entity resolve -> evidence attach -> dependency build -> topic map publish -> curriculum signal derive`
+- leaf topic 分桶
+- unit 聚类
+- prerequisite 信号
+- taxonomy_hint
 
+curriculum 层不应该再依赖：
 
-
-TODO 这里既然图谱的过程和文档的过程是同时触发的，那两者的最初输入啥的应该是这样的，输入的应该是和文档生成的输入一样，都会先是一堆文档，根据总结的知识主题啥的再进行下一步？整理一个详细的流程？
-
-
-
-
-### 5.1 Candidate Extraction
-
-职责：
-
-- 从 primitives / sections 中抽取候选 topic、method、formula、example signals
-- 保留来源与上下文，不要只保留字符串
-
-### 5.2 Canonicalization
-
-职责：
-
-- 合并别名
-- 对齐不同教材写法
-- 过滤噪声术语
-
-### 5.3 Entity Resolve
-
-职责：
-
-- 形成稳定的 canonical node
-- 判断该 node 属于概念、方法、主题还是题型
-
-### 5.4 Evidence Attach
-
-职责：
-
-- 给每个 node 绑定代表证据、支撑证据、例题证据
-
-### 5.5 Dependency Build
-
-职责：
-
-- 构建带语义的 dependency，不只做宽泛关联
-
-### 5.6 Topic Map Publish
-
-职责：
-
-- 输出可供 docs lane 消费的 `TopicMapSnapshot`
-
-### 5.7 Curriculum Signal Derive
-
-职责：
-
-- 从 topic map 与 dependency 中推导 curriculum 可用信号
+- 脏标题
+- 纯名称聚类
+- 把 `Example` 当作主锚点
+- 把整张 connected component 直接挂到单父节点
 
 ---
 
-## 6. 对知识文档与 Curriculum 的输出契约
+## 7. 当前不推荐的旧方案
 
-未来 kg lane 的价值，不在于“图谱自己长得漂亮”，而在于它能稳定服务下游。
+以下方案不再作为设计目标：
 
-### 6.1 对知识文档的输出契约
-
-docs lane 至少需要拿到：
-
-- 主题主干候选
-- 前置依赖关系
-- 代表证据集合
-- 核心公式 / 方法 / 例题分布
-- 哪些 topic 更适合冲刺模式上提
-
-### 6.2 对 Curriculum 的输出契约
-
-curriculum lane 至少需要拿到：
-
-- 哪些 topic 适合做教学单元
-- 哪些 topic 适合做章节树根节点
-- 哪些 dependency 可以转成 prerequisite
-- 哪些 topic 只应保留为叶子或补充说明
-
-### 6.3 对 Retrieval / Interact / Examine 的潜在价值
-
-虽然本轮只改设计文档，但图谱设计必须兼顾未来扩展：
-
-- retrieval 可以基于 canonical topic 与 alias 增强召回
-- interact 可以基于 prerequisite 判断解释顺序
-- examine 可以基于 topic salience 生成更合理的题目覆盖
+- 让词云承担主要浏览交互
+- 用 `Question*` 标题直接建主题
+- 用 `candidate_name_to_*` 一类纯名称索引作为最终解析主逻辑
+- 每次构建对整张现有图谱重新 embedding
+- 依赖“专门进度接口”去表达图谱构建过程
 
 ---
 
+## 8. 验收口径
 
+### 8.1 语义正确性
 
+- 主题树叶子中不允许出现 `Question bank`、`Question 1`、`第 1 题`
+- 除非原始材料确实只有一个主题，否则不能出现“几乎所有单元挂到一个父节点”
+- `Example` 只能作为叶子支撑节点
 
-TODO 这里改改，未来也并不需增量更新，现在想的还是版本号的办法，同理这里对应到表结构里会有什么影响？需要一个版本号控制表？什么形式的？？
+### 8.2 结构稳定性
 
-## 7. 增量更新、影响域与重建边界
+- 同名跨类型节点不能错连
+- 跨章节相似命名不能串父节点
+- curriculum 产物应能从图谱稳定复现，而不是依赖 prompt 偶然性
 
-未来 digest 必须支持增量更新，而不是每次都从零重建所有知识结构。
+### 8.3 性能
 
-### 7.1 Impact 分析目标
+- 常规构建应尽量在 5 分钟内可用
+- 大头优化优先放在 embedding 复用、增量物化、分桶聚类、减少串行
 
-更新某些原始材料后，系统应能判断：
+### 8.4 前端体验
 
-- 哪些 topic 变了
-- 哪些 dependency 变了
-- 哪些 curriculum branch 可能失效
-- 哪些 chapter blueprint 应重审
-
-### 7.2 增量重建边界
-
-优先局部重建：
-
-- 受影响的 topic cluster
-- 受影响的 dependency 片段
-- 受影响的 curriculum 分支
-- 受影响的章节蓝图和章节文档
-
-避免无意义全量重跑：
-
-- 未受影响的 canonical topic
-- 未受影响的章节
-- 未受影响的文档包资源
-
-### 7.3 与 Repair Pass 的关系
-
-`GraphImpactSet` 必须成为 Repair Pass 的正式输入，而不是仅供日志观察。
-
----
-
-## 8. 质量指标、失败模式与验收标准
-
-### 8.1 核心质量指标
-
-- canonical 命名稳定度
-- alias 吸收率
-- evidence 覆盖率
-- prerequisite 合理性
-- docs 可消费性
-- orphan node 比例
-- topic cluster 可解释性
-
-### 8.2 常见失败模式
-
-- 同一 topic 被拆成多个 node
-- 不同 topic 被误合并
-- dependency 太泛，无法支持教学顺序
-- 例题和方法没有绑定到正确 topic
-- 文档 lane 无法直接消费 graph 输出
-
-### 8.3 文档层验收标准
-
-- 能清楚解释为什么 `TopicAnchorSnapshot` 不足以支撑高质量讲义
-- 能清楚定义 `TopicMapSnapshot / ConceptDependencySnapshot / CurriculumBlueprintSignal / GraphImpactSet`
-- 能清楚说明图谱对 docs 和 curriculum 的服务关系
-- 能清楚定义增量更新时的影响域与重建边界
-
-## 2026-03-31 KG Lane 可观测性补充
-
-knowledge-graph lane 现已遵循共享的 digest 可观测性契约。
-
-- 成功完成与运行时失败两种情况都必须产出 `kg_digest_timing_summary`。
-- 必填耗时字段包括 `workflow_elapsed_ms`、`acquire_lock_ms`、`prepare_ms`、`extract_ms`、`cluster_ms`、`resolve_nodes_ms`、`resolve_edges_ms`、`impact_ms`、`finalize_ms`。
-- 必填抽取与解析计数包括：fast-path chunk 数、LLM 抽取 chunk 数、no-match 数、未解析端点数、持久化耗时，以及 Top-K 慢 chunk。
-- token 维度至少应覆盖：总 token、extract/resolve token 总量、按模型统计的 token、按任务类型统计的 token、调用次数、总延迟，以及轻量模型与重型模型的占比。
-- 新增图谱处理模块时，应通过共享 summary helper 上报指标，避免下游 dashboard 还要为不同 lane 适配不同格式。
+- 默认给学习者稳定语义星图
+- 图谱页和图谱侧面板都能看到学习计划入口
+- 不依赖专门 build-status API

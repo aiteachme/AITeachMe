@@ -24,6 +24,7 @@ import type {
   ApiResponseKnowledgeNodeDetailResponse,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseListTaxonomyAnchorResponse,
+  ApiResponseStudyPlanResponse,
   ApiResponseTeachingUnitDetailResponse,
   ChunkContextRequest,
   DocGenBuildRequest,
@@ -31,6 +32,7 @@ import type {
   GraphNodeDetailRequest,
   HTTPValidationError,
   KnowledgeOverviewRequest,
+  StudyPlanRequest,
   UnitDetailRequest
 } from './model';
 
@@ -43,7 +45,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * @summary 触发知识文档与知识图谱构建
+ * @summary Trigger docs and graph digest build
  */
 export type knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostResponse200 = {
   data: ApiResponseDocGenBuildData
@@ -140,7 +142,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type KnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostMutationError = ErrorResponse
 
     /**
- * @summary 触发知识文档与知识图谱构建
+ * @summary Trigger docs and graph digest build
  */
 export const useKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost>>, TError,{subject: string;data: DocGenBuildRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -153,7 +155,7 @@ export const useKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost = <TError =
       return useMutation(getKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 查询知识文档结果
+ * @summary Fetch knowledge docs and minimal build state
  */
 export type knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostResponse200 = {
   data: ApiResponseDocGenGetResponse
@@ -243,7 +245,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type KnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 查询知识文档结果
+ * @summary Fetch knowledge docs and minimal build state
  */
 export const useKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -256,7 +258,7 @@ export const useKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPost = <TError = E
       return useMutation(getKnowledgeDocsApiV1SubjectsSubjectKnowledgeDocsPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 知识总结页聚合数据
+ * @summary Fetch aggregated knowledge overview
  */
 export type knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostResponse200 = {
   data: ApiResponseKnowledgeOverviewResponse
@@ -348,7 +350,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type KnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 知识总结页聚合数据
+ * @summary Fetch aggregated knowledge overview
  */
 export const useKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost>>, TError,{subject: string;data: KnowledgeOverviewRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -361,7 +363,7 @@ export const useKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = <TE
       return useMutation(getKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 知识节点详情
+ * @summary Fetch knowledge node detail
  */
 export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200 = {
   data: ApiResponseKnowledgeNodeDetailResponse
@@ -453,7 +455,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 知识节点详情
+ * @summary Fetch knowledge node detail
  */
 export const useGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -466,7 +468,7 @@ export const useGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost
       return useMutation(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 获取聊天引用原文上下文
+ * @summary Fetch source chunk context
  */
 export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse200 = {
   data: ApiResponseChunkContextResponse
@@ -558,7 +560,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 获取聊天引用原文上下文
+ * @summary Fetch source chunk context
  */
 export const useChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -571,7 +573,7 @@ export const useChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = <TE
       return useMutation(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 教学单元详情
+ * @summary Fetch teaching unit detail
  */
 export type unitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPostResponse200 = {
   data: ApiResponseTeachingUnitDetailResponse
@@ -663,7 +665,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UnitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 教学单元详情
+ * @summary Fetch teaching unit detail
  */
 export const useUnitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPost>>, TError,{subject: string;data: UnitDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -676,7 +678,112 @@ export const useUnitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPost = <TError
       return useMutation(getUnitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 锚点管理
+ * @summary Fetch or update the learner study plan
+ */
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse200 = {
+  data: ApiResponseStudyPlanResponse
+  status: 200
+}
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseSuccess = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseError = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse400 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse404 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse422 | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse = (knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseSuccess | knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponseError)
+
+export const getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/study-plan`
+}
+
+export const knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost = async (subject: string,
+    studyPlanRequest: StudyPlanRequest, options?: RequestInit): Promise<knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse> => {
+  
+  return orvalApiClient<knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostResponse>(getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostUrl(subject),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      studyPlanRequest,)
+  }
+);}
+  
+
+
+
+export const getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext> => {
+
+const mutationKey = ['knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, {subject: string;data: StudyPlanRequest}> = (props) => {
+          const {subject,data} = props ?? {};
+
+          return  knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost(subject,data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>>
+    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationBody = StudyPlanRequest
+    export type KnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationError = ErrorResponse
+
+    /**
+ * @summary Fetch or update the learner study plan
+ */
+export const useKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>, TError,{subject: string;data: StudyPlanRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPost>>,
+        TError,
+        {subject: string;data: StudyPlanRequest},
+        TContext
+      > => {
+      return useMutation(getKnowledgeStudyPlanApiV1SubjectsSubjectKnowledgeStudyPlanPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Manage taxonomy anchors
  */
 export type taxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPostResponse200 = {
   data: ApiResponseListTaxonomyAnchorResponse
@@ -768,7 +875,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type TaxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPostMutationError = ErrorResponse
 
     /**
- * @summary 锚点管理
+ * @summary Manage taxonomy anchors
  */
 export const useTaxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof taxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPost>>, TError,{subject: string;data: AnchorManageRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -781,7 +888,7 @@ export const useTaxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPost 
       return useMutation(getTaxonomyAnchorsApiV1SubjectsSubjectKnowledgeTaxonomyAnchorsPostMutationOptions(options), queryClient);
     }
     /**
- * @summary 清空学科知识数据
+ * @summary Clear knowledge artifacts for one subject
  */
 export type knowledgeClearApiV1SubjectsSubjectKnowledgeClearPostResponse200 = {
   data: ApiResponseClearKnowledgeResponse
@@ -876,7 +983,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type KnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary 清空学科知识数据
+ * @summary Clear knowledge artifacts for one subject
  */
 export const useKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}

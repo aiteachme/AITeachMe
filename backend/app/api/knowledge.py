@@ -1,4 +1,4 @@
-﻿"""Knowledge API routes."""
+"""Knowledge API routes."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from app.schemas.knowledge import (
     KnowledgeNodeDetailResponse,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
+    StudyPlanRequest,
+    StudyPlanResponse,
     TaxonomyAnchorResponse,
     TeachingUnitDetailResponse,
     UnitDetailRequest,
@@ -39,6 +41,7 @@ from app.services.knowledge.graph_query_service import (
     get_graph_node_detail,
 )
 from app.services.knowledge.overview_service import get_knowledge_overview
+from app.services.knowledge.study_plan_service import handle_study_plan_request
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowledge"])
@@ -47,7 +50,7 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
 @router.post(
     "/build",
     response_model=ApiResponse[DocGenBuildData],
-    summary="触发知识文档与知识图谱构建",
+    summary="Trigger docs and graph digest build",
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
 async def knowledge_build(
@@ -82,7 +85,7 @@ async def knowledge_build(
 @router.post(
     "/docs",
     response_model=ApiResponse[DocGenGetResponse],
-    summary="查询知识文档结果",
+    summary="Fetch knowledge docs and minimal build state",
     responses=build_error_responses([400, 404, 500]),
 )
 async def knowledge_docs(
@@ -97,7 +100,7 @@ async def knowledge_docs(
 @router.post(
     "/overview",
     response_model=ApiResponse[KnowledgeOverviewResponse],
-    summary="知识总结页聚合数据",
+    summary="Fetch aggregated knowledge overview",
     responses=build_error_responses([400, 404, 500]),
 )
 async def knowledge_overview(
@@ -120,7 +123,7 @@ async def knowledge_overview(
 @router.post(
     "/graph/nodes/detail",
     response_model=ApiResponse[KnowledgeNodeDetailResponse],
-    summary="知识节点详情",
+    summary="Fetch knowledge node detail",
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_node_detail(
@@ -136,7 +139,7 @@ async def graph_node_detail(
 @router.post(
     "/chunks/context",
     response_model=ApiResponse[ChunkContextResponse],
-    summary="获取聊天引用原文上下文",
+    summary="Fetch source chunk context",
     responses=build_error_responses([400, 404, 500]),
 )
 async def chunk_context(
@@ -152,7 +155,7 @@ async def chunk_context(
 @router.post(
     "/units/detail",
     response_model=ApiResponse[TeachingUnitDetailResponse],
-    summary="教学单元详情",
+    summary="Fetch teaching unit detail",
     responses=build_error_responses([400, 404, 500]),
 )
 async def unit_detail(
@@ -166,9 +169,25 @@ async def unit_detail(
 
 
 @router.post(
+    "/study-plan",
+    response_model=ApiResponse[StudyPlanResponse],
+    summary="Fetch or update the learner study plan",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def knowledge_study_plan(
+    subject: str = Path(...),
+    body: StudyPlanRequest = Body(default=StudyPlanRequest()),
+    session: Session = Depends(get_db),
+) -> ApiResponse[StudyPlanResponse]:
+    normalized = normalize_subject_slug(subject)
+    get_subject_record(session, normalized)
+    return ok_response(handle_study_plan_request(session, subject=normalized, payload=body))
+
+
+@router.post(
     "/taxonomy/anchors",
     response_model=ApiResponse[list[TaxonomyAnchorResponse]],
-    summary="锚点管理",
+    summary="Manage taxonomy anchors",
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def taxonomy_anchors(
@@ -195,7 +214,7 @@ async def taxonomy_anchors(
 @router.post(
     "/clear",
     response_model=ApiResponse[ClearKnowledgeResponse],
-    summary="清空学科知识数据",
+    summary="Clear knowledge artifacts for one subject",
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def knowledge_clear(

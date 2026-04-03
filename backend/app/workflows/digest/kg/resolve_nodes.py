@@ -22,6 +22,16 @@ from app.workflows.digest.kg.mutations import (
     create_node_evidence,
     create_updated_revision,
 )
+from app.workflows.digest.kg.services.candidate_identity import (
+    build_candidate_name_key,
+    candidate_lookup_keys,
+    normalize_scope_name,
+)
+from app.workflows.digest.kg.services.embedding_cache import (
+    compute_embedding_text_hash,
+    load_subject_embedding_cache,
+    write_subject_embedding_cache,
+)
 from app.workflows.digest.kg.services.impact_analyzer import analyze_impact
 from app.workflows.digest.kg.services.resolver import (
     ResolveResult,
@@ -104,14 +114,53 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
     if not nodes:
         return ResolutionIndex(subject=subject)
 
-    embedding_texts = [f"{node.canonical_name}\n{node.summary}".strip() for node in nodes]
-    embeddings = await aembed_texts(embedding_texts)
+    cache_payload = load_subject_embedding_cache(subject)
+    embedding_by_node_id: dict[int, list[float]] = {}
+    missing_node_ids: list[int] = []
+    missing_texts: list[str] = []
+    stale_node_ids = {str(node_id) for node_id in cache_payload}
+
+    for node in nodes:
+        if node.id is None:
+            continue
+        stale_node_ids.discard(str(node.id))
+        embedding_text = f"{node.canonical_name}\n{node.summary}".strip()
+        text_hash = compute_embedding_text_hash(embedding_text)
+        cached = cache_payload.get(str(node.id), {})
+        cached_embedding = cached.get("embedding")
+        if cached.get("text_hash") == text_hash and isinstance(cached_embedding, list):
+            embedding_by_node_id[node.id] = [
+                float(item)
+                for item in cached_embedding
+                if isinstance(item, (float, int))
+            ]
+            continue
+
+        missing_node_ids.append(node.id)
+        missing_texts.append(embedding_text)
+        cache_payload[str(node.id)] = {
+            "text_hash": text_hash,
+            "canonical_name": node.canonical_name,
+            "updated_at": node.updated_at.isoformat(),
+        }
+
+    if missing_texts:
+        missing_embeddings = await aembed_texts(missing_texts)
+        for node_id, embedding in zip(missing_node_ids, missing_embeddings, strict=False):
+            embedding_by_node_id[node_id] = embedding
+            cache_payload[str(node_id)]["embedding"] = embedding
+
+    for stale_node_id in stale_node_ids:
+        cache_payload.pop(stale_node_id, None)
+    write_subject_embedding_cache(subject, cache_payload)
+
     index = ResolutionIndex(subject=subject)
     record_by_node_id: dict[int, ExistingNodeRecord] = {}
 
-    for node, embedding in zip(nodes, embeddings):
+    for node in nodes:
         if node.id is None:
             continue
+        embedding = embedding_by_node_id.get(node.id, [])
         record = ExistingNodeRecord(node=node, summary=node.summary, embedding=embedding)
         record_by_node_id[node.id] = record
         index.normalized_map[(node.node_type, node.normalized_name)] = record
@@ -203,12 +252,19 @@ def _match_primary_candidate(
 
 def _resolve_parent_node_id(
     parent_name: str,
-    candidate_name_to_resolved_node_id: dict[str, int],
+    taxonomy_hint: str | None,
+    candidate_lookup_to_resolved_node_id: dict[str, int],
     index: ResolutionIndex,
 ) -> int | None:
-    mapped_parent_id = candidate_name_to_resolved_node_id.get(parent_name)
-    if mapped_parent_id is not None:
-        return mapped_parent_id
+    scope = normalize_scope_name(taxonomy_hint)
+    for parent_type in ("Topic", "Concept", "Method"):
+        for lookup_key in (
+            build_candidate_name_key(parent_type, parent_name, scope=scope),
+            build_candidate_name_key(parent_type, parent_name, scope=None),
+        ):
+            mapped_parent_id = candidate_lookup_to_resolved_node_id.get(lookup_key)
+            if mapped_parent_id is not None:
+                return mapped_parent_id
 
     normalized_parent = normalize_name(parent_name)
     for parent_type in ("Topic", "Concept", "Method"):
@@ -226,35 +282,19 @@ def _match_secondary_candidate(
     representative_name: str,
     representative_type: str,
     parent_name: str | None,
+    taxonomy_hint: str | None,
     candidate_summary: str,
     candidate_embedding: list[float],
     index: ResolutionIndex,
-    candidate_name_to_resolved_node_id: dict[str, int],
+    candidate_lookup_to_resolved_node_id: dict[str, int],
 ) -> ResolveResult:
-    normalized_name = normalize_name(representative_name)
-    exact_match = index.normalized_map.get((representative_type, normalized_name))
-    if exact_match is not None:
-        return ResolveResult(
-            decision="exact",
-            matched_node_id=exact_match.node.id,
-            is_content_update=_has_content_update(candidate_summary, exact_match.summary),
-        )
-
-    alias_match = index.alias_map.get((representative_type, normalized_name))
-    if alias_match is not None:
-        return ResolveResult(
-            decision="alias",
-            matched_node_id=alias_match.node.id,
-            is_content_update=_has_content_update(candidate_summary, alias_match.summary),
-            new_aliases=[representative_name],
-        )
-
     if not parent_name or not candidate_embedding:
         return ResolveResult(decision="no_match")
 
     parent_node_id = _resolve_parent_node_id(
         parent_name,
-        candidate_name_to_resolved_node_id,
+        taxonomy_hint,
+        candidate_lookup_to_resolved_node_id,
         index,
     )
     if parent_node_id is None:
@@ -301,7 +341,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 resolution_index_ms=resolution_index_ms,
             )
 
-            candidate_name_to_resolved_node_id: dict[str, int] = {}
+            candidate_lookup_to_resolved_node_id: dict[str, int] = {}
             cluster_id_to_resolved_node_id: dict[int, int] = {}
             new_node_ids: list[int] = []
             updated_node_ids: list[int] = []
@@ -350,10 +390,11 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         representative_name=representative.name,
                         representative_type=representative.node_type,
                         parent_name=representative.parent_entity_name or representative.taxonomy_hint,
+                        taxonomy_hint=representative.taxonomy_hint,
                         candidate_summary=clustered_candidate.merged_summary,
                         candidate_embedding=candidate_embedding,
                         index=resolution_index,
-                        candidate_name_to_resolved_node_id=candidate_name_to_resolved_node_id,
+                        candidate_lookup_to_resolved_node_id=candidate_lookup_to_resolved_node_id,
                     )
                 else:
                     result = ResolveResult(decision="no_match")
@@ -362,7 +403,8 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                     node_id = result.matched_node_id
                     cluster_id_to_resolved_node_id[cluster_index] = node_id
                     for member in clustered_candidate.members:
-                        candidate_name_to_resolved_node_id[member.name] = node_id
+                        for lookup_key in candidate_lookup_keys(member):
+                            candidate_lookup_to_resolved_node_id[lookup_key] = node_id
                     for chunk_id in clustered_candidate.source_chunk_ids:
                         create_node_evidence(
                             session,
@@ -370,6 +412,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             node_id=node_id,
                             chunk_id=chunk_id,
                             job_id=job_id,
+                            clustered_candidate=clustered_candidate,
                             auto_commit=False,
                         )
                         pending_write_count += 1
@@ -406,7 +449,8 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         continue
                     cluster_id_to_resolved_node_id[cluster_index] = node_id
                     for member in clustered_candidate.members:
-                        candidate_name_to_resolved_node_id[member.name] = node_id
+                        for lookup_key in candidate_lookup_keys(member):
+                            candidate_lookup_to_resolved_node_id[lookup_key] = node_id
                     for chunk_id in clustered_candidate.source_chunk_ids:
                         create_node_evidence(
                             session,
@@ -414,6 +458,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                             node_id=node_id,
                             chunk_id=chunk_id,
                             job_id=job_id,
+                            clustered_candidate=clustered_candidate,
                             auto_commit=False,
                         )
                         pending_write_count += 1
@@ -462,11 +507,11 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 "kg_workflow_resolve_nodes_complete",
                 new_nodes=len(new_node_ids),
                 updated_nodes=len(updated_node_ids),
-                total_resolved=len(candidate_name_to_resolved_node_id),
+                total_resolved=len(candidate_lookup_to_resolved_node_id),
             )
             return {
                 **state,
-                "candidate_name_to_resolved_node_id": candidate_name_to_resolved_node_id,
+                "candidate_lookup_to_resolved_node_id": candidate_lookup_to_resolved_node_id,
                 "cluster_id_to_resolved_node_id": cluster_id_to_resolved_node_id,
                 "new_node_ids": new_node_ids,
                 "updated_node_ids": updated_node_ids,
@@ -491,8 +536,8 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
             all_candidate_edges = state.get("all_candidate_edges", [])
             subject = state["subject"]
             job_id = state["job_id"]
-            candidate_name_to_resolved_node_id = state.get("candidate_name_to_resolved_node_id", {})
-            candidate_name_to_cluster_id = state.get("candidate_name_to_cluster_id", {})
+            candidate_lookup_to_resolved_node_id = state.get("candidate_lookup_to_resolved_node_id", {})
+            candidate_lookup_to_cluster_id = state.get("candidate_lookup_to_cluster_id", {})
             cluster_id_to_resolved_node_id = state.get("cluster_id_to_resolved_node_id", {})
             new_edge_ids: list[int] = []
             updated_edge_ids: list[int] = []
@@ -512,8 +557,8 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     session,
                     edge_candidate,
                     subject,
-                    candidate_name_to_resolved_node_id,
-                    candidate_name_to_cluster_id,
+                    candidate_lookup_to_resolved_node_id,
+                    candidate_lookup_to_cluster_id,
                     cluster_id_to_resolved_node_id,
                 )
                 if matched_edge is None:

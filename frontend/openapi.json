@@ -836,7 +836,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "触发知识文档与知识图谱构建",
+        "summary": "Trigger docs and graph digest build",
         "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
@@ -928,7 +928,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "查询知识文档结果",
+        "summary": "Fetch knowledge docs and minimal build state",
         "operationId": "knowledge_docs_api_v1_subjects__subject__knowledge_docs_post",
         "parameters": [
           {
@@ -1000,7 +1000,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "知识总结页聚合数据",
+        "summary": "Fetch aggregated knowledge overview",
         "operationId": "knowledge_overview_api_v1_subjects__subject__knowledge_overview_post",
         "parameters": [
           {
@@ -1084,7 +1084,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "知识节点详情",
+        "summary": "Fetch knowledge node detail",
         "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
         "parameters": [
           {
@@ -1166,7 +1166,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "获取聊天引用原文上下文",
+        "summary": "Fetch source chunk context",
         "operationId": "chunk_context_api_v1_subjects__subject__knowledge_chunks_context_post",
         "parameters": [
           {
@@ -1248,7 +1248,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "教学单元详情",
+        "summary": "Fetch teaching unit detail",
         "operationId": "unit_detail_api_v1_subjects__subject__knowledge_units_detail_post",
         "parameters": [
           {
@@ -1325,12 +1325,94 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/study-plan": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Fetch or update the learner study plan",
+        "operationId": "knowledge_study_plan_api_v1_subjects__subject__knowledge_study_plan_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyPlanRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StudyPlanResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
           "knowledge"
         ],
-        "summary": "锚点管理",
+        "summary": "Manage taxonomy anchors",
         "operationId": "taxonomy_anchors_api_v1_subjects__subject__knowledge_taxonomy_anchors_post",
         "parameters": [
           {
@@ -1412,7 +1494,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "清空学科知识数据",
+        "summary": "Clear knowledge artifacts for one subject",
         "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
         "parameters": [
           {
@@ -4154,6 +4236,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_StudyPlanResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyPlanResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[StudyPlanResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_SubjectDeleteData_": {
         "properties": {
           "code": {
@@ -5256,52 +5372,6 @@
           "prompt": "Generate review-oriented notes"
         }
       },
-      "DocGenBuildStatusResponse": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "description": "accepted / running / completed / failed / cancelled"
-          },
-          "requested_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Requested At",
-            "description": "Build request timestamp."
-          },
-          "stage": {
-            "type": "string",
-            "title": "Stage",
-            "description": "Current lifecycle stage for the build."
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message",
-            "description": "Build failure or cancellation reason."
-          },
-          "draft_available": {
-            "type": "boolean",
-            "title": "Draft Available",
-            "description": "Whether the current staging draft can be previewed.",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "requested_at",
-          "stage"
-        ],
-        "title": "DocGenBuildStatusResponse",
-        "description": "Runtime metadata for the current or most recent docs build."
-      },
       "DocGenGetResponse": {
         "properties": {
           "exists": {
@@ -5370,7 +5440,7 @@
           "build": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DocGenBuildStatusResponse"
+                "$ref": "#/components/schemas/KnowledgeBuildStatusResponse"
               },
               {
                 "type": "null"
@@ -6816,6 +6886,52 @@
         "description": "系统初始化请求。",
         "example": {}
       },
+      "KnowledgeBuildStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "idle / accepted / running / publishing / completed / failed / cancelled"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "Build request timestamp."
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "Current lifecycle stage for the build."
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Build failure or cancellation reason."
+          },
+          "draft_available": {
+            "type": "boolean",
+            "title": "Draft Available",
+            "description": "Whether a staging draft is currently available.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "requested_at",
+          "stage"
+        ],
+        "title": "KnowledgeBuildStatusResponse",
+        "description": "Minimal runtime metadata exposed to clients for docs polling."
+      },
       "KnowledgeNodeDetailResponse": {
         "properties": {
           "id": {
@@ -7790,6 +7906,206 @@
         ],
         "title": "RuntimeUser",
         "description": "当前运行时用户。"
+      },
+      "StudyPlanItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes",
+            "default": 0
+          },
+          "depends_on_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Depends On Ids"
+          },
+          "theme_titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Theme Titles"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Unit Ids"
+          },
+          "doc_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Anchor"
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary"
+        ],
+        "title": "StudyPlanItemResponse",
+        "description": "One actionable study checklist item."
+      },
+      "StudyPlanPhaseResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes",
+            "default": 0
+          },
+          "completed_items": {
+            "type": "integer",
+            "title": "Completed Items",
+            "default": 0
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items",
+            "default": 0
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StudyPlanItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary"
+        ],
+        "title": "StudyPlanPhaseResponse",
+        "description": "A grouped phase in the learner-facing study plan."
+      },
+      "StudyPlanRequest": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          }
+        },
+        "type": "object",
+        "title": "StudyPlanRequest",
+        "description": "Read or update the persisted study plan in one POST request."
+      },
+      "StudyPlanResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode"
+          },
+          "mode_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Reason"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items",
+            "default": 0
+          },
+          "completed_items": {
+            "type": "integer",
+            "title": "Completed Items",
+            "default": 0
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/StudyPlanPhaseResponse"
+            },
+            "type": "array",
+            "title": "Phases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "generated_at"
+        ],
+        "title": "StudyPlanResponse",
+        "description": "Derived study plan and checklist snapshot."
       },
       "SubjectCreateRequest": {
         "properties": {

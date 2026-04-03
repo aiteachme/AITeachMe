@@ -89,14 +89,26 @@ class DocGenBuildData(BaseModel):
     requested_at: datetime = Field(description="Build request timestamp.")
 
 
-class DocGenBuildStatusResponse(BaseModel):
-    """Runtime metadata for the current or most recent docs build."""
+class BuildSampleCardResponse(BaseModel):
+    """Lightweight preview card shown while digest is building."""
 
-    status: str = Field(description="accepted / running / completed / failed / cancelled")
+    title: str
+    card_type: str = Field(description="mode / topic / concept / method")
+    summary: str
+
+
+class KnowledgeBuildStatusResponse(BaseModel):
+    """Minimal runtime metadata exposed to clients for docs polling."""
+
+    status: str = Field(description="idle / accepted / running / publishing / completed / failed / cancelled")
     requested_at: datetime = Field(description="Build request timestamp.")
     stage: str = Field(description="Current lifecycle stage for the build.")
     error_message: str | None = Field(default=None, description="Build failure or cancellation reason.")
-    draft_available: bool = Field(default=False, description="Whether the current staging draft can be previewed.")
+    draft_available: bool = Field(default=False, description="Whether a staging draft is currently available.")
+
+
+class DocGenBuildStatusResponse(KnowledgeBuildStatusResponse):
+    """Backward-compatible alias used by existing docs responses."""
 
 
 class DocGenGetResponse(BaseModel):
@@ -109,7 +121,7 @@ class DocGenGetResponse(BaseModel):
     prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
     draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
     draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
-    build: DocGenBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
+    build: KnowledgeBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
 
 
 class KnowledgeNodeResponse(BaseModel):
@@ -379,6 +391,51 @@ class ClearKnowledgeResponse(BaseModel):
 
     subject: str
     deleted_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class StudyPlanRequest(BaseModel):
+    """Read or update the persisted study plan in one POST request."""
+
+    item_id: str | None = None
+    completed: bool | None = None
+
+
+class StudyPlanItemResponse(BaseModel):
+    """One actionable study checklist item."""
+
+    id: str
+    title: str
+    summary: str
+    duration_minutes: int = 0
+    depends_on_ids: list[str] = Field(default_factory=list)
+    theme_titles: list[str] = Field(default_factory=list)
+    unit_ids: list[int] = Field(default_factory=list)
+    doc_anchor: str | None = None
+    completed: bool = False
+
+
+class StudyPlanPhaseResponse(BaseModel):
+    """A grouped phase in the learner-facing study plan."""
+
+    id: str
+    title: str
+    summary: str
+    duration_minutes: int = 0
+    completed_items: int = 0
+    total_items: int = 0
+    items: list[StudyPlanItemResponse] = Field(default_factory=list)
+
+
+class StudyPlanResponse(BaseModel):
+    """Derived study plan and checklist snapshot."""
+
+    subject: str
+    generated_at: datetime
+    digest_mode: str | None = None
+    mode_reason: str | None = None
+    total_items: int = 0
+    completed_items: int = 0
+    phases: list[StudyPlanPhaseResponse] = Field(default_factory=list)
 
 
 ThemeTreeNodeResponse.model_rebuild()

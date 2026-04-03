@@ -17,6 +17,17 @@ from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
 
 
+def _iter_taxonomy_hints(clustered_candidate: ClusteredCandidate | None) -> list[str]:
+    if clustered_candidate is None:
+        return []
+    hints: list[str] = []
+    for member in clustered_candidate.members or [clustered_candidate.representative]:
+        hint = (member.taxonomy_hint or "").strip()
+        if hint:
+            hints.append(hint)
+    return list(dict.fromkeys(hints))
+
+
 def create_new_node(
     session: Session,
     *,
@@ -129,6 +140,7 @@ def create_node_evidence(
     node_id: int,
     chunk_id: int,
     job_id: int,
+    clustered_candidate: ClusteredCandidate | None = None,
     auto_commit: bool = True,
 ) -> None:
     chunk = session.get(DocumentChunk, chunk_id)
@@ -149,6 +161,22 @@ def create_node_evidence(
         ),
         auto_commit=auto_commit,
     )
+    for taxonomy_hint in _iter_taxonomy_hints(clustered_candidate):
+        kg_repo.create_evidence_link(
+            session,
+            EvidenceLink(
+                subject=subject,
+                entity_type="node",
+                entity_id=node_id,
+                document_id=chunk.document_id,
+                chunk_id=chunk_id,
+                quote_text=taxonomy_hint,
+                evidence_role="taxonomy_hint",
+                extraction_method="llm",
+                field_scope="taxonomy_hint",
+            ),
+            auto_commit=auto_commit,
+        )
 
 
 def create_edge_evidence(

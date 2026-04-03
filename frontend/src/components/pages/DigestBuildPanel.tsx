@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, FileText, Loader2, Play, Sparkles } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  FileText,
+  Loader2,
+  Play,
+  Sparkles,
+  Target,
+} from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type { DocGenBuildData } from "../../api/generated/model";
@@ -17,7 +25,70 @@ interface FilesData {
   items: FileRecord[];
 }
 
+interface DocBuildStatus {
+  status?: string | null;
+  requested_at?: string | null;
+  stage?: string | null;
+  error_message?: string | null;
+  draft_available?: boolean;
+}
+
+interface KnowledgeDocsBuildState {
+  exists: boolean;
+  markdown?: string;
+  updated_at?: string | null;
+  draft_markdown?: string;
+  draft_updated_at?: string | null;
+  build?: DocBuildStatus | null;
+}
+
+interface DerivedBuildState {
+  status: string;
+  statusText: string;
+  progressFloor: number;
+  progressCap: number;
+  hasLiveVersion: boolean;
+  hasDraftVersion: boolean;
+  isActive: boolean;
+  isFailed: boolean;
+  isCompleted: boolean;
+}
+
 const DigestBuildContext = createContext<DigestBuildContextValue | null>(null);
+const ACTIVE_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
+
+const STAGE_PROGRESS_FLOOR: Record<string, number> = {
+  build_accepted: 8,
+  prepare_shared: 22,
+  doc_lane_staged: 58,
+  graph_ready: 74,
+  curriculum_deriving: 84,
+  publishing: 93,
+  completed: 100,
+};
+
+const STAGE_PROGRESS_CAP: Record<string, number> = {
+  build_accepted: 20,
+  prepare_shared: 42,
+  doc_lane_staged: 76,
+  graph_ready: 88,
+  curriculum_deriving: 95,
+  publishing: 98,
+  completed: 100,
+};
+
+const STAGE_TEXT: Record<string, string> = {
+  idle: "等待新的知识构建任务",
+  build_accepted: "已接收构建请求，正在准备资料",
+  prepare_shared: "正在分析资料结构并准备共享输入",
+  doc_lane_staged: "知识文档草稿已生成，等待统一发布",
+  graph_ready: "知识图谱已就绪，正在推导课程结构",
+  curriculum_deriving: "正在整理教学单元、主题树与先修关系",
+  publishing: "正在发布正式版知识文档",
+  completed: "最新知识文档已发布",
+  failed: "知识构建失败，请稍后重试",
+  cancelled: "本轮知识构建已取消",
+};
 
 async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
   const response = await apiClient<ApiResponse<FilesData>>({
@@ -34,6 +105,95 @@ async function buildKnowledge(subject: string, fileUids: string[]): Promise<DocG
     data: { file_uids: fileUids },
   });
   return response.data ?? { requested_at: new Date().toISOString() };
+}
+
+async function fetchKnowledgeDocsBuildState(subject: string): Promise<KnowledgeDocsBuildState> {
+  const response = await apiClient<ApiResponse<KnowledgeDocsBuildState>>({
+    method: "POST",
+    url: `/api/v1/subjects/${subject}/knowledge/docs`,
+  });
+  return (
+    response.data ?? {
+      exists: false,
+      markdown: "",
+      draft_markdown: "",
+      build: {
+        status: "idle",
+        requested_at: new Date().toISOString(),
+        stage: "idle",
+      },
+    }
+  );
+}
+
+function parseIsoTimestamp(value?: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function deriveBuildState(data: KnowledgeDocsBuildState | undefined): DerivedBuildState {
+  const liveMarkdown = data?.markdown ?? "";
+  const draftMarkdown = data?.draft_markdown ?? "";
+  const build = data?.build ?? null;
+  const stage = build?.stage?.trim() || "idle";
+  const status = build?.status?.trim() || (data?.exists ? "completed" : "idle");
+
+  const hasLiveVersion = Boolean(data?.exists && liveMarkdown.trim().length > 0);
+  const hasDraftVersion = Boolean(draftMarkdown.trim().length > 0);
+  const isCompleted = status === "completed" || (hasLiveVersion && !ACTIVE_BUILD_STATUSES.has(status));
+  const isFailed = status === "failed" || status === "cancelled";
+  const isActive = ACTIVE_BUILD_STATUSES.has(status);
+
+  let statusText = STAGE_TEXT[stage] ?? STAGE_TEXT[status] ?? "正在整理知识内容";
+  if (build?.error_message?.trim()) {
+    statusText = build.error_message;
+  } else if (status === "idle" && hasLiveVersion) {
+    statusText = "当前显示的是最新发布的知识文档";
+  } else if (status === "idle" && !hasLiveVersion) {
+    statusText = "等待发起新的知识构建";
+  }
+
+  if (isCompleted) {
+    return {
+      status,
+      statusText,
+      progressFloor: 100,
+      progressCap: 100,
+      hasLiveVersion,
+      hasDraftVersion,
+      isActive: false,
+      isFailed: false,
+      isCompleted: true,
+    };
+  }
+
+  return {
+    status,
+    statusText,
+    progressFloor: STAGE_PROGRESS_FLOOR[stage] ?? (hasDraftVersion ? 62 : 0),
+    progressCap: STAGE_PROGRESS_CAP[stage] ?? (hasDraftVersion ? 78 : 45),
+    hasLiveVersion,
+    hasDraftVersion,
+    isActive,
+    isFailed,
+    isCompleted: false,
+  };
+}
+
+function statusTone(state: DerivedBuildState): string {
+  if (state.isFailed) {
+    return "border-rose-200 bg-rose-50";
+  }
+  if (state.isCompleted) {
+    return "border-emerald-200 bg-emerald-50";
+  }
+  if (state.isActive) {
+    return "border-sky-200 bg-sky-50";
+  }
+  return "border-slate-200 bg-white";
 }
 
 export function DigestBuildProvider({
@@ -54,8 +214,153 @@ function useDigestBuild() {
   return context;
 }
 
-export function DigestBuildProgress() {
-  return null;
+export function useKnowledgeDocsBuildState(subjectOverride?: string) {
+  const context = useContext(DigestBuildContext);
+  const subject = subjectOverride ?? context?.subject ?? "";
+
+  return useQuery({
+    queryKey: ["knowledge-doc-build", subject],
+    queryFn: () => fetchKnowledgeDocsBuildState(subject),
+    enabled: Boolean(subject),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const buildStatus = data?.build?.status ?? null;
+
+      if (buildStatus && ACTIVE_BUILD_STATUSES.has(buildStatus)) {
+        return 2500;
+      }
+
+      const requestedAtMs = parseIsoTimestamp(data?.build?.requested_at);
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at);
+      if (requestedAtMs !== null && (updatedAtMs === null || updatedAtMs < requestedAtMs)) {
+        return 2500;
+      }
+
+      return 10000;
+    },
+  });
+}
+
+export function DigestBuildProgress({
+  subject: subjectOverride,
+  compact = false,
+  className = "",
+}: {
+  subject?: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  const { data, isFetching } = useKnowledgeDocsBuildState(subjectOverride);
+  const derived = useMemo(() => deriveBuildState(data), [data]);
+  const [animatedProgress, setAnimatedProgress] = useState(derived.progressFloor);
+
+  useEffect(() => {
+    if (derived.isCompleted) {
+      setAnimatedProgress(100);
+      return;
+    }
+
+    if (derived.isFailed || (!derived.isActive && !derived.hasDraftVersion)) {
+      setAnimatedProgress(derived.progressFloor);
+      return;
+    }
+
+    setAnimatedProgress((previous) => Math.max(previous, derived.progressFloor));
+
+    const timer = window.setInterval(() => {
+      setAnimatedProgress((previous) => {
+        if (previous >= derived.progressCap) {
+          return derived.progressCap;
+        }
+        if (previous < 20) {
+          return Math.min(derived.progressCap, previous + 6);
+        }
+        if (previous < 50) {
+          return Math.min(derived.progressCap, previous + 4);
+        }
+        if (previous < 75) {
+          return Math.min(derived.progressCap, previous + 2.5);
+        }
+        return Math.min(derived.progressCap, previous + 1.2);
+      });
+    }, 600);
+
+    return () => window.clearInterval(timer);
+  }, [
+    derived.hasDraftVersion,
+    derived.isActive,
+    derived.isCompleted,
+    derived.isFailed,
+    derived.progressCap,
+    derived.progressFloor,
+  ]);
+
+  const progress = Math.max(0, Math.min(100, Math.round(animatedProgress)));
+  const tone = statusTone(derived);
+  const stageBadge = data?.build?.stage?.trim() || "idle";
+
+  return (
+    <section className={`rounded-2xl border px-4 py-4 shadow-sm ${tone} ${className}`.trim()}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-slate-900">
+            {derived.isActive ? (
+              <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+            ) : (
+              <Sparkles className="h-4 w-4 text-sky-600" />
+            )}
+            <p className="text-sm font-semibold">{derived.statusText}</p>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {derived.hasDraftVersion
+              ? "草稿已经可用，前端会继续等待图谱和课程结构统一发布。"
+              : "构建状态只通过知识文档接口轮询，进度条由前端本地平滑补间。"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+          <span className="rounded-full bg-white/80 px-2.5 py-1 font-medium">{stageBadge}</span>
+          {derived.hasLiveVersion ? <span className="rounded-full bg-white/80 px-2.5 py-1">published</span> : null}
+          {derived.hasDraftVersion ? <span className="rounded-full bg-white/80 px-2.5 py-1">draft</span> : null}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <Target className="h-3.5 w-3.5" />
+            <span>{progress}%</span>
+          </div>
+          <span>{derived.status}</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/90">
+          <div
+            className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {!compact ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
+          <span className="rounded-full bg-white/80 px-2.5 py-1">
+            {derived.hasLiveVersion ? "已有正式版" : "尚未发布正式版"}
+          </span>
+          <span className="rounded-full bg-white/80 px-2.5 py-1">
+            {derived.hasDraftVersion ? "已有草稿预览" : "草稿尚未生成"}
+          </span>
+          {data?.build?.requested_at ? (
+            <span className="rounded-full bg-white/80 px-2.5 py-1">
+              <Clock3 className="mr-1 inline h-3 w-3" />
+              {new Date(data.build.requested_at).toLocaleString("zh-CN")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {data?.build?.error_message ? <p className="mt-3 text-xs text-rose-600">{data.build.error_message}</p> : null}
+      {isFetching ? <p className="mt-2 text-[11px] text-slate-500">正在同步最新状态...</p> : null}
+    </section>
+  );
 }
 
 export function DigestBuildButton() {
@@ -80,9 +385,6 @@ export function DigestBuildButton() {
     setSelectedFileUids(new Set(readyFiles.map((file) => file.uid)));
   }, [readyFiles, selectedFileUids.size, showFileSelect]);
 
-  const selectedCount = selectedFileUids.size;
-  const hasReadyFiles = readyFiles.length > 0;
-
   const selectedFiles = useMemo(
     () => readyFiles.filter((file) => selectedFileUids.has(file.uid)),
     [readyFiles, selectedFileUids],
@@ -91,22 +393,22 @@ export function DigestBuildButton() {
   const buildMutation = useMutation({
     mutationFn: () => buildKnowledge(subject, Array.from(selectedFileUids)),
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subject] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
+      queryClient.invalidateQueries({ queryKey: ["study-plan", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
-        setLastBuildError("");
-        setLastBuildMessage(
-          `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${(data.accepted_file_uids ?? []).length} 份文件。`,
-        );
-      },
+      setLastBuildError("");
+      setLastBuildMessage(
+        `已触发知识构建，本轮纳入 ${(data.accepted_file_uids ?? []).length} 份资料，文档和图谱会同步刷新。`,
+      );
+    },
     onError: (error) => {
       setLastBuildMessage("");
       setLastBuildError(getApiErrorMessage(error, "触发知识构建失败。"));
     },
   });
-
-  const isBuilding = buildMutation.isPending;
 
   const toggleFile = (fileUid: string) => {
     setSelectedFileUids((previous) => {
@@ -120,13 +422,8 @@ export function DigestBuildButton() {
     });
   };
 
-  const openModal = () => {
-    setLastBuildError("");
-    setShowFileSelect(true);
-  };
-
   const closeModal = () => {
-    if (isBuilding) {
+    if (buildMutation.isPending) {
       return;
     }
     setShowFileSelect(false);
@@ -134,8 +431,8 @@ export function DigestBuildButton() {
 
   return (
     <>
-      <Button onClick={openModal} variant="outline" size="sm" disabled={isBuilding}>
-        {isBuilding ? (
+      <Button onClick={() => setShowFileSelect(true)} variant="outline" size="sm" disabled={buildMutation.isPending}>
+        {buildMutation.isPending ? (
           <>
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
             构建中
@@ -143,18 +440,18 @@ export function DigestBuildButton() {
         ) : (
           <>
             <Sparkles className="mr-1 h-4 w-4" />
-            开始知识构建
+            开始构建
           </>
         )}
       </Button>
 
       {lastBuildMessage ? <p className="mt-2 text-xs text-emerald-600">{lastBuildMessage}</p> : null}
-      {lastBuildError ? <p className="mt-2 text-xs text-red-500">{lastBuildError}</p> : null}
+      {lastBuildError ? <p className="mt-2 text-xs text-rose-500">{lastBuildError}</p> : null}
 
-      <Modal open={showFileSelect} onClose={closeModal} title="选择要纳入本次构建的文件">
+      <Modal open={showFileSelect} onClose={closeModal} title="选择本轮知识构建使用的文件">
         <div className="space-y-4">
-          <p className="text-sm text-slate-500">
-            这里选择的是本次知识构建要读取的已解析文件。提交后，知识文档和知识图谱页会一起更新。
+          <p className="text-sm leading-6 text-slate-500">
+            这里选中的已解析文件会进入本轮 digest，系统会同步刷新知识文档、知识图谱和学习计划。
           </p>
 
           {filesLoading ? (
@@ -164,11 +461,11 @@ export function DigestBuildButton() {
             </div>
           ) : null}
 
-          {!filesLoading && !hasReadyFiles ? (
+          {!filesLoading && readyFiles.length === 0 ? (
             <p className="py-4 text-sm text-slate-400">当前还没有可用于构建的已解析文件，请先上传并等待解析完成。</p>
           ) : null}
 
-          {hasReadyFiles ? (
+          {readyFiles.length > 0 ? (
             <>
               <div className="max-h-60 space-y-2 overflow-y-auto">
                 {readyFiles.map((file) => {
@@ -193,25 +490,27 @@ export function DigestBuildButton() {
                           {file.filetype.toUpperCase()} · {file.status}
                         </p>
                       </div>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      {checked ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : null}
                     </label>
                   );
                 })}
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                已选择 {selectedCount} 份文件
-                {selectedFiles.length > 0 ? "，将用于本次知识构建。" : "。"}
+                已选择 {selectedFiles.length} 份文件进入本轮知识构建。
               </div>
             </>
           ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={closeModal} disabled={isBuilding}>
+            <Button variant="outline" onClick={closeModal} disabled={buildMutation.isPending}>
               取消
             </Button>
-            <Button onClick={() => buildMutation.mutate()} disabled={!selectedCount || isBuilding}>
-              {isBuilding ? (
+            <Button
+              onClick={() => buildMutation.mutate()}
+              disabled={selectedFileUids.size === 0 || buildMutation.isPending}
+            >
+              {buildMutation.isPending ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                   提交中...
@@ -227,5 +526,17 @@ export function DigestBuildButton() {
         </div>
       </Modal>
     </>
+  );
+}
+
+export function DigestBuildStatusMeta({ subject }: { subject: string }) {
+  const { data } = useKnowledgeDocsBuildState(subject);
+  const derived = useMemo(() => deriveBuildState(data), [data]);
+
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+      <Clock3 className="h-3 w-3" />
+      <span>{derived.statusText}</span>
+    </div>
   );
 }

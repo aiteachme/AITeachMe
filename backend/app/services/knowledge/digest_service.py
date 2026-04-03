@@ -21,10 +21,13 @@ from app.repositories.files_repo import (
     list_raw_files_by_ids,
     list_raw_files_by_uids,
 )
-from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
+from app.schemas.knowledge import (
+    DocGenBuildData,
+    DocGenGetResponse,
+    KnowledgeBuildStatusResponse,
+)
 from app.utils.docgen_store import (
     KnowledgeBuildLock,
-    KnowledgeBuildRuntimeStatus,
     acquire_knowledge_build_lock,
     clear_docgen_staging,
     read_knowledge_build_lock,
@@ -190,6 +193,38 @@ def _write_build_status(
     if prompt is not _UNSET:
         update_kwargs["prompt"] = prompt
     update_knowledge_build_status(subject, **update_kwargs)
+
+
+def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse:
+    build_lock = read_knowledge_build_lock(subject)
+    build_status = read_knowledge_build_status(subject)
+    effective_build = build_status
+    if effective_build is None and build_lock is not None:
+        effective_build = update_knowledge_build_status(
+            subject,
+            requested_at=build_lock.requested_at,
+            status="running",
+            stage="build_accepted",
+            source_file_ids=build_lock.source_file_ids,
+            prompt=build_lock.prompt,
+        )
+
+    if effective_build is None:
+        return KnowledgeBuildStatusResponse(
+            status="idle",
+            requested_at=utcnow(),
+            stage="idle",
+            error_message=None,
+            draft_available=False,
+        )
+
+    return KnowledgeBuildStatusResponse(
+        status=effective_build.status,
+        requested_at=effective_build.requested_at,
+        stage=effective_build.stage,
+        error_message=effective_build.error_message,
+        draft_available=bool(effective_build.draft_available),
+    )
 
 
 def trigger_docgen_build(
@@ -399,7 +434,6 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     merged_path = build_merged_knowledge_base_path(subject)
     draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)
-    build_lock = read_knowledge_build_lock(subject)
     build_status = read_knowledge_build_status(subject)
     markdown = merged_path.read_text(encoding="utf-8") if merged_path.exists() else ""
     draft_markdown = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
@@ -423,24 +457,8 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     elif draft_path.exists():
         draft_updated_at = datetime.fromtimestamp(draft_path.stat().st_mtime)
 
-    build_response = None
-    effective_build = build_status
-    if effective_build is None and build_lock is not None:
-        effective_build = KnowledgeBuildRuntimeStatus(
-            requested_at=build_lock.requested_at,
-            status="running",
-            stage="build_accepted",
-            source_file_ids=build_lock.source_file_ids,
-            prompt=build_lock.prompt,
-        )
-    if effective_build is not None:
-        build_response = {
-            "status": effective_build.status,
-            "requested_at": effective_build.requested_at,
-            "stage": effective_build.stage,
-            "error_message": effective_build.error_message,
-            "draft_available": bool(effective_build.draft_available or draft_markdown.strip()),
-        }
+    build_response = _resolve_runtime_build_status(subject=subject)
+    build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
 
     return DocGenGetResponse(
         exists=bool(merged_path.exists() and markdown.strip()),
@@ -452,7 +470,6 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         draft_updated_at=draft_updated_at,
         build=build_response,
     )
-
 
 __all__ = [
     "get_docgen_result",
