@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.core.exceptions import KnowledgeClearConflictError
+from app.infra.exceptions import KnowledgeClearConflictError
 from app.models import (
     Curriculum,
     KnowledgeDocument,
@@ -193,7 +193,12 @@ def test_delete_subject_record_removes_self_referential_knowledge_graphs() -> No
     _seed_subject_knowledge(session, subject_id=subject_id)
 
     with patch("app.services.subject_deletion_service._delete_subject_directory"):
-        result = delete_subject_record(session, subject_id=subject_id, force=True)
+        result = delete_subject_record(
+            session,
+            subject_id=subject_id,
+            owner_user_id="local",
+            force=True,
+        )
 
     assert result.deleted is True
     assert result.subject_id == subject_id
@@ -251,4 +256,3 @@ def test_clear_subject_knowledge_rejects_when_exam_data_still_exists() -> None:
         assert "题模板" in exc.detail
     else:
         raise AssertionError("expected KnowledgeClearConflictError when exam data exists")
-
