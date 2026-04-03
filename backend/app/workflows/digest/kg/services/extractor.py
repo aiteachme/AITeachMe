@@ -8,9 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 import structlog
 
-from app.infra.llm import acompletion_structured
-from app.infra.model_router import TaskType
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.model_router import TaskType
+from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg.services.chunker import QuestionBlock, parse_question_blocks
 from app.workflows.digest.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT

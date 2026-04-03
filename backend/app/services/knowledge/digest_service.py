@@ -9,12 +9,12 @@ from datetime import datetime
 import structlog
 from sqlmodel import Session
 
-from app.core.exceptions import (
+from app.shared.infra.exceptions import (
     NoReadyFilesForDocGenError,
     RawFileNotFoundError,
     SubjectBuildLockConflictError,
 )
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus, TaskStatus
 from app.models.raw_file import RawFile
 from app.models.subject import Subject

@@ -20,6 +20,47 @@ interface DisplayMasteryState extends MasteryStateResponse {
   display_name: string;
 }
 
+interface SubjectProfileSummary {
+  generated_at: string;
+  avg_unit_mastery?: number | null;
+  avg_node_mastery?: number | null;
+  weak_unit_count: number;
+  weak_node_count: number;
+  pending_review_count: number;
+  due_review_count: number;
+  preferred_question_types: string[];
+  recommended_question_types: string[];
+  recommended_exam_mode: string;
+  recommended_question_count?: number | null;
+  difficulty_focus: string;
+  focus_teaching_unit_ids: number[];
+  focus_node_ids: number[];
+  question_type_accuracy: Record<string, number>;
+  difficulty_accuracy: Record<string, number>;
+  notes: string[];
+}
+
+interface UserProfileSummary {
+  generated_at: string;
+  active_subject_count: number;
+  active_subject_ids: string[];
+  recent_subject_ids: string[];
+  preferred_question_types: string[];
+  preferred_exam_modes: string[];
+  dominant_exam_mode: string;
+  explanation_style: string;
+  pace_preference: string;
+  consistency_level: string;
+  pending_review_count: number;
+  due_review_count: number;
+  notes: string[];
+}
+
+type ExtendedMasteryOverviewResponse = MasteryOverviewResponse & {
+  subject_profile?: SubjectProfileSummary | null;
+  user_profile?: UserProfileSummary | null;
+};
+
 const WEAK_THRESHOLD = 0.8;
 const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
 
@@ -107,8 +148,78 @@ function resolveReviewTaskTargetId(task: ReviewTaskResponse): number {
   return task.teaching_unit_id ?? 0;
 }
 
-async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewResponse> {
-  const res = await apiClient<ApiResponse<MasteryOverviewResponse>>({
+function formatQuestionTypeLabel(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    single_choice: "单选题",
+    fill_blank: "填空题",
+    short_answer: "简答题",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatExamModeLabel(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    web_practice: "测验",
+    paper_exam: "考试卷",
+    diagnostic: "诊断测验",
+    practice: "日常练习",
+    weakpoint_boost: "薄弱强化",
+    review: "复习模式",
+    mock_final: "模拟期末",
+    real_exam: "正式考试",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatDifficultyFocus(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    easy: "偏基础",
+    medium: "中等强度",
+    mixed: "混合梯度",
+    hard: "偏挑战",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatExplanationStyle(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    guided: "引导式",
+    concise: "精炼式",
+    balanced: "平衡式",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatPacePreference(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    quick_cycle: "快节奏循环",
+    steady: "稳步推进",
+    deep_dive: "深度钻研",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatConsistencyLevel(value?: string | null): string {
+  const mapping: Record<string, string> = {
+    high: "高频稳定",
+    steady: "比较稳定",
+    building: "正在建立",
+  };
+  if (!value) return "--";
+  return mapping[value] ?? value;
+}
+
+function formatLabelList(values: string[], fallback = "--"): string {
+  return values.length > 0 ? values.join("、") : fallback;
+}
+
+async function fetchMasteryOverview(subject: string): Promise<ExtendedMasteryOverviewResponse> {
+  const res = await apiClient<ApiResponse<ExtendedMasteryOverviewResponse>>({
     method: "GET",
     url: `/api/v1/subjects/${subject}/profile/mastery`,
   });
@@ -120,6 +231,8 @@ async function fetchMasteryOverview(subject: string): Promise<MasteryOverviewRes
       weak_node_count: 0,
       unit_states: [],
       node_states: [],
+      subject_profile: null,
+      user_profile: null,
     }
   );
 }
@@ -174,6 +287,8 @@ export function ProfilePage() {
 
   const knowledgeNodes = knowledgeMappings?.nodes ?? [];
   const teachingUnits = knowledgeMappings?.units ?? [];
+  const subjectProfile = overview?.subject_profile ?? null;
+  const userProfile = overview?.user_profile ?? null;
 
   const isLoading = masteryLoading || tasksLoading;
 
@@ -226,6 +341,12 @@ export function ProfilePage() {
   const weakCount = hasNodeStates
     ? overview?.weak_node_count ?? weakStates.length
     : overview?.weak_unit_count ?? weakStates.length;
+  const focusUnitNames = (subjectProfile?.focus_teaching_unit_ids ?? [])
+    .slice(0, 4)
+    .map((id) => unitNameMap.get(id) ?? `教学单元 #${id}`);
+  const focusNodeNames = (subjectProfile?.focus_node_ids ?? [])
+    .slice(0, 5)
+    .map((id) => nodeNameMap.get(id) ?? `知识点 #${id}`);
 
   const suggestions = useMemo(() => {
     const pendingTasks = [...reviewTasks]
@@ -293,6 +414,81 @@ export function ProfilePage() {
             </CardContent>
           </Card>
         )}
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className={PAPER_CARD}>
+            <CardHeader>
+              <CardTitle>{"学科级画像"}</CardTitle>
+              <CardDescription>{"这门课当前更适合怎么学，怎么练。"}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600">
+              <p>
+                {"推荐模式："}
+                <span className="font-medium text-slate-900">{formatExamModeLabel(subjectProfile?.recommended_exam_mode)}</span>
+                {" · "}
+                {"建议题量："}
+                <span className="font-medium text-slate-900">{subjectProfile?.recommended_question_count ?? "--"} {"题"}</span>
+              </p>
+              <p>
+                {"题型偏向："}
+                <span className="font-medium text-slate-900">{formatLabelList((subjectProfile?.recommended_question_types ?? []).map(formatQuestionTypeLabel))}</span>
+              </p>
+              <p>
+                {"难度焦点："}
+                <span className="font-medium text-slate-900">{formatDifficultyFocus(subjectProfile?.difficulty_focus)}</span>
+              </p>
+              <p>
+                {"待复习："}
+                <span className="font-medium text-slate-900">{subjectProfile?.due_review_count ?? 0}</span>
+                {" / 总待处理 "}
+                <span className="font-medium text-slate-900">{subjectProfile?.pending_review_count ?? 0}</span>
+              </p>
+              <p>
+                {"聚焦单元："}
+                <span className="font-medium text-slate-900">{formatLabelList(focusUnitNames)}</span>
+              </p>
+              <p>
+                {"聚焦知识点："}
+                <span className="font-medium text-slate-900">{formatLabelList(focusNodeNames)}</span>
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className={PAPER_CARD}>
+            <CardHeader>
+              <CardTitle>{"用户级画像"}</CardTitle>
+              <CardDescription>{"跨学科相对稳定的学习偏好。"}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600">
+              <p>
+                {"偏好题型："}
+                <span className="font-medium text-slate-900">{formatLabelList((userProfile?.preferred_question_types ?? []).map(formatQuestionTypeLabel))}</span>
+              </p>
+              <p>
+                {"常用模式："}
+                <span className="font-medium text-slate-900">{formatLabelList((userProfile?.preferred_exam_modes ?? []).map(formatExamModeLabel))}</span>
+              </p>
+              <p>
+                {"讲解风格："}
+                <span className="font-medium text-slate-900">{formatExplanationStyle(userProfile?.explanation_style)}</span>
+              </p>
+              <p>
+                {"学习节奏："}
+                <span className="font-medium text-slate-900">{formatPacePreference(userProfile?.pace_preference)}</span>
+              </p>
+              <p>
+                {"稳定度："}
+                <span className="font-medium text-slate-900">{formatConsistencyLevel(userProfile?.consistency_level)}</span>
+              </p>
+              <p>
+                {"跨学科待复习："}
+                <span className="font-medium text-slate-900">{userProfile?.due_review_count ?? 0}</span>
+                {" / 总待处理 "}
+                <span className="font-medium text-slate-900">{userProfile?.pending_review_count ?? 0}</span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-6 md:grid-cols-3">
           <Card className={PAPER_CARD}>

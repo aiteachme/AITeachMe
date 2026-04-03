@@ -15,8 +15,8 @@ import structlog
 from fastapi import UploadFile
 from sqlmodel import Session
 
-from app.infra.config import get_settings
-from app.infra.exceptions import (
+from app.shared.infra.config import get_settings
+from app.shared.infra.exceptions import (
     FileParseError,
     FileTooLargeError,
     InvalidRawFileStateError,

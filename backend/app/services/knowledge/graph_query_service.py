@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.infra.exceptions import (
+from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
     KnowledgeNodeNotFoundError,
 )

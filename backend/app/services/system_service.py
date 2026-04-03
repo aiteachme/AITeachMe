@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.infra.config import get_settings
+from app.shared.infra.config import get_settings
 from app.schemas.system import InitData, RuntimeUser
 
 

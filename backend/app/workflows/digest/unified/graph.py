@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 
-from app.infra.config import get_settings
+from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult

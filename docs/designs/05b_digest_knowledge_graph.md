@@ -183,12 +183,11 @@
 
 `candidate extraction -> canonicalization -> entity resolve -> evidence attach -> dependency build -> topic map publish -> curriculum signal derive`
 
+当前代码对齐补充：
 
-
-TODO 这里既然图谱的过程和文档的过程是同时触发的，那两者的最初输入啥的应该是这样的，输入的应该是和文档生成的输入一样，都会先是一堆文档，根据总结的知识主题啥的再进行下一步？整理一个详细的流程？
-
-
-
+- docs lane 与 kg lane 在 unified digest 中并行执行；
+- 两者共享同一轮 `shared prepare` 输入（材料画像、模式判断、section/chunk 先验）；
+- 因此图谱抽取的输入边界与文档构建输入边界是一致的，不存在两套独立原料。
 
 ### 5.1 Candidate Extraction
 
@@ -271,14 +270,15 @@ curriculum lane 至少需要拿到：
 
 ---
 
-
-
-
-TODO 这里改改，未来也并不需增量更新，现在想的还是版本号的办法，同理这里对应到表结构里会有什么影响？需要一个版本号控制表？什么形式的？？
-
 ## 7. 增量更新、影响域与重建边界
 
 未来 digest 必须支持增量更新，而不是每次都从零重建所有知识结构。
+
+与当前数据库版本语义的关系：
+
+- 现阶段版本仍通过 `curriculum.version_no` 与图谱 `build_revision_no` 字段表达；
+- 不新增独立“图谱版本控制主表”；
+- 增量重建能力应优先落在 workflow 与 impact 计算层，而不是先扩表。
 
 ### 7.1 Impact 分析目标
 

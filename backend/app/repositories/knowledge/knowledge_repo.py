@@ -8,8 +8,8 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
-from app.core.config import get_settings
-from app.core.database import (
+from app.shared.infra.config import get_settings
+from app.shared.infra.database import (
     ensure_subject_vec_table,
     get_engine,
     get_vector_table_dim,
@@ -17,7 +17,7 @@ from app.core.database import (
     quote_sqlite_identifier,
     vector_table_exists,
 )
-from app.core.subject_embeddings import (
+from app.shared.infra.subject_embeddings import (
     SubjectEmbeddingMode,
     build_subject_vector_table_name,
     get_legacy_vector_table_name,

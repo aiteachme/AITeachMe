@@ -10,7 +10,7 @@ from pathlib import Path
 
 import structlog
 
-from app.infra.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import (
@@ -249,7 +249,7 @@ async def _run_deep_enhance_background(
                 # Continue with Phase 1 markdown — quality re-parse is best-effort
 
         # ── Step 2: LLM OCR enrichment (only if vision model configured) ──
-        from app.infra.config import get_settings
+        from app.shared.infra.config import get_settings
         has_vision = get_settings().has_vision_ocr_model
 
         if has_vision:

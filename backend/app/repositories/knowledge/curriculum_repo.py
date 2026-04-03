@@ -6,7 +6,7 @@ import json
 
 from sqlmodel import Session, func, select
 
-from app.infra.exceptions import DagVersionConflictError, TreeVersionConflictError
+from app.shared.infra.exceptions import DagVersionConflictError, TreeVersionConflictError
 from app.models.curriculum import (
     Curriculum,
     CurriculumSnapshot,

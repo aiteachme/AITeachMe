@@ -5,7 +5,7 @@
 
 对外使用::
 
-    from app.infra.context import build_teaching_context
+    from app.shared.infra.context import build_teaching_context
 
     ctx = await build_teaching_context(
         subject_id="linear-algebra",
@@ -140,7 +140,7 @@ async def build_teaching_context(
     # 1. 用户画像
     if include_profile:
         try:
-            from app.infra.memory import get_user_profile
+            from app.shared.infra.memory import get_user_profile
             profile = await get_user_profile(user_id)
             msg = profile.to_system_message()
             if msg.get("content"):
@@ -151,7 +151,7 @@ async def build_teaching_context(
     # 2. 知识库检索
     if include_knowledge and subject_id:
         try:
-            from app.infra.search import search_knowledge
+            from app.shared.infra.search import search_knowledge
             chunks = await search_knowledge(
                 user_message, subject_id, top_k=knowledge_top_k,
             )
@@ -168,7 +168,7 @@ async def build_teaching_context(
     # 3. 记忆回忆
     if include_memory:
         try:
-            from app.infra.memory import recall
+            from app.shared.infra.memory import recall
             entries = await recall(user_message, user_id=user_id, top_k=memory_top_k)
             if entries:
                 lines = ["## 历史记忆\n"]

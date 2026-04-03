@@ -6,7 +6,7 @@ import asyncio
 import re
 from pathlib import Path
 
-from app.infra.exceptions import FileParseError
+from app.shared.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.formats import (
     get_text_language_hint,
     is_markdown_extension,

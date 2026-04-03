@@ -2,7 +2,7 @@
 
 from sqlmodel import Session
 
-from app.infra.exceptions import SubjectInUseError, SubjectRegistryNotFoundError
+from app.shared.infra.exceptions import SubjectInUseError, SubjectRegistryNotFoundError
 from app.models import Subject
 from app.repositories.subject_repo import (
     create_subject,

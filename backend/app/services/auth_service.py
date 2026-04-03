@@ -8,6 +8,7 @@ import hmac
 import json
 import re
 import secrets
+import socket
 import smtplib
 import ssl
 import time
@@ -19,8 +20,8 @@ import structlog
 from fastapi import Response
 from sqlmodel import Session, select
 
-from app.infra.config import get_settings
-from app.infra.exceptions import AITeachMeError, AuthDisabledError
+from app.shared.infra.config import get_settings
+from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
 from app.models import EmailVerificationCode, User
 from app.repositories.user_repo import (
     attach_device_key,
@@ -42,6 +43,11 @@ _GUEST_TOKEN_KIND = "guest"
 _VERIFICATION_PURPOSE_REGISTER = "register"
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 _EMAIL_CODE_RE = re.compile(r"^[A-Za-z0-9]{4,16}$")
+_SMTP_ADDRESS_FAMILY_MAP = {
+    "auto": socket.AF_UNSPEC,
+    "ipv4": socket.AF_INET,
+    "ipv6": socket.AF_INET6,
+}
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -115,12 +121,139 @@ def _ensure_unique_username(session: Session, base: str) -> str:
     return username
 
 
+def _normalize_smtp_address_family(raw_value: str | None) -> str:
+    normalized = (raw_value or "auto").strip().lower()
+    if not normalized:
+        return "auto"
+    if normalized not in _SMTP_ADDRESS_FAMILY_MAP:
+        raise AITeachMeError(
+            detail="SMTP_ADDRESS_FAMILY 仅支持 auto、ipv4、ipv6。",
+            status_code=503,
+            error_code="AUTH_SMTP_NOT_CONFIGURED",
+        )
+    return normalized
+
+
+def _socket_family_name(family: int) -> str:
+    if family == socket.AF_INET:
+        return "ipv4"
+    if family == socket.AF_INET6:
+        return "ipv6"
+    return str(family)
+
+
+def _format_smtp_sockaddr(sockaddr: tuple[object, ...]) -> str:
+    if len(sockaddr) >= 4:
+        host, port = sockaddr[:2]
+        return f"[{host}]:{port}"
+    host, port = sockaddr[:2]
+    return f"{host}:{port}"
+
+
+def _resolve_smtp_target_addresses(
+    host: str,
+    port: int,
+    *,
+    address_family: str,
+) -> list[tuple[int, int, int, str, tuple[object, ...]]]:
+    family = _SMTP_ADDRESS_FAMILY_MAP[address_family]
+    return socket.getaddrinfo(host, port, family=family, type=socket.SOCK_STREAM)
+
+
+def _open_smtp_socket(
+    *,
+    host: str,
+    port: int,
+    timeout_s: float,
+    address_family: str,
+    ssl_context: ssl.SSLContext | None = None,
+) -> socket.socket:
+    addresses = _resolve_smtp_target_addresses(host, port, address_family=address_family)
+    logger.info(
+        "email_verification_smtp_resolved",
+        smtp_host=host,
+        smtp_port=port,
+        smtp_address_family=address_family,
+        resolved_addresses=[_format_smtp_sockaddr(sockaddr) for _, _, _, _, sockaddr in addresses],
+    )
+
+    last_error: OSError | None = None
+    for family, socktype, proto, _, sockaddr in addresses:
+        attempt_started = time.perf_counter()
+        raw_socket: socket.socket | None = None
+        try:
+            raw_socket = socket.socket(family, socktype, proto)
+            raw_socket.settimeout(timeout_s)
+            raw_socket.connect(sockaddr)
+            connected_socket: socket.socket = raw_socket
+            if ssl_context is not None:
+                connected_socket = ssl_context.wrap_socket(raw_socket, server_hostname=host)
+            logger.info(
+                "email_verification_smtp_connect_attempt_finished",
+                smtp_host=host,
+                smtp_port=port,
+                smtp_address_family=address_family,
+                socket_family=_socket_family_name(family),
+                target_address=_format_smtp_sockaddr(sockaddr),
+                elapsed_ms=int((time.perf_counter() - attempt_started) * 1000),
+            )
+            return connected_socket
+        except OSError as exc:
+            last_error = exc
+            if raw_socket is not None:
+                raw_socket.close()
+            logger.warning(
+                "email_verification_smtp_connect_attempt_failed",
+                smtp_host=host,
+                smtp_port=port,
+                smtp_address_family=address_family,
+                socket_family=_socket_family_name(family),
+                target_address=_format_smtp_sockaddr(sockaddr),
+                elapsed_ms=int((time.perf_counter() - attempt_started) * 1000),
+                error=str(exc),
+            )
+
+    if last_error is not None:
+        raise last_error
+    raise OSError("No SMTP target addresses were resolved.")
+
+
+class _AddressFamilySMTP(smtplib.SMTP):
+    def __init__(self, *, timeout: float, address_family: str):
+        self._smtp_address_family = address_family
+        super().__init__(host="", port=0, timeout=timeout)
+
+    def _get_socket(self, host: str, port: int, timeout: float) -> socket.socket:
+        return _open_smtp_socket(
+            host=host,
+            port=port,
+            timeout_s=timeout,
+            address_family=self._smtp_address_family,
+        )
+
+
+class _AddressFamilySMTP_SSL(smtplib.SMTP_SSL):
+    def __init__(self, *, timeout: float, address_family: str, context: ssl.SSLContext):
+        self._smtp_address_family = address_family
+        super().__init__(host="", port=0, timeout=timeout, context=context)
+
+    def _get_socket(self, host: str, port: int, timeout: float) -> socket.socket:
+        return _open_smtp_socket(
+            host=host,
+            port=port,
+            timeout_s=timeout,
+            address_family=self._smtp_address_family,
+            ssl_context=self.context,
+        )
+
+
 def _ensure_smtp_ready() -> None:
     settings = get_settings()
     host = (settings.smtp_host or "").strip()
     from_email = (settings.smtp_from_email or "").strip()
     username = (settings.smtp_username or "").strip()
     password = settings.smtp_password or ""
+    _normalize_smtp_address_family(settings.smtp_address_family)
 
     if not host or not from_email:
         raise AITeachMeError(
@@ -152,6 +285,7 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
     password = settings.smtp_password or ""
     from_email = (settings.smtp_from_email or "").strip()
     from_name = settings.smtp_from_name.strip() or "AITeachMe"
+    address_family = _normalize_smtp_address_family(settings.smtp_address_family)
     timeout_s = max(3, settings.smtp_timeout_s)
     ttl_min = max(1, int(round(ttl_seconds / 60)))
 
@@ -176,27 +310,112 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
     )
 
     ssl_context = ssl.create_default_context()
+    started_at = time.perf_counter()
+    to_domain = to_email.rsplit("@", 1)[-1].lower() if "@" in to_email else None
+    smtp_mode = "ssl" if settings.smtp_use_ssl else ("starttls" if settings.smtp_use_starttls else "plain")
+    logger.info(
+        "email_verification_send_started",
+        to_domain=to_domain,
+        smtp_host=host,
+        smtp_port=port,
+        smtp_mode=smtp_mode,
+        smtp_address_family=address_family,
+        smtp_timeout_s=timeout_s,
+    )
     try:
         if settings.smtp_use_ssl:
-            with smtplib.SMTP_SSL(
-                host=host,
-                port=port,
+            with _AddressFamilySMTP_SSL(
                 timeout=timeout_s,
+                address_family=address_family,
                 context=ssl_context,
             ) as client:
+                connect_started = time.perf_counter()
+                client.connect(host=host, port=port)
+                logger.info(
+                    "email_verification_smtp_connected",
+                    smtp_host=host,
+                    smtp_port=port,
+                    smtp_mode=smtp_mode,
+                    elapsed_ms=int((time.perf_counter() - connect_started) * 1000),
+                )
                 if username is not None:
+                    login_started = time.perf_counter()
                     client.login(username, password)
+                    logger.info(
+                        "email_verification_smtp_login_finished",
+                        smtp_host=host,
+                        smtp_port=port,
+                        elapsed_ms=int((time.perf_counter() - login_started) * 1000),
+                    )
+                send_started = time.perf_counter()
                 client.send_message(msg)
+                logger.info(
+                    "email_verification_smtp_send_finished",
+                    smtp_host=host,
+                    smtp_port=port,
+                    elapsed_ms=int((time.perf_counter() - send_started) * 1000),
+                )
+            logger.info(
+                "email_verification_send_finished",
+                to_domain=to_domain,
+                smtp_host=host,
+                smtp_port=port,
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+            )
             return
 
-        with smtplib.SMTP(host=host, port=port, timeout=timeout_s) as client:
+        with _AddressFamilySMTP(timeout=timeout_s, address_family=address_family) as client:
+            connect_started = time.perf_counter()
+            client.connect(host=host, port=port)
+            logger.info(
+                "email_verification_smtp_connected",
+                smtp_host=host,
+                smtp_port=port,
+                smtp_mode=smtp_mode,
+                elapsed_ms=int((time.perf_counter() - connect_started) * 1000),
+            )
+            ehlo_started = time.perf_counter()
             client.ehlo()
+            logger.info(
+                "email_verification_smtp_ehlo_finished",
+                smtp_host=host,
+                smtp_port=port,
+                elapsed_ms=int((time.perf_counter() - ehlo_started) * 1000),
+            )
             if settings.smtp_use_starttls:
+                starttls_started = time.perf_counter()
                 client.starttls(context=ssl_context)
                 client.ehlo()
+                logger.info(
+                    "email_verification_smtp_starttls_finished",
+                    smtp_host=host,
+                    smtp_port=port,
+                    elapsed_ms=int((time.perf_counter() - starttls_started) * 1000),
+                )
             if username is not None:
+                login_started = time.perf_counter()
                 client.login(username, password)
+                logger.info(
+                    "email_verification_smtp_login_finished",
+                    smtp_host=host,
+                    smtp_port=port,
+                    elapsed_ms=int((time.perf_counter() - login_started) * 1000),
+                )
+            send_started = time.perf_counter()
             client.send_message(msg)
+            logger.info(
+                "email_verification_smtp_send_finished",
+                smtp_host=host,
+                smtp_port=port,
+                elapsed_ms=int((time.perf_counter() - send_started) * 1000),
+            )
+        logger.info(
+            "email_verification_send_finished",
+            to_domain=to_domain,
+            smtp_host=host,
+            smtp_port=port,
+            elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+        )
     except smtplib.SMTPException as exc:
         logger.warning("email_verification_send_failed", error=str(exc))
         raise AITeachMeError(
