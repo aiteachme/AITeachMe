@@ -282,7 +282,7 @@ function resolveDocBuildStatusText(
   hasLiveVersion: boolean,
   hasDraftVersion: boolean,
 ): string {
-  if (!build) {
+  if (!build || build.status === "idle") {
     if (hasLiveVersion) {
       return "当前显示已发布的正式版知识文档";
     }
@@ -321,7 +321,7 @@ function resolveDocBuildProgressFloor(
   build: DocGenBuildStatus | null | undefined,
   hasDraftVersion: boolean,
 ): number {
-  if (!build) {
+  if (!build || build.status === "idle") {
     return hasDraftVersion ? 62 : 0;
   }
 
@@ -345,7 +345,7 @@ function resolveDocBuildProgressCap(
   build: DocGenBuildStatus | null | undefined,
   hasDraftVersion: boolean,
 ): number {
-  if (!build) {
+  if (!build || build.status === "idle") {
     return hasDraftVersion ? 78 : 45;
   }
 
@@ -1154,6 +1154,10 @@ export function KnowledgeDocsPage() {
         return false;
       }
 
+      if (!buildStatus || buildStatus === "idle") {
+        return false;
+      }
+
       const requestedBuildMs = parseIsoTimestamp(build?.requested_at) ?? requestedAtMs;
       if (requestedBuildMs === null) {
         return false;
@@ -1182,7 +1186,10 @@ export function KnowledgeDocsPage() {
     () => parseIsoTimestamp(liveUpdatedAt),
     [liveUpdatedAt],
   );
-  const targetRequestedAtMs = requestedAtMs ?? buildRequestedAtMs;
+  const targetRequestedAtMs =
+    buildStatus && buildStatus !== "idle"
+      ? requestedAtMs ?? buildRequestedAtMs
+      : null;
   const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isRequestedBuildReady =
