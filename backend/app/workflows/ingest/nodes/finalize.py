@@ -12,7 +12,9 @@ import mimetypes
 import re
 from pathlib import Path
 
+from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_artifact_store
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import to_storage_key
@@ -93,12 +95,56 @@ def build_finalize_success_node(*, context: WorkflowContext):
 
     async def finalize_success_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
+        settings = get_settings()
         try:
             markdown_path = Path(state["markdown_path"])
             asset_dir = Path(state["asset_dir"])
             parsed_markdown = state.get("parsed_markdown")
-            if parsed_markdown is None and markdown_path.exists():
-                parsed_markdown = markdown_path.read_text(encoding="utf-8")
+
+            if settings.is_cloud_mode:
+                # cloud 模式：markdown_path 和 asset_dir 存的是 storage_key
+                # parsed_markdown 应该已经在 state 中（解析器产出）
+                # 如果没有，尝试从本地临时文件读取
+                if parsed_markdown is None:
+                    # 解析器可能把 markdown 写到了本地临时路径
+                    local_md = Path(state.get("_local_markdown_path", ""))
+                    if local_md.exists():
+                        parsed_markdown = local_md.read_text(encoding="utf-8")
+
+                # 把 markdown 写回 OSS
+                store = get_artifact_store()
+                md_storage_key = state["markdown_path"]  # 已经是 storage_key
+                if parsed_markdown:
+                    await store.write_bytes(md_storage_key, parsed_markdown.encode("utf-8"))
+
+                # 把 assets 写回 OSS（解析器可能把 assets 写到了本地临时 asset_dir）
+                local_asset_dir = Path(state.get("_local_asset_dir", str(asset_dir)))
+                asset_rows: list[RawFileAsset] = []
+                if local_asset_dir.exists() and local_asset_dir.is_dir():
+                    for path in sorted(local_asset_dir.iterdir()):
+                        if not path.is_file():
+                            continue
+                        asset_key = f"{state['subject']}/assets/{state['file_id']}/{path.name}"
+                        await store.write_file(asset_key, path)
+                        width, height = _read_image_dimensions(path)
+                        asset_rows.append(
+                            RawFileAsset(
+                                raw_file_id=state["file_id"],
+                                asset_name=path.name,
+                                asset_kind=_guess_asset_kind(path.name),
+                                storage_backend="s3",
+                                storage_key=asset_key,
+                                mime_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                                page_num=_guess_page_num(path.name),
+                                width=width,
+                                height=height,
+                            )
+                        )
+            else:
+                # local 模式：原有逻辑
+                if parsed_markdown is None and markdown_path.exists():
+                    parsed_markdown = markdown_path.read_text(encoding="utf-8")
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=asset_dir)
 
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
@@ -108,7 +154,6 @@ def build_finalize_success_node(*, context: WorkflowContext):
                         "error": f"raw_file_not_found:{state['file_id']}",
                     }
 
-                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=asset_dir)
                 replace_raw_file_assets(session, raw_file_id=state["file_id"], assets=asset_rows)
                 update_raw_file(
                     session,

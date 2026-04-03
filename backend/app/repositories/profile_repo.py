@@ -6,10 +6,10 @@ import json
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
 from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, UserKnowledgeState
+from app.shared.infra.database import is_postgres
 from app.utils.time import utcnow
 
 
@@ -92,24 +92,44 @@ def upsert_knowledge_state(
         "updated_at": now,
     }
 
-    stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
     set_values = {
         key: value
         for key, value in insert_values.items()
         if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_node_id"}
     }
-    if target_kind == "unit":
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["user_id", "subject", "teaching_unit_id"],
-            index_where=sa.text("knowledge_node_id IS NULL"),
-            set_=set_values,
-        )
+
+    if is_postgres():
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(UserKnowledgeState).values(**insert_values)
+        if target_kind == "unit":
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "subject", "teaching_unit_id"],
+                index_where=sa.text("knowledge_node_id IS NULL"),
+                set_=set_values,
+            )
+        else:
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "subject", "knowledge_node_id"],
+                index_where=sa.text("teaching_unit_id IS NULL"),
+                set_=set_values,
+            )
     else:
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["user_id", "subject", "knowledge_node_id"],
-            index_where=sa.text("teaching_unit_id IS NULL"),
-            set_=set_values,
-        )
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
+        if target_kind == "unit":
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "subject", "teaching_unit_id"],
+                index_where=sa.text("knowledge_node_id IS NULL"),
+                set_=set_values,
+            )
+        else:
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "subject", "knowledge_node_id"],
+                index_where=sa.text("teaching_unit_id IS NULL"),
+                set_=set_values,
+            )
 
     session.exec(stmt)
     if auto_commit:

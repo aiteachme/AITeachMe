@@ -22,6 +22,7 @@ from app.shared.infra.exceptions import (
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
+from app.shared.infra.storage import get_artifact_store
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
     create_raw_file,
@@ -121,6 +122,12 @@ def _read_markdown(markdown_path_value: str | None) -> str:
     if not markdown_path_value:
         return ""
 
+    settings = get_settings()
+    if settings.is_cloud_mode:
+        # cloud 模式下 markdown_path 存的是 storage_key，同步读取不可行
+        # 返回空字符串，前端通过 API 按需加载
+        return ""
+
     markdown_path = Path(markdown_path_value)
     if not markdown_path.exists():
         return ""
@@ -201,6 +208,7 @@ async def save_uploaded_file(
     """Save a single uploaded raw file."""
 
     settings = get_settings()
+    store = get_artifact_store()
     normalized_subject = validate_subject(subject)
     content = await file.read()
     if len(content) > settings.max_upload_size_mb * 1024 * 1024:
@@ -214,6 +222,7 @@ async def save_uploaded_file(
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
 
+    storage_backend = "s3" if settings.is_cloud_mode else "local"
     raw_file = create_raw_file(
         session,
         RawFile(
@@ -223,7 +232,7 @@ async def save_uploaded_file(
             filetype=extension.lstrip("."),
             file_path=str(temp_path),
             mime_type=file.content_type or mimetypes.guess_type(filename)[0],
-            storage_backend="local",
+            storage_backend=storage_backend,
             status=TaskStatus.PENDING.value,
             content_hash=content_hash,
             file_size_bytes=len(content),
@@ -231,6 +240,26 @@ async def save_uploaded_file(
         ),
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
+
+    if settings.is_cloud_mode:
+        # cloud 模式：上传到 OSS，file_path 存 storage_key
+        storage_key = f"{normalized_subject}/raw_files/{raw_file_id}{extension}"
+        try:
+            await store.write_file(storage_key, temp_path)
+        except Exception as exc:
+            delete_raw_file(session, raw_file)
+            temp_path.unlink(missing_ok=True)
+            raise FileParseError(filename, reason=f"上传文件到 OSS 失败: {exc}") from exc
+        temp_path.unlink(missing_ok=True)
+        return update_raw_file(
+            session,
+            raw_file,
+            file_path=storage_key,
+            markdown_path=f"{normalized_subject}/raw_markdowns/{raw_file_id}.md",
+            asset_dir=f"{normalized_subject}/assets/{raw_file_id}",
+        )
+
+    # local 模式：原有逻辑
     final_path = build_raw_file_path(normalized_subject, raw_file_id, extension)
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -452,30 +481,42 @@ def list_subject_files(
     )
 
 
-def delete_files(
+async def delete_files(
     session: Session,
     *,
     subject: str,
     file_uids: list[str],
 ) -> FileDeleteData:
-    """Delete files and local artifacts."""
+    """Delete files and artifacts (local or OSS)."""
 
+    settings = get_settings()
+    store = get_artifact_store()
     raw_files = get_subject_files_by_uid_or_raise(session, subject=subject, file_uids=file_uids)
     deleted_uids: list[str] = []
 
     for raw_file in raw_files:
         raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
+        raw_file_id = require_id(raw_file.id, "RawFile.id")
 
-        for path_value in [raw_file.file_path, raw_file.markdown_path]:
-            if path_value:
-                Path(path_value).unlink(missing_ok=True)
-        if raw_file.asset_dir:
-            shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
+        if settings.is_cloud_mode:
+            # cloud 模式：从 OSS 删除
+            if raw_file.file_path:
+                await store.delete(raw_file.file_path)
+            if raw_file.markdown_path:
+                await store.delete(raw_file.markdown_path)
+            await store.delete_prefix(f"{subject}/assets/{raw_file_id}/")
         else:
-            delete_asset_files(
-                str(build_asset_dir(raw_file.subject, require_id(raw_file.id, "RawFile.id"))),
-                asset_name_prefix=_build_asset_name_prefix_for_raw_file(raw_file),
-            )
+            # local 模式：原有逻辑
+            for path_value in [raw_file.file_path, raw_file.markdown_path]:
+                if path_value:
+                    Path(path_value).unlink(missing_ok=True)
+            if raw_file.asset_dir:
+                shutil.rmtree(raw_file.asset_dir, ignore_errors=True)
+            else:
+                delete_asset_files(
+                    str(build_asset_dir(raw_file.subject, raw_file_id)),
+                    asset_name_prefix=_build_asset_name_prefix_for_raw_file(raw_file),
+                )
 
         delete_raw_file(session, raw_file)
         deleted_uids.append(raw_file_uid)

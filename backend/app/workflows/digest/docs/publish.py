@@ -9,7 +9,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_artifact_store
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.utils.docgen_store import (
@@ -25,6 +27,7 @@ from app.utils.path_helpers import (
     build_knowledge_docs_dir,
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
+    _sanitize_doc_title,
 )
 from app.utils.time import utcnow
 from app.workflows.common.runtime import cancel_tasks_and_drain
@@ -89,6 +92,18 @@ def build_merged_markdown(chapters: list[dict]) -> str:
     return "\n".join(header) + separator + separator.join(body) + "\n"
 
 
+def _cloud_build_key(subject: str, chapter_index: int, title: str) -> str:
+    """构建云端暂存章节的 storage_key。"""
+    safe_title = _sanitize_doc_title(title)
+    return f"{subject}/knowledge_markdowns/_build/chapter_{chapter_index:02d}_{safe_title}.md"
+
+
+def _cloud_published_key(subject: str, chapter_index: int, title: str) -> str:
+    """构建云端已发布章节的 storage_key。"""
+    safe_title = _sanitize_doc_title(title)
+    return f"{subject}/knowledge_markdowns/chapter_{chapter_index:02d}_{safe_title}.md"
+
+
 async def stage_knowledge_docs(
     *,
     subject: str,
@@ -99,34 +114,68 @@ async def stage_knowledge_docs(
     if not chapter_metadatas:
         return StagedKnowledgeDocs()
 
+    settings = get_settings()
     sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
-    build_dir = build_knowledge_docs_build_dir(subject)
-    build_dir.mkdir(parents=True, exist_ok=True)
 
-    chapter_write_tasks: list[asyncio.Task[None]] = []
     built_paths: list[tuple[int, str]] = []
-    for index, chapter in enumerate(sorted_chapters):
-        chapter_index = int(chapter.get("chapter_index", index + 1))
-        chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
-        chapter_markdown = str(chapter.get("markdown", ""))
-        build_path = build_knowledge_doc_build_path(subject, chapter_index, chapter_title)
-        chapter_write_tasks.append(
-            asyncio.create_task(
-                asyncio.to_thread(build_path.write_text, chapter_markdown, encoding="utf-8")
+
+    if settings.is_cloud_mode:
+        store = get_artifact_store()
+        write_tasks: list[asyncio.Task[None]] = []
+
+        for index, chapter in enumerate(sorted_chapters):
+            chapter_index = int(chapter.get("chapter_index", index + 1))
+            chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
+            chapter_markdown = str(chapter.get("markdown", ""))
+            storage_key = _cloud_build_key(subject, chapter_index, chapter_title)
+            write_tasks.append(
+                asyncio.create_task(
+                    store.write_bytes(storage_key, chapter_markdown.encode("utf-8"))
+                )
             )
+            built_paths.append((chapter_index, chapter_title))
+
+        try:
+            if write_tasks:
+                await asyncio.gather(*write_tasks)
+        except asyncio.CancelledError:
+            await cancel_tasks_and_drain(write_tasks)
+            raise
+
+        merged_markdown = build_merged_markdown(sorted_chapters)
+        await store.write_bytes(
+            f"{subject}/knowledge_markdowns/_build/merged_knowledge_base.md",
+            merged_markdown.encode("utf-8"),
         )
-        built_paths.append((chapter_index, chapter_title))
+    else:
+        # local 模式：原有逻辑，完全不变
+        build_dir = build_knowledge_docs_build_dir(subject)
+        build_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        if chapter_write_tasks:
-            await asyncio.gather(*chapter_write_tasks)
-    except asyncio.CancelledError:
-        await cancel_tasks_and_drain(chapter_write_tasks)
-        raise
+        chapter_write_tasks: list[asyncio.Task[None]] = []
+        for index, chapter in enumerate(sorted_chapters):
+            chapter_index = int(chapter.get("chapter_index", index + 1))
+            chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
+            chapter_markdown = str(chapter.get("markdown", ""))
+            build_path = build_knowledge_doc_build_path(subject, chapter_index, chapter_title)
+            chapter_write_tasks.append(
+                asyncio.create_task(
+                    asyncio.to_thread(build_path.write_text, chapter_markdown, encoding="utf-8")
+                )
+            )
+            built_paths.append((chapter_index, chapter_title))
 
-    merged_markdown = build_merged_markdown(sorted_chapters)
-    build_merged_path = build_merged_knowledge_base_build_path(subject)
-    await asyncio.to_thread(build_merged_path.write_text, merged_markdown, encoding="utf-8")
+        try:
+            if chapter_write_tasks:
+                await asyncio.gather(*chapter_write_tasks)
+        except asyncio.CancelledError:
+            await cancel_tasks_and_drain(chapter_write_tasks)
+            raise
+
+        merged_markdown = build_merged_markdown(sorted_chapters)
+        build_merged_path = build_merged_knowledge_base_build_path(subject)
+        await asyncio.to_thread(build_merged_path.write_text, merged_markdown, encoding="utf-8")
+
     update_knowledge_build_status(
         subject,
         status="running",
@@ -153,22 +202,13 @@ def publish_staged_knowledge_docs(
     if not chapter_metadatas:
         return []
 
+    settings = get_settings()
     sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
-    published_dir = build_knowledge_docs_dir(subject)
-    published_dir.mkdir(parents=True, exist_ok=True)
-    clear_published_knowledge_docs_files(subject)
 
-    for index, chapter in enumerate(sorted_chapters):
-        chapter_index = int(chapter.get("chapter_index", index + 1))
-        chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
-        build_path = build_knowledge_doc_build_path(subject, chapter_index, chapter_title)
-        final_path = build_knowledge_doc_path(subject, chapter_index, chapter_title)
-        shutil.move(str(build_path), str(final_path))
-
-    shutil.move(
-        str(build_merged_knowledge_base_build_path(subject)),
-        str(build_merged_knowledge_base_path(subject)),
-    )
+    if settings.is_cloud_mode:
+        _publish_staged_cloud(subject, sorted_chapters)
+    else:
+        _publish_staged_local(subject, sorted_chapters)
 
     manifest = KnowledgeDocsManifest(
         updated_at=requested_at,
@@ -207,6 +247,11 @@ def publish_staged_knowledge_docs(
         if not source_file_ids and index < len(chapter_assignments):
             source_file_ids = list(chapter_assignments[index].get("source_file_ids", []))
 
+        if settings.is_cloud_mode:
+            md_path = _cloud_published_key(subject, chapter_index, chapter_title)
+        else:
+            md_path = str(build_knowledge_doc_path(subject, chapter_index, chapter_title))
+
         docs_to_create.append(
             KnowledgeDoc(
                 subject=subject,
@@ -214,7 +259,7 @@ def publish_staged_knowledge_docs(
                 title=chapter_title,
                 summary=summary,
                 markdown_content=chapter_markdown,
-                markdown_path=str(build_knowledge_doc_path(subject, chapter_index, chapter_title)),
+                markdown_path=md_path,
                 tags=json.dumps(tags, ensure_ascii=False),
                 source_file_ids=json.dumps(source_file_ids),
                 word_count=count_words(chapter_markdown),
@@ -241,3 +286,48 @@ def publish_staged_knowledge_docs(
         published_doc_count=len(created_docs),
     )
     return [doc.id for doc in created_docs if doc.id is not None]
+
+
+def _publish_staged_cloud(subject: str, sorted_chapters: list[dict]) -> None:
+    """云端模式：将 _build/ 暂存文件移动到正式路径。"""
+    from app.shared.infra.storage import run_store_sync
+
+    store = get_artifact_store()
+    clear_published_knowledge_docs_files(subject)
+
+    for index, chapter in enumerate(sorted_chapters):
+        chapter_index = int(chapter.get("chapter_index", index + 1))
+        chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
+        chapter_markdown = str(chapter.get("markdown", ""))
+        final_key = _cloud_published_key(subject, chapter_index, chapter_title)
+        run_store_sync(store.write_bytes, final_key, chapter_markdown.encode("utf-8"))
+
+    # 合并文档
+    merged_markdown = build_merged_markdown(sorted_chapters)
+    run_store_sync(
+        store.write_bytes,
+        f"{subject}/knowledge_markdowns/merged_knowledge_base.md",
+        merged_markdown.encode("utf-8"),
+    )
+
+    # 清理 _build/ 暂存
+    run_store_sync(store.delete_prefix, f"{subject}/knowledge_markdowns/_build/", default=0)
+
+
+def _publish_staged_local(subject: str, sorted_chapters: list[dict]) -> None:
+    """local 模式：原有逻辑，完全不变。"""
+    published_dir = build_knowledge_docs_dir(subject)
+    published_dir.mkdir(parents=True, exist_ok=True)
+    clear_published_knowledge_docs_files(subject)
+
+    for index, chapter in enumerate(sorted_chapters):
+        chapter_index = int(chapter.get("chapter_index", index + 1))
+        chapter_title = str(chapter.get("title", f"第{chapter_index}章"))
+        build_path = build_knowledge_doc_build_path(subject, chapter_index, chapter_title)
+        final_path = build_knowledge_doc_path(subject, chapter_index, chapter_title)
+        shutil.move(str(build_path), str(final_path))
+
+    shutil.move(
+        str(build_merged_knowledge_base_build_path(subject)),
+        str(build_merged_knowledge_base_path(subject)),
+    )

@@ -95,8 +95,10 @@ def _set_vec_status(ready: bool, error: str | None = None) -> None:
 
 
 def is_vec_ready() -> bool:
-    """Return whether sqlite-vec is available for the current runtime."""
+    """Return whether vector extension is available for the current runtime."""
 
+    if is_postgres():
+        return True  # pgvector 在 init_db 时已确认
     return bool(_vec_ready)
 
 
@@ -237,21 +239,16 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     return rebuilt_engine
 
 
-def get_engine() -> sa.Engine:
-    """Create or return the shared SQLAlchemy engine."""
-
-    global _engine
-    if _engine is not None:
-        return _engine
+def _build_sqlite_engine() -> sa.Engine:
+    """创建 SQLite 引擎（本地模式）。"""
 
     db_path = _get_db_path()
-
-    _engine = create_engine(
+    engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
     )
 
-    @sa.event.listens_for(_engine, "connect")
+    @sa.event.listens_for(engine, "connect")
     def configure_sqlite(dbapi_conn, connection_record):
         del connection_record
         cursor = dbapi_conn.cursor()
@@ -259,8 +256,55 @@ def get_engine() -> sa.Engine:
         cursor.close()
         _load_vec_extension(dbapi_conn)
 
-    logger.info("database_engine_created", db_path=str(db_path))
+    logger.info("database_engine_created", dialect="sqlite", db_path=str(db_path))
+    return engine
+
+
+def _build_postgres_engine(settings) -> sa.Engine:
+    """创建 PostgreSQL 引擎（云端模式）。"""
+
+    if not settings.database_url:
+        raise RuntimeError(
+            "APP_MODE=cloud requires DATABASE_URL to be set. "
+            "Example: postgresql+psycopg://user:pass@host:5432/dbname"
+        )
+
+    engine = create_engine(
+        settings.database_url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
+    logger.info("database_engine_created", dialect="postgresql")
+    return engine
+
+
+def get_engine() -> sa.Engine:
+    """Create or return the shared SQLAlchemy engine."""
+
+    global _engine
+    if _engine is not None:
+        return _engine
+
+    settings = get_settings()
+    if settings.is_cloud_mode:
+        _engine = _build_postgres_engine(settings)
+    else:
+        _engine = _build_sqlite_engine()
+
     return _engine
+
+
+def is_sqlite() -> bool:
+    """当前引擎是否为 SQLite。"""
+
+    return get_engine().dialect.name == "sqlite"
+
+
+def is_postgres() -> bool:
+    """当前引擎是否为 PostgreSQL。"""
+
+    return get_engine().dialect.name == "postgresql"
 
 
 def quote_sqlite_identifier(identifier: str) -> str:
@@ -374,9 +418,19 @@ def _ensure_default_local_user(engine) -> None:
 
 
 def init_db() -> None:
-    """Initialize the local database schema and runtime helpers."""
+    """Initialize the database schema and runtime helpers."""
 
     settings = get_settings()
+
+    if settings.is_cloud_mode:
+        _init_postgres_db(settings)
+    else:
+        _init_local_sqlite_db(settings)
+
+
+def _init_local_sqlite_db(settings) -> None:
+    """本地 SQLite 初始化（原有逻辑）。"""
+
     log_legacy_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
 
@@ -385,10 +439,45 @@ def init_db() -> None:
 
     logger.info(
         "database_initialized",
+        mode="local",
         embedding_model=settings.normalized_embedding_model,
         embedding_dim=settings.embedding_dim,
         table_count=len(_SCHEMA_TABLES),
         vec_ready=is_vec_ready(),
+    )
+
+
+def _init_postgres_db(settings) -> None:
+    """PostgreSQL + pgvector 初始化。"""
+
+    engine = get_engine()
+
+    # 确保 pgvector 扩展可用
+    with engine.begin() as conn:
+        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+    SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
+
+    # 为 retrieval_chunk 添加 embedding 向量列（如果不存在）
+    dim = settings.embedding_dim
+    if dim:
+        with engine.begin() as conn:
+            conn.execute(sa.text(
+                f"ALTER TABLE retrieval_chunk "
+                f"ADD COLUMN IF NOT EXISTS embedding vector({dim})"
+            ))
+            conn.execute(sa.text(
+                "CREATE INDEX IF NOT EXISTS idx_retrieval_chunk_embedding "
+                "ON retrieval_chunk "
+                "USING hnsw (embedding vector_cosine_ops)"
+            ))
+
+    logger.info(
+        "database_initialized",
+        mode="cloud",
+        embedding_model=settings.normalized_embedding_model,
+        embedding_dim=dim,
+        table_count=len(_SCHEMA_TABLES),
     )
 
 
