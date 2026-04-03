@@ -7,7 +7,7 @@ from http import HTTPStatus
 
 from sqlmodel import Session
 
-from app.infra.exceptions import AITeachMeError
+from app.shared.infra.exceptions import AITeachMeError
 from app.models import UserKnowledgeState
 from app.repositories.profile_repo import complete_review_task as complete_review_task_repo
 from app.repositories.profile_repo import get_knowledge_state, list_knowledge_states, list_pending_reviews

@@ -12,7 +12,7 @@ import mimetypes
 import re
 from pathlib import Path
 
-from app.infra.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import to_storage_key

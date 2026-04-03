@@ -19,8 +19,8 @@ import structlog
 from fastapi import Response
 from sqlmodel import Session, select
 
-from app.infra.config import get_settings
-from app.infra.exceptions import AITeachMeError, AuthDisabledError
+from app.shared.infra.config import get_settings
+from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
 from app.models import EmailVerificationCode, User
 from app.repositories.user_repo import (
     attach_device_key,

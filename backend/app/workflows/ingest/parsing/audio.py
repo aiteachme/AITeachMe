@@ -15,7 +15,7 @@ from shutil import which
 
 import structlog
 
-from app.infra.exceptions import FileParseError
+from app.shared.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.types import ParserRunOptions
 
 try:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import structlog
 
-from app.infra.llm import acompletion
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.llm import acompletion
+from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import SYSTEM, USER
 from app.workflows.profile.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 

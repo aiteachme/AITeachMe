@@ -14,10 +14,10 @@ from time import perf_counter
 import structlog
 from sqlmodel import Session, select
 
-from app.core.database import managed_session
-from app.core.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
-from app.infra.memory import append_to_learner_section, log_learning_event, sync_profile_to_doc
-from app.infra.tracing import llm_trace_scope
+from app.shared.infra.database import managed_session
+from app.shared.infra.exceptions import AITeachMeError, NoPublishedCurriculumSnapshotError
+from app.shared.infra.memory import append_to_learner_section, log_learning_event, sync_profile_to_doc
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import (
     ExamMode,
     ExamPaper,

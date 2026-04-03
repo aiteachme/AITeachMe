@@ -12,7 +12,7 @@ from math import floor
 import structlog
 from sqlmodel import Session, select
 
-from app.infra.exceptions import NoPublishedCurriculumSnapshotError
+from app.shared.infra.exceptions import NoPublishedCurriculumSnapshotError
 from app.models import (
     ExamMode,
     ExamPaper,

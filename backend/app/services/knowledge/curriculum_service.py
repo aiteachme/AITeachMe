@@ -7,7 +7,7 @@ import json
 import structlog
 from sqlmodel import Session, select
 
-from app.infra.exceptions import (
+from app.shared.infra.exceptions import (
     NoPublishedCurriculumSnapshotError,
     NoPublishedDagError,
     NoPublishedTreeError,

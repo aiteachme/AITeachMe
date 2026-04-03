@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.infra.runtime_paths import get_runtime_data_dir
+from app.shared.infra.runtime_paths import get_runtime_data_dir
 
 
 def get_data_dir() -> Path:

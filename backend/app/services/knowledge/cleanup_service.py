@@ -6,7 +6,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
+from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
 from app.models import (
     ChatMessage,
     ChatSession,

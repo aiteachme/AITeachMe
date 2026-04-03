@@ -7,8 +7,8 @@ import re
 
 import structlog
 
-from app.infra.llm import acompletion
-from app.infra.model_router import TaskType
+from app.shared.infra.llm import acompletion
+from app.shared.infra.model_router import TaskType
 from app.workflows.digest.prompts.docgen_prompts import (
     METADATA_PROMPT,
     REVIEWER_PROMPT,

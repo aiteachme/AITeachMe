@@ -12,10 +12,10 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.infra.llm import acompletion_structured
-from app.infra.model_router import TaskType
-from app.infra.prompt_loader import populate_prompt
-from app.infra.tracing import llm_trace_scope
+from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.model_router import TaskType
+from app.shared.infra.prompt_loader import populate_prompt
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import Difficulty, QuestionTemplate, QuestionType
 from app.repositories import exams_repo
 from app.repositories.knowledge import curriculum_repo

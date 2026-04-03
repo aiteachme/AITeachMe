@@ -15,8 +15,8 @@ import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
-from app.infra.database import managed_session
-from app.infra.tracing import llm_trace_scope
+from app.shared.infra.database import managed_session
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.workflows.examine.question_builder import build_question_templates

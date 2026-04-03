@@ -9,7 +9,7 @@
 
 对外使用::
 
-    from app.infra.memory.learner_doc import (
+    from app.shared.infra.memory.learner_doc import (
         read_learner_doc,
         write_learner_doc,
         update_learner_section,
@@ -24,7 +24,7 @@
     await update_learner_section("u1", "薄弱领域", "- 线性代数：特征值\\n- 概率论：贝叶斯")
 
     # 从 UserProfile 同步到文件
-    from app.infra.memory.learner_doc import sync_profile_to_doc
+    from app.shared.infra.memory.learner_doc import sync_profile_to_doc
     await sync_profile_to_doc("u1")
 """
 
@@ -257,7 +257,7 @@ async def sync_profile_to_doc(user_id: str = "default") -> None:
 
         await sync_profile_to_doc("u1")
     """
-    from app.infra.memory import get_user_profile
+    from app.shared.infra.memory import get_user_profile
 
     profile = await get_user_profile(user_id)
 

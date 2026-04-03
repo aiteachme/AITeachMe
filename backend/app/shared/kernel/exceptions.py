@@ -5,7 +5,7 @@ For now, this module proxies the existing legacy exception definitions.
 
 from __future__ import annotations
 
-from app.infra import exceptions as _legacy
+from app.shared.infra import exceptions as _legacy
 
 
 def __getattr__(name: str):

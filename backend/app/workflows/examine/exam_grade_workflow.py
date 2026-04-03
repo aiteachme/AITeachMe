@@ -17,7 +17,7 @@ import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.infra.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
 from app.workflows.examine.answer_grader import grade_paper

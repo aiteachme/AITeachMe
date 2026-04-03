@@ -7,9 +7,9 @@ from pathlib import Path
 
 import structlog
 
-from app.infra.exceptions import FileParseError
-from app.infra.llm import acompletion
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.exceptions import FileParseError
+from app.shared.infra.llm import acompletion
+from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
@@ -67,7 +67,7 @@ async def parse_image_bytes_with_llm_vision(
         logger.warning("parse_image_bytes_skipped", reason="image_bytes_too_small", size=len(image_bytes))
         return "[unclear]"
 
-    from app.infra.config import get_settings
+    from app.shared.infra.config import get_settings
     settings = get_settings()
     ocr_model, ocr_api_key, ocr_base_url = settings.get_ocr_config()
 
@@ -87,7 +87,7 @@ async def parse_image_bytes_with_llm_vision(
     ]
 
     try:
-        from app.infra.model_router import TaskType
+        from app.shared.infra.model_router import TaskType
         # 使用 OCR 专用配置覆盖
         import litellm
         response = await litellm.acompletion(

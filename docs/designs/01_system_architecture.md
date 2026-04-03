@@ -191,4 +191,4 @@
 - `infra/` 是 `llm`、`tracing`、`model_router`、`prompt_loader` 等模块的规范归属位置。
 - `utils/` 负责跨层纯工具能力，例如 `path_helpers`、`presenters`、`docgen_store`。
 - 不新增顶层 `app/common` 目录；共享编排辅助能力继续放在 `workflows/common`。
-- 不再在 `services/` 下保留跨层 helper shim；规范导入应直接指向 `app.infra.*` 与 `app.utils.*`。
+- 不再在 `services/` 下保留跨层 helper shim；规范导入应直接指向 `app.shared.infra.*` 与 `app.utils.*`。
