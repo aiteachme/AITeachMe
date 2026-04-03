@@ -1,8 +1,9 @@
-"""项目统一异常定义。"""
+﻿"""项目统一异常定义。"""
 
 from __future__ import annotations
 
 from http import HTTPStatus
+from typing import Any
 
 
 class AITeachMeError(Exception):
@@ -17,9 +18,11 @@ class AITeachMeError(Exception):
         *,
         error_code: str | None = None,
         status_code: int | None = None,
+        data: Any | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.data = data
         if error_code is not None:
             self.error_code = error_code
         if status_code is not None:
@@ -66,6 +69,19 @@ class SubjectInUseError(AITeachMeError):
 
     def __init__(self, subject: str) -> None:
         super().__init__(detail=f"学科 `{subject}` 下仍有内容，不能删除。")
+
+
+class KnowledgeClearConflictError(AITeachMeError):
+    error_code = "KNOWLEDGE_CLEAR_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str, blocking_details: str) -> None:
+        super().__init__(
+            detail=(
+                f"学科 `{subject}` 仍有关联的考试、画像或对话数据，"
+                f"暂不能直接清空知识。阻塞项：{blocking_details}。"
+            )
+        )
 
 
 class FileParseError(AITeachMeError):
@@ -250,6 +266,14 @@ class SubjectBuildLockConflictError(AITeachMeError):
         super().__init__(detail=f"学科 `{subject}` 正在构建中，请稍后重试。")
 
 
+class KnowledgeBuildPrecheckConflictError(AITeachMeError):
+    error_code = "KNOWLEDGE_BUILD_PRECHECK_CONFLICT"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, detail: str, *, data: Any | None = None) -> None:
+        super().__init__(detail=detail, data=data)
+
+
 class TreeVersionConflictError(AITeachMeError):
     error_code = "TREE_VERSION_CONFLICT"
     status_code = HTTPStatus.CONFLICT
@@ -272,3 +296,4 @@ class EvidenceNotFoundError(AITeachMeError):
 
     def __init__(self, evidence_id: int) -> None:
         super().__init__(detail=f"证据 #{evidence_id} 不存在。")
+

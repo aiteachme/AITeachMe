@@ -12,8 +12,14 @@
 export interface ExamGenerateRequest {
   /** Exam mode. */
   exam_mode: string;
-  /** Optional user prompt for preference hints. */
+  /** Optional user prompt for general generation hints. */
   user_prompt?: string | null;
+  /** Optional prompt that describes the desired paper style. */
+  style_prompt?: string | null;
+  /** Optional prompt describing key focus areas. */
+  focus_prompt?: string | null;
+  /** Optional uploaded sample-paper file UIDs. */
+  sample_file_uids?: string[] | null;
   /** Optional target question count. */
   num_questions?: number | null;
   /** Optional theme tree node scope. */

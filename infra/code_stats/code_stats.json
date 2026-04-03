@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-01T16:09:48.760202",
-  "total_commits_analyzed": 293,
+  "generated_at": "2026-04-02T18:11:44.987364",
+  "total_commits_analyzed": 299,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2345,6 +2345,54 @@
       "code_lines": 67697,
       "other_lines": 23403,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-01",
+      "commit": "33eb5a9",
+      "total_lines": 91100,
+      "code_lines": 67697,
+      "other_lines": 23403,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "57ed0bd",
+      "total_lines": 90176,
+      "code_lines": 67117,
+      "other_lines": 23059,
+      "message": "fix: delete subject问题"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "f2d45a8",
+      "total_lines": 91560,
+      "code_lines": 68019,
+      "other_lines": 23541,
+      "message": "chore: 更新文档，更新ui"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "bcb5773",
+      "total_lines": 91183,
+      "code_lines": 67733,
+      "other_lines": 23450,
+      "message": "docs: 更新中心化部署文档"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "93ec342",
+      "total_lines": 91183,
+      "code_lines": 67733,
+      "other_lines": 23450,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "c9023ae",
+      "total_lines": 92540,
+      "code_lines": 68859,
+      "other_lines": 23681,
+      "message": "feat: 完善学科级向量绑定与知识构建降级流程"
     }
   ]
 }

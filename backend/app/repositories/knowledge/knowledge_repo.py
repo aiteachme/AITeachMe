@@ -1,4 +1,4 @@
-"""Repository helpers for retrieval chunks and embeddings."""
+﻿"""Repository helpers for retrieval chunks and embeddings."""
 
 from __future__ import annotations
 
@@ -8,8 +8,22 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
-from app.infra.database import is_vec_ready
-from app.models import RawFile, RetrievalChunk
+from app.infra.config import get_settings
+from app.infra.database import (
+    ensure_subject_vec_table,
+    get_engine,
+    get_vector_table_dim,
+    is_vec_ready,
+    quote_sqlite_identifier,
+    vector_table_exists,
+)
+from app.infra.subject_embeddings import (
+    SubjectEmbeddingMode,
+    build_subject_vector_table_name,
+    get_legacy_vector_table_name,
+    get_subject_embedding_binding,
+)
+from app.models import RawFile, RetrievalChunk, Subject
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -141,11 +155,11 @@ def get_chunk_by_id(session: Session, chunk_id: int) -> RetrievalChunk | None:
     return session.get(RetrievalChunk, chunk_id)
 
 
-def delete_chunks_by_document_ids(session: Session, document_ids: list[int]) -> int:
+def delete_chunks_by_document_ids(session: Session, *, subject: str, document_ids: list[int]) -> int:
     chunks = get_chunks_by_document_ids(session, document_ids)
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
-        delete_embeddings_by_chunk_ids(session, chunk_ids)
+        delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
     session.commit()
@@ -164,17 +178,163 @@ def delete_documents_by_source_file_ids(
         source_file_ids=source_file_ids,
     )
     document_ids = [document.id for document in documents if document.id is not None]
-    chunk_count = delete_chunks_by_document_ids(session, document_ids)
+    chunk_count = delete_chunks_by_document_ids(session, subject=subject, document_ids=document_ids)
     return len(documents), chunk_count
+
+
+def _get_subject_record(session: Session, subject: str) -> Subject | None:
+    return session.exec(select(Subject).where(Subject.slug == subject)).first()
+
+
+def _get_subject_binding(session: Session, subject: str):
+    subject_record = _get_subject_record(session, subject)
+    if subject_record is None:
+        return None
+    return get_subject_embedding_binding(subject_record)
+
+
+def _delete_embeddings_from_table(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    chunk_ids: list[int],
+) -> None:
+    if not chunk_ids or not vector_table_exists(connection, table_name):
+        return
+
+    placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
+    params = {f"chunk_id_{index}": chunk_id for index, chunk_id in enumerate(chunk_ids)}
+    quoted_table_name = quote_sqlite_identifier(table_name)
+    connection.execute(
+        sa.text(f"DELETE FROM {quoted_table_name} WHERE chunk_id IN ({placeholders})"),
+        params,
+    )
+
+
+def _count_embeddings_for_chunk_ids(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    chunk_ids: list[int],
+) -> int:
+    if not chunk_ids or not vector_table_exists(connection, table_name):
+        return 0
+
+    placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
+    params = {f"chunk_id_{index}": chunk_id for index, chunk_id in enumerate(chunk_ids)}
+    quoted_table_name = quote_sqlite_identifier(table_name)
+    row = connection.execute(
+        sa.text(f"SELECT COUNT(*) FROM {quoted_table_name} WHERE chunk_id IN ({placeholders})"),
+        params,
+    ).first()
+    return int(row[0]) if row is not None else 0
+
+
+def _legacy_table_for_subject(
+    session: Session,
+    *,
+    subject: str,
+    chunk_ids: list[int],
+) -> str | None:
+    table_name = get_legacy_vector_table_name()
+    if _count_embeddings_for_chunk_ids(session.connection(), table_name=table_name, chunk_ids=chunk_ids) <= 0:
+        return None
+    return table_name
+
+
+def _resolve_insert_table(
+    session: Session,
+    *,
+    subject: str,
+    embedding_dim: int,
+) -> str | None:
+    binding = _get_subject_binding(session, subject)
+    if binding is not None and binding.mode == SubjectEmbeddingMode.DISABLED:
+        return None
+    table_name = (
+        binding.vector_table
+        if binding is not None and binding.vector_table
+        else build_subject_vector_table_name(subject)
+    )
+    ensure_subject_vec_table(get_engine(), subject=subject, embedding_dim=embedding_dim)
+    return table_name
+
+
+def _resolve_search_table(
+    session: Session,
+    *,
+    subject: str,
+    query_embedding_dim: int,
+) -> str | None:
+    binding = _get_subject_binding(session, subject)
+    connection = session.connection()
+
+    if binding is not None and binding.mode == SubjectEmbeddingMode.DISABLED:
+        return None
+
+    if binding is not None and binding.vector_table:
+        if binding.embedding_dim is not None and binding.embedding_dim != query_embedding_dim:
+            return None
+        if vector_table_exists(connection, binding.vector_table):
+            table_dim = get_vector_table_dim(connection, binding.vector_table)
+            if table_dim is None or table_dim == query_embedding_dim:
+                return binding.vector_table
+
+    table_name = get_legacy_vector_table_name()
+    if not vector_table_exists(connection, table_name):
+        return None
+    if _count_embeddings_for_chunk_ids(
+        connection,
+        table_name=table_name,
+        chunk_ids=[
+            chunk_id
+            for chunk_id in session.exec(
+                select(RetrievalChunk.id).where(RetrievalChunk.subject == subject)
+            ).all()
+            if chunk_id is not None
+        ],
+    ) <= 0:
+        return None
+    table_dim = get_vector_table_dim(connection, table_name)
+    if table_dim is not None and table_dim != query_embedding_dim:
+        return None
+    return table_name
+
+
+def update_chunk_vector_metadata(
+    session: Session,
+    *,
+    subject: str,
+    chunk_ids: list[int],
+    embedding_model: str | None,
+    vector_ref: str | None,
+) -> None:
+    if not chunk_ids:
+        return
+
+    statement = select(RetrievalChunk).where(
+        RetrievalChunk.subject == subject,
+        RetrievalChunk.id.in_(chunk_ids),
+    )
+    chunks = list(session.exec(statement).all())
+    for chunk in chunks:
+        chunk.embedding_model = embedding_model
+        chunk.vector_ref = vector_ref
+        chunk.updated_at = utcnow()
+        session.add(chunk)
+    session.commit()
 
 
 def bulk_insert_embeddings(
     session: Session,
+    *,
+    subject: str,
     chunk_ids: list[int],
     embeddings: list[list[float]],
+    embedding_model: str | None = None,
 ) -> None:
     if not is_vec_ready():
-        logger.warning("bulk_insert_embeddings_skipped", reason="sqlite-vec unavailable")
+        logger.warning("bulk_insert_embeddings_skipped", reason="sqlite-vec unavailable", subject=subject)
         return
     if not chunk_ids or not embeddings:
         return
@@ -184,51 +344,79 @@ def bulk_insert_embeddings(
             f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
 
+    table_name = _resolve_insert_table(
+        session,
+        subject=subject,
+        embedding_dim=len(embeddings[0]),
+    )
+    if table_name is None:
+        logger.info("bulk_insert_embeddings_skipped", subject=subject, reason="subject_vectors_disabled")
+        return
+
     connection = session.connection()
+    quoted_table_name = quote_sqlite_identifier(table_name)
+    runtime_model = embedding_model or get_settings().normalized_embedding_model
     try:
-        params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
-        placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
-        connection.execute(
-            sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
-            params,
-        )
+        _delete_embeddings_from_table(connection, table_name=table_name, chunk_ids=chunk_ids)
+        legacy_table = _legacy_table_for_subject(session, subject=subject, chunk_ids=chunk_ids)
+        if legacy_table is not None:
+            _delete_embeddings_from_table(connection, table_name=legacy_table, chunk_ids=chunk_ids)
         for chunk_id, embedding in zip(chunk_ids, embeddings):
             connection.execute(
                 sa.text(
-                    "INSERT INTO chunk_embeddings(chunk_id, embedding) "
+                    f"INSERT INTO {quoted_table_name}(chunk_id, embedding) "
                     "VALUES (:chunk_id, :embedding)"
                 ),
                 {"chunk_id": chunk_id, "embedding": str(embedding)},
             )
         session.commit()
+        update_chunk_vector_metadata(
+            session,
+            subject=subject,
+            chunk_ids=chunk_ids,
+            embedding_model=runtime_model,
+            vector_ref=table_name,
+        )
         logger.info(
             "bulk_insert_embeddings_completed",
+            subject=subject,
             chunk_count=len(chunk_ids),
             embedding_dim=len(embeddings[0]) if embeddings else 0,
+            table_name=table_name,
         )
     except Exception:
         session.rollback()
         logger.exception(
             "bulk_insert_embeddings_failed",
+            subject=subject,
             chunk_count=len(chunk_ids),
             embedding_dim=len(embeddings[0]) if embeddings else 0,
             chunk_ids_preview=chunk_ids[:5],
+            table_name=table_name,
         )
         raise
 
 
-def delete_embeddings_by_chunk_ids(session: Session, chunk_ids: list[int]) -> None:
+def delete_embeddings_by_chunk_ids(
+    session: Session,
+    *,
+    subject: str,
+    chunk_ids: list[int],
+) -> None:
     if not chunk_ids or not is_vec_ready():
         return
 
     connection = session.connection()
-    params = {f"chunk_id_{index}": value for index, value in enumerate(chunk_ids)}
-    placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
+    binding = _get_subject_binding(session, subject)
+    table_names = [get_legacy_vector_table_name()]
+    if binding is not None and binding.vector_table:
+        table_names.append(binding.vector_table)
+    else:
+        table_names.append(build_subject_vector_table_name(subject))
+
     try:
-        connection.execute(
-            sa.text(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})"),
-            params,
-        )
+        for table_name in dict.fromkeys(table_names):
+            _delete_embeddings_from_table(connection, table_name=table_name, chunk_ids=chunk_ids)
         session.commit()
     except Exception:
         session.rollback()
@@ -253,17 +441,27 @@ def vector_search(
     if not is_vec_ready():
         logger.warning("vector_search_skipped", reason="sqlite-vec unavailable", subject=subject)
         return []
-    if top_k <= 0:
+    if top_k <= 0 or not query_embedding:
+        return []
+
+    table_name = _resolve_search_table(
+        session,
+        subject=subject,
+        query_embedding_dim=len(query_embedding),
+    )
+    if table_name is None:
+        logger.info("vector_search_skipped", subject=subject, reason="subject_vectors_unavailable")
         return []
 
     connection = session.connection()
+    quoted_table_name = quote_sqlite_identifier(table_name)
     rows = connection.execute(
         sa.text(
-            """
+            f"""
             SELECT
                 ce.chunk_id,
                 ce.distance
-            FROM chunk_embeddings ce
+            FROM {quoted_table_name} ce
             WHERE ce.chunk_id IN (
                 SELECT c.id
                 FROM retrieval_chunk c

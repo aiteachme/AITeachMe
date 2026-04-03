@@ -11,6 +11,10 @@ from app.infra.embedding import aembed_texts
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 from app.repositories import knowledge_repo
+from app.services.subject_embedding_service import (
+    get_runtime_embedding_config,
+    should_generate_subject_embeddings,
+)
 from app.workflows.digest.shared.models import SharedInputs
 from app.workflows.digest.unified.models import MaterializedSections
 
@@ -82,11 +86,26 @@ async def materialize_shared_inputs(
             ],
         )
         chunk_ids = [chunk.id for chunk in chunk_rows if chunk.id is not None]
-        if chunk_rows:
+        should_embed = should_generate_subject_embeddings(session, subject_slug=subject)
+        if chunk_rows and should_embed:
+            runtime = get_runtime_embedding_config()
             embeddings = await aembed_texts(
                 [f"{chunk.title}\n{chunk.content}".strip() for chunk in chunk_rows]
             )
-            knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
+            knowledge_repo.bulk_insert_embeddings(
+                session,
+                subject=subject,
+                chunk_ids=chunk_ids,
+                embeddings=embeddings,
+                embedding_model=runtime.embedding_model,
+            )
+        elif chunk_rows:
+            logger.info(
+                "canonical_chunk_embedding_skipped",
+                subject=subject,
+                reason="subject_vectors_disabled_or_unavailable",
+                chunk_count=len(chunk_rows),
+            )
 
         for document in documents:
             if document.id is None:

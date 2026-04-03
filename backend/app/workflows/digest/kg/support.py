@@ -1,7 +1,7 @@
 ﻿"""Support helpers for digest graph workflow nodes.
 
 Reads DB: ``raw_file``, ``retrieval_chunk``.
-Writes DB: ``raw_file``, ``retrieval_chunk``, ``chunk_embeddings`` and raw-file step updates.
+Writes DB: ``raw_file``, ``retrieval_chunk`` and subject-scoped vector metadata.
 Writes FS: reads ingest-produced markdown files from subject-scoped storage.
 Idempotency: raw-file/chunk materialization reuses existing rows and only inserts what is missing.
 """
@@ -13,15 +13,18 @@ from pathlib import Path
 import structlog
 from sqlmodel import Session, select
 
+from app.infra.database import managed_session
 from app.workflows.digest.kg.services.chunker import chunk_markdown
 from app.workflows.digest.kg.services.cleaner import clean_markdown
 from app.workflows.digest.kg.services.embedder import embed_chunks
-from app.infra.database import managed_session
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models import RetrievalChunk
 from app.repositories import knowledge_repo
+from app.services.subject_embedding_service import (
+    get_runtime_embedding_config,
+    should_generate_subject_embeddings,
+)
 from app.workflows.digest.kg.state import KGDigestState
-
 
 logger = structlog.get_logger()
 
@@ -128,20 +131,40 @@ async def ensure_retrieval_chunks_for_file(
         ],
     )
     chunk_ids = [chunk.id for chunk in db_chunks if chunk.id is not None]
-    embeddings = await embed_chunks(chunks)
-    if embeddings:
-        try:
-            knowledge_repo.bulk_insert_embeddings(session, chunk_ids, embeddings)
-        except Exception:
-            logger.exception(
-                "ensure_retrieval_chunks_embedding_failed",
-                subject=raw_file.subject,
-                raw_file_id=raw_file_id,
-                filename=raw_file.filename,
-                document_id=document_id,
-                chunk_count=len(chunk_ids),
-            )
-            raise
+    should_embed = should_generate_subject_embeddings(
+        session,
+        subject_slug=raw_file.subject,
+    )
+    if should_embed:
+        embeddings = await embed_chunks(chunks)
+        if embeddings:
+            runtime = get_runtime_embedding_config()
+            try:
+                knowledge_repo.bulk_insert_embeddings(
+                    session,
+                    subject=raw_file.subject,
+                    chunk_ids=chunk_ids,
+                    embeddings=embeddings,
+                    embedding_model=runtime.embedding_model,
+                )
+            except Exception:
+                logger.exception(
+                    "ensure_retrieval_chunks_embedding_failed",
+                    subject=raw_file.subject,
+                    raw_file_id=raw_file_id,
+                    filename=raw_file.filename,
+                    document_id=document_id,
+                    chunk_count=len(chunk_ids),
+                )
+                raise
+    else:
+        logger.info(
+            "ensure_retrieval_chunks_embedding_skipped",
+            subject=raw_file.subject,
+            raw_file_id=raw_file_id,
+            reason="subject_vectors_disabled_or_unavailable",
+            chunk_count=len(chunk_ids),
+        )
     knowledge_repo.update_document_step(session, document_id, DigestStep.EMBEDDED.value)
     return document_id, chunk_ids
 

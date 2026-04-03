@@ -281,10 +281,10 @@ backend/data/<subject>/
 - digest / curriculum / exams / profile 继续沿用本地收敛后的数据库主线
 - workflow 仍是复杂业务的编排中心
 - 当前正式运行底座仍然是本地优先的 SQLite + sqlite-vec + 文件系统
-## Canonical Layering Notes
+## 9. 规范分层补充说明
 
-- `core/` remains the minimal foundation layer. Canonical AI runtime modules now live in `infra/`, not in `core/`.
-- `infra/` is the canonical home for `llm`, `tracing`, `model_router`, and `prompt_loader`.
-- `utils/` is the canonical home for cross-layer pure helpers such as `path_helpers`, `presenters`, and `docgen_store`.
-- No new top-level `app/common` layer is introduced. Shared orchestration helpers continue to live under `workflows/common`.
-- Cross-layer helper shims are intentionally not retained under `services/`; canonical helper imports should go directly to `app.infra.*` and `app.utils.*`.
+- `core/` 仍然保持为最小基础层，规范的 AI 运行时模块统一放在 `infra/`，不再回落到 `core/`。
+- `infra/` 是 `llm`、`tracing`、`model_router`、`prompt_loader` 等模块的规范归属位置。
+- `utils/` 负责跨层纯工具能力，例如 `path_helpers`、`presenters`、`docgen_store`。
+- 不新增顶层 `app/common` 目录；共享编排辅助能力继续放在 `workflows/common`。
+- 不再在 `services/` 下保留跨层 helper shim；规范导入应直接指向 `app.infra.*` 与 `app.utils.*`。

@@ -149,7 +149,7 @@ export function KnowledgeGraphSidePanel({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto bg-white transition-colors duration-500">
+        <div className="flex-1 overflow-auto bg-white transition-colors duration-500 flex flex-col">
           {overviewLoading && (
             <div className="flex min-h-full items-center justify-center px-6 py-10 text-sm text-slate-500">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -170,12 +170,12 @@ export function KnowledgeGraphSidePanel({
           )}
 
           {!overviewLoading && !overviewIsError && (
-            <div className="min-h-full">
+            <div className="flex-1 flex flex-col min-h-0">
               {activeTab === "word-cloud" && (
-                <div className="p-4">
+                <div className="flex-1 min-h-0 p-2">
                   <Suspense
                     fallback={
-                      <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-800 bg-slate-950">
+                      <div className="flex h-full items-center justify-center rounded-xl border border-slate-800 bg-slate-950">
                         <div className="flex items-center gap-2 text-sm text-slate-400">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           加载 3D 词云中...
@@ -183,7 +183,7 @@ export function KnowledgeGraphSidePanel({
                       </div>
                     }
                   >
-                    <WordCloud3D subjectLabel={subjectLabel} nodes={wordCloudNodes} height={420} />
+                    <WordCloud3D subjectLabel={subjectLabel} nodes={wordCloudNodes} />
                   </Suspense>
                 </div>
               )}
@@ -198,9 +198,11 @@ export function KnowledgeGraphSidePanel({
                 </Suspense>
               )}
               {activeTab === "knowledge-graph" && (
-                <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
-                  <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
-                </Suspense>
+                <div className="flex-1 min-h-0">
+                  <Suspense fallback={<TabFallback message="正在加载知识图谱视图..." />}>
+                    <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                  </Suspense>
+                </div>
               )}
             </div>
           )}

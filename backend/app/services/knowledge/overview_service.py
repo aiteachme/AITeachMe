@@ -1,4 +1,4 @@
-"""Knowledge overview aggregation service."""
+﻿"""Knowledge overview aggregation service."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from app.services.knowledge.curriculum_service import (
     get_teaching_units,
 )
 from app.services.knowledge.graph_query_service import get_full_graph
+from app.services.subject_embedding_service import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
-
 
 _DEFAULT_OVERVIEW_SECTIONS = {
     "snapshot",
@@ -49,7 +49,7 @@ def _count_theme_nodes(nodes: list[ThemeTreeNodeResponse]) -> int:
 
 def _resolve_sections(include: list[str] | None, full: bool) -> set[str]:
     if full or not include:
-        return set(_DEFAULT_OVERVIEW_SECTIONS)
+        return set(_DEFAULT_OVERVIEW_SECTIONS) if full else set()
     return {item.strip().lower() for item in include if item and item.strip()}
 
 
@@ -130,4 +130,5 @@ def get_knowledge_overview(
         graph=graph if "graph" in sections else None,
         units=units if "units" in sections else [],
         stats=stats if "stats" in sections else KnowledgeOverviewStats(),
+        vector_status=get_subject_vector_status_by_slug(session, subject),
     )

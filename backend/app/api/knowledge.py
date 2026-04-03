@@ -24,8 +24,8 @@ from app.schemas.knowledge import (
     TeachingUnitDetailResponse,
     UnitDetailRequest,
 )
+from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.knowledge.curriculum_service import (
-    clear_subject_knowledge,
     get_teaching_unit_detail,
     manage_taxonomy_anchors,
 )
@@ -58,13 +58,18 @@ async def knowledge_build(
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildData]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    subject_record = get_subject_record(
+        session,
+        normalized,
+        owner_user_id=user.user_id,
+    )
 
     data, accepted_file_ids = trigger_docgen_build(
         session,
-        subject=normalized,
+        subject=subject_record,
         file_uids=body.file_uids,
         prompt=body.prompt,
+        embedding_resolution=body.embedding_resolution,
     )
     request.app.state.background_task_registry.spawn(
         run_unified_build_background(
@@ -203,7 +208,7 @@ async def taxonomy_anchors(
     "/clear",
     response_model=ApiResponse[ClearKnowledgeResponse],
     summary="清空学科知识数据",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
 async def knowledge_clear(
     subject: str = Path(...),

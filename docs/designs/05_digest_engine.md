@@ -388,24 +388,24 @@ Digest 后续需要监控的运行指标包括：
 - 知识文档以文档包发布，而不只是一个 merged markdown
 - docs lane 与 kg lane 通过 richer contract 协同，而不是只靠 `TopicAnchorSnapshot`
 - unified quality gate 同时覆盖一致性与教学质量
-## 11. Runtime Alignment Update (2026-03-30)
+## 11. 运行时对齐更新（2026-03-30）
 
-This update records what is already wired into the current implementation, even if older sections below still describe the aspirational target state.
+本节用于记录当前实现里已经接通的运行时能力。即使文档前文某些段落仍偏向目标态描述，这里也以现状实现为准。
 
 ### Shared prepare
 
-- `prepare_shared_inputs()` now emits both `material_profile` and `digest_mode_decision`.
-- Docs, KG, and curriculum lanes consume the same material-type judgement instead of repeating separate guesses later in the pipeline.
+- `prepare_shared_inputs()` 现在会同时产出 `material_profile` 与 `digest_mode_decision`。
+- docs、KG、curriculum 三条 lane 共享同一份材料类型判断，不再在后续流程里重复各自猜测。
 
-### Fast path for exam-like materials
+### 面向题型材料的快速路径
 
-- Question-dense or exam-paper-like inputs can now skip the heaviest KG extraction path for many chunks.
-- The fast path uses existing signals such as `question_block_count`, `exercise_density`, `content_type=exam_paper`, and `digest_mode_decision.mode`.
-- The design rule is: heavy LLM calls should be reserved for naming, planning, resolve ambiguity, and pedagogical synthesis, not for every obvious question block.
+- 对于题目密度高、接近试卷形态的材料，系统现在可以让很多 chunk 跳过最重的 KG 抽取路径。
+- 快速路径依赖已有信号，例如 `question_block_count`、`exercise_density`、`content_type=exam_paper`、`digest_mode_decision.mode`。
+- 设计原则是：重型 LLM 调用应当保留给命名、规划、消歧和教学综合，而不是浪费在每个显而易见的题块上。
 
-### Unified build lifecycle
+### 统一构建生命周期
 
-The runtime now writes explicit stages instead of relying on vague completion logs:
+运行时现在会显式写出阶段，而不是只靠模糊的完成日志推断：
 
 1. `accepted` / `build_accepted`
 2. `running` / `prepare_shared`
@@ -415,24 +415,25 @@ The runtime now writes explicit stages instead of relying on vague completion lo
 6. `publishing`
 7. `completed` / `failed` / `cancelled`
 
-### Throughput-oriented refactors already aligned with this document
+### 已与本文档对齐的吞吐优化
 
-- KG mutation persistence is now batched instead of committing every single node, edge, alias, or evidence write.
-- Curriculum unit naming is no longer strictly serial; it uses bounded concurrency and a lighter task profile.
-- Theme-tree construction now preloads unit and evidence context to avoid membership-level N+1 lookups.
+- KG 写入持久化已经改为批量提交，不再对每个 node、edge、alias、evidence 单独 commit。
+- curriculum 的 unit 命名不再是完全串行，而是采用有界并发和更轻量的任务配置。
+- theme tree 构建会预加载 unit 与 evidence 上下文，避免成员级别的 N+1 查询。
 
-### Background task ownership
+### 后台任务归属
 
-- API-triggered long workflows are now owned by an application-level background-task registry.
-- Shutdown sends cancellation to tracked tasks and waits briefly for cleanup.
-- Digest fan-out points are expected to propagate `CancelledError` instead of silently leaving detached subtasks alive.
+- 由 API 触发的长流程现在统一归应用级 background-task registry 管理。
+- 应用关闭时会向已跟踪任务发出取消信号，并短暂等待清理完成。
+- digest 的 fan-out 分支应当继续传播 `CancelledError`，避免留下脱管子任务。
 
-## 2026-03-31 Observability Addendum
+## 2026-03-31 可观测性补充
 
-The digest runtime now treats timing and token observability as a shared cross-lane contract rather than ad-hoc logging inside each workflow.
+digest 运行时现在把耗时和 token 可观测性视为跨 lane 的共享契约，而不是各工作流内部各自为政的日志格式。
 
-- Every digest build is scoped by `build_session_id`, and LLM calls inherit `subject`, `workflow`, `lane`, and `node` automatically from runtime context.
-- Every lane must emit exactly one summary log on completion and one partial summary on runtime failure. The summary must include `status`, `error_message`, `workflow_elapsed_ms`, per-step elapsed times, token totals, model/task-type mix, and Top-K slow items.
-- Unified digest must aggregate lane-level timing and token totals and publish a single `unified_digest_timing_summary` payload that can be used for regression comparisons.
-- New digest lanes should plug into the common helpers in `backend/app/workflows/digest/observability.py` instead of inventing a lane-specific logging format.
-- Runtime observability is token-based for now. Currency conversion is intentionally deferred until a stable pricing table is introduced.
+- 每次 digest build 都以 `build_session_id` 作为范围，LLM 调用会自动继承 `subject`、`workflow`、`lane`、`node` 等运行时上下文。
+- 每条 lane 在成功完成时必须输出且只输出一条 summary 日志；在运行时失败时也必须输出一条 partial summary。
+- summary 至少应包含 `status`、`error_message`、`workflow_elapsed_ms`、分步骤耗时、token 总量、模型与任务类型分布，以及 Top-K 慢项。
+- unified digest 需要聚合各 lane 的耗时与 token 总量，并产出一个 `unified_digest_timing_summary` 负载，用于回归对比。
+- 新增 digest lane 时，应优先接入 `backend/app/workflows/digest/observability.py` 中的公共 helper，而不是再发明一套 lane 专属日志格式。
+- 当前运行时可观测性仍以 token 维度为主，货币成本换算会在定价表稳定后再引入。

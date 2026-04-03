@@ -1,4 +1,4 @@
-"""Public search helpers used by the teaching stack."""
+﻿"""Public search helpers used by the teaching stack."""
 
 from __future__ import annotations
 
@@ -8,11 +8,12 @@ from sqlmodel import Session
 from app.infra.config import get_settings
 from app.infra.database import get_engine
 from app.infra.embedding import aembed_texts
-from app.infra.retrievers import RetrievedChunk
 from app.infra.reranker import rerank_chunks
+from app.infra.retrievers import RetrievedChunk
 from app.infra.search.types import WebSearchResult
 from app.infra.search.web import dispatch_web_search
 from app.repositories.knowledge.knowledge_repo import vector_search
+from app.services.subject_embedding_service import get_subject_vector_search_notice
 from app.utils.presenters import require_id
 
 logger = structlog.get_logger()
@@ -26,6 +27,21 @@ async def web_search(
     """Search the web with the configured provider."""
 
     return await dispatch_web_search(query, top_k=top_k)
+
+
+async def get_knowledge_search_notice(subject_id: str) -> str | None:
+    """Return one stable notice when subject vector search is unavailable."""
+
+    normalized_subject = subject_id.strip()
+    if not normalized_subject:
+        return None
+
+    engine = get_engine()
+    with Session(engine) as session:
+        return get_subject_vector_search_notice(
+            session,
+            subject_slug=normalized_subject,
+        )
 
 
 async def search_knowledge(
@@ -42,11 +58,20 @@ async def search_knowledge(
     if not normalized_query or not normalized_subject or top_k <= 0:
         return []
 
+    search_notice = await get_knowledge_search_notice(normalized_subject)
+    if search_notice is not None:
+        logger.info(
+            "knowledge_search_skipped",
+            subject=normalized_subject,
+            reason=search_notice,
+        )
+        return []
+
     settings = get_settings()
 
     try:
         query_embedding = (await aembed_texts([normalized_query]))[0]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
             "search_knowledge_embedding_failed",
             subject=normalized_subject,
@@ -64,7 +89,7 @@ async def search_knowledge(
     if enable_rerank and chunks and settings.rag_rerank_model:
         try:
             chunks = await rerank_chunks(normalized_query, chunks, top_k=top_k)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "search_knowledge_rerank_failed",
                 subject=normalized_subject,
