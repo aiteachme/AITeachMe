@@ -25,7 +25,8 @@ import type {
   SubjectCreateRequest,
   SubjectDeletePreviewRequest,
   SubjectDeleteRequest,
-  SubjectListRequest
+  SubjectListRequest,
+  SubjectUpdateRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -446,5 +447,109 @@ export const useDeleteSubjectApiApiV1SubjectsDeletePost = <TError = ErrorRespons
         TContext
       > => {
       return useMutation(getDeleteSubjectApiApiV1SubjectsDeletePostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary 更新学科
+ */
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse200 = {
+  data: ApiResponseSubjectItem
+  status: 200
+}
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponseSuccess = (updateSubjectApiApiV1SubjectsUpdatePostResponse200) & {
+  headers: Headers;
+};
+export type updateSubjectApiApiV1SubjectsUpdatePostResponseError = (updateSubjectApiApiV1SubjectsUpdatePostResponse400 | updateSubjectApiApiV1SubjectsUpdatePostResponse404 | updateSubjectApiApiV1SubjectsUpdatePostResponse422 | updateSubjectApiApiV1SubjectsUpdatePostResponse500) & {
+  headers: Headers;
+};
+
+export type updateSubjectApiApiV1SubjectsUpdatePostResponse = (updateSubjectApiApiV1SubjectsUpdatePostResponseSuccess | updateSubjectApiApiV1SubjectsUpdatePostResponseError)
+
+export const getUpdateSubjectApiApiV1SubjectsUpdatePostUrl = () => {
+
+
+  
+
+  return `/api/v1/subjects/update`
+}
+
+export const updateSubjectApiApiV1SubjectsUpdatePost = async (subjectUpdateRequest: SubjectUpdateRequest, options?: RequestInit): Promise<updateSubjectApiApiV1SubjectsUpdatePostResponse> => {
+  
+  return orvalApiClient<updateSubjectApiApiV1SubjectsUpdatePostResponse>(getUpdateSubjectApiApiV1SubjectsUpdatePostUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      subjectUpdateRequest,)
+  }
+);}
+  
+
+
+
+export const getUpdateSubjectApiApiV1SubjectsUpdatePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>, TError,{data: SubjectUpdateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>, TError,{data: SubjectUpdateRequest}, TContext> => {
+
+const mutationKey = ['updateSubjectApiApiV1SubjectsUpdatePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>, {data: SubjectUpdateRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSubjectApiApiV1SubjectsUpdatePost(data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSubjectApiApiV1SubjectsUpdatePostMutationResult = NonNullable<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>>
+    export type UpdateSubjectApiApiV1SubjectsUpdatePostMutationBody = SubjectUpdateRequest
+    export type UpdateSubjectApiApiV1SubjectsUpdatePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary 更新学科
+ */
+export const useUpdateSubjectApiApiV1SubjectsUpdatePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>, TError,{data: SubjectUpdateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>,
+        TError,
+        {data: SubjectUpdateRequest},
+        TContext
+      > => {
+      return useMutation(getUpdateSubjectApiApiV1SubjectsUpdatePostMutationOptions(options), queryClient);
     }
     

@@ -17,4 +17,10 @@ export interface RegisterRequest {
    * @minLength 6
    */
   password: string;
+  /**
+   * 邮箱验证码。
+   * @minLength 4
+   * @maxLength 16
+   */
+  verification_code: string;
 }

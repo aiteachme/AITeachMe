@@ -466,6 +466,13 @@ def _detect_question_count(sample_markdown: str) -> int | None:
     return count if 4 <= count <= 80 else None
 
 
+def _default_paper_exam_style_prompt() -> str:
+    return (
+        "如果没有参考样卷，也请按真实正式考试试卷的形式命题："
+        "题干表达要规范克制，整卷尽量采用按题型分段、由易到难、适合打印演练的考卷风格。"
+    )
+
+
 def _load_subject_profile_for_exam(
     session: Session,
     *,
@@ -584,12 +591,22 @@ def build_exam_style_profile(
     )
     if not preferred_question_types and is_paper_exam_mode(mode):
         preferred_question_types = ["single_choice", "fill_blank", "short_answer"]
+    normalized_style_prompt = (style_prompt or "").strip() or None
+    uses_default_paper_exam_prompt = (
+        is_paper_exam_mode(mode)
+        and not ready_samples
+        and normalized_style_prompt is None
+    )
+    if uses_default_paper_exam_prompt:
+        normalized_style_prompt = _default_paper_exam_style_prompt()
 
     notes: list[str] = []
     if ready_samples:
         notes.append(f"Sample-paper references loaded: {len(ready_samples)}")
     elif sample_file_uids:
         notes.append("Sample-paper files were provided but no parsed markdown is ready yet.")
+    if uses_default_paper_exam_prompt:
+        notes.append("No ready sample paper found, so the built-in formal paper style prompt is enabled.")
     if re.search(r"(A[\.?\)]|B[\.?\)]|C[\.?\)]|D[\.?\)])", sample_markdown):
         notes.append("Choice questions should use labeled options.")
     if is_paper_exam_mode(mode):
@@ -631,7 +648,7 @@ def build_exam_style_profile(
             if subject_profile is not None
             else []
         ),
-        style_prompt=(style_prompt or "").strip() or None,
+        style_prompt=normalized_style_prompt,
         focus_prompt=(focus_prompt or "").strip() or None,
         user_prompt=(user_prompt or "").strip() or None,
         notes=_unique_strings(notes),

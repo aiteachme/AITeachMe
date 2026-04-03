@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { MasteryStateResponse } from './masteryStateResponse';
+import type { SubjectProfileSummary } from './subjectProfileSummary';
+import type { UserProfileSummary } from './userProfileSummary';
 
 export interface MasteryOverviewResponse {
   subject: string;
@@ -14,4 +16,6 @@ export interface MasteryOverviewResponse {
   weak_node_count: number;
   unit_states?: MasteryStateResponse[];
   node_states?: MasteryStateResponse[];
+  subject_profile?: SubjectProfileSummary | null;
+  user_profile?: UserProfileSummary | null;
 }

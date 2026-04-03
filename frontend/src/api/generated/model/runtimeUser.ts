@@ -16,4 +16,8 @@ export interface RuntimeUser {
   email?: string | null;
   /** 是否为本地模式用户。 */
   is_local: boolean;
+  /** 设备标识。 */
+  device_key?: string | null;
+  /** 是否已完成账号登录。 */
+  is_authenticated?: boolean;
 }
