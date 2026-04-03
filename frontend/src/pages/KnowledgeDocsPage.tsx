@@ -652,9 +652,9 @@ function DocGeneratingState({
   statusText: string;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white via-slate-50 to-blue-50/40 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(15,23,42,0.45)]">
+    <section className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white via-stone-50 to-stone-100 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(28,25,23,0.2)]">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600">
+        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700">
           {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
         </div>
         <div className="space-y-1">
@@ -718,14 +718,14 @@ function DocUpdatingBanner({
   const draftLabel = formatDocTimestamp(draftUpdatedAt);
 
   return (
-    <section className="mb-5 rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-4 shadow-sm">
+    <section className="mb-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-900">{title}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
+          <p className="mt-1 text-[13px] leading-5 text-slate-600">{description}</p>
         </div>
         {(hasLiveVersion || hasDraftVersion) && (
-          <div className="inline-flex rounded-full border border-sky-200 bg-white/80 p-1 shadow-sm">
+          <div className="inline-flex rounded-full border border-stone-200 bg-white/80 p-1 shadow-sm">
             <button
               type="button"
               disabled={!hasLiveVersion}
@@ -733,7 +733,7 @@ function DocUpdatingBanner({
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 viewMode === "live"
-                  ? "bg-sky-500 text-white shadow-sm"
+                  ? "bg-stone-800 text-white shadow-sm"
                   : hasLiveVersion
                     ? "text-slate-600 hover:text-slate-900"
                     : "cursor-not-allowed text-slate-300",

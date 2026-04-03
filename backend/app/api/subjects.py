@@ -108,3 +108,23 @@ async def delete_subject_api(
             force=body.force,
         )
     )
+
+
+@router.post(
+    "/update",
+    response_model=ApiResponse[SubjectItem],
+    summary="更新学科",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def update_subject_api(
+    body: SubjectUpdateRequest = Body(...),
+    session: Session = Depends(get_db),
+) -> ApiResponse[SubjectItem]:
+    return ok_response(
+        update_subject_record(
+            session,
+            subject_id=body.subject_id,
+            name=body.name,
+            description=body.description,
+        )
+    )
