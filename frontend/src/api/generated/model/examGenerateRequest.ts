@@ -10,8 +10,10 @@
  * Trigger exam generation request.
  */
 export interface ExamGenerateRequest {
-  /** Exam mode. */
+  /** Exam mode: web_practice | paper_exam (legacy values are compatible). */
   exam_mode: string;
+  /** Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty. */
+  difficulty?: string | null;
   /** Optional user prompt for general generation hints. */
   user_prompt?: string | null;
   /** Optional prompt that describes the desired paper style. */

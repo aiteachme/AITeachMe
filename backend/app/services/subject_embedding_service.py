@@ -1,4 +1,4 @@
-﻿"""Subject-scoped embedding binding and vector-status helpers."""
+"""Subject-scoped embedding binding and vector-status helpers."""
 
 from __future__ import annotations
 
@@ -408,9 +408,42 @@ def resolve_subject_build_vector_status(
 ) -> SubjectVectorStatusResponse:
     """Apply one optional resolution and return the resulting vector status."""
 
+    auto_rebuild_reason: str | None = None
     conflict = inspect_subject_build_precheck(session, subject=subject)
     if conflict is None:
         return get_subject_vector_status(session, subject)
+
+    # ── Auto-resolve: 当 runtime embedding 可用时，对于所有通过「重建」
+    # 即可解决的冲突（首次绑定 / 模型变更 / 维度变更 / 向量表缺失 / 旧表迁移），
+    # 自动走 rebuild 流程，不需要用户手动确认。
+    # 只有 runtime 本身不可用的冲突（未配置 / 缺 API Key / sqlite-vec 不可用）
+    # 才需要用户手动选择 disable 或修复环境。
+    _AUTO_REBUILD_REASONS = {
+        "subject_not_bound",
+        "embedding_model_mismatch",
+        "embedding_dimension_mismatch",
+        "vector_table_missing",
+        "vector_table_dimension_mismatch",
+        "legacy_vector_table",
+    }
+    if (
+        embedding_resolution is None
+        and conflict.reason in _AUTO_REBUILD_REASONS
+        and conflict.requires_full_rebuild
+    ):
+        logger.info(
+            "embedding_auto_rebuild",
+            subject=subject.slug,
+            reason=conflict.reason,
+            runtime_model=conflict.runtime_model,
+            runtime_dim=conflict.runtime_dim,
+            subject_model=conflict.subject_model,
+            subject_dim=conflict.subject_dim,
+            detail=_PRECHECK_DETAIL_MAP.get(conflict.reason, ""),
+        )
+        auto_rebuild_reason = conflict.reason
+        embedding_resolution = "rebuild"
+
     if embedding_resolution is None:
         _raise_precheck_conflict(conflict)
 
@@ -451,7 +484,21 @@ def resolve_subject_build_vector_status(
         subject=subject.slug,
         embedding_dim=runtime.embedding_dim,
     )
-    return get_subject_vector_status(session, subject)
+    status = get_subject_vector_status(session, subject)
+
+    # Attach a user-facing notice when auto-rebuild was triggered
+    if auto_rebuild_reason is not None:
+        _AUTO_REBUILD_NOTICES = {
+            "subject_not_bound": "已自动绑定当前 embedding 模型并初始化向量索引。",
+            "embedding_model_mismatch": f"检测到 embedding 模型变更，已自动切换至 {runtime.embedding_model} 并重建向量索引。",
+            "embedding_dimension_mismatch": "检测到 embedding 维度变更，已自动重建向量索引。",
+            "vector_table_missing": "向量表缺失，已自动重建。",
+            "vector_table_dimension_mismatch": "向量表维度不一致，已自动重建。",
+            "legacy_vector_table": "已从旧版全局向量表迁移至学科独立向量表。",
+        }
+        status.notice = _AUTO_REBUILD_NOTICES.get(auto_rebuild_reason)
+
+    return status
 
 
 def should_generate_subject_embeddings(

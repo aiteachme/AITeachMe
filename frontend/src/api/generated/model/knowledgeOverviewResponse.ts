@@ -9,6 +9,7 @@ import type { CurriculumSnapshotResponse } from './curriculumSnapshotResponse';
 import type { FullGraphResponse } from './fullGraphResponse';
 import type { KnowledgeOverviewStats } from './knowledgeOverviewStats';
 import type { PrereqDagResponse } from './prereqDagResponse';
+import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse';
 import type { TeachingUnitResponse } from './teachingUnitResponse';
 import type { ThemeTreeResponse } from './themeTreeResponse';
 
@@ -24,4 +25,6 @@ export interface KnowledgeOverviewResponse {
   graph?: FullGraphResponse | null;
   units?: TeachingUnitResponse[];
   stats?: KnowledgeOverviewStats;
+  /** Current subject-level vector capability status. */
+  vector_status?: SubjectVectorStatusResponse;
 }

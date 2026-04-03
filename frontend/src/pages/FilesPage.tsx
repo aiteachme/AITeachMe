@@ -37,6 +37,7 @@ import { Modal } from "../components/ui/Modal";
 import { useSettings } from "../hooks/useSettings";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import { useToast } from "../components/ui/Toast";
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
@@ -303,6 +304,7 @@ export function FilesPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { settings } = useSettings();
+  const { toast } = useToast();
 
   const state = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
 
@@ -347,6 +349,19 @@ export function FilesPage() {
   const buildMutation = useMutation({
     mutationFn: () => triggerKnowledgeBuild(subjectId, docPrompt.trim() || undefined),
     onSuccess: (data) => {
+      // Show toast when auto-rebuild notice is present
+      const rawData = data as unknown as Record<string, unknown>;
+      const vectorStatus = rawData?.vector_status as
+        | { notice?: string }
+        | undefined;
+      if (vectorStatus?.notice) {
+        toast({
+          title: "向量索引已自动更新",
+          description: vectorStatus.notice,
+          variant: "info",
+          duration: 6000,
+        });
+      }
       navigate(`/subject/${subjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
   });

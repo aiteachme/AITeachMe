@@ -22,7 +22,7 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session, SQLModel, func, select
 
-from app.core.config import get_settings
+from app.shared.infra.config import get_settings
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -427,7 +427,7 @@ def get_courses_dir_path() -> Path:
 
 
 def _require_subject(session: Session, slug: str) -> Subject:
-    from app.core.exceptions import SubjectRegistryNotFoundError
+    from app.shared.infra.exceptions import SubjectRegistryNotFoundError
 
     subject = session.exec(select(Subject).where(Subject.slug == slug)).first()
     if subject is None:
