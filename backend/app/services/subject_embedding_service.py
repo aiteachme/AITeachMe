@@ -5,16 +5,16 @@ from __future__ import annotations
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from app.infra.config import get_settings
-from app.infra.database import (
+from app.core.config import get_settings
+from app.core.database import (
     get_engine,
     get_vector_table_dim,
     is_vec_ready,
     reset_subject_vec_table,
     vector_table_exists,
 )
-from app.infra.exceptions import KnowledgeBuildPrecheckConflictError
-from app.infra.subject_embeddings import (
+from app.core.exceptions import KnowledgeBuildPrecheckConflictError
+from app.core.subject_embeddings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
     build_disabled_binding,

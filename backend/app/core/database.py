@@ -20,13 +20,10 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.infra.config import get_settings
-from app.infra.exceptions import VectorExtensionUnavailableError
-from app.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
-from app.core.subject_embeddings import (
-    build_subject_vector_table_name,
-    get_legacy_vector_table_name,
-)
+from app.core.config import get_settings
+from app.core.exceptions import VectorExtensionUnavailableError
+from app.core.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
+from app.core.subject_embeddings import build_subject_vector_table_name, get_legacy_vector_table_name
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -35,7 +32,6 @@ from app.models.curriculum import (
     ThemeTreeNode,
     UnitDependency,
 )
-from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
@@ -60,7 +56,6 @@ _vec_ready: bool | None = None
 _vec_error: str | None = None
 _SCHEMA_MODELS = (
     User,
-    EmailVerificationCode,
     Subject,
     RawFile,
     RetrievalChunk,
@@ -411,3 +406,4 @@ def managed_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+

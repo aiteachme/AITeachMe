@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.infra.exceptions import KnowledgeClearConflictError
+from app.core.exceptions import KnowledgeClearConflictError
 from app.models import (
     Curriculum,
     KnowledgeDocument,

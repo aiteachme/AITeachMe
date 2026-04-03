@@ -95,7 +95,7 @@ async def test_acompletion_stream() -> None:
 
 
 async def main() -> None:
-    from app.infra.config import get_settings
+    from app.core.config import get_settings
     settings = get_settings()
 
     print()
