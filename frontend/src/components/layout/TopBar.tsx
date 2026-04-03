@@ -180,7 +180,7 @@ export function TopBar({ className }: TopBarProps) {
         url: "/api/v1/auth/email/send-code",
         method: "POST",
         data: { email: emailValue },
-      });
+      }, { timeout: 0 });
       const payload = response.data;
       setSendCodeCooldownS(Math.max(0, payload.resend_after_s ?? 0));
       setCodeExpiresInS(Math.max(0, payload.expires_in_s ?? 0));
