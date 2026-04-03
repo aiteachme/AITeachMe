@@ -63,7 +63,6 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,
     data: formData,
-    headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data ?? { subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }

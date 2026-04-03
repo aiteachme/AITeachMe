@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 from sqlmodel import Session, select
+import structlog
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import (
@@ -30,6 +31,8 @@ from app.schemas.knowledge import (
     KnowledgeBuildPrecheckConflictData,
     SubjectVectorStatusResponse,
 )
+
+logger = structlog.get_logger()
 
 _USER_DISABLED_REASON = "user_selected_disable_after_precheck"
 _DISABLED_SEARCH_NOTICE = "当前学科未启用向量检索。"
