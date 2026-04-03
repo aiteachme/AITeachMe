@@ -1,10 +1,13 @@
 import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+const DEVICE_KEY_STORAGE_KEY = "device_key";
+const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true,
 });
 
 export interface ApiErrorPayload {
@@ -25,6 +28,28 @@ type ApiErrorShape = {
 
 function getAccessToken(): string | null {
   return localStorage.getItem("token");
+}
+
+function generateDeviceKey(): string {
+  const randomPart =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  return `dk_${randomPart}`;
+}
+
+export function getDeviceKey(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_KEY_STORAGE_KEY);
+    if (existing && DEVICE_KEY_RE.test(existing)) {
+      return existing;
+    }
+    const generated = generateDeviceKey();
+    localStorage.setItem(DEVICE_KEY_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return "dk_fallback_local";
+  }
 }
 
 function getApiBaseUrl(): string {
@@ -161,6 +186,7 @@ export async function postSseJson<TBody>(
     Accept: "text/event-stream",
     "Cache-Control": "no-cache",
     "Content-Type": "application/json",
+    "X-Device-Key": getDeviceKey(),
   };
   const token = getAccessToken();
   if (token) {
@@ -175,6 +201,7 @@ export async function postSseJson<TBody>(
   try {
     const response = await fetch(buildApiUrl(url), {
       method: "POST",
+      credentials: "include",
       headers,
       body: JSON.stringify(body),
       signal: options.signal,
@@ -286,11 +313,16 @@ export async function postSseJson<TBody>(
 }
 
 instance.interceptors.request.use((config) => {
-  const token = getAccessToken();
+  const headers = AxiosHeaders.from(config.headers);
+  headers.set("X-Device-Key", getDeviceKey());
 
-  if (token && config.headers) {
-    config.headers.set("Authorization", `Bearer ${token}`);
+  const token = getAccessToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  } else {
+    headers.delete("Authorization");
   }
+  config.headers = headers;
   
   // Apply dynamic base URL from settings
   const dynamicBaseUrl = getApiBaseUrl();

@@ -6,7 +6,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.core.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
+from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuildLockConflictError
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -152,4 +152,3 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
-

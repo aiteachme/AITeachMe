@@ -1,4 +1,4 @@
-﻿"""Canonical section materialization for unified digest builds."""
+"""Canonical section materialization for unified digest builds."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import structlog
 
-from app.core.database import managed_session
-from app.infra.embedding import aembed_texts
+from app.shared.infra.database import managed_session
+from app.shared.infra.embedding import aembed_texts
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 from app.repositories import knowledge_repo

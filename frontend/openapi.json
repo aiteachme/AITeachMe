@@ -90,13 +90,105 @@
         }
       }
     },
+    "/api/v1/auth/email/send-code": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "发送注册邮箱验证码",
+        "description": "向邮箱发送 6 位验证码，用于注册前校验。",
+        "operationId": "send_email_code_api_v1_auth_email_send_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendEmailCodeData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
           "auth"
         ],
         "summary": "注册",
-        "description": "云端鉴权预留接口。",
+        "description": "基于 device_key 的匿名身份升级为邮箱账号。",
         "operationId": "register_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -119,8 +211,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -130,11 +232,31 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -148,7 +270,7 @@
           "auth"
         ],
         "summary": "登录",
-        "description": "云端鉴权预留接口。",
+        "description": "邮箱密码登录，并绑定当前 device_key。",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -171,8 +293,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -182,11 +314,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -200,7 +342,7 @@
           "auth"
         ],
         "summary": "登出",
-        "description": "云端鉴权预留接口。",
+        "description": "清除登录态后回到 device_key 匿名身份。",
         "operationId": "logout_api_v1_auth_logout_post",
         "requestBody": {
           "content": {
@@ -223,8 +365,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "422": {
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
@@ -233,12 +375,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -252,7 +394,7 @@
           "auth"
         ],
         "summary": "当前用户",
-        "description": "云端鉴权预留接口。",
+        "description": "读取当前 token/device_key 对应的用户会话信息。",
         "operationId": "user_api_v1_auth_user_post",
         "requestBody": {
           "content": {
@@ -275,8 +417,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,11 +428,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -4154,6 +4306,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_SendEmailCodeData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendEmailCodeData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[SendEmailCodeData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_SubjectDeleteData_": {
         "properties": {
           "code": {
@@ -7678,18 +7864,27 @@
             "minLength": 6,
             "title": "Password",
             "description": "密码。"
+          },
+          "verification_code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 4,
+            "title": "Verification Code",
+            "description": "邮箱验证码。"
           }
         },
         "type": "object",
         "required": [
           "email",
-          "password"
+          "password",
+          "verification_code"
         ],
         "title": "RegisterRequest",
         "description": "注册请求。",
         "example": {
           "email": "user@example.com",
-          "password": "change-me"
+          "password": "change-me",
+          "verification_code": "123456"
         }
       },
       "ReviewTaskResponse": {
@@ -7830,6 +8025,24 @@
             "type": "boolean",
             "title": "Is Local",
             "description": "是否为本地模式用户。"
+          },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Key",
+            "description": "设备标识。"
+          },
+          "is_authenticated": {
+            "type": "boolean",
+            "title": "Is Authenticated",
+            "description": "是否已完成账号登录。",
+            "default": false
           }
         },
         "type": "object",
@@ -7839,6 +8052,47 @@
         ],
         "title": "RuntimeUser",
         "description": "当前运行时用户。"
+      },
+      "SendEmailCodeData": {
+        "properties": {
+          "expires_in_s": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expires In S",
+            "description": "验证码有效期（秒）。"
+          },
+          "resend_after_s": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Resend After S",
+            "description": "允许再次发送的最短间隔（秒）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expires_in_s",
+          "resend_after_s"
+        ],
+        "title": "SendEmailCodeData",
+        "description": "发送邮箱验证码响应数据。"
+      },
+      "SendEmailCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "目标邮箱。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "SendEmailCodeRequest",
+        "description": "发送邮箱验证码请求。",
+        "example": {
+          "email": "user@example.com"
+        }
       },
       "SubjectCreateRequest": {
         "properties": {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.infra.strategies import StrategyMode
+from app.shared.infra.strategies import StrategyMode
 
 _REVIEW_KEYWORDS = ("错因", "错题", "为什么错", "哪里错", "复盘", "订正")
 

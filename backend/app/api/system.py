@@ -27,5 +27,11 @@ async def init_system(
     """初始化系统元数据。"""
 
     return ok_response(
-        build_init_data(user_id=user.user_id, email=user.email, is_local=user.is_local)
+        build_init_data(
+            user_id=user.user_id,
+            email=user.email,
+            is_local=user.is_local,
+            device_key=user.device_key,
+            is_authenticated=user.is_authenticated,
+        )
     )

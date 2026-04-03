@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.config import get_settings
+from app.shared.infra.config import get_settings
 from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
 from app.utils.presenters import mastery_to_text
@@ -35,13 +35,14 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session)
             for item in get_recent_turns(
                 session,
                 state["subject"],
+                user_id=state["user_id"],
                 n_turns=settings.chat_history_turns,
                 session_id=state.get("session_id"),
             )
         ]
         weak_points_from_mastery = profile_repo.list_weak_node_summaries(
             session,
-            user_id="local",
+            user_id=state["user_id"],
             subject=state["subject"],
             limit=10,
         )
@@ -55,7 +56,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session)
 
         recent_mistakes_raw = profile_repo.list_recent_wrong_attempt_summaries(
             session,
-            user_id="local",
+            user_id=state["user_id"],
             subject=state["subject"],
             limit=5,
         )

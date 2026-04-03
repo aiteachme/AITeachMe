@@ -12,7 +12,7 @@ import asyncio
 
 import structlog
 
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id
 

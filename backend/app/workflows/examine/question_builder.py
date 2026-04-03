@@ -1,4 +1,4 @@
-﻿"""Question template builder aligned with digest outputs and profile signals."""
+"""Question template builder aligned with digest outputs and profile signals."""
 
 from __future__ import annotations
 
@@ -12,25 +12,30 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.infra.llm import acompletion_structured
-from app.infra.model_router import TaskType
-from app.infra.prompt_loader import populate_prompt
-from app.infra.tracing import llm_trace_scope
+from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.model_router import TaskType
+from app.shared.infra.prompt_loader import populate_prompt
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import Difficulty, QuestionTemplate, QuestionType
+from app.repositories import exams_repo
+from app.repositories.knowledge import curriculum_repo
 from app.schemas.llm import SYSTEM
 from app.utils.time import utcnow
 from app.workflows.examine.context import (
     ExamStyleProfile,
     NodeExamContext,
+    TemplateSelectionHints,
     UnitExamContext,
     build_unit_exam_contexts,
+    summarize_hint_text,
+    template_matches_request_context,
     truncate_text,
 )
 from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
 
 logger = structlog.get_logger()
 
-_MAX_CONCURRENT_TEMPLATE_CALLS = 4
+_MAX_CONCURRENT_TEMPLATE_CALLS = 12
 
 
 class _GeneratedTemplateItem(BaseModel):
@@ -227,6 +232,17 @@ def _build_short_answer_template(
     )
 
 
+def _pick_difficulty_sequence(style_profile: ExamStyleProfile) -> list[str]:
+    focus = (style_profile.difficulty_focus or "").strip().lower()
+    if focus == Difficulty.EASY.value:
+        return [Difficulty.EASY.value, Difficulty.EASY.value, Difficulty.MEDIUM.value]
+    if focus == Difficulty.HARD.value:
+        return [Difficulty.MEDIUM.value, Difficulty.HARD.value, Difficulty.HARD.value]
+    if focus == "mixed":
+        return [Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value]
+    return [Difficulty.MEDIUM.value, Difficulty.EASY.value, Difficulty.HARD.value]
+
+
 def _build_deterministic_templates(
     context: UnitExamContext,
     *,
@@ -239,7 +255,7 @@ def _build_deterministic_templates(
         questions_per_unit=questions_per_unit,
         style_profile=context.style_profile,
     )
-    difficulties = [Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value]
+    difficulties = _pick_difficulty_sequence(context.style_profile)
     drafts: list[_GeneratedTemplateItem] = []
     for index, question_type in enumerate(type_sequence):
         node = context.node_contexts[index % len(context.node_contexts)]
@@ -293,47 +309,136 @@ async def _try_llm_generate_templates(
         return None
 
 
-def _build_node_refs_json(
-    *,
+def _find_node_context(
     node_contexts: list[NodeExamContext],
-    preferred_node_id: int | None,
-) -> str:
-    refs = node_contexts
-    if preferred_node_id is not None:
-        preferred = [item for item in node_contexts if item.node_id == preferred_node_id]
-        if preferred:
-            refs = preferred + [item for item in node_contexts if item.node_id != preferred_node_id]
-    total_weight = sum(max(0.0, item.coverage_weight) for item in refs)
-    if total_weight <= 0:
-        total_weight = float(len(refs) or 1)
-    payload = [
-        {
-            "knowledge_node_id": item.node_id,
-            "coverage_weight": round(max(0.0, item.coverage_weight) / total_weight, 4),
-            "role": item.role,
-        }
-        for item in refs
-    ]
+    node_id: int | None,
+) -> NodeExamContext | None:
+    if node_id is None:
+        return None
+    return next((item for item in node_contexts if item.node_id == node_id), None)
+
+
+def _pick_secondary_node_contexts(
+    context: UnitExamContext,
+    *,
+    primary_node_id: int,
+    text: str,
+) -> list[NodeExamContext]:
+    normalized_text = _clean_text(text).lower()
+    if not normalized_text:
+        return []
+
+    matched_nodes: list[tuple[int, float, NodeExamContext]] = []
+    for node_context in context.node_contexts:
+        if node_context.node_id == primary_node_id:
+            continue
+        normalized_name = _clean_text(node_context.node_name).lower()
+        if len(normalized_name) < 2 or normalized_name not in normalized_text:
+            continue
+        matched_nodes.append(
+            (
+                normalized_text.find(normalized_name),
+                -max(0.0, node_context.coverage_weight),
+                node_context,
+            )
+        )
+
+    return [item[2] for item in sorted(matched_nodes)[:2]]
+
+
+def _build_weighted_node_refs(node_contexts: list[NodeExamContext]) -> str:
+    if not node_contexts:
+        return "[]"
+
+    if len(node_contexts) == 1:
+        return json.dumps(
+            [
+                {
+                    "knowledge_node_id": node_contexts[0].node_id,
+                    "coverage_weight": 1.0,
+                    "role": "primary",
+                }
+            ],
+            ensure_ascii=False,
+        )
+
+    secondary_count = len(node_contexts) - 1
+    secondary_total_weight = 0.3
+    primary_weight = 1.0 - secondary_total_weight
+    secondary_weight = secondary_total_weight / secondary_count
+    raw_weights = [primary_weight] + [secondary_weight] * secondary_count
+
+    payload: list[dict[str, object]] = []
+    running_weight = 0.0
+    for index, (node_context, raw_weight) in enumerate(zip(node_contexts, raw_weights, strict=False)):
+        normalized_weight = round(raw_weight, 4)
+        if index == len(node_contexts) - 1:
+            normalized_weight = round(max(0.0, 1.0 - running_weight), 4)
+        payload.append(
+            {
+                "knowledge_node_id": node_context.node_id,
+                "coverage_weight": normalized_weight,
+                "role": ("primary" if index == 0 else "related"),
+            }
+        )
+        running_weight += normalized_weight
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _build_node_refs_json(
+    context: UnitExamContext,
+    *,
+    preferred_node_id: int | None,
+    fallback_node_id: int | None,
+    stem: str,
+    answer: str,
+    explanation: str,
+) -> str:
+    primary_node = _find_node_context(context.node_contexts, preferred_node_id)
+    if primary_node is None:
+        primary_node = _find_node_context(context.node_contexts, fallback_node_id)
+    if primary_node is None and context.node_contexts:
+        primary_node = context.node_contexts[0]
+    if primary_node is None:
+        return "[]"
+
+    secondary_nodes = _pick_secondary_node_contexts(
+        context,
+        primary_node_id=primary_node.node_id,
+        text="\n".join([stem, answer, explanation]),
+    )
+    return _build_weighted_node_refs([primary_node, *secondary_nodes[:2]])
 
 
 def _build_selection_hints_json(
     context: UnitExamContext,
     *,
     preferred_node_id: int | None,
+    context_signature: str | None,
+    context_locked: bool,
+    scope_locked: bool,
+    focus_teaching_unit_ids: list[int],
+    focus_node_ids: list[int],
 ) -> str:
-    payload = {
-        "exam_mode": context.exam_mode,
-        "preferred_question_types": list(context.preferred_question_types),
-        "unit_mastery_score": context.unit_mastery_score,
-        "weak_node_names": list(context.weak_node_names),
-        "learning_objectives": list(context.learning_objectives[:5]),
-        "preferred_node_id": preferred_node_id,
-        "style_profile": context.style_profile.to_metadata(),
-        "focus_prompt": context.focus_prompt,
-        "user_prompt": context.user_prompt,
-    }
-    return json.dumps(payload, ensure_ascii=False)
+    payload = TemplateSelectionHints(
+        exam_mode=context.exam_mode,
+        preferred_question_types=list(context.preferred_question_types),
+        unit_mastery_score=context.unit_mastery_score,
+        weak_node_names=list(context.weak_node_names),
+        learning_objectives=list(context.learning_objectives[:5]),
+        preferred_node_id=preferred_node_id,
+        style_profile=context.style_profile.to_metadata(),
+        focus_prompt=context.focus_prompt,
+        user_prompt=context.user_prompt,
+        context_signature=context_signature,
+        context_locked=context_locked,
+        scope_locked=scope_locked,
+        focus_teaching_unit_ids=sorted({int(item) for item in focus_teaching_unit_ids if int(item) > 0}),
+        focus_node_ids=sorted({int(item) for item in focus_node_ids if int(item) > 0}),
+        style_prompt_summary=summarize_hint_text(context.style_profile.style_prompt),
+        focus_prompt_summary=summarize_hint_text(context.focus_prompt or context.style_profile.focus_prompt),
+    )
+    return json.dumps(payload.model_dump(exclude_none=True), ensure_ascii=False)
 
 
 def _load_existing_hashes(
@@ -358,11 +463,56 @@ def _load_existing_hashes(
     return result
 
 
+def _load_existing_template_counts(
+    session: Session,
+    *,
+    subject: str,
+    unit_ids: list[int],
+    preferred_question_types: list[str],
+    difficulty_focus: str | None,
+    curriculum_version_id: int | None,
+    context_signature: str | None,
+    context_locked: bool,
+) -> dict[int, int]:
+    if not unit_ids:
+        return {}
+
+    candidate_templates = exams_repo.list_active_question_templates(
+        session,
+        subject=subject,
+        curriculum_version_id=curriculum_version_id,
+        unit_ids=set(unit_ids),
+        question_types=set(preferred_question_types) if preferred_question_types else None,
+        difficulty=(
+            difficulty_focus
+            if difficulty_focus in {Difficulty.EASY.value, Difficulty.MEDIUM.value, Difficulty.HARD.value}
+            else None
+        ),
+    )
+
+    counts_by_unit: dict[int, int] = defaultdict(int)
+    for template in candidate_templates:
+        if not template_matches_request_context(
+            template.selection_hints_json,
+            requested_context_signature=context_signature,
+            context_locked=context_locked,
+        ):
+            continue
+        counts_by_unit[int(template.teaching_unit_id)] += 1
+    return counts_by_unit
+
+
 def _prepare_template_drafts(
     context: UnitExamContext,
     *,
     generated_items: list[_GeneratedTemplateItem],
     existing_hashes: set[str],
+    curriculum_version_id: int | None,
+    context_signature: str | None,
+    context_locked: bool,
+    scope_locked: bool,
+    focus_teaching_unit_ids: list[int],
+    focus_node_ids: list[int],
 ) -> list[QuestionTemplate]:
     prepared: list[QuestionTemplate] = []
     now = utcnow()
@@ -403,14 +553,24 @@ def _prepare_template_drafts(
                 answer=answer,
                 explanation=explanation,
                 node_refs_json=_build_node_refs_json(
-                    node_contexts=context.node_contexts,
+                    context,
                     preferred_node_id=preferred_node_id,
+                    fallback_node_id=fallback_node_id,
+                    stem=stem,
+                    answer=answer,
+                    explanation=explanation,
                 ),
                 selection_hints_json=_build_selection_hints_json(
                     context,
                     preferred_node_id=preferred_node_id,
+                    context_signature=context_signature,
+                    context_locked=context_locked,
+                    scope_locked=scope_locked,
+                    focus_teaching_unit_ids=focus_teaching_unit_ids,
+                    focus_node_ids=focus_node_ids,
                 ),
                 status="active",
+                curriculum_version_id=curriculum_version_id,
                 created_at=now,
                 updated_at=now,
             )
@@ -425,11 +585,17 @@ async def build_question_templates(
     user_id: str,
     unit_ids: list[int],
     questions_per_unit: int = 9,
-    exam_mode: str = "diagnostic",
+    exam_mode: str = "web_practice",
     preferred_question_types: list[str] | None = None,
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
     style_profile: ExamStyleProfile | None = None,
+    curriculum_version_id: int | None = None,
+    template_context_signature: str | None = None,
+    context_locked: bool = False,
+    scope_locked: bool = False,
+    focus_teaching_unit_ids: list[int] | None = None,
+    focus_node_ids: list[int] | None = None,
 ) -> list[QuestionTemplate]:
     """Build question templates by teaching units using digest and profile context."""
 
@@ -449,15 +615,58 @@ async def build_question_templates(
         logger.warning("question_builder_no_generation_context", subject=subject)
         return []
 
+    effective_question_types = list(
+        preferred_question_types
+        or (style_profile.preferred_question_types if style_profile is not None else [])
+    )
+    difficulty_focus = style_profile.difficulty_focus if style_profile is not None else None
+    resolved_curriculum_version_id = curriculum_version_id
+    if resolved_curriculum_version_id is None:
+        current_curriculum = curriculum_repo.get_current_curriculum_snapshot(session, subject)
+        resolved_curriculum_version_id = current_curriculum.id if current_curriculum is not None else None
+    resolved_focus_teaching_unit_ids = list(
+        focus_teaching_unit_ids
+        or (style_profile.focus_teaching_unit_ids if style_profile is not None else [])
+    )
+    resolved_focus_node_ids = list(
+        focus_node_ids
+        or (style_profile.focus_node_ids if style_profile is not None else [])
+    )
+    existing_count_by_unit = _load_existing_template_counts(
+        session,
+        subject=subject,
+        unit_ids=[context.unit_id for context in contexts],
+        preferred_question_types=effective_question_types,
+        difficulty_focus=difficulty_focus,
+        curriculum_version_id=resolved_curriculum_version_id,
+        context_signature=template_context_signature,
+        context_locked=context_locked,
+    )
+    pending_contexts = [
+        context
+        for context in contexts
+        if existing_count_by_unit.get(context.unit_id, 0) < questions_per_unit
+    ]
+    if not pending_contexts:
+        logger.info(
+            "question_builder_skip_existing_inventory",
+            subject=subject,
+            unit_count=len(contexts),
+            questions_per_unit=questions_per_unit,
+            difficulty_focus=difficulty_focus,
+        )
+        return []
+
     logger.info(
         "question_builder_contexts_prepared",
         subject=subject,
         unit_count=len(contexts),
+        pending_unit_count=len(pending_contexts),
         questions_per_unit=questions_per_unit,
         exam_mode=exam_mode,
     )
 
-    semaphore = asyncio.Semaphore(min(_MAX_CONCURRENT_TEMPLATE_CALLS, max(1, len(contexts))))
+    semaphore = asyncio.Semaphore(min(_MAX_CONCURRENT_TEMPLATE_CALLS, max(1, len(pending_contexts))))
     generated_results = await asyncio.gather(
         *[
             _try_llm_generate_templates(
@@ -465,7 +674,7 @@ async def build_question_templates(
                 questions_per_unit=questions_per_unit,
                 semaphore=semaphore,
             )
-            for context in contexts
+            for context in pending_contexts
         ],
         return_exceptions=True,
     )
@@ -473,13 +682,13 @@ async def build_question_templates(
     existing_hashes_by_unit = _load_existing_hashes(
         session,
         subject=subject,
-        unit_ids=[context.unit_id for context in contexts],
+        unit_ids=[context.unit_id for context in pending_contexts],
     )
 
     templates_to_create: list[QuestionTemplate] = []
     llm_generated_unit_count = 0
     fallback_unit_count = 0
-    for context, result in zip(contexts, generated_results):
+    for context, result in zip(pending_contexts, generated_results):
         if isinstance(result, Exception) or result is None:
             fallback_unit_count += 1
             generated_items = _build_deterministic_templates(
@@ -495,6 +704,12 @@ async def build_question_templates(
                 context,
                 generated_items=generated_items,
                 existing_hashes=existing_hashes_by_unit.setdefault(context.unit_id, set()),
+                curriculum_version_id=resolved_curriculum_version_id,
+                context_signature=template_context_signature,
+                context_locked=context_locked,
+                scope_locked=scope_locked,
+                focus_teaching_unit_ids=resolved_focus_teaching_unit_ids,
+                focus_node_ids=resolved_focus_node_ids,
             )
         )
 

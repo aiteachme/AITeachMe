@@ -11,10 +11,10 @@ import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, or_, select
 
-from app.core.config import get_settings
-from app.infra.llm import acompletion_structured
-from app.infra.model_router import TaskType
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.config import get_settings
+from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.model_router import TaskType
+from app.shared.infra.prompt_loader import populate_prompt
 from app.models.curriculum import TeachingUnit, TeachingUnitMembership, TeachingUnitRevision
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import curriculum_repo

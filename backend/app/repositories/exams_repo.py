@@ -117,19 +117,35 @@ def find_node_links_by_template(session: Session, template_id: int) -> list[dict
     return _load_json_list(template.node_refs_json)
 
 
-def create_exam_paper(session: Session, paper: ExamPaper) -> ExamPaper:
+def create_exam_paper(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    auto_commit: bool = True,
+) -> ExamPaper:
     session.add(paper)
-    session.commit()
-    session.refresh(paper)
+    if auto_commit:
+        session.commit()
+        session.refresh(paper)
+    else:
+        session.flush()
     return paper
 
 
-def create_exam_paper_items(session: Session, items: list[ExamPaperItem]) -> list[ExamPaperItem]:
+def create_exam_paper_items(
+    session: Session,
+    items: list[ExamPaperItem],
+    *,
+    auto_commit: bool = True,
+) -> list[ExamPaperItem]:
     for item in items:
         session.add(item)
-    session.commit()
-    for item in items:
-        session.refresh(item)
+    if auto_commit:
+        session.commit()
+        for item in items:
+            session.refresh(item)
+    else:
+        session.flush()
     return items
 
 
@@ -189,6 +205,7 @@ def count_active_question_templates(
     *,
     subject: str,
     question_types: set[str] | None = None,
+    difficulty: str | None = None,
 ) -> int:
     stmt = (
         select(func.count())
@@ -200,7 +217,33 @@ def count_active_question_templates(
     )
     if question_types:
         stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))
+    if difficulty:
+        stmt = stmt.where(QuestionTemplate.difficulty == difficulty)
     return int(session.exec(stmt).one())
+
+
+def list_active_question_templates(
+    session: Session,
+    *,
+    subject: str,
+    curriculum_version_id: int | None = None,
+    unit_ids: set[int] | None = None,
+    question_types: set[str] | None = None,
+    difficulty: str | None = None,
+) -> list[QuestionTemplate]:
+    stmt = select(QuestionTemplate).where(
+        QuestionTemplate.subject == subject,
+        QuestionTemplate.status == "active",
+    )
+    if curriculum_version_id is not None:
+        stmt = stmt.where(QuestionTemplate.curriculum_version_id == curriculum_version_id)
+    if unit_ids:
+        stmt = stmt.where(QuestionTemplate.teaching_unit_id.in_(unit_ids))
+    if question_types:
+        stmt = stmt.where(QuestionTemplate.question_type.in_(question_types))
+    if difficulty:
+        stmt = stmt.where(QuestionTemplate.difficulty == difficulty)
+    return list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
 
 
 def list_exam_item_snapshots_by_user(

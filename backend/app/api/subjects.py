@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends
 from sqlmodel import Session
 
-from app.api.deps import get_db
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.subject import (
@@ -35,11 +35,13 @@ router = APIRouter(prefix="/api/v1/subjects", tags=["subjects"])
 )
 async def create_subject_api(
     body: SubjectCreateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
     return ok_response(
         create_subject_record(
             session,
+            owner_user_id=user.user_id,
             name=body.name,
             description=body.description,
         )
@@ -54,9 +56,17 @@ async def create_subject_api(
 )
 async def list_subjects_api(
     body: SubjectListRequest = Body(default=SubjectListRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[SubjectItem]]:
-    return ok_response(list_subject_records(session, page=body.page, size=body.size))
+    return ok_response(
+        list_subject_records(
+            session,
+            owner_user_id=user.user_id,
+            page=body.page,
+            size=body.size,
+        )
+    )
 
 
 @router.post(
@@ -67,9 +77,16 @@ async def list_subjects_api(
 )
 async def preview_delete_subject_api(
     body: SubjectDeletePreviewRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectDeletePreviewData]:
-    return ok_response(preview_subject_delete(session, subject_id=body.subject_id))
+    return ok_response(
+        preview_subject_delete(
+            session,
+            owner_user_id=user.user_id,
+            subject_id=body.subject_id,
+        )
+    )
 
 
 @router.post(
@@ -80,11 +97,13 @@ async def preview_delete_subject_api(
 )
 async def delete_subject_api(
     body: SubjectDeleteRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectDeleteData]:
     return ok_response(
         delete_subject_record(
             session,
+            owner_user_id=user.user_id,
             subject_id=body.subject_id,
             force=body.force,
         )

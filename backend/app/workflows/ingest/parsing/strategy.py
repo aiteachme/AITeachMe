@@ -6,8 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.core.config import get_settings
-from app.core.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.config import get_settings
+from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,

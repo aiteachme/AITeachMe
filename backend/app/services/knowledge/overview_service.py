@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.exceptions import (
+from app.shared.infra.exceptions import (
     NoPublishedCurriculumSnapshotError,
     NoPublishedDagError,
     NoPublishedTreeError,

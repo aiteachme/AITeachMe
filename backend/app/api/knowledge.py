@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, Path, Request
 from sqlmodel import Session
 
-from app.api.deps import get_db, normalize_subject_slug
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
@@ -54,10 +54,15 @@ async def knowledge_build(
     request: Request,
     subject: str = Path(...),
     body: DocGenBuildRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildData]:
     normalized = normalize_subject_slug(subject)
-    subject_record = get_subject_record(session, normalized)
+    subject_record = get_subject_record(
+        session,
+        normalized,
+        owner_user_id=user.user_id,
+    )
 
     data, accepted_file_ids = trigger_docgen_build(
         session,
@@ -88,10 +93,11 @@ async def knowledge_build(
 )
 async def knowledge_docs(
     subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_docgen_result(session, subject=normalized))
 
 
@@ -104,10 +110,11 @@ async def knowledge_docs(
 async def knowledge_overview(
     subject: str = Path(...),
     body: KnowledgeOverviewRequest = Body(default=KnowledgeOverviewRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeOverviewResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_knowledge_overview(
             session,
@@ -127,10 +134,11 @@ async def knowledge_overview(
 async def graph_node_detail(
     subject: str = Path(...),
     body: GraphNodeDetailRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeNodeDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_graph_node_detail(session, subject=normalized, node_id=body.node_id))
 
 
@@ -143,10 +151,11 @@ async def graph_node_detail(
 async def chunk_context(
     subject: str = Path(...),
     body: ChunkContextRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChunkContextResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_chunk_context(session, subject=normalized, chunk_id=body.chunk_id))
 
 
@@ -159,10 +168,11 @@ async def chunk_context(
 async def unit_detail(
     subject: str = Path(...),
     body: UnitDetailRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[TeachingUnitDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_teaching_unit_detail(session, subject=normalized, unit_id=body.unit_id))
 
 
@@ -175,10 +185,11 @@ async def unit_detail(
 async def taxonomy_anchors(
     subject: str = Path(...),
     body: AnchorManageRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[TaxonomyAnchorResponse]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         manage_taxonomy_anchors(
             session,
@@ -201,9 +212,10 @@ async def taxonomy_anchors(
 )
 async def knowledge_clear(
     subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ClearKnowledgeResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     counts = clear_subject_knowledge(session, subject=normalized)
     return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))

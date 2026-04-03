@@ -9,8 +9,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 import structlog
 
-from app.core.config import get_settings
-from app.infra.tracing import get_tracker, llm_trace_scope
+from app.shared.infra.config import get_settings
+from app.shared.infra.tracing import get_tracker, llm_trace_scope
 
 logger = structlog.get_logger(__name__)
 

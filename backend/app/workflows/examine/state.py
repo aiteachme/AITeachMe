@@ -27,6 +27,12 @@ class QuestionBuildState(TypedDict, total=False):
     user_prompt: str | None
     focus_prompt: str | None
     style_profile: Any
+    curriculum_version_id: int | None
+    template_context_signature: str | None
+    context_locked: bool
+    scope_locked: bool
+    focus_teaching_unit_ids: list[int]
+    focus_node_ids: list[int]
     templates_created: int
     warnings: list[str]
     error: str | None

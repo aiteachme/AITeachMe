@@ -11,12 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_settings
-from app.core.database import init_db
-from app.core.exceptions import AITeachMeError
-from app.core.logger import configure_logging
-from app.core.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
-from app.core.task_registry import BackgroundTaskRegistry
+from app.shared.infra.config import get_settings
+from app.shared.infra.database import init_db
+from app.shared.infra.logger import configure_logging
+from app.shared.infra.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.shared.kernel.exceptions import AITeachMeError
+from app.shared.infra.task_registry import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
 
@@ -155,4 +155,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

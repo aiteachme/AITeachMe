@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.infra.strategies import StrategyMode
-from app.infra.token_budget import ContextWindowManager
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.strategies import StrategyMode
+from app.shared.infra.token_budget import ContextWindowManager
+from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.workflows.interact.prompts import SYSTEM_PROMPT_TUTOR
 from app.workflows.interact.support.strategies import build_strategy_instruction

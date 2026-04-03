@@ -13,15 +13,31 @@ def create_subject(session: Session, subject: Subject) -> Subject:
     return subject
 
 
-def get_subject_by_slug(session: Session, slug: str) -> Subject | None:
-    return session.exec(select(Subject).where(Subject.slug == slug)).first()
+def get_subject_by_slug(session: Session, slug: str, *, owner_user_id: str | None = None) -> Subject | None:
+    stmt = select(Subject).where(Subject.slug == slug)
+    if owner_user_id is not None:
+        stmt = stmt.where(Subject.user_id == owner_user_id)
+    return session.exec(stmt).first()
 
 
-def list_subjects(session: Session, *, limit: int, offset: int) -> tuple[list[Subject], int]:
-    total = int(session.exec(select(func.count()).select_from(Subject)).one())
+def list_subjects(
+    session: Session,
+    *,
+    owner_user_id: str,
+    limit: int,
+    offset: int,
+) -> tuple[list[Subject], int]:
+    total = int(
+        session.exec(
+            select(func.count())
+            .select_from(Subject)
+            .where(Subject.user_id == owner_user_id)
+        ).one()
+    )
     items = list(
         session.exec(
             select(Subject)
+            .where(Subject.user_id == owner_user_id)
             .order_by(Subject.updated_at.desc())
             .offset(offset)
             .limit(limit)

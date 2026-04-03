@@ -6,12 +6,11 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Path, Query
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.models import KnowledgeNode
-from app.repositories import profile_repo
+from app.models import KnowledgeNode, UserKnowledgeState
 from app.schemas.common import ApiResponse, PaginatedData, build_paginated_data, ok_response
 from app.schemas.exams import (
     ExamGenerateRequest,
@@ -112,15 +111,69 @@ def _to_exam_history_item(paper) -> ExamHistoryItem:
     )
 
 
-def _build_node_link_responses(
+def _collect_node_ids(raw_links: list[Any]) -> list[int]:
+    node_ids: list[int] = []
+    for raw_link in raw_links:
+        if not isinstance(raw_link, dict):
+            continue
+        raw_node_id = raw_link.get("knowledge_node_id")
+        if isinstance(raw_node_id, int) and raw_node_id > 0:
+            node_ids.append(raw_node_id)
+            continue
+        if isinstance(raw_node_id, str) and raw_node_id.isdigit():
+            node_ids.append(int(raw_node_id))
+    return list(dict.fromkeys(node_ids))
+
+
+def _build_node_name_map(
+    session: Session,
+    *,
+    node_ids: list[int],
+) -> dict[int, str]:
+    if not node_ids:
+        return {}
+
+    rows = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(node_ids))).all())
+    return {
+        int(node.id): node.canonical_name
+        for node in rows
+        if node.id is not None
+    }
+
+
+def _build_node_mastery_map(
     session: Session,
     *,
     subject: str,
     user_id: str,
+    node_ids: list[int],
+) -> dict[int, float | None]:
+    if not node_ids:
+        return {}
+
+    rows = list(
+        session.exec(
+            select(UserKnowledgeState).where(
+                UserKnowledgeState.user_id == user_id,
+                UserKnowledgeState.subject == subject,
+                UserKnowledgeState.knowledge_node_id.in_(node_ids),
+                UserKnowledgeState.teaching_unit_id.is_(None),
+            )
+        ).all()
+    )
+    return {
+        int(state.knowledge_node_id): state.mastery_score
+        for state in rows
+        if state.knowledge_node_id is not None
+    }
+
+
+def _build_node_link_responses(
+    *,
     raw_links: list[Any],
+    node_name_by_id: dict[int, str],
+    mastery_by_node_id: dict[int, float | None],
 ) -> list[ExamNodeLinkResponse]:
-    node_cache: dict[int, str] = {}
-    mastery_cache: dict[int, float | None] = {}
     responses: list[ExamNodeLinkResponse] = []
 
     for raw_link in raw_links:
@@ -134,18 +187,6 @@ def _build_node_link_responses(
         else:
             continue
 
-        if node_id not in node_cache:
-            node = session.get(KnowledgeNode, node_id)
-            node_cache[node_id] = node.canonical_name if node is not None else f"Node {node_id}"
-        if node_id not in mastery_cache:
-            state = profile_repo.get_knowledge_state(
-                session,
-                user_id=user_id,
-                subject=subject,
-                knowledge_node_id=node_id,
-            )
-            mastery_cache[node_id] = state.mastery_score if state is not None else None
-
         coverage_weight = raw_link.get("coverage_weight", 0.0)
         try:
             normalized_weight = float(coverage_weight)
@@ -155,10 +196,10 @@ def _build_node_link_responses(
         responses.append(
             ExamNodeLinkResponse(
                 knowledge_node_id=node_id,
-                knowledge_node_name=node_cache[node_id],
+                knowledge_node_name=node_name_by_id.get(node_id, f"Node {node_id}"),
                 coverage_weight=normalized_weight,
                 role=str(raw_link.get("role", "primary")),
-                mastery_score=mastery_cache[node_id],
+                mastery_score=mastery_by_node_id.get(node_id),
             )
         )
     return responses
@@ -168,17 +209,33 @@ def _to_exam_paper_detail_response(session: Session, detail: ExamPaperDetail) ->
     paper = detail.paper
     selection_context = _parse_json_object(paper.selection_context_json)
     reveal_correct_answer = paper.status == "graded"
+    item_links = {
+        item.id or 0: _parse_json_list(item.node_refs_json)
+        for item in detail.items
+    }
+    linked_node_ids = list(
+        dict.fromkeys(
+            node_id
+            for raw_links in item_links.values()
+            for node_id in _collect_node_ids(raw_links)
+        )
+    )
+    node_name_by_id = _build_node_name_map(session, node_ids=linked_node_ids)
+    mastery_by_node_id = _build_node_mastery_map(
+        session,
+        subject=paper.subject,
+        user_id=paper.user_id,
+        node_ids=linked_node_ids,
+    )
     items: list[ExamPaperItemResponse] = []
 
     for item in detail.items:
         options = _parse_json_list(item.options_snapshot_json)
         attempts = detail.attempts_by_item_id.get(item.id or -1)
-        raw_links = _parse_json_list(item.node_refs_json)
         node_links = _build_node_link_responses(
-            session,
-            subject=paper.subject,
-            user_id=paper.user_id,
-            raw_links=raw_links,
+            raw_links=item_links.get(item.id or 0, []),
+            node_name_by_id=node_name_by_id,
+            mastery_by_node_id=mastery_by_node_id,
         )
         items.append(
             ExamPaperItemResponse(
@@ -246,12 +303,13 @@ async def api_trigger_exam_generate(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamGenerateResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     job = await trigger_exam_generate(
         session,
         subject=normalized,
         user_id=user.user_id,
         exam_mode=body.exam_mode,
+        difficulty=body.difficulty,
         num_questions=body.num_questions,
         user_prompt=body.user_prompt,
         style_prompt=body.style_prompt,
@@ -277,7 +335,7 @@ async def api_get_exam_history(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ExamHistoryItem]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     history = await get_exam_history(
         session,
         subject=normalized,
@@ -307,7 +365,7 @@ async def api_get_question_bank(
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[QuestionBankItemResponse]]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     items = await get_question_bank(session, subject=normalized, user_id=user.user_id)
     return ok_response([_to_question_bank_item_response(item) for item in items])
 
@@ -325,7 +383,7 @@ async def api_get_exam_detail(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     detail = await get_exam_paper_detail(
         session,
         subject=normalized,
@@ -348,7 +406,7 @@ async def api_delete_exam(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDeleteResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
     await delete_exam_paper(
         session,
         subject=normalized,
@@ -372,7 +430,7 @@ async def api_submit_exam(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
 
     answers: dict[int | str, str] = {}
     for answer in body.answers:
@@ -411,7 +469,8 @@ async def api_trigger_exam_grade(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamGradeResponse]:
     normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized)
+    get_subject_record(session, normalized, owner_user_id=user.user_id)
+
     await get_exam_paper_detail(
         session,
         subject=normalized,

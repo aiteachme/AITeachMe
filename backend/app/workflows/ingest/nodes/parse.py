@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import time
 
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.utils.path_helpers import list_asset_files
