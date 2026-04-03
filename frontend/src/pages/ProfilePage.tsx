@@ -79,7 +79,7 @@ function PageWrapper({
     <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden min-h-[100dvh] bg-slate-50/50">
       <div className="absolute inset-0 overflow-hidden pointer-events-none block">
         <div
-          className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl"
+          className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-stone-500/10 blur-3xl"
           style={{ animationDuration: "7s" }}
         />
         <div

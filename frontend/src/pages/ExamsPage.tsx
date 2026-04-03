@@ -92,7 +92,7 @@ function isPaperExamMode(mode: string): boolean {
 
 function PageWrapper({ children, title, subtitle, badgeText }: { children: ReactNode; title: ReactNode; subtitle?: string; badgeText?: string }) {
   return (
-    <div className="flex min-h-[100dvh] w-full flex-1 flex-col items-center bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.10),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 pb-16 pt-16 md:pt-20">
+    <div className="flex min-h-[100dvh] w-full flex-1 flex-col items-center bg-[radial-gradient(circle_at_top_left,_rgba(120,113,108,0.08),_transparent_35%),linear-gradient(180deg,_#fafaf9_0%,_#f0eee9_100%)] px-4 pb-16 pt-16 md:pt-20">
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="w-full max-w-6xl space-y-6">
         <div className="space-y-4 text-center">
           {badgeText ? (

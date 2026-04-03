@@ -316,7 +316,7 @@ export function HomePage() {
       
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-blue-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
+        <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-emerald-500/10 blur-3xl" style={{ animationDuration: "7s" }} />
         <div className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl" style={{ animationDuration: "11s" }} />
       </div>
 
@@ -367,11 +367,10 @@ export function HomePage() {
               )}
             </div>
 
-            {/* Textarea */}
             <textarea
               ref={textareaRef}
               placeholder="描述你的学习目标（可选），例如：期末考试复习重点、考研知识梳理、Python 核心编程入门..."
-              className="w-full resize-none border-0 bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none min-h-[120px] max-h-[250px]"
+              className="w-full resize-none border-0 bg-transparent px-5 pt-4 pb-3 text-[15px] leading-[1.8] text-slate-800 placeholder:text-slate-400/80 focus:outline-none min-h-[120px] max-h-[250px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={!activeSubjectId ? handleKeyDown : undefined}
@@ -576,25 +575,27 @@ export function HomePage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                     >
-                      <Link to={`/subject/${subject.subject_id}/files`} className="block group">
-                        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col group/card hover:-translate-y-1">
-                          <div className="flex items-start justify-between mb-4">
-                            <h3 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover/card:text-slate-700 transition-colors">
+                      <Link to={`/subject/${subject.subject_id}/files`} className="block group h-full">
+                        <div className="relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_8px_30px_-12px_rgba(15,23,42,0.08)] hover:shadow-[0_14px_40px_-14px_rgba(15,23,42,0.12)] hover:border-slate-300 transition-all duration-500 h-full flex flex-col group/card hover:-translate-y-1.5 overflow-hidden">
+                          {/* Spotlight gradient effect on hover */}
+                          <div className="absolute inset-0 opacity-0 group-hover/card:opacity-100 transition-opacity duration-700 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-50/50 via-white/0 to-white/0" />
+                          <div className="relative z-10 flex items-start justify-between mb-4">
+                            <h3 className="text-[17px] font-bold text-slate-900 line-clamp-1 group-hover/card:text-slate-800 transition-colors">
                               {subject.name}
                             </h3>
-                            <div className="p-2 bg-slate-50 rounded-lg group-hover/card:bg-slate-100 transition-colors border border-transparent group-hover/card:border-slate-200">
-                              <BookOpen className="w-5 h-5 text-slate-400 group-hover/card:text-slate-700" />
+                            <div className="p-2 bg-slate-50 rounded-xl group-hover/card:bg-emerald-50/60 transition-colors border border-transparent group-hover/card:border-emerald-100/50">
+                              <BookOpen className="w-[18px] h-[18px] text-slate-400 group-hover/card:text-emerald-600 transition-colors" />
                             </div>
                           </div>
-                          <div className="mt-auto pt-4 flex items-center gap-3 border-t border-slate-50">
-                            <span className="flex items-center text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+                          <div className="relative z-10 mt-auto pt-4 flex items-center gap-3 border-t border-slate-100/80">
+                            <span className="flex items-center text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-md">
                               <MessageSquare className="w-3.5 h-3.5 mr-1" /> 会话
                             </span>
-                            <span className="flex items-center text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+                            <span className="flex items-center text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-md">
                               <FileText className="w-3.5 h-3.5 mr-1" /> 资料
                             </span>
-                            <span className="text-xs text-slate-400 ml-auto flex items-center">
-                               进入学习 <ChevronDown className="w-3 h-3 ml-0.5 -rotate-90" />
+                            <span className="text-xs text-slate-400 ml-auto flex items-center font-medium group-hover/card:text-emerald-600 transition-colors">
+                               进入学习 <ChevronDown className="w-3.5 h-3.5 ml-0.5 -rotate-90" />
                             </span>
                           </div>
                         </div>

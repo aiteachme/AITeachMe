@@ -37,9 +37,9 @@ export function ChatComposer({
   }
 
   return (
-    <div className="border-t border-slate-200/80 bg-white/90 px-4 py-4 backdrop-blur xl:px-8">
-      <div className="mx-auto max-w-4xl">
-        <div className="rounded-[28px] border border-slate-200 bg-white shadow-[0_12px_40px_-24px_rgba(15,23,42,0.45)] transition focus-within:border-sky-300">
+    <div className="absolute bottom-8 left-1/2 w-full max-w-4xl -translate-x-1/2 px-4 z-20">
+      <div className="mx-auto w-full">
+        <div className="rounded-[32px] border border-slate-200/80 bg-white/75 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(15,23,42,0.15)] transition-all focus-within:border-sky-300 focus-within:bg-white/95">
           <div className="flex items-end gap-3 px-4 py-3">
             <textarea
               ref={textareaRef}
@@ -68,21 +68,21 @@ export function ChatComposer({
                 onClick={onSend}
                 disabled={!value.trim() || disabled}
                 className={cn(
-                  "inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-medium transition",
+                  "inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[18px] text-sm font-medium transition-all active:scale-95",
                   value.trim() && !disabled
-                    ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+                    ? "bg-slate-900 text-white shadow-md shadow-slate-900/10 hover:bg-slate-800"
                     : "cursor-not-allowed bg-slate-100 text-slate-300",
                 )}
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 ml-0.5" />
               </button>
             )}
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3 px-1 text-xs text-slate-400">
-          <span>Enter 发送，Shift + Enter 换行</span>
-          <span className="inline-flex items-center gap-2">
+        <div className="mt-3 flex items-center justify-between gap-3 px-2 text-[11px] font-medium text-slate-400">
+          <span className="hidden sm:inline-block">Enter 发送，Shift + Enter 换行</span>
+          <span className="inline-flex items-center gap-1.5 ml-auto">
             {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             AI 可能会出错，请核实关键结论
           </span>

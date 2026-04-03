@@ -48,7 +48,7 @@ export function ChatPage() {
 
   return (
     <>
-      <div className="-m-6 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(103,232,249,0.14),_transparent_34%),linear-gradient(180deg,_#f8fbff_0%,_#f8fafc_58%,_#eef4ff_100%)] px-4 py-6 lg:-m-8 lg:px-8 lg:py-8">
+      <div className="-m-6 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(120,113,108,0.08),_transparent_40%),linear-gradient(180deg,_#fcfcfc_0%,_#f7f7f5_60%,_#f0eee9_100%)] px-4 py-6 lg:-m-8 lg:px-8 lg:py-8">
         <div className="grid min-h-[calc(100vh-7rem)] gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="space-y-4">
             <Card className="overflow-hidden border-0 bg-slate-900 text-white shadow-[0_24px_80px_-40px_rgba(15,23,42,0.8)]">
@@ -82,7 +82,7 @@ export function ChatPage() {
             <Card className="border-white/70 bg-white/85 shadow-[0_20px_70px_-45px_rgba(15,23,42,0.55)]">
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                  <MessageSquareText className="h-4 w-4 text-emerald-600" />
+                  <MessageSquareText className="h-4 w-4 text-stone-600" />
                   快速开始
                 </div>
                 <div className="space-y-2">
@@ -142,7 +142,7 @@ export function ChatPage() {
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto pb-40 relative">
               {!historyLoaded ? (
                 <div className="flex h-full items-center justify-center text-slate-500">
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -159,7 +159,7 @@ export function ChatPage() {
               ) : (
                 <div className="flex h-full items-center justify-center px-4 py-10">
                   <div className="max-w-xl text-center">
-                    <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-[24px] bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 text-white shadow-lg">
+                    <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-[24px] bg-gradient-to-br from-stone-500 via-stone-600 to-stone-800 text-white shadow-md shadow-stone-500/20">
                       <MessageSquareText className="h-8 w-8" />
                     </div>
                     <h3 className="mt-6 text-2xl font-semibold tracking-tight text-slate-900">
