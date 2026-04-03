@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     smtp_from_name: str = "AITeachMe"
     smtp_use_ssl: bool = True
     smtp_use_starttls: bool = False
+    smtp_address_family: str = "ipv4"
     smtp_timeout_s: int = 15
     auth_email_code_ttl_s: int = 600
     auth_email_code_resend_interval_s: int = 60
