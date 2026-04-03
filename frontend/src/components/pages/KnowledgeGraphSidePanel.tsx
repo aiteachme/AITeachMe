@@ -1,25 +1,18 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
-  AlertTriangle,
   Box,
   FolderTree,
   GitBranch,
   Loader2,
-  Network,
-  Trash2
+  Network
 } from "lucide-react";
 
-import {
-  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-} from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
 import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
 
-import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
-import { Modal } from "../ui/Modal";
-import { Button } from "../ui/Button";
+import { DigestBuildProvider } from "./DigestBuildPanel";
 
 const WordCloud3D = lazy(() => import("./WordCloud3D"));
 const ThemeTreeView = lazy(() =>
@@ -55,9 +48,7 @@ export function KnowledgeGraphSidePanel({
 }: { 
   subjectId: string;
 }) {
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const overviewInclude = useMemo(() => {
     switch (activeTab) {
       case "word-cloud":
@@ -84,15 +75,6 @@ export function KnowledgeGraphSidePanel({
     retry: false,
   });
 
-  const clearMutation = useMutation({
-    mutationFn: () => knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost(subjectId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
-      setShowClearConfirm(false);
-    },
-  });
-
   const subjectLabel = useMemo(() => {
     if (/^subj_[a-z0-9]+$/.test(subjectId)) return "知识";
     return subjectId || "知识";
@@ -109,7 +91,7 @@ export function KnowledgeGraphSidePanel({
 
   return (
     <DigestBuildProvider subject={subjectId}>
-      <div className="flex flex-col h-full w-full bg-white relative border-l border-slate-200/60 transition-colors duration-500">
+      <div className="flex flex-col h-full w-full bg-white relative border-l border-slate-200/60 transition-colors duration-500 pt-16">
         {/* Toolbar: Tabs & Actions */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2 shrink-0 gap-4">
           
@@ -130,21 +112,6 @@ export function KnowledgeGraphSidePanel({
                 <span className="hidden lg:inline">{tab.label}</span>
               </button>
             ))}
-          </div>
-          
-          {/* Right: Actions */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <DigestBuildButton />
-            
-            <div className="h-4 w-px bg-slate-200 mx-1" />
-
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-              title="清空重新生成"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
           </div>
         </div>
 
@@ -207,45 +174,6 @@ export function KnowledgeGraphSidePanel({
             </div>
           )}
         </div>
-
-        <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-              <div className="text-sm text-red-700">
-                <p>此操作会删除该学科下已经构建的知识数据，包括：</p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-red-600">
-                  <li>知识图谱节点、边和证据</li>
-                  <li>教学单元、主题树和先修图</li>
-                  <li>课程快照等派生知识结构</li>
-                </ul>
-                <p className="mt-2 font-medium">已经生成的文档也将因结构变更而失效。</p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
-                取消
-              </Button>
-              <Button
-                onClick={() => clearMutation.mutate()}
-                disabled={clearMutation.isPending}
-                className="bg-red-500 text-white hover:bg-red-600"
-              >
-                {clearMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    清空中...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    确认清空
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </Modal>
       </div>
     </DigestBuildProvider>
   );

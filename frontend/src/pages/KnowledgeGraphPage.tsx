@@ -1,24 +1,17 @@
 import { useState, useMemo, lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
-  AlertTriangle,
   Box,
   FolderTree,
   GitBranch,
   Loader2,
   Network,
-  Trash2,
 } from "lucide-react";
 
-import {
-  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-} from "../api/generated/knowledge";
 import { getApiErrorMessage } from "../api/client";
-import { DigestBuildButton, DigestBuildProvider } from "../components/pages/DigestBuildPanel";
-import { Button } from "../components/ui/Button";
-import { Modal } from "../components/ui/Modal";
+import { DigestBuildProvider } from "../components/pages/DigestBuildPanel";
 import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../lib/knowledgeOverview";
 
 const WordCloud3D = lazy(() => import("../components/pages/WordCloud3D"));
@@ -52,10 +45,8 @@ function TabFallback({ message }: { message: string }) {
 
 export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
-  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("knowledge-graph");
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const overviewInclude = useMemo(() => {
     switch (activeTab) {
       case "theme-tree":
@@ -82,15 +73,6 @@ export function KnowledgeGraphPage() {
     retry: false,
   });
 
-  const clearMutation = useMutation({
-    mutationFn: () => knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost(subjectId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
-      setShowClearConfirm(false);
-    },
-  });
-
   // 从 subjectId 提取可读学科名
   const subjectLabel = useMemo(() => {
     // subjectId 如果是 subj_xxx 格式，用默认文字
@@ -110,27 +92,13 @@ export function KnowledgeGraphPage() {
   // 从 overview.graph.nodes 构建 3D 词云数据
   return (
     <DigestBuildProvider subject={subjectId}>
-      <div className="space-y-6 px-4 pt-20 pb-6 md:px-6 lg:px-8 max-w-7xl mx-auto">
-        {/* ---- 页面标题栏（修复: 使用 flex-wrap + gap 防止重叠） ---- */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold text-slate-900">知识图谱</h1>
-            <p className="mt-2 text-sm text-slate-500">
-              这里展示知识宇宙、主题树、先修依赖和知识图谱视图。点击开始知识构建会同时刷新知识文档与图谱。
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <DigestBuildButton />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowClearConfirm(true)}
-              className="text-red-500 hover:bg-red-50 hover:text-red-600"
-            >
-              <Trash2 className="mr-1 h-4 w-4" />
-              清空知识
-            </Button>
-          </div>
+      <div className="mx-auto max-w-7xl space-y-6 px-4 pb-6 pt-20 md:px-6 lg:px-8">
+        {/* ---- 页面标题栏 ---- */}
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold text-slate-900">知识图谱</h1>
+          <p className="text-sm text-slate-500">
+            这里展示知识宇宙、主题树、先修依赖和知识图谱视图。
+          </p>
         </div>
 
         {/* ---- 加载 / 错误状态 ---- */}
@@ -205,45 +173,7 @@ export function KnowledgeGraphPage() {
           </Suspense>
         ) : null}
 
-        {/* ---- 清空确认对话框 ---- */}
-        <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-              <div className="text-sm text-red-700">
-                <p>此操作会删除该学科下已经构建的知识数据，包括：</p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-red-600">
-                  <li>知识图谱节点、边和证据</li>
-                  <li>教学单元、主题树和先修图</li>
-                  <li>课程快照等派生知识结构</li>
-                </ul>
-                <p className="mt-2 font-medium">已上传的原始文件不会被删除。</p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
-                取消
-              </Button>
-              <Button
-                onClick={() => clearMutation.mutate()}
-                disabled={clearMutation.isPending}
-                className="bg-red-500 text-white hover:bg-red-600"
-              >
-                {clearMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    清空中...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    确认清空
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+
       </div>
     </DigestBuildProvider>
   );
