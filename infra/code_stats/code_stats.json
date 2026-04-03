@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T14:04:24.029335",
-  "total_commits_analyzed": 337,
+  "generated_at": "2026-04-03T14:18:09.253863",
+  "total_commits_analyzed": 340,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2696,6 +2696,30 @@
       "total_lines": 105209,
       "code_lines": 79372,
       "other_lines": 25837,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "7dd6ab4",
+      "total_lines": 105209,
+      "code_lines": 79372,
+      "other_lines": 25837,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "7362e3d",
+      "total_lines": 105213,
+      "code_lines": 79373,
+      "other_lines": 25840,
+      "message": "fix: 解决attach_device_key问题"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "e63d694",
+      "total_lines": 105213,
+      "code_lines": 79373,
+      "other_lines": 25840,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
