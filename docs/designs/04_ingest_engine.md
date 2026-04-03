@@ -89,7 +89,7 @@ Deep Enhance 是后台阶段，目标是补强 Phase 1 的材料质量。
 
 - Phase 1 产物仍然保留
 - `raw_file.ingest_status = enhance_failed`
-- 系统可继续展示材料，但 Digest 默认不应当把它当作完全就绪文件
+- 系统可继续展示材料，knowledge build 也允许把它作为降级可用输入
 
 ---
 
@@ -174,9 +174,18 @@ Digest 消费的不是 `RawFile` 本身，而是：
 因此 ingest 对 digest 的核心契约是：
 
 1. `raw_file` 状态必须正确
-2. `raw_markdowns/<file_id>.md` 必须存在
+2. `raw_markdowns/<file_id>.md` 必须存在且非空
 3. 资产目录必须稳定
-4. 只有 `ready_for_digest` 文件才进入主 digest 流程
+4. 当前 knowledge build 的可消费态包含：
+   - `fast_parsed`
+   - `enhancing`
+   - `ready_for_digest`
+   - `enhance_failed`
+
+补充说明：
+
+- `ready_for_digest` 仍是 ingest 生命周期的目标完成态。
+- digest 入口采用降级可构建策略，优先保证主链路可运行。
 
 ---
 

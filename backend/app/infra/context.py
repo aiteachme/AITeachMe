@@ -18,10 +18,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
-from typing import Any
 
 import structlog
+
+from app.infra.memory import get_user_profile, load_doc_to_context, recall
+from app.infra.search import search_knowledge
 
 logger = structlog.get_logger()
 
@@ -140,18 +143,22 @@ async def build_teaching_context(
     # 1. 用户画像
     if include_profile:
         try:
-            from app.infra.memory import get_user_profile
-            profile = await get_user_profile(user_id)
+            profile, learner_doc = await asyncio.gather(
+                get_user_profile(user_id),
+                load_doc_to_context(user_id),
+            )
             msg = profile.to_system_message()
-            if msg.get("content"):
-                ctx.profile_message = msg["content"]
+            profile_blocks = [
+                str(msg.get("content", "")).strip(),
+                ("## LEARNER.md\n" + learner_doc.strip()) if learner_doc.strip() else "",
+            ]
+            ctx.profile_message = "\n\n".join(block for block in profile_blocks if block)
         except Exception as exc:
             logger.debug("context_profile_skipped", error=str(exc))
 
     # 2. 知识库检索
     if include_knowledge and subject_id:
         try:
-            from app.infra.search import search_knowledge
             chunks = await search_knowledge(
                 user_message, subject_id, top_k=knowledge_top_k,
             )
@@ -168,7 +175,6 @@ async def build_teaching_context(
     # 3. 记忆回忆
     if include_memory:
         try:
-            from app.infra.memory import recall
             entries = await recall(user_message, user_id=user_id, top_k=memory_top_k)
             if entries:
                 lines = ["## 历史记忆\n"]

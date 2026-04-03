@@ -11,6 +11,16 @@ from app.infra.exceptions import AITeachMeError
 from app.models import UserKnowledgeState
 from app.repositories.profile_repo import complete_review_task as complete_review_task_repo
 from app.repositories.profile_repo import get_knowledge_state, list_knowledge_states, list_pending_reviews
+from app.workflows.profile.subject_profile import (
+    SubjectProfileSummary,
+    load_subject_profile_summary,
+    refresh_subject_profile_summary,
+)
+from app.workflows.profile.user_profile import (
+    UserProfileSummary,
+    load_user_profile_summary,
+    refresh_user_profile_summary,
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +31,8 @@ class MasteryOverview:
     node_states: list[UserKnowledgeState]
     weak_unit_count: int
     weak_node_count: int
+    subject_profile: SubjectProfileSummary | None
+    user_profile: UserProfileSummary | None
 
 
 def _raise_not_found(detail: str, *, error_code: str = "NOT_FOUND") -> None:
@@ -31,14 +43,60 @@ def _raise_not_found(detail: str, *, error_code: str = "NOT_FOUND") -> None:
     )
 
 
+def _load_or_refresh_subject_profile(
+    session: Session,
+    *,
+    subject: str,
+) -> SubjectProfileSummary | None:
+    summary = load_subject_profile_summary(session, subject=subject)
+    if summary is not None:
+        return summary
+    try:
+        return refresh_subject_profile_summary(
+            session,
+            subject=subject,
+            auto_commit=True,
+        )
+    except ValueError:
+        return None
+
+
+def _load_or_refresh_user_profile(
+    session: Session,
+    *,
+    user_id: str,
+) -> UserProfileSummary | None:
+    summary = load_user_profile_summary(session, user_id=user_id)
+    if summary is not None:
+        return summary
+    try:
+        return refresh_user_profile_summary(
+            session,
+            user_id=user_id,
+            auto_commit=True,
+        )
+    except ValueError:
+        return None
+
+
 async def get_mastery_overview(
     session: Session,
     *,
     subject: str,
     user_id: str,
 ) -> MasteryOverview:
-    unit_states = list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="unit")
-    node_states = list_knowledge_states(session, user_id=user_id, subject=subject, target_kind="node")
+    unit_states = list_knowledge_states(
+        session,
+        user_id=user_id,
+        subject=subject,
+        target_kind="unit",
+    )
+    node_states = list_knowledge_states(
+        session,
+        user_id=user_id,
+        subject=subject,
+        target_kind="node",
+    )
     return MasteryOverview(
         subject=subject,
         user_id=user_id,
@@ -46,6 +104,8 @@ async def get_mastery_overview(
         node_states=node_states,
         weak_unit_count=sum(1 for item in unit_states if item.mastery_score < 0.8),
         weak_node_count=sum(1 for item in node_states if item.mastery_score < 0.8),
+        subject_profile=_load_or_refresh_subject_profile(session, subject=subject),
+        user_profile=_load_or_refresh_user_profile(session, user_id=user_id),
     )
 
 
@@ -112,7 +172,21 @@ async def complete_review_task(
         task_id=task_id,
         user_id=user_id,
         subject=subject,
+        auto_commit=False,
     )
     if task is None:
         _raise_not_found(f"复习任务 `{task_id}` 不存在。", error_code="REVIEW_TASK_NOT_FOUND")
+
+    refresh_subject_profile_summary(
+        session,
+        subject=subject,
+        auto_commit=False,
+    )
+    refresh_user_profile_summary(
+        session,
+        user_id=user_id,
+        auto_commit=False,
+    )
+    session.commit()
+    session.refresh(task)
     return task

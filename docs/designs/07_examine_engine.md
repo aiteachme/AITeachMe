@@ -6,7 +6,7 @@ Examine 负责把 Digest 已经沉淀出来的知识资产，转成可练、可�
 
 当前实现已经不再是“孤立题库随机组卷”，而是围绕下面几类资产工作：
 
-- Digest 产出的知识文档 `knowledge_markdowns/merged.md` 或 build 版本
+- Digest 产出的知识文档 `knowledge_markdowns/merged_knowledge_base.md`（无 live 时回退 `_build/merged_knowledge_base.md`）
 - Curriculum 产出的 `teaching_unit`、membership、课程快照
 - KG 里的 `knowledge_node` 与当前 revision 内容
 - Profile 里的掌握度、薄弱点、近期错题、待复习状态
@@ -21,7 +21,7 @@ Examine 负责把 Digest 已经沉淀出来的知识资产，转成可练、可�
 Examine 当前承担四件事：
 
 1. 基于知识文档、图谱锚点和用户画像，批量生成可复用题模板。
-2. 按不同考试模式，从模板池中组装出一份试卷。
+2. 按两种呈现形态（网页测验 / 可打印考卷），从模板池中组装试卷。
 3. 接收用户作答并完成并行判题。
 4. 把判题结果回流给 Profile，更新掌握度并安排复习任务。
 
@@ -33,13 +33,15 @@ Examine 当前承担四件事：
 
 ### 3.1 来自 Digest 的输入
 
-- 知识文档：优先读取已发布 `merged.md`，没有时回退到 build 中的 merged 文档。
+- 知识文档：优先读取已发布 `merged_knowledge_base.md`，没有时回退到 `_build/merged_knowledge_base.md`。
 - Teaching unit：读取 `teaching_unit` 的标题、摘要、正文、学习目标。
 - Curriculum membership：把 unit 和知识节点的关联关系拿来构造知识锚点。
 - KG revision：优先读取节点当前 revision 的 summary/body，没有 revision 才回退到节点主表字段。
 
 ### 3.2 来自 Profile 的输入
 
+- `subject.profile_json` 中的学科级出题建议，例如推荐模式、题型偏好、难度焦点、聚焦 unit/node
+- `user.profile_json` 中的跨学科稳定偏好，例如讲解风格、学习节奏、偏好题型、常用考试模式
 - `user_knowledge_state` 中的单元掌握度
 - `user_knowledge_state` 中的节点掌握度与薄弱节点
 - 最近错题摘要
@@ -86,7 +88,7 @@ Examine 当前承担四件事：
 
 文件：`backend/app/workflows/examine/context.py`
 
-`build_exam_style_profile()` 会综合样卷 markdown、`style_prompt`、`focus_prompt`、`user_prompt` 产出 `ExamStyleProfile`：
+`build_exam_style_profile()` 会综合样卷 markdown、`style_prompt`、`focus_prompt`、`user_prompt`、`subject.profile_json`、`user.profile_json` 产出 `ExamStyleProfile`：
 
 - `title_hint`
 - `format_hint`
@@ -94,12 +96,17 @@ Examine 当前承担四件事：
 - `preferred_question_types`
 - `question_type_bias`
 - `recommended_question_count`
+- `difficulty_focus`
+- `focus_teaching_unit_ids`
 - `notes`
 
 当前策略：
 
 - 会从样卷中检测标题风格、分节标题、题型偏好、估计题量。
-- `real_exam` 默认强制带上正式试卷语气和 section-based 提示。
+- 会优先读取学科级画像里的推荐模式、推荐题量、聚焦 unit/node、难度焦点。
+- 会叠加用户级画像里的题型偏好、讲解风格、学习节奏，把这些信息写进 notes 和题型偏向。
+- `exams/generate.difficulty` 如果显式传值，会覆盖 profile 推断难度；不传时继续走自动难度。
+- `paper_exam` 默认强制带上正式试卷语气和 section-based 提示。
 - 如果样卷文件还没完成 ingest，不会报错，但只会留下提示 notes，不会真正参与画像。
 
 ### 4.2 单元考试上下文构建
@@ -132,7 +139,9 @@ Examine 当前承担四件事：
 
 - `build_question_templates()` 先批量构造所有 `UnitExamContext`。
 - 每个 unit 用 LLM 生成一批题模板。
-- 并发上限由 `_MAX_CONCURRENT_TEMPLATE_CALLS = 4` 控制。
+- 如果某个 unit 当前库存里已存在足够多的 active 模板，会直接跳过该 unit，不重复生成。
+- 服务层不会再默认对整门课所有 unit 都重建模板，而是优先聚焦 `focus_teaching_unit_ids`、到期复习 unit、薄弱 unit，再按题量收缩构题范围。
+- 并发上限当前提升为 `_MAX_CONCURRENT_TEMPLATE_CALLS = 12`。
 - 每个 unit 的 LLM 失败时，会回退到确定性模板 `_build_deterministic_templates()`，避免整批出题直接归零。
 - 所有新模板最后一次性 `flush + commit`，不再逐条提交。
 
@@ -140,6 +149,7 @@ Examine 当前承担四件事：
 
 - `node_refs_json`：记录题目关联的知识节点及权重。
 - `selection_hints_json`：记录考试模式、题型偏好、学习目标、style profile、focus prompt、preferred node 等信息。
+- `curriculum_version_id`：记录模板生成时依赖的当前课程快照，避免后续只剩题干却回不去当时的课程语义。
 
 这两份快照后面会被组卷页、题库页和判题链路继续消费。
 
@@ -149,22 +159,22 @@ Examine 当前承担四件事：
 
 `assemble_paper()` 负责按模式从模板池挑题并生成 `exam_paper` 与 `exam_paper_item`。
 
-当前支持模式：
+当前目标形态（前端）：
 
-- `diagnostic`
-- `practice`
-- `weakpoint_boost`
-- `review`
-- `mock_final`
-- `real_exam`
+- `web_practice`（测验）：网页作答并在线判卷
+- `paper_exam`（考试）：生成可打印考卷，支持线下手写
+
+当前兼容策略（后端）：
+
+- 历史模式 `diagnostic/practice/weakpoint_boost/review` 会归一到 `web_practice`
+- 历史模式 `mock_final/real_exam` 会归一到 `paper_exam`
 
 当前策略：
 
-- `practice`：按指定单元或主题范围覆盖。
-- `weakpoint_boost`：优先弱项，再补先修，再补迁移题。
-- `review`：优先到期复习状态。
-- `mock_final`：按 curriculum 分布比例覆盖。
-- `real_exam`：沿用 curriculum 分配，但会额外生成 `section_plan` 和正式卷面标题。
+- `web_practice`：可以结合指定单元范围，同时优先消化到期复习和薄弱单元，再补先修题。
+- `paper_exam`：按 curriculum 分布比例生成完整卷面，并额外生成 `section_plan` 和正式卷面标题。
+- 题量、题型、风格提示依旧由 `num_questions/style_prompt/focus_prompt/sample_file_uids` 驱动。
+- 可选 `difficulty` 会优先影响风格画像、模板构建和模板选择；不传时默认由 profile 自动推断。
 
 组卷时会把上下文写入 `exam_paper.selection_context_json`，当前至少包括：
 
@@ -177,11 +187,24 @@ Examine 当前承担四件事：
 - `user_prompt`
 - `focus_prompt`
 - `style_profile`
+- `requested_difficulty`
 - `resolved_teaching_unit_ids`
 - `paper_title`
 - `section_plan`
+- `export_artifacts`（考试卷导出文件元数据）
 
-前端详情页和真实考试模式展示都直接消费这份 `selection_context`。
+前端详情页、考试卷展示与后续下载入口都直接消费这份 `selection_context`。
+
+`paper_exam` 额外导出约定：
+
+- 导出目录：`backend/data/<subject>/exam/`
+- 文件命名：`<timestamp>_paper_<paper_id>_<title-token>.(md|tex|pdf)`
+- 默认产物：始终落 `md` 与 `tex`
+- PDF 编译：优先尝试 `tectonic`，其次 `xelatex/pdflatex`；当前会先同步返回 `md/tex`，再在后台异步补 `pdf`，若本机无编译器则优雅降级，仅保留 `md/tex`
+
+当前实现补充约束：
+
+- `exam_paper` 与 `exam_paper_item` 的落库要在同一轮事务中完成，避免残留只创建了 paper 但没有 items 的半成品试卷。
 
 ### 4.5 提交与判题
 
@@ -196,7 +219,7 @@ Examine 当前承担四件事：
 
 1. 把试卷状态推进到 `grading`
 2. 调用 `grade_paper()`
-3. 非 regrade 情况下更新掌握度和复习任务
+3. 非 regrade 情况下更新掌握度、复习任务、学科级画像、用户级画像
 
 判题策略：
 
@@ -204,6 +227,8 @@ Examine 当前承担四件事：
 - 简答题走 LLM 判题。
 - 简答题错误原因再单独走一次并行 LLM 归因。
 - 简答题判题时会先调用 `build_grading_knowledge_context()`，把单元摘要、节点锚点、知识文档片段一起送进评分 prompt。
+- 判题结果、掌握度更新、复习调度、`subject.profile_json` 刷新、`user.profile_json` 刷新现在在同一轮提交里一起落库；如果中途失败，服务层会把试卷状态从 `grading` 回退，避免出现“分数已写入但画像没回流”的半完成状态。
+- 判卷完成后还会补写学习日志与 `LEARNER.md` 运行时档案，形成“题目结果 -> profile -> learner markdown”的附加回流链路。
 
 也就是说，当前判题已经不只是“拿标准答案对字符串”，而是会回看 Digest 生成的知识上下文。
 
@@ -225,10 +250,18 @@ Examine 当前依赖 Digest 三层产物：
 
 Examine 当前会消费并回写 Profile：
 
-- 消费：弱项、掌握度、近期错题、到期复习任务
-- 回写：试卷评分结果会更新掌握度，并生成新的 review task
+- 消费：
+  - `subject.profile_json` 提供推荐模式、推荐题型、推荐题量、难度焦点、当前聚焦 unit/node
+  - `user.profile_json` 提供更稳定的题型偏好、讲解风格、学习节奏
+  - `user_knowledge_state` 提供细粒度掌握度、薄弱点、近期错题、到期复习任务
+- 回写：
+  - 试卷评分结果会更新 `user_knowledge_state`
+  - `schedule_reviews()` 会刷新待复习状态
+  - 同一轮事务里还会刷新 `subject.profile_json` 与 `user.profile_json`
 
-因此 Examine 不是一次性功能，而是学习闭环的一部分。
+因此 Examine 当前已经形成比较明确的三层闭环：
+
+`subject/user profile -> style profile -> 出题/组卷 -> 判题 -> user_knowledge_state -> review -> 再聚合回 subject/user profile`
 
 ---
 
@@ -281,22 +314,26 @@ Examine 当前会消费并回写 Profile：
 
 文件：`frontend/src/pages/ExamsPage.tsx`
 
-当前考试页已经支持：
+当前考试页已经收敛到两种操作形态：
 
-- 切换六种考试模式
-- 输入题量、风格提示、重点提示
-- 上传样卷文件并把文件 UID 回传给后端
-- 查看真实考试模式卷面
-- 查看节点回链、掌握度、标准答案、风格摘要
-- 打印 `real_exam` 样式卷面
+- `测验` tab：网页作答 + 在线判卷
+- `考试` tab：一键生成考试卷，卷面可打印，支持线下手写
 
-`real_exam` 模式当前不是单独后端引擎，而是在同一套模板池和组卷器上，通过：
+同时保留：
+
+- 题量、综合提示输入
+- 高级设置折叠区（风格提示、重点提示、样卷上传）
+- 历史试卷查看、续做、删除
+- 节点回链、掌握度、标准答案、风格摘要查看
+- 纸质卷面打印
+
+`paper_exam` 不是单独后端引擎，而是在同一套模板池和组卷器上，通过：
 
 - 更正式的风格画像
 - 更偏正式试卷的 section plan
-- 前端专门的卷面渲染
+- 考卷导出（markdown/tex/pdf）与前端卷面渲染
 
-来实现“更像真实考试”的体验。
+来实现“线上生成 + 线下作答”的考试形态。
 
 ---
 
@@ -307,18 +344,39 @@ Examine 当前会消费并回写 Profile：
 - 题模板生成按 unit 并行
 - 简答题判题并行
 - 错因归因并行
+- 当前并发上限分别为：构题 `12`、判题 `12`
 
 当前已落地的降级策略：
 
 - 单元级 LLM 出题失败时回退确定性模板
 - 样卷文件没准备好时只降级风格画像，不阻塞生成
 - 题模板不足时会在组卷阶段逐步放宽 recent exclusion / type filter
+- 纸质卷 `pdf` 编译失败或本机缺少编译器时，只降级导出产物，不回滚试卷主流程
 
 当前仍然保守的点：
 
-- 出题并发上限固定为 4，还没有按模型配额或系统负载动态调节
-- Profile 与 KG 查询仍存在一定 N+1 倾向，后续可以继续收敛
-- `real_exam` 目前是“正式卷面风格 + curriculum 分配”的增强模式，还不是完整的教研级仿真命题系统
+- 出题与判题并发上限虽然已经拉高到 12，但还没有按模型配额或系统负载动态调节
+- 生成上下文与详情回链里最明显的 unit/node/profile N+1 已收敛到批量查询，但更深层的教研约束仍未完全批处理化
+- `paper_exam` 目前是“正式卷面风格 + curriculum 分配 + 导出文件”的增强模式，还不是完整的教研级仿真命题系统
+- 生成试卷与触发判卷仍是同步 HTTP 请求，不是后台作业队列；真实大卷或高负载场景下，前端仍需要更稳妥的长任务交互
+
+---
+
+### 8.1 当前已落地的 timing summary
+
+当前服务层已经补了两类 runtime timing summary：
+
+- `exam_generate_timing_summary`
+  重点字段：`workflow_elapsed_ms / style_profile_ms / question_build_ms / assemble_paper_ms / paper_export_ms / question_build_triggered / question_build_status`
+
+- `exam_grade_timing_summary`
+  重点字段：`workflow_elapsed_ms / grade_paper_ms / mastery_update_ms / review_schedule_ms / subject_profile_refresh_ms / user_profile_refresh_ms / regrade`
+
+约束说明：
+
+- 这些 timing 目前属于 runtime observability，不单独落业务表。
+- `exam_paper.duration_seconds` 预留给用户答题用时，不用来表达生成试卷或判卷耗时。
+- token 级汇总和成本统计还没有做到 Digest 那样完整。
 
 ---
 
@@ -331,12 +389,19 @@ Examine 当前会消费并回写 Profile：
 - `exam_paper_item`
 - `user_knowledge_state`
 - `subject.profile_json`
+- `user.profile_json`
 
 当前关键 JSON 快照：
 
 - `question_template.node_refs_json`
 - `question_template.selection_hints_json`
 - `exam_paper.selection_context_json`
+
+当前关键版本/时长字段：
+
+- `question_template.curriculum_version_id`
+- `exam_paper.curriculum_version_id`
+- `exam_paper.duration_seconds`
 
 设计约束：
 
@@ -352,20 +417,40 @@ Examine 当前会消费并回写 Profile：
 
 - Examine 正式接入 Digest 文档、Curriculum、KG、Profile
 - 支持样卷 + 风格提示 + 重点提示
-- 支持 `real_exam`
+- 支持 `web_practice / paper_exam` 两种形态（并兼容旧模式映射）
 - 支持并行出题与并行判题
 - 支持题库页知识点与风格摘要展示
+- 题模板会写入 `curriculum_version_id`
+- 试卷生成、判题链路已补 runtime timing summary
+- `paper_exam` 会落盘导出 `md/tex`，并在后台尽力补编译 `pdf`
+- 生成上下文和详情回链的主要 N+1 已做第一轮批量化收敛
 
 当前还没做的事：
 
 - 真正的 A3 纸级试卷导出与分页排版引擎
 - 样卷风格的更细粒度学习，例如分值结构、版头版尾、答题卡信息
 - 按知识点覆盖率和难度曲线做更严格的命题约束
-- Examine 自身的 timing/token 观测总表
+- 像 Digest 一样完整的 token / 成本观测总表
+- 后台任务化的 exam_generate / exam_grade 长任务执行模型
 
 后续如果继续增强，优先顺序建议是：
 
 1. 把样卷解析从“弱规则风格画像”升级到“结构化考试蓝图”。
-2. 让 `real_exam` 支持更真实的题量、分值和 section 配比约束。
-3. 给 Examine 也补上和 Digest 同级别的 timing/token observability。
-4. 继续收敛 context 构建中的 N+1 查询，尤其是 unit/node/profile 联查。
+2. 让 `paper_exam` 支持更真实的题量、分值和 section 配比约束。
+3. 把 Examine 从同步请求升级成真正可轮询的后台作业，并补齐 token / cost observability。
+4. 继续收敛剩余的 context 构建查询，尤其是更深层的 unit/node/profile 联查与缓存。
+---
+
+## 15. 2026-04 Examine 补充约束
+
+- `build_unit_exam_contexts()` 当前会优先读取 KG 当前 revision 的节点 `summary/body`；只有 revision 不可用时才回退节点主表字段。
+- `recent_mistakes` 不再按全学科整包注入，而是先按当前 `teaching_unit_id` 过滤，再优先排序命中当前单元关联 node 的错题，只保留少量高相关历史。
+- `question_template.node_refs_json` 的目标语义已收紧为“每题 1 到 3 个强相关节点”，不再镜像整个教学单元 membership。
+- 主节点优先使用 LLM 返回且属于当前单元的 `knowledge_node_id`；失效时退回当前题目的首选节点；辅节点只在题干、答案、解释里显式命中其它节点名时写入。
+- 节点权重固定为“主节点占主导、辅节点分剩余权重”，最终归一化到 1.0，供 Profile 精确回写 node mastery。
+- `question_template.selection_hints_json` 现在还会写入 `context_signature`、`context_locked`、`scope_locked`、`focus_teaching_unit_ids`、`focus_node_ids`、`style_prompt_summary`、`focus_prompt_summary`，用于模板复用筛选。
+- 模板池默认只复用当前已发布 `curriculum.id` 下的 active 模板；旧 `curriculum_version_id` 模板不再默认参与组卷。
+- 请求里只要显式出现 `style_prompt / focus_prompt / sample_file_uids / teaching_unit_ids / theme_tree_node_id` 任一项，就会生成 `context_signature`，模板复用必须精确匹配该签名。
+- 显式 scope 锁定后，组卷只能在解析出的 `resolved_teaching_unit_ids` 内完成；不足时只允许放宽 recent exclusion 和题型过滤，不允许跨 scope 补题。
+- 无显式 scope 的普通 `web_practice` 仍保留 due / weak / prereq 策略，但 fallback 也只允许放宽 recent exclusion 和题型过滤，不允许放宽当前 curriculum 约束。
+- `exam_paper.selection_context_json` 现在明确还会暴露 `scope_locked`、`template_context_signature`、`template_reuse_policy`，继续保持 `dict[str, Any]` 兼容，不新增 API schema。

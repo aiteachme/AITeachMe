@@ -60,6 +60,12 @@ def build_debug_dir(subject: str) -> Path:
     return build_subject_dir(subject) / "debug"
 
 
+def build_exam_dir(subject: str) -> Path:
+    """Return the subject-level exam export directory."""
+
+    return build_subject_dir(subject) / "exam"
+
+
 def build_raw_file_path(subject: str, record_id: int, extension: str) -> Path:
     """Build the raw file path from a file id and extension."""
 

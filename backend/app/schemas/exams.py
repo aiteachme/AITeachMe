@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
-    exam_mode: str = Field(description="Exam mode.")
+    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam (legacy values are compatible).")
+    difficulty: str | None = Field(default=None, description="Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty.")
     user_prompt: str | None = Field(default=None, description="Optional user prompt for general generation hints.")
     style_prompt: str | None = Field(default=None, description="Optional prompt that describes the desired paper style.")
     focus_prompt: str | None = Field(default=None, description="Optional prompt describing key focus areas.")

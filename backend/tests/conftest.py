@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel, Session, create_engine
+
+from app.models import User
+
+
+@pytest.fixture
+def session() -> Session:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine, expire_on_commit=False) as db_session:
+        db_session.add(User(id="local", username="local"))
+        db_session.commit()
+        yield db_session

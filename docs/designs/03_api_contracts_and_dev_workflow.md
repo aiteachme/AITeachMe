@@ -2,12 +2,11 @@
 
 ## 1. 文档目标
 
-本文档定义当前阶段的接口设计规范，重点覆盖：
+本文档只定义当前代码已经落地的 API 契约与联调规则，重点回答：
 
-- 路由分组与命名约定。
-- 为什么当前仍统一使用 `POST`。
-- 长流程接口的设计边界。
-- OpenAPI、前端调用、MSW 的同步方式。
+- 现在到底有哪些路由、哪些 HTTP 方法；
+- 哪些链路是同步请求，哪些是后台任务；
+- 前后端如何保持 OpenAPI / 生成代码 / Mock 同步。
 
 ---
 
@@ -26,258 +25,198 @@
 
 ---
 
-## 3. 路由规范
+## 3. 当前路由总览（按资源组）
 
-### 3.1 顶层路径
+### 3.1 全局与系统
 
-当前统一采用：
+- `GET /api/health`
+- `POST /api/v1/system/init`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/user`
 
-`/api/v1/subjects/{subject}/{resource}/...`
+### 3.2 学科与文件
 
-理由：
+- `POST /api/v1/subjects/add`
+- `POST /api/v1/subjects/list`
+- `POST /api/v1/subjects/delete/preview`
+- `POST /api/v1/subjects/delete`
+- `POST /api/v1/subjects/{subject}/files/upload`
+- `GET /api/v1/subjects/{subject}/files`
+- `POST /api/v1/subjects/{subject}/files/delete`
 
-- `subject` 是顶层工作空间边界。
-- `resource` 表示明确的资源分组。
-- 便于前后端按学科隔离调试和排错。
+### 3.3 知识与聊天
 
-### 3.2 当前资源分组
+- `POST /api/v1/subjects/{subject}/knowledge/build`
+- `POST /api/v1/subjects/{subject}/knowledge/docs`
+- `POST /api/v1/subjects/{subject}/knowledge/overview`
+- `POST /api/v1/subjects/{subject}/knowledge/graph/nodes/detail`
+- `POST /api/v1/subjects/{subject}/knowledge/chunks/context`
+- `POST /api/v1/subjects/{subject}/knowledge/units/detail`
+- `POST /api/v1/subjects/{subject}/knowledge/taxonomy/anchors`
+- `POST /api/v1/subjects/{subject}/knowledge/clear`
+- `POST /api/v1/subjects/{subject}/chats/send`（SSE）
+- `POST /api/v1/subjects/{subject}/chats/list`
+- `POST /api/v1/subjects/{subject}/chats/clear`
+- `POST /api/v1/subjects/{subject}/chats/sessions/list`
+- `POST /api/v1/subjects/{subject}/chats/threads/list`
+- `POST /api/v1/subjects/{subject}/chats/sessions/create`
+- `POST /api/v1/subjects/{subject}/chats/sessions/delete`
 
-当前应继续保持这些资源组：
+### 3.4 考试与画像
 
-- `files`
-- `knowledge`
-- `chats`
-- `exams`
-- `profile`
+- `POST /api/v1/subjects/{subject}/exams/generate`
+- `POST /api/v1/subjects/{subject}/exams/history`
+- `POST /api/v1/subjects/{subject}/exams/question-bank`
+- `POST /api/v1/subjects/{subject}/exams/{exam_paper_id}`
+- `POST /api/v1/subjects/{subject}/exams/{exam_paper_id}/delete`
+- `POST /api/v1/subjects/{subject}/exams/{exam_paper_id}/submit`
+- `POST /api/v1/subjects/{subject}/exams/{exam_paper_id}/grade`
+- `GET /api/v1/subjects/{subject}/profile/mastery`
+- `GET /api/v1/subjects/{subject}/profile/mastery/unit/{teaching_unit_id}`
+- `GET /api/v1/subjects/{subject}/profile/mastery/node/{knowledge_node_id}`
+- `GET /api/v1/subjects/{subject}/profile/review/tasks`
+- `POST /api/v1/subjects/{subject}/profile/review/tasks/{task_id}/complete`
 
 ---
 
-## 4. 方法规范
+## 4. 方法规范（当前口径）
 
-### 4.1 当前阶段统一用 POST
+### 4.1 当前不是“全 POST”
 
-除健康检查等简单读取外，业务接口仍统一使用 `POST`。
+当前实现是“以 POST 为主，GET 仅用于稳定读取”：
 
-理由：
+- POST：复杂查询、触发动作、SSE 入口、带 body 的聚合查询；
+- GET：健康检查、文件列表、画像读取等纯读取接口。
 
-- 复杂查询和过滤更容易演进。
-- 请求体结构更稳定。
-- 前后端联调成本更低。
-- OpenAPI、生成代码和 mock 更容易保持一致。
+这个混合策略是当前真实代码，不应再写成“全业务统一 POST”。
 
-### 4.2 不要为了“像 REST”而牺牲协作效率
+### 4.2 简单 API 优先
 
-当前阶段的目标不是方法语义教科书式优雅，而是：
+当前阶段的接口设计原则：
 
-- 真实业务协议稳定。
-- 联调路径简单。
-- 生成链路可维护。
+1. 在现有资源组内扩展字段，优先于新增 route。
+2. 先保证学习闭环稳定，暂不追求形式化 REST 纯度。
+3. 同一能力尽量通过现有读模型返回（例如 profile 摘要并入 `/profile/mastery`）。
 
 ---
 
-## 5. Knowledge Docs 新协议
-
-Knowledge Docs 已彻底切到无 job 协议。
+## 5. Knowledge Docs 协议（当前实现）
 
 ### 5.1 触发构建
 
-`POST /api/v1/subjects/{subject}/knowledge/build`
+接口：`POST /api/v1/subjects/{subject}/knowledge/build`
 
-请求体：
+关键点：
 
-```json
-{
-  "file_uids": ["file_a", "file_b"],
-  "prompt": "请整理成适合期末复习的知识文档"
-}
-```
+- 返回 `accepted_file_uids / ready_file_count / prompt / requested_at`；
+- 不返回持久化 `job_id`；
+- 同一 subject 构建互斥，冲突时返回 `409 BUILD_IN_PROGRESS`；
+- 受理后由 `BackgroundTaskRegistry` 在进程内启动统一构建任务。
 
-响应体：
+### 5.2 查询结果
 
-```json
-{
-  "accepted_file_uids": ["file_a", "file_b"],
-  "ready_file_count": 2,
-  "prompt": "请整理成适合期末复习的知识文档",
-  "requested_at": "2026-03-23T16:40:00Z"
-}
-```
+接口：`POST /api/v1/subjects/{subject}/knowledge/docs`
 
-行为约束：
+响应包含三层信息：
 
-- 若同一 subject 已在构建中，返回 `409 BUILD_IN_PROGRESS`。
-- 成功受理后只返回本次请求的基本信息。
-- 不返回 `job_id`。
-- 不返回 `status`、`progress`、`current_step`。
+- 已发布文档：`exists / markdown / updated_at / source_file_uids / prompt`
+- 草稿预览：`draft_markdown / draft_updated_at`
+- 运行时构建态：`build.status / build.requested_at / build.stage / build.error_message / build.draft_available`
 
-### 5.2 查询已发布知识文档
+说明：
 
-`POST /api/v1/subjects/{subject}/knowledge/docs`
+- `draft_*` 只用于可视化预览，不能替代发布真相；
+- 真正的“官方版本切换”仍以 live `exists + markdown` 为准；
+- `build` 是运行时状态，不是业务主表。
 
-请求体：
+### 5.3 构建阶段词汇（当前）
 
-- 空 body 即可。
+当前阶段语义由 `build_status.json` 驱动，主词汇为：
 
-响应体：
-
-```json
-{
-  "exists": true,
-  "markdown": "# 知识文档总览\n...",
-  "updated_at": "2026-03-23T16:41:10Z",
-  "source_file_ids": [1, 2],
-  "prompt": "请整理成适合期末复习的知识文档"
-}
-```
-
-行为约束：
-
-- 这是纯查询接口。
-- 不会自动触发构建。
-- 只读取已发布的 merged 文档和 manifest。
-- 返回的是最终 live 版本的 curriculum-aligned knowledge book，不是 doc lane 中间稿。
-
-### 5.3 已废弃并删除的旧接口
-
-以下接口已经删除，不保留兼容层：
-
-- `/api/v1/subjects/{subject}/knowledge/docgen/build`
-- `/api/v1/subjects/{subject}/knowledge/docgen/get`
-
----
-
-## 6. Knowledge Docs 的前后端协作规则
-
-### 6.1 前端本地进度条
-
-知识文档页的进度条完全由前端本地控制：
-
-1. 调用 `knowledge/build`
-2. 拿到 `requested_at`
-3. 前端本地平滑推进进度到 90%
-4. 每 2-3 秒轮询 `knowledge/docs`
-5. 当 `exists=true` 且 `updated_at >= requested_at` 时补到 100%
-
-### 6.2 后端不负责 Docs 进度协议
-
-后端不再承担以下职责：
-
-- 返回构建进度
-- 返回当前阶段
-- 返回失败状态对象
-- 暴露 Docs 构建中的 job 状态
-
-后端只负责：
-
-- 接受构建请求
-- 进行 subject 级互斥
-- 统一构建 docs / graph / curriculum
-- 在统一构建内部用 shared sections + graph anchors 协调文档与图谱的一致性
-- 在统一构建成功后发布新的知识文档
-- 在 curriculum/theme tree 发布后，把最终 docs 重建为 curriculum 对齐的知识讲义
-- 提供已发布结果查询
-
-### 6.3 有旧文档时的体验约定
-
-如果已有旧版 `merged_knowledge_base.md`：
-
-- 前端继续显示旧文档。
-- 页面顶部显示“正在更新”的本地进度条。
-
-如果当前没有任何已发布文档：
-
-- 显示空态。
-- 同时显示本地进度条。
-
----
-
-## 7. 长流程协议边界
-
-### 7.1 仍保留状态查询的链路
-
-以下链路当前仍可使用 job 状态协议：
-
-- Digest Graph
-- Curriculum Derive
-- Assessment 相关后台任务
-
-### 7.2 已改成无状态查询协议的链路
-
-Knowledge Docs 是明确的特例：
-
-- 构建过程是后台异步执行的。
-- 但对外协议不是“任务状态查询”，而是“已发布结果查询”。
-
-这一区分必须在接口设计中长期保留，避免再次把 Docs 拉回 job 化。
-
----
-
-## 8. OpenAPI / Orval / MSW 同步规则
-
-每次修改接口时，顺序必须保持：
-
-1. 改后端路由与 schema
-2. 更新 OpenAPI 导出
-3. 更新生成代码
-4. 更新手写调用
-5. 更新 MSW mock
-
-Knowledge Docs 本次同步要求：
-
-- OpenAPI 里只保留 `/knowledge/build` 和 `/knowledge/docs`
-- 前端手写页只调这两个新接口
-- MSW mock 只模拟这两个新接口
-- 不再保留旧 `knowledge/docgen/*` 路径
-
----
-
-## 9. 当前结论
-
-当前 API 设计的关键约束非常明确：
-
-- 所有业务接口继续统一用 `POST`
-- Knowledge Docs 对外彻底无 `job_id`
-- 前端等待协议完全本地化
-- 后端只暴露“已发布结果”，不暴露 Docs 运行中状态
-\n## 10. Knowledge Docs response contract refresher\n\n* /api/v1/subjects/{subject}/knowledge/docs now returns both live/published markdown, the staging draft, and the runtime build status.\n* The draft fields (draft_markdown, draft_updated_at) expose a preview as soon as the docs lane writes the staging cache, even while other lanes are still running.\n* uild carries a DocGenBuildStatusResponse payload (status, equested_at, stage, error_message, draft_available) so clients can render progress without a separate polling channel.\n* Treat the draft preview as read-only: only the published exists/markdown pair controls downstream exports and official switching.\n\nThis contract keeps the UI responsive by always showing the last published document, surfacing the draft preview during in-flight builds, and exposing the lifecycle stage that the unified workflow has reached.\n
-## 11. Runtime Refresh (2026-03-30)
-
-This section supersedes any older wording in this document that implied `/knowledge/docs` only exposed the published book or that the frontend had to infer all progress exclusively from `requested_at`.
-
-- `POST /api/v1/subjects/{subject}/knowledge/docs` remains the only polling endpoint for knowledge-doc visibility.
-- The response now mixes three layers of state in one payload:
-  - live document: `exists`, `markdown`, `updated_at`, `source_file_uids`, `prompt`
-  - draft preview: `draft_markdown`, `draft_updated_at`
-  - runtime build metadata: `build.status`, `build.requested_at`, `build.stage`, `build.error_message`, `build.draft_available`
-- The draft preview is read-only. It improves visibility but never becomes the source of truth for live switching, exports, or downstream official consumption.
-- Final publish still happens only after the unified digest reaches a curriculum-aligned publish point.
-
-Current build-stage vocabulary used by the backend:
-
-1. `accepted` / `build_accepted`
-2. `running` / `prepare_shared`
-3. `running` / `doc_lane_staged`
-4. `running` / `graph_ready`
-5. `running` / `curriculum_deriving`
+1. `accepted / build_accepted`
+2. `running / prepare_shared`
+3. `running / doc_lane_staged`
+4. `running / graph_ready`
+5. `running / curriculum_deriving`
 6. `publishing`
-7. `completed` / `failed` / `cancelled`
+7. `completed` 或 `failed` 或 `cancelled`
 
-Frontend contract update:
+---
 
-- If an old live document exists, keep rendering it while the new build is active.
-- If no live document exists but the doc lane has already staged a draft, render the draft preview instead of a long empty state.
-- Clients should keep polling `/knowledge/docs` while `build.status` is `accepted`, `running`, or `publishing`.
+## 6. 长流程边界
 
-Background task lifecycle update:
+### 6.1 当前后台任务化的链路
 
-- API-triggered long-running work is no longer left to ad-hoc `BackgroundTasks`.
-- The app now owns a background-task registry and uses it to spawn and track long workflows such as digest builds and parse jobs.
-- On application shutdown, the registry cancels outstanding tasks and waits briefly for cleanup so stale locks and half-dead jobs do not survive process exit.
+- 文件解析（upload 后 parse）
+- 统一 digest 构建（knowledge build）
 
-## 2026-03-31 Runtime Observability Note
+两者都通过 `app.state.background_task_registry.spawn(...)` 托管，并在应用关闭时统一取消与清理。
 
-Digest timing and token summaries are currently runtime-only diagnostics.
+### 6.2 当前仍是同步请求的链路
 
-- They are written to workflow logs and runtime result objects.
-- They are intentionally not part of the public HTTP contract yet.
-- If a future API needs to expose them, it should do so as a dedicated observability resource rather than by inflating the existing knowledge-doc payloads.
+- exam 生成
+- exam 判卷
+- profile 聚合读取
+
+这些链路目前没有新增独立 job API，也没有引入持久化 job 表。
+
+---
+
+## 7. Examine / Profile 契约要点
+
+### 7.1 Examine
+
+- `exams/generate` 和 `exams/{id}/grade` 目前是同步触发；
+- `exams/generate.exam_mode` 目标态收敛为两类：`web_practice`（测验）和 `paper_exam`（考试卷）；
+- `exams/generate.difficulty` 是现有 generate 接口上的可选字段，支持 `easy / medium / hard / mixed`；不传则由 profile 自动决定；
+- 历史模式值由后端兼容映射到两类目标态，不新增额外 generate route；
+- `paper_exam` 会在后端落盘导出到 `backend/data/<subject>/exam/`（同步生成 `md/tex`，`pdf` 后台异步补编译）；
+- 生成与判卷有 runtime timing summary 日志，但不暴露为公共 API 字段；
+- `exam_paper.duration_seconds` 表示用户答题时长，不表示生成/判卷耗时。
+
+### 7.2 Profile
+
+- `/profile/mastery` 已返回：
+  - 细粒度 `unit_states / node_states`
+  - `subject_profile`
+  - `user_profile`
+- 当前不新增 `/profile/summary` 等额外接口，继续保持 API 面收敛。
+
+---
+
+## 8. OpenAPI / 生成代码 / Mock 同步流程
+
+每次改接口都按以下顺序：
+
+1. 修改 `backend/app/api/*` 与 `backend/app/schemas/*`
+2. 导出 OpenAPI（仓库支持启动时自动导出）
+3. 更新前端生成代码与手写调用
+4. 更新 MSW mock
+5. 前后端联调回归
+
+如果只改内部实现、未改 API 契约，不需要触发生成链路。
+
+---
+
+## 9. 未来演进（不新增复杂接口前提）
+
+在“接口保持简单”原则下，后续优先做：
+
+1. 在现有响应里补可观测字段（必要时走专门 observability 资源，不污染业务响应）。
+2. 将超长链路逐步后台化，但优先复用现有资源组，不拆散 API 面。
+3. 保持 subject 作为顶层边界，避免跨学科混杂接口。
+
+---
+
+## 10. 一句话结论
+
+当前 API 体系是“POST 主导 + 少量 GET 读取 + SSE 聊天主通道 + 后台任务注册器托管长流程”。  
+后续改动继续遵循“能复用现有接口就不新增接口”的收敛原则。
+## 0. 2026-04 Examine 可观察行为补充
+
+- 本批没有新增、删除或改名任何公开 route，也没有改 `backend/app/schemas/*` 的请求响应结构。
+- `ExamPaperDetailResponse.selection_context` 继续保持 `dict[str, Any]` 兼容，但 Examine 现在会额外写入 `scope_locked`、`template_context_signature`、`template_reuse_policy` 等调试字段。
+- 当请求显式携带 `style_prompt / focus_prompt / sample_file_uids / teaching_unit_ids / theme_tree_node_id` 任一项时，后端会生成 `context_signature`，模板复用必须精确匹配该上下文。
+- 当显式 `teaching_unit_ids` 或 `theme_tree_node_id` 锁定范围后，组卷不再跨范围 fallback；若范围内题目不足，会直接返回失败，而不是静默放宽到全学科。

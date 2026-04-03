@@ -2,34 +2,34 @@
 
 ## 1. 文档定位
 
-本文档只回答当前系统最重要的三件事：
+本文档只回答当前系统最核心的三个问题：
 
-- AITeachMe 现在的主链路到底是什么
-- 前端、API、service、workflow、repository、model 各自负责什么
-- 本轮 merge 之后，远程 ingest 加速方法和本地数据库重构是如何并到一起的
-
----
-
-## 2. 系统主链路
-
-当前系统围绕 `Subject` 这个工作空间边界组织，正式主链路可以概括为：
-
-`RawFile -> raw_markdowns / assets -> RetrievalChunk -> KnowledgeDocument + KnowledgeNode/KnowledgeEdge -> TeachingUnit -> Curriculum -> Chat / Exams / Profile`
-
-补充约束：
-
-- Ingest 负责把原始资料变成“可消费材料层”。
-- Digest 同时构建知识文档和知识图谱。
-- Knowledge Document、Knowledge Graph、Curriculum 在同一轮 digest 中共享同一个构建版号。
-- Interact、Examine、Profile 都消费同一套知识层和课程层锚点，而不是各自维护一套平行模型。
+- AITeachMe 当前主链路怎么走；
+- 前端、API、service、workflow、repository、model 的职责边界是什么；
+- 在现有实现上，后续架构演进应该优先做什么。
 
 ---
 
-## 3. 系统分层
+## 2. 当前主链路
 
-### 3.1 前端层
+当前系统围绕 `Subject` 这个工作空间边界组织，主链路可概括为：
 
-当前主要页面位于 `frontend/src/pages/`：
+`RawFile -> raw_markdowns/assets -> RetrievalChunk -> KnowledgeDocument + KnowledgeNode/KnowledgeEdge -> TeachingUnit/Curriculum -> Chat/Exams/Profile`
+
+关键约束：
+
+1. Ingest 负责把原始资料变成可消费材料层。
+2. Digest 统一构建文档、图谱、课程快照。
+3. Examine 与 Profile 共用同一套教学锚点，不维护平行数据模型。
+4. Interact、Examine、Profile 都消费同一学科下的知识与课程对象。
+
+---
+
+## 3. 分层与职责
+
+### 3.1 前端层（React）
+
+主要页面位于 `frontend/src/pages/`：
 
 - `HomePage`
 - `FilesPage`
@@ -39,249 +39,153 @@
 - `ExamsPage`
 - `ProfilePage`
 
-前端的职责是：
+前端负责页面交互、请求编排和状态展示，不承载知识构建逻辑。
 
-- 组织学习闭环页面
-- 发起 API 请求
-- 展示 workflow 推进后的结果
+### 3.2 API 层（FastAPI）
 
-前端不承担复杂的知识处理或构建逻辑。
+`backend/app/api/*` 负责：
 
-### 3.2 API 层
+- 资源分组与鉴权上下文注入；
+- 请求参数接收与响应封装；
+- 错误码与异常转换。
 
-`backend/app/api/*` 是对外 HTTP 资源入口，负责：
+当前接口形态是“POST 为主 + 少量 GET 读接口 + SSE”。
 
-- 资源分组
-- 请求参数接收
-- 响应结构封装
-- 异常转换
+### 3.3 Service 层（用例入口）
 
-当前正式资源组以这些为主：
+`backend/app/services/*` 负责：
 
-- `subjects`
-- `files`
-- `knowledge`
-- `chats`
-- `exams`
-- `profile`
+- 用例级编排入口；
+- 事务边界与锁控制；
+- workflow 调用和响应对象封装。
 
-### 3.3 Service 层
+当前是 `services + workflows` 混合编排：复杂链路大头在 workflows，但 service 仍承载事务与聚合逻辑。
 
-`backend/app/services/*` 是用例入口层，负责：
+### 3.4 Workflow 层（五大引擎编排中心）
 
-- 触发 workflow
-- 做轻量参数整理
-- 读取聚合数据并封装返回
+`backend/app/workflows/*` 负责：
 
-复杂长流程不再堆在 service 中。
+- LangGraph 状态推进；
+- 节点并发与降级策略；
+- 事件发布、失败恢复、观测摘要。
 
-### 3.4 Workflow 层
-
-`backend/app/workflows/*` 是真正的编排中心，负责：
-
-- LangGraph 节点与状态流
-- 跨节点状态推进
-- 事件发布
-- 构建失败恢复
-
-这一层是当前复杂业务流程的真相源。
+这是当前复杂业务流程的第一真相源。
 
 ### 3.5 Repository / Model 层
 
-`repositories/*` + `models/*` 负责结构化持久化：
+`repositories/* + models/*` 负责结构化持久化：
 
-- SQLite 业务表
-- sqlite-vec 向量表
-- 查询与批量更新
+- 业务表读写；
+- 批量查询与更新；
+- 兼容字段映射。
 
-### 3.6 Core 层
+### 3.6 Core / Infra / Utils
 
-`backend/app/core/*` 提供应用基础设施能力：
-
-- 配置（`config.py`）
-- 数据库初始化（`database.py`）
-- 异常定义（`exceptions.py`）
-- 日志（`logger.py`）
-- 运行时路径（`runtime_paths.py`）
-
-Core 只包含 5 个纯基础模块，不承载任何 AI 或业务逻辑。
-
-### 3.7 Infra 层
-
-`backend/app/infra/*` 提供 AI 平台引擎能力：
-
-- LLM / Embedding / Model Router
-- Agent Loop / Strategies / MCP
-- Memory / Search / Skills / Tools
-- Context / Checker / Teaching / Events
-- Security / Sandbox / Guardrails
-- Token Budget / Cache / Prompt Loader / Tracing / Reasoning
-
-它服务五大引擎，但不直接承载业务真相。
-
-### 3.8 Utils 层
-
-`backend/app/utils/*` 提供各层共用的纯工具函数：
-
-- `path_helpers.py`：运行时路径构建（核心路径 helper）
-- `presenters.py`：格式化与校验辅助
-- `time.py` / `subject.py` / `job_helpers.py` / `kg_helpers.py`
-
-Utils 只依赖 `core/`，可被任何层引用。
-
-### 分层依赖方向
-
-`api → services → workflows → infra → core`，`utils/` 可被任何层横向引用。
+- `core/*`：配置、数据库初始化、日志、异常、应用级后台任务注册器。
+- `infra/*`：LLM、memory、search、tools、checker、teaching、guardrails 等 AI 基础能力。
+- `utils/*`：路径、展示、时间等跨层纯工具（如 `path_helpers`、`docgen_store`）。
 
 ---
 
-## 4. 五大引擎的职责
+## 4. 分层依赖方向
 
-### 4.1 Ingest
+推荐依赖方向：
 
-Ingest 现在采用“远程分支的方法层 + 本地分支的数据层”合并结果：
+`api -> services -> workflows -> infra -> core`
 
-- 方法层保留两阶段加速思路
-- 数据落点、表结构、目录边界仍按本地重构收敛
+补充：
 
-当前真实流程：
-
-1. `file_service` 创建 `raw_file`、保存原始文件、排队解析
-2. Phase 1 Fast Parse 产出 `raw_markdowns/<file_id>.md`
-3. Phase 2 Deep Enhance 在后台做质量重解析和可选 OCR
-4. 只有 `ready_for_digest` 的文件才进入 Digest 主链路
-
-### 4.2 Digest
-
-Digest 负责三类正式结果：
-
-- `knowledge_document`
-- `knowledge_node / knowledge_edge`
-- `curriculum / theme_tree_node / unit_dependency`
-
-当前版本语义已经统一收敛为：
-
-- `curriculum.version_no`
-- `knowledge_document.version_no`
-- `knowledge_node.build_revision_no`
-- `knowledge_edge.build_revision_no`
-
-不再以独立的 `theme_tree_version / prereq_dag_version / curriculum_version` 三套表作为目标态。
-
-### 4.3 Interact
-
-Interact 负责教学型对话，消费：
-
-- `retrieval_chunk`
-- `knowledge_document`
-- `knowledge_node / knowledge_edge`
-- `teaching_unit / curriculum`
-- `user.profile_json / subject.profile_json / user_knowledge_state`
-
-### 4.4 Examine
-
-Examine 负责：
-
-- 题模板
-- 组卷
-- 判卷
-- 回写学习状态
-
-正式主线收口到：
-
-- `question_template`
-- `exam_paper`
-- `exam_paper_item`
-- `user_knowledge_state`
-
-### 4.5 Profile
-
-Profile 负责：
-
-- 用户级画像
-- 学科级画像
-- 细粒度掌握状态
-
-当前主锚点是：
-
-- `user.profile_json`
-- `subject.profile_json`
-- `user_knowledge_state`
+- `repositories/models` 为持久化支撑层，主要被 services/workflows 消费；
+- `utils` 为横切纯工具层，可被上层调用；
+- 当前工程里存在少量历史兼容调用，重构时优先向上述方向收敛。
 
 ---
 
-## 5. 数据与存储真相
+## 5. 五大引擎当前落地
 
-### 5.1 当前默认运行底座
+### 5.1 Ingest（透视引擎）
 
-当前默认底座仍然是：
+- 入口：`services/file_service.py` + `workflows/ingest/runtime.py`
+- 核心：两阶段解析（Fast Parse + Deep Enhance）
+- 产物：`raw_files/`、`raw_markdowns/`、`assets/`、`raw_file` 元数据
 
-`SQLite + sqlite-vec + 本地文件系统`
+### 5.2 Digest（织网引擎）
 
-### 5.2 Subject 是顶层边界
+- 入口：`services/knowledge/digest_service.py` + `workflows/digest/unified/runtime.py`
+- 核心：shared prepare、doc/kg 并行、consistency、repair、curriculum、统一发布
+- 产物：`knowledge_document`、`knowledge_node/edge`、`curriculum/theme_tree_node/unit_dependency`
+
+### 5.3 Interact（伴读引擎）
+
+- 入口：`api/chats.py`（`POST + SSE`）+ `workflows/interact/runtime.py`
+- 核心：history/retrieval/strategy/prompt/stream/persist 节点链路
+- 产物：`chat_session`、`chat_message`、可追踪 contexts
+
+### 5.4 Examine（诊断引擎）
+
+- 入口：`services/exams_service.py` + `workflows/examine/*`
+- 核心：风格画像、题模板生成、组卷、判卷、回写 profile
+- 产物：`question_template`、`exam_paper`、`exam_paper_item`
+
+### 5.5 Profile（显影引擎）
+
+- 入口：`services/profile_service.py` + `workflows/profile/*`
+- 核心：掌握度更新、复习调度、学科画像聚合、用户画像聚合
+- 产物：`user_knowledge_state`、`subject.profile_json`、`user.profile_json`
+
+---
+
+## 6. 运行时与存储真相
+
+当前默认运行底座：
+
+- DB：`SQLite`
+- 向量：`sqlite-vec`
+- 文件：本地文件系统
 
 `Subject` 同时决定：
 
-- API 路由边界
-- 本地运行时目录边界
-- workflow 的隔离范围
-
-### 5.3 当前数据库主线
-
-当前数据库重构后的主线是“少表、强锚点、字段表达版本”：
-
-- `curriculum` 是课程构建主表
-- `theme_tree_node.tree_version_id` 实际指向 `curriculum.id`
-- `unit_dependency.dag_version_id` 实际指向 `curriculum.id`
-- `raw_file_asset` 不再是目标态业务表，运行时由 `RawFileAsset` 兼容对象和文件系统动态表达
+- API 路由边界；
+- 运行时目录边界；
+- workflow 隔离边界。
 
 ---
 
-## 6. 运行时目录
+## 7. 当前已落地的长任务机制
 
-当前真实目录由 `backend/app/utils/path_helpers.py` 定义：
+应用级长任务由 `BackgroundTaskRegistry` 托管：
 
-```text
-backend/data/<subject>/
-├─ raw_files/
-├─ raw_markdowns/
-├─ assets/
-│  └─ <file_id>/
-├─ knowledge_markdowns/
-│  └─ _build/
-├─ temp/
-└─ debug/
-```
+- `files/upload` 触发后台 parse；
+- `knowledge/build` 触发后台 unified digest；
+- 进程关闭时统一取消与回收。
 
-目录职责：
-
-- `raw_files/`：原始上传文件
-- `raw_markdowns/`：ingest 材料层 Markdown
-- `assets/<file_id>/`：单文件资产目录
-- `knowledge_markdowns/`：已发布知识文档
-- `knowledge_markdowns/_build/`：知识文档 staging
+这让“长流程执行”与“HTTP 接口返回”解耦，但没有新增复杂 job API 面。
 
 ---
 
-## 7. 当前关键设计原则
+## 8. 当前架构边界与未来演进
 
-1. 方法层优先复用远程 ingest 加速思路，但不回退本地数据库收敛。
-2. 复杂流程以 workflow 为真相，不回流到 route / service 堆逻辑。
-3. Subject 是外部模块最稳定的集成边界。
-4. 版本优先用字段表达，不先拆一组 history / version 表。
-5. 文档必须跟真实目录、真实表语义、真实流程保持一致。
+### 8.1 当前边界
+
+1. exam 生成/判卷仍是同步 HTTP 触发。
+2. observability 已有 runtime summary，但未统一对外 API 暴露。
+3. services 与 workflows 仍是混合编排，不是纯 workflow 化。
+
+### 8.2 未来演进方向（保持接口简单）
+
+1. 长任务统一队列化（先内部化，不先扩接口面）。
+2. 统一 timing/token/cost 观测格式（Digest、Examine、Interact 对齐）。
+3. 事务边界标准化（判卷回写、画像刷新、课程发布等关键链路）。
+4. 渐进清理历史兼容字段与别名，继续收敛到 13 号数据库主设计。
 
 ---
 
-## 8. 一句话结论
+## 9. 一句话结论
 
-这次合并后的系统架构可以简单理解为：
+当前架构是"Subject 边界 + Workflow 编排 + 统一构建发布 + 本地优先运行底座"的稳定闭环。  
+未来重点是事务边界标准化、观测格式对齐和历史兼容清理，而不是扩散新接口与新表。
 
-- ingest 方法层吸收远程的两阶段加速
-- digest / curriculum / exams / profile 继续沿用本地收敛后的数据库主线
-- workflow 仍是复杂业务的编排中心
-- 当前正式运行底座仍然是本地优先的 SQLite + sqlite-vec + 文件系统
-## 9. 规范分层补充说明
+### 9.1 规范分层补充说明
 
 - `core/` 仍然保持为最小基础层，规范的 AI 运行时模块统一放在 `infra/`，不再回落到 `core/`。
 - `infra/` 是 `llm`、`tracing`、`model_router`、`prompt_loader` 等模块的规范归属位置。

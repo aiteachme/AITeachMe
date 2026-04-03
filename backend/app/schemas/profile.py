@@ -1,10 +1,13 @@
-"""Profile API schemas."""
+﻿"""Profile API schemas."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+
+from app.workflows.profile.subject_profile import SubjectProfileSummary
+from app.workflows.profile.user_profile import UserProfileSummary
 
 
 class MasteryStateResponse(BaseModel):
@@ -31,6 +34,8 @@ class MasteryOverviewResponse(BaseModel):
     weak_node_count: int
     unit_states: list[MasteryStateResponse] = Field(default_factory=list)
     node_states: list[MasteryStateResponse] = Field(default_factory=list)
+    subject_profile: SubjectProfileSummary | None = None
+    user_profile: UserProfileSummary | None = None
 
 
 class ReviewTaskResponse(BaseModel):

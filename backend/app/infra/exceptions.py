@@ -228,26 +228,26 @@ class ThemeTreeNodeNotFoundError(AITeachMeError):
 
 class NoPublishedTreeError(AITeachMeError):
     error_code = "NO_PUBLISHED_TREE"
-    status_code = HTTPStatus.NOT_FOUND
+    status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的主题树。")
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的主题树，请先完成 digest 并发布当前课程结构。")
 
 
 class NoPublishedDagError(AITeachMeError):
     error_code = "NO_PUBLISHED_DAG"
-    status_code = HTTPStatus.NOT_FOUND
+    status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的先修 DAG。")
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的先修 DAG，请先完成 digest 并发布当前课程结构。")
 
 
 class NoPublishedCurriculumSnapshotError(AITeachMeError):
     error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
-    status_code = HTTPStatus.NOT_FOUND
+    status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照。")
+        super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照，请先完成 digest 再生成测验或考试。")
 
 
 class NoReadyFilesForDocGenError(AITeachMeError):

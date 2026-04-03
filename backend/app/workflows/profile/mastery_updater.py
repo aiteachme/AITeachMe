@@ -1,15 +1,16 @@
-"""Mastery updater driven by graded exam paper items."""
+﻿"""Mastery updater driven by graded exam paper items."""
 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import exp
 
 from sqlmodel import Session
 
-from app.models import ExamPaper, ExamPaperItem, UserKnowledgeState
+from app.models import ExamPaper, UserKnowledgeState
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
 
@@ -26,6 +27,11 @@ class _WeightedAttempt:
     difficulty: str
     answered_at: datetime
     coverage_weight: float = 1.0
+    question_type: str = ""
+    time_spent_seconds: int | None = None
+    hint_used: bool = False
+    confidence_self_report: int | None = None
+    error_cause_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,8 +106,8 @@ def _compute_consecutive_correct(
     for item in sorted(new_attempts, key=lambda x: _to_utc(x.answered_at)):
         if item.is_correct:
             streak += 1
-        else:
-            streak = 0
+            continue
+        streak = 0
     return streak
 
 
@@ -120,6 +126,100 @@ def _merge_mastery_score(
     alpha = min(0.85, max(0.25, alpha))
     merged = existing.mastery_score * (1.0 - alpha) + current_exam_score * alpha
     return min(1.0, max(0.0, merged))
+
+
+def _parse_json_object(raw: str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _to_counter(raw: object) -> Counter[str]:
+    if not isinstance(raw, dict):
+        return Counter()
+
+    counter: Counter[str] = Counter()
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        try:
+            counter[key] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return counter
+
+
+def _merge_attempt_stats(
+    *,
+    existing: UserKnowledgeState | None,
+    attempts: list[_WeightedAttempt],
+) -> str:
+    payload = _parse_json_object(existing.stats_json if existing is not None else None)
+    question_type_counts = _to_counter(payload.get("question_type_counts"))
+    difficulty_counts = _to_counter(payload.get("difficulty_counts"))
+    error_cause_counts = _to_counter(payload.get("error_cause_counts"))
+
+    hint_used_count = int(payload.get("hint_used_count", 0) or 0)
+    timed_attempt_count = int(payload.get("timed_attempt_count", 0) or 0)
+    total_time_spent_seconds = int(payload.get("total_time_spent_seconds", 0) or 0)
+    confidence_self_report_count = int(payload.get("confidence_self_report_count", 0) or 0)
+    confidence_self_report_sum = int(payload.get("confidence_self_report_sum", 0) or 0)
+
+    latest_attempt = max(attempts, key=lambda item: _to_utc(item.answered_at)) if attempts else None
+    for item in attempts:
+        if item.question_type:
+            question_type_counts[item.question_type] += 1
+        if item.difficulty:
+            difficulty_counts[item.difficulty] += 1
+        if (
+            not item.is_correct
+            and item.error_cause_label
+            and item.error_cause_label != "unknown"
+        ):
+            error_cause_counts[item.error_cause_label] += 1
+        if item.hint_used:
+            hint_used_count += 1
+        if item.time_spent_seconds is not None and item.time_spent_seconds >= 0:
+            timed_attempt_count += 1
+            total_time_spent_seconds += int(item.time_spent_seconds)
+        if item.confidence_self_report is not None:
+            confidence_self_report_count += 1
+            confidence_self_report_sum += int(item.confidence_self_report)
+
+    payload.update(
+        {
+            "question_type_counts": dict(sorted(question_type_counts.items())),
+            "difficulty_counts": dict(sorted(difficulty_counts.items())),
+            "error_cause_counts": dict(sorted(error_cause_counts.items())),
+            "hint_used_count": hint_used_count,
+            "timed_attempt_count": timed_attempt_count,
+            "total_time_spent_seconds": total_time_spent_seconds,
+            "avg_time_spent_seconds": (
+                round(total_time_spent_seconds / timed_attempt_count, 2)
+                if timed_attempt_count > 0
+                else None
+            ),
+            "confidence_self_report_count": confidence_self_report_count,
+            "confidence_self_report_sum": confidence_self_report_sum,
+            "avg_confidence_self_report": (
+                round(confidence_self_report_sum / confidence_self_report_count, 2)
+                if confidence_self_report_count > 0
+                else None
+            ),
+            "last_question_type": (latest_attempt.question_type if latest_attempt is not None else None),
+            "last_difficulty": (latest_attempt.difficulty if latest_attempt is not None else None),
+            "last_error_cause_label": (
+                latest_attempt.error_cause_label
+                if latest_attempt is not None and not latest_attempt.is_correct
+                else None
+            ),
+        }
+    )
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _parse_node_links(node_refs_json: str) -> list[tuple[int, float]]:
@@ -162,6 +262,7 @@ def _upsert_state_from_attempts(
     attempts: list[_WeightedAttempt],
     now: datetime,
     source_exam_paper_id: int | None = None,
+    auto_commit: bool = True,
 ) -> UserKnowledgeState | None:
     if not attempts:
         return None
@@ -219,13 +320,22 @@ def _upsert_state_from_attempts(
         source_exam_paper_id=source_exam_paper_id,
         state_version=((existing.state_version + 1) if existing is not None else 1),
         last_recomputed_at=now,
-        stats_json=(existing.stats_json if existing is not None else "{}"),
+        stats_json=_merge_attempt_stats(existing=existing, attempts=attempts),
         updated_at=now,
     )
-    return profile_repo.upsert_knowledge_state(session, state)
+    return profile_repo.upsert_knowledge_state(
+        session,
+        state,
+        auto_commit=auto_commit,
+    )
 
 
-def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpdateResult:
+def update_mastery_from_exam(
+    session: Session,
+    exam_paper_id: int,
+    *,
+    auto_commit: bool = True,
+) -> MasteryUpdateResult:
     """Update mastery from graded exam paper items."""
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
@@ -246,6 +356,11 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             difficulty=item.difficulty,
             answered_at=answered_at,
             coverage_weight=1.0,
+            question_type=item.question_type,
+            time_spent_seconds=item.time_spent_seconds,
+            hint_used=item.hint_used,
+            confidence_self_report=item.confidence_self_report,
+            error_cause_label=item.error_cause_label,
         )
         unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
 
@@ -256,6 +371,11 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
                     difficulty=item.difficulty,
                     answered_at=answered_at,
                     coverage_weight=normalized_weight,
+                    question_type=item.question_type,
+                    time_spent_seconds=item.time_spent_seconds,
+                    hint_used=item.hint_used,
+                    confidence_self_report=item.confidence_self_report,
+                    error_cause_label=item.error_cause_label,
                 )
             )
 
@@ -271,6 +391,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             attempts=target_attempts,
             now=now,
             source_exam_paper_id=exam_paper_id,
+            auto_commit=auto_commit,
         )
         if persisted is not None and persisted.id is not None:
             updated_state_ids.append(persisted.id)
@@ -284,6 +405,7 @@ def update_mastery_from_exam(session: Session, exam_paper_id: int) -> MasteryUpd
             attempts=target_attempts,
             now=now,
             source_exam_paper_id=exam_paper_id,
+            auto_commit=auto_commit,
         )
         if persisted is not None and persisted.id is not None:
             updated_state_ids.append(persisted.id)
