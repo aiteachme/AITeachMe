@@ -62,7 +62,7 @@ type ExtendedMasteryOverviewResponse = MasteryOverviewResponse & {
 };
 
 const WEAK_THRESHOLD = 0.8;
-const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
+const PAPER_CARD = "rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:border-zinc-300";
 
 function PageWrapper({
   children,
@@ -76,16 +76,9 @@ function PageWrapper({
   badgeText?: string;
 }) {
   return (
-    <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden min-h-[100dvh] bg-slate-50/50">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none block">
-        <div
-          className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-stone-500/10 blur-3xl"
-          style={{ animationDuration: "7s" }}
-        />
-        <div
-          className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl"
-          style={{ animationDuration: "11s" }}
-        />
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-zinc-50 p-4 pt-16 md:p-8 md:pt-24 selection:bg-zinc-200">
+      <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
+        <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]"></div>
       </div>
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -95,13 +88,13 @@ function PageWrapper({
       >
         <div className="mb-10 text-center">
           {badgeText && (
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" />
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              <Sparkles className="h-3 w-3" />
               {badgeText}
             </div>
           )}
-          <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
-          {subtitle && <p className="mx-auto max-w-2xl text-sm text-slate-500 md:text-base">{subtitle}</p>}
+          <h1 className="mb-3 text-3xl font-semibold tracking-tight text-zinc-900 md:text-4xl">{title}</h1>
+          {subtitle && <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-zinc-500">{subtitle}</p>}
         </div>
         {children}
       </motion.div>
@@ -393,7 +386,7 @@ export function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-32 text-slate-400">
+      <div className="flex items-center justify-center py-32 text-zinc-400">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         加载中...
       </div>
@@ -421,35 +414,35 @@ export function ProfilePage() {
               <CardTitle>{"学科级画像"}</CardTitle>
               <CardDescription>{"这门课当前更适合怎么学，怎么练。"}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-zinc-600">
               <p>
                 {"推荐模式："}
-                <span className="font-medium text-slate-900">{formatExamModeLabel(subjectProfile?.recommended_exam_mode)}</span>
+                <span className="font-medium text-zinc-900">{formatExamModeLabel(subjectProfile?.recommended_exam_mode)}</span>
                 {" · "}
                 {"建议题量："}
-                <span className="font-medium text-slate-900">{subjectProfile?.recommended_question_count ?? "--"} {"题"}</span>
+                <span className="font-medium text-zinc-900">{subjectProfile?.recommended_question_count ?? "--"} {"题"}</span>
               </p>
               <p>
                 {"题型偏向："}
-                <span className="font-medium text-slate-900">{formatLabelList((subjectProfile?.recommended_question_types ?? []).map(formatQuestionTypeLabel))}</span>
+                <span className="font-medium text-zinc-900">{formatLabelList((subjectProfile?.recommended_question_types ?? []).map(formatQuestionTypeLabel))}</span>
               </p>
               <p>
                 {"难度焦点："}
-                <span className="font-medium text-slate-900">{formatDifficultyFocus(subjectProfile?.difficulty_focus)}</span>
+                <span className="font-medium text-zinc-900">{formatDifficultyFocus(subjectProfile?.difficulty_focus)}</span>
               </p>
               <p>
                 {"待复习："}
-                <span className="font-medium text-slate-900">{subjectProfile?.due_review_count ?? 0}</span>
+                <span className="font-medium text-zinc-900">{subjectProfile?.due_review_count ?? 0}</span>
                 {" / 总待处理 "}
-                <span className="font-medium text-slate-900">{subjectProfile?.pending_review_count ?? 0}</span>
+                <span className="font-medium text-zinc-900">{subjectProfile?.pending_review_count ?? 0}</span>
               </p>
               <p>
                 {"聚焦单元："}
-                <span className="font-medium text-slate-900">{formatLabelList(focusUnitNames)}</span>
+                <span className="font-medium text-zinc-900">{formatLabelList(focusUnitNames)}</span>
               </p>
               <p>
                 {"聚焦知识点："}
-                <span className="font-medium text-slate-900">{formatLabelList(focusNodeNames)}</span>
+                <span className="font-medium text-zinc-900">{formatLabelList(focusNodeNames)}</span>
               </p>
             </CardContent>
           </Card>
@@ -459,32 +452,32 @@ export function ProfilePage() {
               <CardTitle>{"用户级画像"}</CardTitle>
               <CardDescription>{"跨学科相对稳定的学习偏好。"}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-zinc-600">
               <p>
                 {"偏好题型："}
-                <span className="font-medium text-slate-900">{formatLabelList((userProfile?.preferred_question_types ?? []).map(formatQuestionTypeLabel))}</span>
+                <span className="font-medium text-zinc-900">{formatLabelList((userProfile?.preferred_question_types ?? []).map(formatQuestionTypeLabel))}</span>
               </p>
               <p>
                 {"常用模式："}
-                <span className="font-medium text-slate-900">{formatLabelList((userProfile?.preferred_exam_modes ?? []).map(formatExamModeLabel))}</span>
+                <span className="font-medium text-zinc-900">{formatLabelList((userProfile?.preferred_exam_modes ?? []).map(formatExamModeLabel))}</span>
               </p>
               <p>
                 {"讲解风格："}
-                <span className="font-medium text-slate-900">{formatExplanationStyle(userProfile?.explanation_style)}</span>
+                <span className="font-medium text-zinc-900">{formatExplanationStyle(userProfile?.explanation_style)}</span>
               </p>
               <p>
                 {"学习节奏："}
-                <span className="font-medium text-slate-900">{formatPacePreference(userProfile?.pace_preference)}</span>
+                <span className="font-medium text-zinc-900">{formatPacePreference(userProfile?.pace_preference)}</span>
               </p>
               <p>
                 {"稳定度："}
-                <span className="font-medium text-slate-900">{formatConsistencyLevel(userProfile?.consistency_level)}</span>
+                <span className="font-medium text-zinc-900">{formatConsistencyLevel(userProfile?.consistency_level)}</span>
               </p>
               <p>
                 {"跨学科待复习："}
-                <span className="font-medium text-slate-900">{userProfile?.due_review_count ?? 0}</span>
+                <span className="font-medium text-zinc-900">{userProfile?.due_review_count ?? 0}</span>
                 {" / 总待处理 "}
-                <span className="font-medium text-slate-900">{userProfile?.pending_review_count ?? 0}</span>
+                <span className="font-medium text-zinc-900">{userProfile?.pending_review_count ?? 0}</span>
               </p>
             </CardContent>
           </Card>
@@ -497,10 +490,10 @@ export function ProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
-                <p className="text-3xl font-bold text-slate-900">
+                <p className="text-3xl font-bold text-zinc-900">
                   {overallMastery != null ? `${clampPercent(overallMastery)}%` : "--"}
                 </p>
-                <TrendingUp className="h-8 w-8 text-slate-400" />
+                <TrendingUp className="h-8 w-8 text-zinc-400" />
               </div>
             </CardContent>
           </Card>
@@ -512,10 +505,10 @@ export function ProfilePage() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-3xl font-bold text-slate-900">{displayStates.length}</p>
-                  <p className="mt-1 text-xs text-slate-500">项</p>
+                  <p className="text-3xl font-bold text-zinc-900">{displayStates.length}</p>
+                  <p className="mt-1 text-xs text-zinc-500">项</p>
                 </div>
-                <Target className="h-8 w-8 text-slate-400" />
+                <Target className="h-8 w-8 text-zinc-400" />
               </div>
             </CardContent>
           </Card>
@@ -528,9 +521,9 @@ export function ProfilePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-3xl font-bold text-orange-500">{weakCount}</p>
-                  <p className="mt-1 text-xs text-slate-500">需加强</p>
+                  <p className="mt-1 text-xs text-zinc-500">需加强</p>
                 </div>
-                <Award className="h-8 w-8 text-slate-400" />
+                <Award className="h-8 w-8 text-zinc-400" />
               </div>
             </CardContent>
           </Card>
@@ -543,20 +536,20 @@ export function ProfilePage() {
               <CardDescription>各知识点学习情况</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {displayStates.length === 0 && <p className="py-4 text-center text-sm text-slate-400">暂无数据</p>}
+              {displayStates.length === 0 && <p className="py-4 text-center text-sm text-zinc-400">暂无数据</p>}
               {displayStates.map((item) => {
                 const pct = clampPercent(item.mastery_score);
                 const targetId = resolveMasteryTargetId(item);
                 return (
                   <div key={`${item.target_kind}-${targetId}`}>
                     <div className="mb-1.5 flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-medium text-slate-700">{item.display_name}</span>
-                      <span className="shrink-0 text-sm text-slate-500">
+                      <span className="truncate text-sm font-medium text-zinc-700">{item.display_name}</span>
+                      <span className="shrink-0 text-sm text-zinc-500">
                         {pct}% · {item.correct_attempts}/{item.total_attempts}
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100">
-                      <div className="h-2 rounded-full bg-slate-900 transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-2 w-full rounded-full bg-zinc-100">
+                      <div className="h-2 rounded-full bg-zinc-900 transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -571,14 +564,14 @@ export function ProfilePage() {
                 <CardDescription>需要加强练习的内容</CardDescription>
               </CardHeader>
               <CardContent>
-                {weakStates.length === 0 && <p className="py-4 text-center text-sm text-slate-400">暂无数据</p>}
+                {weakStates.length === 0 && <p className="py-4 text-center text-sm text-zinc-400">暂无数据</p>}
                 <div className="space-y-3">
                   {weakStates.map((item) => (
                     <div
                       key={`${item.target_kind}-${resolveMasteryTargetId(item)}`}
-                      className="flex items-center justify-between rounded-lg bg-slate-50 p-3"
+                      className="flex items-center justify-between rounded-lg bg-zinc-50 p-3"
                     >
-                      <span className="text-sm font-medium text-slate-700">{item.display_name}</span>
+                      <span className="text-sm font-medium text-zinc-700">{item.display_name}</span>
                       <span className="text-sm font-medium text-orange-600">{clampPercent(item.mastery_score)}%</span>
                     </div>
                   ))}
@@ -593,8 +586,8 @@ export function ProfilePage() {
               <CardContent>
                 <ul className="space-y-2">
                   {suggestions.map((item, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
-                      <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                    <li key={idx} className="flex items-start gap-2 text-sm text-zinc-600">
+                      <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
                       {item}
                     </li>
                   ))}

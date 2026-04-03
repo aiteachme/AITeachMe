@@ -251,11 +251,11 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
         <button
           type="button"
           onClick={() => openAssistant()}
-          className="fixed bottom-6 right-6 z-[86] inline-flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-700 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.6)] backdrop-blur transition hover:bg-white hover:text-slate-900"
+          className="fixed bottom-6 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
           aria-label="打开 AI 助手"
         >
-          <Bot className="h-4 w-4" />
-          <span>AI</span>
+          <Bot className="h-4 w-4 text-zinc-500" />
+          <span>AI Assistant</span>
         </button>
       ) : null}
 
@@ -269,18 +269,18 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-3 md:p-6">
-            <div className="relative h-[min(92vh,780px)] w-[min(94vw,780px)] overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_48px_130px_-52px_rgba(15,23,42,0.82)]">
+            <div className="relative h-[min(92vh,840px)] w-[min(94vw,840px)] overflow-hidden rounded-2xl border border-zinc-300/80 bg-white shadow-[0_24px_80px_-12px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.05)]">
               <div className="grid h-full grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]">
-                <aside className="hidden border-r border-slate-200 bg-slate-50 lg:flex lg:flex-col">
-                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                    <div className="flex items-center gap-2 text-slate-900">
+                <aside className="hidden border-r border-zinc-200/60 bg-zinc-50/50 lg:flex lg:flex-col">
+                  <div className="flex items-center justify-between border-b border-zinc-200/60 px-4 py-3">
+                    <div className="flex items-center gap-2 text-zinc-900">
                       <MessageSquareText className="h-4 w-4" />
-                      <span className="text-sm font-semibold">会话历史</span>
+                      <span className="text-[13px] font-semibold tracking-tight">会话历史</span>
                     </div>
                     <button
                       type="button"
                       onClick={handleCreateSession}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-slate-900"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white hover:text-zinc-900 shadow-sm border border-transparent hover:border-zinc-200/80"
                       aria-label="新建会话"
                     >
                       <Plus className="h-4 w-4" />
@@ -302,14 +302,14 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                             key={item.id}
                             onClick={() => setSelectedSessionId(item.id)}
                             className={cn(
-                              "group mb-1.5 w-full rounded-xl border px-3 py-2.5 text-left transition",
+                              "group mb-1.5 w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
                               selectedSessionId === item.id
-                                ? "border-sky-200 bg-white shadow-sm"
-                                : "border-transparent hover:border-slate-200 hover:bg-white/80",
+                                ? "border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                                : "border-transparent hover:border-zinc-200/60 hover:bg-white/80",
                             )}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <p className="line-clamp-2 text-sm font-medium text-slate-800">{item.title}</p>
+                              <p className="line-clamp-2 text-[13px] font-medium leading-relaxed text-zinc-800">{item.title}</p>
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -317,13 +317,13 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                                   event.stopPropagation();
                                   void handleDeleteSession(item.id);
                                 }}
-                                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
+                                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-red-50 hover:text-red-500"
                                 aria-label="删除会话"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                            <p className="mt-1 text-[11px] text-slate-400">
+                            <p className="mt-1 text-[11px] text-zinc-400">
                               {formatSessionTime(item.last_message_at)} · {item.message_count} 条
                             </p>
                           </button>
@@ -341,39 +341,38 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                   </div>
                 </aside>
 
-                <section className="flex min-h-0 flex-col bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.16),_transparent_35%),linear-gradient(180deg,#f8fbff_0%,#f8fafc_58%,#f3f6fb_100%)]">
-                  <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3 md:px-5">
+                <section className="relative flex min-h-0 flex-col bg-white">
+                  <div className="flex items-center justify-between border-b border-zinc-200/60 bg-zinc-50/30 px-4 py-3 md:px-5">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setIsSessionDrawerOpen(true)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 lg:hidden"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200/60 bg-white text-zinc-600 lg:hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
                         aria-label="打开会话列表"
                       >
                         <PanelLeft className="h-4 w-4" />
                       </button>
                       <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">AI Assistant</p>
-                        <h2 className="text-sm font-semibold text-slate-900 md:text-base">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">AI Assistant</p>
+                        <h2 className="text-[14px] font-semibold tracking-tight text-zinc-900">
                           {selectedSession?.title ?? "新会话"}
                         </h2>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
+                      <button
+                        type="button"
                         onClick={() => void handleClearCurrentSession()}
                         disabled={!selectedSessionId || isStreaming}
-                        className="hidden border-slate-200 text-slate-600 hover:bg-slate-50 md:inline-flex"
+                        className="hidden h-8 items-center justify-center rounded-lg border border-zinc-200/80 bg-white px-3 text-[13px] font-medium text-zinc-600 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition hover:bg-zinc-50 hover:text-zinc-900 md:inline-flex disabled:opacity-50"
                       >
-                        清空
-                      </Button>
+                        清空记录
+                      </button>
                       <button
                         type="button"
                         onClick={closeAssistant}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-slate-900"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
                         aria-label="关闭"
                       >
                         <X className="h-4 w-4" />
@@ -382,20 +381,20 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
                   </div>
 
                   {historyError ? (
-                    <div className="border-b border-rose-100 bg-rose-50/80 px-4 py-2 text-xs text-rose-600 md:px-5">
+                    <div className="border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 md:px-5">
                       {historyError}
                     </div>
                   ) : null}
 
-                  <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="min-h-0 flex-1 overflow-y-auto pb-40">
                     {!selectedSessionId ? (
                       <div className="flex h-full items-center justify-center px-6">
                         <div className="max-w-md text-center">
-                          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 text-white shadow-lg">
+                          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-200/60 bg-white shadow-sm text-zinc-600">
                             <Sparkles className="h-6 w-6" />
                           </div>
-                          <h3 className="mt-5 text-xl font-semibold text-slate-900">开始新会话</h3>
-                          <p className="mt-2 text-sm leading-7 text-slate-500">
+                          <h3 className="mt-5 text-xl font-semibold tracking-tight text-zinc-900">开始新会话</h3>
+                          <p className="mt-2.5 text-[14px] leading-relaxed text-zinc-500">
                             直接输入问题发送，系统会自动创建会话并进入流式对话。
                           </p>
                         </div>

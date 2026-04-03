@@ -95,9 +95,9 @@ type DeleteExamResult = ExamPaperDeleteResponse;
 
 const EXAM_REQUEST_TIMEOUT_MS = 300000;
 const SAMPLE_ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.md,.markdown,.txt";
-const PAPER_CARD = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const PAPER_CARD = "rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]";
 const REAL_CARD =
-  "rounded-[2rem] border border-stone-200 bg-[#fffdf8] shadow-[0_24px_80px_rgba(41,37,36,0.08)]";
+  "rounded-2xl border border-zinc-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)]";
 
 const EXAM_MODE_OPTIONS: Array<{
   value: ExamMode;
@@ -221,26 +221,29 @@ function PageWrapper({
   badgeText?: string;
 }) {
   return (
-    <div className="flex min-h-[100dvh] w-full flex-1 flex-col items-center bg-[radial-gradient(circle_at_top_left,_rgba(120,113,108,0.08),_transparent_35%),linear-gradient(180deg,_#fafaf9_0%,_#f0eee9_100%)] px-4 pb-16 pt-16 md:pt-20">
+    <div className="relative flex min-h-[100dvh] w-full flex-1 flex-col items-center bg-zinc-50 px-4 pb-16 pt-16 md:pt-24 selection:bg-zinc-200">
+      <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
+        <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]"></div>
+      </div>
       <motion.div
-        initial={{ opacity: 0, y: 18 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-        className="w-full max-w-6xl space-y-6"
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10 w-full max-w-5xl space-y-8"
       >
         <div className="space-y-4 text-center">
           {badgeText ? (
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/60 px-3 py-1 text-[11px] font-semibold tracking-widest uppercase text-zinc-600 shadow-sm backdrop-blur-sm">
               <Sparkles className="h-3.5 w-3.5" />
               {badgeText}
             </div>
           ) : null}
-          <div className="space-y-2">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900 md:text-5xl">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 md:text-5xl">
               {title}
             </h1>
             {subtitle ? (
-              <p className="mx-auto max-w-3xl text-sm text-slate-600 md:text-base">
+              <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-zinc-500">
                 {subtitle}
               </p>
             ) : null}
@@ -717,22 +720,22 @@ function HubTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-w-[180px] flex-1 items-start gap-3 rounded-[1.75rem] border px-5 py-4 text-left transition ${
+      className={`group flex min-w-[180px] flex-1 items-start gap-3.5 rounded-2xl border p-5 text-left transition-all duration-200 ${
         active
-          ? "border-slate-900 bg-slate-900 text-white shadow-lg"
-          : "border-slate-200 bg-white/85 text-slate-700 hover:border-slate-300 hover:bg-white"
+          ? "border-zinc-900 bg-zinc-900 text-white shadow-[0_4px_12px_rgba(24,24,27,0.12)] ring-4 ring-zinc-900/10"
+          : "border-zinc-200/60 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:shadow-sm active:scale-[0.98]"
       }`}
     >
       <span
-        className={`inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${
-          active ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700"
+        className={`inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg transition-colors ${
+          active ? "bg-white/10 text-white" : "bg-zinc-100 text-zinc-500 group-hover:bg-zinc-200/50 group-hover:text-zinc-700"
         }`}
       >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className={`mt-1 block text-xs leading-5 ${active ? "text-slate-200" : "text-slate-500"}`}>
+        <span className={`block text-[14px] font-semibold tracking-tight ${active ? "text-white" : "text-zinc-900"}`}>{label}</span>
+        <span className={`mt-1 block text-[13px] leading-relaxed ${active ? "text-zinc-300" : "text-zinc-500"}`}>
           {description}
         </span>
       </span>
@@ -749,35 +752,34 @@ function ExperimentalCardItem({
 }) {
   const Icon = card.icon;
   return (
-    <Card className="rounded-[2rem] border border-slate-200 bg-white/90 shadow-sm">
+    <Card className="rounded-2xl border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
       <CardHeader className="space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-            <Icon className="h-5 w-5" />
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600">
+            <Icon className="h-4 w-4" />
           </div>
-          <span className={`rounded-full border px-3 py-1 text-xs font-medium ${badgeTone(card.badge)}`}>
+          <span className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase ${badgeTone(card.badge)}`}>
             {card.badge}
           </span>
         </div>
         <div className="space-y-2">
-          <CardTitle className="text-xl text-slate-900">{card.title}</CardTitle>
-          <CardDescription className="text-sm leading-6 text-slate-600">
+          <CardTitle className="text-lg font-semibold tracking-tight text-zinc-900">{card.title}</CardTitle>
+          <CardDescription className="text-[13px] leading-relaxed text-zinc-500">
             {card.description}
           </CardDescription>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-6 text-slate-600">
+        <div className="rounded-xl border border-zinc-200/60 bg-zinc-50/50 px-3.5 py-2.5 text-[13px] leading-relaxed text-zinc-600 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
           {card.highlight}
         </div>
-        <Button
+        <button
           type="button"
-          variant="outline"
-          className="w-full rounded-full"
+          className="w-full rounded-lg border border-zinc-200/80 bg-white py-2 text-[13px] font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/5 active:scale-[0.98]"
           onClick={() => onAction(card.action)}
         >
           {card.ctaLabel}
-        </Button>
+        </button>
       </CardContent>
     </Card>
   );
@@ -1283,19 +1285,19 @@ export function ExamsPage() {
 
       {activeTab === "experimental" ? (
         <div className="space-y-6">
-          <Card className="rounded-[2rem] border border-slate-200 bg-[linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(30,41,59,0.92))] text-white shadow-[0_30px_90px_-40px_rgba(15,23,42,0.85)]">
+          <Card className="rounded-2xl border border-[#2a2a2d] bg-[#1a1a1c] text-white shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
             <CardContent className="space-y-4 p-8">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
-                <Sparkles className="h-5 w-5" />
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 shadow-inner">
+                <Sparkles className="h-4 w-4" />
               </div>
               <div className="space-y-2">
-                <div className="text-sm uppercase tracking-[0.24em] text-slate-300">
+                <div className="text-[11px] font-semibold tracking-widest uppercase text-zinc-400">
                   Experimental Lab
                 </div>
-                <h2 className="text-3xl font-semibold tracking-tight">
+                <h2 className="text-2xl font-semibold tracking-tight text-white">
                   沉浸式考试实验场
                 </h2>
-                <p className="max-w-3xl text-sm leading-7 text-slate-200">
+                <p className="max-w-2xl text-[14px] leading-relaxed text-zinc-300">
                   这里放一些还在探索中的考试形态。当前优先把入口和体验结构先搭好，
                   已经能直接体验的能力会优先复用现有工作流，其余实验先给你一个清晰方向。
                 </p>
@@ -1328,12 +1330,12 @@ export function ExamsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
-                <label className="block text-sm font-medium text-slate-700">
+                <label className="block text-[13px] font-semibold tracking-tight text-zinc-800">
                   {activeTab === "exam" ? "希望考些什么？（可选）" : "本次测验想练些什么？（可选）"}
                 </label>
                 <textarea
                   rows={2}
-                  className="w-full resize-none rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3 text-sm transition-colors focus:border-slate-400 focus:outline-none"
+                  className="w-full resize-none rounded-xl border border-zinc-200/80 bg-zinc-50/50 px-4 py-3 text-[14px] leading-relaxed text-zinc-900 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-zinc-900/5"
                   placeholder={
                     activeTab === "exam"
                       ? "例如：覆盖网络分层、地址转换和操作系统基础，难度适中..."
@@ -1349,35 +1351,35 @@ export function ExamsPage() {
                 />
               </div>
 
-              <details className="group rounded-[1.25rem] border border-slate-200 bg-slate-50/50 open:bg-slate-50 transition-colors">
-                <summary className="flex cursor-pointer list-none items-center justify-between p-4 text-sm font-medium text-slate-700 outline-none [&::-webkit-details-marker]:hidden">
-                   <div className="flex items-center gap-3">
-                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200/50 text-slate-600">
+              <details className="group rounded-xl border border-zinc-200/60 bg-white shadow-sm transition-all open:bg-zinc-50/50">
+                <summary className="flex cursor-pointer list-none items-center justify-between p-4 text-[13px] font-medium text-zinc-700 outline-none [&::-webkit-details-marker]:hidden hover:text-zinc-900">
+                   <div className="flex items-center gap-2.5">
+                     <span className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-100 text-zinc-500">
                         <SlidersHorizontal className="h-3.5 w-3.5" />
                      </span>
                      <span>高级设置（题型、风格提示、难度策略、样卷等）</span>
                    </div>
-                   <ChevronDown className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                   <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform duration-200 group-open:rotate-180" />
                 </summary>
                 
-                <div className="space-y-6 border-t border-slate-200/60 p-5">
+                <div className="space-y-6 border-t border-zinc-100 p-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm text-slate-700">
+                    <label className="block text-[13px] font-medium text-zinc-700 mb-1">
                       当前形态
-                      <div className="mt-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                        <div className="font-medium text-slate-900">{selectedMode?.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">
+                      <div className="mt-1.5 rounded-lg border border-zinc-200/60 bg-white px-3.5 py-2.5 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                        <div className="font-semibold text-zinc-900 tracking-tight">{selectedMode?.label}</div>
+                        <div className="mt-0.5 text-xs text-zinc-500 leading-relaxed">
                           {selectedMode?.description}
                         </div>
                       </div>
                     </label>
-                    <label className="block text-sm text-slate-700">
+                    <label className="block text-[13px] font-medium text-zinc-700 mb-1">
                       题量（可选）
                       <input
                         type="number"
                         min={1}
                         max={200}
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                        className="mt-1.5 w-full rounded-lg border border-zinc-200/80 bg-white px-3.5 py-2.5 text-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors focus:border-zinc-400 focus:outline-none focus:ring-4 focus:ring-zinc-900/5"
                         placeholder={activeTab === "exam" ? "例如 24" : "例如 10"}
                         value={numQuestions}
                         disabled={
@@ -1390,19 +1392,17 @@ export function ExamsPage() {
                     </label>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="text-sm font-medium text-slate-900">难度策略</div>
+                  <div className="rounded-xl border border-zinc-200/60 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="text-[13px] font-semibold tracking-tight text-zinc-800">难度策略</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {DIFFICULTY_OPTIONS.map((item) => (
-                        <Button
+                        <button
                           key={item.value || "auto"}
                           type="button"
-                          size="sm"
-                          variant={difficulty === item.value ? "default" : "outline"}
-                          className={`rounded-full ${
+                          className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-all ${
                             difficulty === item.value
-                              ? "bg-slate-900 text-white"
-                              : "bg-white text-slate-700"
+                              ? "bg-zinc-900 text-white shadow-sm"
+                              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80 hover:text-zinc-900"
                           }`}
                           disabled={
                             generateMutation.isPending ||
@@ -1412,17 +1412,17 @@ export function ExamsPage() {
                           onClick={() => setDifficulty(item.value)}
                         >
                           {item.label}
-                        </Button>
+                        </button>
                       ))}
                     </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm text-slate-700">
+                    <label className="block text-[13px] font-medium text-zinc-700 mb-1">
                       卷面风格偏好（可选）
                       <textarea
                         rows={3}
-                        className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                        className="mt-1.5 w-full resize-none rounded-lg border border-zinc-200/80 bg-white px-3.5 py-2.5 text-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-4 focus:ring-zinc-900/5"
                         placeholder={activeTab === "exam" ? "例如：更像期末闭卷，分段清晰，少提示。" : "例如：题干更短、更像随堂测，减少冗长背景。"}
                         value={stylePrompt}
                         disabled={
@@ -1433,11 +1433,11 @@ export function ExamsPage() {
                         onChange={(event) => setStylePrompt(event.target.value)}
                       />
                     </label>
-                    <label className="block text-sm text-slate-700">
+                    <label className="block text-[13px] font-medium text-zinc-700 mb-1">
                       特殊重点约束（可选）
                       <textarea
                         rows={3}
-                        className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                        className="mt-1.5 w-full resize-none rounded-lg border border-zinc-200/80 bg-white px-3.5 py-2.5 text-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-4 focus:ring-zinc-900/5"
                         placeholder={activeTab === "exam" ? "例如：要求包含20%跨章节综合题。" : "例如：多考最近总错的知识点，少出纯定义题。"}
                         value={focusPrompt}
                         disabled={
@@ -1450,18 +1450,18 @@ export function ExamsPage() {
                     </label>
                   </div>
 
-                  <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-white/80 p-4">
+                  <div className="space-y-3 rounded-lg border border-dashed border-zinc-300/80 bg-zinc-50/50 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium text-slate-900">
+                        <div className="text-[13px] font-semibold text-zinc-800">
                           上传样卷参考（可选）
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {activeTab === "exam" ? "如果有真实样卷，上传后系统会尽量模仿其考点分布和出题习惯。" : "日常测验通常不需要样卷；刻意模仿某种题风时可上传。"}
+                        <div className="mt-0.5 text-xs text-zinc-500">
+                          {activeTab === "exam" ? "如果有真实样卷，系统会尽量模仿其考点分布和出题习惯。" : "日常测验通常不需要样卷；刻意模仿某种题风时可上传。"}
                         </div>
                       </div>
-                      <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
-                        <UploadCloud className="mr-2 h-4 w-4" />
+                      <label className="inline-flex cursor-pointer items-center rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition hover:border-zinc-300 hover:text-zinc-900 hover:shadow-sm">
+                        <UploadCloud className="mr-2 h-3.5 w-3.5" />
                         {uploadSamplesMutation.isPending ? "上传中..." : "添加样卷"}
                         <input
                           type="file"
@@ -1478,7 +1478,7 @@ export function ExamsPage() {
                       </label>
                     </div>
                     {sampleFiles.length > 0 && (
-                      <div className="grid gap-3 md:grid-cols-2 mt-3">
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
                         {sampleFiles.map((file) => (
                           <SampleChip
                             key={file.uid}
@@ -1497,8 +1497,8 @@ export function ExamsPage() {
               </details>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  className="rounded-full px-6"
+                <button
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-6 text-[14px] font-medium text-white shadow-sm transition-all hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
                   disabled={
                     generateMutation.isPending ||
                     uploadSamplesMutation.isPending ||
@@ -1516,10 +1516,10 @@ export function ExamsPage() {
                   ) : (
                     "一键生成测验"
                   )}
-                </Button>
+                </button>
                 {(generateMutation.isPending || uploadSamplesMutation.isPending) && (
-                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200/60 bg-white px-4 py-2 text-[13px] text-zinc-600 shadow-sm">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
                     {statusText || "系统正在处理中..."}
                   </div>
                 )}
@@ -1540,13 +1540,13 @@ export function ExamsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {historyLoading ? (
-                <div className="flex items-center justify-center py-10 text-slate-400">
+                <div className="flex items-center justify-center py-10 text-zinc-400">
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   加载中...
                 </div>
               ) : null}
               {!historyLoading && !filteredHistory.length ? (
-                <p className="py-8 text-center text-sm text-slate-400">
+                <p className="py-8 text-center text-[14px] text-zinc-400">
                   {activeTab === "exam"
                     ? "还没有生成过考试卷，先来做一次正式模拟。"
                     : "还没有测验记录，先生成一套在线测验吧。"}
@@ -1569,31 +1569,31 @@ export function ExamsPage() {
                 return (
                   <div
                     key={item.id}
-                    className="flex flex-col gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50/80 p-4 md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-4 rounded-xl border border-zinc-200/60 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-zinc-300 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="flex items-start gap-4">
-                      <div className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
+                      <div className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-600 shadow-sm">
                         {isPaperExamMode(item.exam_mode) ? (
-                          <BookCheck className="h-5 w-5" />
+                          <BookCheck className="h-4 w-4" />
                         ) : (
-                          <FileQuestion className="h-5 w-5" />
+                          <FileQuestion className="h-4 w-4" />
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-base font-semibold text-slate-900">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2 text-[14px]">
+                          <span className="font-semibold tracking-tight text-zinc-900">
                             试卷 #{item.id}
                           </span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
+                          <span className="rounded-md border border-zinc-200/60 bg-white px-2 py-0.5 text-[11px] font-medium tracking-wide text-zinc-600">
                             {toModeLabel(item.exam_mode)}
                           </span>
                           <span
-                            className={`rounded-full border px-2.5 py-1 text-xs ${toHistoryStatusTone(item.status)}`}
+                            className={`rounded-md border px-2 py-0.5 text-[11px] font-medium tracking-wide ${toHistoryStatusTone(item.status)}`}
                           >
                             {toHistoryStatusLabel(item.status)}
                           </span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-relaxed text-zinc-500">
                           <span>共 {item.total_items} 题</span>
                           <span>创建于 {new Date(item.created_at).toLocaleString("zh-CN")}</span>
                           {item.graded_at ? (
@@ -1606,29 +1606,27 @@ export function ExamsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                      <div className="min-w-[88px] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold text-slate-900">
+                      <div className="min-w-[72px] rounded-lg border border-zinc-200/60 bg-zinc-50 px-2 py-1.5 text-center text-[13px] font-semibold text-zinc-900 shadow-inner">
                         {scoreText}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-200/80 bg-white px-3 text-[13px] font-medium text-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition hover:bg-zinc-50 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/5 disabled:opacity-50"
                         disabled={isBusy}
                         onClick={() => openExamMutation.mutate(item.id)}
                       >
                         {isOpening ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                             打开中...
                           </>
                         ) : (
                           toHistoryActionLabel(item.status)
                         )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-200/80 bg-white px-3 text-[13px] font-medium text-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition hover:bg-red-50 hover:text-red-600 hover:border-red-200 focus:outline-none focus:ring-4 focus:ring-red-900/5 disabled:opacity-50"
                         disabled={isBusy}
                         onClick={() => {
                           if (!window.confirm(`确认删除试卷 #${item.id} 吗？`)) {
@@ -1639,16 +1637,16 @@ export function ExamsPage() {
                       >
                         {isDeleting ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                             删除中...
                           </>
                         ) : (
                           <>
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                             删除
                           </>
                         )}
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 );

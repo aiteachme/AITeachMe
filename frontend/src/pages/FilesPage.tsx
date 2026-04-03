@@ -40,7 +40,7 @@ import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 const ACTIVE_FILE_STATUSES = new Set(["pending", "processing", "running"]);
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
-const PAPER_CARD = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-all";
+const PAPER_CARD = "rounded-2xl border border-zinc-200/80 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all hover:border-zinc-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]";
 
 /* ── API helpers ── */
 
@@ -200,16 +200,9 @@ function PageWrapper({
   badgeText?: string;
 }) {
   return (
-    <div className="flex-1 w-full flex flex-col items-center px-4 pt-16 md:pt-20 pb-16 relative overflow-x-hidden min-h-[100dvh] bg-slate-50/50">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none block">
-        <div
-          className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] animate-pulse rounded-full bg-stone-500/10 blur-3xl"
-          style={{ animationDuration: "7s" }}
-        />
-        <div
-          className="absolute bottom-0 -right-[5%] h-[600px] w-[600px] animate-pulse rounded-full bg-slate-800/5 blur-3xl"
-          style={{ animationDuration: "11s" }}
-        />
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-zinc-50 p-4 pt-16 md:p-8 md:pt-24 selection:bg-zinc-200">
+      <div className="pointer-events-none absolute inset-0 z-0 flex justify-center overflow-hidden">
+        <div className="h-full w-full bg-[linear-gradient(to_right,#e4e4e7_1px,transparent_1px),linear-gradient(to_bottom,#e4e4e7_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_120%_100%_at_50%_0%,#000_50%,transparent_100%)]"></div>
       </div>
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -219,13 +212,13 @@ function PageWrapper({
       >
         <div className="mb-10 text-center">
           {badgeText ? (
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" />
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              <Sparkles className="h-3 w-3" />
               {badgeText}
             </div>
           ) : null}
-          <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
-          {subtitle ? <p className="mx-auto max-w-3xl text-sm text-slate-500 md:text-base">{subtitle}</p> : null}
+          <h1 className="mb-3 text-3xl font-semibold tracking-tight text-zinc-900 md:text-4xl">{title}</h1>
+          {subtitle ? <p className="mx-auto max-w-2xl text-[15px] leading-relaxed text-zinc-500">{subtitle}</p> : null}
         </div>
         {children}
       </motion.div>
@@ -252,23 +245,23 @@ function FileCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:shadow-md hover:border-slate-300"
+      className="group flex items-center gap-3 rounded-xl border border-zinc-200/80 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all hover:border-zinc-300 hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
     >
       {/* 文件类型图标 */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 border border-slate-100">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-50 border border-zinc-100">
         {getFileIcon(file)}
       </div>
 
       {/* 文件信息 */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium text-slate-900">{file.filename}</p>
+          <p className="truncate text-sm font-medium text-zinc-900">{file.filename}</p>
           <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none", meta.tone)}>
             <span className={cn("h-1.5 w-1.5 rounded-full", meta.dotColor)} />
             {meta.label}
           </span>
         </div>
-        <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-400">
+        <div className="mt-0.5 flex items-center gap-3 text-xs text-zinc-400">
           <span>{formatFileType(file)}</span>
           <span>·</span>
           <span>{formatFileSize(file.file_size_bytes)}</span>
@@ -453,7 +446,7 @@ export function FilesPage() {
       >
         {/* ── 输入区域（始终显示） ── */}
         <div
-          className={cn(PAPER_CARD, "p-2 focus-within:border-slate-300 focus-within:shadow-md")}
+          className={cn(PAPER_CARD, "p-2 focus-within:border-zinc-300 focus-within:shadow-[0_8px_24px_rgba(0,0,0,0.08)]")}
           onDrop={handleDrop}
           onDragOver={(event) => event.preventDefault()}
         >
@@ -488,7 +481,7 @@ export function FilesPage() {
                           className={cn(
                             "group flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
                             meta.tone,
-                            isSelected && "ring-2 ring-slate-300 ring-offset-1",
+                            isSelected && "ring-2 ring-zinc-300 ring-offset-1",
                           )}
                           title={meta.label}
                         >
@@ -541,14 +534,14 @@ export function FilesPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800"
                 >
                   <Paperclip className="h-4 w-4" />
                   添加文件
                 </button>
 
                 {uploadMutation.isPending ? (
-                  <span className="flex items-center text-xs font-medium text-slate-500">
+                  <span className="flex items-center text-xs font-medium text-zinc-500">
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                     正在上传并启动解析...
                   </span>
@@ -576,8 +569,8 @@ export function FilesPage() {
                 className={cn(
                   "rounded-full px-6 shadow-sm transition-all duration-300",
                   readyFiles.length > 0 && !buildMutation.isPending
-                    ? "bg-slate-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-slate-800"
-                    : "bg-slate-100 text-slate-400",
+                    ? "bg-zinc-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-zinc-800"
+                    : "bg-zinc-100 text-zinc-400",
                 )}
               >
                 {buildMutation.isPending ? (
@@ -603,11 +596,11 @@ export function FilesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="w-full"
           >
-            <details className={cn("group overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white/70 shadow-sm transition-all open:bg-white", PAPER_CARD)}>
-              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 outline-none [&::-webkit-details-marker]:hidden border-b border-transparent group-open:border-slate-100">
+            <details className={cn("group overflow-hidden rounded-[1.25rem] border border-zinc-200 bg-white/70 shadow-sm transition-all hover:shadow-md open:bg-white", PAPER_CARD)}>
+              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 outline-none [&::-webkit-details-marker]:hidden border-b border-transparent group-open:border-zinc-100">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-sm font-semibold text-slate-700">已上传资料</h2>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  <h2 className="text-sm font-semibold text-zinc-700">已上传资料</h2>
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600">
                     {files.length} 份
                   </span>
                   {readyFiles.length > 0 && (
@@ -622,10 +615,10 @@ export function FilesPage() {
                     </span>
                   )}
                 </div>
-                <ChevronDown className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform duration-200 group-open:rotate-180" />
               </summary>
 
-              <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll bg-slate-50/50">
+              <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll bg-zinc-50/50">
                 <AnimatePresence>
                   {files.map((file) => (
                     <FileCard
@@ -646,13 +639,13 @@ export function FilesPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 px-8 py-14 text-center"
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-200 bg-white/60 px-8 py-14 text-center"
           >
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 mb-4">
-              <Paperclip className="h-7 w-7 text-slate-400" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 mb-4">
+              <Paperclip className="h-7 w-7 text-zinc-400" />
             </div>
-            <p className="text-sm font-medium text-slate-600">还没有上传任何文件</p>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="text-sm font-medium text-zinc-600">还没有上传任何文件</p>
+            <p className="mt-1 text-xs text-zinc-400">
               拖拽文件到页面任意位置，或点击上方"添加文件"开始上传
             </p>
           </motion.div>
@@ -663,7 +656,7 @@ export function FilesPage() {
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {fileStats.map((item) => (
               <div key={item.label} className={cn(PAPER_CARD, "px-4 py-4")}>
-                <p className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</p>
+                <p className="text-xs font-medium tracking-[0.12em] text-zinc-400">{item.label}</p>
                 <p className={cn("mt-2 text-2xl font-bold", item.tone)}>{item.value}</p>
               </div>
             ))}
@@ -676,8 +669,8 @@ export function FilesPage() {
             <section className={cn(PAPER_CARD, "p-5")}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">解析信息</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">文件解析信息</h2>
+                  <p className="text-xs font-semibold tracking-[0.16em] text-zinc-400">解析信息</p>
+                  <h2 className="mt-1 text-xl font-semibold text-zinc-900">文件解析信息</h2>
                 </div>
                 {selectedStatus ? (
                   <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium", selectedStatus.tone)}>
@@ -688,33 +681,33 @@ export function FilesPage() {
               </div>
 
               {!selectedFile ? (
-                <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                <div className="mt-5 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
                   还没有文件。先上传资料后，这里会展示解析方法、解析时间和文件元信息。
                 </div>
               ) : (
                 <div className="mt-5 space-y-5">
-                  <div className="rounded-2xl bg-slate-50 px-4 py-4">
-                    <p className="text-sm font-semibold text-slate-900">{selectedFile.filename}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">{getParserSummary(selectedFile)}</p>
+                  <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-zinc-900">{selectedFile.filename}</p>
+                    <p className="mt-1 text-sm leading-6 text-zinc-600">{getParserSummary(selectedFile)}</p>
                   </div>
 
                   <dl className="grid gap-3 sm:grid-cols-2">
                     {parseFacts.map((item) => (
-                      <div key={item.label} className="rounded-xl border border-slate-200 px-3 py-3">
-                        <dt className="text-xs font-medium tracking-[0.12em] text-slate-400">{item.label}</dt>
-                        <dd className="mt-1 text-sm font-medium text-slate-800">{item.value}</dd>
+                      <div key={item.label} className="rounded-xl border border-zinc-200 px-3 py-3">
+                        <dt className="text-xs font-medium tracking-[0.12em] text-zinc-400">{item.label}</dt>
+                        <dd className="mt-1 text-sm font-medium text-zinc-800">{item.value}</dd>
                       </div>
                     ))}
                   </dl>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 px-3 py-3">
-                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">创建时间</p>
-                      <p className="mt-1 text-sm font-medium text-slate-800">{formatDateTime(selectedFile.created_at)}</p>
+                    <div className="rounded-xl border border-zinc-200 px-3 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-zinc-400">创建时间</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">{formatDateTime(selectedFile.created_at)}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 px-3 py-3">
-                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">流程状态</p>
-                      <p className="mt-1 text-sm font-medium text-slate-800">{selectedFile.ingest_status || selectedFile.status}</p>
+                    <div className="rounded-xl border border-zinc-200 px-3 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-zinc-400">流程状态</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">{selectedFile.ingest_status || selectedFile.status}</p>
                     </div>
                   </div>
 
@@ -726,8 +719,8 @@ export function FilesPage() {
                   ) : null}
 
                   {selectedAssetCount > 0 ? (
-                    <div className="rounded-xl border border-slate-200 px-4 py-3">
-                      <p className="text-xs font-medium tracking-[0.12em] text-slate-400">提取资源</p>
+                    <div className="rounded-xl border border-zinc-200 px-4 py-3">
+                      <p className="text-xs font-medium tracking-[0.12em] text-zinc-400">提取资源</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {selectedFile.assets?.map((asset) => (
                           <a
@@ -735,7 +728,7 @@ export function FilesPage() {
                             href={asset.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200"
+                            className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-200"
                           >
                             {asset.name}
                           </a>
@@ -750,8 +743,8 @@ export function FilesPage() {
             <section className={cn(PAPER_CARD, "p-5")}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold tracking-[0.16em] text-slate-400">结果预览</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">解析内容预览</h2>
+                  <p className="text-xs font-semibold tracking-[0.16em] text-zinc-400">结果预览</p>
+                  <h2 className="mt-1 text-xl font-semibold text-zinc-900">解析内容预览</h2>
                 </div>
                 {selectedFile?.markdown_ready ? (
                   <Button variant="outline" size="sm" onClick={() => setPreviewFileUid(selectedFile.uid)}>
@@ -761,16 +754,16 @@ export function FilesPage() {
                 ) : null}
               </div>
 
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
                 {selectedFile?.markdown_content ? (
-                  <article className="prose prose-slate max-w-none">
+                  <article className="prose prose-zinc max-w-none">
                     <MarkdownViewer
                       content={selectedFile.markdown_content}
                       assetBaseUrl={selectedFile.asset_base_url ?? undefined}
                     />
                   </article>
                 ) : (
-                  <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                  <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-500">
                     {selectedFile
                       ? "当前文件的 Markdown 结果还没有准备好，等解析完成后这里会直接显示解析产物。"
                       : "选择文件后，这里会展示对应的 Markdown 解析内容和图片引用效果。"}
