@@ -1,4 +1,4 @@
-﻿"""User repository helpers."""
+"""User repository helpers."""
 
 from __future__ import annotations
 
@@ -135,6 +135,10 @@ def attach_device_key(
         owner.device_key = None
         owner.updated_at = utcnow()
         session.add(owner)
+        # Flush first to clear the old binding before assigning the same
+        # device_key to the new user, otherwise SQLite's per-row UNIQUE
+        # check inside executemany will fail.
+        session.flush()
 
     user.device_key = normalized_device_key
     user.updated_at = utcnow()
