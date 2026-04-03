@@ -30,8 +30,12 @@ from app.models.enums import (
     TaskStatus,
     TemplateNodeRole,
     WeaknessReason,
+    is_paper_exam_mode,
+    is_web_practice_mode,
+    normalize_exam_mode,
     validate_status_transition,
 )
+from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
@@ -51,6 +55,7 @@ __all__ = [
     "Difficulty",
     "DigestStep",
     "DocGenStep",
+    "EmailVerificationCode",
     "ErrorCauseLabel",
     "ExamMode",
     "ExamPaper",
@@ -83,5 +88,8 @@ __all__ = [
     "User",
     "UserKnowledgeState",
     "WeaknessReason",
+    "is_paper_exam_mode",
+    "is_web_practice_mode",
+    "normalize_exam_mode",
     "validate_status_transition",
 ]

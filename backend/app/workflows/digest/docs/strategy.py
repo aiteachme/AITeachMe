@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
-from app.core.config import get_settings
+from app.shared.infra.config import get_settings
 from app.workflows.digest.docs.services.cleanse_service import analyze_cleanliness
 from app.workflows.digest.docs.services.writer_service import analyze_chapter_structure
 

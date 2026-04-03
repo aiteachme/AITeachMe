@@ -10,14 +10,17 @@ import structlog
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from app.infra.llm import acompletion
-from app.infra.model_router import TaskType
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.llm import acompletion
+from app.shared.infra.model_router import TaskType
+from app.shared.infra.prompt_loader import populate_prompt
 from app.models import ErrorCauseLabel, ExamPaper, ExamPaperItem, QuestionType
 from app.repositories import exams_repo
 from app.schemas.llm import SYSTEM, USER
 from app.utils.time import utcnow
-from app.workflows.examine.context import build_grading_knowledge_context
+from app.workflows.examine.context import (
+    build_grading_knowledge_context,
+    read_knowledge_doc_text,
+)
 from app.workflows.examine.prompts import (
     SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
     SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
@@ -25,7 +28,7 @@ from app.workflows.examine.prompts import (
 
 logger = structlog.get_logger()
 
-_MAX_CONCURRENT_GRADE_LLM_CALLS = 4
+_MAX_CONCURRENT_GRADE_LLM_CALLS = 12
 
 
 def normalize_answer(text: str) -> str:
@@ -72,12 +75,19 @@ def _extract_node_ids(raw_refs: str | None) -> list[int]:
     return list(dict.fromkeys(node_ids))
 
 
-def _build_knowledge_context(session: Session, exam_paper: ExamPaper, exam_paper_item: ExamPaperItem) -> str:
+def _build_knowledge_context(
+    session: Session,
+    exam_paper: ExamPaper,
+    exam_paper_item: ExamPaperItem,
+    *,
+    knowledge_doc_text: str,
+) -> str:
     return build_grading_knowledge_context(
         session,
         subject=exam_paper.subject,
         teaching_unit_id=exam_paper_item.teaching_unit_id,
         node_ids=_extract_node_ids(exam_paper_item.node_refs_json),
+        knowledge_doc_text=knowledge_doc_text,
     )
 
 
@@ -126,7 +136,7 @@ async def _infer_error_cause_label(
     user_answer: str,
     knowledge_context: str,
     semaphore: asyncio.Semaphore | None = None,
-) -> str:
+) -> str | None:
     prompt = populate_prompt(
         SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
         stem=stem,
@@ -147,11 +157,11 @@ async def _infer_error_cause_label(
         )
         normalized = str(result).strip().lower()
         allowed = {item.value for item in ErrorCauseLabel}
-        if normalized in allowed:
+        if normalized in allowed and normalized != ErrorCauseLabel.UNKNOWN.value:
             return normalized
     except Exception as exc:  # noqa: BLE001
         logger.warning("answer_grader_error_label_llm_failed", error=str(exc))
-    return ErrorCauseLabel.UNKNOWN.value
+    return None
 
 
 @dataclass
@@ -165,7 +175,12 @@ class _ItemContext:
     error_cause_label: str | None = None
 
 
-async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
+async def grade_paper(
+    session: Session,
+    exam_paper_id: int,
+    *,
+    auto_commit: bool = True,
+) -> GradeResult:
     """Grade all items for a paper and persist grading fields."""
 
     exam_paper = session.get(ExamPaper, exam_paper_id)
@@ -208,8 +223,14 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
             )
         )
 
+    knowledge_doc_text = read_knowledge_doc_text(exam_paper.subject)
     knowledge_contexts = {
-        index: _build_knowledge_context(session, exam_paper, entry.item)
+        index: _build_knowledge_context(
+            session,
+            exam_paper,
+            entry.item,
+            knowledge_doc_text=knowledge_doc_text,
+        )
         for index, entry in enumerate(to_grade)
         if entry.question_type == QuestionType.SHORT_ANSWER.value
     }
@@ -285,15 +306,15 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
         for index, result in zip(wrong_short_answer_indices, label_results):
             if isinstance(result, Exception):
                 logger.warning("answer_grader_error_label_llm_failed", error=str(result))
-                to_grade[index].error_cause_label = ErrorCauseLabel.UNKNOWN.value
+                to_grade[index].error_cause_label = None
             else:
-                to_grade[index].error_cause_label = str(result)
+                to_grade[index].error_cause_label = str(result) if result is not None else None
 
     for entry in to_grade:
         if entry.is_correct:
             entry.error_cause_label = None
-        elif entry.error_cause_label is None:
-            entry.error_cause_label = ErrorCauseLabel.UNKNOWN.value
+        elif entry.question_type != QuestionType.SHORT_ANSWER.value:
+            entry.error_cause_label = None
 
         entry.item.is_correct = entry.is_correct
         entry.item.score_max = 1.0
@@ -329,8 +350,11 @@ async def grade_paper(session: Session, exam_paper_id: int) -> GradeResult:
     exam_paper.score_obtained = float(correct_items)
     exam_paper.updated_at = utcnow()
     session.add(exam_paper)
-    session.commit()
-    session.refresh(exam_paper)
+    if auto_commit:
+        session.commit()
+        session.refresh(exam_paper)
+    else:
+        session.flush()
 
     return GradeResult(
         exam_paper_id=exam_paper_id,

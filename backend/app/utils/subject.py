@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from secrets import choice
 
-from app.core.exceptions import InvalidSubjectError
+from app.shared.infra.exceptions import InvalidSubjectError
 
 try:
     from nanoid import generate as nanoid_generate

@@ -1,21 +1,23 @@
-"""Digest build and knowledge-doc generation service helpers."""
+﻿"""Digest build and knowledge-doc generation service helpers."""
 
 from __future__ import annotations
 
 import asyncio
 import uuid
 from datetime import datetime
+
 import structlog
 from sqlmodel import Session
 
-from app.core.exceptions import (
+from app.shared.infra.exceptions import (
     NoReadyFilesForDocGenError,
     RawFileNotFoundError,
     SubjectBuildLockConflictError,
 )
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models import IngestStatus, TaskStatus
 from app.models.raw_file import RawFile
+from app.models.subject import Subject
 from app.repositories.files_repo import (
     list_all_raw_files_by_subject,
     list_raw_files_by_ids,
@@ -25,6 +27,12 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenGetResponse,
     KnowledgeBuildStatusResponse,
+)
+from app.repositories import knowledge_repo
+from app.services.subject_embedding_service import (
+    get_subject_vector_status_by_slug,
+    inspect_subject_build_precheck,
+    resolve_subject_build_vector_status,
 )
 from app.utils.docgen_store import (
     KnowledgeBuildLock,
@@ -36,27 +44,29 @@ from app.utils.docgen_store import (
     release_knowledge_build_lock,
     update_knowledge_build_status,
 )
-from app.utils.presenters import require_id, require_uid
+from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.path_helpers import (
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
 )
-from app.utils.job_helpers import cleanup_pending_by_subject
+from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
 _UNSET = object()
+_GENERIC_BUILD_FAILURE_MESSAGE = "知识构建失败，请稍后重试。"
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
     return (
         raw_file.status == TaskStatus.COMPLETED.value
-        and raw_file.ingest_status in (
-            IngestStatus.FAST_PARSED.value,       # Phase 1 即可构建，不阻塞
-            IngestStatus.ENHANCING.value,          # Phase 2 进行中也可构建
+        and raw_file.ingest_status
+        in (
+            IngestStatus.FAST_PARSED.value,
+            IngestStatus.ENHANCING.value,
             IngestStatus.READY_FOR_DIGEST.value,
-            IngestStatus.ENHANCE_FAILED.value,     # Phase 2 失败，Phase 1 降级可用
+            IngestStatus.ENHANCE_FAILED.value,
         )
         and bool(raw_file.parsed_markdown.strip())
     )
@@ -65,6 +75,30 @@ def _markdown_ready(raw_file: RawFile) -> bool:
 def _clean_prompt(prompt: str | None) -> str | None:
     cleaned = (prompt or "").strip()
     return cleaned or None
+
+
+def _sanitize_build_error_message(error_message: str | None) -> str | None:
+    normalized = (error_message or "").strip()
+    if not normalized:
+        return None
+    if normalized == "build_cancelled":
+        return "本轮知识构建已取消。"
+    if normalized == "build_crashed":
+        return _GENERIC_BUILD_FAILURE_MESSAGE
+    if normalized == "no_ready_digest_inputs":
+        return "当前没有可用于知识构建的已解析文件。"
+    if (
+        "Dimension mismatch" in normalized
+        or "sqlite3.OperationalError" in normalized
+        or "chunk_embeddings" in normalized
+        and "embedding" in normalized
+    ):
+        return "当前学科向量配置与运行时 embedding 不一致，请重新发起构建并选择处理方式。"
+    if "[SQL:" in normalized or "parameters:" in normalized or "Traceback" in normalized:
+        return _GENERIC_BUILD_FAILURE_MESSAGE
+    if len(normalized) > 240:
+        return _GENERIC_BUILD_FAILURE_MESSAGE
+    return normalized
 
 
 def _resolve_requested_raw_files(
@@ -83,7 +117,10 @@ def _resolve_requested_raw_files(
         raise RawFileNotFoundError(missing_uids[0])
 
     order = {file_uid: index for index, file_uid in enumerate(file_uids)}
-    return sorted(requested_items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
+    return sorted(
+        requested_items,
+        key=lambda item: order[require_uid(item.uid, "RawFile.uid")],
+    )
 
 
 def _select_ready_docgen_files(
@@ -93,7 +130,11 @@ def _select_ready_docgen_files(
     file_uids: list[str] | None,
 ) -> tuple[list[RawFile], int]:
     all_files = list_all_raw_files_by_subject(session, subject)
-    ready_files = [raw_file for raw_file in all_files if raw_file.id is not None and _markdown_ready(raw_file)]
+    ready_files = [
+        raw_file
+        for raw_file in all_files
+        if raw_file.id is not None and _markdown_ready(raw_file)
+    ]
     ready_file_count = len(ready_files)
 
     if file_uids:
@@ -125,7 +166,12 @@ def _resolve_file_ids(raw_files: list[RawFile]) -> list[int]:
     return [require_id(item.id, "RawFile.id") for item in raw_files]
 
 
-def _resolve_file_uids_from_ids(session: Session, *, subject: str, file_ids: list[int]) -> list[str]:
+def _resolve_file_uids_from_ids(
+    session: Session,
+    *,
+    subject: str,
+    file_ids: list[int],
+) -> list[str]:
     if not file_ids:
         return []
 
@@ -178,7 +224,7 @@ def _write_build_status(
         "requested_at": requested_at,
         "status": status,
         "stage": stage,
-        "error_message": error_message,
+        "error_message": _sanitize_build_error_message(error_message),
     }
     if draft_available is not None:
         update_kwargs["draft_available"] = draft_available
@@ -222,7 +268,7 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
         status=effective_build.status,
         requested_at=effective_build.requested_at,
         stage=effective_build.stage,
-        error_message=effective_build.error_message,
+        error_message=_sanitize_build_error_message(effective_build.error_message),
         draft_available=bool(effective_build.draft_available),
     )
 
@@ -230,16 +276,31 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
 def trigger_docgen_build(
     session: Session,
     *,
-    subject: str,
+    subject: Subject,
     file_uids: list[str] | None,
     prompt: str | None,
+    embedding_resolution: str | None,
 ) -> tuple[DocGenBuildData, list[int]]:
     """Acquire the build lock and return accepted source info for doc generation."""
 
-    accepted_files, ready_file_count = _select_ready_docgen_files(
+    conflict = inspect_subject_build_precheck(session, subject=subject)
+    vector_status = resolve_subject_build_vector_status(
         session,
         subject=subject,
-        file_uids=file_uids,
+        embedding_resolution=embedding_resolution,
+    )
+    force_full_rebuild = bool(
+        conflict is not None
+        and conflict.requires_full_rebuild
+        and vector_status.mode != "disabled"
+    )
+    effective_file_uids = None if force_full_rebuild else file_uids
+    if force_full_rebuild:
+        knowledge_repo.clear_chunk_vector_metadata(session, subject=subject.slug)
+    accepted_files, ready_file_count = _select_ready_docgen_files(
+        session,
+        subject=subject.slug,
+        file_uids=effective_file_uids,
     )
     accepted_file_ids = _resolve_file_ids(accepted_files)
     accepted_file_uids = _resolve_file_uids(accepted_files)
@@ -251,12 +312,12 @@ def trigger_docgen_build(
         source_file_ids=accepted_file_ids,
         prompt=cleaned_prompt,
     )
-    if not acquire_knowledge_build_lock(subject, lock):
-        raise SubjectBuildLockConflictError(subject)
+    if not acquire_knowledge_build_lock(subject.slug, lock):
+        raise SubjectBuildLockConflictError(subject.slug)
 
-    clear_docgen_staging(subject)
+    clear_docgen_staging(subject.slug)
     _write_build_status(
-        subject,
+        subject.slug,
         requested_at=requested_at,
         status="accepted",
         stage="build_accepted",
@@ -269,9 +330,11 @@ def trigger_docgen_build(
     )
     logger.info(
         "knowledge_build_requested",
-        subject=subject,
+        subject=subject.slug,
         requested_at=requested_at.isoformat(),
         file_count=len(accepted_file_ids),
+        force_full_rebuild=force_full_rebuild,
+        vector_mode=vector_status.mode,
     )
 
     return (
@@ -280,6 +343,7 @@ def trigger_docgen_build(
             ready_file_count=ready_file_count,
             prompt=cleaned_prompt,
             requested_at=requested_at,
+            vector_status=vector_status,
         ),
         accepted_file_ids,
     )
@@ -469,6 +533,7 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         draft_markdown=draft_markdown,
         draft_updated_at=draft_updated_at,
         build=build_response,
+        vector_status=get_subject_vector_status_by_slug(session, subject),
     )
 
 __all__ = [

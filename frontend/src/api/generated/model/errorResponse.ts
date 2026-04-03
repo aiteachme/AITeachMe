@@ -10,13 +10,12 @@
  * 统一错误响应结构。
  */
 export interface ErrorResponse {
-  /** 业务码，0 表示成功。 */
-  code?: number;
-  /** 响应消息。 */
-  message?: string;
-  /**
-   * 业务数据。
-   * @nullable
-   */
-  data?: null;
+  /** 错误状态码。 */
+  code: number;
+  /** 错误消息。 */
+  message: string;
+  /** 稳定业务错误码。 */
+  error_code?: string | null;
+  /** 错误附带的结构化数据。 */
+  data?: unknown | null;
 }

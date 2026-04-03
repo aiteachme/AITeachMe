@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.core.exceptions import KnowledgeClearConflictError
+from app.shared.infra.exceptions import KnowledgeClearConflictError
 from app.models import (
     Curriculum,
     KnowledgeDocument,
@@ -20,7 +20,7 @@ from app.models import (
     UnitDependency,
     User,
 )
-from app.services.knowledge.curriculum_service import clear_subject_knowledge
+from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.subject_service import delete_subject_record
 
 
@@ -193,7 +193,12 @@ def test_delete_subject_record_removes_self_referential_knowledge_graphs() -> No
     _seed_subject_knowledge(session, subject_id=subject_id)
 
     with patch("app.services.subject_deletion_service._delete_subject_directory"):
-        result = delete_subject_record(session, subject_id=subject_id, force=True)
+        result = delete_subject_record(
+            session,
+            subject_id=subject_id,
+            owner_user_id="local",
+            force=True,
+        )
 
     assert result.deleted is True
     assert result.subject_id == subject_id

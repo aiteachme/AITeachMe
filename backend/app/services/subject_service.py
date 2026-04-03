@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.exceptions import SubjectInUseError, SubjectRegistryNotFoundError
+from app.shared.infra.exceptions import SubjectInUseError, SubjectRegistryNotFoundError
 from app.models import Subject
 from app.repositories.subject_repo import (
     create_subject,
@@ -11,7 +11,6 @@ from app.repositories.subject_repo import (
     list_subjects,
     update_subject,
 )
-from app.repositories.user_repo import get_or_create_user_by_username
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData, SubjectItem
 from app.services.subject_deletion_service import (
@@ -43,15 +42,14 @@ def _to_subject_item(subject: Subject) -> SubjectItem:
 def create_subject_record(
     session: Session,
     *,
+    owner_user_id: str,
     name: str,
     description: str = "",
 ) -> SubjectItem:
-    owner = get_or_create_user_by_username(session, username="local")
-    owner_id = require_id(owner.id, "User.id")
     subject = create_subject(
         session,
         Subject(
-            user_id=owner_id,
+            user_id=owner_user_id,
             slug=_create_unique_subject_id(session),
             name=name.strip() or "Untitled Subject",
             description=description.strip(),
@@ -60,25 +58,45 @@ def create_subject_record(
     return _to_subject_item(subject)
 
 
-def get_subject_record(session: Session, subject_id: str) -> Subject:
+def get_subject_record(
+    session: Session,
+    subject_id: str,
+    *,
+    owner_user_id: str,
+) -> Subject:
     normalized_subject_id = validate_subject_id(subject_id)
-    subject = get_subject_by_slug(session, normalized_subject_id)
+    subject = get_subject_by_slug(
+        session,
+        normalized_subject_id,
+        owner_user_id=owner_user_id,
+    )
     if subject is None:
         raise SubjectRegistryNotFoundError(normalized_subject_id)
     return subject
 
 
-def get_subject_detail(session: Session, subject_id: str) -> SubjectItem:
-    return _to_subject_item(get_subject_record(session, subject_id))
+def get_subject_detail(
+    session: Session,
+    subject_id: str,
+    *,
+    owner_user_id: str,
+) -> SubjectItem:
+    return _to_subject_item(get_subject_record(session, subject_id, owner_user_id=owner_user_id))
 
 
 def list_subject_records(
     session: Session,
     *,
+    owner_user_id: str,
     page: int,
     size: int,
 ) -> PaginatedData[SubjectItem]:
-    items, total = list_subjects(session, limit=size, offset=(page - 1) * size)
+    items, total = list_subjects(
+        session,
+        owner_user_id=owner_user_id,
+        limit=size,
+        offset=(page - 1) * size,
+    )
     return build_paginated_data(
         items=[_to_subject_item(item) for item in items],
         page=page,
@@ -90,11 +108,12 @@ def list_subject_records(
 def update_subject_record(
     session: Session,
     *,
+    owner_user_id: str,
     subject_id: str,
     name: str,
     description: str = "",
 ) -> SubjectItem:
-    subject = get_subject_record(session, subject_id)
+    subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     updated = update_subject(
         session,
         subject,
@@ -104,18 +123,24 @@ def update_subject_record(
     return _to_subject_item(updated)
 
 
-def preview_subject_delete(session: Session, *, subject_id: str) -> SubjectDeletePreviewData:
-    subject = get_subject_record(session, subject_id)
+def preview_subject_delete(
+    session: Session,
+    *,
+    owner_user_id: str,
+    subject_id: str,
+) -> SubjectDeletePreviewData:
+    subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     return build_subject_delete_preview(session, subject=subject)
 
 
 def delete_subject_record(
     session: Session,
     *,
+    owner_user_id: str,
     subject_id: str,
     force: bool = False,
 ) -> SubjectDeleteData:
-    subject = get_subject_record(session, subject_id)
+    subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     preview = build_subject_delete_preview(session, subject=subject)
     if preview.has_content and not force:
         raise SubjectInUseError(subject.slug)

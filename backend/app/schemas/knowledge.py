@@ -1,8 +1,9 @@
-"""Knowledge-domain API schemas."""
+﻿"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,7 +14,13 @@ class DocGenBuildRequest(BaseModel):
     """Trigger knowledge-doc generation."""
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"file_uids": ["file_xxx", "file_yyy"], "prompt": "Generate review-oriented notes"}}
+        json_schema_extra={
+            "example": {
+                "file_uids": ["file_xxx", "file_yyy"],
+                "prompt": "Generate review-oriented notes",
+                "embedding_resolution": "rebuild",
+            }
+        }
     )
 
     file_uids: list[str] | None = Field(
@@ -21,7 +28,10 @@ class DocGenBuildRequest(BaseModel):
         description="Optional parsed raw file UIDs; omitted means auto-pick all available files for the subject.",
     )
     prompt: str | None = Field(default=None, description="Optional user instruction for doc generation.")
-
+    embedding_resolution: Literal["rebuild", "disable"] | None = Field(
+        default=None,
+        description="Optional subject-level embedding resolution chosen after a precheck conflict.",
+    )
 
 class GraphNodesQueryRequest(PageParams):
     """Paginated graph node query."""
@@ -80,6 +90,27 @@ class AnchorManageRequest(BaseModel):
     order_index: int | None = Field(default=None, description="Order index.")
 
 
+class KnowledgeBuildPrecheckConflictData(BaseModel):
+    """Structured payload for one build-precheck conflict."""
+
+    reason: str = Field(description="Stable reason code for the precheck conflict.")
+    subject_model: str | None = Field(default=None, description="Subject-bound embedding model, if any.")
+    subject_dim: int | None = Field(default=None, description="Subject-bound embedding dimension, if any.")
+    runtime_model: str | None = Field(default=None, description="Current runtime embedding model, if any.")
+    runtime_dim: int | None = Field(default=None, description="Current runtime embedding dimension, if any.")
+    requires_full_rebuild: bool = Field(default=False, description="Whether restoring vector mode requires a full rebuild.")
+    vector_enabled_after_continue: bool = Field(default=False, description="Whether vector mode stays enabled after continuing without rebuild.")
+
+
+class SubjectVectorStatusResponse(BaseModel):
+    """Subject-level vector capability status shown to the UI."""
+
+    mode: str = Field(default="enabled", description="enabled / disabled")
+    notice: str | None = Field(default=None, description="User-facing vector capability notice.")
+    embedding_model: str | None = Field(default=None, description="Current subject-bound embedding model, if any.")
+    vector_table: str | None = Field(default=None, description="Current subject-scoped vector table, if any.")
+
+
 class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 
@@ -87,7 +118,10 @@ class DocGenBuildData(BaseModel):
     prompt: str | None = Field(default=None, description="User prompt for the docs build.")
     ready_file_count: int = Field(default=0, description="Current ready file count for this subject.")
     requested_at: datetime = Field(description="Build request timestamp.")
-
+    vector_status: SubjectVectorStatusResponse = Field(
+        default_factory=SubjectVectorStatusResponse,
+        description="Current subject-level vector capability status.",
+    )
 
 class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
@@ -122,7 +156,10 @@ class DocGenGetResponse(BaseModel):
     draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
     draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
     build: KnowledgeBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
-
+    vector_status: SubjectVectorStatusResponse = Field(
+        default_factory=SubjectVectorStatusResponse,
+        description="Current subject-level vector capability status.",
+    )
 
 class KnowledgeNodeResponse(BaseModel):
     """Knowledge node list item."""
@@ -384,7 +421,10 @@ class KnowledgeOverviewResponse(BaseModel):
     graph: FullGraphResponse | None = None
     units: list[TeachingUnitResponse] = Field(default_factory=list)
     stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
-
+    vector_status: SubjectVectorStatusResponse = Field(
+        default_factory=SubjectVectorStatusResponse,
+        description="Current subject-level vector capability status.",
+    )
 
 class ClearKnowledgeResponse(BaseModel):
     """Knowledge clear response."""

@@ -2,20 +2,41 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 
-from sqlmodel import Session
+from pydantic import BaseModel, Field
+from sqlmodel import Session, select
 
-from app.models import IngestStatus, KnowledgeNode, RawFile, TaskStatus, TeachingUnit
+from app.models import (
+    IngestStatus,
+    KnowledgeNode,
+    RawFile,
+    TaskStatus,
+    TeachingUnit,
+    UserKnowledgeState,
+    is_paper_exam_mode,
+    normalize_exam_mode,
+)
 from app.repositories import profile_repo
 from app.repositories.files_repo import list_raw_files_by_uids
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.utils.path_helpers import (
     build_merged_knowledge_base_build_path,
     build_merged_knowledge_base_path,
+)
+from app.workflows.profile.subject_profile import (
+    SubjectProfileSummary,
+    build_subject_profile_summary,
+    load_subject_profile_summary,
+)
+from app.workflows.profile.user_profile import (
+    UserProfileSummary,
+    build_user_profile_summary,
+    load_user_profile_summary,
 )
 
 _READY_INGEST_STATUSES = {
@@ -66,6 +87,9 @@ class ExamStyleProfile:
     preferred_question_types: list[str] = field(default_factory=list)
     question_type_bias: dict[str, float] = field(default_factory=dict)
     recommended_question_count: int | None = None
+    difficulty_focus: str | None = None
+    focus_teaching_unit_ids: list[int] = field(default_factory=list)
+    focus_node_ids: list[int] = field(default_factory=list)
     style_prompt: str | None = None
     focus_prompt: str | None = None
     user_prompt: str | None = None
@@ -81,6 +105,13 @@ class ExamStyleProfile:
             lines.append(f"- Section style: {', '.join(self.section_titles[:4])}")
         if self.preferred_question_types:
             lines.append(f"- Preferred question types: {', '.join(self.preferred_question_types)}")
+        if self.difficulty_focus:
+            lines.append(f"- Difficulty focus: {self.difficulty_focus}")
+        if self.focus_teaching_unit_ids:
+            lines.append(
+                "- Focus teaching units: "
+                + ", ".join(str(item) for item in self.focus_teaching_unit_ids[:6])
+            )
         if self.notes:
             lines.extend(f"- {note}" for note in self.notes[:6])
         if self.style_prompt:
@@ -100,11 +131,33 @@ class ExamStyleProfile:
             "preferred_question_types": list(self.preferred_question_types),
             "question_type_bias": dict(self.question_type_bias),
             "recommended_question_count": self.recommended_question_count,
+            "difficulty_focus": self.difficulty_focus,
+            "focus_teaching_unit_ids": list(self.focus_teaching_unit_ids),
+            "focus_node_ids": list(self.focus_node_ids),
             "style_prompt": self.style_prompt,
             "focus_prompt": self.focus_prompt,
             "user_prompt": self.user_prompt,
             "notes": list(self.notes),
         }
+
+
+class TemplateSelectionHints(BaseModel):
+    exam_mode: str | None = None
+    preferred_question_types: list[str] = Field(default_factory=list)
+    unit_mastery_score: float | None = None
+    weak_node_names: list[str] = Field(default_factory=list)
+    learning_objectives: list[str] = Field(default_factory=list)
+    preferred_node_id: int | None = None
+    style_profile: dict[str, object] = Field(default_factory=dict)
+    focus_prompt: str | None = None
+    user_prompt: str | None = None
+    context_signature: str | None = None
+    context_locked: bool = False
+    scope_locked: bool = False
+    focus_teaching_unit_ids: list[int] = Field(default_factory=list)
+    focus_node_ids: list[int] = Field(default_factory=list)
+    style_prompt_summary: str | None = None
+    focus_prompt_summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -215,7 +268,116 @@ def _unique_strings(values: list[str]) -> list[str]:
     return ordered
 
 
-def _read_knowledge_doc_text(subject: str) -> str:
+def _normalize_int_list(values: list[int] | None) -> list[int]:
+    if not values:
+        return []
+    ordered = sorted({int(item) for item in values if int(item) > 0})
+    return ordered
+
+
+def summarize_hint_text(text: str | None, *, max_chars: int = 120) -> str | None:
+    normalized = truncate_text(text or "", max_chars=max_chars)
+    return normalized or None
+
+
+def has_explicit_exam_context(
+    *,
+    style_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    sample_file_uids: list[str] | None = None,
+    teaching_unit_ids: list[int] | None = None,
+    theme_tree_node_id: int | None = None,
+) -> bool:
+    return any(
+        [
+            bool((style_prompt or "").strip()),
+            bool((focus_prompt or "").strip()),
+            bool(sample_file_uids),
+            bool(teaching_unit_ids),
+            theme_tree_node_id is not None,
+        ]
+    )
+
+
+def build_template_context_signature(
+    *,
+    curriculum_version_id: int | None,
+    exam_mode: str,
+    preferred_question_types: list[str] | None,
+    difficulty_focus: str | None,
+    context_locked: bool,
+    scope_locked: bool,
+    scope_unit_ids: list[int] | None = None,
+    style_prompt: str | None = None,
+    focus_prompt: str | None = None,
+    sample_file_uids: list[str] | None = None,
+) -> str:
+    payload = {
+        "curriculum_version_id": int(curriculum_version_id or 0),
+        "exam_mode": normalize_exam_mode(exam_mode),
+        "preferred_question_types": _unique_strings(preferred_question_types or []),
+        "difficulty_focus": normalize_difficulty_focus(difficulty_focus),
+        "context_locked": context_locked,
+        "scope_locked": scope_locked,
+        "scope_unit_ids": (_normalize_int_list(scope_unit_ids) if scope_locked else []),
+        "style_prompt": ((style_prompt or "").strip() if context_locked else ""),
+        "focus_prompt": ((focus_prompt or "").strip() if context_locked else ""),
+        "sample_file_uids": (list(dict.fromkeys(sample_file_uids or [])) if context_locked else []),
+    }
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def load_template_selection_hints(raw: str | None) -> TemplateSelectionHints:
+    if not raw:
+        return TemplateSelectionHints()
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return TemplateSelectionHints()
+    if not isinstance(decoded, dict):
+        return TemplateSelectionHints()
+    try:
+        return TemplateSelectionHints.model_validate(decoded)
+    except Exception:
+        return TemplateSelectionHints()
+
+
+def template_matches_request_context(
+    raw_hints: str | None,
+    *,
+    requested_context_signature: str | None,
+    context_locked: bool,
+) -> bool:
+    hints = load_template_selection_hints(raw_hints)
+    if context_locked:
+        if not requested_context_signature:
+            return False
+        return hints.context_signature == requested_context_signature
+    return not hints.context_locked
+
+
+def normalize_difficulty_focus(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    aliases = {
+        "auto": "",
+        "adaptive": "",
+        "profile": "",
+        "normal": "medium",
+        "moderate": "medium",
+        "challenging": "hard",
+    }
+    normalized = aliases.get(normalized, normalized)
+    allowed = {"easy", "medium", "hard", "mixed"}
+    return normalized if normalized in allowed else None
+
+
+def read_knowledge_doc_text(subject: str) -> str:
     for path in [
         build_merged_knowledge_base_path(subject),
         build_merged_knowledge_base_build_path(subject),
@@ -304,6 +466,79 @@ def _detect_question_count(sample_markdown: str) -> int | None:
     return count if 4 <= count <= 80 else None
 
 
+def _default_paper_exam_style_prompt() -> str:
+    return (
+        "如果没有参考样卷，也请按真实正式考试试卷的形式命题："
+        "题干表达要规范克制，整卷尽量采用按题型分段、由易到难、适合打印演练的考卷风格。"
+    )
+
+
+def _load_subject_profile_for_exam(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str | None,
+) -> SubjectProfileSummary | None:
+    summary = load_subject_profile_summary(session, subject=subject)
+    if summary is not None:
+        return summary
+    if not user_id:
+        return None
+    return build_subject_profile_summary(
+        session,
+        subject=subject,
+        user_id=user_id,
+    )
+
+
+def _load_user_profile_for_exam(
+    session: Session,
+    *,
+    user_id: str | None,
+) -> UserProfileSummary | None:
+    if not user_id:
+        return None
+    summary = load_user_profile_summary(session, user_id=user_id)
+    if summary is not None:
+        return summary
+    return build_user_profile_summary(session, user_id=user_id)
+
+
+def _merge_preferred_question_types(
+    *,
+    sample_types: list[str],
+    subject_profile: SubjectProfileSummary | None,
+    user_profile: UserProfileSummary | None,
+) -> list[str]:
+    merged = list(sample_types)
+    if subject_profile is not None:
+        merged.extend(subject_profile.recommended_question_types)
+        merged.extend(subject_profile.preferred_question_types)
+    if user_profile is not None:
+        merged.extend(user_profile.preferred_question_types)
+    return _unique_strings(merged)[:3]
+
+
+def _build_profile_notes(
+    *,
+    subject_profile: SubjectProfileSummary | None,
+    user_profile: UserProfileSummary | None,
+) -> list[str]:
+    notes: list[str] = []
+    if subject_profile is not None:
+        notes.append(
+            f"Subject profile recommends `{subject_profile.recommended_exam_mode}` mode."
+        )
+        if subject_profile.focus_teaching_unit_ids:
+            notes.append("Keep more questions on current weak teaching units.")
+        if subject_profile.focus_node_ids:
+            notes.append("Anchor explanations to current weak knowledge nodes.")
+    if user_profile is not None:
+        notes.append(f"User explanation style: {user_profile.explanation_style}.")
+        notes.append(f"User pace preference: {user_profile.pace_preference}.")
+    return notes
+
+
 def _load_sample_files(
     session: Session,
     *,
@@ -321,12 +556,15 @@ def build_exam_style_profile(
     session: Session,
     *,
     subject: str,
+    user_id: str | None = None,
     sample_file_uids: list[str] | None = None,
     style_prompt: str | None = None,
     focus_prompt: str | None = None,
     user_prompt: str | None = None,
-    exam_mode: str = "diagnostic",
+    difficulty: str | None = None,
+    exam_mode: str = "web_practice",
 ) -> ExamStyleProfile:
+    mode = normalize_exam_mode(exam_mode)
     sample_files = _load_sample_files(
         session,
         subject=subject,
@@ -338,34 +576,82 @@ def build_exam_style_profile(
         for item in ready_samples
         if (item.parsed_markdown or "").strip()
     )
+    subject_profile = _load_subject_profile_for_exam(
+        session,
+        subject=subject,
+        user_id=user_id,
+    )
+    user_profile = _load_user_profile_for_exam(session, user_id=user_id)
 
     question_type_bias = _detect_question_type_bias(sample_markdown)
-    preferred_question_types = list(question_type_bias.keys())
-    if not preferred_question_types and exam_mode == "real_exam":
+    preferred_question_types = _merge_preferred_question_types(
+        sample_types=list(question_type_bias.keys()),
+        subject_profile=subject_profile,
+        user_profile=user_profile,
+    )
+    if not preferred_question_types and is_paper_exam_mode(mode):
         preferred_question_types = ["single_choice", "fill_blank", "short_answer"]
+    normalized_style_prompt = (style_prompt or "").strip() or None
+    uses_default_paper_exam_prompt = (
+        is_paper_exam_mode(mode)
+        and not ready_samples
+        and normalized_style_prompt is None
+    )
+    if uses_default_paper_exam_prompt:
+        normalized_style_prompt = _default_paper_exam_style_prompt()
 
     notes: list[str] = []
     if ready_samples:
         notes.append(f"Sample-paper references loaded: {len(ready_samples)}")
     elif sample_file_uids:
         notes.append("Sample-paper files were provided but no parsed markdown is ready yet.")
-    if re.search(r"(A[\.、\)]|B[\.、\)]|C[\.、\)]|D[\.、\)])", sample_markdown):
+    if uses_default_paper_exam_prompt:
+        notes.append("No ready sample paper found, so the built-in formal paper style prompt is enabled.")
+    if re.search(r"(A[\.?\)]|B[\.?\)]|C[\.?\)]|D[\.?\)])", sample_markdown):
         notes.append("Choice questions should use labeled options.")
-    if exam_mode == "real_exam":
+    if is_paper_exam_mode(mode):
         notes.append("Use section-based paper organization and a formal exam tone.")
+    notes.extend(
+        _build_profile_notes(
+            subject_profile=subject_profile,
+            user_profile=user_profile,
+        )
+    )
+
+    recommended_question_count = _detect_question_count(sample_markdown)
+    if recommended_question_count is None and subject_profile is not None:
+        recommended_question_count = subject_profile.recommended_question_count
+
+    explicit_difficulty_focus = normalize_difficulty_focus(difficulty)
+    difficulty_focus = explicit_difficulty_focus
+    if difficulty_focus is None and subject_profile is not None:
+        difficulty_focus = subject_profile.difficulty_focus
+    if difficulty_focus is not None and explicit_difficulty_focus is not None:
+        notes.append(f"Explicit difficulty override: {difficulty_focus}")
 
     return ExamStyleProfile(
         source_file_uids=[item.uid for item in ready_samples if item.uid],
         title_hint=_guess_paper_title(sample_markdown),
-        format_hint="real_exam" if exam_mode == "real_exam" else "standard",
+        format_hint="paper_exam" if is_paper_exam_mode(mode) else "standard",
         section_titles=_detect_section_titles(sample_markdown),
         preferred_question_types=preferred_question_types,
         question_type_bias=question_type_bias,
-        recommended_question_count=_detect_question_count(sample_markdown),
-        style_prompt=(style_prompt or "").strip() or None,
+        recommended_question_count=recommended_question_count,
+        difficulty_focus=difficulty_focus,
+        focus_teaching_unit_ids=(
+            list(subject_profile.focus_teaching_unit_ids[:8])
+            if subject_profile is not None
+            else []
+        ),
+        focus_node_ids=(
+            list(subject_profile.focus_node_ids[:12])
+            if subject_profile is not None
+            else []
+        ),
+        style_prompt=normalized_style_prompt,
         focus_prompt=(focus_prompt or "").strip() or None,
         user_prompt=(user_prompt or "").strip() or None,
-        notes=notes,
+        notes=_unique_strings(notes),
     )
 
 
@@ -383,47 +669,156 @@ def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeNode
     return node, summary, body
 
 
-def _load_node_contexts_for_unit(
+def _load_teaching_units_by_id(
+    session: Session,
+    *,
+    unit_ids: list[int],
+) -> dict[int, TeachingUnit]:
+    unique_ids = sorted({int(unit_id) for unit_id in unit_ids if int(unit_id) > 0})
+    if not unique_ids:
+        return {}
+
+    rows = list(session.exec(select(TeachingUnit).where(TeachingUnit.id.in_(unique_ids))).all())
+    return {int(unit.id): unit for unit in rows if unit.id is not None}
+
+
+def _load_unit_memberships(
+    units: list[TeachingUnit],
+) -> dict[int, list[tuple[int, str, float]]]:
+    memberships_by_unit: dict[int, list[tuple[int, str, float]]] = {}
+    for unit in units:
+        if unit.id is None:
+            continue
+
+        memberships: list[tuple[int, str, float]] = []
+        for item in _parse_json_list(unit.member_node_refs_json):
+            if not isinstance(item, dict):
+                continue
+            raw_node_id = item.get("knowledge_node_id")
+            if not isinstance(raw_node_id, int) or raw_node_id <= 0:
+                continue
+            memberships.append(
+                (
+                    raw_node_id,
+                    str(item.get("role", "primary")),
+                    float(item.get("score", 0.0) or 0.0),
+                )
+            )
+        memberships_by_unit[int(unit.id)] = memberships
+    return memberships_by_unit
+
+
+def _load_knowledge_nodes_by_id(
+    session: Session,
+    *,
+    node_ids: list[int],
+) -> dict[int, KnowledgeNode]:
+    unique_ids = sorted({int(node_id) for node_id in node_ids if int(node_id) > 0})
+    if not unique_ids:
+        return {}
+
+    rows = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(unique_ids))).all())
+    return {int(node.id): node for node in rows if node.id is not None}
+
+
+def _load_node_content_map(
+    session: Session,
+    *,
+    node_ids: list[int],
+) -> dict[int, tuple[str, str]]:
+    content_by_id: dict[int, tuple[str, str]] = {}
+    for node_id in sorted({int(item) for item in node_ids if int(item) > 0}):
+        _, summary, body = _resolve_node_content(session, node_id)
+        content_by_id[node_id] = (summary, body)
+    return content_by_id
+
+
+def _load_unit_state_map(
     session: Session,
     *,
     user_id: str,
     subject: str,
-    unit: TeachingUnit,
-) -> list[NodeExamContext]:
-    memberships = curriculum_repo.list_memberships_by_unit(session, unit.id or 0)
-    weak_states = {
-        state.knowledge_node_id: state
-        for state in profile_repo.list_weak_knowledge_states(
-            session,
-            user_id=user_id,
-            subject=subject,
-            threshold=0.8,
-            target_kind="node",
-        )
+    unit_ids: list[int],
+) -> dict[int, UserKnowledgeState]:
+    unique_ids = sorted({int(unit_id) for unit_id in unit_ids if int(unit_id) > 0})
+    if not unique_ids:
+        return {}
+
+    rows = list(
+        session.exec(
+            select(UserKnowledgeState).where(
+                UserKnowledgeState.user_id == user_id,
+                UserKnowledgeState.subject == subject,
+                UserKnowledgeState.teaching_unit_id.in_(unique_ids),
+                UserKnowledgeState.knowledge_node_id.is_(None),
+            )
+        ).all()
+    )
+    return {
+        int(state.teaching_unit_id): state
+        for state in rows
+        if state.teaching_unit_id is not None
+    }
+
+
+def _load_node_state_map(
+    session: Session,
+    *,
+    user_id: str,
+    subject: str,
+    node_ids: list[int],
+) -> dict[int, UserKnowledgeState]:
+    unique_ids = sorted({int(node_id) for node_id in node_ids if int(node_id) > 0})
+    if not unique_ids:
+        return {}
+
+    rows = list(
+        session.exec(
+            select(UserKnowledgeState).where(
+                UserKnowledgeState.user_id == user_id,
+                UserKnowledgeState.subject == subject,
+                UserKnowledgeState.knowledge_node_id.in_(unique_ids),
+                UserKnowledgeState.teaching_unit_id.is_(None),
+            )
+        ).all()
+    )
+    return {
+        int(state.knowledge_node_id): state
+        for state in rows
         if state.knowledge_node_id is not None
     }
 
+
+def _build_node_contexts_for_unit(
+    *,
+    unit_id: int,
+    memberships_by_unit: dict[int, list[tuple[int, str, float]]],
+    node_by_id: dict[int, KnowledgeNode],
+    node_content_by_id: dict[int, tuple[str, str]],
+    node_state_by_id: dict[int, UserKnowledgeState],
+    weak_node_ids: set[int],
+) -> list[NodeExamContext]:
     contexts: list[NodeExamContext] = []
-    for membership in memberships:
-        node, summary, body = _resolve_node_content(session, membership.knowledge_node_id)
+    for node_id, role, score in memberships_by_unit.get(unit_id, []):
+        node = node_by_id.get(node_id)
         if node is None:
             continue
-        mastery_state = profile_repo.get_knowledge_state(
-            session,
-            user_id=user_id,
-            subject=subject,
-            knowledge_node_id=membership.knowledge_node_id,
+
+        mastery_state = node_state_by_id.get(node_id)
+        summary, body = node_content_by_id.get(
+            node_id,
+            (node.summary or "", node.body_markdown or node.body or ""),
         )
         contexts.append(
             NodeExamContext(
-                node_id=membership.knowledge_node_id,
+                node_id=node_id,
                 node_name=node.canonical_name,
                 summary=summary,
                 body=body,
-                role=membership.role,
-                coverage_weight=float(membership.score or 1.0),
+                role=role,
+                coverage_weight=score or 1.0,
                 mastery_score=(mastery_state.mastery_score if mastery_state is not None else None),
-                is_weak=membership.knowledge_node_id in weak_states,
+                is_weak=node_id in weak_node_ids,
             )
         )
     return contexts
@@ -442,51 +837,88 @@ def build_unit_exam_contexts(
     focus_prompt: str | None = None,
     style_profile: ExamStyleProfile | None = None,
 ) -> list[UnitExamContext]:
-    doc_text = _read_knowledge_doc_text(subject)
+    mode = normalize_exam_mode(exam_mode)
+    doc_text = read_knowledge_doc_text(subject)
     style = style_profile or build_exam_style_profile(
         session,
         subject=subject,
+        user_id=user_id,
         focus_prompt=focus_prompt,
         user_prompt=user_prompt,
-        exam_mode=exam_mode,
+        exam_mode=mode,
     )
-    recent_mistakes = profile_repo.list_recent_wrong_attempt_summaries(
-        session,
-        user_id=user_id,
-        subject=subject,
-        limit=5,
-    )
-
-    contexts: list[UnitExamContext] = []
-    for raw_unit_id in unit_ids:
-        unit = curriculum_repo.get_teaching_unit_by_id(session, int(raw_unit_id))
-        if unit is None or unit.id is None:
-            continue
-
-        node_contexts = _load_node_contexts_for_unit(
+    weak_node_ids = {
+        int(state.knowledge_node_id)
+        for state in profile_repo.list_weak_knowledge_states(
             session,
             user_id=user_id,
             subject=subject,
-            unit=unit,
+            threshold=0.8,
+            target_kind="node",
+        )
+        if state.knowledge_node_id is not None
+    }
+    units_by_id = _load_teaching_units_by_id(session, unit_ids=unit_ids)
+    ordered_units = [
+        units_by_id[int(unit_id)]
+        for unit_id in unit_ids
+        if int(unit_id) in units_by_id and units_by_id[int(unit_id)].id is not None
+    ]
+    memberships_by_unit = _load_unit_memberships(ordered_units)
+    all_node_ids = [
+        node_id
+        for memberships in memberships_by_unit.values()
+        for node_id, _, _ in memberships
+    ]
+    node_by_id = _load_knowledge_nodes_by_id(session, node_ids=all_node_ids)
+    node_content_by_id = _load_node_content_map(session, node_ids=all_node_ids)
+    unit_state_by_id = _load_unit_state_map(
+        session,
+        user_id=user_id,
+        subject=subject,
+        unit_ids=[int(unit.id) for unit in ordered_units if unit.id is not None],
+    )
+    node_state_by_id = _load_node_state_map(
+        session,
+        user_id=user_id,
+        subject=subject,
+        node_ids=all_node_ids,
+    )
+
+    contexts: list[UnitExamContext] = []
+    for unit in ordered_units:
+        if unit.id is None:
+            continue
+
+        node_contexts = _build_node_contexts_for_unit(
+            unit_id=int(unit.id),
+            memberships_by_unit=memberships_by_unit,
+            node_by_id=node_by_id,
+            node_content_by_id=node_content_by_id,
+            node_state_by_id=node_state_by_id,
+            weak_node_ids=weak_node_ids,
         )
         learning_objectives = [
             str(item).strip()
             for item in _parse_json_list(unit.learning_objectives_json)
             if str(item).strip()
         ]
-        unit_state = profile_repo.get_knowledge_state(
-            session,
-            user_id=user_id,
-            subject=subject,
-            teaching_unit_id=unit.id,
-        )
+        unit_state = unit_state_by_id.get(int(unit.id))
         search_terms = [unit.canonical_name, unit.title] + [item.node_name for item in node_contexts]
         doc_excerpt = _extract_doc_excerpt(doc_text, search_terms)
         weak_node_names = [item.node_name for item in node_contexts if item.is_weak]
+        recent_mistakes = profile_repo.list_recent_wrong_attempt_summaries(
+            session,
+            user_id=user_id,
+            subject=subject,
+            teaching_unit_id=int(unit.id),
+            knowledge_node_ids=[item.node_id for item in node_contexts],
+            limit=3,
+        )
         contexts.append(
             UnitExamContext(
                 subject=subject,
-                unit_id=unit.id,
+                unit_id=int(unit.id),
                 unit_name=unit.canonical_name,
                 unit_summary=unit.summary,
                 unit_body=unit.body_markdown,
@@ -497,7 +929,7 @@ def build_unit_exam_contexts(
                 recent_mistakes=recent_mistakes,
                 weak_node_names=weak_node_names,
                 style_profile=style,
-                exam_mode=exam_mode,
+                exam_mode=mode,
                 preferred_question_types=list(preferred_question_types or style.preferred_question_types),
                 requested_question_count=max(1, int(questions_per_unit)),
                 user_prompt=(user_prompt or "").strip() or None,
@@ -514,6 +946,7 @@ def build_grading_knowledge_context(
     teaching_unit_id: int | None = None,
     node_ids: list[int] | None = None,
     max_chars: int = 1800,
+    knowledge_doc_text: str | None = None,
 ) -> str:
     unique_node_ids = [node_id for node_id in dict.fromkeys(node_ids or []) if int(node_id) > 0]
     unit = curriculum_repo.get_teaching_unit_by_id(session, teaching_unit_id) if teaching_unit_id else None
@@ -538,7 +971,11 @@ def build_grading_knowledge_context(
     if unit is not None:
         search_terms.extend([unit.canonical_name, unit.title])
     search_terms.extend(item.node_name for item in node_contexts)
-    doc_excerpt = _extract_doc_excerpt(_read_knowledge_doc_text(subject), search_terms, max_chars=max_chars // 2)
+    doc_excerpt = _extract_doc_excerpt(
+        knowledge_doc_text if knowledge_doc_text is not None else read_knowledge_doc_text(subject),
+        search_terms,
+        max_chars=max_chars // 2,
+    )
 
     parts: list[str] = []
     if unit is not None:
@@ -566,9 +1003,17 @@ def build_grading_knowledge_context(
 __all__ = [
     "ExamStyleProfile",
     "NodeExamContext",
+    "TemplateSelectionHints",
     "UnitExamContext",
+    "build_template_context_signature",
     "build_exam_style_profile",
     "build_grading_knowledge_context",
     "build_unit_exam_contexts",
+    "has_explicit_exam_context",
+    "load_template_selection_hints",
+    "normalize_difficulty_focus",
+    "read_knowledge_doc_text",
+    "summarize_hint_text",
+    "template_matches_request_context",
     "truncate_text",
 ]

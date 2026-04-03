@@ -15,7 +15,7 @@ from app.workflows.digest.kg.services.candidate_identity import (
     token_bucket,
 )
 from app.workflows.digest.kg.services.extractor import CandidateNode
-from app.infra.embedding import aembed_texts
+from app.shared.infra.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 
 logger = structlog.get_logger()

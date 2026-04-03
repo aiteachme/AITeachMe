@@ -13,7 +13,7 @@ import time
 from pydantic import BaseModel, Field
 import structlog
 
-from app.core.exceptions import UnsupportedFileTypeError
+from app.shared.infra.exceptions import UnsupportedFileTypeError
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.asset_ocr import enhance_markdown_with_asset_ocr
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown

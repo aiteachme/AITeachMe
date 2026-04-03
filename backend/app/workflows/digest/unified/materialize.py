@@ -4,19 +4,24 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from pathlib import Path
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 import structlog
 
-from app.core.database import managed_session
-from app.infra.embedding import aembed_texts
+from app.shared.infra.database import managed_session
+from app.shared.infra.embedding import aembed_texts
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 from app.repositories import knowledge_repo
 from app.utils.path_helpers import build_knowledge_chunk_manifest_path
 from app.utils.time import utcnow
+from app.services.subject_embedding_service import (
+    get_runtime_embedding_config,
+    get_subject_record_by_slug,
+    get_subject_vector_capability,
+    should_generate_subject_embeddings,
+)
 from app.workflows.digest.shared.models import SharedInputs
 from app.workflows.digest.unified.models import MaterializedSections
 
@@ -68,6 +73,21 @@ def _write_chunk_manifest(subject: str, manifest: KnowledgeChunkManifest) -> Pat
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     return path
+
+
+def _chunk_requires_embedding(
+    chunk: RetrievalChunk,
+    *,
+    runtime_model: str | None,
+    expected_table: str | None,
+) -> bool:
+    if not chunk.vector_ref:
+        return True
+    if runtime_model and chunk.embedding_model != runtime_model:
+        return True
+    if expected_table and chunk.vector_ref != expected_table:
+        return True
+    return False
 
 
 async def materialize_shared_inputs(
@@ -131,11 +151,14 @@ async def materialize_shared_inputs(
             for uid, chunk in existing_chunk_by_uid.items()
             if uid not in desired_uids and chunk.id is not None
         ]
-        deleted_chunks = knowledge_repo.delete_chunks_by_ids(session, stale_chunk_ids)
+        deleted_chunks = knowledge_repo.delete_chunks_by_ids(
+            session,
+            subject=subject,
+            chunk_ids=stale_chunk_ids,
+        )
 
         reused_chunks: list[RetrievalChunk] = []
         new_chunk_models: list[RetrievalChunk] = []
-        new_embedding_inputs: list[str] = []
         reused_count = 0
 
         for section in desired_sections:
@@ -155,7 +178,6 @@ async def materialize_shared_inputs(
                         content=section.normalized_content,
                     )
                 )
-                new_embedding_inputs.append(f"{section.title}\n{section.normalized_content}".strip())
                 continue
 
             metadata_changed = any(
@@ -190,10 +212,59 @@ async def materialize_shared_inputs(
                 session.refresh(chunk)
 
         chunk_rows = knowledge_repo.bulk_create_chunks(session, new_chunk_models) if new_chunk_models else []
-        new_chunk_ids = [int(chunk.id) for chunk in chunk_rows if chunk.id is not None]
-        if chunk_rows and new_chunk_ids:
-            embeddings = await aembed_texts(new_embedding_inputs)
-            knowledge_repo.bulk_insert_embeddings(session, new_chunk_ids, embeddings)
+        should_embed = should_generate_subject_embeddings(session, subject_slug=subject)
+        if should_embed and (chunk_rows or reused_chunks):
+            runtime = get_runtime_embedding_config()
+            subject_record = get_subject_record_by_slug(session, subject)
+            capability = (
+                get_subject_vector_capability(session, subject_record)
+                if subject_record is not None
+                else None
+            )
+            expected_table = (
+                capability.binding.vector_table
+                if capability is not None and capability.binding is not None
+                else None
+            )
+            reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]
+            missing_embedding_rows = False
+            if expected_table and reused_chunk_ids:
+                existing_row_count = knowledge_repo.count_embeddings_for_chunk_ids(
+                    session,
+                    table_name=expected_table,
+                    chunk_ids=reused_chunk_ids,
+                )
+                missing_embedding_rows = existing_row_count < len(reused_chunk_ids)
+
+            embedding_targets: list[RetrievalChunk] = list(chunk_rows)
+            for chunk in reused_chunks:
+                if chunk.id is None:
+                    continue
+                if missing_embedding_rows or _chunk_requires_embedding(
+                    chunk,
+                    runtime_model=runtime.embedding_model,
+                    expected_table=expected_table,
+                ):
+                    embedding_targets.append(chunk)
+
+            if embedding_targets:
+                embeddings = await aembed_texts(
+                    [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets]
+                )
+                knowledge_repo.bulk_insert_embeddings(
+                    session,
+                    subject=subject,
+                    chunk_ids=[int(chunk.id) for chunk in embedding_targets if chunk.id is not None],
+                    embeddings=embeddings,
+                    embedding_model=runtime.embedding_model,
+                )
+        elif chunk_rows:
+            logger.info(
+                "canonical_chunk_embedding_skipped",
+                subject=subject,
+                reason="subject_vectors_disabled_or_unavailable",
+                chunk_count=len(chunk_rows),
+            )
 
         for document in documents:
             if document.id is None:

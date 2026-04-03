@@ -90,13 +90,105 @@
         }
       }
     },
+    "/api/v1/auth/email/send-code": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "发送注册邮箱验证码",
+        "description": "向邮箱发送 6 位验证码，用于注册前校验。",
+        "operationId": "send_email_code_api_v1_auth_email_send_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendEmailCodeData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
           "auth"
         ],
         "summary": "注册",
-        "description": "云端鉴权预留接口。",
+        "description": "基于 device_key 的匿名身份升级为邮箱账号。",
         "operationId": "register_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -119,8 +211,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -130,11 +232,31 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -148,7 +270,7 @@
           "auth"
         ],
         "summary": "登录",
-        "description": "云端鉴权预留接口。",
+        "description": "邮箱密码登录，并绑定当前 device_key。",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -171,8 +293,18 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -182,11 +314,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -200,7 +342,7 @@
           "auth"
         ],
         "summary": "登出",
-        "description": "云端鉴权预留接口。",
+        "description": "清除登录态后回到 device_key 匿名身份。",
         "operationId": "logout_api_v1_auth_logout_post",
         "requestBody": {
           "content": {
@@ -223,8 +365,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "422": {
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
@@ -233,12 +375,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "500": {
+            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -252,7 +394,7 @@
           "auth"
         ],
         "summary": "当前用户",
-        "description": "云端鉴权预留接口。",
+        "description": "读取当前 token/device_key 对应的用户会话信息。",
         "operationId": "user_api_v1_auth_user_post",
         "requestBody": {
           "content": {
@@ -275,8 +417,8 @@
               }
             }
           },
-          "503": {
-            "description": "依赖服务当前不可用。",
+          "401": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,11 +428,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -544,6 +696,77 @@
           },
           "409": {
             "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/update": {
+      "post": {
+        "tags": [
+          "subjects"
+        ],
+        "summary": "更新学科",
+        "operationId": "update_subject_api_api_v1_subjects_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SubjectItem_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3200,6 +3423,331 @@
           }
         }
       }
+    },
+    "/api/v1/subjects/{subject}/export/preview": {
+      "post": {
+        "tags": [
+          "export-import"
+        ],
+        "summary": "导出预览",
+        "description": "获取学科导出内容摘要。",
+        "operationId": "export_preview_api_api_v1_subjects__subject__export_preview_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExportPreviewData_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/export": {
+      "post": {
+        "tags": [
+          "export-import"
+        ],
+        "summary": "导出学科",
+        "description": "将学科全部产物打包为 .atmx 文件下载。",
+        "operationId": "export_subject_api_api_v1_subjects__subject__export_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportOptions",
+                "default": {
+                  "include_raw_files": true,
+                  "include_chat_history": true,
+                  "include_exam_history": true,
+                  "include_profile": true
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/import": {
+      "post": {
+        "tags": [
+          "export-import"
+        ],
+        "summary": "导入学科（上传）",
+        "description": "从上传的 .atmx 文件导入学科。",
+        "operationId": "import_subject_api_api_v1_subjects_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_subject_api_api_v1_subjects_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ImportResultData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses": {
+      "get": {
+        "tags": [
+          "export-import"
+        ],
+        "summary": "列出可导入课程",
+        "description": "列出共享课程目录中的 .atmx 文件。",
+        "operationId": "list_courses_api_api_v1_courses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_CoursePackageItem__"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{filename}/import": {
+      "post": {
+        "tags": [
+          "export-import"
+        ],
+        "summary": "从课程目录导入",
+        "description": "从共享课程目录导入指定 .atmx 文件。",
+        "operationId": "import_course_api_api_v1_courses__filename__import_post",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_course_api_api_v1_courses__filename__import_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ImportResultData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3726,6 +4274,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ExportPreviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportPreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExportPreviewData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_FileDeleteData_": {
         "properties": {
           "code": {
@@ -3856,6 +4438,40 @@
         },
         "type": "object",
         "title": "ApiResponse[HealthData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ImportResultData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportResultData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ImportResultData]",
         "example": {
           "code": 0,
           "data": {},
@@ -4236,6 +4852,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_SendEmailCodeData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendEmailCodeData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[SendEmailCodeData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_StudyPlanResponse_": {
         "properties": {
           "code": {
@@ -4406,6 +5056,44 @@
           "message": "ok"
         }
       },
+      "ApiResponse_list_CoursePackageItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CoursePackageItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[CoursePackageItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_list_QuestionBankItemResponse__": {
         "properties": {
           "code": {
@@ -4569,6 +5257,50 @@
         ],
         "title": "AuthSessionData",
         "description": "鉴权会话数据。"
+      },
+      "Body_import_course_api_api_v1_courses__filename__import_post": {
+        "properties": {
+          "new_subject_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Subject Name"
+          }
+        },
+        "type": "object",
+        "title": "Body_import_course_api_api_v1_courses__filename__import_post"
+      },
+      "Body_import_subject_api_api_v1_subjects_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "上传 .atmx 导出包。"
+          },
+          "new_subject_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Subject Name",
+            "description": "自定义导入学科名。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_subject_api_api_v1_subjects_import_post"
       },
       "Body_upload_files_api_v1_subjects__subject__files_upload_post": {
         "properties": {
@@ -5221,6 +5953,57 @@
         "title": "ClearKnowledgeResponse",
         "description": "Knowledge clear response."
       },
+      "CoursePackageItem": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "文件名。"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name",
+            "description": "学科名称（从 manifest 读取）。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "学科描述。",
+            "default": ""
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "title": "File Size Bytes",
+            "default": 0
+          },
+          "exported_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exported At"
+          },
+          "stats": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "subject_name"
+        ],
+        "title": "CoursePackageItem",
+        "description": "共享课程目录中的一个 .atmx 文件。"
+      },
       "CurriculumSnapshotResponse": {
         "properties": {
           "id": {
@@ -5322,6 +6105,10 @@
             "format": "date-time",
             "title": "Requested At",
             "description": "Build request timestamp."
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -5359,12 +6146,29 @@
             ],
             "title": "Prompt",
             "description": "Optional user instruction for doc generation."
+          },
+          "embedding_resolution": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rebuild",
+                  "disable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Resolution",
+            "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
           }
         },
         "type": "object",
         "title": "DocGenBuildRequest",
         "description": "Trigger knowledge-doc generation.",
         "example": {
+          "embedding_resolution": "rebuild",
           "file_uids": [
             "file_xxx",
             "file_yyy"
@@ -5447,6 +6251,10 @@
               }
             ],
             "description": "Current or most recent build metadata."
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -5461,26 +6269,46 @@
           "code": {
             "type": "integer",
             "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
+            "description": "错误状态码。"
           },
           "message": {
             "type": "string",
             "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
+            "description": "错误消息。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定业务错误码。"
           },
           "data": {
-            "type": "null",
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
             "title": "Data",
-            "description": "业务数据。"
+            "description": "错误附带的结构化数据。"
           }
         },
         "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
         "title": "ErrorResponse",
         "description": "统一错误响应结构。",
         "example": {
           "code": 404,
+          "error_code": "RESOURCE_NOT_FOUND",
           "message": "资源不存在"
         }
       },
@@ -5533,7 +6361,19 @@
           "exam_mode": {
             "type": "string",
             "title": "Exam Mode",
-            "description": "Exam mode."
+            "description": "Exam mode: web_practice | paper_exam (legacy values are compatible)."
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty",
+            "description": "Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty."
           },
           "user_prompt": {
             "anyOf": [
@@ -6243,6 +7083,122 @@
         "title": "ExamSubmitRequest",
         "description": "Submit exam answers request."
       },
+      "ExportOptions": {
+        "properties": {
+          "include_raw_files": {
+            "type": "boolean",
+            "title": "Include Raw Files",
+            "description": "是否包含原始上传文件。",
+            "default": true
+          },
+          "include_chat_history": {
+            "type": "boolean",
+            "title": "Include Chat History",
+            "description": "是否包含对话记录。",
+            "default": true
+          },
+          "include_exam_history": {
+            "type": "boolean",
+            "title": "Include Exam History",
+            "description": "是否包含题库与考试记录。",
+            "default": true
+          },
+          "include_profile": {
+            "type": "boolean",
+            "title": "Include Profile",
+            "description": "是否包含学习画像。",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ExportOptions",
+        "description": "导出选项（请求体）。"
+      },
+      "ExportPreviewData": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ExportPreviewStats"
+          },
+          "estimated_size_bytes": {
+            "type": "integer",
+            "title": "Estimated Size Bytes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "subject_name",
+          "stats"
+        ],
+        "title": "ExportPreviewData",
+        "description": "导出预览响应。"
+      },
+      "ExportPreviewStats": {
+        "properties": {
+          "raw_file_count": {
+            "type": "integer",
+            "title": "Raw File Count",
+            "default": 0
+          },
+          "total_raw_file_size_bytes": {
+            "type": "integer",
+            "title": "Total Raw File Size Bytes",
+            "default": 0
+          },
+          "knowledge_document_count": {
+            "type": "integer",
+            "title": "Knowledge Document Count",
+            "default": 0
+          },
+          "knowledge_node_count": {
+            "type": "integer",
+            "title": "Knowledge Node Count",
+            "default": 0
+          },
+          "knowledge_edge_count": {
+            "type": "integer",
+            "title": "Knowledge Edge Count",
+            "default": 0
+          },
+          "teaching_unit_count": {
+            "type": "integer",
+            "title": "Teaching Unit Count",
+            "default": 0
+          },
+          "question_template_count": {
+            "type": "integer",
+            "title": "Question Template Count",
+            "default": 0
+          },
+          "exam_paper_count": {
+            "type": "integer",
+            "title": "Exam Paper Count",
+            "default": 0
+          },
+          "chat_session_count": {
+            "type": "integer",
+            "title": "Chat Session Count",
+            "default": 0
+          },
+          "user_knowledge_state_count": {
+            "type": "integer",
+            "title": "User Knowledge State Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ExportPreviewStats",
+        "description": "导出预览统计。"
+      },
       "FileAssetItem": {
         "properties": {
           "name": {
@@ -6781,6 +7737,41 @@
         "title": "HealthData",
         "description": "健康检查数据。"
       },
+      "ImportResultData": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id",
+            "description": "导入后的学科外部标识。"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name",
+            "description": "导入后的学科名称。"
+          },
+          "imported_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Imported Counts"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "subject_name"
+        ],
+        "title": "ImportResultData",
+        "description": "导入结果响应。"
+      },
       "IncidentEdgeItem": {
         "properties": {
           "id": {
@@ -7158,6 +8149,10 @@
           },
           "stats": {
             "$ref": "#/components/schemas/KnowledgeOverviewStats"
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
+            "description": "Current subject-level vector capability status."
           }
         },
         "type": "object",
@@ -7264,6 +8259,26 @@
             },
             "type": "array",
             "title": "Node States"
+          },
+          "subject_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectProfileSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7745,18 +8760,27 @@
             "minLength": 6,
             "title": "Password",
             "description": "密码。"
+          },
+          "verification_code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 4,
+            "title": "Verification Code",
+            "description": "邮箱验证码。"
           }
         },
         "type": "object",
         "required": [
           "email",
-          "password"
+          "password",
+          "verification_code"
         ],
         "title": "RegisterRequest",
         "description": "注册请求。",
         "example": {
           "email": "user@example.com",
-          "password": "change-me"
+          "password": "change-me",
+          "verification_code": "123456"
         }
       },
       "ReviewTaskResponse": {
@@ -7897,6 +8921,24 @@
             "type": "boolean",
             "title": "Is Local",
             "description": "是否为本地模式用户。"
+          },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Key",
+            "description": "设备标识。"
+          },
+          "is_authenticated": {
+            "type": "boolean",
+            "title": "Is Authenticated",
+            "description": "是否已完成账号登录。",
+            "default": false
           }
         },
         "type": "object",
@@ -7906,6 +8948,47 @@
         ],
         "title": "RuntimeUser",
         "description": "当前运行时用户。"
+      },
+      "SendEmailCodeData": {
+        "properties": {
+          "expires_in_s": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expires In S",
+            "description": "验证码有效期（秒）。"
+          },
+          "resend_after_s": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Resend After S",
+            "description": "允许再次发送的最短间隔（秒）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expires_in_s",
+          "resend_after_s"
+        ],
+        "title": "SendEmailCodeData",
+        "description": "发送邮箱验证码响应数据。"
+      },
+      "SendEmailCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "目标邮箱。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "SendEmailCodeRequest",
+        "description": "发送邮箱验证码请求。",
+        "example": {
+          "email": "user@example.com"
+        }
       },
       "StudyPlanItemResponse": {
         "properties": {
@@ -8346,6 +9429,213 @@
           "page": 1,
           "size": 20
         }
+      },
+      "SubjectProfileSummary": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "avg_unit_mastery": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Unit Mastery"
+          },
+          "avg_node_mastery": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Node Mastery"
+          },
+          "weak_unit_count": {
+            "type": "integer",
+            "title": "Weak Unit Count",
+            "default": 0
+          },
+          "weak_node_count": {
+            "type": "integer",
+            "title": "Weak Node Count",
+            "default": 0
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count",
+            "default": 0
+          },
+          "due_review_count": {
+            "type": "integer",
+            "title": "Due Review Count",
+            "default": 0
+          },
+          "preferred_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Question Types"
+          },
+          "recommended_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Question Types"
+          },
+          "recommended_exam_mode": {
+            "type": "string",
+            "title": "Recommended Exam Mode",
+            "default": "web_practice"
+          },
+          "recommended_question_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Question Count"
+          },
+          "difficulty_focus": {
+            "type": "string",
+            "title": "Difficulty Focus",
+            "default": "medium"
+          },
+          "focus_teaching_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Focus Teaching Unit Ids"
+          },
+          "focus_node_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Focus Node Ids"
+          },
+          "question_type_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Question Type Accuracy"
+          },
+          "difficulty_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Difficulty Accuracy"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "generated_at"
+        ],
+        "title": "SubjectProfileSummary"
+      },
+      "SubjectUpdateRequest": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id",
+            "description": "学科外部标识。"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name",
+            "description": "展示名称。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "学科描述。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "name"
+        ],
+        "title": "SubjectUpdateRequest"
+      },
+      "SubjectVectorStatusResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "enabled / disabled",
+            "default": "enabled"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "User-facing vector capability notice."
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model",
+            "description": "Current subject-bound embedding model, if any."
+          },
+          "vector_table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Table",
+            "description": "Current subject-scoped vector table, if any."
+          }
+        },
+        "type": "object",
+        "title": "SubjectVectorStatusResponse",
+        "description": "Subject-level vector capability status shown to the UI."
       },
       "TaskStatusValue": {
         "type": "string",
@@ -8828,6 +10118,95 @@
         ],
         "title": "UnitRevisionItem",
         "description": "Current revision for a teaching unit."
+      },
+      "UserProfileSummary": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "active_subject_count": {
+            "type": "integer",
+            "title": "Active Subject Count",
+            "default": 0
+          },
+          "active_subject_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Subject Ids"
+          },
+          "recent_subject_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recent Subject Ids"
+          },
+          "preferred_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Question Types"
+          },
+          "preferred_exam_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Exam Modes"
+          },
+          "dominant_exam_mode": {
+            "type": "string",
+            "title": "Dominant Exam Mode",
+            "default": "web_practice"
+          },
+          "explanation_style": {
+            "type": "string",
+            "title": "Explanation Style",
+            "default": "balanced"
+          },
+          "pace_preference": {
+            "type": "string",
+            "title": "Pace Preference",
+            "default": "steady"
+          },
+          "consistency_level": {
+            "type": "string",
+            "title": "Consistency Level",
+            "default": "building"
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count",
+            "default": 0
+          },
+          "due_review_count": {
+            "type": "integer",
+            "title": "Due Review Count",
+            "default": 0
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "generated_at"
+        ],
+        "title": "UserProfileSummary"
       },
       "ValidationError": {
         "properties": {

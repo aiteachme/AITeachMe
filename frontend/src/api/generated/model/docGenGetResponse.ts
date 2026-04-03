@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { KnowledgeBuildStatusResponse } from './knowledgeBuildStatusResponse';
+import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse';
 
 /**
  * Knowledge docs get response.
@@ -27,4 +28,6 @@ export interface DocGenGetResponse {
   draft_updated_at?: string | null;
   /** Current or most recent build metadata. */
   build?: KnowledgeBuildStatusResponse | null;
+  /** Current subject-level vector capability status. */
+  vector_status?: SubjectVectorStatusResponse;
 }

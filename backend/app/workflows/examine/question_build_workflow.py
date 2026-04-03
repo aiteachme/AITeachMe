@@ -15,8 +15,8 @@ import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
-from app.core.database import managed_session
-from app.infra.tracing import llm_trace_scope
+from app.shared.infra.database import managed_session
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.workflows.examine.question_builder import build_question_templates
@@ -128,11 +128,17 @@ async def generate_templates_node(
                     user_id=state.get("user_id", "local"),
                     unit_ids=unit_ids,
                     questions_per_unit=questions_per_unit,
-                    exam_mode=state.get("exam_mode", "diagnostic"),
+                    exam_mode=state.get("exam_mode", "web_practice"),
                     preferred_question_types=list(state.get("preferred_question_types", [])),
                     user_prompt=state.get("user_prompt"),
                     focus_prompt=state.get("focus_prompt"),
                     style_profile=state.get("style_profile"),
+                    curriculum_version_id=state.get("curriculum_version_id"),
+                    template_context_signature=state.get("template_context_signature"),
+                    context_locked=bool(state.get("context_locked")),
+                    scope_locked=bool(state.get("scope_locked")),
+                    focus_teaching_unit_ids=list(state.get("focus_teaching_unit_ids", [])),
+                    focus_node_ids=list(state.get("focus_node_ids", [])),
                 )
             created_template_ids = [item.id for item in templates if item.id is not None]
             if not templates:
@@ -252,11 +258,17 @@ async def run_question_build_workflow(
     unit_ids: list[int],
     questions_per_unit: int,
     job_id: int,
-    exam_mode: str = "diagnostic",
+    exam_mode: str = "web_practice",
     preferred_question_types: list[str] | None = None,
     user_prompt: str | None = None,
     focus_prompt: str | None = None,
     style_profile=None,
+    curriculum_version_id: int | None = None,
+    template_context_signature: str | None = None,
+    context_locked: bool = False,
+    scope_locked: bool = False,
+    focus_teaching_unit_ids: list[int] | None = None,
+    focus_node_ids: list[int] | None = None,
     session: Session | None = None,
 ) -> QuestionBuildState:
     graph = build_question_build_graph(session=session)
@@ -272,6 +284,12 @@ async def run_question_build_workflow(
         "user_prompt": user_prompt,
         "focus_prompt": focus_prompt,
         "style_profile": style_profile,
+        "curriculum_version_id": curriculum_version_id,
+        "template_context_signature": template_context_signature,
+        "context_locked": context_locked,
+        "scope_locked": scope_locked,
+        "focus_teaching_unit_ids": list(focus_teaching_unit_ids or []),
+        "focus_node_ids": list(focus_node_ids or []),
         "templates_created": 0,
         "warnings": [],
         "error": None,
@@ -296,11 +314,17 @@ class QuestionBuildWorkflow:
         unit_ids: list[int],
         questions_per_unit: int,
         job_id: int,
-        exam_mode: str = "diagnostic",
+        exam_mode: str = "web_practice",
         preferred_question_types: list[str] | None = None,
         user_prompt: str | None = None,
         focus_prompt: str | None = None,
         style_profile=None,
+        curriculum_version_id: int | None = None,
+        template_context_signature: str | None = None,
+        context_locked: bool = False,
+        scope_locked: bool = False,
+        focus_teaching_unit_ids: list[int] | None = None,
+        focus_node_ids: list[int] | None = None,
         session: Session | None = None,
     ) -> QuestionBuildState:
         return await run_question_build_workflow(
@@ -314,5 +338,11 @@ class QuestionBuildWorkflow:
             user_prompt=user_prompt,
             focus_prompt=focus_prompt,
             style_profile=style_profile,
+            curriculum_version_id=curriculum_version_id,
+            template_context_signature=template_context_signature,
+            context_locked=context_locked,
+            scope_locked=scope_locked,
+            focus_teaching_unit_ids=focus_teaching_unit_ids,
+            focus_node_ids=focus_node_ids,
             session=session,
         )

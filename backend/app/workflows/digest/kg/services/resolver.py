@@ -9,9 +9,9 @@ import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session
 
-from app.infra.embedding import aembed_texts
-from app.infra.llm import acompletion_structured
-from app.infra.prompt_loader import populate_prompt
+from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.prompt_loader import populate_prompt
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER

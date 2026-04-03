@@ -1,223 +1,280 @@
-TODO 加个学习人格！mbti
-TODO 当然除了加点花哨的内容，还是要有具体有用的内容？比如profile里会有好几个字段，然后学习状态表会有对知识点的理解的介绍，然后要有本地存的文件类似USER.md这种
+﻿# 08. Profile 引擎
 
-TODO 这里结合上记忆曲线？具体记忆曲线也展示一下什么的
-TODO 还能结合上什么？结合上BKT？一些数学理论啥的？
+## 1. 文档定位
 
+Profile 负责把学习过程沉淀成可被其他引擎直接消费的状态层。
 
-# 08. Profile 引擎
+它当前回答三类问题：
 
-## 1. 目标与职责
+- 这个用户在这门课里哪些地方已经掌握、哪些地方薄弱
+- 这门课当前更适合用什么方式继续练、继续测
+- 这个用户跨学科更稳定的学习偏好是什么
 
-Profile 负责把学习过程沉淀成可持续利用的画像和学习状态。它不只是分析页，而是整套教学系统的状态层，主要回答：
-
-- 这个用户整体是什么样的学习者
-- 这个用户在当前学科下是什么状态
-- 用户现在会什么、不会什么
-- 哪些薄弱点会影响后续学习顺序
-- 哪些状态应该送回 Interact、Digest 和 Examine
+本篇只描述当前代码已经落地的实现，不再把目标态和现状混写。
 
 ---
 
-## 2. 当前实现落点
+## 2. 当前已落地范围
 
-当前 Profile 的对外资源组已经收口到 `profile`，目标主线是 workflow-backed 的三层 profile 体系。
+### 2.1 已经真正闭环的主线
 
-### 2.1 当前正式路径
+当前已经跑通的 Profile 主线是：
 
+1. 判卷完成，回写 `exam_paper` / `exam_paper_item`
+2. `workflows/profile/mastery_updater.py` 基于答题结果更新 `user_knowledge_state`
+3. `workflows/profile/review_scheduler.py` 基于掌握度和复习状态安排复习任务
+4. 同一轮判卷事务里刷新 `subject.profile_json`
+5. 同一轮判卷事务里刷新 `user.profile_json`
+6. `/api/v1/subjects/{subject}/profile/mastery` 返回细粒度状态 + 学科级画像 + 用户级画像
 
-TODO 这里文档层面是不是还有好多要重构的。。。。
+也就是说，当前 Profile 已经不是只剩 `user_knowledge_state` 一层，而是先用 `user_knowledge_state` 做真相源，再向上聚合出 subject-level 和 user-level 摘要层。
+
+### 2.2 当前正式入口
 
 - 前端页面：`frontend/src/pages/ProfilePage.tsx`
 - 后端资源组：`profile`
+- API：
+  - `GET /api/v1/subjects/{subject}/profile/mastery`
+  - `GET /api/v1/subjects/{subject}/profile/mastery/unit/{teaching_unit_id}`
+  - `GET /api/v1/subjects/{subject}/profile/mastery/node/{knowledge_node_id}`
+  - `GET /api/v1/subjects/{subject}/profile/review/tasks`
+  - `POST /api/v1/subjects/{subject}/profile/review/tasks/{task_id}/complete`
 - 业务入口：`backend/app/services/profile_service.py`
-- 工作流编排：`backend/app/workflows/profile/*`
-- 关键模型：
-  - `user.profile_json`
-  - `subject.profile_json`
-  - `user_knowledge_state`
-  - `exam_paper`
-  - `exam_paper_item`
+- 工作流：`backend/app/workflows/profile/*`
 
-补充说明：
-
-- 旧 `user_profile / mistake` 不是主设计
-- `assessment` 不再是正式资源组名称
-- 当前代码已重点落到 `user_knowledge_state`
-- 用户级和学科级 profile JSON 是这轮文档明确补齐的目标层
+当前没有额外新增 `profile/summary` 之类的接口，摘要层继续并入现有 `mastery` 读模型返回，保持 API 面简单。
 
 ---
 
-## 3. 当前主 Pipeline
+## 3. 三层 Profile 结构
 
-| 步骤 | 当前主模块 | 输入 | 输出 |
-| --- | --- | --- | --- |
-| 1. 判卷完成 | `workflows/examine/exam_grade_workflow.py` | 已判卷试卷 | 进入状态回流 |
-| 2. 掌握度更新 | `workflows/profile/mastery_updater.py` | `exam_paper_item` | `user_knowledge_state` |
-| 3. 学科级画像聚合 | `profile_service / 后续 profile 聚合模块` | 学习状态、答题快照、学科上下文 | `subject.profile_json` |
-| 4. 用户级画像归并 | `profile_service` 或后续 workflow | 学科画像、长期偏好、显式设置 | `user.profile_json` |
-| 5. profile 查询 | `profile_service` | `subject`、用户 | mastery overview、subject profile、user profile |
+### 3.1 L1 用户级画像：`user.profile_json`
 
----
+这是跨学科的轻量画像摘要，当前用于表达更稳定的学习偏好，不承载细粒度知识状态。
 
-## 4. 核心设计原则
+当前实现中主要包括：
 
-### 4.1 Profile 是状态层，不是报表层
+- `preferred_question_types`
+- `preferred_exam_modes`
+- `dominant_exam_mode`
+- `explanation_style`
+- `pace_preference`
+- `consistency_level`
+- `pending_review_count`
+- `due_review_count`
+- `notes`
 
-Profile 的核心价值不在于“画了几张图”，而在于它能否被其他引擎直接消费。
+这层当前是自动聚合摘要，不是完整的“用户设置中心”。
 
-### 4.2 Profile 不是一张表，而是三层结构
+运行时补充（2026-04）：
 
-目标态的 Profile 应分三层：
+- 用户级 profile 之外，系统还会维护一份 `backend/data/users/<user_id>/LEARNER.md`
+- `LEARNER.md` 不作为数据库主表，而是作为人类可读、可手工编辑的运行时画像补充
+- 当前对话上下文会自动把 `LEARNER.md` 一起注入，不再只依赖 memory store 聚合出的 `UserProfile`
 
-- 用户级长期画像：`user.profile_json`
-- 学科级学习画像：`subject.profile_json`
-- 细粒度学习状态：`user_knowledge_state`
+模式语义补充（2026-04）：
 
-这三层分别回答：
+- 用户级画像里的考试形态已归一到两类：`web_practice`（测验）和 `paper_exam`（考试卷）
+- 历史值 `diagnostic/practice/weakpoint_boost/review/mock_final/real_exam` 在聚合时会自动归一，不再作为目标态推荐值
 
-- 这个人整体是什么样的学习者
-- 他在这门学科里当前应该怎么教、怎么考
-- 他在具体知识点和教学单元上到底掌握到什么程度
+### 3.2 L2 学科级画像：`subject.profile_json`
 
+这是 owner-scoped 的 `user + subject` 学科画像摘要，用来表达“这门课下一步更适合怎么练、怎么考”。
 
-TODO 上面这几点正是我想说的
+当前实现中主要包括：
 
-### 4.3 状态要尽量锚定稳定对象
+- `avg_unit_mastery`
+- `avg_node_mastery`
+- `weak_unit_count`
+- `weak_node_count`
+- `pending_review_count`
+- `due_review_count`
+- `preferred_question_types`
+- `recommended_question_types`
+- `recommended_exam_mode`
+- `recommended_question_count`
+- `difficulty_focus`
+- `focus_teaching_unit_ids`
+- `focus_node_ids`
+- `question_type_accuracy`
+- `difficulty_accuracy`
+- `notes`
 
-新链路优先锚定：
+模式语义补充（2026-04）：
+
+- `recommended_exam_mode` 目标态只输出 `web_practice` 或 `paper_exam`
+- 当掌握度较稳、薄弱点较少时会更倾向推荐 `paper_exam`；否则优先推荐 `web_practice`
+
+### 3.3 L3 细粒度状态：`user_knowledge_state`
+
+这是当前最底层、也最稳定的真相源，直接绑定：
 
 - `teaching_unit_id`
 - `knowledge_node_id`
-- `curriculum`
 
-这比只依赖 `knowledge_point` 字符串更稳定。
+并保存：
 
-### 4.4 学科级画像要服务生成，不只是展示
+- `mastery_score`
+- `confidence_score`
+- `stability_score`
+- `forgetting_due_at`
+- `review_*` 复习调度字段
+- `stats_json` 行为统计摘要
 
-`subject.profile_json` 不应该只是分析页的一段说明，它至少要能给：
-
-- `Digest`：教学模式、压缩偏好、讲解风格
-- `Interact`：讲解策略、举例密度、对话语气
-- `Examine`：题型偏好、难度权重、考试目标
-
-### 4.5 学习状态应该同时有强度、时间性和复习性
-
-当前新链路已经开始把状态拆成：
-
-- 掌握度
-- 置信度
-- 稳定性
-- 遗忘到期时间
-- 待复习状态
-
-这比旧的单一正确率画像更适合教学闭环。
-
-### 4.6 状态必须接回其他引擎
-
-Profile 的输出至少要能回到：
-
-- Interact：弱项、复习上下文、错题复盘
-- Digest：难点密度、压缩偏好、教材风格偏好
-- Examine：组卷优先级、薄弱点命中、复习驱动的测评
+当前所有上层画像都以这层状态和最近答题快照为基础聚合出来。
 
 ---
 
-## 5. 数据库写入对象
+## 4. 当前主 Pipeline
 
-直接写入：
-
-- `user.profile_json`
-- `subject.profile_json`
-- `user_knowledge_state`
-
-并消费：
-
-- `exam_paper`
-- `exam_paper_item`
-- `curriculum`
-
-说明：
-
-- 复习调度字段并回 `user_knowledge_state`
-- 行为回放由 `exam_paper_item` 承载，不再额外拆 `user_answer_attempt`
-
----
-
-## 6. 本地落盘对象
-
-当前 Profile 以数据库为主，没有强依赖的正式本地业务文件。
-
-如需补调试摘要，统一写入：
-
-- `data/<subject>/debug/profile.mastery/<run_or_job_id>/`
-- `data/<subject>/debug/profile.subject/<run_or_job_id>/`
-- `data/<subject>/debug/profile.user/<run_or_job_id>/`
-- `data/<subject>/debug/profile.weakness/<run_or_job_id>/`
-
-建议只保存：
-
-- 状态聚合摘要
-- 薄弱排序结果
-- 学科画像变更摘要
-- 用户画像变更摘要
-
----
-
-## 7. 关键状态推进
-
-新的 profile 对象包括：
-
-- `user.profile_json`
-  - 跨学科偏好
-  - 长期 memory
-  - 交互风格
-  - 可选 MBTI / 学习风格标签
-- `subject.profile_json`
-  - 学科目标
-  - 题型偏好
-  - 当前弱项摘要
-  - digest / interact / examine 共用先验
-- `user_knowledge_state`
-  - mastery score
-  - confidence score
-  - stability score
-  - repetition count
-  - forgetting due
-
-这让“画像”从静态概览变成了可以驱动复习和出题的可执行状态层。
-
----
-
-## 8. 节点到表责任
-
-| 模块 | 读 DB | 写 DB | 写 FS |
+| 步骤 | 当前主模块 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| `mastery_updater.py` | `exam_paper`、`exam_paper_item`、已有 `user_knowledge_state` | `user_knowledge_state` | 无 |
-| `profile_service / 后续 profile 聚合模块` | `user_knowledge_state`、`exam_paper_item`、`subject` | `subject.profile_json` | 无 |
-| `weakness_analyzer.py` | `user_knowledge_state`、`exam_paper_item`、`curriculum`、课程结构对象 | 无 | 无 |
-| `profile_service` | `user`、`subject`、`user_knowledge_state`、`exam_paper_item` | `user.profile_json`（显式设置场景） | 无 |
+| 1. 判卷完成 | `workflows/examine/answer_grader.py` | `exam_paper_item.answer_content` + 知识上下文 | `exam_paper_item.is_correct / feedback / error_cause` |
+| 2. 掌握度更新 | `workflows/profile/mastery_updater.py` | 判卷后的 `exam_paper_item` | `user_knowledge_state` |
+| 3. 复习调度 | `workflows/profile/review_scheduler.py` | 更新后的 state | pending review 状态 |
+| 4. 学科画像聚合 | `workflows/profile/subject_profile.py` | state + 最近答题快照 | `subject.profile_json` |
+| 5. 用户画像聚合 | `workflows/profile/user_profile.py` | 各学科摘要 + 最近答题快照 | `user.profile_json` |
+| 6. 画像读取 | `profile_service` | 当前学科 state + 两层摘要 | `/profile/mastery` 返回值 |
+
+补充说明：
+
+- `complete_review_task()` 也会在同一轮服务事务里刷新 `subject.profile_json` 与 `user.profile_json`。
+- 当前不单独起持久化 job 表，仍优先用现有服务入口 + workflow 组织。
 
 ---
 
-## 9. 开发关注点
+## 5. 画像如何影响其他引擎
 
-### 9.1 不能再把旧 `user_profile` 当成画像真相源
+### 5.1 对 Examine 的影响
 
-新的 profile 真相源应该围绕 `user.profile_json / subject.profile_json / user_knowledge_state / exam_paper_item` 组织。
+当前 `build_exam_style_profile()` 已经会综合：
 
-### 9.2 三层 profile 是 Interact、Digest 和 Examine 的共同输入
+- 样卷 markdown
+- `style_prompt` / `focus_prompt` / `user_prompt`
+- `subject.profile_json`
+- `user.profile_json`
 
-- `user.profile_json` 提供全局学习者画像
-- `subject.profile_json` 提供学科内教学与组卷先验
-- `user_knowledge_state` 提供细粒度掌握状态
+并产出 `ExamStyleProfile`，其中当前已会影响：
 
-### 9.3 当前代码已切到显式目标外键
+- `preferred_question_types`
+- `recommended_question_count`
+- `difficulty_focus`
+- `focus_teaching_unit_ids`
+- `notes`
 
-当前 `user_knowledge_state` 已显式使用 `teaching_unit_id / knowledge_node_id` 强外键表达目标。后续重点不再是保留弱多态兼容，而是继续把所有读模型、查询和下游调用统一收口到这组字段。
+`question_builder.py` 的确定性回退模板也会读取 `difficulty_focus`，因此即使 LLM 回退，Profile 对出题仍然有效。
+
+另外，`exams/generate.difficulty` 现在支持显式覆盖：
+
+- 传 `easy / medium / hard / mixed` 时，优先覆盖 profile 自动推断
+- 不传时，继续使用 `subject.profile_json.difficulty_focus`
+
+### 5.2 对 Interact 的影响
+
+当前 Interact 主链路现在会消费：
+
+- 薄弱点摘要
+- 近期错题摘要
+- 掌握度状态
+- `UserProfile` 聚合摘要
+- `LEARNER.md` 运行时档案
+
+所以当前 Interact 已经不再只是“读数据库画像摘要”，而是会把 runtime learner markdown 一起带进 prompt；但更深层的策略节点联动仍有继续增强空间。
+
+### 5.3 对 Digest 的影响
+
+当前 Digest 侧主要还停留在“可读取这些摘要层”的设计空间，尚未像 Examine 一样形成明确消费逻辑。
+
+因此目前 Profile 和其他引擎的最强闭环，优先还是 Examine。
 
 ---
 
-## 10. 总结
+## 6. 数据与字段约定
 
-Profile 当前应明确收口到三层：`user.profile_json` 负责用户级长期画像，`subject.profile_json` 负责学科级学习画像，`user_knowledge_state` 负责细粒度掌握状态，`exam_paper_item` 负责行为快照回放。后续开发应继续强化这条主线，不再回到 `user_profile / mistake` 模型。
+### 6.1 `user.profile_json`
+
+当前把它当成轻量聚合缓存，而不是强 schema 的大对象中心。
+
+约定：
+
+- 只放跨学科稳定摘要
+- 不放 unit/node 级细粒度状态
+- 不承担历史版本职责
+
+### 6.2 `subject.profile_json`
+
+当前把它当成学科内的学习/出题先验缓存。
+
+约定：
+
+- 以当前用户在该学科下的状态为准
+- `focus_teaching_unit_ids / focus_node_ids` 只引用当前稳定主对象
+- 不额外拆 history/version 表
+
+### 6.3 `user_knowledge_state.stats_json`
+
+当前用于承载轻量行为统计摘要，主要包括：
+
+- `question_type_counts`
+- `difficulty_counts`
+- `error_cause_counts`
+- `hint_used_count`
+- `avg_time_spent_seconds`
+- `avg_confidence_self_report`
+- `last_question_type`
+- `last_difficulty`
+- `last_error_cause_label`
+
+注意：
+
+- 它当前是行为摘要字段，不是新的真相源表
+- 是否写入这些统计，取决于答题链路是否采集到了对应字段
+
+---
+
+## 7. 当前边界
+
+### 7.1 画像层依然是“当前态优先”
+
+当前三层 Profile 都优先服务当前学习闭环，不为历史版本追溯过度设计。
+
+### 7.2 用户级画像还是轻量层
+
+`user.profile_json` 目前更接近“学习偏好摘要”，不是完整的个人设置页、也不是长期记忆仓库。
+
+补充：
+
+- `LEARNER.md` 是用户级画像的运行时伴生文档，不替代 `user.profile_json`
+- 当前建议语义是：`user.profile_json` 负责稳定聚合摘要，`LEARNER.md` 负责人类可读补充与长期教学备注
+
+### 7.3 学科级画像不是全局公共学科画像
+
+`subject.profile_json` 当前是 owner-scoped 的学习画像，语义上仍然依赖当前用户的作答和复习记录。
+
+### 7.4 行为字段仍是渐进增强
+
+`exam_paper_item.time_spent_seconds / hint_used / confidence_self_report` 已有字段位，但只有在前端或调用链实际采集时，才会继续影响 `stats_json` 与上层画像。
+
+---
+
+## 8. 总结
+
+当前 Profile 已经明确收口到三层：
+
+- `user.profile_json` 负责跨学科轻量用户画像
+- `subject.profile_json` 负责学科级学习/出题先验
+- `user_knowledge_state` 负责细粒度掌握状态
+
+真正的真相源仍然是 `user_knowledge_state + exam_paper_item`，而 `user.profile_json / subject.profile_json` 是建立在这条主线上的聚合摘要层。当前最完整的闭环已经是：
+
+`做题 -> 判卷 -> state 更新 -> review 调度 -> subject/user profile 刷新 -> 再影响下一轮出题`
+
+同时当前还多了一条 runtime 档案侧链：
+
+`做题 -> learning log / LEARNER.md 补写 -> Interact 上下文自动读入`
+## 0. 2026-04 Profile 闭环修正
+
+- 本批没有新增 schema，也没有新增 profile summary 主表，仍保持 `user.profile_json / subject.profile_json / user_knowledge_state` 三层结构。
+- `update_mastery_from_exam()` 的核心收益来自更精确的 `exam_paper_item.node_refs_json`：node mastery 现在只会由真正命中的节点回写，不再把同单元其它 membership 节点一起拉动。
+- unit mastery 仍按 `exam_paper_item.teaching_unit_id` 聚合，node mastery 按精确 `node_refs_json` 聚合；这一点是 Examine/Profile 闭环信号纯度的关键约束。
+- `subject.profile_json.focus_teaching_unit_ids / focus_node_ids` 仍继续作为 Examine 的出题先验，但本批没有改动对外 API，也没有新增额外画像读取接口。

@@ -16,7 +16,10 @@ class User(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     username: str = Field(index=True, unique=True)
-    email: str | None = Field(default=None, index=True)
+    email: str | None = Field(default=None, index=True, unique=True)
+    device_key: str | None = Field(default=None, index=True, unique=True)
+    password_hash: str | None = Field(default=None)
+    is_registered: bool = Field(default=False, index=True)
     last_seen_ip: str | None = None
     profile_json: str = Field(default="{}")
     created_at: datetime = Field(default_factory=utcnow)

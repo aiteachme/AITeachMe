@@ -10,14 +10,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.core.exceptions import NoPublishedDagError, NoPublishedTreeError
+from app.shared.infra.exceptions import NoPublishedDagError, NoPublishedTreeError
 from app.schemas.knowledge import (
-    StudyPlanRequest,
     StudyPlanItemResponse,
     StudyPlanPhaseResponse,
+    StudyPlanRequest,
     StudyPlanResponse,
     ThemeTreeNodeResponse,
-    TeachingUnitResponse,
 )
 from app.services.knowledge.curriculum_service import (
     get_current_prereq_dag,
@@ -165,7 +164,7 @@ def _fallback_buckets(session: Session, subject: str) -> list[_ThemeBucket]:
     return [
         _ThemeBucket(
             title=unit.canonical_name,
-            summary="从已发布教学单元生成的学习项。",
+            summary="从已发布教学单元生成的学习任务。",
             unit_ids=[unit.id],
             theme_titles=[unit.canonical_name],
             doc_anchor=_anchorify(unit.canonical_name),
@@ -214,7 +213,7 @@ def _chunk_buckets(buckets: list[_ThemeBucket], chunk_count: int) -> list[list[_
     cursor = 0
     for index in range(chunk_count):
         take = base + (1 if index < remainder else 0)
-        group = buckets[cursor: cursor + take]
+        group = buckets[cursor : cursor + take]
         cursor += take
         if group:
             groups.append(group)

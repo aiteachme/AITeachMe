@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.workflows.digest.kg.services.chunker import ChunkData
-from app.infra.embedding import aembed_texts
+from app.shared.infra.embedding import aembed_texts
 
 logger = structlog.get_logger()
 

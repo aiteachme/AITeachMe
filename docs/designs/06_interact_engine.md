@@ -1,190 +1,134 @@
-﻿TODO 上下文知识包括：1滑选知识及上下文知识 2向量化后通过rag获得的内容 3聊天历史 4用户画像，用户级别和项目级别 5项目级别的exams里的学习知识点记录
-
-TODO 学习路线、知识点、知识图谱、dag什么的都比较重要
-
-
-
-
 # 06. Interact 引擎
 
 ## 1. 目标与职责
 
-Interact 负责把知识材料、学习者状态和教学策略组合成“会教”的对话体验。它不是泛聊天窗口，而是围绕当前学科和资料展开的教学型问答层。
+Interact 负责把知识材料、学习者状态和教学策略组合成“可持续伴读”的对话体验。  
+它不是通用闲聊层，而是围绕当前学科与资料的教学型问答引擎。
 
-当前目标包括：
+当前目标：
 
-- 基于 `retrieval_chunk` 检索回答问题
-- 结合聊天历史、用户级画像、学科级画像、薄弱点、错题做上下文装配
-- 通过 `POST + SSE` 流式返回回答
-- 在回答完成后保存可追踪消息记录和引用来源
+- 基于 `retrieval_chunk` 做证据化检索回答；
+- 结合聊天历史、画像、掌握状态构造教学上下文；
+- 通过 `POST + SSE` 主通道进行流式输出；
+- 在完成后落库可追踪的会话与消息记录。
 
 ---
 
 ## 2. 当前实现落点
 
 - 前端页面：`frontend/src/pages/ChatPage.tsx`
-- 后端资源组：`chats`
-- 业务入口：`backend/app/services/chats_service.py`
-- 工作流编排：`backend/app/workflows/interact/*`
+- API：`backend/app/api/chats.py`
+- Service：`backend/app/services/chats_service.py`
+- Workflow Runtime：`backend/app/workflows/interact/runtime.py`
+- Workflow Nodes：`backend/app/workflows/interact/nodes/*`
 - 关键模型：`chat_session`、`chat_message`
-- 关键上下文：`user.profile_json`、`subject.profile_json`、`user_knowledge_state`、`exam_paper_item`
-
-当前 Interact 的主链路已经迁移到 `workflows/interact/*`，不再以旧 `agents/interact/*` 为主。
 
 ---
 
-## 3. 当前主 Pipeline
+## 3. 当前主链路
 
-| 步骤 | 当前主模块 | 输入 | 输出 |
-| --- | --- | --- | --- |
-| 1. 请求接入 | `POST /api/v1/subjects/{subject}/chats/send` | `question`、可选 `selected_context`、`source_chunk_id` | 对话请求 |
-| 2. 历史与状态加载 | `nodes/history.py` | `subject` | 最近消息、用户画像、学科画像、弱项摘要 |
-| 3. 检索上下文 | `nodes/retrieval.py` | `question`、`subject` | `retrieval_chunk` 引用上下文 |
-| 4. 教学策略选择 | `nodes/strategy.py` | 问题、上下文、选段信息 | 当前回答策略 |
-| 5. Prompt 装配 | `nodes/prompt.py` | 历史、检索结果、策略 | LLM messages |
-| 6. 流式生成 | `nodes/stream.py` | messages | SSE token 流 |
-| 7. 结果持久化 | `nodes/persist.py` | 用户问题、助手回答、contexts | `chat_session / chat_message` 持久化 |
-| 8. 前端完成事件 | SSE done 事件 | `turn_id`、contexts | 页面级完成态 |
+## 3.1 请求入口
 
----
+主入口是：
 
-## 4. 核心设计原则
+- `POST /api/v1/subjects/{subject}/chats/send`（SSE）
 
-### 4.1 教学优先，而不是闲聊优先
+支持输入：
 
-Interact 的价值在于：
+- `question`
+- `session_id`（可选）
+- `selected_context`（可选）
+- `source_chunk_id`（可选）
 
-- 讲解概念
-- 引导推理
-- 复盘错题
-- 指向具体证据
-- 帮用户建立下一步学习动作
+## 3.2 Workflow 主 Pipeline
 
-### 4.2 对话必须绑定资料
+当前编排在 `build_interact_workflow_graph()`，主步骤：
 
-当前回答必须尽量基于当前 `Subject` 下的 `retrieval_chunk`，而不是脱离资料开放发挥。
+1. `history`：加载近期会话与学习状态摘要。
+2. `retrieval`：按 subject 检索相关 chunk。
+3. `strategy`：决定回答策略与讲解力度。
+4. `prompt`：组装 messages。
+5. `stream`：流式生成 token。
+6. `persist`：持久化 user/assistant turn 与 contexts。
 
-### 4.3 学习者状态要进入上下文
+## 3.3 事件输出
 
-教学对话不仅看当前问题，还应该消化：
+SSE 事件主语义：
 
-- 最近聊天历史
-- 用户级稳定画像
-- 学科级学习画像
-- 当前薄弱点
-- 近期测评表现
-- 用户主动选中的片段上下文
-
-### 4.4 来源可解释性很重要
-
-当前对话结果需要能够回到：
-
-- 哪个 `chunk_id`
-- 哪个文档
-- 哪个标题路径
-
-这样前端才能展示“引用来源卡片”和“查看原文”。
-
-### 4.5 流式输出是主通道
-
-Interact 当前以 `POST + SSE` 为主，而不是普通同步 JSON 返回。所有设计都要围绕“边生成边展示”展开。
+- `token`
+- `done`（含 `turn_id` 和 `contexts`）
+- `error`
 
 ---
 
-## 5. 数据库写入对象
+## 4. 上下文组装原则
 
-当前 Interact 直接写入：
+## 4.1 资料绑定优先
+
+回答优先基于当前 `Subject` 的资料证据，不鼓励脱离资料自由发挥。
+
+## 4.2 学习状态入模
+
+当前上下文应综合：
+
+- 最近聊天历史；
+- 用户级画像（`user.profile_json`）；
+- `backend/data/users/<user_id>/LEARNER.md` 运行时学习者档案；
+- 学科级画像（`subject.profile_json`）；
+- 掌握与复习状态（`user_knowledge_state`）；
+- 近期做题表现（`exam_paper_item` 派生摘要）；
+- 用户选中的片段（`selected_context`）。
+
+## 4.3 引用可追溯
+
+assistant 消息保存结构化 `contexts_json`，支持前端展示来源卡片与原文跳转。
+
+---
+
+## 5. 数据落点与事务边界
+
+Interact 当前直接写入：
 
 - `chat_session`
 - `chat_message`
 
-具体表现为：
+约束：
 
-- 无会话时先创建 `chat_session`
-- 一个 user / assistant turn 成对落库
-- assistant 记录中保存 contexts JSON
-- 需要时在 `chat_message.meta_json` 中保存工具调用和动态渲染信息
-
-Interact 当前不直接写图谱、课程、掌握度等知识层对象。
+- 无会话时先创建 `chat_session`；
+- user/assistant turn 成对落库；
+- 流式中断或异常时不写半成品 assistant 结果。
 
 ---
 
-## 6. 本地落盘对象
+## 6. 与其他引擎的关系
 
-当前 Interact 没有强依赖的正式本地业务文件，主真相在数据库和 SSE 过程里。
+## 6.1 与 Digest
 
-后续如果增加调试快照，统一写入：
+Interact 消费 digest 产出的 `retrieval_chunk` 与知识对象，不反向写 digest 主结构。
 
-`data/<subject>/debug/interact.chat/<turn_or_request_id>/`
+## 6.2 与 Examine / Profile
 
-建议只保存：
-
-- 请求摘要
-- 最终策略
-- 引用 chunk 列表
-- 最终回答摘要
-
-不要重复保存完整敏感上下文或密钥。
+当前会读取 exam/profile 派生状态用于教学策略；同时会自动读入 `LEARNER.md` 运行时档案，但不直接改 exam/profile 业务对象。
 
 ---
 
-## 7. 关键状态推进
+## 7. 当前边界
 
-当前主状态推进主要体现在两层：
-
-### 7.1 流式阶段
-
-- token
-- done
-- error
-
-### 7.2 持久化阶段
-
-- 生成成功且未中断：落库 `chat_session + chat_message`
-- 生成中断或报错：跳过持久化或只返回错误事件
+1. 主通道仍是单轮对话流，不是多代理并行教学流程。
+2. 观测主要在 runtime 日志，尚未形成对外统一指标 API。
+3. 上下文预算与缓存策略已有基础设施，但 `LEARNER.md + 记忆 + 检索片段` 的动态裁剪仍可继续加强。
 
 ---
 
-## 8. 节点到表责任
+## 8. 未来演进（保持 API 简单）
 
-| 节点 / 模块 | 读 DB | 写 DB | 写 FS |
-| --- | --- | --- | --- |
-| `nodes/history.py` | `chat_message`、`user.profile_json`、`subject.profile_json`、`user_knowledge_state`、`exam_paper_item` 摘要 | 无 | 无 |
-| `nodes/retrieval.py` | `retrieval_chunk`、向量索引 | 无 | 无 |
-| `nodes/stream.py` | 无 | 无 | 无 |
-| `nodes/persist.py` | 无 | `chat_session`、`chat_message` | 无 |
-
-补充说明：
-
-- 当前代码底层检索已经直接收口到 `retrieval_chunk`
-- 查看原文接口消费的是 `chunk_id`
-- 当前弱项和测评摘要应从 `user_knowledge_state + exam_paper_item` 派生
+1. 强化 profile 对策略节点的直接影响（解释风格、节奏、追问层级）。
+2. 强化 curriculum/KG 先修关系在回答组织中的约束。
+3. 增加 interact runtime 汇总观测（不扩散新业务接口）。
 
 ---
 
-## 9. 开发关注点
+## 9. 一句话结论
 
-### 9.1 当前 Interact 的主要剩余历史包袱在检索层命名
-
-历史、弱项、错题上下文已经切到新状态层；底层检索仓储也已经直接使用 `retrieval_chunk`。后续重点不再是旧命名清理，而是继续强化教学策略、引用展示和多源检索质量。
-
-### 9.2 前端应该把 contexts 用起来
-
-当前后端已经能返回结构化 contexts，前端必须把它们展示成可点击来源卡片，而不是只当成隐藏元数据。
-
-### 9.3 文档伴读模式要复用同一条主链路
-
-`KnowledgeDocsPage` 右侧对话栏不应该自建另一套聊天后端，而应复用 Interact 主链路，只是换上下文装配策略。
-
----
-
-## 10. 总结
-
-Interact 当前已经形成清晰的工作流闭环：
-
-- 从 `retrieval_chunk` 检索上下文
-- 结合历史、用户画像、学科画像和学习状态决定回答策略
-- 用 SSE 流式把答案推给前端
-- 把最终 turn 和引用来源落到 `chat_session / chat_message`
-
-后续只要继续强化“教学策略、来源展示、状态接入”这三层，Interact 就会越来越像真正的教学陪练，而不只是一个资料问答窗口。
+Interact 当前已经形成“证据检索 + 教学策略 + SSE 流式 + 可追溯落库”的稳定闭环。  
+后续重点是策略质量和观测能力升级，而不是接口扩张。

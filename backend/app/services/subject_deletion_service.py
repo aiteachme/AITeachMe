@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -231,7 +231,7 @@ def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
     chunks = list(session.exec(select(RetrievalChunk).where(RetrievalChunk.subject == subject)).all())
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
-        knowledge_repo.delete_embeddings_by_chunk_ids(session, chunk_ids)
+        knowledge_repo.delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
     if chunks:
@@ -263,3 +263,4 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
+

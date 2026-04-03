@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 
 from sqlmodel import select
 
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import (

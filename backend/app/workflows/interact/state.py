@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from app.infra.strategies import StrategyMode
+from app.shared.infra.strategies import StrategyMode
 from app.schemas.chats import ChatContextItem
 from app.schemas.llm import ChatMessage
 from app.workflows.interact.support.types import (
@@ -17,6 +17,7 @@ from app.workflows.interact.support.types import (
 
 class InteractWorkflowState(TypedDict, total=False):
     subject: str
+    user_id: str
     session_id: str | None
     question: str
     selected_context: str | None

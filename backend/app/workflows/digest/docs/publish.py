@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.core.database import managed_session
+from app.shared.infra.database import managed_session
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.utils.docgen_store import (

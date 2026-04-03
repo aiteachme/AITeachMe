@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, Path, Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
-from app.api.deps import get_db, normalize_subject_slug
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.chats import (
     ChatClearData,
@@ -33,6 +33,7 @@ from app.services.chats_service import (
     list_chat_threads,
     list_chat_sessions,
 )
+from app.services.auth_service import set_guest_cookie_for_user
 from app.services.subject_service import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
@@ -48,15 +49,19 @@ async def send_chat(
     request: Request,
     subject: str = Path(...),
     body: ChatSendRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
-    return StreamingResponse(
+    direct_mode = bool(body.source and body.source.strip())
+    if not direct_mode:
+        get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+    stream_response = StreamingResponse(
         chat_stream(
             request,
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             session_id=body.session_id,
             question=body.question,
             source=body.source,
@@ -71,6 +76,8 @@ async def send_chat(
             "X-Accel-Buffering": "no",
         },
     )
+    set_guest_cookie_for_user(stream_response, user_id=user.user_id)
+    return stream_response
 
 
 @router.post(
@@ -82,14 +89,16 @@ async def send_chat(
 async def list_chat_api(
     subject: str = Path(...),
     body: ChatListRequest = Body(default=ChatListRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatMessageItem]]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(
         list_chat_history(
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             page=body.page,
             size=body.size,
             session_id=body.session_id,
@@ -106,14 +115,16 @@ async def list_chat_api(
 async def clear_chat_api(
     subject: str = Path(...),
     body: ChatClearRequest = Body(default=ChatClearRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatClearData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(
         clear_chat_history(
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             session_id=body.session_id,
         )
     )
@@ -128,14 +139,16 @@ async def clear_chat_api(
 async def list_chat_sessions_api(
     subject: str = Path(...),
     body: ChatSessionListRequest = Body(default=ChatSessionListRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatSessionItem]]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(
         list_chat_sessions(
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             page=body.page,
             size=body.size,
         )
@@ -151,14 +164,16 @@ async def list_chat_sessions_api(
 async def list_chat_threads_api(
     subject: str = Path(...),
     body: ChatThreadListRequest = Body(default=ChatThreadListRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatThreadTurnItem]]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(
         list_chat_threads(
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             page=body.page,
             size=body.size,
             source=body.source,
@@ -175,13 +190,15 @@ async def list_chat_threads_api(
 async def create_chat_session_api(
     subject: str = Path(...),
     body: ChatSessionCreateRequest = Body(default=ChatSessionCreateRequest()),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionCreateData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     created = create_session(
         session,
         subject=normalized_subject,
+        user_id=user.user_id,
         title=body.title,
         source=body.source,
     )
@@ -197,14 +214,16 @@ async def create_chat_session_api(
 async def delete_chat_session_api(
     subject: str = Path(...),
     body: ChatSessionDeleteRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionDeleteData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(
         delete_session(
             session,
             subject=normalized_subject,
+            user_id=user.user_id,
             session_id=body.session_id,
         )
     )

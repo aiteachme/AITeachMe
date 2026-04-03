@@ -1,11 +1,11 @@
-"""File APIs."""
+﻿"""File APIs."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, File, Path, Request, UploadFile
 from sqlmodel import Session
 
-from app.api.deps import get_db, normalize_subject_slug
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
@@ -30,10 +30,11 @@ async def upload_files(
     request: Request,
     subject: str = Path(...),
     files: list[UploadFile] = File(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
         subject=normalized_subject,
@@ -60,10 +61,11 @@ async def upload_files(
 )
 async def list_files_api(
     subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     return ok_response(list_subject_files(session, subject=normalized_subject))
 
 
@@ -76,10 +78,11 @@ async def list_files_api(
 async def delete_files_api(
     subject: str = Path(...),
     body: FileDeleteRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FileDeleteData]:
     normalized_subject = normalize_subject_slug(subject)
-    get_subject_record(session, normalized_subject)
+    get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
     file_uids = [body.file_uid] if body.file_uid is not None else []
     if body.file_uids:
         file_uids.extend(body.file_uids)

@@ -12,7 +12,7 @@ import litellm
 
 async def main() -> None:
     # 加载配置
-    from app.core.config import get_settings
+    from app.shared.infra.config import get_settings
 
     settings = get_settings()
 

@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
+import { ToastProvider } from "./components/ui/Toast";
 import { HomePage } from "./pages/HomePage";
 import { FilesPage } from "./pages/FilesPage";
 import { ExamsPage } from "./pages/ExamsPage";
@@ -25,6 +26,7 @@ const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+    <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
@@ -45,6 +47,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+    </ToastProvider>
     </QueryClientProvider>
   );
 }
