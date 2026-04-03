@@ -10,6 +10,7 @@ from app.shared.infra.subject_embeddings import get_legacy_vector_table_name, ge
 from app.models import RawFile, RetrievalChunk, Subject, User
 from app.services.subject_embedding_service import (
     RuntimeEmbeddingConfig,
+    build_subject_vector_status,
     inspect_subject_build_precheck,
     resolve_subject_build_vector_status,
 )
@@ -107,6 +108,20 @@ def test_inspect_subject_build_precheck_returns_legacy_conflict() -> None:
     assert conflict.runtime_model == "text-embedding-v4"
     assert conflict.runtime_dim == 1024
     assert conflict.requires_full_rebuild is True
+
+
+def test_build_subject_vector_status_hides_notice_for_unbound_ready_runtime() -> None:
+    runtime = RuntimeEmbeddingConfig(
+        configured=True,
+        available=True,
+        embedding_model="text-embedding-v4",
+        embedding_dim=1024,
+    )
+
+    status = build_subject_vector_status(None, runtime=runtime)
+
+    assert status.mode == "enabled"
+    assert status.notice is None
 
 
 def test_resolve_subject_build_vector_status_disable_marks_subject_disabled() -> None:

@@ -1,11 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, FileText, Loader2, Play, Sparkles } from "lucide-react";
 
-import { apiClient, getApiErrorMessage } from "../../api/client";
-import type { DocGenBuildData } from "../../api/generated/model";
+import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
+import { useKnowledgeBuildFlow } from "../../hooks/useKnowledgeBuildFlow";
 import type { FileRecord } from "../../types/files";
+import { KnowledgeBuildResolutionModal } from "./KnowledgeBuildResolutionModal";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -25,15 +26,6 @@ async function fetchCompletedFiles(subject: string): Promise<FileRecord[]> {
     url: `/api/v1/subjects/${subject}/files`,
   });
   return (response.data?.items ?? []).filter((file) => file.markdown_ready);
-}
-
-async function buildKnowledge(subject: string, fileUids: string[]): Promise<DocGenBuildData> {
-  const response = await apiClient<ApiResponse<DocGenBuildData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: { file_uids: fileUids },
-  });
-  return response.data ?? { requested_at: new Date().toISOString() };
 }
 
 export function DigestBuildProvider({
@@ -88,25 +80,33 @@ export function DigestBuildButton() {
     [readyFiles, selectedFileUids],
   );
 
-  const buildMutation = useMutation({
-    mutationFn: () => buildKnowledge(subject, Array.from(selectedFileUids)),
+  const knowledgeBuild = useKnowledgeBuildFlow({
+    subjectId: subject,
+    buildRequest: () => ({
+      file_uids: Array.from(selectedFileUids),
+    }),
+    fallbackErrorMessage: "触发知识构建失败。",
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subject] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subject] });
       setShowFileSelect(false);
       setSelectedFileUids(new Set());
-        setLastBuildError("");
-        setLastBuildMessage(
-          `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${(data.accepted_file_uids ?? []).length} 份文件。`,
-        );
-      },
-    onError: (error) => {
-      setLastBuildMessage("");
-      setLastBuildError(getApiErrorMessage(error, "触发知识构建失败。"));
+      setLastBuildError("");
+      setLastBuildMessage(
+        `已触发构建，系统会同时更新知识文档和知识图谱。本次纳入 ${(data.accepted_file_uids ?? []).length} 份文件。`,
+      );
     },
   });
 
-  const isBuilding = buildMutation.isPending;
+  useEffect(() => {
+    if (!knowledgeBuild.errorMessage) {
+      return;
+    }
+    setLastBuildMessage("");
+    setLastBuildError(knowledgeBuild.errorMessage);
+  }, [knowledgeBuild.errorMessage]);
+
+  const isBuilding = knowledgeBuild.isPending;
 
   const toggleFile = (fileUid: string) => {
     setSelectedFileUids((previous) => {
@@ -210,7 +210,7 @@ export function DigestBuildButton() {
             <Button variant="outline" onClick={closeModal} disabled={isBuilding}>
               取消
             </Button>
-            <Button onClick={() => buildMutation.mutate()} disabled={!selectedCount || isBuilding}>
+            <Button onClick={knowledgeBuild.submitBuild} disabled={!selectedCount || isBuilding}>
               {isBuilding ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -226,6 +226,15 @@ export function DigestBuildButton() {
           </div>
         </div>
       </Modal>
+
+      <KnowledgeBuildResolutionModal
+        open={knowledgeBuild.precheckConflict !== null}
+        conflict={knowledgeBuild.precheckConflict}
+        isSubmitting={knowledgeBuild.isPending}
+        onClose={knowledgeBuild.closePrecheckConflict}
+        onResolve={knowledgeBuild.resolvePrecheckConflict}
+      />
     </>
   );
 }
+

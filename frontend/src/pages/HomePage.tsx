@@ -31,21 +31,18 @@ import { listSubjectsApiApiV1SubjectsListPost, createSubjectApiApiV1SubjectsAddP
 import { apiClient } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { getApiErrorMessage } from "../api/client";
+import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { cn } from "../lib/utils";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
+import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as FilesPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
-
-interface KnowledgeBuildData {
-  accepted_file_uids: string[];
-  prompt: string | null;
-  ready_file_count: number;
-  requested_at: string;
-}
 
 async function fetchFiles(subject: string): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
@@ -73,15 +70,6 @@ async function deleteFile(subject: string, fileUid: string): Promise<void> {
     url: `/api/v1/subjects/${subject}/files/delete`,
     data: { file_uid: fileUid },
   });
-}
-
-async function triggerKnowledgeBuild(subject: string, prompt?: string): Promise<KnowledgeBuildData> {
-  const response = await apiClient<ApiResponse<KnowledgeBuildData>>({
-    method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build`,
-    data: { prompt },
-  });
-  return response.data;
 }
 
 /* ── Export / Import API helpers ── */
@@ -192,7 +180,6 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
   });
   return response.data;
 }
-
 /* ── Helpers ── */
 
 const ACCEPT_TEXT = ".pdf,.docx,.doc,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp";
@@ -724,6 +711,13 @@ export function HomePage() {
     },
   });
 
+  const { data: knowledgeDocState } = useQuery({
+    queryKey: buildKnowledgeDocStateQueryKey(activeSubjectId ?? ""),
+    queryFn: () => fetchKnowledgeDocState(activeSubjectId!),
+    enabled: Boolean(activeSubjectId),
+    retry: false,
+  });
+
   const files = filesData?.items ?? [];
   const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
 
@@ -765,8 +759,12 @@ export function HomePage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", activeSubjectId] }),
   });
 
-  const buildMutation = useMutation({
-    mutationFn: () => triggerKnowledgeBuild(activeSubjectId!, prompt.trim() || undefined),
+  const knowledgeBuild = useKnowledgeBuildFlow({
+    subjectId: activeSubjectId ?? "",
+    buildRequest: () => ({
+      prompt: prompt.trim() || undefined,
+    }),
+    fallbackErrorMessage: "知识构建失败，请重试。",
     onSuccess: (data) => {
       navigate(`/subject/${activeSubjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
@@ -952,16 +950,16 @@ export function HomePage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => buildMutation.mutate()}
-                    disabled={readyFiles.length === 0 || buildMutation.isPending}
+                    onClick={knowledgeBuild.submitBuild}
+                    disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
                     className={cn(
                       "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
-                      readyFiles.length > 0 && !buildMutation.isPending
+                      readyFiles.length > 0 && !knowledgeBuild.isPending
                         ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
                         : "cursor-not-allowed bg-zinc-100 text-zinc-300"
                     )}
                   >
-                    {buildMutation.isPending ? (
+                    {knowledgeBuild.isPending ? (
                       <><Loader2 className="h-3.5 w-3.5 animate-spin" /> <span className="text-[14px] font-medium">正在提交…</span></>
                     ) : (
                       <><span className="text-[14px] font-medium">构建知识产物</span><ArrowRight className="ml-0.5 h-3.5 w-3.5" /></>
@@ -973,9 +971,16 @@ export function HomePage() {
           </div>
         </motion.div>
 
+        {activeSubjectId ? (
+          <SubjectVectorNotice
+            status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
+            className="mt-4 w-full"
+          />
+        ) : null}
+
         {/* ── Error ── */}
         <AnimatePresence>
-          {(error || uploadMutation.isError || buildMutation.isError) && (
+          {(error || uploadMutation.isError || knowledgeBuild.errorMessage) && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -983,7 +988,7 @@ export function HomePage() {
               className="mt-4 w-full p-4 bg-red-50 border border-red-100 rounded-xl"
             >
               <p className="text-sm text-red-600 font-medium text-center">
-                {error || getApiErrorMessage(uploadMutation.error || buildMutation.error, "操作失败")}
+                {error || knowledgeBuild.errorMessage || getApiErrorMessage(uploadMutation.error, "操作失败")}
               </p>
             </motion.div>
           )}
@@ -1282,6 +1287,13 @@ export function HomePage() {
         AITeachMe Open Source Project
       </div>
     </div>
+    <KnowledgeBuildResolutionModal
+      open={knowledgeBuild.precheckConflict !== null}
+      conflict={knowledgeBuild.precheckConflict}
+      isSubmitting={knowledgeBuild.isPending}
+      onClose={knowledgeBuild.closePrecheckConflict}
+      onResolve={knowledgeBuild.resolvePrecheckConflict}
+    />
 
     {/* ═══ Modals ═══ */}
     <AnimatePresence>
