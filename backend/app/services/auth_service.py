@@ -11,7 +11,7 @@ import secrets
 import smtplib
 import ssl
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
 
@@ -42,6 +42,12 @@ _GUEST_TOKEN_KIND = "guest"
 _VERIFICATION_PURPOSE_REGISTER = "register"
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 _EMAIL_CODE_RE = re.compile(r"^[A-Za-z0-9]{4,16}$")
+
+
+def _as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def ensure_auth_enabled() -> None:
@@ -252,8 +258,8 @@ def send_register_email_verification_code(
         email=normalized_email,
         purpose=_VERIFICATION_PURPOSE_REGISTER,
     )
-    if latest is not None and latest.expires_at > now:
-        elapsed_s = int((now - latest.created_at).total_seconds())
+    if latest is not None and _as_utc(latest.expires_at) > now:
+        elapsed_s = int((now - _as_utc(latest.created_at)).total_seconds())
         remaining_s = resend_interval_s - elapsed_s
         if remaining_s > 0:
             raise AITeachMeError(
@@ -316,7 +322,7 @@ def _consume_register_email_code(
             error_code="AUTH_EMAIL_CODE_REQUIRED",
         )
 
-    if latest.expires_at <= now:
+    if _as_utc(latest.expires_at) <= now:
         latest.consumed_at = now
         latest.updated_at = now
         session.add(latest)

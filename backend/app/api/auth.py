@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
+import structlog
 from fastapi import APIRouter, Body, Depends, Response
 from sqlmodel import Session
 
@@ -24,6 +27,8 @@ from app.services.auth_service import (
     set_guest_cookie_for_user,
 )
 
+logger = structlog.get_logger()
+
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
@@ -39,11 +44,25 @@ async def send_email_code(
     _: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SendEmailCodeData]:
-    data = send_register_email_verification_code(
-        session,
-        email=body.email,
-    )
-    return ok_response(data)
+    started_at = perf_counter()
+    email_domain = body.email.rsplit("@", 1)[-1].lower() if "@" in body.email else None
+    logger.info("auth_send_email_code_started", email_domain=email_domain)
+
+    success = False
+    try:
+        data = send_register_email_verification_code(
+            session,
+            email=body.email,
+        )
+        success = True
+        return ok_response(data)
+    finally:
+        logger.info(
+            "auth_send_email_code_finished",
+            success=success,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+            email_domain=email_domain,
+        )
 
 
 @router.post(
