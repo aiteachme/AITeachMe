@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T02:18:38.021443",
-  "total_commits_analyzed": 310,
+  "generated_at": "2026-04-03T06:25:13.218681",
+  "total_commits_analyzed": 322,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2481,6 +2481,102 @@
       "code_lines": 76133,
       "other_lines": 25738,
       "message": "refactor: restore core structure and move subject "
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "b51e19c",
+      "total_lines": 93207,
+      "code_lines": 69645,
+      "other_lines": 23562,
+      "message": "feat: 优化测验生成性能并接入 learner 档案"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "a768dd2",
+      "total_lines": 93221,
+      "code_lines": 69658,
+      "other_lines": 23563,
+      "message": "fix: 将未发布课程快照异常改为明确的业务冲突提示"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "00b928c",
+      "total_lines": 93342,
+      "code_lines": 69713,
+      "other_lines": 23629,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "4e85ea4",
+      "total_lines": 94674,
+      "code_lines": 70967,
+      "other_lines": 23707,
+      "message": "feat: exam模块修改及加强"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "d4417f1",
+      "total_lines": 94795,
+      "code_lines": 71022,
+      "other_lines": 23773,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "b1f814a",
+      "total_lines": 101871,
+      "code_lines": 76133,
+      "other_lines": 25738,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "1ae41eb",
+      "total_lines": 96183,
+      "code_lines": 71802,
+      "other_lines": 24381,
+      "message": "Refactor: Remove skill and tool related modules"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "3e87cd6",
+      "total_lines": 96387,
+      "code_lines": 71927,
+      "other_lines": 24460,
+      "message": "refactor: 重构共享层，更新模块导入路径并添加共享基础设施文档"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "c407f5d",
+      "total_lines": 99998,
+      "code_lines": 75215,
+      "other_lines": 24783,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "a385445",
+      "total_lines": 99889,
+      "code_lines": 75148,
+      "other_lines": 24741,
+      "message": "Refactor imports to use shared infrastructure modu"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "119725f",
+      "total_lines": 100159,
+      "code_lines": 75385,
+      "other_lines": 24774,
+      "message": "feat: 添加SMTP地址族支持，更新配置并增加相关单元测试"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "1dd00e3",
+      "total_lines": 100159,
+      "code_lines": 75385,
+      "other_lines": 24774,
+      "message": "Merge branch 'dev_wzx'"
     }
   ]
 }
