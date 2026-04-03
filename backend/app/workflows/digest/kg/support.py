@@ -13,7 +13,7 @@ from pathlib import Path
 import structlog
 from sqlmodel import Session, select
 
-from app.core.database import managed_session
+from app.infra.database import managed_session
 from app.workflows.digest.kg.services.chunker import chunk_markdown
 from app.workflows.digest.kg.services.cleaner import clean_markdown
 from app.workflows.digest.kg.services.embedder import embed_chunks

@@ -23,7 +23,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.infra.config import get_settings
 from app.infra.exceptions import VectorExtensionUnavailableError
 from app.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
-from app.core.subject_embeddings import (
+from app.infra.subject_embeddings import (
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
 )

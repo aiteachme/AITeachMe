@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.core.config import get_settings
+from app.infra.config import get_settings
 from app.services.subject_embedding_service import get_subject_vector_search_notice
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
