@@ -487,28 +487,29 @@ export function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 mt-6 w-full max-w-[800px]"
         >
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+          <details className="group rounded-[1.25rem] border border-slate-200 bg-white/70 shadow-sm transition-all open:bg-white overflow-hidden" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 outline-none [&::-webkit-details-marker]:hidden border-b border-transparent group-open:border-slate-100">
+              <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-sm font-semibold text-slate-700">已上传资料</h2>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   {files.length} 份
                 </span>
                 {readyFiles.length > 0 && (
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-600">
                     {readyFiles.length} 份已就绪
                   </span>
                 )}
+                {files.some((f) => !f.markdown_ready && f.status !== "failed") && (
+                  <span className="flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-600">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    解析中
+                  </span>
+                )}
               </div>
-              {files.some((f) => !f.markdown_ready && f.status !== "failed") && (
-                <span className="flex items-center gap-1 text-xs text-sky-500">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  解析中
-                </span>
-              )}
-            </div>
+              <ChevronDown className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
 
-            <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll">
+            <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 toc-scroll bg-slate-50/50">
               <AnimatePresence>
                 {files.map((file) => (
                   <HomeFileCard
@@ -520,7 +521,7 @@ export function HomePage() {
                 ))}
               </AnimatePresence>
             </div>
-          </div>
+          </details>
         </motion.div>
       )}
 
