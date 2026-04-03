@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T09:52:07.551566",
-  "total_commits_analyzed": 334,
+  "generated_at": "2026-04-03T14:04:24.029335",
+  "total_commits_analyzed": 337,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2673,6 +2673,30 @@
       "code_lines": 79371,
       "other_lines": 25836,
       "message": "merge: 合并ui更新、exam更新，导入导出更新"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "decbac3",
+      "total_lines": 105207,
+      "code_lines": 79371,
+      "other_lines": 25836,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "2a20cae",
+      "total_lines": 105209,
+      "code_lines": 79372,
+      "other_lines": 25837,
+      "message": "fix: 解决构建问题"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "f23e66d",
+      "total_lines": 105209,
+      "code_lines": 79372,
+      "other_lines": 25837,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
