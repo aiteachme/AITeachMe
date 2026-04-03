@@ -346,7 +346,28 @@ def _score_unit_to_leaf(unit: UnitInfo, path_titles: list[str]) -> float:
     path_text = " ".join(path_titles)
     base = _text_overlap_score(f"{unit.title} {unit.summary}", path_text)
     hint_score = max((_text_overlap_score(hint, path_text) for hint in unit.taxonomy_hints), default=0.0)
-    return base + 0.5 * hint_score
+    # Exact title match in path gets a strong bonus
+    title_lower = unit.title.lower().strip()
+    exact_bonus = 0.0
+    for pt in path_titles:
+        if pt.lower().strip() == title_lower:
+            exact_bonus = 0.4
+            break
+        if title_lower in pt.lower() or pt.lower() in title_lower:
+            exact_bonus = max(exact_bonus, 0.2)
+    # Taxonomy hint exact match bonus
+    hint_exact_bonus = 0.0
+    for hint in unit.taxonomy_hints:
+        hint_lower = hint.lower().strip()
+        for pt in path_titles:
+            if pt.lower().strip() == hint_lower:
+                hint_exact_bonus = 0.35
+                break
+            if hint_lower in pt.lower() or pt.lower() in hint_lower:
+                hint_exact_bonus = max(hint_exact_bonus, 0.15)
+        if hint_exact_bonus >= 0.35:
+            break
+    return base + 0.5 * hint_score + exact_bonus + hint_exact_bonus
 
 
 def _select_leaf_node(

@@ -1,225 +1,149 @@
-# 05. Digest 引擎总控设计
+﻿# 05. Digest 引擎总控设计
 
-## 1. 文档定位
+## 1. 定位
 
-本篇只讲 Digest 总控，不展开 docs lane / kg lane 的细节写法。  
-目标是把“当前代码已经怎么跑”与“未来要怎么演进”分开写清楚。
+Digest 是 AITeachMe 的“织网引擎”，负责把 ingest 已产出的规范化材料，重组为一套可发布、可学习、可被后续引擎消费的知识资产包。它不是单纯的“总结器”，而是统一编排以下三层结果：
 
-细节文档：
+- 面向学习者的知识文档
+- 面向系统的知识图谱与教学单元
+- 面向教学组织的 curriculum views（主题树、先修图、线性大纲、学习计划）
 
-- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)
-- [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)
+Digest 的目标优先级固定为：
 
----
-
-## 2. 当前总控真相（已落地）
-
-当前知识构建主入口是：
-
-- API：`POST /api/v1/subjects/{subject}/knowledge/build`
-- Service：`trigger_docgen_build()` + `run_unified_build_background()`
-- Workflow Runtime：`run_unified_digest_build()`
-
-统一构建主链路：
-
-`prepare_shared -> doc/kg parallel lanes -> consistency check -> repair -> curriculum -> publish`
-
-当前运行时阶段词汇（build status）：
-
-1. `accepted / build_accepted`
-2. `running / prepare_shared`
-3. `running / doc_lane_staged`
-4. `running / graph_ready`
-5. `running / curriculum_deriving`
-6. `publishing`
-7. `completed` 或 `failed` 或 `cancelled`
-
-说明：
-
-- 旧的 `run_docgen_workflow/run_graph_digest_workflow/run_curriculum_derive_workflow` 仍保留，主要用于兼容与分 lane 调试；
-- 正式用户链路已收敛到 unified build。
+1. 语义结构正确
+2. 构建速度足够快，常规材料尽量控制在 5 分钟内可用
+3. 构建等待期可感知
+4. 对前端暴露尽可能少的接口
 
 ---
 
-## 3. 当前各层职责
+## 2. 当前统一口径
 
-### 3.1 Shared Prepare
+### 2.1 后端主链路
 
-负责一次性准备全局输入：
+统一构建仍然走一条主链：
 
-- 读取 ready markdown 与资产；
-- 生成材料画像和模式判断；
-- 为 docs/kg/curriculum 提供共享输入。
+`prepare shared -> docs / kg -> curriculum -> publish`
 
-### 3.2 Docs Lane
+但当前实现重点不再放在“拆更多 lane”，而是放在以下几个系统问题的治理：
 
-负责知识文档构建与 staging：
+- 语义标题净化，避免 `Question 1`、`Question bank`、`第 1 题` 这类过程性标题进入主题骨架
+- typed resolution，避免仅按名称做跨类型、跨层级串线
+- chunk 物化增量化与 embedding 复用，避免每次全量重算
+- 教学单元、主题树、先修图围绕同一份知识图谱事实源构建
 
-- 生成章节文档与 merged 草稿；
-- 先写 `_build` 草稿，再等待 unified publish；
-- 向 `/knowledge/docs` 提供 `draft_*` 预览信息。
+### 2.2 模式决策
 
-### 3.3 KG Lane
+Digest 继续支持两种教学模式：
 
-负责知识图谱抽取与归并：
+- `sprint`：速成课，强调高频考点、题型、方法、易错点
+- `systematic`：系统课，强调完整依赖链、概念覆盖和课程结构
 
-- 抽取候选节点/边；
-- 聚类与 resolve；
-- 持久化图谱快照；
-- 输出给后续 consistency/curriculum 的语义输入。
-
-### 3.4 Consistency + Repair
-
-负责跨 lane 一致性与局部修复：
-
-- 检查 docs 与 graph 覆盖与漂移；
-- 在预算内做 repair；
-- repair 不达标时本轮不切 live。
-
-### 3.5 Curriculum + Publish
-
-负责课程结构与统一发布：
-
-- 生成课程快照（`curriculum + theme_tree_node + unit_dependency`）；
-- 统一完成 docs/graph/curriculum 发布切换；
-- 任一核心产物失败则保持旧 live。
+模式由后端根据材料画像自动判断，但前端不需要依赖额外模式接口。模式信息如需展示，只允许作为已有响应中的附属字段出现，不能为此新增专用 API。
 
 ---
 
-## 4. 当前发布与锁语义
+## 3. 接口原则
 
-### 4.1 锁与状态文件
+Digest 当前遵循“少 API、POST 优先”的约束。
 
-当前通过运行时文件协同：
+### 3.1 保留接口
 
-- `.build.lock`：subject 级构建互斥
-- `build_status.json`：当前/最近构建态
-- `manifest.json`：已发布文档元数据
+- `POST /api/v1/subjects/{subject}/knowledge/build`
+- `POST /api/v1/subjects/{subject}/knowledge/docs`
+- `POST /api/v1/subjects/{subject}/knowledge/overview`
+- `POST /api/v1/subjects/{subject}/knowledge/study-plan`
 
-这些属于运行时产物，不是业务主表。
+### 3.2 不再推荐的接口形态
 
-### 4.2 `/knowledge/docs` 的三层响应
+以下形态不再作为 digest 设计目标：
 
-当前查询接口返回：
+- 独立 `build-status` 接口
+- `GET /study-plan`
+- `PATCH /study-plan/checklist`
+- 为等待态额外新增 SSE 通道
 
-1. live 发布态：`exists/markdown/updated_at`
-2. staging 草稿：`draft_markdown/draft_updated_at`
-3. 构建元信息：`build.{status,requested_at,stage,error_message,draft_available}`
+### 3.3 等待态原则
 
-约束：
+知识文档和图谱页的等待态统一复用：
 
-- `draft != live`；
-- 对外真相仍以 live 字段为准。
+- `POST /knowledge/build` 触发构建
+- `POST /knowledge/docs` 轮询文档与构建状态
+- 前端本地生成平滑进度，不要求后端提供精确 ETA
 
----
+后端对 `POST /knowledge/docs` 的 `build` 字段保持最小可用集：
 
-## 5. 版本与数据契约
+- `status`
+- `requested_at`
+- `stage`
+- `error_message`
+- `draft_available`
 
-当前 digest 版本语义必须保持一致：
+为改善等待体验，可在同一响应中附加可选字段（不新增接口）：
 
-- `knowledge_document.version_no`
-- `knowledge_node.build_revision_no`
-- `knowledge_edge.build_revision_no`
-- `curriculum.version_no`
-
-同一轮 unified build 应共享同一 `build_session_id`。
-
-数据库语义以 [13_database_schema_inventory.md](./13_database_schema_inventory.md) 为准，不回退到三套版本表。
-
----
-
-## 6. 当前可观测性（已落地）
-
-digest 运行时已统一输出 timing/token summary：
-
-- `docgen_timing_summary`
-- `kg_digest_timing_summary`
-- `curriculum_timing_summary`
-- `unified_digest_timing_summary`
-
-约束：
-
-- 这些是 runtime observability；
-- 当前不作为公共业务 API 合同字段；
-- 后续如需对外暴露，应通过独立 observability 资源，不污染核心业务接口。
+- `build_preview`：如当前阶段描述、chunk 进度、样例节点、样例卡片、草稿摘录
+- `build_metrics`：如 LLM 调用总数、平均延迟、按 lane 调用计数
 
 ---
 
-## 7. 与其他引擎的边界
+## 4. 统一产物
 
-### 7.1 与 Ingest
+Digest 的统一产物分三层。
 
-Digest 只消费“已有可用 markdown”的文件，不负责文件解析本身。
+### 4.1 底层真相源：Knowledge Graph
 
-### 7.2 与 Interact / Examine / Profile
+- 节点、边、证据是语义事实源
+- 节点内容通过 revision 承载
+- `taxonomy_hint` 必须进入可持久化元数据，而不是只停留在内存候选节点
 
-Digest 提供三类稳定输入给下游：
+### 4.2 中层组织：Teaching Unit
 
-- 文档层：知识讲义与来源
-- 图谱层：节点、边与证据锚点
-- 课程层：teaching unit 与先修结构
+- 教学单元由知识图谱聚类而来
+- unit 是最小可讲授粒度
+- `Example`、`Definition` 作为 support 节点，不应该反向成为主题主锚点
 
-下游引擎只消费，不回写 digest 主结构。
+### 4.3 上层视图：Curriculum Views
 
----
-
-## 8. 未来演进（在现有架构上增量）
-
-### 8.1 编排层
-
-1. 从“统一流程”升级到显式 `Fast Pass / Deep Pass / Repair Pass` 分层预算。
-2. 增强 lane 可恢复能力（按 lane/step 重试，而不是整轮重跑）。
-3. 统一取消语义与超时治理，避免悬挂子任务。
-
-### 8.2 质量层
-
-1. 将一致性检查扩展到教学质量检查（章节粒度、依赖顺序、例题/易错点配比）。
-2. 强化 bounded repair 预算与退出条件。
-
-### 8.3 观测层
-
-1. 增加跨版本回归对比（同学科、同资料、同模式）。
-2. 在保持 API 简单前提下，增加独立观测读模型（可选）。
+- 主题树：浏览和目录导航
+- 先修图：依赖与学习路径
+- 线性大纲：课程顺序
+- 学习计划：学习阶段 + checklist
 
 ---
 
-## 9. 非目标（当前阶段）
+## 5. 前端展示约束
 
-1. 不新增独立 digest job 业务表。
-2. 不把运行时锁/状态文件替换成复杂分布式协调系统。
-3. 不为“未来可能历史追溯”提前拆散主表。
+### 5.1 知识文档页
+
+- 右侧继续保留 AI 评论区
+- 学习计划在正文顶部内联展示
+- 构建等待态和更新 banner 只读 `POST /knowledge/docs`
+
+### 5.2 知识图谱页
+
+- 学习者默认视图改为稳定语义星图
+- 随机漂移的 3D 词云不再作为主方案
+- `DigestBuildProgress` 与 `StudyPlanPanel` 可在图谱页和侧边图谱面板展示，但都基于已有接口
+
+### 5.3 Study Plan 交互
+
+- 学习计划保留一个单独的 `POST /study-plan`
+- 空请求体表示查询
+- 带 `item_id + completed` 表示更新后返回全量
+- 前端直接用全量响应刷新缓存，不拆局部接口
 
 ---
 
-## 10. 一句话结论
+## 6. 当前最重要的设计约束
 
-当前 Digest 已经是“统一构建 + 分 lane 执行 + 统一发布 + 运行时可观测”的稳定主链路。  
-未来重点是提升恢复能力、教学质量门控和观测深度，而不是扩接口与扩表。
+- 不再为了“看起来更实时”而堆更多专用接口
+- 优先保持知识图谱、主题树、学习计划三者语义一致
+- 任何性能优化都优先做在 embedding 复用、chunk 增量物化、聚类分桶和减少串行上
+- 任何等待体验优化都优先复用现有接口和前端本地状态，而不是扩接口
 
 ---
 
-## 附录：近期落地补充
+## 7. 与子文档的关系
 
-### 已与本文档对齐的吞吐优化
-
-- KG 写入持久化已经改为批量提交，不再对每个 node、edge、alias、evidence 单独 commit。
-- curriculum 的 unit 命名不再是完全串行，而是采用有界并发和更轻量的任务配置。
-- theme tree 构建会预加载 unit 与 evidence 上下文，避免成员级别的 N+1 查询。
-
-### 后台任务归属
-
-- 由 API 触发的长流程现在统一归应用级 background-task registry 管理。
-- 应用关闭时会向已跟踪任务发出取消信号，并短暂等待清理完成。
-- digest 的 fan-out 分支应当继续传播 `CancelledError`，避免留下脱管子任务。
-
-### 2026-03-31 可观测性补充
-
-digest 运行时现在把耗时和 token 可观测性视为跨 lane 的共享契约，而不是各工作流内部各自为政的日志格式。
-
-- 每次 digest build 都以 `build_session_id` 作为范围，LLM 调用会自动继承 `subject`、`workflow`、`lane`、`node` 等运行时上下文。
-- 每条 lane 在成功完成时必须输出且只输出一条 summary 日志；在运行时失败时也必须输出一条 partial summary。
-- summary 至少应包含 `status`、`error_message`、`workflow_elapsed_ms`、分步骤耗时、token 总量、模型与任务类型分布，以及 Top-K 慢项。
-- unified digest 需要聚合各 lane 的耗时与 token 总量，并产出一个 `unified_digest_timing_summary` 负载，用于回归对比。
-- 新增 digest lane 时，应优先接入 `backend/app/workflows/digest/observability.py` 中的公共 helper，而不是再发明一套 lane 专属日志格式。
-- 当前运行时可观测性仍以 token 维度为主，货币成本换算会在定价表稳定后再引入。
-
+- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)：文档生成、等待态、学习计划在 docs 页的整合
+- [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)：知识图谱、typed resolution、语义星图与 curriculum 依赖

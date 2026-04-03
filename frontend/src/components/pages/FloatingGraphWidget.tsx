@@ -1,54 +1,86 @@
-import { useState, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
   FolderTree,
   GitBranch,
   Loader2,
-  Network,
-  Trash2,
-  Minimize2,
+  Map,
   Maximize2,
-  Map
+  Minimize2,
+  Network,
+  Orbit,
+  Trash2,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
-import {
-  knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost,
-} from "../../api/generated/knowledge";
+import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
-import { buildKnowledgeOverviewQueryKey, fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS } from "../../lib/knowledgeOverview";
-
-import { DigestBuildButton, DigestBuildProvider } from "./DigestBuildPanel";
-import { KnowledgeGraphView } from "./KnowledgeGraphView";
-import { PrereqDagView } from "./PrereqDagView";
-import { ThemeTreeView } from "./ThemeTreeView";
-import { Modal } from "../ui/Modal";
+import {
+  OVERVIEW_INCLUDE_PRESETS,
+  buildKnowledgeOverviewQueryKey,
+  fetchKnowledgeOverview,
+} from "../../lib/knowledgeOverview";
+import {
+  DigestBuildButton,
+  DigestBuildProgress,
+  DigestBuildProvider,
+} from "./DigestBuildPanel";
+import { StudyPlanPanel } from "./StudyPlanPanel";
 import { Button } from "../ui/Button";
+import { Modal } from "../ui/Modal";
 
-type KnowledgeViewTab = "theme-tree" | "prereq-dag" | "knowledge-graph";
+const SemanticUniverse = lazy(() =>
+  import("./SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
+);
+const ThemeTreeView = lazy(() =>
+  import("./ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
+);
+const PrereqDagView = lazy(() =>
+  import("./PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
+);
+const KnowledgeGraphView = lazy(() =>
+  import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
+);
 
-const VIEW_TABS: { id: KnowledgeViewTab; label: string; icon: React.ReactNode; desc: string }[] = [
-  { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" />, desc: "按章节与主题组织的课程结构" },
-  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" />, desc: "展示学习顺序和依赖关系" },
-  { id: "knowledge-graph", label: "知识图谱", icon: <Network className="h-4 w-4" />, desc: "展示底层知识节点与连接关系" },
+type KnowledgeViewTab = "semantic-universe" | "theme-tree" | "prereq-dag" | "knowledge-graph";
+
+const VIEW_TABS: Array<{ id: KnowledgeViewTab; label: string; icon: ReactNode }> = [
+  { id: "semantic-universe", label: "知识宇宙", icon: <Orbit className="h-4 w-4" /> },
+  { id: "theme-tree", label: "主题树", icon: <FolderTree className="h-4 w-4" /> },
+  { id: "prereq-dag", label: "先修图", icon: <GitBranch className="h-4 w-4" /> },
+  { id: "knowledge-graph", label: "专家图谱", icon: <Network className="h-4 w-4" /> },
 ];
+
+function PanelFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      {message}
+    </div>
+  );
+}
 
 export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("theme-tree");
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const overviewInclude = activeTab === "theme-tree"
-    ? OVERVIEW_INCLUDE_PRESETS.themeTree
-    : activeTab === "prereq-dag"
-      ? OVERVIEW_INCLUDE_PRESETS.prereqDag
-      : OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
-  
-  // Ref for click outside to close (optional, if we want it to behave like a popover)
-  const widgetRef = useRef<HTMLDivElement>(null);
+
+  const overviewInclude = useMemo(() => {
+    switch (activeTab) {
+      case "theme-tree":
+        return OVERVIEW_INCLUDE_PRESETS.themeTree;
+      case "prereq-dag":
+        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
+      case "knowledge-graph":
+      case "semantic-universe":
+      default:
+        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
+    }
+  }, [activeTab]);
 
   const {
     data: overview,
@@ -58,7 +90,7 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
   } = useQuery({
     queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
     queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
-    enabled: Boolean(subjectId) && isOpen, 
+    enabled: Boolean(subjectId) && isOpen,
     retry: false,
   });
 
@@ -67,176 +99,202 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["docgen-content", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["study-plan", subjectId] });
       setShowClearConfirm(false);
     },
   });
 
+  const subjectLabel = useMemo(() => {
+    if (/^subj_[a-z0-9]+$/i.test(subjectId)) {
+      return "知识宇宙";
+    }
+    return subjectId || "知识宇宙";
+  }, [subjectId]);
+
   return (
     <DigestBuildProvider subject={subjectId}>
-      {/* Floating Action Button */}
       <AnimatePresence>
-        {!isOpen && (
+        {!isOpen ? (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            initial={{ opacity: 0, scale: 0.84, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            exit={{ opacity: 0, scale: 0.84, y: 24 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
             className="fixed bottom-6 right-8 z-[60]"
           >
             <button
+              type="button"
               onClick={() => setIsOpen(true)}
-              className="group flex h-14 items-center gap-3 overflow-hidden rounded-full border border-blue-200 bg-white/80 pl-4 pr-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-xl transition-all hover:border-blue-300 hover:bg-white hover:shadow-[0_8px_30px_rgb(59,130,246,0.2)]"
+              className="group flex h-14 items-center gap-3 overflow-hidden rounded-full border border-blue-200 bg-white/85 pl-4 pr-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-xl transition-all hover:border-blue-300 hover:bg-white hover:shadow-[0_8px_30px_rgb(59,130,246,0.2)]"
             >
               <div className="flex flex-col items-start pr-2">
-                <span className="text-sm font-semibold text-slate-800">学习向导</span>
-                <span className="text-[10px] text-slate-500 font-medium">查看知识图谱与结构</span>
+                <span className="text-sm font-semibold text-slate-800">学习导航</span>
+                <span className="text-[10px] font-medium text-slate-500">查看图谱、计划和依赖关系</span>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100 group-hover:text-blue-700">
                 <Map className="h-5 w-5" />
               </div>
             </button>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
-      {/* Expanded Widget */}
       <AnimatePresence>
-        {isOpen && (
+        {isOpen ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[70] bg-slate-900/10 backdrop-blur-sm pointer-events-auto flex items-end sm:items-center justify-center sm:p-6"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setIsOpen(false);
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/15 backdrop-blur-sm sm:items-center sm:p-6"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                setIsOpen(false);
+              }
             }}
           >
             <motion.div
-              ref={widgetRef}
-              initial={{ y: "100%", opacity: 0.5, scale: 0.95 }}
+              initial={{ y: "100%", opacity: 0.6, scale: 0.96 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: "100%", opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={`
-                relative flex flex-col bg-white shadow-2xl overflow-hidden
-                w-full border border-slate-200 
-                rounded-t-3xl sm:rounded-2xl
-                ${isMaximized ? "sm:h-[90vh] sm:w-[95vw]" : "sm:h-[650px] sm:w-[800px] sm:max-w-full"}
-                ${isMaximized ? "h-[90vh]" : "h-[85vh]"}
-              `}
-              style={{
-                boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.25)",
-              }}
+              exit={{ y: "100%", opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", damping: 26, stiffness: 300 }}
+              className={`relative flex w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl ${
+                isMaximized ? "h-[90vh] sm:h-[92vh] sm:w-[95vw]" : "h-[85vh] sm:h-[760px] sm:w-[980px]"
+              } rounded-t-3xl sm:rounded-2xl`}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-6 sm:py-4 backdrop-blur-md">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/85 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
                 <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 sm:text-lg">
                     <Map className="h-5 w-5 text-blue-500" />
                     知识图谱导航
                   </h2>
+                  <p className="mt-1 text-xs text-slate-500">把构建进度、学习计划和知识结构放在同一个工作区里。</p>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <div className="hidden sm:block">
                     <DigestBuildButton />
                   </div>
-                  
                   <button
+                    type="button"
                     onClick={() => setShowClearConfirm(true)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                    title="清空知识"
+                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500"
+                    title="清空知识结构"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
-
-                  <div className="hidden sm:block h-4 w-px bg-slate-200 mx-1" />
-
+                  <div className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
                   <button
-                    onClick={() => setIsMaximized(!isMaximized)}
-                    className="hidden sm:flex p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-md transition-colors"
+                    type="button"
+                    onClick={() => setIsMaximized((value) => !value)}
+                    className="hidden rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:flex"
+                    title={isMaximized ? "还原尺寸" : "最大化"}
                   >
                     {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setIsOpen(false)}
-                    className="p-1.5 text-sm font-medium hover:bg-slate-200/50 text-slate-500 hover:text-slate-800 rounded-md transition-colors px-3 py-1 bg-slate-100"
+                    className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900"
                   >
                     收起
                   </button>
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="px-4 py-2 sm:px-6 sm:py-3 bg-white border-b border-slate-100 flex gap-1">
-                {VIEW_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-medium transition-all ${
-                      activeTab === tab.id
-                        ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
-                    title={tab.desc}
-                  >
-                    {tab.icon}
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
+              <div className="border-b border-slate-200 bg-slate-50/70 p-4">
+                <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+                  <DigestBuildProgress compact />
+                  <StudyPlanPanel subject={subjectId} compact />
+                </div>
               </div>
 
-              {/* Content Area */}
-              <div className="flex-1 relative overflow-auto bg-slate-50/50">
-                {overviewLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/80 z-10">
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <div className="border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                  {VIEW_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all ${
+                        activeTab === tab.id
+                          ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
+                          : "text-slate-600 hover:bg-slate-200/70 hover:text-slate-900"
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative flex-1 overflow-auto bg-slate-50/50 p-4 sm:p-6">
+                {overviewLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-sm text-slate-500">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                     正在加载知识结构...
                   </div>
-                )}
+                ) : null}
 
-                {overviewIsError && (
-                  <div className="absolute inset-0 p-6">
-                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {overviewIsError ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                    <div className="flex items-start gap-2">
                       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
                       <div>
-                        <p className="font-semibold mb-1">加载失败</p>
-                        <p>{getApiErrorMessage(overviewError, "获取知识概览时发生错误")}</p>
+                        <p className="mb-1 font-semibold">加载失败</p>
+                        <p>{getApiErrorMessage(overviewError, "获取知识概览时发生错误。")}</p>
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
 
-                {!overviewLoading && !overviewIsError && (
-                  <div className="absolute inset-0">
-                    {activeTab === "theme-tree" && <ThemeTreeView overviewData={overview?.theme_tree ?? null} />}
-                    {activeTab === "prereq-dag" && (
-                      <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
-                    )}
-                    {activeTab === "knowledge-graph" && (
-                      <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
-                    )}
-                  </div>
-                )}
+                {!overviewLoading && !overviewIsError ? (
+                  <>
+                    {activeTab === "semantic-universe" ? (
+                      <Suspense fallback={<PanelFallback message="正在加载知识宇宙..." />}>
+                        <SemanticUniverse
+                          subjectLabel={subjectLabel}
+                          overviewGraph={overview?.graph ?? null}
+                          height="calc(100vh - 22rem)"
+                        />
+                      </Suspense>
+                    ) : null}
+
+                    {activeTab === "theme-tree" ? (
+                      <Suspense fallback={<PanelFallback message="正在加载主题树..." />}>
+                        <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
+                      </Suspense>
+                    ) : null}
+
+                    {activeTab === "prereq-dag" ? (
+                      <Suspense fallback={<PanelFallback message="正在加载先修图..." />}>
+                        <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
+                      </Suspense>
+                    ) : null}
+
+                    {activeTab === "knowledge-graph" ? (
+                      <Suspense fallback={<PanelFallback message="正在加载知识图谱..." />}>
+                        <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                      </Suspense>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             </motion.div>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-lg bg-red-50 p-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-            <div className="text-sm text-red-700">
-              <p>此操作会删除该学科下已经构建的知识数据，包括：</p>
-              <ul className="mt-2 list-inside list-disc space-y-1 text-red-600">
-                <li>知识图谱节点、边和证据</li>
-                <li>教学单元、主题树和先修图</li>
-                <li>课程快照等派生知识结构</li>
-              </ul>
-              <p className="mt-2 font-medium">已经生成的文档也将因结构变更而失效。</p>
+          <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+            <div className="text-sm text-rose-700">
+              <p>这会删除当前学科已经发布的知识图谱、教学单元、主题树、先修图以及相关快照。</p>
+              <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -246,7 +304,7 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
             <Button
               onClick={() => clearMutation.mutate()}
               disabled={clearMutation.isPending}
-              className="bg-red-500 text-white hover:bg-red-600"
+              className="bg-rose-500 text-white hover:bg-rose-600"
             >
               {clearMutation.isPending ? (
                 <>

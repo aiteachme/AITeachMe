@@ -178,6 +178,24 @@ def build_knowledge_build_lock_path(subject: str) -> Path:
     return build_knowledge_markdown_dir(subject) / ".build.lock"
 
 
+def build_knowledge_node_embedding_cache_path(subject: str) -> Path:
+    """Return the persistent node-embedding cache path."""
+
+    return build_knowledge_markdown_dir(subject) / "node_embedding_cache.json"
+
+
+def build_knowledge_chunk_manifest_path(subject: str) -> Path:
+    """Return the incremental canonical chunk manifest path."""
+
+    return build_knowledge_markdown_dir(subject) / "chunk_manifest.json"
+
+
+def build_knowledge_study_plan_progress_path(subject: str) -> Path:
+    """Return the persisted study-plan checklist progress path."""
+
+    return build_knowledge_markdown_dir(subject) / "study_plan_progress.json"
+
+
 def build_docgen_intermediate_dir(subject: str) -> Path:
     """Return the docgen intermediate directory."""
 

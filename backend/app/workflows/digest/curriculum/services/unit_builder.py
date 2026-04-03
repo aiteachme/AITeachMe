@@ -31,6 +31,7 @@ logger = structlog.get_logger(__name__)
 
 _CORE_NODE_TYPES = {"Topic", "Concept", "Method"}
 _MAX_UNIT_MEMBER_COUNT = 8
+_LARGE_COMPONENT_THRESHOLD = 15
 
 
 @dataclass(slots=True)
@@ -141,6 +142,18 @@ def _build_adjacency(edges: list[KnowledgeEdge]) -> dict[int, set[int]]:
     return adjacency
 
 
+def _build_topic_membership(edges: list[KnowledgeEdge]) -> dict[int, set[int]]:
+    """Map each node to the set of Topic node IDs it belongs to via belongs_to_topic edges."""
+    membership: dict[int, set[int]] = {}
+    for edge in edges:
+        if edge.edge_type == "belongs_to_topic":
+            # source belongs_to_topic target (target is the Topic)
+            membership.setdefault(edge.source_node_id, set()).add(edge.target_node_id)
+        elif edge.edge_type == "part_of":
+            membership.setdefault(edge.source_node_id, set()).add(edge.target_node_id)
+    return membership
+
+
 def _collect_components(node_ids: list[int], adjacency: dict[int, set[int]]) -> list[list[int]]:
     remaining = set(node_ids)
     components: list[list[int]] = []
@@ -158,6 +171,60 @@ def _collect_components(node_ids: list[int], adjacency: dict[int, set[int]]) -> 
                 component.append(neighbor_id)
         components.append(component)
     return components
+
+
+def _split_large_component(
+    component: list[int],
+    node_infos: dict[int, NodeInfo],
+    edges: list[KnowledgeEdge],
+) -> list[list[int]]:
+    """Split a large connected component into sub-groups by Topic affinity.
+
+    For each Topic node in the component, collect its directly connected
+    non-Topic children (via belongs_to_topic / illustrated_by / defined_by /
+    part_of edges).  Nodes not claimed by any Topic go into a remainder group.
+    """
+    component_set = set(component)
+    topic_ids = [nid for nid in component if node_infos[nid].node_type == "Topic"]
+
+    if not topic_ids:
+        # No Topic nodes — fall back to simple slicing
+        return [component]
+
+    # Build direct children for each Topic
+    topic_children: dict[int, list[int]] = {tid: [] for tid in topic_ids}
+    claimed: set[int] = set(topic_ids)
+
+    for edge in edges:
+        src, tgt = edge.source_node_id, edge.target_node_id
+        if src not in component_set or tgt not in component_set:
+            continue
+        if edge.edge_type in ("belongs_to_topic", "part_of"):
+            # source belongs to target (target is Topic)
+            if tgt in topic_children and src not in claimed:
+                topic_children[tgt].append(src)
+                claimed.add(src)
+        elif edge.edge_type in ("illustrated_by", "defined_by"):
+            # source (Concept/Method) -> target (Example/Definition)
+            if src in topic_children and tgt not in claimed:
+                topic_children[src].append(tgt)
+                claimed.add(tgt)
+
+    # Build sub-groups: each Topic + its children
+    sub_groups: list[list[int]] = []
+    for tid in topic_ids:
+        children = topic_children[tid]
+        if children:
+            sub_groups.append([tid] + children)
+        else:
+            sub_groups.append([tid])
+
+    # Remainder: nodes not claimed by any Topic
+    remainder = [nid for nid in component if nid not in claimed]
+    if remainder:
+        sub_groups.append(remainder)
+
+    return sub_groups
 
 
 def _slice_component(component: list[int], node_infos: dict[int, NodeInfo]) -> list[UnitCandidate]:
@@ -376,9 +443,21 @@ async def derive_teaching_units(
     node_infos = _build_node_infos(nodes)
     adjacency = _build_adjacency(edges)
     components = _collect_components(list(node_infos.keys()), adjacency)
+
+    # Split large connected components by Topic affinity so that the
+    # resulting teaching units are not all lumped into one giant group.
+    refined_components: list[list[int]] = []
+    for component in components:
+        if len(component) > _LARGE_COMPONENT_THRESHOLD:
+            refined_components.extend(
+                _split_large_component(component, node_infos, edges)
+            )
+        else:
+            refined_components.append(component)
+
     candidates = [
         candidate
-        for component in components
+        for component in refined_components
         for candidate in _slice_component(component, node_infos)
         if candidate.all_node_ids
     ]

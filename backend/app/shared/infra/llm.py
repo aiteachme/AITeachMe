@@ -62,6 +62,22 @@ def _extract_usage(response) -> tuple[int, int, int]:
         return 0, 0, 0
 
 
+def _trace_log_fields() -> dict[str, str]:
+    trace = get_llm_trace_context()
+    fields: dict[str, str] = {}
+    if trace.subject:
+        fields["subject"] = trace.subject
+    if trace.build_session_id:
+        fields["build_session_id"] = trace.build_session_id
+    if trace.workflow:
+        fields["workflow"] = trace.workflow
+    if trace.lane:
+        fields["lane"] = trace.lane
+    if trace.node:
+        fields["node"] = trace.node
+    return fields
+
+
 def _build_completion_kwargs(
     *,
     profile,
@@ -321,6 +337,7 @@ async def acompletion(
                     model=profile.model,
                     task_type=task_type.value,
                     timeout_s=profile.timeout_s,
+                    **_trace_log_fields(),
                 )
             except Exception as exc:
                 last_error = exc
@@ -331,6 +348,7 @@ async def acompletion(
                     model=profile.model,
                     task_type=task_type.value,
                     error=str(exc),
+                    **_trace_log_fields(),
                 )
 
             if attempt < profile.max_retries:
@@ -379,6 +397,7 @@ async def acompletion_structured(
             model=profile.model,
             task_type=task_type.value,
             fallback_mode="json_prompt",
+            **_trace_log_fields(),
         )
 
     async with _get_semaphore():
@@ -421,6 +440,7 @@ async def acompletion_structured(
                             "llm_structured_instructor_parse_failed_trying_repair",
                             response_model=response_model.__name__,
                             error=str(instructor_exc)[:200],
+                            **_trace_log_fields(),
                         )
                         # Re-call without instructor to get raw response for JSON repair
                         raw_response = await asyncio.wait_for(
@@ -478,6 +498,7 @@ async def acompletion_structured(
                     task_type=task_type.value,
                     timeout_s=profile.timeout_s,
                     mode="instructor" if use_instructor else "json_prompt",
+                    **_trace_log_fields(),
                 )
             except Exception as exc:
                 last_error = exc
@@ -490,6 +511,7 @@ async def acompletion_structured(
                     task_type=task_type.value,
                     error=str(exc),
                     mode="instructor" if use_instructor else "json_prompt",
+                    **_trace_log_fields(),
                 )
 
             if attempt < profile.max_retries:
@@ -569,6 +591,7 @@ async def acompletion_stream(
                 model=profile.model,
                 task_type=task_type.value,
                 timeout_s=profile.timeout_s,
+                **_trace_log_fields(),
             )
             _track_call(task_type=task_type.value, model=profile.model, start=start, success=False, error="timeout")
             raise LLMTimeoutError(timeout_s=profile.timeout_s)
@@ -660,6 +683,8 @@ async def acompletion_with_tools(
                     attempt=attempt,
                     model=profile.model,
                     task_type=task_type.value,
+                    timeout_s=profile.timeout_s,
+                    **_trace_log_fields(),
                 )
             except Exception as exc:
                 last_error = exc
@@ -669,6 +694,7 @@ async def acompletion_with_tools(
                     model=profile.model,
                     task_type=task_type.value,
                     error=str(exc),
+                    **_trace_log_fields(),
                 )
 
             if attempt < profile.max_retries:

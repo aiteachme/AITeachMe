@@ -99,32 +99,43 @@ async def aembed_texts(
     all_vectors: list[list[float]] = []
     total_batches = (len(texts) + batch_size - 1) // batch_size
 
-    for batch_idx in range(total_batches):
+    # Run batches concurrently (up to 4 at a time) for better throughput
+    max_concurrent = min(total_batches, 4)
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _embed_batch(batch_idx: int) -> tuple[int, list[list[float]]]:
         batch_start = batch_idx * batch_size
         batch_end = min(batch_start + batch_size, len(texts))
         batch = texts[batch_start:batch_end]
+        async with semaphore:
+            try:
+                batch_vectors = await _call_embedding(
+                    model=model,
+                    batch=batch,
+                    api_base=settings.llm_base_url,
+                    api_key=api_key,
+                )
+                return batch_idx, batch_vectors
+            except Exception as exc:
+                logger.error(
+                    "embedding_batch_failed",
+                    batch_idx=batch_idx,
+                    batch_size=len(batch),
+                    model=model,
+                    error=str(exc),
+                )
+                raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
 
-        try:
-            batch_vectors = await _call_embedding(
-                model=model,
-                batch=batch,
-                api_base=settings.llm_base_url,
-                api_key=api_key,
-            )
-            all_vectors.extend(batch_vectors)
-        except Exception as exc:
-            logger.error(
-                "embedding_batch_failed",
-                batch_idx=batch_idx,
-                batch_size=len(batch),
-                model=model,
-                error=str(exc),
-            )
-            raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
-
-        # 批次间限流 (单批次无需延迟)
-        if total_batches > 1 and batch_idx < total_batches - 1:
-            await asyncio.sleep(settings.embedding_batch_delay_s)
+    if total_batches <= 1:
+        # Single batch — no concurrency overhead
+        _, vectors = await _embed_batch(0)
+        all_vectors = vectors
+    else:
+        results = await asyncio.gather(*(_embed_batch(i) for i in range(total_batches)))
+        # Re-order by batch index
+        results_sorted = sorted(results, key=lambda r: r[0])
+        for _, vectors in results_sorted:
+            all_vectors.extend(vectors)
 
     logger.info(
         "embedding_call_complete",

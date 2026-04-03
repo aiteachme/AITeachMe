@@ -174,6 +174,7 @@ def create_unified_initial_state(
     file_ids: list[int],
     user_prompt: str | None,
     requested_at,
+    build_session_id: str | None = None,
 ) -> UnifiedDigestState:
     """Create initial state for the unified digest graph."""
 
@@ -182,7 +183,7 @@ def create_unified_initial_state(
         "file_ids": file_ids,
         "user_prompt": user_prompt,
         "requested_at": requested_at,
-        "build_session_id": uuid4().hex,
+        "build_session_id": build_session_id or uuid4().hex,
         "graph_job_id": _new_runtime_job_id(),
         "curriculum_job_id": _new_runtime_job_id(),
         "error": None,
@@ -229,6 +230,7 @@ def build_prepare_shared_node(*, context: WorkflowContext):
             requested_at=state["requested_at"],
             status="running",
             stage="prepare_shared",
+            build_session_id=state["build_session_id"],
             error_message=None,
         )
         shared_inputs = await prepare_shared_inputs(
@@ -238,6 +240,19 @@ def build_prepare_shared_node(*, context: WorkflowContext):
         )
         if not shared_inputs.source_packets or not shared_inputs.section_packets:
             return {**state, "error": "No shared digest inputs were produced."}
+        update_knowledge_build_status(
+            subject,
+            requested_at=state["requested_at"],
+            status="running",
+            stage="prepare_shared",
+            build_session_id=state["build_session_id"],
+            error_message=None,
+            digest_mode=shared_inputs.digest_mode_decision.mode.value,
+            mode_reason=shared_inputs.digest_mode_decision.reason,
+            total_chunks=len(shared_inputs.section_packets),
+            processed_chunks=0,
+            current_chunk=0,
+        )
 
         materialized = await materialize_shared_inputs(
             subject=subject,

@@ -16,6 +16,15 @@ from app.workflows.digest.prompts.docgen_prompts import (
     GLOBAL_OUTLINE_PROMPT,
     LOCAL_OUTLINE_PROMPT,
 )
+from app.workflows.digest.shared.semantic_titles import (
+    clean_semantic_title,
+    extract_semantic_path_segments,
+    is_generic_semantic_title,
+    is_procedural_title,
+    is_question_like_title,
+    normalize_semantic_whitespace,
+    strip_outline_number_prefix,
+)
 from app.workflows.digest.shared.models import FastTopicHints, SectionPacket
 from app.workflows.digest.unified.models import TopicAnchorSnapshot
 
@@ -207,6 +216,43 @@ def _is_generic_title(title: str) -> bool:
     if _looks_like_question_title(cleaned):
         return True
     return len(cleaned) < 2 or _PUNCT_ONLY_PATTERN.match(cleaned) is not None
+
+
+def _clean_title(title: str) -> str:
+    normalized = normalize_semantic_whitespace(title)
+    return normalized[:40]
+
+
+def _looks_like_question_title(title: str) -> bool:
+    return is_question_like_title(title)
+
+
+def _is_procedural_text(text: str) -> bool:
+    return is_procedural_title(text)
+
+
+def _strip_title_prefix(title: str) -> str:
+    return strip_outline_number_prefix(title)
+
+
+def _header_path_segments(packet: SectionPacket) -> list[str]:
+    return [
+        segment
+        for segment in extract_semantic_path_segments(
+            packet.header_path,
+            fallback_title=packet.title,
+        )
+        if segment and segment.lower() not in _GENERIC_OUTLINE_TITLES
+    ]
+
+
+def _is_generic_title(title: str) -> bool:
+    cleaned = clean_semantic_title(title)
+    if not cleaned:
+        return True
+    if cleaned.lower() in _GENERIC_OUTLINE_TITLES:
+        return True
+    return is_generic_semantic_title(cleaned)
 
 
 def _is_procedural_packet(packet: SectionPacket) -> bool:

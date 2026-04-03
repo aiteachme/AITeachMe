@@ -123,14 +123,58 @@ class DocGenBuildData(BaseModel):
         description="Current subject-level vector capability status.",
     )
 
-class DocGenBuildStatusResponse(BaseModel):
-    """Runtime metadata for the current or most recent docs build."""
+class BuildSampleCardResponse(BaseModel):
+    """Lightweight preview card shown while digest is building."""
 
-    status: str = Field(description="accepted / running / completed / failed / cancelled")
+    title: str
+    card_type: str = Field(description="mode / topic / concept / method")
+    summary: str
+
+
+class BuildPreviewNodeResponse(BaseModel):
+    """One lightweight node preview surfaced during digest polling."""
+
+    name: str
+    node_type: str = Field(description="Topic / Concept / Method / Definition / Example")
+
+
+class KnowledgeBuildPreviewResponse(BaseModel):
+    """Human-facing preview payload for ongoing digest builds."""
+
+    current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
+    digest_mode: str | None = Field(default=None, description="sprint / systematic")
+    mode_reason: str | None = Field(default=None, description="Why the current digest mode was selected.")
+    processed_chunks: int = Field(default=0, description="How many section chunks have been processed so far.")
+    total_chunks: int = Field(default=0, description="Total number of section chunks for this build.")
+    discovered_node_count: int = Field(default=0, description="Current discovered knowledge-node count.")
+    discovered_node_types: dict[str, int] = Field(default_factory=dict, description="Node counts by node type.")
+    sample_nodes: list[BuildPreviewNodeResponse] = Field(default_factory=list, description="Sample discovered nodes.")
+    sample_cards: list[BuildSampleCardResponse] = Field(default_factory=list, description="Small preview cards for the waiting UI.")
+    latest_chapter_titles: list[str] = Field(default_factory=list, description="Recently staged or published chapter titles.")
+    draft_excerpt: str = Field(default="", description="Short excerpt from the current draft markdown, if any.")
+
+
+class KnowledgeBuildMetricsResponse(BaseModel):
+    """Compact build diagnostics used by polling UIs."""
+
+    llm_total_calls: int = Field(default=0, description="Total LLM calls recorded for the current build session.")
+    failed_llm_call_count: int = Field(default=0, description="Failed LLM call count for the current build session.")
+    llm_avg_latency_ms: float = Field(default=0.0, description="Average LLM latency in milliseconds.")
+    call_count_by_lane: dict[str, int] = Field(default_factory=dict, description="LLM call count grouped by workflow lane.")
+
+
+class KnowledgeBuildStatusResponse(BaseModel):
+    """Minimal runtime metadata exposed to clients for docs polling."""
+
+    status: str = Field(description="idle / accepted / running / publishing / completed / failed / cancelled")
     requested_at: datetime = Field(description="Build request timestamp.")
     stage: str = Field(description="Current lifecycle stage for the build.")
     error_message: str | None = Field(default=None, description="Build failure or cancellation reason.")
-    draft_available: bool = Field(default=False, description="Whether the current staging draft can be previewed.")
+    draft_available: bool = Field(default=False, description="Whether a staging draft is currently available.")
+
+
+class DocGenBuildStatusResponse(KnowledgeBuildStatusResponse):
+    """Backward-compatible alias used by existing docs responses."""
 
 
 class DocGenGetResponse(BaseModel):
@@ -143,7 +187,15 @@ class DocGenGetResponse(BaseModel):
     prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
     draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
     draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
-    build: DocGenBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
+    build: KnowledgeBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
+    build_preview: KnowledgeBuildPreviewResponse | None = Field(
+        default=None,
+        description="Lightweight preview payload for the ongoing build, surfaced through the docs polling endpoint.",
+    )
+    build_metrics: KnowledgeBuildMetricsResponse | None = Field(
+        default=None,
+        description="Compact live build diagnostics surfaced through the docs polling endpoint.",
+    )
     vector_status: SubjectVectorStatusResponse = Field(
         default_factory=SubjectVectorStatusResponse,
         description="Current subject-level vector capability status.",
@@ -421,5 +473,49 @@ class ClearKnowledgeResponse(BaseModel):
     deleted_counts: dict[str, int] = Field(default_factory=dict)
 
 
-ThemeTreeNodeResponse.model_rebuild()
+class StudyPlanRequest(BaseModel):
+    """Read or update the persisted study plan in one POST request."""
 
+    item_id: str | None = None
+    completed: bool | None = None
+
+
+class StudyPlanItemResponse(BaseModel):
+    """One actionable study checklist item."""
+
+    id: str
+    title: str
+    summary: str
+    duration_minutes: int = 0
+    depends_on_ids: list[str] = Field(default_factory=list)
+    theme_titles: list[str] = Field(default_factory=list)
+    unit_ids: list[int] = Field(default_factory=list)
+    doc_anchor: str | None = None
+    completed: bool = False
+
+
+class StudyPlanPhaseResponse(BaseModel):
+    """A grouped phase in the learner-facing study plan."""
+
+    id: str
+    title: str
+    summary: str
+    duration_minutes: int = 0
+    completed_items: int = 0
+    total_items: int = 0
+    items: list[StudyPlanItemResponse] = Field(default_factory=list)
+
+
+class StudyPlanResponse(BaseModel):
+    """Derived study plan and checklist snapshot."""
+
+    subject: str
+    generated_at: datetime
+    digest_mode: str | None = None
+    mode_reason: str | None = None
+    total_items: int = 0
+    completed_items: int = 0
+    phases: list[StudyPlanPhaseResponse] = Field(default_factory=list)
+
+
+ThemeTreeNodeResponse.model_rebuild()

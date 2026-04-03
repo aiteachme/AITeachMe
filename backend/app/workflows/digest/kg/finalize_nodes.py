@@ -33,7 +33,7 @@ def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
     anchors: list[TopicAnchor] = []
     for cluster in state.get("clustered_candidates", [])[:80]:
         representative = cluster.representative
-        if not representative.name:
+        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -86,7 +86,7 @@ def build_finalize_graph_node(
                 build_session_id = state.get("build_session_id", "")
                 topic_snapshot = _build_topic_snapshot(state)
                 resolved_node_count = max(
-                    len(state.get("candidate_name_to_resolved_node_id", {})),
+                    len(state.get("candidate_lookup_to_resolved_node_id", {})),
                     len(state.get("cluster_id_to_resolved_node_id", {})),
                 )
                 graph_ready = bool(topic_snapshot.anchors and resolved_node_count > 0)

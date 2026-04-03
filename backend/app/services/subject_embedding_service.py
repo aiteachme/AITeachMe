@@ -121,13 +121,6 @@ def build_subject_vector_status(
                 mode=SubjectEmbeddingMode.ENABLED.value,
                 notice=_PRECHECK_DETAIL_MAP[current_runtime.reason],
             )
-        if current_runtime.available:
-            return SubjectVectorStatusResponse(
-                mode=SubjectEmbeddingMode.ENABLED.value,
-                notice=(
-                    "当前学科尚未绑定 embedding 模型；下次知识构建会先确认是否全量重建当前学科向量。"
-                ),
-            )
         return SubjectVectorStatusResponse(mode=SubjectEmbeddingMode.ENABLED.value)
 
     notice: str | None = None

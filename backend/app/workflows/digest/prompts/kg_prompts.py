@@ -36,12 +36,19 @@ SYSTEM_PROMPT_KG_EXTRACT = """
 - 包含"已知…，求…"、"设…，则…"等数学题目结构
 - 包含选项（A/B/C/D）
 
+## 多层级主题结构规则（非常重要）
+
+1. **必须构建层级化的 Topic 结构**：如果文本片段涉及多个层级的知识（如"高等数学 > 微积分 > 导数"），应为每个层级创建独立的 Topic 节点，并用 `part_of` 边连接。严禁把所有内容都挂到一个笼统的 Topic 下。
+2. **从题目中提取知识点**：当文本包含题目时，不要只创建 Example 节点。必须同时提取题目背后考查的核心 Concept 或 Method 节点，并用 `illustrated_by` 边将 Concept/Method 连接到 Example。
+3. **parent_entity_name 必须精确**：Definition 和 Example 的 parent_entity_name 应指向具体的 Concept 或 Method，而不是笼统的大 Topic。例如，"导数的定义"的 parent_entity_name 应该是"导数"而不是"高等数学"。
+4. **taxonomy_hint 应指向最近的上层 Topic**：不要所有节点都指向同一个根 Topic。
+
 ## 通用抽取规则
 
 1. 每个节点必须有明确的 name 和 node_type。
 2. **name 字段中的数学符号必须用 LaTeX**：禁止使用 Unicode 上下标（如 cos²x、x₁），必须写成 LaTeX 格式（如 `$\cos^2 x$`、`$x_1$`）。正确示例：`$\sin x$`、`$\int f(x)\,dx$`、`$a_n$`。错误示例：sin x、cos²x、aₙ。
-3. Definition 和 Example 类型的节点**必须**提供 parent_entity_name，指明其所属的 Concept 或 Method 名称。
-4. 每个节点应提供 taxonomy_hint：该节点最可能归属的上层主题名称（用于后续主题树对齐）。
+3. Definition 和 Example 类型的节点**必须**提供 parent_entity_name，指明其所属的 Concept 或 Method 名称（不是笼统的大 Topic）。
+4. 每个节点应提供 taxonomy_hint：该节点最可能归属的最近上层主题名称（用于后续主题树对齐）。
 5. local_summary 应概括该知识点在本段文本中的核心内容。内容较多时可以分段（用换行分隔），不设严格字数上限但应保持精炼。其中数学公式必须使用 LaTeX 语法（行内 `$...$`，独立 `$$...$$`）。
 6. 边的 source_name 和 target_name 必须与抽取出的节点 name 完全一致。
 7. 不要杜撰原文中没有的知识点或关系。
@@ -56,6 +63,9 @@ USER_PROMPT_KG_EXTRACT = """
 - 文档结构路径：{{ header_path }}
 {% if doc_source_type %}- 文档类型：{{ doc_source_type }}{% endif %}
 {% if subject_context %}- 学科背景：{{ subject_context }}{% endif %}
+{% if sibling_topics %}- 同级主题参考：{{ sibling_topics }}{% endif %}
+{% if digest_mode == "sprint" %}- 构建模式：速成课（侧重方法归纳、题型突破、易错点，可适当压缩推导细节）{% endif %}
+{% if digest_mode == "systematic" %}- 构建模式：系统课（侧重概念完整性、定义严谨性、前置依赖链）{% endif %}
 
 ## 文本内容
 

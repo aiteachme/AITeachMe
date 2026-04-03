@@ -144,6 +144,25 @@ def get_chunks_by_document_ids(session: Session, document_ids: list[int]) -> lis
     return list(session.exec(statement).all())
 
 
+def get_chunks_by_source_file_ids(
+    session: Session,
+    *,
+    subject: str,
+    source_file_ids: list[int],
+) -> list[RetrievalChunk]:
+    if not source_file_ids:
+        return []
+    statement = (
+        select(RetrievalChunk)
+        .where(
+            RetrievalChunk.subject == subject,
+            RetrievalChunk.document_id.in_(source_file_ids),
+        )
+        .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+    )
+    return list(session.exec(statement).all())
+
+
 def get_chunks_by_build_session(session: Session, build_session_id: str) -> list[RetrievalChunk]:
     statement = (
         select(RetrievalChunk)
@@ -162,6 +181,28 @@ def delete_chunks_by_document_ids(session: Session, *, subject: str, document_id
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
         delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
+    for chunk in chunks:
+        session.delete(chunk)
+    session.commit()
+    return len(chunks)
+
+
+def delete_chunks_by_ids(session: Session, *, subject: str | None = None, chunk_ids: list[int]) -> int:
+    if not chunk_ids:
+        return 0
+    chunks = [
+        chunk
+        for chunk_id in chunk_ids
+        if (chunk := session.get(RetrievalChunk, chunk_id)) is not None
+    ]
+    if not chunks:
+        return 0
+    resolved_subject = subject or chunks[0].subject
+    delete_embeddings_by_chunk_ids(
+        session,
+        subject=resolved_subject,
+        chunk_ids=[chunk.id for chunk in chunks if chunk.id is not None],
+    )
     for chunk in chunks:
         session.delete(chunk)
     session.commit()
@@ -230,6 +271,19 @@ def _count_embeddings_for_chunk_ids(
         params,
     ).first()
     return int(row[0]) if row is not None else 0
+
+
+def count_embeddings_for_chunk_ids(
+    session: Session,
+    *,
+    table_name: str,
+    chunk_ids: list[int],
+) -> int:
+    return _count_embeddings_for_chunk_ids(
+        session.connection(),
+        table_name=table_name,
+        chunk_ids=chunk_ids,
+    )
 
 
 def _legacy_table_for_subject(

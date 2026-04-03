@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
+﻿import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
@@ -21,10 +21,13 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useLocation, useParams } from "react-router-dom";
+import type { SubjectVectorStatusResponse } from "../api/generated/model";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
+import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -149,6 +152,37 @@ interface DocGenBuildStatus {
   draft_available?: boolean;
 }
 
+interface BuildSampleCard {
+  title: string;
+  card_type: string;
+  summary: string;
+}
+
+interface BuildPreviewNode {
+  name: string;
+  node_type: string;
+}
+
+interface KnowledgeBuildPreview {
+  current_stage_description?: string | null;
+  digest_mode?: string | null;
+  mode_reason?: string | null;
+  processed_chunks?: number;
+  total_chunks?: number;
+  discovered_node_count?: number;
+  discovered_node_types?: Record<string, number>;
+  sample_nodes?: BuildPreviewNode[];
+  sample_cards?: BuildSampleCard[];
+  latest_chapter_titles?: string[];
+  draft_excerpt?: string;
+}
+
+interface KnowledgeBuildMetrics {
+  llm_total_calls?: number;
+  failed_llm_call_count?: number;
+  llm_avg_latency_ms?: number;
+  call_count_by_lane?: Record<string, number>;
+}
 interface DocGenGetResponse {
   exists: boolean;
   markdown?: string;
@@ -158,6 +192,9 @@ interface DocGenGetResponse {
   draft_markdown?: string;
   draft_updated_at?: string | null;
   build?: DocGenBuildStatus | null;
+  build_preview?: KnowledgeBuildPreview | null;
+  build_metrics?: KnowledgeBuildMetrics | null;
+  vector_status?: SubjectVectorStatusResponse | null;
 }
 
 type DocViewMode = "live" | "draft";
@@ -646,11 +683,35 @@ function DocGeneratingState({
   isFetching,
   progress,
   statusText,
+  buildPreview,
+  buildMetrics,
 }: {
   isFetching: boolean;
   progress: number;
   statusText: string;
+  buildPreview?: KnowledgeBuildPreview | null;
+  buildMetrics?: KnowledgeBuildMetrics | null;
 }) {
+  const sampleCards = buildPreview?.sample_cards ?? [];
+  const sampleNodes = buildPreview?.sample_nodes ?? [];
+  const chapterTitles = buildPreview?.latest_chapter_titles ?? [];
+  const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
+  const chunkLabel =
+    (buildPreview?.total_chunks ?? 0) > 0
+      ? `${buildPreview?.processed_chunks ?? 0}/${buildPreview?.total_chunks ?? 0} chunks`
+      : null;
+  const nodeLabel =
+    (buildPreview?.discovered_node_count ?? 0) > 0
+      ? `${buildPreview?.discovered_node_count ?? 0} nodes`
+      : null;
+  const llmLabel = (buildMetrics?.llm_total_calls ?? 0) > 0 ? `${buildMetrics?.llm_total_calls ?? 0} LLM calls` : null;
+  const avgLatency =
+    buildMetrics?.llm_avg_latency_ms && buildMetrics.llm_avg_latency_ms > 0
+      ? buildMetrics.llm_avg_latency_ms < 1000
+        ? `${Math.round(buildMetrics.llm_avg_latency_ms)}ms`
+        : `${(buildMetrics.llm_avg_latency_ms / 1000).toFixed(1)}s`
+      : null;
+
   return (
     <section className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white via-stone-50 to-stone-100 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(28,25,23,0.2)]">
       <div className="flex items-start gap-3">
@@ -658,27 +719,82 @@ function DocGeneratingState({
           {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
         </div>
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">知识文档正在生成中</h2>
-          <p className="text-sm text-slate-600">前端会维持本地进度条，并轮询已发布文档；一旦新版本发布，这里会自动切换。</p>
+          <h2 className="text-lg font-semibold text-slate-900">知识文档构建中</h2>
+          <p className="text-sm text-slate-600">等待期间会持续显示已提取结构和草稿片段，减少空白等待。</p>
         </div>
       </div>
-      <div className="mt-7 grid gap-3">
-        <div className="h-3 w-11/12 animate-pulse rounded-full bg-slate-200" />
-        <div className="h-3 w-10/12 animate-pulse rounded-full bg-slate-200 [animation-delay:120ms]" />
-        <div className="h-3 w-9/12 animate-pulse rounded-full bg-slate-200 [animation-delay:220ms]" />
-        <div className="h-3 w-8/12 animate-pulse rounded-full bg-slate-200 [animation-delay:320ms]" />
-      </div>
-      <div className="mt-8">
+
+      <div className="mt-5">
         <DocBuildProgress
           progress={progress}
-          statusText={statusText}
+          statusText={buildPreview?.current_stage_description?.trim() || statusText}
           isFetching={isFetching}
         />
       </div>
+
+      {chunkLabel || nodeLabel || llmLabel || avgLatency ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
+          {chunkLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{chunkLabel}</span> : null}
+          {nodeLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{nodeLabel}</span> : null}
+          {llmLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmLabel}</span> : null}
+          {avgLatency ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {avgLatency}</span> : null}
+        </div>
+      ) : null}
+
+      {sampleCards.length > 0 ? (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {sampleCards.slice(0, 4).map((card) => (
+            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-slate-900">{card.title}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                  {card.card_type}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
+            </article>
+          ))}
+        </div>
+      ) : sampleNodes.length > 0 ? (
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Discovered Nodes</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {sampleNodes.slice(0, 6).map((node) => (
+              <span
+                key={`${node.node_type}-${node.name}`}
+                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+              >
+                {node.node_type}: {node.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {chapterTitles.length > 0 || draftExcerpt ? (
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
+          {chapterTitles.length > 0 ? (
+            <>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {chapterTitles.slice(0, 4).map((title) => (
+                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
+                    {title}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {draftExcerpt ? (
+            <pre className="mt-3 overflow-hidden whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-3 text-[11px] leading-5 text-slate-100">
+              {draftExcerpt}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
-
 function DocUpdatingBanner({
   progress,
   statusText,
@@ -712,7 +828,7 @@ function DocUpdatingBanner({
       : hasDraftVersion
         ? "正式版会持续可用；如果想提前看本轮结果，可以切换到草稿预览。"
         : hasLiveVersion
-          ? "当前会继续显示旧正式版，等新正式版发布后这里会自动刷新。"
+          ? "当前会继续显示旧正式版，待新正式版发布后这里会自动刷新。"
           : "文档草稿一旦可用，这里会直接切换显示预览内容。";
   const liveLabel = formatDocTimestamp(liveUpdatedAt);
   const draftLabel = formatDocTimestamp(draftUpdatedAt);
@@ -765,10 +881,6 @@ function DocUpdatingBanner({
           {draftLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">草稿更新于 {draftLabel}</span> : null}
         </div>
       )}
-      <div className="hidden">
-      <p className="text-sm font-medium text-slate-900">正在更新知识文档</p>
-      <p className="mt-1 text-xs text-slate-600">旧版本会继续显示，等新一轮 merged 文档发布后这里会自动刷新。</p>
-      </div>
       <div className="mt-3">
         <DocBuildProgress
           progress={progress}
@@ -788,7 +900,7 @@ function DocEmptyState() {
       </div>
       <h2 className="mt-4 text-lg font-semibold text-slate-900">暂时还没有知识文档</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        先回到文件页发起一次知识文档构建，这里会显示最终发布的 merged 文档。
+        先回到文件页发起一次知识文档构建，这里会展示最终发布的 merged 文档。
       </p>
     </section>
   );
@@ -809,7 +921,7 @@ function DocLoadErrorState({
         className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
       >
         <RefreshCw className="h-3.5 w-3.5" />
-        重试加载
+        閲嶈瘯鍔犺浇
       </button>
     </section>
   );
@@ -935,10 +1047,10 @@ function CommentThread({
             className={cn(
               "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
             )}
-            title="在 AI 面板继续对话"
+            title="鍦?AI 闈㈡澘缁х画瀵硅瘽"
           >
             <ExternalLink className="h-2.5 w-2.5" />
-            AI 面板
+            AI 闈㈡澘
           </button>
           <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
             {comments.length}
@@ -990,7 +1102,7 @@ function CommentThread({
             )}
           >
             {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            发送
+            鍙戦€?
           </button>
         </div>
       </div>
@@ -1055,6 +1167,8 @@ export function KnowledgeDocsPage() {
   const liveMarkdown = docMarkdownQuery.data?.markdown ?? "";
   const draftMarkdown = docMarkdownQuery.data?.draft_markdown ?? "";
   const buildMeta = docMarkdownQuery.data?.build ?? null;
+  const buildPreview = docMarkdownQuery.data?.build_preview ?? null;
+  const buildMetrics = docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveUpdatedAt = docMarkdownQuery.data?.updated_at ?? null;
   const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
@@ -2562,7 +2676,7 @@ export function KnowledgeDocsPage() {
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-slate-500">
             {commentThreads.length} 个片段
-            {activeStreamingCount > 0 ? `，${activeStreamingCount} 条回复中` : ""}
+            {activeStreamingCount > 0 ? `（${activeStreamingCount} 条回复中）` : ""}
           </span>
           <button
             onClick={() => jumpCommentThread(-1)}
@@ -2641,7 +2755,7 @@ export function KnowledgeDocsPage() {
                 onClick={dismissCommentComposer}
                 className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               >
-                取消
+                鍙栨秷
               </button>
               <button
                 onClick={addComment}
@@ -2654,7 +2768,7 @@ export function KnowledgeDocsPage() {
                 )}
               >
                 <Send className="h-3.5 w-3.5" />
-                发送
+                鍙戦€?
               </button>
             </div>
           </div>
@@ -2686,7 +2800,7 @@ export function KnowledgeDocsPage() {
         ) : commentThreads.length === 0 ? (
           <div className={cn("p-3", isCompactPanels && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-slate-500">选中文本后点击“问问AI”即可开始对话</p>
+              <p className="text-sm text-slate-500">选中文本后点击“问问 AI”即可开始对话</p>
             </div>
           </div>
         ) : isCompactPanels ? (
@@ -2942,6 +3056,10 @@ export function KnowledgeDocsPage() {
                 <article
                   className="min-w-0 flex-1 px-6 py-8 md:px-10 md:py-10"
                 >
+                  <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  {subjectId ? (
+                    <StudyPlanPanel subject={subjectId} className="mb-6" />
+                  ) : null}
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -2950,11 +3068,7 @@ export function KnowledgeDocsPage() {
                       }}
                     />
                   ) : showDocGeneratingState ? (
-                    <DocGeneratingState
-                      isFetching={docMarkdownQuery.isFetching}
-                      progress={buildProgress}
-                      statusText={buildStatusText}
-                    />
+                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} progress={buildProgress} statusText={buildStatusText} buildPreview={buildPreview} buildMetrics={buildMetrics} />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
                       message={buildStatusText}
@@ -3070,7 +3184,7 @@ export function KnowledgeDocsPage() {
           <button 
             onClick={openGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
+            title={effectiveGraphViewMode === "hidden" ? "鎵撳紑鐭ヨ瘑鍥捐氨" : "鍏ㄥ睆鍥捐氨"}
           >
             <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
           </button>
@@ -3080,7 +3194,7 @@ export function KnowledgeDocsPage() {
           <button 
             onClick={closeGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "收起图谱" : "分屏视图") : "收起图谱"}
+            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "鏀惰捣鍥捐氨" : "鍒嗗睆瑙嗗浘") : "鏀惰捣鍥捐氨"}
           >
             <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
           </button>
@@ -3108,4 +3222,3 @@ export function KnowledgeDocsPage() {
     </div>
   );
 }
-

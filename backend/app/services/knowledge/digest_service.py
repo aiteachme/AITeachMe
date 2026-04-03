@@ -23,7 +23,15 @@ from app.repositories.files_repo import (
     list_raw_files_by_ids,
     list_raw_files_by_uids,
 )
-from app.schemas.knowledge import DocGenBuildData, DocGenGetResponse
+from app.schemas.knowledge import (
+    BuildPreviewNodeResponse,
+    DocGenBuildData,
+    DocGenGetResponse,
+    KnowledgeBuildMetricsResponse,
+    KnowledgeBuildPreviewResponse,
+    KnowledgeBuildStatusResponse,
+)
+from app.repositories import knowledge_repo
 from app.services.subject_embedding_service import (
     get_subject_vector_status_by_slug,
     inspect_subject_build_precheck,
@@ -31,7 +39,6 @@ from app.services.subject_embedding_service import (
 )
 from app.utils.docgen_store import (
     KnowledgeBuildLock,
-    KnowledgeBuildRuntimeStatus,
     acquire_knowledge_build_lock,
     clear_docgen_staging,
     read_knowledge_build_lock,
@@ -47,6 +54,7 @@ from app.utils.path_helpers import (
 )
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
+from app.workflows.digest.observability import build_token_summary
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
@@ -208,6 +216,7 @@ def _write_build_status(
     requested_at: datetime,
     status: str,
     stage: str,
+    build_session_id: str | None = None,
     error_message: str | None = None,
     draft_available: bool | None = None,
     draft_updated_at: datetime | None = None,
@@ -222,6 +231,8 @@ def _write_build_status(
         "stage": stage,
         "error_message": _sanitize_build_error_message(error_message),
     }
+    if build_session_id is not None:
+        update_kwargs["build_session_id"] = build_session_id
     if draft_available is not None:
         update_kwargs["draft_available"] = draft_available
     if draft_updated_at is not None:
@@ -237,6 +248,152 @@ def _write_build_status(
     update_knowledge_build_status(subject, **update_kwargs)
 
 
+def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: int = 420) -> str:
+    excerpt_lines: list[str] = []
+    current_chars = 0
+    for raw_line in markdown.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped == "---":
+            continue
+        excerpt_lines.append(stripped)
+        current_chars += len(stripped)
+        if len(excerpt_lines) >= max_lines or current_chars >= max_chars:
+            break
+    excerpt = "\n".join(excerpt_lines).strip()
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[: max_chars - 1].rstrip() + "…"
+    return excerpt
+
+
+def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[str]:
+    if manifest is not None and manifest.chapter_titles:
+        return [str(title).strip() for title in manifest.chapter_titles[:4] if str(title).strip()]
+
+    titles: list[str] = []
+    for raw_line in draft_markdown.splitlines():
+        stripped = raw_line.strip()
+        if not stripped.startswith("#"):
+            continue
+        title = stripped.lstrip("#").strip()
+        if not title or title.lower() == "knowledge document overview":
+            continue
+        titles.append(title)
+        if len(titles) >= 4:
+            break
+    return titles
+
+
+def _build_runtime_preview(
+    *,
+    build_status,
+    draft_markdown: str,
+    manifest,
+) -> KnowledgeBuildPreviewResponse | None:
+    if build_status is None and not draft_markdown.strip() and manifest is None:
+        return None
+
+    sample_nodes = []
+    if build_status is not None:
+        sample_nodes = [
+            BuildPreviewNodeResponse(
+                name=str(item.get("name", "")).strip(),
+                node_type=str(item.get("type", "Topic")).strip() or "Topic",
+            )
+            for item in build_status.sample_nodes
+            if str(item.get("name", "")).strip()
+        ][:6]
+        sample_cards = [
+            {
+                "title": str(item.get("title", "")).strip(),
+                "card_type": str(item.get("card_type", "")).strip() or "topic",
+                "summary": str(item.get("summary", "")).strip(),
+            }
+            for item in build_status.sample_cards
+            if str(item.get("title", "")).strip() and str(item.get("summary", "")).strip()
+        ]
+    else:
+        sample_cards = []
+
+    return KnowledgeBuildPreviewResponse(
+        current_stage_description=(
+            build_status.current_stage_description.strip()
+            if build_status is not None and build_status.current_stage_description
+            else None
+        ),
+        digest_mode=build_status.digest_mode if build_status is not None else None,
+        mode_reason=build_status.mode_reason if build_status is not None else None,
+        processed_chunks=build_status.processed_chunks if build_status is not None else 0,
+        total_chunks=build_status.total_chunks if build_status is not None else 0,
+        discovered_node_count=build_status.discovered_node_count if build_status is not None else 0,
+        discovered_node_types=dict(build_status.discovered_node_types) if build_status is not None else {},
+        sample_nodes=sample_nodes,
+        sample_cards=sample_cards,
+        latest_chapter_titles=_resolve_preview_chapter_titles(
+            draft_markdown=draft_markdown,
+            manifest=manifest,
+        ),
+        draft_excerpt=_extract_markdown_excerpt(draft_markdown),
+    )
+
+
+def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | None:
+    build_session_id = (
+        str(build_status.build_session_id).strip()
+        if build_status is not None and build_status.build_session_id is not None
+        else ""
+    )
+    if not build_session_id:
+        return None
+
+    token_summary = build_token_summary(build_session_id=build_session_id)
+    if token_summary.total_calls <= 0 and token_summary.failed_call_count <= 0:
+        return None
+
+    lane_counts = {
+        lane: count
+        for lane, count in token_summary.call_count_by_lane.items()
+        if lane and lane != "(unknown_lane)" and count > 0
+    }
+    return KnowledgeBuildMetricsResponse(
+        llm_total_calls=token_summary.total_calls,
+        failed_llm_call_count=token_summary.failed_call_count,
+        llm_avg_latency_ms=token_summary.avg_latency_ms,
+        call_count_by_lane=lane_counts,
+    )
+
+
+def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse:
+    build_lock = read_knowledge_build_lock(subject)
+    build_status = read_knowledge_build_status(subject)
+    effective_build = build_status
+    if effective_build is None and build_lock is not None:
+        effective_build = update_knowledge_build_status(
+            subject,
+            requested_at=build_lock.requested_at,
+            status="running",
+            stage="build_accepted",
+            source_file_ids=build_lock.source_file_ids,
+            prompt=build_lock.prompt,
+        )
+
+    if effective_build is None:
+        return KnowledgeBuildStatusResponse(
+            status="idle",
+            requested_at=utcnow(),
+            stage="idle",
+            error_message=None,
+            draft_available=False,
+        )
+
+    return KnowledgeBuildStatusResponse(
+        status=effective_build.status,
+        requested_at=effective_build.requested_at,
+        stage=effective_build.stage,
+        error_message=_sanitize_build_error_message(effective_build.error_message),
+        draft_available=bool(effective_build.draft_available),
+    )
+
+
 def trigger_docgen_build(
     session: Session,
     *,
@@ -248,13 +405,19 @@ def trigger_docgen_build(
     """Acquire the build lock and return accepted source info for doc generation."""
 
     conflict = inspect_subject_build_precheck(session, subject=subject)
-    force_full_rebuild = conflict is not None and embedding_resolution == "rebuild"
     vector_status = resolve_subject_build_vector_status(
         session,
         subject=subject,
         embedding_resolution=embedding_resolution,
     )
+    force_full_rebuild = bool(
+        conflict is not None
+        and conflict.requires_full_rebuild
+        and vector_status.mode != "disabled"
+    )
     effective_file_uids = None if force_full_rebuild else file_uids
+    if force_full_rebuild:
+        knowledge_repo.clear_chunk_vector_metadata(session, subject=subject.slug)
     accepted_files, ready_file_count = _select_ready_docgen_files(
         session,
         subject=subject.slug,
@@ -369,6 +532,7 @@ async def run_unified_build_background(
 
     build_logger = logger.bind(subject=subject, requested_at=requested_at.isoformat())
     build_logger.info("knowledge_unified_build_started", file_count=len(file_ids))
+    build_session_id = uuid.uuid4().hex
 
     try:
         _clear_docgen_staging_safely(subject)
@@ -377,6 +541,7 @@ async def run_unified_build_background(
             requested_at=requested_at,
             status="running",
             stage="prepare_shared",
+            build_session_id=build_session_id,
             error_message=None,
             draft_available=False,
             source_file_ids=file_ids,
@@ -388,6 +553,7 @@ async def run_unified_build_background(
             file_ids=file_ids,
             user_prompt=prompt,
             requested_at=requested_at,
+            build_session_id=build_session_id,
         )
         if not result.success:
             _clear_docgen_staging_safely(subject)
@@ -396,6 +562,7 @@ async def run_unified_build_background(
                 requested_at=requested_at,
                 status="failed",
                 stage="failed",
+                build_session_id=build_session_id,
                 error_message=result.error,
                 draft_available=False,
                 staged_chapter_count=0,
@@ -408,6 +575,7 @@ async def run_unified_build_background(
             requested_at=requested_at,
             status="completed",
             stage="completed",
+            build_session_id=build_session_id,
             error_message=None,
             draft_available=False,
             published_doc_count=result.doc_count,
@@ -419,6 +587,8 @@ async def run_unified_build_background(
             new_node_count=result.new_node_count,
             new_edge_count=result.new_edge_count,
             elapsed_ms=result.elapsed_ms,
+            llm_total_calls=int((result.token_summary or {}).get("total_calls", 0)),
+            llm_call_count_by_lane=dict((result.token_summary or {}).get("call_count_by_lane", {})),
         )
     except asyncio.CancelledError:
         _clear_docgen_staging_safely(subject)
@@ -427,6 +597,7 @@ async def run_unified_build_background(
             requested_at=requested_at,
             status="cancelled",
             stage="cancelled",
+            build_session_id=build_session_id,
             error_message="build_cancelled",
             draft_available=False,
             staged_chapter_count=0,
@@ -440,6 +611,7 @@ async def run_unified_build_background(
             requested_at=requested_at,
             status="failed",
             stage="failed",
+            build_session_id=build_session_id,
             error_message="build_crashed",
             draft_available=False,
             staged_chapter_count=0,
@@ -456,7 +628,6 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     merged_path = build_merged_knowledge_base_path(subject)
     draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)
-    build_lock = read_knowledge_build_lock(subject)
     build_status = read_knowledge_build_status(subject)
     markdown = merged_path.read_text(encoding="utf-8") if merged_path.exists() else ""
     draft_markdown = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
@@ -480,24 +651,14 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     elif draft_path.exists():
         draft_updated_at = datetime.fromtimestamp(draft_path.stat().st_mtime)
 
-    build_response = None
-    effective_build = build_status
-    if effective_build is None and build_lock is not None:
-        effective_build = KnowledgeBuildRuntimeStatus(
-            requested_at=build_lock.requested_at,
-            status="running",
-            stage="build_accepted",
-            source_file_ids=build_lock.source_file_ids,
-            prompt=build_lock.prompt,
-        )
-    if effective_build is not None:
-        build_response = {
-            "status": effective_build.status,
-            "requested_at": effective_build.requested_at,
-            "stage": effective_build.stage,
-            "error_message": _sanitize_build_error_message(effective_build.error_message),
-            "draft_available": bool(effective_build.draft_available or draft_markdown.strip()),
-        }
+    build_response = _resolve_runtime_build_status(subject=subject)
+    build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
+    build_preview = _build_runtime_preview(
+        build_status=build_status,
+        draft_markdown=draft_markdown,
+        manifest=manifest,
+    )
+    build_metrics = _build_runtime_metrics(build_status=build_status)
 
     return DocGenGetResponse(
         exists=bool(merged_path.exists() and markdown.strip()),
@@ -508,9 +669,10 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         draft_markdown=draft_markdown,
         draft_updated_at=draft_updated_at,
         build=build_response,
+        build_preview=build_preview,
+        build_metrics=build_metrics,
         vector_status=get_subject_vector_status_by_slug(session, subject),
     )
-
 
 __all__ = [
     "get_docgen_result",

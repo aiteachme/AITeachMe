@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import cloud from "d3-cloud";
 
 // ────────────────────────── Types ──────────────────────────
 
@@ -12,51 +13,55 @@ interface WordCloud3DProps {
   subjectLabel: string;
   nodes: WordCloudNode[];
   height?: number | string;
+  onNodeClick?: (name: string) => void;
 }
 
-interface FloatingWord {
-  name: string;
-  displayName: string;
+interface LayoutWord {
+  text: string;
   fullName: string;
   nodeType: string;
   confidence: number;
+  size: number;
+  x?: number;
+  y?: number;
+  rotate?: number;
   color: string;
-  fontSize: number;
-  x: number;
-  y: number;
-  baseX: number;
-  baseY: number;
-  driftSpeedX: number;
-  driftSpeedY: number;
-  phaseX: number;
-  phaseY: number;
-  amplitudeX: number;
-  amplitudeY: number;
-  opacity: number;
-  tier: "accent" | "medium" | "faint"; // algo.qq.com has 3 visual tiers
 }
 
-// ────────────────────────── algo.qq.com Color Scheme ──────────────────────────
-// Purple accents for top words, dark gray for medium, very light gray for depth filler
+// ────────────────────────── Color Palette ──────────────────────────
 
-const TYPE_ACCENT: Record<string, string> = {
-  Topic:      "#9333ea",
-  topic:      "#9333ea",
-  Concept:    "#7c3aed",
-  concept:    "#7c3aed",
-  Method:     "#a855f7",
-  method:     "#a855f7",
-  Definition: "#6d28d9",
-  definition: "#6d28d9",
-  Example:    "#8b5cf6",
-  example:    "#8b5cf6",
-  Theorem:    "#7e22ce",
-  theorem:    "#7e22ce",
-  Formula:    "#6366f1",
-  formula:    "#6366f1",
+const TYPE_COLORS: Record<string, string> = {
+  Topic: "#f39c12",
+  topic: "#f39c12",
+  Concept: "#5dade2",
+  concept: "#5dade2",
+  Method: "#ec7063",
+  method: "#ec7063",
+  Definition: "#58d68d",
+  definition: "#58d68d",
+  Example: "#af7ac5",
+  example: "#af7ac5",
+  Theorem: "#48c9b0",
+  theorem: "#48c9b0",
+  Formula: "#5d6d7e",
+  formula: "#5d6d7e",
 };
 
-const DEFAULT_ACCENT = "#9333ea";
+const TYPE_LABELS: Record<string, string> = {
+  Topic: "主题",
+  Concept: "概念",
+  Method: "方法",
+  Definition: "定义",
+  Example: "示例",
+  Theorem: "定理",
+  Formula: "公式",
+};
+
+const DEFAULT_COLOR = "#94a3b8";
+
+function getColor(nodeType: string): string {
+  return TYPE_COLORS[nodeType] ?? DEFAULT_COLOR;
+}
 
 // ────────────────────────── Helpers ──────────────────────────
 
@@ -64,102 +69,37 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
 
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return s / 2147483647;
-  };
-}
-
-// ────────────────────────── Layout: algo.qq.com dense field ──────────────────────────
-
-const MAX_DISPLAY_WORDS = 120; // algo.qq.com shows 100+ words
-
-function buildAlgoLayout(nodes: WordCloudNode[]): FloatingWord[] {
-  const sorted = [...nodes].sort((a, b) => b.confidence - a.confidence);
-  const rand = seededRandom(42);
-
-  // If we have fewer nodes than MAX, duplicate some faint ones for density
-  const visible: WordCloudNode[] = [];
-  for (let i = 0; i < MAX_DISPLAY_WORDS; i++) {
-    if (i < sorted.length) {
-      visible.push(sorted[i]);
-    } else {
-      // Duplicate random nodes as faint background fillers
-      visible.push(sorted[Math.floor(rand() * sorted.length)]);
-    }
-  }
-
-  return visible.map((node, i) => {
-    const rank = i / Math.max(visible.length - 1, 1); // 0=best, 1=worst
-    const accent = TYPE_ACCENT[node.nodeType] ?? DEFAULT_ACCENT;
-
-    // Tier system: top 8% = accent (purple), next 25% = medium (dark), rest = faint
-    let tier: "accent" | "medium" | "faint";
-    let color: string;
-    let opacity: number;
-    let fontSize: number;
-
-    if (rank < 0.08) {
-      // Top tier: large, purple, fully visible
-      tier = "accent";
-      color = accent;
-      opacity = 0.9;
-      fontSize = 22 + (1 - rank / 0.08) * 20; // 22-42px
-    } else if (rank < 0.33) {
-      // Medium tier: medium size, dark gray
-      tier = "medium";
-      color = "#1f2937";
-      opacity = 0.55 + (1 - (rank - 0.08) / 0.25) * 0.3;
-      fontSize = 12 + (1 - (rank - 0.08) / 0.25) * 12; // 12-24px
-    } else {
-      // Faint tier: small, light gray, creates depth texture
-      tier = "faint";
-      color = "#d1d5db";
-      opacity = 0.2 + rand() * 0.2;
-      fontSize = 7 + rand() * 8; // 7-15px
-    }
-
-    // Scatter across full canvas
-    const baseX = 0.02 + rand() * 0.96;
-    const baseY = 0.02 + rand() * 0.96;
-
-    return {
-      name: node.name,
-      displayName: truncate(node.name, tier === "faint" ? 18 : 14),
-      fullName: node.name,
-      nodeType: node.nodeType,
-      confidence: node.confidence,
-      color,
-      fontSize,
-      x: baseX,
-      y: baseY,
-      baseX,
-      baseY,
-      // Slow sinusoidal drift (algo.qq.com has subtle floating)
-      driftSpeedX: 0.05 + rand() * 0.15,
-      driftSpeedY: 0.04 + rand() * 0.12,
-      phaseX: rand() * Math.PI * 2,
-      phaseY: rand() * Math.PI * 2,
-      amplitudeX: 0.003 + rand() * 0.01,
-      amplitudeY: 0.002 + rand() * 0.008,
-      opacity,
-      tier,
-    };
-  });
-}
+const MAX_WORDS = 100;
 
 // ────────────────────────── Main Component ──────────────────────────
 
-export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
+export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCloud3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 800, h: 600 });
-  const [hoveredWord, setHoveredWord] = useState<FloatingWord | null>(null);
-  const mouseRef = useRef({ x: -1, y: -1 });
+  const [size, setSize] = useState({ w: 800, h: 500 });
+  const [layoutWords, setLayoutWords] = useState<LayoutWord[]>([]);
+  const [hoveredWord, setHoveredWord] = useState<LayoutWord | null>(null);
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const dragRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+  });
 
-  const words = useMemo(() => buildAlgoLayout(nodes), [nodes]);
+  // Prepare sorted + deduplicated word list
+  const wordInput = useMemo(() => {
+    const seen = new Set<string>();
+    const sorted = [...nodes].sort((a, b) => b.confidence - a.confidence);
+    const result: WordCloudNode[] = [];
+    for (const n of sorted) {
+      const key = n.name.toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(n);
+      if (result.length >= MAX_WORDS) break;
+    }
+    return result;
+  }, [nodes]);
 
   const topTypes = useMemo(() => {
     return Object.entries(
@@ -187,117 +127,197 @@ export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
     return () => obs.disconnect();
   }, []);
 
-  // Animation loop
+  // Run d3-cloud layout
+  useEffect(() => {
+    if (wordInput.length === 0) return;
+
+    const maxConf = Math.max(...wordInput.map((w) => w.confidence), 0.01);
+    const minFont = 10;
+    const maxFont = Math.min(size.w, size.h) * 0.08;
+
+    const words: LayoutWord[] = wordInput.map((w) => {
+      const ratio = w.confidence / maxConf;
+      const fontSize = minFont + ratio * (maxFont - minFont);
+      return {
+        text: truncate(w.name, 16),
+        fullName: w.name,
+        nodeType: w.nodeType,
+        confidence: w.confidence,
+        size: fontSize,
+        color: getColor(w.nodeType),
+      };
+    });
+
+    const layout = cloud<LayoutWord>()
+      .size([size.w, size.h])
+      .words(words)
+      .padding(4)
+      .rotate(() => (Math.random() > 0.7 ? 90 : 0))
+      .font('"Inter", system-ui, -apple-system, "Noto Sans SC", "Microsoft YaHei", sans-serif')
+      .fontSize((d) => d.size ?? 14)
+      .spiral("archimedean")
+      .on("end", (output) => {
+        setLayoutWords(output as LayoutWord[]);
+      });
+
+    layout.start();
+  }, [wordInput, size]);
+
+  // Draw on canvas
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || words.length === 0) return;
+    if (!canvas || layoutWords.length === 0) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let rafId = 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = size.w;
+    const ch = size.h;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const render = (timestamp: number) => {
-      const dt = timestamp * 0.001;
+    // Background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cw, ch);
 
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const cw = size.w;
-      const ch = size.h;
-      canvas.width = cw * dpr;
-      canvas.height = ch * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Subtle center glow
+    const glow = ctx.createRadialGradient(
+      cw * 0.5, ch * 0.45, 0,
+      cw * 0.5, ch * 0.45, Math.min(cw, ch) * 0.45,
+    );
+    glow.addColorStop(0, "rgba(99, 102, 241, 0.03)");
+    glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, cw, ch);
 
-      // ── Background: pure white (algo.qq.com style) ──
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, cw, ch);
+    // Apply transform
+    ctx.save();
+    ctx.translate(cw / 2 + transform.x, ch / 2 + transform.y);
+    ctx.scale(transform.scale, transform.scale);
 
-      // ── Subtle center glow (very faint purple radial) ──
-      const glow = ctx.createRadialGradient(cw * 0.45, ch * 0.4, 0, cw * 0.45, ch * 0.4, Math.min(cw, ch) * 0.5);
-      glow.addColorStop(0, "rgba(147, 51, 234, 0.03)");
-      glow.addColorStop(1, "rgba(255, 255, 255, 0)");
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, cw, ch);
+    for (const w of layoutWords) {
+      if (w.x == null || w.y == null) continue;
+      const isHovered = hoveredWord?.fullName === w.fullName;
 
-      // ── Draw words (faint first, accent last) ──
-      const mx = mouseRef.current.x;
-      const my = mouseRef.current.y;
-      let newHovered: FloatingWord | null = null;
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      if (w.rotate) ctx.rotate((w.rotate * Math.PI) / 180);
 
-      // Sort: faint → medium → accent (draw accent on top)
-      const sortOrder = { faint: 0, medium: 1, accent: 2 };
-      const sorted = [...words].sort((a, b) => sortOrder[a.tier] - sortOrder[b.tier]);
+      const fs = w.size ?? 14;
+      const weight = isHovered ? 700 : fs > 20 ? 600 : 500;
+      const scale = isHovered ? 1.15 : 1;
 
-      for (const w of sorted) {
-        // Sinusoidal floating
-        const fx = w.baseX + Math.sin(dt * w.driftSpeedX + w.phaseX) * w.amplitudeX;
-        const fy = w.baseY + Math.sin(dt * w.driftSpeedY + w.phaseY) * w.amplitudeY;
-        const sx = fx * cw;
-        const sy = fy * ch;
-        w.x = fx;
-        w.y = fy;
+      ctx.font = `${weight} ${fs * scale}px "Inter", system-ui, -apple-system, "Noto Sans SC", "Microsoft YaHei", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = isHovered ? 1 : Math.max(0.5, (w.confidence ?? 0.5));
 
-        const fs = w.fontSize;
-
-        // Hover detection
-        const textW = w.displayName.length * fs * 0.52;
-        const textH = fs * 1.2;
-        const isHovered =
-          mx >= 0 &&
-          mx >= sx - textW / 2 - 4 &&
-          mx <= sx + textW / 2 + 4 &&
-          my >= sy - textH / 2 - 4 &&
-          my <= sy + textH / 2 + 4;
-
-        if (isHovered && w.tier !== "faint") newHovered = w;
-
-        ctx.save();
-        ctx.globalAlpha = isHovered ? 1 : w.opacity;
-
-        // Font weight: accent=bold, medium=medium, faint=light
-        const weight = isHovered ? 700 : w.tier === "accent" ? 600 : w.tier === "medium" ? 500 : 300;
-        const scale = isHovered ? 1.1 : 1;
-
-        ctx.font = `${weight} ${fs * scale}px "Inter", system-ui, -apple-system, "Noto Sans SC", "Microsoft YaHei", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        // Color: hover = purple accent, otherwise use tier color
-        if (isHovered) {
-          ctx.fillStyle = TYPE_ACCENT[w.nodeType] ?? DEFAULT_ACCENT;
-          // Subtle glow on hover
-          ctx.shadowColor = TYPE_ACCENT[w.nodeType] ?? DEFAULT_ACCENT;
-          ctx.shadowBlur = 12;
-        } else {
-          ctx.fillStyle = w.color;
-        }
-
-        ctx.fillText(w.displayName, sx, sy);
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
+      if (isHovered) {
+        ctx.shadowColor = w.color;
+        ctx.shadowBlur = 10;
       }
 
-      setHoveredWord(newHovered);
-      rafId = requestAnimationFrame(render);
-    };
+      ctx.fillStyle = w.color;
+      ctx.fillText(w.text ?? "", 0, 0);
 
-    rafId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(rafId);
-  }, [words, size]);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
 
-  // Mouse tracking
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    ctx.restore();
+  }, [layoutWords, size, hoveredWord, transform]);
+
+  // Hit testing
+  const hitTest = useCallback(
+    (clientX: number, clientY: number): LayoutWord | null => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      // Convert to canvas-local coordinates, then to layout coordinates
+      const mx = clientX - rect.left - size.w / 2 - transform.x;
+      const my = clientY - rect.top - size.h / 2 - transform.y;
+      const lx = mx / transform.scale;
+      const ly = my / transform.scale;
+
+      for (let i = layoutWords.length - 1; i >= 0; i--) {
+        const w = layoutWords[i];
+        if (w.x == null || w.y == null) continue;
+        const fs = w.size ?? 14;
+        const textW = (w.text?.length ?? 0) * fs * 0.55;
+        const textH = fs * 1.3;
+
+        const isRotated = w.rotate === 90;
+        const hw = isRotated ? textH / 2 : textW / 2;
+        const hh = isRotated ? textW / 2 : textH / 2;
+
+        if (
+          lx >= w.x - hw &&
+          lx <= w.x + hw &&
+          ly >= w.y - hh &&
+          ly <= w.y + hh
+        ) {
+          return w;
+        }
+      }
+      return null;
+    },
+    [layoutWords, size, transform],
+  );
+
+  // Mouse handlers
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (dragRef.current.dragging) {
+        const dx = e.clientX - dragRef.current.lastX;
+        const dy = e.clientY - dragRef.current.lastY;
+        dragRef.current.lastX = e.clientX;
+        dragRef.current.lastY = e.clientY;
+        setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        return;
+      }
+      const hit = hitTest(e.clientX, e.clientY);
+      setHoveredWord(hit);
+    },
+    [hitTest],
+  );
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    dragRef.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current.dragging = false;
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    mouseRef.current = { x: -1, y: -1 };
+    dragRef.current.dragging = false;
     setHoveredWord(null);
+  }, []);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const hit = hitTest(e.clientX, e.clientY);
+      if (hit && onNodeClick) {
+        onNodeClick(hit.fullName);
+      }
+    },
+    [hitTest, onNodeClick],
+  );
+
+  // Zoom with scroll wheel
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setTransform((prev) => ({
+      ...prev,
+      scale: Math.max(0.3, Math.min(3, prev.scale * delta)),
+    }));
   }, []);
 
   const containerHeight = height ?? "100%";
 
-  // ── Empty state ──
+  // Empty state
   if (nodes.length === 0) {
     return (
       <div
@@ -326,10 +346,14 @@ export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
       style={{
         height: containerHeight,
         minHeight: 400,
-        cursor: hoveredWord ? "pointer" : "default",
+        cursor: hoveredWord ? "pointer" : dragRef.current.dragging ? "grabbing" : "grab",
       }}
       onMouseMove={handleMouseMove}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+      onWheel={handleWheel}
     >
       {/* Canvas */}
       <canvas
@@ -339,23 +363,30 @@ export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
       />
 
       {/* Hover tooltip */}
-      {hoveredWord && (
+      {hoveredWord && hoveredWord.x != null && hoveredWord.y != null && (
         <div
           className="pointer-events-none absolute z-20 animate-in fade-in-0 duration-150"
           style={{
-            left: Math.min(hoveredWord.x * size.w + 12, size.w - 200),
-            top: Math.max(hoveredWord.y * size.h - 48, 8),
+            left: Math.min(
+              size.w / 2 + transform.x + hoveredWord.x * transform.scale + 12,
+              size.w - 220,
+            ),
+            top: Math.max(
+              size.h / 2 + transform.y + hoveredWord.y * transform.scale - 48,
+              8,
+            ),
           }}
         >
-          <div
-            className="rounded-lg border border-purple-200/60 bg-white px-3 py-2 shadow-lg"
-          >
-            <p className="text-xs font-bold text-slate-800 max-w-[180px] leading-tight">{hoveredWord.fullName}</p>
-            <div className="flex items-center gap-1.5 mt-1">
+          <div className="rounded-lg border border-slate-200/60 bg-white px-3 py-2 shadow-lg">
+            <p className="max-w-[200px] text-xs font-bold leading-tight text-slate-800">
+              {hoveredWord.fullName}
+            </p>
+            <div className="mt-1 flex items-center gap-1.5">
               <span
-                className="rounded px-1 py-0.5 text-[9px] font-medium text-purple-700 bg-purple-50"
+                className="rounded px-1 py-0.5 text-[9px] font-medium text-white"
+                style={{ backgroundColor: hoveredWord.color }}
               >
-                {hoveredWord.nodeType}
+                {TYPE_LABELS[hoveredWord.nodeType] ?? hoveredWord.nodeType}
               </span>
               <span className="text-[9px] text-slate-400">
                 {Math.round(hoveredWord.confidence * 100)}%
@@ -366,34 +397,37 @@ export function WordCloud3D({ subjectLabel, nodes, height }: WordCloud3DProps) {
       )}
 
       {/* Bottom info strip */}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-3 pb-3 pt-8 z-10"
-        style={{ background: "linear-gradient(to top, rgba(255,255,255,0.95) 0%, transparent 100%)" }}
+      <div
+        className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 px-3 pb-3 pt-8"
+        style={{
+          background: "linear-gradient(to top, rgba(255,255,255,0.95) 0%, transparent 100%)",
+        }}
       >
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-sm font-bold text-slate-800">{subjectLabel}</p>
-            <p className="text-[9px] text-slate-400 mt-0.5">
-              {nodes.length} 个知识节点 · 悬停查看详情
+            <p className="mt-0.5 text-[9px] text-slate-400">
+              {nodes.length} 个知识节点 · 点击查看详情 · 滚轮缩放 · 拖拽平移
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5 justify-end">
+          <div className="flex flex-wrap justify-end gap-1.5">
             {topTypes.map(([type, count]) => {
-              const accent = TYPE_ACCENT[type] ?? DEFAULT_ACCENT;
+              const color = TYPE_COLORS[type] ?? DEFAULT_COLOR;
               return (
                 <div
                   key={type}
                   className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium"
                   style={{
-                    backgroundColor: `${accent}10`,
-                    border: `1px solid ${accent}25`,
-                    color: accent,
+                    backgroundColor: `${color}15`,
+                    border: `1px solid ${color}30`,
+                    color,
                   }}
                 >
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: accent }}
+                    style={{ backgroundColor: color }}
                   />
-                  {type} {count}
+                  {TYPE_LABELS[type] ?? type} {count}
                 </div>
               );
             })}

@@ -4,14 +4,22 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations
+import re
 
 import structlog
 
+from app.workflows.digest.kg.services.candidate_identity import (
+    bucket_scope,
+    candidate_lookup_keys,
+    token_bucket,
+)
 from app.workflows.digest.kg.services.extractor import CandidateNode
 from app.shared.infra.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 
 logger = structlog.get_logger()
+_SECONDARY_NODE_TYPES = {"Definition", "Example"}
 
 
 @dataclass
@@ -62,8 +70,8 @@ async def cluster_candidates(
         similarity_threshold: embedding 相似度阈值，默认 0.85。
 
     Returns:
-        (clustered_candidates, candidate_name_to_cluster_id) 元组。
-        candidate_name_to_cluster_id 将原始候选名称映射到聚类代表的索引，
+        (clustered_candidates, candidate_lookup_to_cluster_id) 元组。
+        candidate_lookup_to_cluster_id 将候选 id / typed lookup key 映射到聚类代表的索引，
         供后续边解析使用。
     """
     if not candidates:
@@ -72,7 +80,8 @@ async def cluster_candidates(
     # ── Step 1: 按 (node_type, normalized_name) 精确分组 ──
     group_key_to_members: dict[tuple[str, str], list[tuple[CandidateNode, int]]] = defaultdict(list)
     for cand, chunk_id in candidates:
-        key = (cand.node_type, normalize_name(cand.name))
+        scope_key = bucket_scope(cand) if cand.node_type in _SECONDARY_NODE_TYPES else ""
+        key = (cand.node_type, f"{normalize_name(cand.name)}::{scope_key}")
         group_key_to_members[key].append((cand, chunk_id))
 
     # 构建初始簇列表
@@ -83,10 +92,17 @@ async def cluster_candidates(
     repr_texts = [cluster[0][0].name + "：" + cluster[0][0].local_summary for cluster in proto_clusters]
     embeddings = await aembed_texts(repr_texts)
 
-    # 按 node_type 分组簇索引
-    type_to_indices: dict[str, list[int]] = defaultdict(list)
+    # 按 node_type + taxonomy bucket + token bucket 分桶，避免 O(n²) 扫整类。
+    bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for idx, cluster in enumerate(proto_clusters):
-        type_to_indices[cluster[0][0].node_type].append(idx)
+        representative = cluster[0][0]
+        bucket_to_indices[
+            (
+                representative.node_type,
+                bucket_scope(representative),
+                token_bucket(representative.name),
+            )
+        ].append(idx)
 
     # Union-Find 合并
     parent = list(range(len(proto_clusters)))
@@ -102,15 +118,17 @@ async def cluster_candidates(
         if ra != rb:
             parent[rb] = ra
 
-    for indices in type_to_indices.values():
-        for i in range(len(indices)):
-            for j in range(i + 1, len(indices)):
-                idx_a, idx_b = indices[i], indices[j]
-                if find(idx_a) == find(idx_b):
-                    continue
-                sim = _cosine_similarity(embeddings[idx_a], embeddings[idx_b])
-                if sim >= similarity_threshold:
-                    union(idx_a, idx_b)
+    compared_pairs = 0
+    for indices in bucket_to_indices.values():
+        if len(indices) <= 1:
+            continue
+        for idx_a, idx_b in combinations(indices, 2):
+            if find(idx_a) == find(idx_b):
+                continue
+            sim = _cosine_similarity(embeddings[idx_a], embeddings[idx_b])
+            compared_pairs += 1
+            if sim >= similarity_threshold:
+                union(idx_a, idx_b)
 
     # 收集最终簇
     root_to_members: dict[int, list[tuple[CandidateNode, int]]] = defaultdict(list)
@@ -120,7 +138,7 @@ async def cluster_candidates(
 
     # ── Step 3: 构建输出 ──
     clustered: list[ClusteredCandidate] = []
-    candidate_name_to_cluster_id: dict[str, int] = {}
+    candidate_lookup_to_cluster_id: dict[str, int] = {}
 
     for cluster_idx, (_, members) in enumerate(sorted(root_to_members.items())):
         nodes = [m[0] for m in members]
@@ -135,13 +153,16 @@ async def cluster_candidates(
         )
         clustered.append(cc)
 
-        # 映射所有成员名称到此簇索引
+        # 映射所有成员 id / typed lookup key 到此簇索引
         for node in nodes:
-            candidate_name_to_cluster_id[node.name] = cluster_idx
+            for lookup_key in candidate_lookup_keys(node):
+                candidate_lookup_to_cluster_id[lookup_key] = cluster_idx
 
     logger.info(
         "kg_cluster_complete",
         input_count=len(candidates),
         cluster_count=len(clustered),
+        compared_pairs=compared_pairs,
+        bucket_count=len(bucket_to_indices),
     )
-    return clustered, candidate_name_to_cluster_id
+    return clustered, candidate_lookup_to_cluster_id
