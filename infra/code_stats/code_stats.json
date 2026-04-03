@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T06:25:13.218681",
-  "total_commits_analyzed": 322,
+  "generated_at": "2026-04-03T09:52:07.551566",
+  "total_commits_analyzed": 334,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2577,6 +2577,102 @@
       "code_lines": 75385,
       "other_lines": 24774,
       "message": "Merge branch 'dev_wzx'"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "fb08322",
+      "total_lines": 95891,
+      "code_lines": 72097,
+      "other_lines": 23794,
+      "message": "feat: 完善考试中心三栏体验并补齐正式考卷生成兜底"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "f01a3f6",
+      "total_lines": 94838,
+      "code_lines": 71063,
+      "other_lines": 23775,
+      "message": "style: 优化ui"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "dd551e7",
+      "total_lines": 95842,
+      "code_lines": 72045,
+      "other_lines": 23797,
+      "message": "Resolve merge conflicts in ExamsPage and introduce"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "e89fa7f",
+      "total_lines": 95843,
+      "code_lines": 72046,
+      "other_lines": 23797,
+      "message": "style: 解决Exams合并冲突，利用折叠面板净化设置与列表UI结构"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "494604d",
+      "total_lines": 96041,
+      "code_lines": 72228,
+      "other_lines": 23813,
+      "message": "fix: 修复 Examine/Profile 闭环约束并同步设计文档"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "921bdeb",
+      "total_lines": 100159,
+      "code_lines": 75385,
+      "other_lines": 24774,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "1d305cd",
+      "total_lines": 97166,
+      "code_lines": 72970,
+      "other_lines": 24196,
+      "message": "feat(前端): 侧边栏学科管理重构 — 三点菜单支持重命名/导出/删除"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "7edfb45",
+      "total_lines": 95826,
+      "code_lines": 72029,
+      "other_lines": 23797,
+      "message": "style: 页面优化"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "331e48d",
+      "total_lines": 95976,
+      "code_lines": 72160,
+      "other_lines": 23816,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "73b727b",
+      "total_lines": 98345,
+      "code_lines": 74106,
+      "other_lines": 24239,
+      "message": "merge: 合并远程UI美化与本地侧边栏三点菜单功能"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "bf64213",
+      "total_lines": 103709,
+      "code_lines": 78469,
+      "other_lines": 25240,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "4d5dbf0",
+      "total_lines": 105207,
+      "code_lines": 79371,
+      "other_lines": 25836,
+      "message": "merge: 合并ui更新、exam更新，导入导出更新"
     }
   ]
 }
