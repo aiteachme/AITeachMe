@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-02T18:11:44.987364",
-  "total_commits_analyzed": 299,
+  "generated_at": "2026-04-03T02:18:38.021443",
+  "total_commits_analyzed": 310,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2393,6 +2393,94 @@
       "code_lines": 68859,
       "other_lines": 23681,
       "message": "feat: 完善学科级向量绑定与知识构建降级流程"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "8e16f29",
+      "total_lines": 70122,
+      "code_lines": 54577,
+      "other_lines": 15545,
+      "message": "feat: enhance authentication and user management f"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "b7be864",
+      "total_lines": 72465,
+      "code_lines": 56364,
+      "other_lines": 16101,
+      "message": "feat: implement multi-layer memory system with ext"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "5883035",
+      "total_lines": 72601,
+      "code_lines": 56483,
+      "other_lines": 16118,
+      "message": "feat: 添加游客用户支持，优化认证流程和会话管理"
+    },
+    {
+      "date": "2026-03-28",
+      "commit": "fdc7d5e",
+      "total_lines": 69121,
+      "code_lines": 53984,
+      "other_lines": 15137,
+      "message": "Refactor imports and update module paths across th"
+    },
+    {
+      "date": "2026-03-29",
+      "commit": "b1e9400",
+      "total_lines": 69663,
+      "code_lines": 54468,
+      "other_lines": 15195,
+      "message": "feat: 添加邮箱验证码功能，支持注册前校验及发送验证码"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "555499d",
+      "total_lines": 99157,
+      "code_lines": 74027,
+      "other_lines": 25130,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-02",
+      "commit": "41c02b6",
+      "total_lines": 92540,
+      "code_lines": 68859,
+      "other_lines": 23681,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "75c9b63",
+      "total_lines": 99182,
+      "code_lines": 74047,
+      "other_lines": 25135,
+      "message": "feat: 添加邮件验证码发送的日志记录功能，优化时间处理为 UTC"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "637a464",
+      "total_lines": 100628,
+      "code_lines": 75215,
+      "other_lines": 25413,
+      "message": "Merge branch 'main' into dev_wzx"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "902fd46",
+      "total_lines": 100633,
+      "code_lines": 75220,
+      "other_lines": 25413,
+      "message": "fix: align imports/tests with infra module paths"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "c427e3a",
+      "total_lines": 101871,
+      "code_lines": 76133,
+      "other_lines": 25738,
+      "message": "refactor: restore core structure and move subject "
     }
   ]
 }
