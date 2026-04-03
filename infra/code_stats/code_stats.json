@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T17:29:28.586141",
-  "total_commits_analyzed": 353,
+  "generated_at": "2026-04-03T17:43:25.298103",
+  "total_commits_analyzed": 355,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2825,6 +2825,22 @@
       "code_lines": 82768,
       "other_lines": 26246,
       "message": "merge: 合并digest更改分支"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "43c405f",
+      "total_lines": 109014,
+      "code_lines": 82768,
+      "other_lines": 26246,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "d9ed4a9",
+      "total_lines": 109019,
+      "code_lines": 82771,
+      "other_lines": 26248,
+      "message": "fix: 修正知识文档页空状态误判为构建中"
     }
   ]
 }
