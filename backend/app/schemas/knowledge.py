@@ -131,6 +131,38 @@ class BuildSampleCardResponse(BaseModel):
     summary: str
 
 
+class BuildPreviewNodeResponse(BaseModel):
+    """One lightweight node preview surfaced during digest polling."""
+
+    name: str
+    node_type: str = Field(description="Topic / Concept / Method / Definition / Example")
+
+
+class KnowledgeBuildPreviewResponse(BaseModel):
+    """Human-facing preview payload for ongoing digest builds."""
+
+    current_stage_description: str | None = Field(default=None, description="Friendly description of the current build stage.")
+    digest_mode: str | None = Field(default=None, description="sprint / systematic")
+    mode_reason: str | None = Field(default=None, description="Why the current digest mode was selected.")
+    processed_chunks: int = Field(default=0, description="How many section chunks have been processed so far.")
+    total_chunks: int = Field(default=0, description="Total number of section chunks for this build.")
+    discovered_node_count: int = Field(default=0, description="Current discovered knowledge-node count.")
+    discovered_node_types: dict[str, int] = Field(default_factory=dict, description="Node counts by node type.")
+    sample_nodes: list[BuildPreviewNodeResponse] = Field(default_factory=list, description="Sample discovered nodes.")
+    sample_cards: list[BuildSampleCardResponse] = Field(default_factory=list, description="Small preview cards for the waiting UI.")
+    latest_chapter_titles: list[str] = Field(default_factory=list, description="Recently staged or published chapter titles.")
+    draft_excerpt: str = Field(default="", description="Short excerpt from the current draft markdown, if any.")
+
+
+class KnowledgeBuildMetricsResponse(BaseModel):
+    """Compact build diagnostics used by polling UIs."""
+
+    llm_total_calls: int = Field(default=0, description="Total LLM calls recorded for the current build session.")
+    failed_llm_call_count: int = Field(default=0, description="Failed LLM call count for the current build session.")
+    llm_avg_latency_ms: float = Field(default=0.0, description="Average LLM latency in milliseconds.")
+    call_count_by_lane: dict[str, int] = Field(default_factory=dict, description="LLM call count grouped by workflow lane.")
+
+
 class KnowledgeBuildStatusResponse(BaseModel):
     """Minimal runtime metadata exposed to clients for docs polling."""
 
@@ -156,6 +188,14 @@ class DocGenGetResponse(BaseModel):
     draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
     draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
     build: KnowledgeBuildStatusResponse | None = Field(default=None, description="Current or most recent build metadata.")
+    build_preview: KnowledgeBuildPreviewResponse | None = Field(
+        default=None,
+        description="Lightweight preview payload for the ongoing build, surfaced through the docs polling endpoint.",
+    )
+    build_metrics: KnowledgeBuildMetricsResponse | None = Field(
+        default=None,
+        description="Compact live build diagnostics surfaced through the docs polling endpoint.",
+    )
     vector_status: SubjectVectorStatusResponse = Field(
         default_factory=SubjectVectorStatusResponse,
         description="Current subject-level vector capability status.",

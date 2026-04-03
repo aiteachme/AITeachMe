@@ -32,6 +32,7 @@ async def run_unified_digest_build(
     user_prompt: str | None = None,
     requested_at: datetime | None = None,
     event_bus: InProcessEventBus | None = None,
+    build_session_id: str | None = None,
 ) -> UnifiedBuildResult:
     """Run the top-level unified digest build."""
 
@@ -45,6 +46,7 @@ async def run_unified_digest_build(
         file_ids=file_ids,
         user_prompt=user_prompt,
         requested_at=requested_at,
+        build_session_id=build_session_id,
     )
     build_session_id = initial_state["build_session_id"]
     context = WorkflowContext(

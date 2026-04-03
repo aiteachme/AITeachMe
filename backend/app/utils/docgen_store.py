@@ -144,6 +144,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     requested_at: datetime
     status: str = "accepted"
     stage: str = "build_accepted"
+    build_session_id: str | None = None
     source_file_ids: list[int] = Field(default_factory=list)
     prompt: str | None = None
     error_message: str | None = None

@@ -5,6 +5,8 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
+import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse';
+import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse';
 import type { KnowledgeBuildStatusResponse } from './knowledgeBuildStatusResponse';
 import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse';
 
@@ -28,6 +30,10 @@ export interface DocGenGetResponse {
   draft_updated_at?: string | null;
   /** Current or most recent build metadata. */
   build?: KnowledgeBuildStatusResponse | null;
+  /** Lightweight preview payload for the ongoing build, surfaced through the docs polling endpoint. */
+  build_preview?: KnowledgeBuildPreviewResponse | null;
+  /** Compact live build diagnostics surfaced through the docs polling endpoint. */
+  build_metrics?: KnowledgeBuildMetricsResponse | null;
   /** Current subject-level vector capability status. */
   vector_status?: SubjectVectorStatusResponse;
 }

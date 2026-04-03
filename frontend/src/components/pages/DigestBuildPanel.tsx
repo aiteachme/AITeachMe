@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+﻿import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -33,6 +33,38 @@ interface DocBuildStatus {
   draft_available?: boolean;
 }
 
+interface BuildSampleCard {
+  title: string;
+  card_type: string;
+  summary: string;
+}
+
+interface BuildPreviewNode {
+  name: string;
+  node_type: string;
+}
+
+interface KnowledgeBuildPreview {
+  current_stage_description?: string | null;
+  digest_mode?: string | null;
+  mode_reason?: string | null;
+  processed_chunks?: number;
+  total_chunks?: number;
+  discovered_node_count?: number;
+  discovered_node_types?: Record<string, number>;
+  sample_nodes?: BuildPreviewNode[];
+  sample_cards?: BuildSampleCard[];
+  latest_chapter_titles?: string[];
+  draft_excerpt?: string;
+}
+
+interface KnowledgeBuildMetrics {
+  llm_total_calls?: number;
+  failed_llm_call_count?: number;
+  llm_avg_latency_ms?: number;
+  call_count_by_lane?: Record<string, number>;
+}
+
 interface KnowledgeDocsBuildState {
   exists: boolean;
   markdown?: string;
@@ -40,6 +72,8 @@ interface KnowledgeDocsBuildState {
   draft_markdown?: string;
   draft_updated_at?: string | null;
   build?: DocBuildStatus | null;
+  build_preview?: KnowledgeBuildPreview | null;
+  build_metrics?: KnowledgeBuildMetrics | null;
 }
 
 interface DerivedBuildState {
@@ -138,6 +172,7 @@ function deriveBuildState(data: KnowledgeDocsBuildState | undefined): DerivedBui
   const liveMarkdown = data?.markdown ?? "";
   const draftMarkdown = data?.draft_markdown ?? "";
   const build = data?.build ?? null;
+  const preview = data?.build_preview ?? null;
   const stage = build?.stage?.trim() || "idle";
   const status = build?.status?.trim() || (data?.exists ? "completed" : "idle");
 
@@ -147,13 +182,17 @@ function deriveBuildState(data: KnowledgeDocsBuildState | undefined): DerivedBui
   const isFailed = status === "failed" || status === "cancelled";
   const isActive = ACTIVE_BUILD_STATUSES.has(status);
 
-  let statusText = STAGE_TEXT[stage] ?? STAGE_TEXT[status] ?? "正在整理知识内容";
+  let statusText =
+    preview?.current_stage_description?.trim() ||
+    STAGE_TEXT[stage] ||
+    STAGE_TEXT[status] ||
+    "Building knowledge content";
   if (build?.error_message?.trim()) {
     statusText = build.error_message;
   } else if (status === "idle" && hasLiveVersion) {
-    statusText = "当前显示的是最新发布的知识文档";
+    statusText = "Latest published knowledge document is available.";
   } else if (status === "idle" && !hasLiveVersion) {
-    statusText = "等待发起新的知识构建";
+    statusText = "Waiting for the next knowledge build.";
   }
 
   if (isCompleted) {
@@ -182,7 +221,6 @@ function deriveBuildState(data: KnowledgeDocsBuildState | undefined): DerivedBui
     isCompleted: false,
   };
 }
-
 function statusTone(state: DerivedBuildState): string {
   if (state.isFailed) {
     return "border-rose-200 bg-rose-50";
@@ -194,6 +232,31 @@ function statusTone(state: DerivedBuildState): string {
     return "border-sky-200 bg-sky-50";
   }
   return "border-slate-200 bg-white";
+}
+
+function previewCardTone(cardType?: string): string {
+  switch ((cardType ?? "").toLowerCase()) {
+    case "mode":
+      return "border-sky-200 bg-sky-50";
+    case "topic":
+      return "border-emerald-200 bg-emerald-50";
+    case "concept":
+      return "border-blue-200 bg-blue-50";
+    case "method":
+      return "border-amber-200 bg-amber-50";
+    default:
+      return "border-slate-200 bg-slate-50";
+  }
+}
+
+function formatLatency(ms?: number): string | null {
+  if (!ms || ms <= 0) {
+    return null;
+  }
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 export function DigestBuildProvider({
@@ -298,6 +361,24 @@ export function DigestBuildProgress({
   const progress = Math.max(0, Math.min(100, Math.round(animatedProgress)));
   const tone = statusTone(derived);
   const stageBadge = data?.build?.stage?.trim() || "idle";
+  const preview = data?.build_preview ?? null;
+  const metrics = data?.build_metrics ?? null;
+  const displayStatusText = preview?.current_stage_description?.trim() || derived.statusText;
+  const throughputLabel =
+    (preview?.total_chunks ?? 0) > 0 ? `${preview?.processed_chunks ?? 0}/${preview?.total_chunks ?? 0} chunks` : null;
+  const nodeCountLabel =
+    (preview?.discovered_node_count ?? 0) > 0 ? `${preview?.discovered_node_count ?? 0} nodes` : null;
+  const llmCallLabel =
+    (metrics?.llm_total_calls ?? 0) > 0 ? `${metrics?.llm_total_calls ?? 0} LLM calls` : null;
+  const latencyLabel = formatLatency(metrics?.llm_avg_latency_ms);
+  const laneLabels = Object.entries(metrics?.call_count_by_lane ?? {})
+    .filter(([, count]) => count > 0)
+    .slice(0, compact ? 2 : 3)
+    .map(([lane, count]) => `${lane}:${count}`);
+  const previewCards = preview?.sample_cards ?? [];
+  const previewNodes = preview?.sample_nodes ?? [];
+  const latestChapterTitles = preview?.latest_chapter_titles ?? [];
+  const draftExcerpt = preview?.draft_excerpt?.trim() ?? "";
 
   return (
     <section className={`rounded-2xl border px-4 py-4 shadow-sm ${tone} ${className}`.trim()}>
@@ -309,12 +390,12 @@ export function DigestBuildProgress({
             ) : (
               <Sparkles className="h-4 w-4 text-sky-600" />
             )}
-            <p className="text-sm font-semibold">{derived.statusText}</p>
+            <p className="text-sm font-semibold">{displayStatusText}</p>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             {derived.hasDraftVersion
-              ? "草稿已经可用，前端会继续等待图谱和课程结构统一发布。"
-              : "构建状态只通过知识文档接口轮询，进度条由前端本地平滑补间。"}
+              ? "Draft is available. The page keeps polling and will switch after unified publish."
+              : "Progress is estimated on the frontend and synced via POST /knowledge/docs polling."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -340,13 +421,27 @@ export function DigestBuildProgress({
         </div>
       </div>
 
+      {throughputLabel || nodeCountLabel || llmCallLabel || latencyLabel || laneLabels.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
+          {throughputLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{throughputLabel}</span> : null}
+          {nodeCountLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{nodeCountLabel}</span> : null}
+          {llmCallLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmCallLabel}</span> : null}
+          {latencyLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {latencyLabel}</span> : null}
+          {laneLabels.map((label) => (
+            <span key={label} className="rounded-full bg-white/80 px-2.5 py-1">
+              {label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       {!compact ? (
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
           <span className="rounded-full bg-white/80 px-2.5 py-1">
-            {derived.hasLiveVersion ? "已有正式版" : "尚未发布正式版"}
+            {derived.hasLiveVersion ? "Live published doc available" : "No live published doc yet"}
           </span>
           <span className="rounded-full bg-white/80 px-2.5 py-1">
-            {derived.hasDraftVersion ? "已有草稿预览" : "草稿尚未生成"}
+            {derived.hasDraftVersion ? "Draft preview available" : "Draft preview not ready"}
           </span>
           {data?.build?.requested_at ? (
             <span className="rounded-full bg-white/80 px-2.5 py-1">
@@ -357,12 +452,68 @@ export function DigestBuildProgress({
         </div>
       ) : null}
 
+      {!compact && previewCards.length > 0 ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {previewCards.slice(0, 4).map((card) => (
+            <article
+              key={`${card.card_type}-${card.title}`}
+              className={`rounded-xl border px-3 py-3 ${previewCardTone(card.card_type)}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-slate-900">{card.title}</p>
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                  {card.card_type}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {!compact && previewCards.length === 0 && previewNodes.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Preview Nodes</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {previewNodes.slice(0, 6).map((node) => (
+              <span
+                key={`${node.node_type}-${node.name}`}
+                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+              >
+                {node.node_type}: {node.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!compact && (latestChapterTitles.length > 0 || draftExcerpt) ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3">
+          {latestChapterTitles.length > 0 ? (
+            <>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {latestChapterTitles.slice(0, 4).map((title) => (
+                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
+                    {title}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {draftExcerpt ? (
+            <pre className="mt-3 overflow-hidden whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-3 text-[11px] leading-5 text-slate-100">
+              {draftExcerpt}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+
       {data?.build?.error_message ? <p className="mt-3 text-xs text-rose-600">{data.build.error_message}</p> : null}
-      {isFetching ? <p className="mt-2 text-[11px] text-slate-500">正在同步最新状态...</p> : null}
+      {isFetching ? <p className="mt-2 text-[11px] text-slate-500">Syncing latest build state...</p> : null}
     </section>
   );
 }
-
 export function DigestBuildButton() {
   const { subject } = useDigestBuild();
   const queryClient = useQueryClient();
@@ -435,7 +586,7 @@ export function DigestBuildButton() {
         {buildMutation.isPending ? (
           <>
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            构建中
+            构建中...
           </>
         ) : (
           <>
@@ -462,7 +613,9 @@ export function DigestBuildButton() {
           ) : null}
 
           {!filesLoading && readyFiles.length === 0 ? (
-            <p className="py-4 text-sm text-slate-400">当前还没有可用于构建的已解析文件，请先上传并等待解析完成。</p>
+            <p className="py-4 text-sm text-slate-400">
+              当前还没有可用于构建的已解析文件，请先上传并等待解析完成。
+            </p>
           ) : null}
 
           {readyFiles.length > 0 ? (

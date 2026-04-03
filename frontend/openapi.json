@@ -5319,6 +5319,51 @@
         ],
         "title": "Body_upload_files_api_v1_subjects__subject__files_upload_post"
       },
+      "BuildPreviewNodeResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type",
+            "description": "Topic / Concept / Method / Definition / Example"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "node_type"
+        ],
+        "title": "BuildPreviewNodeResponse",
+        "description": "One lightweight node preview surfaced during digest polling."
+      },
+      "BuildSampleCardResponse": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "card_type": {
+            "type": "string",
+            "title": "Card Type",
+            "description": "mode / topic / concept / method"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "card_type",
+          "summary"
+        ],
+        "title": "BuildSampleCardResponse",
+        "description": "Lightweight preview card shown while digest is building."
+      },
       "ChatClearData": {
         "properties": {
           "cleared": {
@@ -6251,6 +6296,28 @@
               }
             ],
             "description": "Current or most recent build metadata."
+          },
+          "build_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildPreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lightweight preview payload for the ongoing build, surfaced through the docs polling endpoint."
+          },
+          "build_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBuildMetricsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Compact live build diagnostics surfaced through the docs polling endpoint."
           },
           "vector_status": {
             "$ref": "#/components/schemas/SubjectVectorStatusResponse",
@@ -7876,6 +7943,138 @@
         "title": "InitRequest",
         "description": "系统初始化请求。",
         "example": {}
+      },
+      "KnowledgeBuildMetricsResponse": {
+        "properties": {
+          "llm_total_calls": {
+            "type": "integer",
+            "title": "Llm Total Calls",
+            "description": "Total LLM calls recorded for the current build session.",
+            "default": 0
+          },
+          "failed_llm_call_count": {
+            "type": "integer",
+            "title": "Failed Llm Call Count",
+            "description": "Failed LLM call count for the current build session.",
+            "default": 0
+          },
+          "llm_avg_latency_ms": {
+            "type": "number",
+            "title": "Llm Avg Latency Ms",
+            "description": "Average LLM latency in milliseconds.",
+            "default": 0.0
+          },
+          "call_count_by_lane": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Call Count By Lane",
+            "description": "LLM call count grouped by workflow lane."
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeBuildMetricsResponse",
+        "description": "Compact build diagnostics used by polling UIs."
+      },
+      "KnowledgeBuildPreviewResponse": {
+        "properties": {
+          "current_stage_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Description",
+            "description": "Friendly description of the current build stage."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "sprint / systematic"
+          },
+          "mode_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Reason",
+            "description": "Why the current digest mode was selected."
+          },
+          "processed_chunks": {
+            "type": "integer",
+            "title": "Processed Chunks",
+            "description": "How many section chunks have been processed so far.",
+            "default": 0
+          },
+          "total_chunks": {
+            "type": "integer",
+            "title": "Total Chunks",
+            "description": "Total number of section chunks for this build.",
+            "default": 0
+          },
+          "discovered_node_count": {
+            "type": "integer",
+            "title": "Discovered Node Count",
+            "description": "Current discovered knowledge-node count.",
+            "default": 0
+          },
+          "discovered_node_types": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Discovered Node Types",
+            "description": "Node counts by node type."
+          },
+          "sample_nodes": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPreviewNodeResponse"
+            },
+            "type": "array",
+            "title": "Sample Nodes",
+            "description": "Sample discovered nodes."
+          },
+          "sample_cards": {
+            "items": {
+              "$ref": "#/components/schemas/BuildSampleCardResponse"
+            },
+            "type": "array",
+            "title": "Sample Cards",
+            "description": "Small preview cards for the waiting UI."
+          },
+          "latest_chapter_titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Latest Chapter Titles",
+            "description": "Recently staged or published chapter titles."
+          },
+          "draft_excerpt": {
+            "type": "string",
+            "title": "Draft Excerpt",
+            "description": "Short excerpt from the current draft markdown, if any.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeBuildPreviewResponse",
+        "description": "Human-facing preview payload for ongoing digest builds."
       },
       "KnowledgeBuildStatusResponse": {
         "properties": {
