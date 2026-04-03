@@ -20,7 +20,7 @@ from app.models import (
     UnitDependency,
     User,
 )
-from app.services.knowledge.curriculum_service import clear_subject_knowledge
+from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.subject_service import delete_subject_record
 
 

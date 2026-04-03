@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
-  ChevronDown,
   ChevronRight,
   Download,
   Edit3,
@@ -35,11 +34,35 @@ import { cn } from "../../lib/utils";
 import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
 
+const CURATED_GRADIENTS = [
+  "linear-gradient(135deg, #1e293b, #0f172a)", // Obsidian Black
+  "linear-gradient(135deg, #10b981, #047857)", // Emerald Green
+  "linear-gradient(135deg, #f43f5e, #be123c)", // Rose Red
+  "linear-gradient(135deg, #6366f1, #4338ca)", // Deep Indigo
+  "linear-gradient(135deg, #14b8a6, #0f766e)", // Teal
+  "linear-gradient(135deg, #f59e0b, #b45309)", // Amber
+  "linear-gradient(135deg, #8b5cf6, #6d28d9)", // Violet
+  "linear-gradient(135deg, #0ea5e9, #0369a1)", // Ocean Sky
+  "linear-gradient(135deg, #ec4899, #be185d)", // Pink Blossom
+  "linear-gradient(135deg, #64748b, #334155)", // Slate
+];
+
+function getStyleForSubject(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % CURATED_GRADIENTS.length;
+  return {
+    background: CURATED_GRADIENTS[index]
+  };
+}
+
 const MODULES = [
-  { id: "files", name: "文件", icon: <Upload className="w-4 h-4" /> },
-  { id: "knowledge-docs", name: "知识库", icon: <BookOpen className="w-4 h-4" /> },
-  { id: "exams", name: "考试", icon: <FileText className="w-4 h-4" /> },
-  { id: "profile", name: "学习画像", icon: <BarChart3 className="w-4 h-4" /> },
+  { id: "files", name: "文件", icon: <Upload className="w-[18px] h-[18px]" /> },
+  { id: "knowledge-docs", name: "知识库", icon: <BookOpen className="w-[18px] h-[18px]" /> },
+  { id: "exams", name: "考试", icon: <FileText className="w-[18px] h-[18px]" /> },
+  { id: "profile", name: "学习画像", icon: <BarChart3 className="w-[18px] h-[18px]" /> },
 ];
 
 const NewSubjectForm = memo(function NewSubjectForm({
@@ -270,9 +293,9 @@ export function Sidebar() {
                   exit={{ opacity: 0, x: -10 }}
                   className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                 >
-                  <span className="text-lg">🎓</span>
-                  <span className="text-base font-bold text-slate-800 tracking-tight">AITeachMe</span>
-                  <span className="text-[9px] text-slate-400 font-medium">v1</span>
+                  <span className="text-[22px]">🎓</span>
+                  <span className="text-[17px] font-bold text-slate-900 tracking-tight ml-0.5">AITeachMe</span>
+                  <span className="text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded ml-0.5">v1</span>
                 </motion.div>
               </Link>
             )}
@@ -343,23 +366,35 @@ export function Sidebar() {
                 <button
                   onClick={() => toggleSubject(subject.subject_id)}
                   className={cn(
-                    "flex flex-1 items-center rounded-lg py-2 transition-all hover:bg-slate-100",
-                    effectiveCollapsed ? "justify-center px-0 mx-auto w-10" : "px-3"
+                    "flex flex-1 items-center rounded-lg py-2 transition-all duration-200",
+                    expandedSubjects.has(subject.subject_id) ? "bg-slate-50/80" : "hover:bg-slate-100/60",
+                    effectiveCollapsed ? "justify-center px-0 mx-auto w-12" : "px-2"
                   )}
                   title={effectiveCollapsed ? subject.name : undefined}
                 >
                   {effectiveCollapsed ? (
-                    <div className="w-6 h-6 rounded bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs">
+                    <div 
+                      className="w-[26px] h-[26px] rounded-md text-white flex items-center justify-center font-bold text-[12px] shadow-sm transition-transform duration-300 hover:scale-[1.04]" 
+                      style={getStyleForSubject(subject.name)}
+                    >
                       {subject.name.charAt(0).toUpperCase()}
                     </div>
                   ) : (
                     <>
-                      {expandedSubjects.has(subject.subject_id) ? (
-                        <ChevronDown className="mr-2 h-4 w-4 shrink-0 text-slate-400" />
-                      ) : (
-                        <ChevronRight className="mr-2 h-4 w-4 shrink-0 text-slate-400" />
-                      )}
-                      <span className="truncate text-sm font-medium text-slate-700 max-w-[130px]">{subject.name}</span>
+                      <motion.div
+                         animate={{ rotate: expandedSubjects.has(subject.subject_id) ? 90 : 0 }}
+                         transition={{ duration: 0.15 }}
+                         className="mr-1.5 flex items-center justify-center"
+                      >
+                         <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                      </motion.div>
+                      <div 
+                        className="w-6 h-6 rounded-md text-white flex items-center justify-center font-bold text-[11px] shadow-[0_1px_4px_rgba(0,0,0,0.1)] mr-2.5 shrink-0"
+                        style={getStyleForSubject(subject.name)}
+                      >
+                         {subject.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="truncate text-[13px] font-semibold text-slate-700/90 group-hover:text-slate-900 transition-colors tracking-wide max-w-[130px]">{subject.name}</span>
                     </>
                   )}
                 </button>
@@ -416,7 +451,7 @@ export function Sidebar() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="ml-6 mt-1 space-y-0.5 overflow-hidden border-l border-slate-100 pl-2 py-1"
+                    className="ml-6 mt-1 space-y-0.5 overflow-hidden border-l border-slate-200/60 pl-2.5 py-1"
                   >
                     {MODULES.map((moduleItem) => {
                       const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
@@ -427,13 +462,19 @@ export function Sidebar() {
                           to={path}
                           onClick={() => setIsMobileOpen(false)}
                           className={cn(
-                            "flex items-center rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                            "flex items-center rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 relative group",
                             isActive
-                              ? "bg-slate-100/80 text-slate-900 shadow-sm"
-                              : "text-slate-500 hover:bg-slate-100/50 hover:text-slate-900"
+                              ? "bg-slate-100/70 text-slate-900"
+                              : "text-slate-500 hover:bg-slate-50/80 hover:text-slate-700"
                           )}
                         >
-                          <span className={cn("mr-2", isActive ? "text-slate-700" : "text-slate-400")}>
+                          {isActive && (
+                            <motion.div 
+                              layoutId={`indicator-${subject.subject_id}`}
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[14px] bg-slate-800 rounded-full -ml-[11px]"
+                            />
+                          )}
+                          <span className={cn("mr-2.5 transition-colors duration-200 opacity-90", isActive ? "text-slate-700" : "text-slate-400 group-hover:text-slate-500")}>
                             {moduleItem.icon}
                           </span>
                           {moduleItem.name}
