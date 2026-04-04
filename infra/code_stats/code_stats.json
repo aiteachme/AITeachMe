@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T14:49:39.002118",
-  "total_commits_analyzed": 367,
+  "generated_at": "2026-04-04T14:59:02.646768",
+  "total_commits_analyzed": 375,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2937,6 +2937,70 @@
       "code_lines": 83973,
       "other_lines": 26680,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "dd82e48",
+      "total_lines": 107424,
+      "code_lines": 80868,
+      "other_lines": 26556,
+      "message": "chore: 同步内容"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "319076a",
+      "total_lines": 111225,
+      "code_lines": 84263,
+      "other_lines": 26962,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "cc08616",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "c344b3e",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "dbeed81",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "9296a2e",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4b33bc5",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "refactor: 统一存储抽象层，消除 export_import 中的 is_cloud_mod"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "418652c",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "Merge branch 'dev_ywl'"
     }
   ]
 }
