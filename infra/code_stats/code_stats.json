@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T16:53:25.958716",
-  "total_commits_analyzed": 378,
+  "generated_at": "2026-04-04T17:03:52.835558",
+  "total_commits_analyzed": 381,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3025,6 +3025,30 @@
       "code_lines": 85531,
       "other_lines": 27470,
       "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "daa0433",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "83acb64",
+      "total_lines": 113137,
+      "code_lines": 85623,
+      "other_lines": 27514,
+      "message": "fix: 解决network error"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "3552bf7",
+      "total_lines": 113191,
+      "code_lines": 85661,
+      "other_lines": 27530,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
