@@ -5,6 +5,7 @@ import json
 import mimetypes
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from app.utils.path_helpers import (
     build_asset_dir,
     build_asset_name_prefix,
     build_raw_markdown_path,
+    list_asset_files,
     resolve_storage_key_path,
     to_storage_key,
 )
@@ -35,8 +37,10 @@ from app.workflows.ingest.parsing.formats import (
     is_text_extension,
 )
 from app.workflows.ingest.parsing.orchestrator import deep_enhance_file, fast_parse_file
-from app.workflows.ingest.parsing.strategy import build_parse_plan
+from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
+from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.state import IngestParseState
+from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
 
 try:
     from PIL import Image
@@ -210,7 +214,8 @@ async def _run_deep_enhance_background(
         # Phase 1 used pymupdf_native for speed. Now re-parse with pymupdf4llm
         # for better markdown formatting (tables, headings, formula rendering).
         extension = Path(str(file_path)).suffix.lower()
-        if extension == ".pdf":
+        # MinerU already returns a high-quality markdown; avoid overriding it here.
+        if extension == ".pdf" and raw_file.parser_used != "mineru":
             try:
                 from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
                 from app.workflows.ingest.parsing.types import ParserRunOptions
@@ -356,6 +361,12 @@ async def run_parse_file_workflow(
     )
 
     try:
+        requested_parser_provider: str | None = None
+        mineru_token: str | None = None
+        mineru_enable_formula: bool = True
+        mineru_enable_table: bool = True
+        mineru_is_ocr: bool = False
+
         with managed_session() as session:
             raw_file = get_raw_file_by_id(session, file_id)
             if raw_file is None:
@@ -390,6 +401,52 @@ async def run_parse_file_workflow(
                 session.add(raw_file)
                 session.commit()
                 session.refresh(raw_file)
+
+            # ── Load "parse request" metadata (set at upload time) ──
+            # 前端 settings 属于“本地配置”，后端后台 ingest 无法直接读取。
+            # 因此 upload 时会把 parser_provider 与 MinerU 参数作为 multipart 字段传来，并暂存到 parse_metadata_json。
+            # 这里读取后：
+            # 1) 把 token 拿到内存中用于本次解析
+            # 2) 立即把 DB 中的 token 擦掉（避免长期落盘敏感信息）
+            try:
+                parse_request_payload = json.loads(raw_file.parse_metadata_json or "{}")
+                if not isinstance(parse_request_payload, dict):
+                    parse_request_payload = {}
+            except Exception:
+                parse_request_payload = {}
+
+            requested_parser_provider = parse_request_payload.get("requested_parser_provider")
+            if isinstance(requested_parser_provider, str):
+                requested_parser_provider = requested_parser_provider.strip() or None
+            else:
+                requested_parser_provider = None
+
+            if requested_parser_provider == "mineru":
+                mineru_block = parse_request_payload.get("mineru")
+                if isinstance(mineru_block, dict):
+                    token_value = mineru_block.get("api_token")
+                    mineru_token = str(token_value).strip() if token_value else None
+
+                    # FastAPI Form(bool) may arrive as bool already; keep conservative parsing.
+                    if isinstance(mineru_block.get("enable_formula"), bool):
+                        mineru_enable_formula = bool(mineru_block.get("enable_formula"))
+                    if isinstance(mineru_block.get("enable_table"), bool):
+                        mineru_enable_table = bool(mineru_block.get("enable_table"))
+                    if isinstance(mineru_block.get("is_ocr"), bool):
+                        mineru_is_ocr = bool(mineru_block.get("is_ocr"))
+
+                    # Sanitize: remove token from DB immediately.
+                    sanitized_block = dict(mineru_block)
+                    sanitized_block.pop("api_token", None)
+                    sanitized_payload = dict(parse_request_payload)
+                    sanitized_payload["mineru"] = sanitized_block
+                    update_raw_file(
+                        session,
+                        raw_file,
+                        parse_metadata_json=json.dumps(sanitized_payload, ensure_ascii=False),
+                    )
+                else:
+                    mineru_token = None
 
             # ── Fast Path: text/markdown/code files skip classify+plan entirely ──
             # (改进 2: RAGFlow Naive + LangChain 直通思路)
@@ -485,22 +542,42 @@ async def run_parse_file_workflow(
             )
 
             # Build parse plan
-            parse_plan = build_parse_plan(
-                file_path=file_path,
-                filetype=raw_file.file_ext,
-                file_size_bytes=raw_file.size_bytes,
-                classification=classification,
-            )
-            logger.info(
-                "ingest_parse_plan_built",
-                subject=subject,
-                file_id=file_id,
-                parse_mode=parse_plan.mode,
-                parser_chain=parse_plan.parser_chain,
-                decision_reason=parse_plan.decision_reason,
-                enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr,
-                llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
-            )
+            # - 默认：使用本地 parser 规划（fast_parse_file 链路）
+            # - MinerU：明确绕过本地 parser 链路，因此不依赖本地可用解析器/LLM key
+            if requested_parser_provider == "mineru":
+                parse_plan = ParsePlan(
+                    mode="external_mineru",
+                    parser_chain=["mineru"],
+                    decision_reason="用户在前端选择 MinerU 外部解析引擎。",
+                    options=ParserRunOptions(),
+                )
+                logger.info(
+                    "ingest_parse_plan_built",
+                    subject=subject,
+                    file_id=file_id,
+                    parse_mode=parse_plan.mode,
+                    parser_chain=parse_plan.parser_chain,
+                    decision_reason=parse_plan.decision_reason,
+                    enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr,
+                    llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
+                )
+            else:
+                parse_plan = build_parse_plan(
+                    file_path=file_path,
+                    filetype=raw_file.file_ext,
+                    file_size_bytes=raw_file.size_bytes,
+                    classification=classification,
+                )
+                logger.info(
+                    "ingest_parse_plan_built",
+                    subject=subject,
+                    file_id=file_id,
+                    parse_mode=parse_plan.mode,
+                    parser_chain=parse_plan.parser_chain,
+                    decision_reason=parse_plan.decision_reason,
+                    enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr,
+                    llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
+                )
             asset_dir = build_asset_dir(subject, file_id)
             if asset_dir.exists():
                 shutil.rmtree(asset_dir, ignore_errors=True)
@@ -526,13 +603,78 @@ async def run_parse_file_workflow(
             parse_mode=parse_plan.mode,
             parser_chain=parse_plan.parser_chain,
         )
-        parse_result = await fast_parse_file(
-            file_path=file_path,
-            asset_dir=asset_dir,
-            classification=classification,
-            parse_plan=parse_plan,
-            asset_link_prefix=f"../assets/{file_id}",
-        )
+        # When MinerU is explicitly selected, bypass the local parser chain.
+        if requested_parser_provider == "mineru":
+            mineru_started_at = time.monotonic()
+            with tempfile.TemporaryDirectory(prefix="aiteachme_mineru_") as tmp_dir_str:
+                tmp_dir = Path(tmp_dir_str)
+                extracted = await asyncio.to_thread(
+                    parse_file_to_dir,
+                    file_path=file_path,
+                    options=MinerURequestOptions(
+                        api_token=mineru_token or "",
+                        enable_formula=mineru_enable_formula,
+                        enable_table=mineru_enable_table,
+                        is_ocr=mineru_is_ocr,
+                    ),
+                    output_dir=tmp_dir,
+                )
+
+                mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
+
+                # Copy assets into the canonical per-file asset directory.
+                # Important: prefix filenames so existing asset listing (prefix filter) keeps working.
+                copied_assets = 0
+                if extracted.images_dir and extracted.images_dir.exists():
+                    for src in sorted(extracted.images_dir.iterdir()):
+                        if not src.is_file():
+                            continue
+                        dest = asset_dir / f"{asset_name_prefix}{src.name}"
+                        shutil.copy2(src, dest)
+                        copied_assets += 1
+
+                # Canonicalize: rewrite image refs to ../assets/<file_id>/... and normalize markdown.
+                from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
+
+                canonical_result = canonicalize_markdown(
+                    mineru_markdown_raw,
+                    asset_dir=asset_dir,
+                    asset_link_prefix=f"../assets/{file_id}",
+                    asset_name_prefix=asset_name_prefix,
+                    asset_gallery_limit=parse_plan.options.asset_gallery_limit,
+                )
+
+            mineru_elapsed_s = round(time.monotonic() - mineru_started_at, 2)
+
+            # Build a FastParseResult-compatible payload for the rest of the pipeline.
+            # We keep the same shape so downstream metadata/status logic stays unchanged.
+            # MinerU 已经输出高质量 markdown（并可按需开启 is_ocr）。
+            # 为了保持“选择 MinerU 就不走原有解析/增强链路”的直觉，这里默认不再触发 Phase 2。
+            # 如需 LLM Vision OCR 增强，可后续单独提供显式开关。
+            needs_enhance = False
+
+            parse_result = type("_MinerUFastParseResult", (), {})()
+            parse_result.markdown = canonical_result.markdown
+            parse_result.parser_used = "mineru"
+            parse_result.attempted_parsers = ["mineru"]
+            parse_result.parser_elapsed_s = {"mineru": mineru_elapsed_s}
+            parse_result.rewritten_image_refs = canonical_result.rewritten_image_refs
+            parse_result.extracted_data_images = canonical_result.extracted_data_images
+            parse_result.appended_asset_images = canonical_result.appended_asset_images
+            parse_result.needs_enhance = needs_enhance
+            parse_result._mineru_meta = {
+                "batch_id": extracted.batch_id,
+                "file_name": extracted.file_name,
+                "copied_assets": copied_assets,
+            }
+        else:
+            parse_result = await fast_parse_file(
+                file_path=file_path,
+                asset_dir=asset_dir,
+                classification=classification,
+                parse_plan=parse_plan,
+                asset_link_prefix=f"../assets/{file_id}",
+            )
 
         # Save Phase 1 results
         markdown_path.write_text(parse_result.markdown, encoding="utf-8")
@@ -543,7 +685,7 @@ async def run_parse_file_workflow(
             "parser_used": parse_result.parser_used,
             "parse_mode": parse_plan.mode,
             "decision_reason": parse_plan.decision_reason,
-            "parser_chain": parse_plan.parser_chain,
+            "parser_chain": ["mineru"] if parse_result.parser_used == "mineru" else parse_plan.parser_chain,
             "attempted_parsers": parse_result.attempted_parsers,
             "parser_elapsed_s": parse_result.parser_elapsed_s,
             "requested_features": [],
@@ -551,6 +693,15 @@ async def run_parse_file_workflow(
             "skipped_features": [],
             "failed_feature": None,
             "provider_failure_reason": None,
+            "requested_parser_provider": requested_parser_provider,
+            "mineru": {
+                "enable_formula": mineru_enable_formula,
+                "enable_table": mineru_enable_table,
+                "is_ocr": mineru_is_ocr,
+            }
+            if requested_parser_provider == "mineru"
+            else None,
+            "provider_metadata": getattr(parse_result, "_mineru_meta", None),
             "rewritten_image_refs": parse_result.rewritten_image_refs,
             "extracted_data_images": parse_result.extracted_data_images,
             "appended_asset_images": parse_result.appended_asset_images,
@@ -647,6 +798,20 @@ async def run_parse_file_workflow(
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, file_id)
                 if raw_file is not None:
+                    # Best-effort: ensure we don't accidentally persist MinerU token on failure.
+                    try:
+                        payload = json.loads(raw_file.parse_metadata_json or "{}")
+                        if isinstance(payload, dict) and isinstance(payload.get("mineru"), dict):
+                            sanitized_block = dict(payload["mineru"])
+                            sanitized_block.pop("api_token", None)
+                            payload["mineru"] = sanitized_block
+                            update_raw_file(
+                                session,
+                                raw_file,
+                                parse_metadata_json=json.dumps(payload, ensure_ascii=False),
+                            )
+                    except Exception:
+                        pass
                     update_raw_file(
                         session,
                         raw_file,

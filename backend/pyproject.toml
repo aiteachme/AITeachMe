@@ -19,6 +19,7 @@ dependencies = [
     "structlog>=24.1.0",
     "python-multipart>=0.0.9",
     "aiofiles>=23.2.1",
+    "requests>=2.32.0",
 ]
 
 [tool.setuptools.packages.find]

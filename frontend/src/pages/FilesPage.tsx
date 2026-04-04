@@ -36,7 +36,7 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
-import { useSettings } from "../hooks/useSettings";
+import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
@@ -60,6 +60,21 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
+  }
+
+  // 当用户选择 MinerU 解析引擎时，把 Token/参数随上传请求传给后端。
+  // 注意：设置本身仍保存在 localStorage；这里仅用于触发后端本次 ingest 走 MinerU。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    if (!token) {
+      throw new Error("已选择 MinerU 解析引擎，但未填写 API Token，请先到设置中填写后再上传。");
+    }
+    formData.append("parser_provider", "mineru");
+    formData.append("mineru_api_token", token);
+    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
   }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({

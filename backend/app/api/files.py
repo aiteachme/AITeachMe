@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, File, Path, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
@@ -30,15 +30,36 @@ async def upload_files(
     request: Request,
     subject: str = Path(...),
     files: list[UploadFile] = File(...),
+    # 解析引擎选择（来自前端 settings）。不传则保持当前默认解析链路。
+    parser_provider: str | None = Form(default=None),
+    # MinerU：个人 Token 与参数（仅当 parser_provider == 'mineru' 时使用）。
+    mineru_api_token: str | None = Form(default=None),
+    mineru_enable_formula: bool | None = Form(default=None),
+    mineru_enable_table: bool | None = Form(default=None),
+    mineru_is_ocr: bool | None = Form(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+    parse_request_metadata: dict[str, object] | None = None
+    if parser_provider:
+        parse_request_metadata = {
+            "requested_parser_provider": parser_provider,
+        }
+        if parser_provider == "mineru":
+            parse_request_metadata["mineru"] = {
+                "api_token": mineru_api_token,
+                "enable_formula": mineru_enable_formula,
+                "enable_table": mineru_enable_table,
+                "is_ocr": mineru_is_ocr,
+            }
+
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
         subject=normalized_subject,
         files=files,
+        parse_request_metadata=parse_request_metadata,
     )
     if parse_file_ids:
         request.app.state.background_task_registry.spawn(

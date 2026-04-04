@@ -146,10 +146,18 @@ async def _save_uploaded_raw_files(
     *,
     subject: str,
     files: list[UploadFile],
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> list[RawFile]:
     saved: list[RawFile] = []
     for file in files:
-        saved.append(await save_uploaded_file(session, subject=subject, file=file))
+        saved.append(
+            await save_uploaded_file(
+                session,
+                subject=subject,
+                file=file,
+                parse_request_metadata=parse_request_metadata,
+            )
+        )
     return saved
 
 
@@ -197,6 +205,7 @@ async def save_uploaded_file(
     *,
     subject: str,
     file: UploadFile,
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> RawFile:
     """Save a single uploaded raw file."""
 
@@ -214,6 +223,15 @@ async def save_uploaded_file(
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
 
+    # 注意：这里把“本次解析请求参数”暂存到 parse_metadata_json。
+    # ingest runtime 会在真正解析时读取这些参数，并在写入最终 parse_metadata_json 时决定是否保留敏感字段。
+    parse_request_json = None
+    if parse_request_metadata:
+        try:
+            parse_request_json = json.dumps(parse_request_metadata, ensure_ascii=False)
+        except Exception:
+            parse_request_json = None
+
     raw_file = create_raw_file(
         session,
         RawFile(
@@ -228,6 +246,7 @@ async def save_uploaded_file(
             content_hash=content_hash,
             file_size_bytes=len(content),
             ingest_status=IngestStatus.PENDING.value,
+            parse_metadata_json=parse_request_json or "{}",
         ),
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
@@ -258,7 +277,12 @@ async def save_uploaded_files(
 ) -> FilesUploadData:
     """Save multiple uploaded raw files."""
 
-    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    saved = await _save_uploaded_raw_files(
+        session,
+        subject=subject,
+        files=files,
+        parse_request_metadata=None,
+    )
     return _build_upload_data(subject=subject, raw_files=saved, started_parse_count=0)
 
 
@@ -267,10 +291,16 @@ async def save_uploaded_files_and_request_parse(
     *,
     subject: str,
     files: list[UploadFile],
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> tuple[FilesUploadData, list[int]]:
     """Save files and immediately enqueue ingest parsing in the same request."""
 
-    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    saved = await _save_uploaded_raw_files(
+        session,
+        subject=subject,
+        files=files,
+        parse_request_metadata=parse_request_metadata,
+    )
     file_ids = [require_id(item.id, "RawFile.id") for item in saved]
     refreshed_items = _start_parse_for_files(session, subject=subject, file_ids=file_ids)
     return _build_upload_data(

@@ -15,6 +15,14 @@ export interface AppSettings {
   embeddingModel: string;
   fallbackModel: string;
   parserProvider: ParserProvider;
+  /** MinerU: 个人 API Token（仅存前端 localStorage，上传时随请求传给后端）。 */
+  mineruApiToken: string;
+  /** MinerU: 是否开启公式识别。 */
+  mineruEnableFormula: boolean;
+  /** MinerU: 是否开启表格识别。 */
+  mineruEnableTable: boolean;
+  /** MinerU: 是否开启 OCR（通常用于图片型文档/扫描件）。 */
+  mineruIsOcr: boolean;
   parserMode: ParserMode;
   ocrProvider: OcrProvider;
   parserChunkSize: number;
@@ -50,6 +58,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   embeddingModel: "text-embedding-3-large",
   fallbackModel: "gpt-4.1-mini",
   parserProvider: "docling",
+  mineruApiToken: "",
+  mineruEnableFormula: true,
+  mineruEnableTable: true,
+  mineruIsOcr: false,
   parserMode: "balanced",
   ocrProvider: "none",
   parserChunkSize: 1200,
@@ -135,6 +147,17 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     embeddingModel: String(merged.embeddingModel ?? DEFAULT_SETTINGS.embeddingModel),
     fallbackModel: String(merged.fallbackModel ?? DEFAULT_SETTINGS.fallbackModel),
     parserProvider: normalizeParserProvider(merged.parserProvider),
+    mineruApiToken: String(merged.mineruApiToken ?? DEFAULT_SETTINGS.mineruApiToken),
+    mineruEnableFormula:
+      typeof merged.mineruEnableFormula === "boolean"
+        ? merged.mineruEnableFormula
+        : DEFAULT_SETTINGS.mineruEnableFormula,
+    mineruEnableTable:
+      typeof merged.mineruEnableTable === "boolean"
+        ? merged.mineruEnableTable
+        : DEFAULT_SETTINGS.mineruEnableTable,
+    mineruIsOcr:
+      typeof merged.mineruIsOcr === "boolean" ? merged.mineruIsOcr : DEFAULT_SETTINGS.mineruIsOcr,
     parserMode: normalizeParserMode(merged.parserMode),
     ocrProvider: normalizeOcrProvider(merged.ocrProvider),
     parserChunkSize: Math.round(clampNumber(Number(merged.parserChunkSize), 256, 4096)),
