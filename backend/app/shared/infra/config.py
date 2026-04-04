@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,7 +48,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3
     chat_history_turns: int = 10
-    app_mode: str = "local"
+    app_mode: str = "auto"
     auth_enabled: bool = True
     auth_token_secret: str = "aiteachme-dev-token-secret"
     auth_token_ttl_hours: int = 24 * 30
@@ -131,10 +132,21 @@ class Settings(BaseSettings):
         return self.normalized_embedding_model is not None
 
     @property
+    def resolved_app_mode(self) -> str:
+        """返回当前运行环境下的最终模式。"""
+
+        normalized = (self.app_mode or "auto").strip().lower()
+        if normalized in {"local", "cloud"}:
+            return normalized
+        if os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL"):
+            return "cloud"
+        return "local"
+
+    @property
     def is_cloud_mode(self) -> bool:
         """是否为云端模式。"""
 
-        return self.app_mode.lower() == "cloud"
+        return self.resolved_app_mode == "cloud"
 
     @property
     def is_local_mode(self) -> bool:
@@ -206,5 +218,3 @@ def get_settings() -> Settings:
     """返回缓存后的配置对象。"""
 
     return Settings()
-
-

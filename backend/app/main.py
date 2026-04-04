@@ -48,7 +48,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_db()
     _maybe_export_openapi_schema(app)
 
-    logger.info("app_started")
+    settings = get_settings()
+    logger.info(
+        "app_started",
+        app_mode=settings.resolved_app_mode,
+        guest_cookie_samesite=settings.resolved_guest_cookie_samesite,
+        guest_cookie_secure=settings.resolved_guest_cookie_secure,
+    )
     yield
     await app.state.background_task_registry.shutdown(cancel_timeout_s=8.0)
     logger.info("app_shutdown")

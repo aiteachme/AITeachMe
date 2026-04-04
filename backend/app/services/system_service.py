@@ -18,7 +18,7 @@ def build_init_data(
 
     settings = get_settings()
     return InitData(
-        mode=settings.app_mode,
+        mode=settings.resolved_app_mode,
         auth_enabled=settings.auth_enabled,
         auth_ready=settings.auth_ready,
         current_user=RuntimeUser(

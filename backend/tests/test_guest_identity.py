@@ -11,6 +11,7 @@ from app.services.auth_service import (
     issue_guest_token,
     resolve_guest_user_from_token,
 )
+from app.services.subject_service import create_subject_record, get_subject_record
 from app.shared.infra.config import Settings
 
 
@@ -47,6 +48,33 @@ def test_get_current_user_context_reuses_guest_identity_by_device_key(session) -
 
     assert second.user_id == first.user_id
     assert second.device_key == _DEVICE_KEY
+
+
+def test_guest_subject_round_trip_stays_visible_for_same_device_key(session) -> None:
+    current = get_current_user_context(
+        _build_request(device_key=_DEVICE_KEY),
+        Response(),
+        session,
+    )
+    created = create_subject_record(
+        session,
+        owner_user_id=current.user_id,
+        name="高等数学",
+    )
+
+    revisited = get_current_user_context(
+        _build_request(device_key=_DEVICE_KEY),
+        Response(),
+        session,
+    )
+    subject = get_subject_record(
+        session,
+        created.subject_id,
+        owner_user_id=revisited.user_id,
+    )
+
+    assert subject.slug == created.subject_id
+    assert subject.user_id == current.user_id
 
 
 def test_registered_device_key_bootstraps_real_guest(session) -> None:
@@ -138,3 +166,13 @@ def test_cloud_guest_cookie_defaults_support_cross_site_requests() -> None:
     assert local_settings.resolved_guest_cookie_secure is False
     assert cloud_settings.resolved_guest_cookie_samesite == "none"
     assert cloud_settings.resolved_guest_cookie_secure is True
+
+
+def test_auto_app_mode_defaults_to_cloud_on_render(monkeypatch) -> None:
+    monkeypatch.setenv("RENDER", "true")
+
+    settings = Settings()
+
+    assert settings.resolved_app_mode == "cloud"
+    assert settings.resolved_guest_cookie_samesite == "none"
+    assert settings.resolved_guest_cookie_secure is True
