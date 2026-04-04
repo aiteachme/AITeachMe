@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     auth_token_ttl_hours: int = 24 * 30
     guest_token_ttl_hours: int = 24 * 30
     guest_cookie_name: str = "atm_guest_token"
-    guest_cookie_secure: bool = False
-    guest_cookie_samesite: str = "lax"
+    guest_cookie_secure: bool | None = None
+    guest_cookie_samesite: str = "auto"
     smtp_host: str | None = None
     smtp_port: int = 465
     smtp_username: str | None = None
@@ -143,6 +143,23 @@ class Settings(BaseSettings):
         return not self.is_cloud_mode
 
     @property
+    def resolved_guest_cookie_samesite(self) -> str:
+        """返回当前部署环境下可工作的 SameSite 策略。"""
+
+        normalized = (self.guest_cookie_samesite or "auto").strip().lower()
+        if normalized in {"lax", "strict", "none"}:
+            return normalized
+        return "none" if self.is_cloud_mode else "lax"
+
+    @property
+    def resolved_guest_cookie_secure(self) -> bool:
+        """返回当前 guest cookie 是否必须启用 Secure。"""
+
+        if self.guest_cookie_secure is not None:
+            return self.guest_cookie_secure
+        return self.is_cloud_mode or self.resolved_guest_cookie_samesite == "none"
+
+    @property
     def auth_ready(self) -> bool:
         """鉴权能力是否就绪。"""
 
@@ -189,3 +206,5 @@ def get_settings() -> Settings:
     """返回缓存后的配置对象。"""
 
     return Settings()
+
+

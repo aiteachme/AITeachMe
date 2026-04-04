@@ -94,8 +94,6 @@ def get_current_user_context(
     if token:
         user = resolve_user_from_token(session, token)
         if user is not None:
-            # 维持一个游客 token，便于前端退出登录后回到同一浏览器游客身份。
-            set_guest_cookie_for_user(response, user_id=user.id)
             return CurrentUserContext(
                 user_id=user.id,
                 email=user.email,
@@ -108,15 +106,18 @@ def get_current_user_context(
     if guest_token:
         user = resolve_guest_user_from_token(session, guest_token)
         if user is not None:
-            set_guest_cookie_for_user(response, user_id=user.id)
-            return CurrentUserContext(
-                user_id=user.id,
-                email=None,
-                is_local=settings.is_local_mode,
-                device_key=(device_key or user.device_key),
-                is_authenticated=False,
-                auth_source="guest_token",
-            )
+            if device_key is not None and user.device_key != device_key:
+                user = None
+            else:
+                set_guest_cookie_for_user(response, user_id=user.id)
+                return CurrentUserContext(
+                    user_id=user.id,
+                    email=None,
+                    is_local=settings.is_local_mode,
+                    device_key=(device_key or user.device_key),
+                    is_authenticated=False,
+                    auth_source="guest_token",
+                )
 
     user = create_guest_user(session, device_key=device_key)
     set_guest_cookie_for_user(response, user_id=user.id)
@@ -128,3 +129,5 @@ def get_current_user_context(
         is_authenticated=False,
         auth_source="guest_bootstrap",
     )
+
+

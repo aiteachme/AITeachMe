@@ -1,10 +1,11 @@
-"""User repository helpers."""
+﻿"""User repository helpers."""
 
 from __future__ import annotations
 
 import re
 from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.models import User
@@ -127,24 +128,46 @@ def attach_device_key(
     if not normalized_device_key:
         return user
 
-    if user.device_key == normalized_device_key:
-        return user
+    user_id = user.id
+    latest_user: User | None = user
+    last_error: IntegrityError | None = None
 
-    owner = get_user_by_device_key(session, normalized_device_key)
-    if owner is not None and owner.id != user.id:
-        owner.device_key = None
-        owner.updated_at = utcnow()
-        session.add(owner)
-        # Flush first to clear the old binding before assigning the same
-        # device_key to the new user, otherwise SQLite's per-row UNIQUE
-        # check inside executemany will fail.
-        session.flush()
+    for _ in range(3):
+        latest_user = get_user_by_id(session, user_id)
+        if latest_user is None:
+            raise RuntimeError(f"User `{user_id}` disappeared before device_key attach.")
 
-    user.device_key = normalized_device_key
-    user.updated_at = utcnow()
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+        if latest_user.device_key == normalized_device_key:
+            return latest_user
+
+        owner = get_user_by_device_key(session, normalized_device_key)
+        if owner is not None and owner.id != user_id:
+            owner.device_key = None
+            owner.updated_at = utcnow()
+            session.add(owner)
+            # Flush first to clear the old binding before assigning the same
+            # device_key to the new user, otherwise SQLite's per-row UNIQUE
+            # check inside executemany will fail.
+            session.flush()
+
+        latest_user.device_key = normalized_device_key
+        latest_user.updated_at = utcnow()
+        session.add(latest_user)
+        try:
+            session.commit()
+            session.refresh(latest_user)
+            return latest_user
+        except IntegrityError as exc:
+            session.rollback()
+            last_error = exc
+
+    if latest_user is not None and not latest_user.is_registered:
+        owner = get_user_by_device_key(session, normalized_device_key)
+        if owner is not None and not owner.is_registered:
+            return owner
+
+    if last_error is not None:
+        raise last_error
     return user
 
 
@@ -167,3 +190,4 @@ def touch_user_last_seen(
     session.commit()
     session.refresh(user)
     return user
+

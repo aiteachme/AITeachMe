@@ -1,4 +1,4 @@
-"""Authentication service: device-aware guest and email/password login."""
+﻿"""Authentication service: device-aware guest and email/password login."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from email.utils import formataddr
 
 import structlog
 from fastapi import Response
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.shared.infra.config import get_settings
@@ -758,7 +759,10 @@ def resolve_guest_user_from_token(session: Session, token: str) -> User | None:
     user_id = payload.get("sub")
     if not isinstance(user_id, str) or not user_id.strip():
         return None
-    return get_user_by_id(session, user_id)
+    user = get_user_by_id(session, user_id)
+    if user is None or user.is_registered:
+        return None
+    return user
 
 
 def _build_guest_username(session: Session) -> str:
@@ -771,24 +775,33 @@ def _build_guest_username(session: Session) -> str:
     return username
 
 
+def _persist_guest_user(session: Session) -> User:
+    while True:
+        try:
+            return create_user(
+                session,
+                username=_build_guest_username(session),
+                is_registered=False,
+            )
+        except IntegrityError:
+            session.rollback()
+
+
 def create_guest_user(session: Session, *, device_key: str | None = None) -> User:
     normalized_device_key = (device_key or "").strip() or None
-    if normalized_device_key and get_user_by_device_key(session, normalized_device_key) is not None:
-        # device_key 仅用于设备标记，不参与匿名身份复用；冲突时跳过绑定即可。
-        normalized_device_key = None
-    return create_user(
-        session,
-        username=_build_guest_username(session),
-        device_key=normalized_device_key,
-        is_registered=False,
-    )
+    if normalized_device_key is None:
+        return _persist_guest_user(session)
+
+    owner = get_user_by_device_key(session, normalized_device_key)
+    if owner is not None and not owner.is_registered:
+        return owner
+
+    guest = _persist_guest_user(session)
+    return attach_device_key(session, user=guest, device_key=normalized_device_key)
 
 
-def _normalize_cookie_samesite(value: str | None) -> str:
-    normalized = (value or "").strip().lower()
-    if normalized not in {"lax", "strict", "none"}:
-        return "lax"
-    return normalized
+def build_logout_guest_user(session: Session, *, device_key: str | None) -> User:
+    return create_guest_user(session, device_key=device_key)
 
 
 def set_guest_cookie(response: Response, *, guest_token: str) -> None:
@@ -799,8 +812,8 @@ def set_guest_cookie(response: Response, *, guest_token: str) -> None:
         value=guest_token,
         max_age=max_age,
         httponly=True,
-        secure=settings.guest_cookie_secure,
-        samesite=_normalize_cookie_samesite(settings.guest_cookie_samesite),
+        secure=settings.resolved_guest_cookie_secure,
+        samesite=settings.resolved_guest_cookie_samesite,
         path="/",
     )
 
@@ -951,3 +964,5 @@ def build_session_from_context(
             is_authenticated=is_authenticated,
         ),
     )
+
+
