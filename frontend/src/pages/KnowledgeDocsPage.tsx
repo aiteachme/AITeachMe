@@ -921,7 +921,7 @@ function DocLoadErrorState({
         className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
       >
         <RefreshCw className="h-3.5 w-3.5" />
-        閲嶈瘯鍔犺浇
+        重试加载
       </button>
     </section>
   );
@@ -1047,10 +1047,10 @@ function CommentThread({
             className={cn(
               "inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-2 text-[10px] font-semibold text-sky-700 transition hover:border-sky-300 hover:from-sky-100 hover:to-cyan-100",
             )}
-            title="鍦?AI 闈㈡澘缁х画瀵硅瘽"
+            title="在 AI 面板继续对话"
           >
             <ExternalLink className="h-2.5 w-2.5" />
-            AI 闈㈡澘
+            AI 面板
           </button>
           <span className="shrink-0 rounded-full bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 font-medium">
             {comments.length}
@@ -1102,7 +1102,7 @@ function CommentThread({
             )}
           >
             {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            鍙戦€?
+            发送
           </button>
         </div>
       </div>
@@ -2762,7 +2762,7 @@ export function KnowledgeDocsPage() {
                 onClick={dismissCommentComposer}
                 className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               >
-                鍙栨秷
+                取消
               </button>
               <button
                 onClick={addComment}
@@ -2775,7 +2775,7 @@ export function KnowledgeDocsPage() {
                 )}
               >
                 <Send className="h-3.5 w-3.5" />
-                鍙戦€?
+                发送
               </button>
             </div>
           </div>
@@ -3191,7 +3191,7 @@ export function KnowledgeDocsPage() {
           <button 
             onClick={openGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-l-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "hidden" ? "鎵撳紑鐭ヨ瘑鍥捐氨" : "鍏ㄥ睆鍥捐氨"}
+            title={effectiveGraphViewMode === "hidden" ? "打开知识图谱" : "全屏图谱"}
           >
             <ChevronLeft className="h-5 w-5 ml-1 transition-transform group-hover:-translate-x-0.5" />
           </button>
@@ -3201,7 +3201,7 @@ export function KnowledgeDocsPage() {
           <button 
             onClick={closeGraphPanel}
             className="flex items-center justify-center h-[72px] w-7 rounded-r-full bg-slate-100/50 backdrop-blur-md border border-slate-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-500 transition-all duration-300 hover:w-10 hover:bg-white/95 hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] hover:text-blue-600 hover:border-slate-200/80 focus:outline-none"
-            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "鏀惰捣鍥捐氨" : "鍒嗗睆瑙嗗浘") : "鏀惰捣鍥捐氨"}
+            title={effectiveGraphViewMode === "full" ? (isCompactPanels ? "收起图谱" : "分屏视图") : "收起图谱"}
           >
             <ChevronRight className="h-5 w-5 mr-1 transition-transform group-hover:translate-x-0.5" />
           </button>
@@ -3229,3 +3229,4 @@ export function KnowledgeDocsPage() {
     </div>
   );
 }
+
