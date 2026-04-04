@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T17:03:52.835558",
-  "total_commits_analyzed": 381,
+  "generated_at": "2026-04-04T18:00:24.012305",
+  "total_commits_analyzed": 387,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3049,6 +3049,54 @@
       "code_lines": 85661,
       "other_lines": 27530,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "30b3122",
+      "total_lines": 113191,
+      "code_lines": 85661,
+      "other_lines": 27530,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "316ce4e",
+      "total_lines": 113016,
+      "code_lines": 85549,
+      "other_lines": 27467,
+      "message": "style: 优化日志打印"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "86cc17b",
+      "total_lines": 113031,
+      "code_lines": 85560,
+      "other_lines": 27471,
+      "message": "feat: 添加启动诊断面板与 S3 冒烟测试，改用可读日志格式"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "233ae0b",
+      "total_lines": 113031,
+      "code_lines": 85560,
+      "other_lines": 27471,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "7d1fa50",
+      "total_lines": 113170,
+      "code_lines": 85651,
+      "other_lines": 27519,
+      "message": "chore: 合并dev_ywl，改动杂项"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "0915650",
+      "total_lines": 113221,
+      "code_lines": 85690,
+      "other_lines": 27531,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
