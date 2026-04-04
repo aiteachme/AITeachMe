@@ -1,7 +1,7 @@
 # 15. 学科项目导入与导出
 
-**状态**: 已实现（后端）  
-**最后更新**: 2026-04-03
+**状态**: 已实现（后端，ContentStore 统一）  
+**最后更新**: 2026-04-04
 
 ---
 
@@ -132,12 +132,20 @@ subject_export.atmx (ZIP)
 
 ### 4.2 可选导出的数据
 
-| 数据 | 默认 | 说明 |
-| --- | --- | --- |
-| 原始文件二进制 | ✅ | 可选关闭以减小体积 |
-| 聊天记录 | ✅ | `chat_session` + `chat_message` |
-| 题库与考试记录 | ✅ | `question_template` + `exam_paper` + `exam_paper_item` |
-| 学习画像 | ✅ | `user_knowledge_state` |
+| 数据 | 选项字段 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| 原始文件二进制 | `include_raw_files` | ✅ | PDF/DOCX 等原始上传文件，关闭后可大幅减小体积 |
+| 解析后 Markdown | `include_raw_markdowns` | ✅ | ingest 产出的原始 Markdown |
+| 知识文档 | `include_knowledge_docs` | ✅ | digest 构建后的 chapter_*.md 等 |
+| 聊天记录 | `include_chat_history` | ✅ | `chat_session` + `chat_message` |
+| 题库与考试记录 | `include_exam_history` | ✅ | `question_template` + `exam_paper` + `exam_paper_item` |
+| 学习画像 | `include_profile` | ✅ | `user_knowledge_state` |
+
+**常见用法**：
+
+- **教师分发预构建课程包**：关闭 `include_raw_files`、`include_chat_history`、`include_profile`，只保留知识文档和图谱
+- **设备迁移/完整备份**：全部打开（默认）
+- **只分享构建结果**：关闭 `include_raw_files` + `include_raw_markdowns`
 
 ### 4.3 不导出的数据
 
@@ -164,6 +172,8 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 ```json
 {
   "include_raw_files": true,
+  "include_raw_markdowns": true,
+  "include_knowledge_docs": true,
   "include_chat_history": true,
   "include_exam_history": true,
   "include_profile": true
@@ -176,9 +186,10 @@ POST /api/v1/subjects/{subject}/export            — 下载导出包
 
 1. 校验 subject 存在且无正在进行的构建任务
 2. 读取全部 DB 数据，按表序列化为 JSON
-3. 收集文件系统产物
-4. 生成 `manifest.json`
-5. 打包为 ZIP 流式返回
+3. 通过 ContentStore 统一读取文件产物（local/cloud 透明）
+4. 按 options 选择性打包文件
+5. 生成 `manifest.json`
+6. 打包为 ZIP 流式返回
 
 ### 5.3 JSON 序列化格式
 
@@ -230,16 +241,16 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
            → user_knowledge_state
            → chat_session → chat_message
    ```
-5. 复制文件到目标 subject 目录
-6. 根据新 ID 和新 subject slug 更新路径字段
+5. 通过 ContentStore 将文件写入目标 subject（local/cloud 透明）
+6. 根据新 ID 和新 subject slug 更新路径字段（使用 ContentStore key 方法）
 7. 后台触发 embedding 重建
 8. 返回导入结果
 
 ### 6.3 关键实现要点
 
 - **ID 重映射**: 导出保留原始 ID，导入时整体重映射。所有外键字段同步更新。
-- **路径重建**: 使用 `path_helpers` 根据新 subject slug 和新 file id 重建路径。
-- **事务安全**: DB 导入在一个事务中完成，失败则整体回滚。文件先写临时位置，事务成功后 move。
+- **路径重建**: 使用 `ContentStore.raw_markdown_key()` 等方法根据新 subject slug 和新 file id 重建路径。
+- **事务安全**: DB 导入在一个事务中完成，失败则整体回滚。文件通过 ContentStore 写入。
 - **Embedding 重建**: 导入完成后，后台对 `retrieval_chunk` 重建向量索引。
 - **冲突处理**: slug 冲突时自动追加后缀（如 `slug-imported-1`）。
 - **user_id 映射**: 所有 `user_id` 字段映射为导入端当前用户。
@@ -252,8 +263,9 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 
 - 内部使用 JSON + 相对 `storage_key`，不含绝对路径或 SQLite dump
 - 本地 SQLite ↔ 云端 PostgreSQL 双向互通
-- 云端导出通过 `ArtifactStore.read_bytes(storage_key)` 读文件
-- 云端导入通过 `ArtifactStore.write_bytes(storage_key, data)` 写文件
+- **文件打包与解包统一通过 ContentStore** — 同一套代码同时支持本地和云端
+- 导入时路径重建使用 `ContentStore.raw_markdown_key()` / `ContentStore.knowledge_doc_key()` 等方法
+- 无需根据部署模式切换不同的打包/解包实现
 
 ---
 

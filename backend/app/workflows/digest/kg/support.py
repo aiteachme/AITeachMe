@@ -1,4 +1,4 @@
-﻿"""Support helpers for digest graph workflow nodes.
+"""Support helpers for digest graph workflow nodes.
 
 Reads DB: ``raw_file``, ``retrieval_chunk``.
 Writes DB: ``raw_file``, ``retrieval_chunk`` and subject-scoped vector metadata.
@@ -57,11 +57,14 @@ def load_clean_markdown(raw_file: RawFile) -> str:
     if not raw_file.markdown_path:
         return ""
 
-    markdown_path = Path(raw_file.markdown_path)
-    if not markdown_path.exists():
-        return ""
+    from app.shared.infra.storage import get_content_store, run_store_sync
 
-    return clean_markdown(markdown_path.read_text(encoding="utf-8"))
+    cs = get_content_store()
+    text: str | None = run_store_sync(cs.read_text, raw_file.markdown_path, default=None)
+    if text is None:
+        # fallback: DB 中缓存的 markdown_content
+        return clean_markdown(raw_file.markdown_content) if raw_file.markdown_content else ""
+    return clean_markdown(text)
 
 
 async def ensure_retrieval_chunks_for_file(

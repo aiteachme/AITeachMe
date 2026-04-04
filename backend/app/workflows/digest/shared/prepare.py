@@ -9,9 +9,9 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_content_store
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path
 from app.workflows.digest.services.material_profiler import (
     build_material_profile,
     decide_digest_mode,
@@ -106,6 +106,7 @@ async def prepare_shared_inputs(
 async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
     """Load parsed raw markdown and normalize it into source packets."""
 
+    cs = get_content_store()
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
@@ -117,23 +118,28 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
         if raw_file.id is None:
             return None
 
-        markdown_path = build_raw_markdown_path(subject, int(raw_file.id))
-        content = ""
-        if markdown_path.exists():
-            content = await asyncio.to_thread(markdown_path.read_text, encoding="utf-8")
-        elif raw_file.parsed_markdown.strip():
+        file_id = int(raw_file.id)
+        md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+        content = await cs.read_text(md_key, default="") or ""
+
+        # fallback 到 DB 中的 parsed_markdown
+        if not content.strip() and raw_file.parsed_markdown and raw_file.parsed_markdown.strip():
             content = raw_file.parsed_markdown
+
+        markdown_path_str = md_key
+        asset_dir_str = getattr(raw_file, "asset_dir", None) or cs.asset_prefix(subject, file_id).rstrip("/")
+
         if not content.strip():
             return None
 
         normalized_content = normalize_markdown_content(content)
         image_refs = extract_image_refs(normalized_content)
         return SourcePacket(
-            file_id=int(raw_file.id),
+            file_id=file_id,
             filename=raw_file.original_filename,
             filetype=raw_file.file_ext,
-            markdown_path=str(markdown_path),
-            asset_dir=str(build_asset_dir(subject, int(raw_file.id))),
+            markdown_path=markdown_path_str,
+            asset_dir=asset_dir_str,
             normalized_content=normalized_content,
             char_count=len(normalized_content),
             has_formulas=bool(INLINE_FORMULA_PATTERN.search(normalized_content)),

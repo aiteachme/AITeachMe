@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -7,6 +7,8 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
+from app.shared.infra.config import get_settings
+from app.shared.infra.storage import get_content_store
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -154,12 +156,24 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_knowledge_and_curriculum(session, subject=subject.slug)
     _delete_documents_and_chunks(session, subject=subject.slug)
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
+
+    # 本地目录清理（cloud 文件由 delete_subject_artifacts_async 处理）
     _delete_subject_directory(subject.slug)
+
     delete_subject(session, subject)
 
     deleted_counts = {"subject": 1, **counts}
     logger.info("subject_deleted_with_all_content", subject=subject.slug, deleted_counts=deleted_counts)
     return deleted_counts
+
+
+async def delete_subject_artifacts_async(subject_slug: str) -> None:
+    """异步删除该 subject 的所有存储文件（local 和 cloud 均走 ContentStore）。"""
+
+    cs = get_content_store()
+    await cs.delete_prefix(cs.subject_prefix(subject_slug))
+    # 本地目录也清理（如果存在）
+    _delete_subject_directory(subject_slug)
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:
@@ -243,18 +257,22 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     if not raw_files:
         return
 
+    settings = get_settings()
     for raw_file in raw_files:
-        for path_value in [raw_file.file_path, raw_file.markdown_path]:
-            if path_value:
-                Path(path_value).unlink(missing_ok=True)
-        delete_asset_files(
-            raw_file.asset_dir,
-            asset_name_prefix=build_asset_name_prefix(
-                filename=raw_file.filename,
-                file_uid=raw_file.uid,
-                file_id=raw_file.id,
-            ),
-        )
+        if settings.is_local_mode:
+            # local 模式：原有逻辑，删除本地文件
+            for path_value in [raw_file.file_path, raw_file.markdown_path]:
+                if path_value:
+                    Path(path_value).unlink(missing_ok=True)
+            delete_asset_files(
+                raw_file.asset_dir,
+                asset_name_prefix=build_asset_name_prefix(
+                    filename=raw_file.filename,
+                    file_uid=raw_file.uid,
+                    file_id=raw_file.id,
+                ),
+            )
+        # cloud 模式：文件清理由 delete_subject_artifacts_async() 统一处理
         session.delete(raw_file)
     session.commit()
 

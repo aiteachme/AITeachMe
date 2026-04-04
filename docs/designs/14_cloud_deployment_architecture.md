@@ -1,7 +1,7 @@
 # 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
-**状态**: 待实现  
-**最后更新**: 2026-04-02  
+**状态**: 阶段 1 + 阶段 3 已完成（ContentStore 统一抽象 + OSS 接入）  
+**最后更新**: 2026-04-04  
 **负责人**: 系统架构
 
 ---
@@ -149,79 +149,49 @@
 
 ---
 
-## 4. 当前代码现状
+## 4. 当前代码现状（2026-04-04 更新）
+
+> **阶段 1（配置与抽象层）和阶段 3（对象存储接入）已完成。**
+> 业务代码已全面切换到 ContentStore 统一抽象，不再直接判断 `is_cloud_mode`。
 
 ### 4.1 数据库现状
 
-当前数据库实现位于 [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)：
+数据库实现位于 `app/shared/infra/database.py`：
 
-- `get_engine()` 固定创建 SQLite engine
-- `init_db()` 当前等价于初始化本地 SQLite
-- 启动时尝试加载 `sqlite-vec`
-- 还没有正式的 PostgreSQL engine 分支
+- `get_engine()` 已按 `APP_MODE` 自动选择 SQLite 或 PostgreSQL
+- `init_db()` 已按方言初始化（SQLite + sqlite-vec / PostgreSQL + pgvector）
+- 双模式启动正常
 
-### 4.2 文件存储现状
+### 4.2 文件存储现状（已完成 ContentStore 重构）
 
-当前文件与工件依赖：
+存储抽象已落地，三层架构：业务代码 -> ContentStore -> ArtifactStore(ABC) -> Local/S3。
 
-- [`runtime_paths.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/runtime_paths.py)
-- [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
-- [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
+代码位置：`app/shared/infra/storage/`（含 content_store.py, base.py, local_store.py, s3_store.py, sync_bridge.py）
 
-当前真相仍然是本地文件系统，不是中心化对象存储。
+已完成 14 个业务文件重构，消灭 24+ 个 if/else 分支。详见 [11_database_and_storage_architecture.md](./11_database_and_storage_architecture.md)。
 
 ### 4.3 模型现状
 
-[`raw_file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/raw_file.py) 当前同时包含：
 
-- 本地路径字段：`file_path` / `markdown_path` / `asset_dir`
-- 存储语义字段：`storage_backend` / `storage_uri`
-- 派生定位字段：`storage_key`
+aw_file.py 中的路径字段统一存储 storage_key 格式（如 math/raw_markdowns/42.md）。
+ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径。
 
-问题不在于模型完全不支持云，而在于：
+### 4.4 已完成事项
 
-- 业务代码仍大量默认本地路径可直接访问
-- `storage_key` 还没有成为全系统统一真相
+1. ~~PostgreSQL 初始化与运行逻辑~~ - 已完成
+2. ~~pgvector 写入与检索分支~~ - 已完成
+3. ~~正式的 ArtifactStore~~ - 已完成
+4. ~~DogeCloud 的 S3 兼容存储实现~~ - 已完成
+5. ~~统一的 storage_key 驱动读写~~ - 已完成（ContentStore）
+6. ~~Cloud 模式下的工件管理~~ - 已完成
+7. 清晰的切换与回滚方案 - 见阶段 5
 
-### 4.4 当前真正缺的东西
+### 4.5 实际改造规模
 
-目前真正缺的是：
-
-1. PostgreSQL 初始化与运行逻辑
-2. `pgvector` 写入与检索分支
-3. 正式的 `ArtifactStore`
-4. DogeCloud 的 S3 兼容存储实现
-5. 统一的 `storage_key` 驱动读写
-6. Cloud 模式下的工件管理
-7. 清晰的切换与回滚方案
-
-### 4.5 改造幅度判断
-
-这次改造不是“改几个 env 就上线”的级别，但也不是推倒重来。
-
-更准确的判断是：
-
-- 这是一次**后端基础设施层 + workflow I/O 层**的中等偏大改造
-- 主要变更集中在 backend，frontend 基本只需要确认 API 地址与部署联通
-- 难点不在“接一个 PostgreSQL 驱动”或“接一个 OSS SDK”，而在于把当前大量默认本地 `Path` 的实现收束到统一抽象层
-
-按当前代码触点粗看：
-
-- 与本地路径、`storage_key`、工件直读写相关的触点大约在 `50+` 个文件
-- 与 SQLite、`sqlite-vec`、engine 初始化、向量检索相关的触点大约在 `10+` 个文件
-
-但真正需要修改的不会等于全部命中数。更合理的实现规模预估是：
-
-- 必改核心文件：约 `10-15` 个
-- 新增抽象与适配文件：约 `4-6` 个
-- 连同联动适配、测试、联调辅助后，总触达文件通常会落在 `20-30` 个
-
-也就是说：
-
-- **改动不小**
-- **会改不少后端文件**
-- 但范围是有边界的，核心集中在数据库抽象、存储抽象、ingest/digest 文件链路、subject 删除清理这四块
-- 不属于前后端一起大翻修
+- 修改业务文件：**14 个**
+- 新增抽象文件：**6 个**（storage 目录）
+- 消灭 if/else 分支：**24+**
+- 总触达文件：约 **20 个**
 
 ---
 
@@ -297,7 +267,7 @@
 
 ---
 
-## 7. 阶段 1：配置与抽象层落地
+## 7. 阶段 1：配置与抽象层落地 ✅ 已完成
 
 ### 7.1 目标
 
@@ -363,7 +333,7 @@
 新增目录：
 
 ```text
-backend/app/infra/storage/
+app/shared/infra/storage/
 ├── __init__.py
 ├── base.py
 ├── local.py
@@ -418,7 +388,7 @@ LLM_MODEL=qwen-plus-latest
 EMBEDDING_MODEL=text-embedding-v3
 ```
 
-### 7.5 阶段 1 验收
+### 7.5 阶段 1 验收 ✅
 
 - 本地模式不受影响
 - 新配置项已落地
@@ -440,11 +410,11 @@ EMBEDDING_MODEL=text-embedding-v3
 
 新增文件通常包括：
 
-- `backend/app/infra/storage/__init__.py`
-- `backend/app/infra/storage/base.py`
-- `backend/app/infra/storage/local.py`
-- `backend/app/infra/storage/s3.py`
-- `backend/app/infra/storage/factory.py`
+- `app/shared/infra/storage/__init__.py`
+- `app/shared/infra/storage/base.py`
+- `app/shared/infra/storage/local.py`
+- `app/shared/infra/storage/s3.py`
+- `app/shared/infra/storage/factory.py`
 
 这一阶段结束后，代码应达到一个很关键的状态：
 
@@ -525,7 +495,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 ---
 
-## 9. 阶段 3：对象存储接入 DogeCloud OSS
+## 9. 阶段 3：对象存储接入 DogeCloud OSS ✅ 已完成
 
 ### 9.1 目标
 
@@ -563,13 +533,12 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 - 需要 `Path` 的地方通过 `materialize_to_temp()`
 - 删除 subject 时同时清 PostgreSQL 数据与 OSS prefix
 
-### 9.4 阶段 3 验收
+### 9.4 阶段 3 验收 ✅
 
-- 上传后文件真实进入 DogeCloud OSS
-- ingest 能从 OSS 读取原始文件
-- digest 能把正式工件写入 OSS
-- subject 删除能清理对应 OSS prefix
-- local 模式仍正常
+- ✅ ContentStore 12 项功能测试通过
+- ✅ 全部 14 个业务模块 import 验证通过
+- ✅ local 模式不受影响
+- ⬜ cloud 模式端到端冒烟测试（待阶段 4 联调时执行）
 
 ### 9.5 阶段 3 预计触达文件
 

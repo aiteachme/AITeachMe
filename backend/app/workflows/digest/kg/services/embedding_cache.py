@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 
-from app.utils.path_helpers import build_knowledge_node_embedding_cache_path
+from app.shared.infra.storage import get_content_store, run_store_sync
 
 
 def compute_embedding_text_hash(text: str) -> str:
@@ -18,35 +17,28 @@ def compute_embedding_text_hash(text: str) -> str:
 def load_subject_embedding_cache(subject: str) -> dict[str, dict[str, object]]:
     """Load the persisted node embedding cache for one subject."""
 
-    path = build_knowledge_node_embedding_cache_path(subject)
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    cs = get_content_store()
+    key = cs.embedding_cache_key(subject)
+    payload = run_store_sync(cs.read_json_raw, key)
     if not isinstance(payload, dict):
         return {}
     return {
-        str(key): value
-        for key, value in payload.items()
-        if isinstance(value, dict)
+        str(k): v
+        for k, v in payload.items()
+        if isinstance(v, dict)
     }
 
 
 def write_subject_embedding_cache(
     subject: str,
     cache_payload: dict[str, dict[str, object]],
-) -> Path:
+) -> str:
     """Persist the node embedding cache for one subject."""
 
-    path = build_knowledge_node_embedding_cache_path(subject)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(cache_payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return path
+    cs = get_content_store()
+    key = cs.embedding_cache_key(subject)
+    run_store_sync(cs.write_json_raw, key, cache_payload)
+    return key
 
 
 __all__ = [

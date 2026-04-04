@@ -1,4 +1,4 @@
-﻿"""Subject workspace model."""
+"""Subject workspace model."""
 
 from __future__ import annotations
 
@@ -29,3 +29,7 @@ class Subject(SQLModel, table=True):
     status: str = Field(default="active", index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+
+    # ── 构建锁（云端模式下替代文件锁） ──
+    build_lock_holder: str | None = Field(default=None)
+    build_lock_at: datetime | None = Field(default=None)

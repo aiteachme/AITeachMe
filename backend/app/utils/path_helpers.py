@@ -120,12 +120,18 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _MULTI_UNDERSCORE_RE = re.compile(r"_+")
 
 
-def _sanitize_doc_title(title: str) -> str:
+def sanitize_doc_title(title: str) -> str:
+    """Sanitize a chapter/doc title for use in filenames and storage keys."""
+
     normalized = _WHITESPACE_RE.sub(" ", title).strip()
     normalized = _INVALID_FILENAME_CHARS_RE.sub("_", normalized)
     normalized = normalized.replace(".", "_")
     normalized = _MULTI_UNDERSCORE_RE.sub("_", normalized).strip(" _.")
     return (normalized or "untitled")[:50]
+
+
+# 保留别名以兼容内部调用
+_sanitize_doc_title = sanitize_doc_title
 
 
 def build_knowledge_doc_path(subject: str, chapter_index: int, title: str) -> Path:

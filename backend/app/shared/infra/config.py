@@ -1,4 +1,4 @@
-﻿"""应用配置。"""
+"""应用配置。"""
 
 from __future__ import annotations
 
@@ -72,6 +72,18 @@ class Settings(BaseSettings):
     app_version: str = "0.2.0"
     export_openapi_on_startup: bool = False
     cors_allowed_origins: str = ""  # 逗号分隔，留空使用默认白名单
+
+    # ── 云端数据库 ──
+    database_url: str | None = None  # PostgreSQL 连接串，cloud 模式必填
+
+    # ── 对象存储 (S3 兼容) ──
+    storage_backend: str = "local"  # "local" | "s3"
+    s3_bucket: str | None = None
+    s3_endpoint: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_region: str | None = None
+    s3_public_base_url: str | None = None  # 可选 CDN 域名
 
     # ── AI 基础设施配置 ──
     model_overrides: dict[str, str] = {}
@@ -153,6 +165,12 @@ class Settings(BaseSettings):
         """是否为本地模式。"""
 
         return not self.is_cloud_mode
+
+    @property
+    def storage_is_s3(self) -> bool:
+        """是否使用 S3 兼容对象存储。"""
+
+        return self.storage_backend.lower() == "s3"
 
     @property
     def resolved_guest_cookie_samesite(self) -> str:

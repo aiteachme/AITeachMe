@@ -13,9 +13,9 @@ import re
 from pathlib import Path
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
-from app.utils.path_helpers import to_storage_key
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.events import (
     IngestFileFastParsedEvent,
@@ -93,12 +93,38 @@ def build_finalize_success_node(*, context: WorkflowContext):
 
     async def finalize_success_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
+        cs = get_content_store()
         try:
-            markdown_path = Path(state["markdown_path"])
-            asset_dir = Path(state["asset_dir"])
+            markdown_path = state["markdown_path"]  # str key
+            asset_dir = state["asset_dir"]  # str key
             parsed_markdown = state.get("parsed_markdown")
-            if parsed_markdown is None and markdown_path.exists():
-                parsed_markdown = markdown_path.read_text(encoding="utf-8")
+
+            # 统一读取逻辑：从 state 或 storage 读 markdown
+            if parsed_markdown is None:
+                parsed_markdown = run_store_sync(cs.read_text, markdown_path, default=None)
+                if parsed_markdown is None:
+                    # 尝试从本地临时路径读取
+                    local_md = Path(state.get("_local_markdown_path", ""))
+                    if local_md.exists():
+                        parsed_markdown = local_md.read_text(encoding="utf-8")
+
+            # 将 markdown 写回 storage（确保持久化）
+            if parsed_markdown:
+                run_store_sync(cs.write_text, markdown_path, parsed_markdown)
+
+            # 处理 assets：检查本地临时目录，上传到 storage
+            local_asset_dir = Path(state.get("_local_asset_dir", asset_dir))
+            asset_rows: list[RawFileAsset] = []
+            if local_asset_dir.exists() and local_asset_dir.is_dir():
+                # 上传 assets 到正式 storage
+                run_store_sync(
+                    cs.upload_dir,
+                    local_asset_dir,
+                    cs.asset_prefix(state["subject"], state["file_id"]),
+                )
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=local_asset_dir)
+            else:
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=Path(asset_dir))
 
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
@@ -108,7 +134,6 @@ def build_finalize_success_node(*, context: WorkflowContext):
                         "error": f"raw_file_not_found:{state['file_id']}",
                     }
 
-                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=asset_dir)
                 replace_raw_file_assets(session, raw_file_id=state["file_id"], assets=asset_rows)
                 update_raw_file(
                     session,

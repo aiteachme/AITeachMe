@@ -13,6 +13,8 @@ from app.shared.infra.database import (
     ensure_subject_vec_table,
     get_engine,
     get_vector_table_dim,
+    is_postgres,
+    is_sqlite,
     is_vec_ready,
     quote_sqlite_identifier,
     vector_table_exists,
@@ -388,7 +390,7 @@ def bulk_insert_embeddings(
     embedding_model: str | None = None,
 ) -> None:
     if not is_vec_ready():
-        logger.warning("bulk_insert_embeddings_skipped", reason="sqlite-vec unavailable", subject=subject)
+        logger.warning("bulk_insert_embeddings_skipped", reason="vector extension unavailable", subject=subject)
         return
     if not chunk_ids or not embeddings:
         return
@@ -397,6 +399,68 @@ def bulk_insert_embeddings(
             "chunk_ids and embeddings must have the same length. "
             f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
+
+    if is_postgres():
+        _pg_bulk_insert_embeddings(session, subject=subject, chunk_ids=chunk_ids, embeddings=embeddings, embedding_model=embedding_model)
+    else:
+        _sqlite_bulk_insert_embeddings(session, subject=subject, chunk_ids=chunk_ids, embeddings=embeddings, embedding_model=embedding_model)
+
+
+def _pg_bulk_insert_embeddings(
+    session: Session,
+    *,
+    subject: str,
+    chunk_ids: list[int],
+    embeddings: list[list[float]],
+    embedding_model: str | None = None,
+) -> None:
+    """pgvector：直接更新 retrieval_chunk.embedding 列。"""
+
+    runtime_model = embedding_model or get_settings().normalized_embedding_model
+    try:
+        for chunk_id, embedding in zip(chunk_ids, embeddings):
+            session.execute(
+                sa.text(
+                    "UPDATE retrieval_chunk SET embedding = :emb::vector "
+                    "WHERE id = :cid"
+                ),
+                {"cid": chunk_id, "emb": str(embedding)},
+            )
+        session.commit()
+        update_chunk_vector_metadata(
+            session,
+            subject=subject,
+            chunk_ids=chunk_ids,
+            embedding_model=runtime_model,
+            vector_ref="retrieval_chunk.embedding",
+        )
+        logger.info(
+            "bulk_insert_embeddings_completed",
+            subject=subject,
+            chunk_count=len(chunk_ids),
+            embedding_dim=len(embeddings[0]) if embeddings else 0,
+            backend="pgvector",
+        )
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "bulk_insert_embeddings_failed",
+            subject=subject,
+            chunk_count=len(chunk_ids),
+            backend="pgvector",
+        )
+        raise
+
+
+def _sqlite_bulk_insert_embeddings(
+    session: Session,
+    *,
+    subject: str,
+    chunk_ids: list[int],
+    embeddings: list[list[float]],
+    embedding_model: str | None = None,
+) -> None:
+    """sqlite-vec：写入 vec0 虚拟表。"""
 
     table_name = _resolve_insert_table(
         session,
@@ -460,6 +524,22 @@ def delete_embeddings_by_chunk_ids(
     if not chunk_ids or not is_vec_ready():
         return
 
+    if is_postgres():
+        # pgvector：将 embedding 列置 NULL
+        placeholders = ", ".join(f":cid_{i}" for i in range(len(chunk_ids)))
+        params = {f"cid_{i}": cid for i, cid in enumerate(chunk_ids)}
+        try:
+            session.execute(
+                sa.text(f"UPDATE retrieval_chunk SET embedding = NULL WHERE id IN ({placeholders})"),
+                params,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        return
+
+    # SQLite：从 vec0 虚拟表中删除
     connection = session.connection()
     binding = _get_subject_binding(session, subject)
     table_names = [get_legacy_vector_table_name()]
@@ -493,10 +573,61 @@ def vector_search(
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
     if not is_vec_ready():
-        logger.warning("vector_search_skipped", reason="sqlite-vec unavailable", subject=subject)
+        logger.warning("vector_search_skipped", reason="vector extension unavailable", subject=subject)
         return []
     if top_k <= 0 or not query_embedding:
         return []
+
+    if is_postgres():
+        return _pg_vector_search(session, query_embedding, subject, top_k=top_k)
+    return _sqlite_vector_search(session, query_embedding, subject, top_k=top_k)
+
+
+def _pg_vector_search(
+    session: Session,
+    query_embedding: list[float],
+    subject: str,
+    *,
+    top_k: int = 5,
+) -> list[ChunkSearchResult]:
+    """pgvector 余弦相似度检索。"""
+
+    rows = session.execute(
+        sa.text(
+            """
+            SELECT id, 1 - (embedding <=> :query_emb::vector) AS score
+            FROM retrieval_chunk
+            WHERE subject = :subject
+              AND is_active = true
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> :query_emb::vector
+            LIMIT :top_k
+            """
+        ),
+        {
+            "subject": subject,
+            "query_emb": str(query_embedding),
+            "top_k": top_k,
+        },
+    ).fetchall()
+
+    results: list[ChunkSearchResult] = []
+    for row in rows:
+        chunk = session.get(RetrievalChunk, row[0])
+        if chunk is None:
+            continue
+        results.append(ChunkSearchResult(chunk=chunk, score=float(row[1])))
+    return results
+
+
+def _sqlite_vector_search(
+    session: Session,
+    query_embedding: list[float],
+    subject: str,
+    *,
+    top_k: int = 5,
+) -> list[ChunkSearchResult]:
+    """sqlite-vec MATCH 检索。"""
 
     table_name = _resolve_search_table(
         session,

@@ -5,20 +5,20 @@ import json
 import mimetypes
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
 import structlog
 
+from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import (
-    build_asset_dir,
     build_asset_name_prefix,
-    build_raw_markdown_path,
     resolve_storage_key_path,
-    to_storage_key,
 )
 from app.workflows.common.result import WorkflowResult, err_result, ok_result
 from app.workflows.ingest.events import (
@@ -143,6 +143,8 @@ async def _run_deep_enhance_background(
     enhance_logger = logger.bind(subject=subject, file_id=file_id, phase="deep_enhance")
     enhance_logger.info("deep_enhance_background_started")
 
+    cs = get_content_store()
+    settings = get_settings()
     try:
         # Load context from DB
         with managed_session() as session:
@@ -151,9 +153,18 @@ async def _run_deep_enhance_background(
                 enhance_logger.warning("deep_enhance_raw_file_not_found")
                 return
 
-            file_path = resolve_storage_key_path(raw_file.storage_key)
-            markdown_path = build_raw_markdown_path(subject, file_id)
-            asset_dir = build_asset_dir(subject, file_id)
+            _temp_dir = Path(tempfile.mkdtemp(prefix="atm_enhance_"))
+            file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
+            # Materialize markdown to temp for Phase 2 parsing
+            md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+            markdown_path = _temp_dir / f"{file_id}.md"
+            md_text = run_store_sync(cs.read_text, md_key, default=None)
+            if md_text:
+                markdown_path.write_text(md_text, encoding="utf-8")
+            else:
+                markdown_path.write_text(raw_file.markdown_content or "", encoding="utf-8")
+            asset_dir = _temp_dir / "assets" / str(file_id)
+            asset_dir.mkdir(parents=True, exist_ok=True)
             asset_name_prefix = build_asset_name_prefix(
                 filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
@@ -273,6 +284,8 @@ async def _run_deep_enhance_background(
 
         # Overwrite markdown with enhanced version
         markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
+        md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+        await cs.write_text(md_key, enhance_result.markdown)
 
         # Update DB: READY_FOR_DIGEST
         with managed_session() as session:
@@ -366,7 +379,10 @@ async def run_parse_file_workflow(
                     metadata={"subject": subject, "file_id": file_id},
                 )
 
-            file_path = resolve_storage_key_path(raw_file.storage_key)
+            settings = get_settings()
+            cs = get_content_store()
+            _temp_base = Path(tempfile.mkdtemp(prefix="atm_ingest_"))
+            file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_base)
             if not file_path.exists():
                 logger.warning("ingest_storage_file_missing", file_id=file_id, path=str(file_path))
                 update_raw_file(
@@ -409,9 +425,8 @@ async def run_parse_file_workflow(
                     markdown = raw_text
 
                 # Write raw markdown file
-                markdown_path = build_raw_markdown_path(subject, file_id)
-                markdown_path.parent.mkdir(parents=True, exist_ok=True)
-                markdown_path.write_text(markdown, encoding="utf-8")
+                md_key = cs.raw_markdown_key(subject, file_id)
+                await cs.write_text(md_key, markdown)
 
                 elapsed = time.perf_counter() - t0
                 logger.info(
@@ -501,13 +516,10 @@ async def run_parse_file_workflow(
                 enable_asset_vision_ocr=parse_plan.options.enable_asset_vision_ocr,
                 llm_ocr_page_concurrency=parse_plan.options.llm_ocr_page_concurrency,
             )
-            asset_dir = build_asset_dir(subject, file_id)
-            if asset_dir.exists():
-                shutil.rmtree(asset_dir, ignore_errors=True)
+            # 统一使用临时目录做解析工作区，完成后通过 ContentStore 写入
+            asset_dir = _temp_base / "assets" / str(file_id)
             asset_dir.mkdir(parents=True, exist_ok=True)
-
-            markdown_path = build_raw_markdown_path(subject, file_id)
-            markdown_path.parent.mkdir(parents=True, exist_ok=True)
+            markdown_path = _temp_base / f"{file_id}.md"
 
             asset_name_prefix = build_asset_name_prefix(
                 filename=raw_file.original_filename,
@@ -534,8 +546,13 @@ async def run_parse_file_workflow(
             asset_link_prefix=f"../assets/{file_id}",
         )
 
-        # Save Phase 1 results
+        # Save Phase 1 results — 统一走 ContentStore
         markdown_path.write_text(parse_result.markdown, encoding="utf-8")
+        md_key = cs.raw_markdown_key(subject, file_id)
+        await cs.write_text(md_key, parse_result.markdown)
+        await cs.upload_dir(asset_dir, cs.asset_prefix(subject, file_id))
+        md_storage_key = md_key
+        asset_storage_dir = cs.asset_prefix(subject, file_id).rstrip("/")
         asset_rows = _build_asset_rows(raw_file_id=file_id, asset_dir=asset_dir)
         parse_metadata = {
             "provider_used": parse_result.parser_used,
@@ -557,8 +574,8 @@ async def run_parse_file_workflow(
             "asset_ocr_images": 0,
             "asset_ocr_replacements": 0,
             "needs_enhance": parse_result.needs_enhance,
-            "raw_markdown_storage_key": to_storage_key(markdown_path),
-            "asset_storage_dir": to_storage_key(asset_dir),
+            "raw_markdown_storage_key": md_storage_key,
+            "asset_storage_dir": asset_storage_dir,
         }
         quality_score = _compute_quality_score(
             markdown=parse_result.markdown,

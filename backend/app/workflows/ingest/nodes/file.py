@@ -13,13 +13,12 @@ import json
 from pathlib import Path
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.utils.path_helpers import (
-    build_asset_dir,
     build_asset_name_prefix,
-    build_raw_markdown_path,
-    resolve_storage_key_path,
+    build_temp_dir,
 )
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.events import IngestFileClassifiedEvent
@@ -29,7 +28,8 @@ from app.workflows.ingest.parsing.strategy import build_parse_plan
 from app.workflows.ingest.state import IngestParseState
 
 
-def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
+async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
+    cs = get_content_store()
     with managed_session() as session:
         raw_file = get_raw_file_by_id(session, state["file_id"])
         if raw_file is None or raw_file.subject != state["subject"]:
@@ -39,14 +39,23 @@ def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             }
 
         file_id = state["file_id"]
-        file_path = resolve_storage_key_path(raw_file.storage_key)
+
+        # 统一物化到临时目录，后续节点拿到本地路径
+        temp_dir = build_temp_dir(state["subject"])
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        storage_key = raw_file.file_path or raw_file.storage_key
+        local_path = await cs.materialize(storage_key, temp_dir)
+        file_path_str = str(local_path)
+        markdown_path_str = raw_file.markdown_path or cs.raw_markdown_key(state["subject"], file_id)
+        asset_dir_str = raw_file.asset_dir or cs.asset_prefix(state["subject"], file_id).rstrip("/")
+
         return {
             **state,
             "filename": raw_file.original_filename,
             "filetype": raw_file.file_ext,
-            "file_path": str(file_path),
-            "markdown_path": str(build_raw_markdown_path(state["subject"], file_id)),
-            "asset_dir": str(build_asset_dir(state["subject"], file_id)),
+            "file_path": file_path_str,
+            "markdown_path": markdown_path_str,
+            "asset_dir": asset_dir_str,
             "asset_name_prefix": build_asset_name_prefix(
                 filename=raw_file.original_filename,
                 file_uid=raw_file.uid,
@@ -60,7 +69,7 @@ def build_load_raw_file_node(*, context: WorkflowContext):
     async def load_raw_file_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         logger.info("ingest_load_raw_file_started")
-        next_state = _load_raw_file_state(state)
+        next_state = await _load_raw_file_state(state)
         if next_state.get("error"):
             logger.warning("ingest_load_raw_file_failed", error=next_state["error"])
             return next_state

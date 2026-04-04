@@ -93,9 +93,11 @@ def _register_middlewares(app: FastAPI) -> None:
 
 
 def _register_static_mounts(app: FastAPI) -> None:
-    log_legacy_runtime_path_warnings()
-    data_dir = get_runtime_data_dir()
-    app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
+    settings = get_settings()
+    if settings.is_local_mode:
+        log_legacy_runtime_path_warnings()
+        data_dir = get_runtime_data_dir()
+        app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
 
 
 def _register_exception_handlers(app: FastAPI) -> None:

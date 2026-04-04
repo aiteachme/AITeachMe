@@ -59,20 +59,19 @@ def _chunk_content_hash(*, title: str, content: str) -> str:
 
 
 def _load_chunk_manifest(subject: str) -> KnowledgeChunkManifest | None:
-    path = build_knowledge_chunk_manifest_path(subject)
-    if not path.exists():
-        return None
-    try:
-        return KnowledgeChunkManifest.model_validate_json(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    from app.shared.infra.storage import get_content_store, run_store_sync
+
+    cs = get_content_store()
+    return run_store_sync(cs.read_json, cs.chunk_manifest_key(subject), KnowledgeChunkManifest)
 
 
-def _write_chunk_manifest(subject: str, manifest: KnowledgeChunkManifest) -> Path:
-    path = build_knowledge_chunk_manifest_path(subject)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    return path
+def _write_chunk_manifest(subject: str, manifest: KnowledgeChunkManifest) -> str:
+    from app.shared.infra.storage import get_content_store, run_store_sync
+
+    cs = get_content_store()
+    key = cs.chunk_manifest_key(subject)
+    run_store_sync(cs.write_json, key, manifest)
+    return key
 
 
 def _chunk_requires_embedding(
