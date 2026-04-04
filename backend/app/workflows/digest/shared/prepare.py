@@ -8,12 +8,10 @@ from pathlib import Path
 
 import structlog
 
-from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_artifact_store
+from app.shared.infra.storage import get_content_store
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path
 from app.workflows.digest.services.material_profiler import (
     build_material_profile,
     decide_digest_mode,
@@ -108,7 +106,7 @@ async def prepare_shared_inputs(
 async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
     """Load parsed raw markdown and normalize it into source packets."""
 
-    settings = get_settings()
+    cs = get_content_store()
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
@@ -121,32 +119,15 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
             return None
 
         file_id = int(raw_file.id)
-        content = ""
+        md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
+        content = await cs.read_text(md_key, default="") or ""
 
-        if settings.is_cloud_mode:
-            # cloud 模式：从 OSS 读取已解析的 markdown
-            storage_key = raw_file.markdown_path  # cloud 模式下存的是 storage_key
-            if storage_key:
-                try:
-                    store = get_artifact_store()
-                    data = await store.read_bytes(storage_key)
-                    content = data.decode("utf-8")
-                except Exception:
-                    logger.warning("cloud_markdown_read_failed", file_id=file_id, key=storage_key)
-            # fallback 到 DB 中的 parsed_markdown
-            if not content.strip() and raw_file.parsed_markdown and raw_file.parsed_markdown.strip():
-                content = raw_file.parsed_markdown
-            markdown_path_str = storage_key or f"{subject}/raw_markdowns/{file_id}.md"
-            asset_dir_str = raw_file.asset_dir or f"{subject}/assets/{file_id}"
-        else:
-            # local 模式：原有逻辑，完全不变
-            markdown_path = build_raw_markdown_path(subject, file_id)
-            if markdown_path.exists():
-                content = await asyncio.to_thread(markdown_path.read_text, encoding="utf-8")
-            elif raw_file.parsed_markdown.strip():
-                content = raw_file.parsed_markdown
-            markdown_path_str = str(markdown_path)
-            asset_dir_str = str(build_asset_dir(subject, file_id))
+        # fallback 到 DB 中的 parsed_markdown
+        if not content.strip() and raw_file.parsed_markdown and raw_file.parsed_markdown.strip():
+            content = raw_file.parsed_markdown
+
+        markdown_path_str = md_key
+        asset_dir_str = getattr(raw_file, "asset_dir", None) or cs.asset_prefix(subject, file_id).rstrip("/")
 
         if not content.strip():
             return None

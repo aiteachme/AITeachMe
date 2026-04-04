@@ -12,12 +12,10 @@ import mimetypes
 import re
 from pathlib import Path
 
-from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_artifact_store
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
-from app.utils.path_helpers import to_storage_key
 from app.workflows.common.context import WorkflowContext
 from app.workflows.ingest.events import (
     IngestFileFastParsedEvent,
@@ -95,56 +93,38 @@ def build_finalize_success_node(*, context: WorkflowContext):
 
     async def finalize_success_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
-        settings = get_settings()
+        cs = get_content_store()
         try:
-            markdown_path = Path(state["markdown_path"])
-            asset_dir = Path(state["asset_dir"])
+            markdown_path = state["markdown_path"]  # str key
+            asset_dir = state["asset_dir"]  # str key
             parsed_markdown = state.get("parsed_markdown")
 
-            if settings.is_cloud_mode:
-                # cloud 模式：markdown_path 和 asset_dir 存的是 storage_key
-                # parsed_markdown 应该已经在 state 中（解析器产出）
-                # 如果没有，尝试从本地临时文件读取
+            # 统一读取逻辑：从 state 或 storage 读 markdown
+            if parsed_markdown is None:
+                parsed_markdown = run_store_sync(cs.read_text, markdown_path, default=None)
                 if parsed_markdown is None:
-                    # 解析器可能把 markdown 写到了本地临时路径
+                    # 尝试从本地临时路径读取
                     local_md = Path(state.get("_local_markdown_path", ""))
                     if local_md.exists():
                         parsed_markdown = local_md.read_text(encoding="utf-8")
 
-                # 把 markdown 写回 OSS
-                store = get_artifact_store()
-                md_storage_key = state["markdown_path"]  # 已经是 storage_key
-                if parsed_markdown:
-                    await store.write_bytes(md_storage_key, parsed_markdown.encode("utf-8"))
+            # 将 markdown 写回 storage（确保持久化）
+            if parsed_markdown:
+                run_store_sync(cs.write_text, markdown_path, parsed_markdown)
 
-                # 把 assets 写回 OSS（解析器可能把 assets 写到了本地临时 asset_dir）
-                local_asset_dir = Path(state.get("_local_asset_dir", str(asset_dir)))
-                asset_rows: list[RawFileAsset] = []
-                if local_asset_dir.exists() and local_asset_dir.is_dir():
-                    for path in sorted(local_asset_dir.iterdir()):
-                        if not path.is_file():
-                            continue
-                        asset_key = f"{state['subject']}/assets/{state['file_id']}/{path.name}"
-                        await store.write_file(asset_key, path)
-                        width, height = _read_image_dimensions(path)
-                        asset_rows.append(
-                            RawFileAsset(
-                                raw_file_id=state["file_id"],
-                                asset_name=path.name,
-                                asset_kind=_guess_asset_kind(path.name),
-                                storage_backend="s3",
-                                storage_key=asset_key,
-                                mime_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream",
-                                page_num=_guess_page_num(path.name),
-                                width=width,
-                                height=height,
-                            )
-                        )
+            # 处理 assets：检查本地临时目录，上传到 storage
+            local_asset_dir = Path(state.get("_local_asset_dir", asset_dir))
+            asset_rows: list[RawFileAsset] = []
+            if local_asset_dir.exists() and local_asset_dir.is_dir():
+                # 上传 assets 到正式 storage
+                run_store_sync(
+                    cs.upload_dir,
+                    local_asset_dir,
+                    cs.asset_prefix(state["subject"], state["file_id"]),
+                )
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=local_asset_dir)
             else:
-                # local 模式：原有逻辑
-                if parsed_markdown is None and markdown_path.exists():
-                    parsed_markdown = markdown_path.read_text(encoding="utf-8")
-                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=asset_dir)
+                asset_rows = _build_asset_rows(raw_file_id=state["file_id"], asset_dir=Path(asset_dir))
 
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])

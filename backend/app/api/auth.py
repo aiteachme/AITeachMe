@@ -20,6 +20,7 @@ from app.schemas.auth import (
 )
 from app.schemas.common import ApiResponse, ok_response
 from app.services.auth_service import (
+    build_logout_guest_user,
     build_session_from_context,
     login_user,
     register_user,
@@ -73,7 +74,6 @@ async def send_email_code(
     responses=build_error_responses([400, 409, 422, 500, 503]),
 )
 async def register(
-    response: Response,
     body: RegisterRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
@@ -86,8 +86,6 @@ async def register(
         verification_code=body.verification_code,
         device_key=user.device_key,
     )
-    if data.current_user is not None:
-        set_guest_cookie_for_user(response, user_id=data.current_user.user_id)
     return ok_response(data)
 
 
@@ -99,7 +97,6 @@ async def register(
     responses=build_error_responses([400, 401, 422, 500]),
 )
 async def login(
-    response: Response,
     body: LoginRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
@@ -110,8 +107,6 @@ async def login(
         password=body.password,
         device_key=user.device_key,
     )
-    if data.current_user is not None:
-        set_guest_cookie_for_user(response, user_id=data.current_user.user_id)
     return ok_response(data)
 
 
@@ -126,14 +121,16 @@ async def logout(
     response: Response,
     _: LogoutRequest = Body(default=LogoutRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
 ) -> ApiResponse[AuthSessionData]:
     # 无状态 token：服务端不保存会话，前端删除 token 即可。
-    set_guest_cookie_for_user(response, user_id=user.user_id)
+    guest = build_logout_guest_user(session, device_key=user.device_key)
+    set_guest_cookie_for_user(response, user_id=guest.id)
     return ok_response(
         build_session_from_context(
-            user_id=user.user_id,
+            user_id=guest.id,
             email=None,
-            device_key=user.device_key,
+            device_key=guest.device_key,
             is_authenticated=False,
         )
     )
@@ -151,7 +148,8 @@ async def user(
     _: LogoutRequest = Body(default=LogoutRequest()),
     current: CurrentUserContext = Depends(get_current_user_context),
 ) -> ApiResponse[AuthSessionData]:
-    set_guest_cookie_for_user(response, user_id=current.user_id)
+    if not current.is_authenticated:
+        set_guest_cookie_for_user(response, user_id=current.user_id)
     return ok_response(
         build_session_from_context(
             user_id=current.user_id,
@@ -160,3 +158,7 @@ async def user(
             is_authenticated=current.is_authenticated,
         )
     )
+
+
+
+

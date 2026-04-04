@@ -15,9 +15,10 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.utils.path_helpers import build_asset_dir, build_raw_markdown_path, resolve_storage_key_path
+from app.utils.path_helpers import resolve_storage_key_path
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.parsing.strategy import ParsePlan
@@ -31,6 +32,7 @@ def build_load_enhance_context_node():
 
     async def load_enhance_context_node(state: IngestEnhanceState) -> IngestEnhanceState:
         try:
+            cs = get_content_store()
             with managed_session() as session:
                 raw_file = get_raw_file_by_id(session, state["file_id"])
                 if raw_file is None or raw_file.subject != state["subject"]:
@@ -40,8 +42,8 @@ def build_load_enhance_context_node():
                     }
 
                 file_path = str(resolve_storage_key_path(raw_file.storage_key))
-                markdown_path = str(build_raw_markdown_path(state["subject"], state["file_id"]))
-                asset_dir = str(build_asset_dir(state["subject"], state["file_id"]))
+                markdown_path = raw_file.markdown_path or cs.raw_markdown_key(state["subject"], state["file_id"])
+                asset_dir = raw_file.asset_dir or cs.asset_prefix(state["subject"], state["file_id"]).rstrip("/")
 
                 # Recover parse_plan and classification from stored metadata
                 parse_plan = None
@@ -129,14 +131,16 @@ def build_deep_enhance_file_node():
     """Phase 2: Run LLM Vision OCR on extracted assets."""
 
     async def deep_enhance_file_node(state: IngestEnhanceState) -> IngestEnhanceState:
-        markdown_path = Path(state["markdown_path"])
-        if not markdown_path.exists():
+        markdown_path_str = state["markdown_path"]
+        cs = get_content_store()
+
+        markdown = run_store_sync(cs.read_text, markdown_path_str, default=None)
+        if markdown is None:
             return {
                 **state,
-                "error": f"markdown_not_found:{state['markdown_path']}",
+                "error": f"markdown_not_found:{markdown_path_str}",
             }
 
-        markdown = markdown_path.read_text(encoding="utf-8")
         parse_plan = state.get("parse_plan")
         if parse_plan is None:
             return {
@@ -155,8 +159,8 @@ def build_deep_enhance_file_node():
                 parse_plan=parse_plan,
                 classification=state.get("classification"),
             )
-            # Overwrite markdown with enhanced version
-            markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
+            # Overwrite markdown
+            await cs.write_text(markdown_path_str, enhance_result.markdown)
             elapsed = round(time.monotonic() - started_at, 2)
 
             logger.info(

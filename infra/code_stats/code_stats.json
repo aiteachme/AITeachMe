@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T17:29:28.586141",
-  "total_commits_analyzed": 353,
+  "generated_at": "2026-04-04T10:51:59.949929",
+  "total_commits_analyzed": 360,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2825,6 +2825,62 @@
       "code_lines": 82768,
       "other_lines": 26246,
       "message": "merge: 合并digest更改分支"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "43c405f",
+      "total_lines": 109014,
+      "code_lines": 82768,
+      "other_lines": 26246,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "d9ed4a9",
+      "total_lines": 109019,
+      "code_lines": 82771,
+      "other_lines": 26248,
+      "message": "fix: 修正知识文档页空状态误判为构建中"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "bb4486d",
+      "total_lines": 109019,
+      "code_lines": 82771,
+      "other_lines": 26248,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4392d89",
+      "total_lines": 109803,
+      "code_lines": 83404,
+      "other_lines": 26399,
+      "message": "feat(frontend): 重构设置中心为全中文三栏面板并扩展配置覆盖"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4e1039d",
+      "total_lines": 109803,
+      "code_lines": 83404,
+      "other_lines": 26399,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "ad0a9d6",
+      "total_lines": 109535,
+      "code_lines": 83066,
+      "other_lines": 26469,
+      "message": "docs: 更新profile文档"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "e5c704b",
+      "total_lines": 110319,
+      "code_lines": 83699,
+      "other_lines": 26620,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }

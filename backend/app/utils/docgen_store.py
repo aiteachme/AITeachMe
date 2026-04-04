@@ -1,8 +1,7 @@
 """Storage helpers for knowledge docs build artifacts.
 
-本地模式使用文件系统，云端模式通过 ArtifactStore 抽象操作对象存储。
-构建锁在云端模式下使用 Subject 表的 build_lock_* 字段（DB 行锁），
-避免依赖特定文件系统实现。
+构建锁使用双策略：本地模式用文件锁，云端模式用 Subject 表行锁。
+其他所有 I/O（status、manifest、chapter 文件）统一走 ContentStore。
 """
 
 from __future__ import annotations
@@ -14,14 +13,12 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.storage import get_artifact_store, run_store_sync
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,
     build_knowledge_build_lock_path,
-    build_knowledge_build_status_path,
     build_knowledge_markdown_build_dir,
     build_knowledge_markdown_dir,
-    build_knowledge_manifest_path,
 )
 from app.utils.time import utcnow
 
@@ -127,13 +124,6 @@ def _hydrate_runtime_status(status: "KnowledgeBuildRuntimeStatus") -> "Knowledge
     return status
 
 
-# ── 云端 storage_key 构建 ──
-
-def _cloud_key(subject: str, filename: str) -> str:
-    """构建 cloud 模式下的 storage_key，路径结构与本地一致。"""
-    return f"{subject}/knowledge_markdowns/{filename}"
-
-
 # ── Pydantic models ──
 
 class KnowledgeDocsManifest(BaseModel):
@@ -184,6 +174,8 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
 
 
 # ── Build Lock ──
+# 注意：构建锁需要原子性保证，云端走 DB 行锁、本地走文件锁，
+# 这里 is_cloud_mode 判断有合理理由保留（两种完全不同的锁机制）。
 
 def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
     if not path.exists():
@@ -315,51 +307,27 @@ def _cloud_release_build_lock(subject: str) -> None:
             session.commit()
 
 
-# ── Build Status ──
+# ── Build Status（统一走 ContentStore） ──
 
 def read_knowledge_build_status(subject: str) -> KnowledgeBuildRuntimeStatus | None:
     """Read the runtime build-status payload if it exists."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        key = _cloud_key(subject, "build_status.json")
-        store = get_artifact_store()
-        data: bytes | None = run_store_sync(store.read_bytes, key, default=None)
-        if data is None:
-            return None
-        try:
-            return KnowledgeBuildRuntimeStatus.model_validate_json(data.decode("utf-8"))
-        except Exception:
-            return None
-
-    path = build_knowledge_build_status_path(subject)
-    if not path.exists():
-        return None
-    try:
-        return _hydrate_runtime_status(
-            KnowledgeBuildRuntimeStatus.model_validate_json(path.read_text(encoding="utf-8"))
-        )
-    except Exception:
-        return None
+    cs = get_content_store()
+    key = cs.build_status_key(subject)
+    status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
+    return _hydrate_runtime_status(status) if status is not None else None
 
 
 def write_knowledge_build_status(
     subject: str,
     status: KnowledgeBuildRuntimeStatus,
-) -> Path | str:
+) -> str:
     """Persist the runtime build-status payload."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        key = _cloud_key(subject, "build_status.json")
-        store = get_artifact_store()
-        run_store_sync(store.write_bytes, key, status.model_dump_json(indent=2).encode("utf-8"))
-        return key
-
-    path = build_knowledge_build_status_path(subject)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(status.model_dump_json(indent=2), encoding="utf-8")
-    return path
+    cs = get_content_store()
+    key = cs.build_status_key(subject)
+    run_store_sync(cs.write_json, key, status)
+    return key
 
 
 def update_knowledge_build_status(
@@ -383,100 +351,53 @@ def update_knowledge_build_status(
 def clear_knowledge_build_status(subject: str) -> None:
     """Remove runtime build-status metadata."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        key = _cloud_key(subject, "build_status.json")
-        store = get_artifact_store()
-        run_store_sync(store.delete, key, default=None)
-        return
-
-    path = build_knowledge_build_status_path(subject)
-    if path.exists():
-        path.unlink()
+    cs = get_content_store()
+    run_store_sync(cs.delete, cs.build_status_key(subject), default=None)
 
 
-# ── Manifest ──
+# ── Manifest（统一走 ContentStore） ──
 
 def read_knowledge_manifest(subject: str) -> KnowledgeDocsManifest | None:
     """Read the published manifest if it exists."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        key = _cloud_key(subject, "manifest.json")
-        store = get_artifact_store()
-        data: bytes | None = run_store_sync(store.read_bytes, key, default=None)
-        if data is None:
-            return None
-        try:
-            return KnowledgeDocsManifest.model_validate_json(data.decode("utf-8"))
-        except Exception:
-            return None
-
-    path = build_knowledge_manifest_path(subject)
-    if not path.exists():
-        return None
-    return KnowledgeDocsManifest.model_validate_json(path.read_text(encoding="utf-8"))
+    cs = get_content_store()
+    return run_store_sync(cs.read_json, cs.build_manifest_key(subject), KnowledgeDocsManifest)
 
 
-def write_knowledge_manifest(subject: str, manifest: KnowledgeDocsManifest) -> Path | str:
+def write_knowledge_manifest(subject: str, manifest: KnowledgeDocsManifest) -> str:
     """Persist the published manifest."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        key = _cloud_key(subject, "manifest.json")
-        store = get_artifact_store()
-        run_store_sync(store.write_bytes, key, manifest.model_dump_json(indent=2).encode("utf-8"))
-        return key
-
-    path = build_knowledge_manifest_path(subject)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    return path
+    cs = get_content_store()
+    key = cs.build_manifest_key(subject)
+    run_store_sync(cs.write_json, key, manifest)
+    return key
 
 
-# ── Cleanup ──
+# ── Cleanup（统一走 ContentStore） ──
 
 def clear_docgen_staging(subject: str) -> None:
     """Remove the current knowledge-markdown build directory."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        store = get_artifact_store()
-        run_store_sync(store.delete_prefix, f"{subject}/knowledge_markdowns/_build/", default=0)
-        return
+    cs = get_content_store()
+    run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
 
-    for directory in {
-        build_knowledge_markdown_build_dir(subject),
-        build_docgen_intermediate_latest_dir(subject),
-    }:
-        if directory.exists():
-            shutil.rmtree(directory, ignore_errors=True)
+    # local 模式还需要清理 intermediate 目录（docgen 本地中间产物）
+    settings = get_settings()
+    if settings.is_local_mode:
+        intermediate_dir = build_docgen_intermediate_latest_dir(subject)
+        if intermediate_dir.exists():
+            shutil.rmtree(intermediate_dir, ignore_errors=True)
 
 
 def clear_published_knowledge_docs_files(subject: str) -> None:
     """Remove published chapter markdown files before replacing them."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        store = get_artifact_store()
-        # 删除 chapter_*.md 和 merged_knowledge_base.md
-        keys = run_store_sync(
-            store.list_prefix,
-            f"{subject}/knowledge_markdowns/",
-            default=[],
-        )
-        for key in keys:
-            filename = key.rsplit("/", 1)[-1] if "/" in key else key
-            if filename.startswith("chapter_") or filename == "merged_knowledge_base.md":
-                run_store_sync(store.delete, key, default=None)
-        return
-
-    docs_dir = build_knowledge_markdown_dir(subject)
-    for path in docs_dir.glob("chapter_*.md"):
-        path.unlink(missing_ok=True)
-    merged_path = docs_dir / "merged_knowledge_base.md"
-    if merged_path.exists():
-        merged_path.unlink()
+    cs = get_content_store()
+    keys = run_store_sync(cs.list_prefix, f"{subject}/knowledge_markdowns/", default=[])
+    for key in keys:
+        filename = key.rsplit("/", 1)[-1] if "/" in key else key
+        if filename.startswith("chapter_") or filename == "merged_knowledge_base.md":
+            run_store_sync(cs.delete, key, default=None)
 
 
 def clear_knowledge_runtime_artifacts(subject: str) -> None:
@@ -486,12 +407,8 @@ def clear_knowledge_runtime_artifacts(subject: str) -> None:
     clear_knowledge_build_status(subject)
     clear_published_knowledge_docs_files(subject)
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        store = get_artifact_store()
-        run_store_sync(store.delete, _cloud_key(subject, "manifest.json"), default=None)
-    else:
-        build_knowledge_manifest_path(subject).unlink(missing_ok=True)
+    cs = get_content_store()
+    run_store_sync(cs.delete, cs.build_manifest_key(subject), default=None)
 
     release_knowledge_build_lock(subject)
 

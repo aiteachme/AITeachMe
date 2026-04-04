@@ -118,11 +118,13 @@ async def delete_subject_api(
 )
 async def update_subject_api(
     body: SubjectUpdateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
     return ok_response(
         update_subject_record(
             session,
+            owner_user_id=user.user_id,
             subject_id=body.subject_id,
             name=body.name,
             description=body.description,

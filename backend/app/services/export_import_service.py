@@ -15,6 +15,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field as dc_field
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -561,14 +563,17 @@ def _import_table(
 
         new_id = getattr(instance, spec.id_field)
 
-        # 路径重建
+        # 路径重建（统一走 ContentStore key）
+        cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, int):
-            instance.file_path = str(build_raw_file_path(new_slug, new_id, instance.filetype))
-            instance.markdown_path = str(build_raw_markdown_path(new_slug, new_id))
-            instance.asset_dir = str(build_asset_dir(new_slug, new_id))
+            ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
+            instance.file_path = f"{new_slug}/raw_files/{new_id}{ext}"
+            instance.markdown_path = cs.raw_markdown_key(new_slug, new_id)
+            instance.asset_dir = cs.asset_prefix(new_slug, new_id).rstrip("/")
+            settings = get_settings()
+            instance.storage_backend = "s3" if settings.is_cloud_mode else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
-            kd_dir = build_knowledge_markdown_dir(new_slug)
-            instance.markdown_path = str(kd_dir / f"chapter_{instance.chapter_index}.md")
+            instance.markdown_path = cs.knowledge_doc_key(new_slug, f"chapter_{instance.chapter_index}.md")
 
         if old_id is not None:
             table_id_map[old_id] = new_id
@@ -610,20 +615,34 @@ def _remap_fk(
 
 
 def _pack_files(zf: zipfile.ZipFile, subject_slug: str, options: ExportOptions) -> None:
+    """统一从 ContentStore 读取文件打入 zip。"""
+    cs = get_content_store()
+    skip_filenames = {".build.lock", "build_status.json", "manifest.json"}
+
+    def _pack_prefix(prefix: str, arc_prefix: str) -> None:
+        keys = run_store_sync(cs.list_prefix, prefix, default=[])
+        for key in keys:
+            relative = key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
+            data = run_store_sync(cs.read_bytes, key, default=None)
+            if data is not None:
+                zf.writestr(f"{arc_prefix}/{relative}", data)
+
     if options.include_raw_files:
-        _pack_dir(zf, build_raw_dir(subject_slug), "files/raw_files")
-        _pack_dir(zf, build_assets_dir(subject_slug), "files/assets")
-    _pack_dir(zf, build_raw_markdown_dir(subject_slug), "files/raw_markdowns")
+        _pack_prefix(f"{subject_slug}/raw_files/", "files/raw_files")
+        _pack_prefix(f"{subject_slug}/assets/", "files/assets")
+    if options.include_raw_markdowns:
+        _pack_prefix(f"{subject_slug}/raw_markdowns/", "files/raw_markdowns")
 
-    kd = build_knowledge_markdown_dir(subject_slug)
-    if kd.exists():
-        skip = {".build.lock", "build_status.json"}
-        for item in kd.iterdir():
-            if item.is_file() and item.name not in skip:
-                zf.write(item, f"knowledge/{item.name}")
-
-    if options.include_exam_history:
-        _pack_dir(zf, build_exam_dir(subject_slug), "exam")
+    # knowledge markdowns
+    if options.include_knowledge_docs:
+        keys = run_store_sync(cs.list_prefix, f"{subject_slug}/knowledge_markdowns/", default=[])
+        for key in keys:
+            filename = key.rsplit("/", 1)[-1]
+            if filename in skip_filenames or "/_build/" in key:
+                continue
+            data = run_store_sync(cs.read_bytes, key, default=None)
+            if data is not None:
+                zf.writestr(f"knowledge/{filename}", data)
 
 
 def _pack_dir(zf: zipfile.ZipFile, src_dir: Path, arc_prefix: str) -> None:
@@ -635,16 +654,29 @@ def _pack_dir(zf: zipfile.ZipFile, src_dir: Path, arc_prefix: str) -> None:
 
 
 def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any]) -> None:
-    build_subject_dir(new_slug).mkdir(parents=True, exist_ok=True)
+    """统一通过 ContentStore 将 zip 中的文件写入存储。"""
+    cs = get_content_store()
 
-    _copy_remapped(extract_dir / "files/raw_files", build_raw_dir(new_slug), file_id_map)
-    _copy_remapped(extract_dir / "files/raw_markdowns", build_raw_markdown_dir(new_slug), file_id_map)
+    def _upload_remapped(src_dir: Path, prefix: str) -> None:
+        if not src_dir.exists():
+            return
+        for item in src_dir.iterdir():
+            if not item.is_file():
+                continue
+            try:
+                old_id = int(item.stem)
+                new_id = file_id_map.get(old_id, old_id)
+                key = f"{new_slug}/{prefix}/{new_id}{item.suffix}"
+            except ValueError:
+                key = f"{new_slug}/{prefix}/{item.name}"
+            run_store_sync(cs.write_bytes, key, item.read_bytes())
 
-    # 资产目录按 file_id 重命名
+    _upload_remapped(extract_dir / "files/raw_files", "raw_files")
+    _upload_remapped(extract_dir / "files/raw_markdowns", "raw_markdowns")
+
+    # 资产目录按 file_id 重命名上传
     src_assets = extract_dir / "files" / "assets"
     if src_assets.exists():
-        dst_assets = build_assets_dir(new_slug)
-        dst_assets.mkdir(parents=True, exist_ok=True)
         for old_dir in src_assets.iterdir():
             if not old_dir.is_dir():
                 continue
@@ -653,21 +685,19 @@ def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any])
             except ValueError:
                 continue
             new_id = file_id_map.get(old_id, old_id)
-            shutil.copytree(old_dir, dst_assets / str(new_id), dirs_exist_ok=True)
+            for asset_file in old_dir.rglob("*"):
+                if asset_file.is_file():
+                    relative = asset_file.relative_to(old_dir).as_posix()
+                    key = f"{new_slug}/assets/{new_id}/{relative}"
+                    run_store_sync(cs.write_bytes, key, asset_file.read_bytes())
 
-    # 知识文档直接复制
+    # 知识文档上传
     src_kd = extract_dir / "knowledge"
     if src_kd.exists():
-        dst_kd = build_knowledge_markdown_dir(new_slug)
-        dst_kd.mkdir(parents=True, exist_ok=True)
         for item in src_kd.iterdir():
             if item.is_file():
-                shutil.copy2(item, dst_kd / item.name)
-
-    # 考试文件
-    src_exam = extract_dir / "exam"
-    if src_exam.exists() and any(src_exam.iterdir()):
-        shutil.copytree(src_exam, build_exam_dir(new_slug), dirs_exist_ok=True)
+                key = cs.knowledge_doc_key(new_slug, item.name)
+                run_store_sync(cs.write_bytes, key, item.read_bytes())
 
 
 def _copy_remapped(src_dir: Path, dst_dir: Path, id_map: dict[Any, Any]) -> None:

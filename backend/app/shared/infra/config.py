@@ -1,7 +1,8 @@
-﻿"""应用配置。"""
+"""应用配置。"""
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,14 +48,14 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.3
     chat_history_turns: int = 10
-    app_mode: str = "local"
+    app_mode: str = "auto"
     auth_enabled: bool = True
     auth_token_secret: str = "aiteachme-dev-token-secret"
     auth_token_ttl_hours: int = 24 * 30
     guest_token_ttl_hours: int = 24 * 30
     guest_cookie_name: str = "atm_guest_token"
-    guest_cookie_secure: bool = False
-    guest_cookie_samesite: str = "lax"
+    guest_cookie_secure: bool | None = None
+    guest_cookie_samesite: str = "auto"
     smtp_host: str | None = None
     smtp_port: int = 465
     smtp_username: str | None = None
@@ -143,10 +144,21 @@ class Settings(BaseSettings):
         return self.normalized_embedding_model is not None
 
     @property
+    def resolved_app_mode(self) -> str:
+        """返回当前运行环境下的最终模式。"""
+
+        normalized = (self.app_mode or "auto").strip().lower()
+        if normalized in {"local", "cloud"}:
+            return normalized
+        if os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL"):
+            return "cloud"
+        return "local"
+
+    @property
     def is_cloud_mode(self) -> bool:
         """是否为云端模式。"""
 
-        return self.app_mode.lower() == "cloud"
+        return self.resolved_app_mode == "cloud"
 
     @property
     def is_local_mode(self) -> bool:
@@ -159,6 +171,23 @@ class Settings(BaseSettings):
         """是否使用 S3 兼容对象存储。"""
 
         return self.storage_backend.lower() == "s3"
+
+    @property
+    def resolved_guest_cookie_samesite(self) -> str:
+        """返回当前部署环境下可工作的 SameSite 策略。"""
+
+        normalized = (self.guest_cookie_samesite or "auto").strip().lower()
+        if normalized in {"lax", "strict", "none"}:
+            return normalized
+        return "none" if self.is_cloud_mode else "lax"
+
+    @property
+    def resolved_guest_cookie_secure(self) -> bool:
+        """返回当前 guest cookie 是否必须启用 Secure。"""
+
+        if self.guest_cookie_secure is not None:
+            return self.guest_cookie_secure
+        return self.is_cloud_mode or self.resolved_guest_cookie_samesite == "none"
 
     @property
     def auth_ready(self) -> bool:

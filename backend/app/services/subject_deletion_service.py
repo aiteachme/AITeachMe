@@ -8,7 +8,7 @@ import structlog
 from sqlmodel import Session, func, select
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.storage import get_artifact_store
+from app.shared.infra.storage import get_content_store
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -157,13 +157,8 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_documents_and_chunks(session, subject=subject.slug)
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        # cloud 模式：异步删除 OSS prefix 需要在调用方处理
-        # 这里先标记，由调用方调用 delete_subject_artifacts_async
-        pass
-    else:
-        _delete_subject_directory(subject.slug)
+    # 本地目录清理（cloud 文件由 delete_subject_artifacts_async 处理）
+    _delete_subject_directory(subject.slug)
 
     delete_subject(session, subject)
 
@@ -173,14 +168,12 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
 
 
 async def delete_subject_artifacts_async(subject_slug: str) -> None:
-    """Cloud 模式下异步删除 OSS 上该 subject 的所有文件。"""
+    """异步删除该 subject 的所有存储文件（local 和 cloud 均走 ContentStore）。"""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
-        store = get_artifact_store()
-        await store.delete_prefix(f"{subject_slug}/")
-    else:
-        _delete_subject_directory(subject_slug)
+    cs = get_content_store()
+    await cs.delete_prefix(cs.subject_prefix(subject_slug))
+    # 本地目录也清理（如果存在）
+    _delete_subject_directory(subject_slug)
 
 
 def _delete_exam_records(session: Session, *, subject: str) -> None:

@@ -362,7 +362,7 @@ def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | N
     )
 
 
-def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse:
+def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusResponse | None:
     build_lock = read_knowledge_build_lock(subject)
     build_status = read_knowledge_build_status(subject)
     effective_build = build_status
@@ -377,13 +377,7 @@ def _resolve_runtime_build_status(*, subject: str) -> KnowledgeBuildStatusRespon
         )
 
     if effective_build is None:
-        return KnowledgeBuildStatusResponse(
-            status="idle",
-            requested_at=utcnow(),
-            stage="idle",
-            error_message=None,
-            draft_available=False,
-        )
+        return None
 
     return KnowledgeBuildStatusResponse(
         status=effective_build.status,
@@ -652,7 +646,8 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
         draft_updated_at = datetime.fromtimestamp(draft_path.stat().st_mtime)
 
     build_response = _resolve_runtime_build_status(subject=subject)
-    build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
+    if build_response is not None:
+        build_response.draft_available = bool(build_response.draft_available or draft_markdown.strip())
     build_preview = _build_runtime_preview(
         build_status=build_status,
         draft_markdown=draft_markdown,

@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 class ExportOptions(BaseModel):
     """导出选项（请求体）。"""
 
-    include_raw_files: bool = Field(default=True, description="是否包含原始上传文件。")
+    include_raw_files: bool = Field(default=True, description="是否包含原始上传文件（PDF/DOCX 等）。关闭后可大幅减小体积。")
+    include_raw_markdowns: bool = Field(default=True, description="是否包含解析后的原始 Markdown。")
+    include_knowledge_docs: bool = Field(default=True, description="是否包含构建后的知识文档（chapter_*.md 等）。")
     include_chat_history: bool = Field(default=True, description="是否包含对话记录。")
     include_exam_history: bool = Field(default=True, description="是否包含题库与考试记录。")
     include_profile: bool = Field(default=True, description="是否包含学习画像。")

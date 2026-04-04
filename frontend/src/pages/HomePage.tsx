@@ -701,7 +701,7 @@ export function HomePage() {
   });
 
   // ── Files query ──
-  const { data: filesData } = useQuery({
+  const { data: filesData, error: filesError } = useQuery({
     queryKey: ["files", activeSubjectId],
     queryFn: () => fetchFiles(activeSubjectId!),
     enabled: Boolean(activeSubjectId),
@@ -711,7 +711,7 @@ export function HomePage() {
     },
   });
 
-  const { data: knowledgeDocState } = useQuery({
+  const { data: knowledgeDocState, error: knowledgeDocStateError } = useQuery({
     queryKey: buildKnowledgeDocStateQueryKey(activeSubjectId ?? ""),
     queryFn: () => fetchKnowledgeDocState(activeSubjectId!),
     enabled: Boolean(activeSubjectId),
@@ -720,6 +720,32 @@ export function HomePage() {
 
   const files = filesData?.items ?? [];
   const readyFiles = useMemo(() => files.filter((f) => f.markdown_ready), [files]);
+
+  useEffect(() => {
+    if (!activeSubjectId) {
+      return;
+    }
+
+    if (filesError) {
+      setError(getApiErrorMessage(filesError, "学科创建后读取资料失败"));
+      return;
+    }
+
+    if (knowledgeDocStateError) {
+      setError(getApiErrorMessage(knowledgeDocStateError, "学科创建后读取知识状态失败"));
+      return;
+    }
+
+    setError((currentError) => {
+      if (
+        currentError === "学科创建后读取资料失败" ||
+        currentError === "学科创建后读取知识状态失败"
+      ) {
+        return null;
+      }
+      return currentError;
+    });
+  }, [activeSubjectId, filesError, knowledgeDocStateError]);
 
   // ── Mutations ──
   const createMutation = useMutation({

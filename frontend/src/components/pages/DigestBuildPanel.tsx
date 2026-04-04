@@ -145,7 +145,6 @@ async function fetchKnowledgeDocsBuildState(subject: string): Promise<KnowledgeD
       draft_markdown: "",
       build: {
         status: "idle",
-        requested_at: new Date().toISOString(),
         stage: "idle",
       },
     }
@@ -283,6 +282,10 @@ export function useKnowledgeDocsBuildState(subjectOverride?: string) {
 
       if (buildStatus && ACTIVE_BUILD_STATUSES.has(buildStatus)) {
         return 2500;
+      }
+
+      if (!buildStatus || buildStatus === "idle") {
+        return 10000;
       }
 
       const requestedAtMs = parseIsoTimestamp(data?.build?.requested_at);

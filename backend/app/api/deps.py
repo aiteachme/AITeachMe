@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Generator
 
+import structlog
 from fastapi import Depends, Request, Response
 from sqlmodel import Session
 
@@ -19,6 +20,8 @@ from app.services.auth_service import (
     set_guest_cookie_for_user,
 )
 from app.utils.subject import validate_subject as _validate_subject
+
+logger = structlog.get_logger()
 
 _DEVICE_KEY_HEADER = "x-device-key"
 _DEVICE_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -79,6 +82,32 @@ def _extract_guest_token(request: Request) -> str | None:
     return raw or None
 
 
+def _device_key_suffix(device_key: str | None) -> str | None:
+    if not device_key:
+        return None
+    return device_key[-8:]
+
+
+def _log_current_user_context(
+    request: Request,
+    context: CurrentUserContext,
+    *,
+    has_bearer_token: bool,
+    has_guest_token: bool,
+) -> None:
+    logger.info(
+        "current_user_context_resolved",
+        path=request.url.path,
+        method=request.method,
+        user_id=context.user_id,
+        auth_source=context.auth_source,
+        is_authenticated=context.is_authenticated,
+        device_key_suffix=_device_key_suffix(context.device_key),
+        has_bearer_token=has_bearer_token,
+        has_guest_token=has_guest_token,
+    )
+
+
 def get_current_user_context(
     request: Request,
     response: Response,
@@ -94,9 +123,7 @@ def get_current_user_context(
     if token:
         user = resolve_user_from_token(session, token)
         if user is not None:
-            # 维持一个游客 token，便于前端退出登录后回到同一浏览器游客身份。
-            set_guest_cookie_for_user(response, user_id=user.id)
-            return CurrentUserContext(
+            context = CurrentUserContext(
                 user_id=user.id,
                 email=user.email,
                 is_local=settings.is_local_mode,
@@ -104,23 +131,48 @@ def get_current_user_context(
                 is_authenticated=True,
                 auth_source="token",
             )
+            _log_current_user_context(
+                request,
+                context,
+                has_bearer_token=True,
+                has_guest_token=guest_token is not None,
+            )
+            return context
 
     if guest_token:
         user = resolve_guest_user_from_token(session, guest_token)
         if user is not None:
-            set_guest_cookie_for_user(response, user_id=user.id)
-            return CurrentUserContext(
-                user_id=user.id,
-                email=None,
-                is_local=settings.is_local_mode,
-                device_key=(device_key or user.device_key),
-                is_authenticated=False,
-                auth_source="guest_token",
-            )
+            if device_key is not None and user.device_key != device_key:
+                logger.warning(
+                    "guest_token_device_key_mismatch",
+                    path=request.url.path,
+                    method=request.method,
+                    user_id=user.id,
+                    guest_device_key_suffix=_device_key_suffix(user.device_key),
+                    request_device_key_suffix=_device_key_suffix(device_key),
+                )
+                user = None
+            else:
+                set_guest_cookie_for_user(response, user_id=user.id)
+                context = CurrentUserContext(
+                    user_id=user.id,
+                    email=None,
+                    is_local=settings.is_local_mode,
+                    device_key=(device_key or user.device_key),
+                    is_authenticated=False,
+                    auth_source="guest_token",
+                )
+                _log_current_user_context(
+                    request,
+                    context,
+                    has_bearer_token=token is not None,
+                    has_guest_token=True,
+                )
+                return context
 
     user = create_guest_user(session, device_key=device_key)
     set_guest_cookie_for_user(response, user_id=user.id)
-    return CurrentUserContext(
+    context = CurrentUserContext(
         user_id=user.id,
         email=None,
         is_local=settings.is_local_mode,
@@ -128,3 +180,10 @@ def get_current_user_context(
         is_authenticated=False,
         auth_source="guest_bootstrap",
     )
+    _log_current_user_context(
+        request,
+        context,
+        has_bearer_token=token is not None,
+        has_guest_token=guest_token is not None,
+    )
+    return context
