@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-03T17:43:25.298103",
-  "total_commits_analyzed": 355,
+  "generated_at": "2026-04-04T10:30:08.378102",
+  "total_commits_analyzed": 357,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2841,6 +2841,22 @@
       "code_lines": 82771,
       "other_lines": 26248,
       "message": "fix: 修正知识文档页空状态误判为构建中"
+    },
+    {
+      "date": "2026-04-03",
+      "commit": "bb4486d",
+      "total_lines": 109019,
+      "code_lines": 82771,
+      "other_lines": 26248,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4392d89",
+      "total_lines": 109803,
+      "code_lines": 83404,
+      "other_lines": 26399,
+      "message": "feat(frontend): 重构设置中心为全中文三栏面板并扩展配置覆盖"
     }
   ]
 }
