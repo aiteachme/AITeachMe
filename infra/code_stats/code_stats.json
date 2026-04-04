@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T10:51:59.949929",
-  "total_commits_analyzed": 360,
+  "generated_at": "2026-04-04T14:11:32.274825",
+  "total_commits_analyzed": 364,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2880,6 +2880,38 @@
       "total_lines": 110319,
       "code_lines": 83699,
       "other_lines": 26620,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "1c3e583",
+      "total_lines": 110319,
+      "code_lines": 83699,
+      "other_lines": 26620,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "590f4a0",
+      "total_lines": 110511,
+      "code_lines": 83851,
+      "other_lines": 26660,
+      "message": "fix: 修复 Render 游客身份漂移与跨站会话恢复"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "f631e46",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "fix: 修复云端游客模式识别并补充学科创建诊断信息"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "0899637",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
