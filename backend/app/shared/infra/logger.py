@@ -35,7 +35,7 @@ def configure_logging(log_level: str = "INFO") -> None:
     else:
         final_processors = [
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.processors.JSONRenderer(),
+            structlog.dev.ConsoleRenderer(colors=False),
         ]
 
     structlog.configure(

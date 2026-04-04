@@ -43,52 +43,82 @@ def _maybe_export_openapi_schema(app: FastAPI) -> None:
 def _log_infra_diagnostics(settings) -> None:
     """启动时输出基础设施诊断信息，方便在 Render Logs 里排查。"""
 
+    import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
 
     engine = get_engine()
     dialect = engine.dialect.name
 
-    # ── 数据库诊断 ──
-    db_info = {"dialect": dialect}
+    lines = [
+        "",
+        "=" * 60,
+        "  AITeachMe Infrastructure Diagnostics",
+        "=" * 60,
+        "",
+        "  [ENV]",
+        f"    APP_MODE (raw env)     : {os.environ.get('APP_MODE', '!! NOT_SET !!')}",
+        f"    APP_MODE (resolved)    : {settings.resolved_app_mode}",
+        f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
+        f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
+        f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
+        "",
+        "  [DATABASE]",
+        f"    Dialect                : {dialect}",
+    ]
+
     if is_postgres():
-        db_url = str(engine.url)
-        # 隐藏密码
-        db_info["host"] = engine.url.host or "unknown"
-        db_info["database"] = engine.url.database or "unknown"
-        db_info["pgvector"] = "ready"
+        lines.append(f"    Host                   : {engine.url.host or 'unknown'}")
+        lines.append(f"    Database               : {engine.url.database or 'unknown'}")
+        lines.append(f"    pgvector               : ready")
     elif is_sqlite():
-        db_info["vec_ready"] = is_vec_ready()
+        lines.append(f"    sqlite-vec             : {'ready' if is_vec_ready() else 'NOT available'}")
 
-    logger.info("infra_database", **db_info)
+    lines.append("")
+    lines.append("  [STORAGE]")
+    lines.append(f"    Backend                : {settings.storage_backend}")
 
-    # ── 存储诊断 ──
-    storage_info = {"backend": settings.storage_backend}
     if settings.storage_is_s3:
-        storage_info["bucket"] = settings.s3_bucket or "NOT_SET"
-        storage_info["endpoint"] = settings.s3_endpoint or "NOT_SET"
-        storage_info["cdn"] = settings.s3_public_base_url or "none"
-        # 尝试连通性检查
+        lines.append(f"    S3 Bucket              : {settings.s3_bucket or '!! NOT_SET !!'}")
+        lines.append(f"    S3 Endpoint            : {settings.s3_endpoint or '!! NOT_SET !!'}")
+        lines.append(f"    S3 CDN                 : {settings.s3_public_base_url or 'none'}")
+        # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
             from app.shared.infra.storage import get_artifact_store, run_store_sync
             store = get_artifact_store()
-            keys = run_store_sync(store.list_prefix, "__healthcheck/", default=[])
-            storage_info["s3_connection"] = "OK"
+            test_key = "__healthcheck/startup_test.txt"
+            test_data = b"aiteachme-s3-smoke-test-ok"
+            # 1. 写入
+            run_store_sync(store.write_bytes, test_key, test_data)
+            lines.append(f"    S3 Write               : OK")
+            # 2. 读取并验证
+            read_back = run_store_sync(store.read_bytes, test_key)
+            if read_back == test_data:
+                lines.append(f"    S3 Read & Verify       : OK ({len(read_back)} bytes)")
+            else:
+                lines.append(f"    S3 Read & Verify       : MISMATCH!")
+            # 3. 删除
+            run_store_sync(store.delete, test_key)
+            exists_after = run_store_sync(store.exists, test_key)
+            lines.append(f"    S3 Delete              : {'OK' if not exists_after else 'FAILED - still exists'}")
+            lines.append(f"    S3 Smoke Test          : ALL PASSED")
         except Exception as exc:
-            storage_info["s3_connection"] = f"FAILED: {exc}"
+            lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
     else:
         from app.shared.infra.runtime_paths import get_runtime_data_dir
-        storage_info["data_dir"] = str(get_runtime_data_dir())
+        lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
 
-    logger.info("infra_storage", **storage_info)
+    lines.append("")
+    lines.append("  [AUTH]")
+    lines.append(f"    Enabled                : {settings.auth_enabled}")
 
-    # ── 汇总 ──
-    logger.info(
-        "infra_summary",
-        mode=settings.resolved_app_mode,
-        db=dialect,
-        storage=settings.storage_backend,
-        auth_enabled=settings.auth_enabled,
-    )
+    status = "CLOUD" if settings.resolved_app_mode == "cloud" else "LOCAL"
+    lines.append("")
+    lines.append(f"  >>> Running in {status} mode <<<")
+    lines.append("")
+    lines.append("=" * 60)
+    lines.append("")
+
+    print("\n".join(lines), flush=True)
 
 
 @asynccontextmanager
