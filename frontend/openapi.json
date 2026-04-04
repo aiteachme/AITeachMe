@@ -1054,6 +1054,76 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/files/assets/{asset_path}": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Serve file asset (images, etc.)",
+        "description": "代理访问文件资产。\n\ncloud 模式：优先 302 到 CDN，无 CDN 时流式返回。\nlocal 模式：从本地文件系统返回。",
+        "operationId": "serve_file_asset_api_v1_subjects__subject__files_assets__asset_path__get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
@@ -3513,6 +3583,8 @@
                 "$ref": "#/components/schemas/ExportOptions",
                 "default": {
                   "include_raw_files": true,
+                  "include_raw_markdowns": true,
+                  "include_knowledge_docs": true,
                   "include_chat_history": true,
                   "include_exam_history": true,
                   "include_profile": true
@@ -7155,7 +7227,19 @@
           "include_raw_files": {
             "type": "boolean",
             "title": "Include Raw Files",
-            "description": "是否包含原始上传文件。",
+            "description": "是否包含原始上传文件（PDF/DOCX 等）。关闭后可大幅减小体积。",
+            "default": true
+          },
+          "include_raw_markdowns": {
+            "type": "boolean",
+            "title": "Include Raw Markdowns",
+            "description": "是否包含解析后的原始 Markdown。",
+            "default": true
+          },
+          "include_knowledge_docs": {
+            "type": "boolean",
+            "title": "Include Knowledge Docs",
+            "description": "是否包含构建后的知识文档（chapter_*.md 等）。",
             "default": true
           },
           "include_chat_history": {
