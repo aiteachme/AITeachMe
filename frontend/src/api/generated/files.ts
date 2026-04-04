@@ -396,4 +396,142 @@ export const useDeleteFilesApiApiV1SubjectsSubjectFilesDeletePost = <TError = Er
       > => {
       return useMutation(getDeleteFilesApiApiV1SubjectsSubjectFilesDeletePostMutationOptions(options), queryClient);
     }
+    /**
+ * 代理访问文件资产。
+
+cloud 模式：优先 302 到 CDN，无 CDN 时流式返回。
+local 模式：从本地文件系统返回。
+ * @summary Serve file asset (images, etc.)
+ */
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponseSuccess = (serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse200) & {
+  headers: Headers;
+};
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponseError = (serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse404 | serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse422 | serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse500) & {
+  headers: Headers;
+};
+
+export type serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse = (serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponseSuccess | serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponseError)
+
+export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetUrl = (subject: string,
+    assetPath: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/files/assets/${assetPath}`
+}
+
+export const serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet = async (subject: string,
+    assetPath: string, options?: RequestInit): Promise<serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse> => {
+  
+  return orvalApiClient<serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse>(getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetUrl(subject,assetPath),
+  {      
+    ...options,
+    method: 'GET'
     
+    
+  }
+);}
+  
+
+
+
+
+export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryKey = (subject: string,
+    assetPath: string,) => {
+    return [
+    `/api/v1/subjects/${subject}/files/assets/${assetPath}`
+    ] as const;
+    }
+
+    
+export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryOptions = <TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryKey(subject,assetPath);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>> = ({ signal }) => serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet(subject,assetPath, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(subject && assetPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryResult = NonNullable<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>>
+export type ServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    assetPath: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>,
+          TError,
+          Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>,
+          TError,
+          Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Serve file asset (images, etc.)
+ */
+
+export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryOptions(subject,assetPath,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+

@@ -10,8 +10,12 @@
  * 导出选项（请求体）。
  */
 export interface ExportOptions {
-  /** 是否包含原始上传文件。 */
+  /** 是否包含原始上传文件（PDF/DOCX 等）。关闭后可大幅减小体积。 */
   include_raw_files?: boolean;
+  /** 是否包含解析后的原始 Markdown。 */
+  include_raw_markdowns?: boolean;
+  /** 是否包含构建后的知识文档（chapter_*.md 等）。 */
+  include_knowledge_docs?: boolean;
   /** 是否包含对话记录。 */
   include_chat_history?: boolean;
   /** 是否包含题库与考试记录。 */
