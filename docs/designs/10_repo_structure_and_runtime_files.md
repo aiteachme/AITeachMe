@@ -1,4 +1,4 @@
-# 10. 仓库结构与运行时文件
+﻿# 10. 仓库结构与运行时文件
 
 ## 1. 文档定位
 
@@ -15,17 +15,17 @@
 
 后端主顺序：
 
-`api → services → workflows → infra → core`（辅助层：`utils` / `repositories` / `models` / `schemas`）
+`api → services → workflows → shared → utils`（辅助层：`repositories` / `models` / `schemas` / `teaching`）
 
 原因：
 
 - `api` 告诉你对外资源长什么样
-- `services` 告诉你请求怎么被转成用例
-- `workflows` 告诉你复杂流程真实怎么跑
-- `infra` 告诉你 AI 引擎（LLM / 搜索 / 记忆 / 工具）怎么封装
-- `core` 告诉你应用基础设施怎么启动
-- `repositories/models` 告诉你数据最终怎么落
-- `utils` 是各层共用的纯工具函数，可被任何层引用
+- `services` 告诉你请求怎么被收敛成用例
+- `workflows` 告诉你五大引擎真实怎么跑
+- `shared` 告诉你规范基础设施和通用底座怎么封装
+- `utils` 告诉你运行时路径与纯工具函数怎么组织
+- `repositories / models` 告诉你数据最终怎么落
+- `teaching` 当前主要是兼容层，阅读优先级低于 `shared`
 
 ---
 
@@ -33,8 +33,8 @@
 
 | 目录 | 作用 |
 | --- | --- |
-| `frontend/` | React 页面、组件、前端 API |
-| `backend/` | FastAPI、workflow、repository、model |
+| `frontend/` | React 页面、组件、前端 API 调用 |
+| `backend/` | FastAPI、workflow、repository、model、运行时数据根 |
 | `docs/` | 设计文档 |
 | `backend/scripts/` | 工具脚本与辅助脚本 |
 | `backend/skills/` | 教学技能定义 |
@@ -53,37 +53,20 @@
 | `workflows/` | 五大引擎编排中心 |
 | `repositories/` | 查询与持久化帮助 |
 | `models/` | 业务表模型 |
-| `schemas/` | API 请求 / 响应模型 |
-| `core/` | 应用基础设施（config, database, exceptions, logger, runtime_paths） |
-| `infra/` | AI 平台引擎（LLM, embedding, agent, tools, search, memory, guardrails 等） |
-| `utils/` | 纯工具函数（path_helpers, presenters, time, subject, job_helpers, kg_helpers） |
+| `schemas/` | API 与 workflow 输入输出模型 |
+| `shared/` | 规范基础层，含 `shared/kernel` 与 `shared/infra` |
+| `teaching/` | 兼容层 / 迁移过渡层，不再作为新设计主入口 |
+| `utils/` | 纯工具函数与运行时路径 helper |
 
-### 4.1 分层依赖规则
+### 4.1 分层理解与依赖口径
 
-```text
-┌────────────────────────────────────────────────┐
-│  api/          ← HTTP 入口                     │
-│    ↓                                           │
-│  services/     ← 业务编排                      │
-│    ↓                                           │
-│  workflows/    ← 引擎编排                      │
-│    ↓                                           │
-│  infra/        ← AI 引擎                       │
-│    ↓                                           │
-│  core/         ← 应用基础设施                   │
-│                                                │
-│  utils/        ← 纯工具（可被任何层引用）        │
-│  models/       ← 数据模型（可被 repos 以上引用） │
-│  schemas/      ← API 模型（仅 api/services 引用）│
-│  repositories/ ← 持久化（仅 services 以上引用）  │
-└────────────────────────────────────────────────┘
-```
+当前最重要的口径不是“机械记忆某个旧分层图”，而是记住下面几条：
 
-**核心规则**：
-- 上层可以 import 下层，反之 **不可**
-- `utils/` 是横切层，只依赖 `core/`，不依赖任何业务层
-- `infra/` 可以 import `core/`，**不可** import `services/` 或 `workflows/`
-- `models/` 只依赖 `core/` 和 `utils/`，**不可** import `services/` 或更上层
+- 新代码优先从 `app.shared.*` 导入规范基础能力
+- `app.teaching.*` 视为兼容层，不再反向定义主设计
+- `api` 负责资源入口，`services` 负责用例编排，`workflows` 负责复杂流程落地
+- `repositories / models / schemas / utils` 都是支撑层，不应抢占业务主编排职责
+- `utils/` 应保持纯工具属性，不依赖 `services/` 或 `workflows/`
 
 其中最需要优先读的是 `workflows/`，因为复杂主链路已经正式迁到这里。
 
@@ -91,7 +74,7 @@
 
 ## 5. 当前数据根目录
 
-默认数据根目录来自 `backend/app/core/runtime_paths.py` 的 `get_runtime_data_dir()`。
+默认数据根目录来自 `backend/app/shared/infra/runtime_paths.py` 的 `get_runtime_data_dir()`。
 
 在当前仓库的常见落点是：
 
@@ -101,6 +84,14 @@
 
 - `backend/data/aiteachme.db` 是主 SQLite 数据库
 - 每个 `subject` 都有自己的运行时目录
+- 用户级运行时画像与学习档案也默认落在这个 runtime root 下
+
+这里要特别注意：
+
+- runtime root 的真相源是 `app.shared.infra.runtime_paths`
+- 具体业务路径的真相源是 `app.utils.path_helpers`
+
+如果未来要迁到 `.atm/`，应通过 runtime root 配置迁移完成，而不是在各业务模块里硬编码新根目录。
 
 ---
 
@@ -152,8 +143,11 @@ backend/data/<subject>/
 
 这些 helper 才是运行时路径真相，文档和代码都应以它们为准。
 
-> **注意**：旧的 `services/upload_support.py` 已删除。
-> 新代码 **必须** 从 `app.utils.path_helpers` 导入。
+补充说明：
+
+- runtime root 本身由 `app.shared.infra.runtime_paths.get_runtime_data_dir()` 决定
+- `app.utils.path_helpers` 在这个 root 之上继续拼接 subject / 文件级路径
+- 旧的 `services/upload_support.py` 已删除，新代码必须从 `app.utils.path_helpers` 导入
 
 ---
 
@@ -171,6 +165,7 @@ backend/data/<subject>/
 - `knowledge_markdowns/merged_knowledge_base.md`
 - `knowledge_markdowns/manifest.json`
 - `knowledge_markdowns/.build.lock`
+- `knowledge_markdowns/build_status.json`
 
 ### 8.3 中间与调试产物
 
@@ -179,15 +174,31 @@ backend/data/<subject>/
 - `temp/*`
 - `debug/*`
 
-### 8.4 用户级运行时画像文件
+### 8.4 用户级 / 学科级运行时画像文件
+
+当前已经存在的运行时兼容文件：
 
 - `backend/data/users/<user_id>/LEARNER.md`
 
+下一阶段推荐归一后的布局：
+
+```text
+backend/data/users/<user_id>/
+└─ profile/
+   ├─ LEARNING_PROFILE.md
+   ├─ LEARNER.md
+   └─ subjects/
+      └─ <subject>/
+         └─ LEARNING_SUBJECT_PROFILE.md
+```
+
 说明：
 
-- 它不是数据库主表，而是 memory/profile 的运行时伴生文档
-- 当前会被 Interact 上下文自动读入
-- 判卷完成后也会继续补写学习主题与教学备注
+- 结构化真相仍在数据库，不在 markdown 文件里
+- `LEARNER.md` 保留兼容语义，继续服务旧 prompt / 旧工具 / 旧脚本
+- `LEARNING_PROFILE.md` 负责跨学科、偏稳定的用户学习画像
+- `LEARNING_SUBJECT_PROFILE.md` 负责单学科、偏动态的学习状态与教学建议
+- 当前默认 runtime root 仍是 `backend/data/`；如果未来迁到 `.atm/`，应通过 runtime root 配置迁移完成，而不是在业务文档里写死新的根目录语义
 
 ---
 
@@ -227,6 +238,8 @@ backend/data/<subject>/
 - `assets/<file_id>/`
 - `knowledge_markdowns/*.md`
 - `knowledge_markdowns/manifest.json`
+- `backend/data/users/<user_id>/LEARNER.md`
+- 未来若启用 `backend/data/users/<user_id>/profile/*`，这些运行时学习档案同样属于谨慎处理范围
 
 ---
 
@@ -235,16 +248,19 @@ backend/data/<subject>/
 当前仓库的关键事实是：
 
 - 复杂流程真相在 `workflows/`
-- AI 引擎封装在 `infra/`
-- 应用基础设施在 `core/`（仅 5 个模块）
+- 规范基础能力在 `shared/`
+- 新代码优先走 `app.shared.*`
+- `app.teaching.*` 继续保留兼容语义
 - 数据真相在数据库
-- 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns`
-- 真实路径命名必须服从 `utils/path_helpers.py`
-- 依赖方向：`api → services → workflows → infra → core`，`utils/` 可被任意层引用
+- 文件真相在 `raw_files / raw_markdowns / assets / knowledge_markdowns / users/*`
+- runtime root 的真相源是 `app.shared.infra.runtime_paths`
+- 具体业务路径命名必须服从 `app.utils.path_helpers`
+
 ## 12. 规范运行时辅助模块
 
-- `app.utils.path_helpers` 是运行时路径构造的规范来源。
+- `app.shared.infra.runtime_paths` 是 runtime root 的规范来源。
+- `app.utils.path_helpers` 是运行时业务路径构造的规范来源。
 - `app.utils.docgen_store` 是知识文档构建锁、manifest 与运行时构建状态辅助逻辑的规范来源。
-- `services/` 下旧的 helper 入口已经删除；调用方应直接依赖 `app.utils.path_helpers`、`app.utils.presenters`、`app.utils.docgen_store`。
-- `knowledge_markdowns/build_status.json` 现在是与 `manifest.json`、`.build.lock` 并列的正式运行时产物。
+- `app.shared.*` 是新的 canonical import path。
+- `app.teaching.*` 保持兼容语义，不再作为新实现的主设计入口。
 - 不新增顶层 `app/common` 包；workflow 共享编排能力继续放在 `workflows/common`。

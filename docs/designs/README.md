@@ -1,4 +1,4 @@
-# AITeachMe 开发设计文档
+﻿# AITeachMe 开发设计文档
 
 ## 1. 文档定位
 
@@ -25,7 +25,7 @@
 | `05b_digest_knowledge_graph.md` | 知识图谱设计 |
 | `06_interact_engine.md` | 教学对话设计 |
 | `07_examine_engine.md` | 组卷、判卷、测评设计 |
-| `08_profile_engine.md` | 画像、掌握度、复习调度设计 |
+| `08_profile_engine.md` | 画像、掌握度、复习调度与运行时学习档案设计 |
 | `10_repo_structure_and_runtime_files.md` | 仓库结构与运行时目录 |
 | `11_database_and_storage_architecture.md` | 本地部署、中心化部署、存储抽象 |
 | `12_api_refactor_plan.md` | API 收敛计划 |
@@ -76,7 +76,7 @@
 - 知识文档和知识图谱在同一轮 digest 中共享版本
 - 运行时目录采用 `raw_files / raw_markdowns / assets / knowledge_markdowns`
 - API 形态是“POST 主导 + 少量 GET 读取 + SSE 聊天主通道”，不是全 POST
-- Profile 已包含学科级与用户级双层摘要，并并入现有接口返回
+- Profile 已包含学科级与用户级双层摘要，并应进一步投影到运行时学习档案
 
 ---
 
@@ -89,3 +89,4 @@
 - 哪些对象是长期真相
 - 哪些状态只是运行时实现
 - 在不增加 API 复杂度前提下，未来优先演进哪些能力
+
