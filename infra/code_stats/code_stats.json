@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T14:11:32.274825",
-  "total_commits_analyzed": 364,
+  "generated_at": "2026-04-04T14:49:39.002118",
+  "total_commits_analyzed": 367,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2909,6 +2909,30 @@
     {
       "date": "2026-04-04",
       "commit": "0899637",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "b47d559",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "d8e3a4f",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "fix: 修复知识文档页中文乱码文案"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "1ab7be7",
       "total_lines": 110653,
       "code_lines": 83973,
       "other_lines": 26680,
