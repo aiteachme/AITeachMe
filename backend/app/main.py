@@ -81,13 +81,28 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    S3 Bucket              : {settings.s3_bucket or '!! NOT_SET !!'}")
         lines.append(f"    S3 Endpoint            : {settings.s3_endpoint or '!! NOT_SET !!'}")
         lines.append(f"    S3 CDN                 : {settings.s3_public_base_url or 'none'}")
+        # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
             from app.shared.infra.storage import get_artifact_store, run_store_sync
             store = get_artifact_store()
-            run_store_sync(store.list_prefix, "__healthcheck/", default=[])
-            lines.append(f"    S3 Connection          : OK")
+            test_key = "__healthcheck/startup_test.txt"
+            test_data = b"aiteachme-s3-smoke-test-ok"
+            # 1. 写入
+            run_store_sync(store.write_bytes, test_key, test_data)
+            lines.append(f"    S3 Write               : OK")
+            # 2. 读取并验证
+            read_back = run_store_sync(store.read_bytes, test_key)
+            if read_back == test_data:
+                lines.append(f"    S3 Read & Verify       : OK ({len(read_back)} bytes)")
+            else:
+                lines.append(f"    S3 Read & Verify       : MISMATCH!")
+            # 3. 删除
+            run_store_sync(store.delete, test_key)
+            exists_after = run_store_sync(store.exists, test_key)
+            lines.append(f"    S3 Delete              : {'OK' if not exists_after else 'FAILED - still exists'}")
+            lines.append(f"    S3 Smoke Test          : ALL PASSED")
         except Exception as exc:
-            lines.append(f"    S3 Connection          : FAILED - {exc}")
+            lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
     else:
         from app.shared.infra.runtime_paths import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
