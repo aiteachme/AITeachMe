@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T14:59:02.646768",
-  "total_commits_analyzed": 375,
+  "generated_at": "2026-04-04T16:53:25.958716",
+  "total_commits_analyzed": 378,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3000,6 +3000,30 @@
       "total_lines": 112947,
       "code_lines": 85493,
       "other_lines": 27454,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "870615a",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "d3672b7",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
+      "message": "feat: 添加启动基础设施诊断日志（数据库/存储连通性检查）"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "e66faae",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
       "message": "Merge branch 'dev_ywl'"
     }
   ]
