@@ -1,4 +1,4 @@
-﻿"""FastAPI 应用入口。"""
+"""FastAPI 应用入口。"""
 
 from __future__ import annotations
 
@@ -40,6 +40,57 @@ def _maybe_export_openapi_schema(app: FastAPI) -> None:
         logger.error("export_openapi_failed", error=str(exc))
 
 
+def _log_infra_diagnostics(settings) -> None:
+    """启动时输出基础设施诊断信息，方便在 Render Logs 里排查。"""
+
+    from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
+
+    engine = get_engine()
+    dialect = engine.dialect.name
+
+    # ── 数据库诊断 ──
+    db_info = {"dialect": dialect}
+    if is_postgres():
+        db_url = str(engine.url)
+        # 隐藏密码
+        db_info["host"] = engine.url.host or "unknown"
+        db_info["database"] = engine.url.database or "unknown"
+        db_info["pgvector"] = "ready"
+    elif is_sqlite():
+        db_info["vec_ready"] = is_vec_ready()
+
+    logger.info("infra_database", **db_info)
+
+    # ── 存储诊断 ──
+    storage_info = {"backend": settings.storage_backend}
+    if settings.storage_is_s3:
+        storage_info["bucket"] = settings.s3_bucket or "NOT_SET"
+        storage_info["endpoint"] = settings.s3_endpoint or "NOT_SET"
+        storage_info["cdn"] = settings.s3_public_base_url or "none"
+        # 尝试连通性检查
+        try:
+            from app.shared.infra.storage import get_artifact_store, run_store_sync
+            store = get_artifact_store()
+            keys = run_store_sync(store.list_prefix, "__healthcheck/", default=[])
+            storage_info["s3_connection"] = "OK"
+        except Exception as exc:
+            storage_info["s3_connection"] = f"FAILED: {exc}"
+    else:
+        from app.shared.infra.runtime_paths import get_runtime_data_dir
+        storage_info["data_dir"] = str(get_runtime_data_dir())
+
+    logger.info("infra_storage", **storage_info)
+
+    # ── 汇总 ──
+    logger.info(
+        "infra_summary",
+        mode=settings.resolved_app_mode,
+        db=dialect,
+        storage=settings.storage_backend,
+        auth_enabled=settings.auth_enabled,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
@@ -48,7 +99,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_db()
     _maybe_export_openapi_schema(app)
 
+    # ── 启动诊断日志 ──
     settings = get_settings()
+    _log_infra_diagnostics(settings)
+
     logger.info(
         "app_started",
         app_mode=settings.resolved_app_mode,
