@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     s3_region: str | None = None
     s3_public_base_url: str | None = None  # 可选 CDN 域名
-    s3_addressing_style: str = "auto"  # "auto" | "virtual" | "path"
+    s3_addressing_style: str = "virtual"  # "virtual" | "path" | "auto"
 
     # ── AI 基础设施配置 ──
     model_overrides: dict[str, str] = {}
@@ -177,10 +177,10 @@ class Settings(BaseSettings):
     def resolved_s3_addressing_style(self) -> str:
         """返回当前 S3 客户端应使用的 bucket 寻址风格。"""
 
-        normalized = (self.s3_addressing_style or "auto").strip().lower()
+        normalized = (self.s3_addressing_style or "virtual").strip().lower()
         if normalized in {"auto", "virtual", "path"}:
             return normalized
-        return "auto"
+        return "virtual"
 
     @property
     def resolved_guest_cookie_samesite(self) -> str:

@@ -8,13 +8,12 @@ from app.shared.infra.config import Settings
 from app.shared.infra.storage.s3_store import S3ArtifactStore
 
 
-def test_settings_default_s3_addressing_style_is_auto() -> None:
+def test_settings_default_s3_addressing_style_is_virtual() -> None:
     settings = Settings.model_construct(
         s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
-        s3_addressing_style="auto",
     )
 
-    assert settings.resolved_s3_addressing_style == "auto"
+    assert settings.resolved_s3_addressing_style == "virtual"
 
 
 def test_settings_respect_explicit_s3_addressing_style() -> None:
@@ -26,13 +25,13 @@ def test_settings_respect_explicit_s3_addressing_style() -> None:
     assert settings.resolved_s3_addressing_style == "path"
 
 
-def test_settings_fallback_to_auto_for_invalid_s3_addressing_style() -> None:
+def test_settings_fallback_to_virtual_for_invalid_s3_addressing_style() -> None:
     settings = Settings.model_construct(
         s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
         s3_addressing_style="invalid",
     )
 
-    assert settings.resolved_s3_addressing_style == "auto"
+    assert settings.resolved_s3_addressing_style == "virtual"
 
 
 def test_s3_artifact_store_passes_addressing_style_to_boto_client() -> None:
