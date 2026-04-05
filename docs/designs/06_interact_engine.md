@@ -1,296 +1,115 @@
-﻿# 06. Interact 引擎
+# 06. Interact 引擎 (伴读引擎)
 
-## 1. 目标与职责
+## 1. 引擎定位
 
-Interact 负责把知识材料、学习者状态和教学策略组合成“可持续伴读”的对话体验。
-它不是通用闲聊层，而是围绕当前学科与资料的教学型问答引擎。
+Interact 引擎（伴读引擎）是 AITeachMe 呈现 "24小时专属赛博私教" 这一核心标语的载体。
+区别于普通带着检索库的 RAG 对话，该引擎在每次回答前，都会隐式拉取用户的 **知识薄弱点、近期错题错因** 以及**当前的教学策略**，使得回答变成“因人而异、因材施教”的启发式对话，而不是粗暴地抛给学生标准答案。
 
-当前目标：
-
-- 基于 `retrieval_chunk` 做证据化检索回答
-- 结合聊天历史、画像、掌握状态构造教学上下文
-- 通过 `POST + SSE` 主通道进行流式输出
-- 在完成后落库可追踪的会话与消息记录
-
-从本版开始，本文档区分两件事：
-
-- 当前 workflow 已经稳定落地的输入与输出
-- 下一阶段应与 Profile / runtime memory 打通的目标设计
+它的核心挑战是解决流式输出（Streaming）与复杂图状态的结合，确保低延迟回复的同时不丢失私教逻辑。
 
 ---
 
-## 2. 当前实现落点
+## 2. 状态机范式 (State Definition)
 
-- 前端页面：`frontend/src/pages/ChatPage.tsx`
-- API：`backend/app/api/chats.py`
-- Service：`backend/app/services/chats_service.py`
-- Workflow Runtime：`backend/app/workflows/interact/runtime.py`
-- Workflow Nodes：`backend/app/workflows/interact/nodes/*`
-- 关键模型：`chat_session`、`chat_message`
+在整个单次对话轮回（Turn）中，伴读引擎的 LangGraph 状态数据如下：
 
----
-
-## 3. 当前主链路
-
-### 3.1 请求入口
-
-主入口是：
-
-- `POST /api/v1/subjects/{subject}/chats/send`（SSE）
-
-支持输入：
-
-- `question`
-- `session_id`（可选）
-- `selected_context`（可选）
-- `source_chunk_id`（可选）
-
-### 3.2 Workflow 主 Pipeline
-
-当前编排在 `build_interact_workflow_graph()`，主步骤：
-
-1. `history`：加载近期会话、薄弱点、近期错题。
-2. `retrieval`：按 subject 检索相关 chunk。
-3. `strategy`：决定回答策略与讲解力度。
-4. `prompt`：组装 messages。
-5. `stream`：流式生成 token。
-6. `persist`：持久化 user / assistant turn 与 contexts。
-
-### 3.3 事件输出
-
-SSE 事件主语义：
-
-- `token`
-- `done`（含 `turn_id` 和 `contexts`）
-- `error`
+```python
+class InteractWorkflowState(TypedDict, total=False):
+    subject: str                    # 学科上下文
+    user_id: str
+    session_id: str | None          # 当前对话 Session ID
+    question: str                   # 用户抛出的问题
+    selected_context: str | None    # 前端高亮划选发送的文本片段
+    source_chunk_id: int | None
+    
+    recent_messages: list[RecentMessage]          # 历史对话记录
+    weak_points: list[WeakPointSummary]           # Profile 显影引擎算出的用户薄弱点
+    recent_mistakes: list[MistakeSummary]         # 最近的错题集
+    retrieval_results: list[RetrievedContext]     # 向量+图谱混合检索来的知识材料
+    contexts: list[ChatContextItem] | None        # 将被返回前端作为引用的溯源列表
+    
+    strategy_mode: StrategyMode     # 教学策略 (直接解答 / 苏格拉底启发 / 追问测验)
+    messages: list[ChatMessage]     # 送给大模型的最终拼装消息序列
+    assistant_response: str         # 流式吐完后存下来的大模型完整回复
+    turn_id: str                    # 这一轮对话的落库 ID
+    stream_interrupted: bool        # 检测客户端中断断开的 Flag
+    error: str | None
+```
 
 ---
 
-## 4. 上下文组装原则
+## 3. 管线架构图 (Pipeline Architecture)
 
-### 4.1 资料绑定优先
+Interact 是一个纯典型的序列流（Sequential workflow），它的复杂度在于前置节点的重数据拉取。
 
-回答优先基于当前 `Subject` 的资料证据，不鼓励脱离资料自由发挥。
+```mermaid
+stateDiagram-v2
+    [*] --> load_history_state: 读取前序对话与错题画像
+    load_history_state --> retrieve_context: 混合检索
+    retrieve_context --> select_teaching_strategy: 决策大模型性格
+    select_teaching_strategy --> build_prompt: 填塞 Prompt
+    build_prompt --> stream_answer: 执行流式吐出 (SSE)
+    stream_answer --> persist_turn: 持久化这次问答
+    persist_turn --> [*]
 
-### 4.2 当前已经稳定注入的上下文
-
-按当前代码核对，Interact 主 workflow 里已经稳定进入 prompt 的输入主要是：
-
-- 最近聊天历史
-- 薄弱点摘要
-- 近期错题摘要
-- RAG 检索片段
-- 用户选中的片段（`selected_context`）
-
-其中：
-
-- 薄弱点和近期错题来自 profile / exam 派生状态
-- 检索引用会保存到 assistant 消息的 `contexts_json`
-- `selected_context` 会影响教学策略和 prompt 构造
-
-### 4.3 下一阶段应补齐的 Profile / Memory 上下文
-
-当前文档不再假定这些内容已经稳定接入主 workflow，但下一阶段推荐明确补上：
-
-- 用户级画像（`user.profile_json`）
-- 学科级画像（`subject.profile_json`）
-- `LEARNING_PROFILE.md`
-- `LEARNING_SUBJECT_PROFILE.md`
-- recall 出来的高价值 memory entries
-
-推荐做法不是再造第三套 prompt builder，而是让 Interact 统一复用 shared profile-memory context provider，避免：
-
-- 一处读 `user.profile_json`
-- 一处读 `LEARNER.md`
-- 一处读 memory store
-- 最后彼此描述还不一致
-
-### 4.4 引用可追溯
-
-assistant 消息保存结构化 `contexts_json`，支持前端展示来源卡片与原文跳转。
+    load_history_state --> [*]: Error
+    retrieve_context --> [*]: Error
+    select_teaching_strategy --> [*]: Error
+    build_prompt --> [*]: Error
+    stream_answer --> [*]: Interrupted 或 Error
+```
 
 ---
 
-## 5. 数据落点与事务边界
+## 4. 核心处理节点解析
 
-### 5.1 当前已经稳定落库的事实
-
-当前对话主链路稳定落库的对象是：
-
-- `chat_session`
-- `chat_message`
-- assistant 引用来源对应的 `contexts_json`
-
-这些对象共同构成了 Interact 当前最可靠的事实层。
-
-### 5.2 当前仍需补强的事实
-
-以下输入虽然已经出现在请求或 prompt 侧，但还不应被文档描述成“完整闭环”：
-
-- `selected_context` 的全链路持久化与回放
-- `source_chunk_id` 的稳定回写与再利用
-- 对话后提炼出的 memory entry
-- runtime markdown 档案的统一刷新
-
-也就是说，当前已经有“学习事实进入对话”的入口，但还没有把这些事实稳定地沉淀回 Profile / Memory 全链路。
-
-### 5.3 持久化原则
-
-Interact 后续补强时，应坚持以下顺序：
-
-1. 先把原始事实写入结构化对象
-2. 再由 Profile / Memory 聚合层提炼长期状态
-3. 最后再刷新 runtime markdown 档案
-
-不推荐：
-
-- 直接把整轮聊天原文 append 到画像 markdown
-- 由 Interact 自己维护另一套长期掌握度状态
+- **`load_history_state`**：不仅加载近几轮的聊天，最关键的是会跨模块调用 `Profile` 和 `Examine` 的视图，提取出该用户近 7 天做错的关联题目及它的能力雷达短板。
+- **`retrieve_context`**：如果用户的问题涉及特定知识，在此去向量库里找出关联片段。如果是用户划选了一段文字（`selected_context`），则提高那段文字的权重。
+- **`select_teaching_strategy`**：一个轻量控制节点，根据用户状态（是否连续做错、是否考前复习）切换教学性格（例如"启发模式"或"保姆模式"）。
+- **`stream_answer`**：在图内抛出 SSE event 向前端逐字渲染。
+- **`persist_turn`**：不管流式是否被异常掐断，都会在这一步把这整个回合打包入库 `chat_messages`。
 
 ---
 
-## 6. 与其他引擎的关系
+## 5. AI 提示词指纹 (Prompt Templates Showcase)
 
-### 6.1 与 Ingest / Digest 的关系
+> 系统核心助教 Prompt 位于 `workflows/interact/prompts/prompts.py`
 
-Interact 的资料基础来自：
+此 Prompt 中的注入点正是其能够"千人千面"的秘密。
 
-- Ingest 产出的材料层 markdown
-- Digest 发布后的知识文档与检索索引
+```text
+你是 AITeachMe 的 AI 学习助教，负责围绕 {{ subject }} 做教学型对话。
 
-没有这些知识底座时，Interact 可以回答，但不应被视为完整教学模式。
+当前教学策略：
+{{ teaching_strategy }}
 
-### 6.2 与 Profile 的关系
+回答要求：
+1. 优先基于当前学科资料回答，不要脱离资料随意发挥。
+2. 如果资料不够支撑结论，要明确说明“不确定”或“资料不足”。
+3. 表达要耐心、具体、结构化，优先帮助用户真正理解，而不是只给结论。
+4. 如果问题适合引导式教学，可以先拆步骤、先提示，再逐步推进。
+5. 所有数学公式都使用 LaTeX：行内公式用 $...$，独立公式用 $$...$$。
 
-当前 Interact 已经稳定读取 Profile 派生出来的两类摘要：
+学生薄弱项：
+{{ weak_points_context }}
 
-- 薄弱点
-- 近期错题
+近期错题：
+{{ mistakes_context }}
 
-但它还没有稳定完整读取：
-
-- `user.profile_json`
-- `subject.profile_json`
-- runtime markdown 学习档案
-- memory recall 结果
-
-因此当前最准确的说法是：
-
-- Interact 已经“部分消费 Profile”
-- 但还没有形成完整的 `Profile -> Interact -> Memory -> Profile` 闭环
-
-### 6.3 与 Examine 的关系
-
-Examine 会产出更强结构化学习信号：
-
-- 对错
-- 错因
-- 命中的 unit / node
-- 判卷反馈
-
-这些信号经由 Profile 聚合后，会间接影响 Interact 的后续教学策略。
-
-所以从当前工程现实看：
-
-- `Examine -> Profile` 是最稳定的强闭环
-- `Profile -> Interact` 是已经起步但仍需补强的链路
+用户选段上下文：
+{{ selected_context }}
+```
 
 ---
 
-## 7. 当前边界
+## 6. 事件与周边交互 (Events & Lifecycle)
 
-### 7.1 Interact 不是通用聊天 SDK
-
-它的定位始终是教学对话，而不是一个无边界的闲聊代理层。
-
-### 7.2 Interact 不拥有知识真相源
-
-知识真相来自：
-
-- 学科资料
-- 检索片段
-- `user_knowledge_state`
-- `exam_paper_item`
-- `chat_message`
-
-Interact 负责消费这些事实，而不是重新定义这些事实。
-
-### 7.3 Interact 不应自己维护长期画像真相
-
-长期画像应继续由：
-
-- `user.profile_json`
-- `subject.profile_json`
-- `user_knowledge_state`
-- runtime memory docs
-
-共同承载。
-
-Interact 可以写学习事件，但不应自己变成新的画像中心。
-
-### 7.4 shared 上下文底座已存在，但还没成为主路径
-
-仓库里已经存在 `app.shared.infra.context` 这类更通用的上下文组装能力，可以统一读取：
-
-- 用户画像
-- `LEARNER.md`
-- recall memory
-- 知识检索结果
-
-但当前 Interact 主 workflow 还没有完全收敛到这条 shared 路径。
-
-这意味着：
-
-- 底层能力不是没有
-- 主链路只是还没有完全接过去
+- **入口触发**：FastAPI 的 `@router.post("/streams/chat")` 端点直接挂载此工作流启动。依靠 SSE (Server-Sent Events) 打包流出。
+- **旁路挂载特性**：它不在内部做持久化触发，但在结束后可以发送 `InteractTurnCompleted` 领域事件，**留给未来做学情追踪。**（比如：用户问了“洛必达法则”，那他的能力雷达表中洛必达的熟练度可以少量上涨）。
 
 ---
 
-## 8. 下一步演进建议
+## 7. 优化空间探讨 (Ideas for Optimization)
 
-### 8.1 统一 profile-memory context provider
-
-优先目标不是继续扩 prompt 文本，而是把当前分散在 shared / interact / memory 的上下文读取逻辑，统一成一个规范 provider。
-
-### 8.2 补齐 `selected_context` 的事实沉淀
-
-需要把：
-
-- 用户滑选了什么
-- 选中内容来自哪个 chunk
-- 这轮回答如何引用这段上下文
-
-稳定写回结构化事实层，保证后续可以用于 memory 提炼、教学回放与画像更新。
-
-### 8.3 runtime markdown 文档应由 Profile 统一刷新
-
-推荐继续坚持：
-
-- Interact 写对话事实
-- Profile 聚合长期状态
-- Profile 统一刷新 `LEARNING_PROFILE.md` / `LEARNING_SUBJECT_PROFILE.md` / `LEARNER.md`
-
-而不是让 Interact 在每轮对话结束后直接向这些文档追加自然语言段落。
-
-### 8.4 新实现统一走 `app.shared.*`
-
-后续若补：
-
-- 画像读取
-- memory recall
-- learner docs
-- context assembly
-
-都应以 `app.shared.*` 为规范入口，`app.teaching.*` 保持兼容语义，不再反向定义主设计。
-
----
-
-## 9. 一句话结论
-
-当前 Interact 最稳定的现实能力是：
-
-- 基于资料检索回答
-- 读取近期聊天、薄弱点、近期错题
-- 流式输出并持久化会话消息
-
-下一阶段真正值得做的，不是再写一版更长的 prompt，而是把 `subject / user profile + runtime markdown + memory recall` 这套上下文，稳定接进主 workflow，并把 `selected_context` 沉淀回可追溯的学习事实。
+1. **图谱联动 (Graph RAG)**：目前的 `retrieve_context` 节点更多偏向向量检索。但 Digest 已经给我们织出了漂亮的知识图谱。如果用户说“梳理一下这一章逻辑”，Interact 引擎应该能去捞取子图表结构，转交给大模型。这是下版本极具潜力的增强点。
+2. **多模态问题对话**：用户如果上传了一张拍下的题目截图提问，目前的 `InteractWorkflowState` 没有 `image_payload` 的入参口。建议为 `Interact` state 扩充多模态能力入口。

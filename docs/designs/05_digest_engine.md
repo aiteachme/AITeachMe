@@ -1,149 +1,175 @@
-﻿# 05. Digest 引擎总控设计
+# 05. Digest 引擎 (织网引擎)
 
-## 1. 定位
+## 1. 引擎定位
 
-Digest 是 AITeachMe 的“织网引擎”，负责把 ingest 已产出的规范化材料，重组为一套可发布、可学习、可被后续引擎消费的知识资产包。它不是单纯的“总结器”，而是统一编排以下三层结果：
+Digest 引擎（织网引擎）是 AITeachMe 最核心的“大脑构建”工厂。它的职责是消费 Ingest 处理好的标准化资产（Markdown），通读几十万字，把原本扁平的文本段落，编织成一张具有时序、逻辑、依赖关系的“知识图谱”，并据此生长出结构化的“课程大纲（Curriculum）”。
 
-- 面向学习者的知识文档
-- 面向系统的知识图谱与教学单元
-- 面向教学组织的 curriculum views（主题树、先修图、线性大纲、学习计划）
-
-Digest 的目标优先级固定为：
-
-1. 语义结构正确
-2. 构建速度足够快，常规材料尽量控制在 5 分钟内可用
-3. 构建等待期可感知
-4. 对前端暴露尽可能少的接口
+为了解决超大规模文本处理中的并发与组合爆炸问题，Digest 引擎被拆分为三条并行的 LangGraph 异步流水线（Lanes）：
+1. **KG Lane (知识抽取流)**：负责碎片化的原子知识抽取（实体识别、关系断言）。
+2. **Curriculum Lane (课程派生流)**：负责把零散的图谱实体聚合成符合人类认知顺序的树状结构（Unit/主题树）。
+3. **Docs Lane (文档生成流)**：根据结构和知识点，反向输出系统化教案（DocGen）。
 
 ---
 
-## 2. 当前统一口径
+## 2. 状态机范式 (State Definition)
 
-### 2.1 后端主链路
+三个子流分别维护自己的 `TypedDict`，彼此通过 `services` 落地数据库完成握手。
 
-统一构建仍然走一条主链：
+### 2.1 KG Lane State (`KGDigestState`)
+图谱构建是 Map-Reduce 的经典场景，在并发抽出候选节点后，需要聚类和冲突消解。
+```python
+class KGDigestState(TypedDict, total=False):
+    subject: str                  # 学科 / 知识库命名空间
+    file_ids: list[int]           # 触发本次 Digest 的物料 IDs
+    job_id: int                   # 本次构建任务跟踪 ID
+    chunk_ids: list[int]                    # 切分后的所有文本块 IDs
+    candidates: list[dict]                  # 抽取的未处理候选 entity (Concept/Topic等)
+    all_candidate_edges: list[dict]         # 抽取的候选边 relations
+    cluster_id_to_resolved_node_id: dict    # Entity 同义词合并后的图谱对齐字典
+    new_node_ids: list[int]                 # 真正落库图谱的新节点
+    updated_node_ids: list[int]             # 发生了更新的旧节点
+    impact_set: ImpactSet | None            # 知识变更辐射范围（用于智能复习和增量更新）
+```
 
-`prepare shared -> docs / kg -> curriculum -> publish`
-
-但当前实现重点不再放在“拆更多 lane”，而是放在以下几个系统问题的治理：
-
-- 语义标题净化，避免 `Question 1`、`Question bank`、`第 1 题` 这类过程性标题进入主题骨架
-- typed resolution，避免仅按名称做跨类型、跨层级串线
-- chunk 物化增量化与 embedding 复用，避免每次全量重算
-- 教学单元、主题树、先修图围绕同一份知识图谱事实源构建
-
-### 2.2 模式决策
-
-Digest 继续支持两种教学模式：
-
-- `sprint`：速成课，强调高频考点、题型、方法、易错点
-- `systematic`：系统课，强调完整依赖链、概念覆盖和课程结构
-
-模式由后端根据材料画像自动判断，但前端不需要依赖额外模式接口。模式信息如需展示，只允许作为已有响应中的附属字段出现，不能为此新增专用 API。
-
----
-
-## 3. 接口原则
-
-Digest 当前遵循“少 API、POST 优先”的约束。
-
-### 3.1 保留接口
-
-- `POST /api/v1/subjects/{subject}/knowledge/build`
-- `POST /api/v1/subjects/{subject}/knowledge/docs`
-- `POST /api/v1/subjects/{subject}/knowledge/overview`
-- `POST /api/v1/subjects/{subject}/knowledge/study-plan`
-
-### 3.2 不再推荐的接口形态
-
-以下形态不再作为 digest 设计目标：
-
-- 独立 `build-status` 接口
-- `GET /study-plan`
-- `PATCH /study-plan/checklist`
-- 为等待态额外新增 SSE 通道
-
-### 3.3 等待态原则
-
-知识文档和图谱页的等待态统一复用：
-
-- `POST /knowledge/build` 触发构建
-- `POST /knowledge/docs` 轮询文档与构建状态
-- 前端本地生成平滑进度，不要求后端提供精确 ETA
-
-后端对 `POST /knowledge/docs` 的 `build` 字段保持最小可用集：
-
-- `status`
-- `requested_at`
-- `stage`
-- `error_message`
-- `draft_available`
-
-为改善等待体验，可在同一响应中附加可选字段（不新增接口）：
-
-- `build_preview`：如当前阶段描述、chunk 进度、样例节点、样例卡片、草稿摘录
-- `build_metrics`：如 LLM 调用总数、平均延迟、按 lane 调用计数
+### 2.2 Curriculum Lane State (`CurriculumDeriveState`)
+```python
+class CurriculumDeriveState(TypedDict, total=False):
+    subject: str
+    curriculum_job_id: int
+    impact_set: ImpactSet | None            # KG Lane 跑完后传过来的变更圈
+    derived_unit_ids: list[int]             # 聚类出的教学单元 (Units)
+    theme_tree_version_id: int | None       # 生成的树状结构层级版本 (Module -> Chapter)
+    prereq_dag_version_id: int | None       # 同层级节点的前置依赖图 (A是B的前提)
+```
 
 ---
 
-## 4. 统一产物
+## 3. 管线架构图 (Pipeline Architecture)
 
-Digest 的统一产物分三层。
+### 3.1 核心主链路：KG Lane -> Curriculum Lane
 
-### 4.1 底层真相源：Knowledge Graph
+```mermaid
+stateDiagram-v2
+    state "KG Lane (原子提炼)" as KG {
+        [*] --> acquire_lock: 防并发锁
+        acquire_lock --> prepare: 切割 Chunk
+        prepare --> extract: 大模型并发抽取 Node/Edge
+        extract --> cluster: 实体聚类 (找同义词)
+        cluster --> resolve_nodes: 节点图谱入库融合
+        resolve_nodes --> resolve_edges: 孤儿边对齐计算
+        resolve_edges --> analyze_impact: 计算影响范围
+        analyze_impact --> finalize_graph
+        finalize_graph --> [*]
+    }
+    
+    state "Curriculum Lane (课程骨架)" as Curriculum {
+        [*] --> derive_units: 知识点捆绑成单元
+        derive_units --> derive_theme_tree: 单元归纳为章节树
+        derive_theme_tree --> derive_prereq_dag: 计算最优学习路径 (DAG)
+        derive_prereq_dag --> finalize_curriculum
+        finalize_curriculum --> [*]
+    }
+    
+    KG --> Curriculum : trigger (通过事件异步唤起)
+```
 
-- 节点、边、证据是语义事实源
-- 节点内容通过 revision 承载
-- `taxonomy_hint` 必须进入可持久化元数据，而不是只停留在内存候选节点
+### 3.2 辅助链路：Docs Lane (教案化)
 
-### 4.2 中层组织：Teaching Unit
+此链路通过 `Map-Reduce`（Fan-out/Fan-in） 架构，并行写书。
 
-- 教学单元由知识图谱聚类而来
-- unit 是最小可讲授粒度
-- `Example`、`Definition` 作为 support 节点，不应该反向成为主题主锚点
-
-### 4.3 上层视图：Curriculum Views
-
-- 主题树：浏览和目录导航
-- 先修图：依赖与学习路径
-- 线性大纲：课程顺序
-- 学习计划：学习阶段 + checklist
-
----
-
-## 5. 前端展示约束
-
-### 5.1 知识文档页
-
-- 右侧继续保留 AI 评论区
-- 学习计划在正文顶部内联展示
-- 构建等待态和更新 banner 只读 `POST /knowledge/docs`
-
-### 5.2 知识图谱页
-
-- 学习者默认视图改为稳定语义星图
-- 随机漂移的 3D 词云不再作为主方案
-- `DigestBuildProgress` 与 `StudyPlanPanel` 可在图谱页和侧边图谱面板展示，但都基于已有接口
-
-### 5.3 Study Plan 交互
-
-- 学习计划保留一个单独的 `POST /study-plan`
-- 空请求体表示查询
-- 带 `item_id + completed` 表示更新后返回全量
-- 前端直接用全量响应刷新缓存，不拆局部接口
-
----
-
-## 6. 当前最重要的设计约束
-
-- 不再为了“看起来更实时”而堆更多专用接口
-- 优先保持知识图谱、主题树、学习计划三者语义一致
-- 任何性能优化都优先做在 embedding 复用、chunk 增量物化、聚类分桶和减少串行上
-- 任何等待体验优化都优先复用现有接口和前端本地状态，而不是扩接口
+```mermaid
+stateDiagram-v2
+    [*] --> load_files
+    load_files --> cleanse
+    cleanse --> outline_map: 发包切分大纲
+    outline_map --> outline_reduce: 回收大纲并对齐
+    
+    outline_reduce --> draft_chapter : fan_out (并行起草N章)
+    draft_chapter --> collect_drafts : fan_in
+    
+    collect_drafts --> review_chapter : fan_out (并行审核)
+    review_chapter --> collect_reviews : fan_in
+    
+    collect_reviews --> extract_metadata
+    extract_metadata --> finalize_assemble
+    finalize_assemble --> [*]
+```
 
 ---
 
-## 7. 与子文档的关系
+## 4. 核心处理节点解析
 
-- [05a_digest_knowledge_document.md](./05a_digest_knowledge_document.md)：文档生成、等待态、学习计划在 docs 页的整合
-- [05b_digest_knowledge_graph.md](./05b_digest_knowledge_graph.md)：知识图谱、typed resolution、语义星图与 curriculum 依赖
+### 4.1 KG Lane 数据流细节
+- **`extract`**: 这是一个极具杀伤力的节点。会对全文拆分成的数百个 `Chunk` 并发调用大模型，运用提示词强迫大模型只能输出符合五大范式（Topic, Concept, Definition, Method, Example）的 JSON。
+- **`cluster & resolve_nodes`**: 一定会出现不同 Chunk 抽取出相同概念的情形。此段使用图谱对齐提示词，让系统回答两者是否属于 Exact, Alias 或 No Match，做同义词合流。
+- **`analyze_impact`**: AITeachMe 的特色功能。如果我们修改/废弃了一个 Concept，下游所有以来这个 Concept 生成的题目、文章都会被标记在 `ImpactSet` 中以备重新派生。
+
+### 4.2 Curriculum Lane 数据流细节
+它是从"散乱的网"变成"有序的树"的关键。
+- **`derive_units`**: 将一堆高聚合的 `Concept/Definition/Example` 捆绑成一个 `Unit（教学单元）`，即用户每一次学习打卡的最小原子颗粒。
+- **`derive_theme_tree`**: 让大模型看着一堆 `Unit`，生成 `Module（模块） -> Chapter（章节）` 的人类课本结构。
+- **`derive_prereq_dag`**: 基于拓扑排序，如果 `Concept B` 依赖 `Concept A`，那么包含 A 的 Unit 就会被强制排在包含 B 的 Unit 之前。
+
+---
+
+## 5. AI 提示词指纹 (Prompt Templates Showcase)
+
+### 5.1 图谱知识抽取提示词 (KG Extract Prompt)
+
+> 位于 `workflows/digest/prompts/kg_prompts.py`
+ 
+此 Prompt 制定了严格的 5节点/5边 枚举体系，这是 AITeachMe "不会把知识点越拆越乱" 的根基。
+
+```text
+你是一名知识图谱构建助手。请从给定的学习资料文本片段中抽取知识节点和知识边。
+
+## 节点类型（仅限以下 5 种）
+- Topic：主题或大类（如"微积分"、"系统架构"）
+- Concept：核心概念（如"导数"、"核心痛点"）
+- Definition：概念的正式定义或核心释义
+- Method：方法、算法、解题技巧或业务策略
+- Example：具体用例、场景、例题或习题（注意：一道完整的题目应作为一个 Example 节点）
+
+## 边类型（仅限以下 5 种）
+- belongs_to_topic，prerequisite_of，defined_by，illustrated_by，part_of
+
+## 题目/习题识别规则（优先级最高）
+1. 每道题独立抽取为一个 Example 节点。严禁合并多道题。
+2. 试卷结构描述不抽取。
+3. 题目中引用的学科概念，可以抽取为 Concept 节点，并用 illustrated_by 边连接到该 Example。
+4. 题目中自创的临时定义属于题目设问的一部分，不得抽取为独立的 Definition 或 Concept。
+
+## 通用抽取规则
+- name 字段中的数学符号必须用 LaTeX（禁止使用 Unicode 上下标，必须写成 $\cos^2 x$）。
+- Definition 和 Example 必须提供 parent_entity_name。
+```
+
+### 5.2 教学单元目录生成 (Theme Tree Prompt)
+
+```text
+你是一名课程结构设计助手。根据给定的教学单元(Unit)列表，设计一个层级化的主题树结构。
+
+## 输出要求
+1. 生成 module（模块）和 chapter（章节）两级结构
+2. 每个 module 包含 1-5 个 chapter
+3. 每个 chapter 应该能容纳 1-5 个教学单元
+4. 结构应反映知识的逻辑组织关系
+5. 标题简洁、准确，适合作为课程目录
+```
+
+---
+
+## 6. 事件与周边交互 (Events)
+
+- **入口触发**：Ingest 完成或者批量文件注入后，通过事件推入 `queue` ，由后台的 Task 调度 `build_kg_digest_graph`。
+- **出口产物**：
+  1. 向 `neo4j` 图数据库写入海量节点边。
+  2. 生成新的结构树，引发前端 `Tree/Curriculum` 的视图刷新。
+  3. 最终唤醒 `Profile Engine (显影引擎)` 重算用户的知识图谱雷达。
+
+---
+
+## 7. 优化空间探讨 (Ideas for Optimization)
+
+1. **图谱噪音控制**：在目前的 `extract` 提词下，大模型容易对文档中的闲聊或纯例子话语强行提炼为一个 `Concept`。我们可以在聚类后引入一个专门拦截闲杂节点的轻量判别 Router。
+2. **文档生成的容错**：`Docs Lane` 的 `Map-Reduce` 一旦触发，如果其中一个子章节的 `draft_chapter` 请求大模型超时失败返回了错误结果，它会导致整个书籍合成中断。我们需要在图的 `draft_chapter` 上加上强健的 `@retry` 或图内的 `Fallback Edge`。
