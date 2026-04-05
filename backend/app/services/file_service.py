@@ -57,8 +57,20 @@ from app.workflows.ingest import run_parse_file_workflow
 logger = structlog.get_logger()
 
 
-def _path_exists(path_value: str | None) -> bool:
-    return bool(path_value and Path(path_value).exists())
+def _is_markdown_ready(raw_file: RawFile) -> bool:
+    """Return whether a raw file has finished parsing and has usable markdown."""
+
+    return (
+        raw_file.status == TaskStatus.COMPLETED.value
+        and raw_file.ingest_status
+        in {
+            IngestStatus.FAST_PARSED.value,
+            IngestStatus.ENHANCING.value,
+            IngestStatus.READY_FOR_DIGEST.value,
+            IngestStatus.ENHANCE_FAILED.value,
+        }
+        and bool((raw_file.parsed_markdown or "").strip())
+    )
 
 
 def _build_asset_name_prefix_for_raw_file(raw_file: RawFile) -> str:
@@ -157,6 +169,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     """Serialize a raw file into the unified file record."""
 
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
+    markdown_ready = _is_markdown_ready(raw_file)
     asset_name_prefix = _build_asset_name_prefix_for_raw_file(raw_file)
     asset_dir_value = raw_file.asset_dir
     if not asset_dir_value and raw_file.id is not None:
@@ -172,7 +185,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         filetype=raw_file.filetype,
         status=raw_file.status,
         ingest_status=raw_file.ingest_status,
-        markdown_ready=_path_exists(raw_file.markdown_path),
+        markdown_ready=markdown_ready,
         asset_ready=bool(assets),
         error_message=raw_file.error_message,
         file_size_bytes=raw_file.file_size_bytes,
