@@ -81,6 +81,7 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    S3 Bucket              : {settings.s3_bucket or '!! NOT_SET !!'}")
         lines.append(f"    S3 Endpoint            : {settings.s3_endpoint or '!! NOT_SET !!'}")
         lines.append(f"    S3 CDN                 : {settings.s3_public_base_url or 'none'}")
+        lines.append(f"    S3 Addressing Style    : {settings.resolved_s3_addressing_style}")
         # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
             from app.shared.infra.storage import get_artifact_store, run_store_sync
