@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-05T14:24:18.202230",
-  "total_commits_analyzed": 397,
+  "generated_at": "2026-04-05T14:51:52.284291",
+  "total_commits_analyzed": 400,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3176,6 +3176,30 @@
       "total_lines": 113796,
       "code_lines": 86176,
       "other_lines": 27620,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "9da85af",
+      "total_lines": 113796,
+      "code_lines": 86176,
+      "other_lines": 27620,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "18c4115",
+      "total_lines": 114506,
+      "code_lines": 87010,
+      "other_lines": 27496,
+      "message": "fix: 修复多吉云临时密钥模式下空间名与桶名混用问题；更新docs文档"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "4fa22c8",
+      "total_lines": 114506,
+      "code_lines": 87010,
+      "other_lines": 27496,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
