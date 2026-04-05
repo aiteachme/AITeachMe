@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-05T14:51:52.284291",
-  "total_commits_analyzed": 400,
+  "generated_at": "2026-04-05T15:06:44.382572",
+  "total_commits_analyzed": 403,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3200,6 +3200,30 @@
       "total_lines": 114506,
       "code_lines": 87010,
       "other_lines": 27496,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "a2ad061",
+      "total_lines": 114506,
+      "code_lines": 87010,
+      "other_lines": 27496,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "2795d1f",
+      "total_lines": 114571,
+      "code_lines": 87064,
+      "other_lines": 27507,
+      "message": "fix: 修复云端对象存储下文件解析状态一直卡在处理中"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "ba497a4",
+      "total_lines": 114571,
+      "code_lines": 87064,
+      "other_lines": 27507,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
