@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T10:51:59.949929",
-  "total_commits_analyzed": 360,
+  "generated_at": "2026-04-05T13:26:26.611396",
+  "total_commits_analyzed": 390,
   "stats": [
     {
       "date": "2026-03-11",
@@ -2881,6 +2881,246 @@
       "code_lines": 83699,
       "other_lines": 26620,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "1c3e583",
+      "total_lines": 110319,
+      "code_lines": 83699,
+      "other_lines": 26620,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "590f4a0",
+      "total_lines": 110511,
+      "code_lines": 83851,
+      "other_lines": 26660,
+      "message": "fix: 修复 Render 游客身份漂移与跨站会话恢复"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "f631e46",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "fix: 修复云端游客模式识别并补充学科创建诊断信息"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "0899637",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "b47d559",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "d8e3a4f",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "fix: 修复知识文档页中文乱码文案"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "1ab7be7",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "dd82e48",
+      "total_lines": 107424,
+      "code_lines": 80868,
+      "other_lines": 26556,
+      "message": "chore: 同步内容"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "319076a",
+      "total_lines": 111225,
+      "code_lines": 84263,
+      "other_lines": 26962,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "cc08616",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "c344b3e",
+      "total_lines": 110653,
+      "code_lines": 83973,
+      "other_lines": 26680,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "dbeed81",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "9296a2e",
+      "total_lines": 113355,
+      "code_lines": 85816,
+      "other_lines": 27539,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4b33bc5",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "refactor: 统一存储抽象层，消除 export_import 中的 is_cloud_mod"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "418652c",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "870615a",
+      "total_lines": 112947,
+      "code_lines": 85493,
+      "other_lines": 27454,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "d3672b7",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
+      "message": "feat: 添加启动基础设施诊断日志（数据库/存储连通性检查）"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "e66faae",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "daa0433",
+      "total_lines": 113001,
+      "code_lines": 85531,
+      "other_lines": 27470,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "83acb64",
+      "total_lines": 113137,
+      "code_lines": 85623,
+      "other_lines": 27514,
+      "message": "fix: 解决network error"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "3552bf7",
+      "total_lines": 113191,
+      "code_lines": 85661,
+      "other_lines": 27530,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "30b3122",
+      "total_lines": 113191,
+      "code_lines": 85661,
+      "other_lines": 27530,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "316ce4e",
+      "total_lines": 113016,
+      "code_lines": 85549,
+      "other_lines": 27467,
+      "message": "style: 优化日志打印"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "86cc17b",
+      "total_lines": 113031,
+      "code_lines": 85560,
+      "other_lines": 27471,
+      "message": "feat: 添加启动诊断面板与 S3 冒烟测试，改用可读日志格式"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "233ae0b",
+      "total_lines": 113031,
+      "code_lines": 85560,
+      "other_lines": 27471,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "7d1fa50",
+      "total_lines": 113170,
+      "code_lines": 85651,
+      "other_lines": 27519,
+      "message": "chore: 合并dev_ywl，改动杂项"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "0915650",
+      "total_lines": 113221,
+      "code_lines": 85690,
+      "other_lines": 27531,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4a0db75",
+      "total_lines": 113221,
+      "code_lines": 85690,
+      "other_lines": 27531,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "8df2d15",
+      "total_lines": 113408,
+      "code_lines": 85852,
+      "other_lines": 27556,
+      "message": "fix: 收敛知识构建仓库导入并修复向量清理调用漂移"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "1468a30",
+      "total_lines": 113504,
+      "code_lines": 85924,
+      "other_lines": 27580,
+      "message": "fix: 增加通用 S3 寻址风格配置并修复 COS 存储兼容性"
     }
   ]
 }

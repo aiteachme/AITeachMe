@@ -24,7 +24,7 @@ from app.models import (
     UnitDependency,
     UserKnowledgeState,
 )
-from app.repositories.knowledge import knowledge_repo
+import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.utils.docgen_store import clear_knowledge_runtime_artifacts, is_knowledge_build_locked
 
 logger = structlog.get_logger()
@@ -152,3 +152,5 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
+
+

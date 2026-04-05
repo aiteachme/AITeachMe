@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -28,7 +28,7 @@ from app.models import (
     UnitDependency,
     UserKnowledgeState,
 )
-from app.repositories.knowledge import knowledge_repo
+import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.repositories.subject_repo import delete_subject
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
 from app.utils.path_helpers import build_asset_name_prefix, build_subject_dir, delete_asset_files
@@ -281,4 +281,6 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
+
+
 

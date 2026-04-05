@@ -36,12 +36,14 @@ class S3ArtifactStore(ArtifactStore):
                 signature_version="s3v4",
                 s3={"addressing_style": "virtual"},
                 retries={"max_attempts": 3, "mode": "standard"},
+                s3={"addressing_style": settings.resolved_s3_addressing_style},
             ),
         )
         logger.info(
             "s3_artifact_store_initialized",
             bucket=self._bucket,
             endpoint=settings.s3_endpoint,
+            addressing_style=settings.resolved_s3_addressing_style,
         )
 
     def _run_sync(self, fn, *args, **kwargs):
