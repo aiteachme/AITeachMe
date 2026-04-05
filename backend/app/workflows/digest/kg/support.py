@@ -1,4 +1,4 @@
-"""Support helpers for digest graph workflow nodes.
+﻿"""Support helpers for digest graph workflow nodes.
 
 Reads DB: ``raw_file``, ``retrieval_chunk``.
 Writes DB: ``raw_file``, ``retrieval_chunk`` and subject-scoped vector metadata.
@@ -19,7 +19,7 @@ from app.workflows.digest.kg.services.cleaner import clean_markdown
 from app.workflows.digest.kg.services.embedder import embed_chunks
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models import RetrievalChunk
-from app.repositories import knowledge_repo
+import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.services.subject_embedding_service import (
     get_runtime_embedding_config,
     should_generate_subject_embeddings,
@@ -227,3 +227,5 @@ __all__ = [
     "prepare_chunk_ids_for_files",
     "workflow_logger",
 ]
+
+

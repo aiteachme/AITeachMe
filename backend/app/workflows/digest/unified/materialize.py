@@ -1,4 +1,4 @@
-"""Canonical section materialization for unified digest builds."""
+﻿"""Canonical section materialization for unified digest builds."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
-from app.repositories import knowledge_repo
+import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.utils.path_helpers import build_knowledge_chunk_manifest_path
 from app.utils.time import utcnow
 from app.services.subject_embedding_service import (
@@ -339,3 +339,5 @@ async def materialize_shared_inputs(
         deleted_chunk_count=deleted_chunks,
     )
     return materialized
+
+

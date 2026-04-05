@@ -31,7 +31,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
-from app.repositories import knowledge_repo
+from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
 from app.services.subject_embedding_service import (
     get_subject_vector_status_by_slug,
     inspect_subject_build_precheck,
@@ -411,7 +411,7 @@ def trigger_docgen_build(
     )
     effective_file_uids = None if force_full_rebuild else file_uids
     if force_full_rebuild:
-        knowledge_repo.clear_chunk_vector_metadata(session, subject=subject.slug)
+        clear_chunk_vector_metadata(session, subject=subject.slug)
     accepted_files, ready_file_count = _select_ready_docgen_files(
         session,
         subject=subject.slug,
@@ -676,3 +676,4 @@ __all__ = [
     "run_unified_build_background",
     "trigger_docgen_build",
 ]
+
