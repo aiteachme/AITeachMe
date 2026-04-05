@@ -1,68 +1,80 @@
 # Workflows 模块
 
-`backend/app/workflows/` 是后端新的编排中心，负责承载五大引擎的状态流、LangGraph 图定义和运行入口。
+`backend/app/workflows/` 是后端的核心编排层，负责承载五大 AI 教学引擎的 LangGraph 状态机定义、节点实现和运行入口。
 
-## 统一目标
+## 架构原则
 
-- `services/` 只负责 API 触发、参数整理、持久化适配。
-- `workflows/` 负责真正的业务编排、状态推进和事件回流。
-- 每个引擎都尽量暴露同一套顶层骨架，降低阅读和修改成本。
+- **`services/`** 只负责 API 路由触发、参数校验、持久化适配 → 薄层
+- **`workflows/`** 负责真正的业务编排、状态推进和事件回流 → 厚层
+- 每个引擎保持统一的**顶层骨架**，降低跨模块阅读和修改成本
 
-## 顶层骨架约定
+## 五大引擎一览
 
-每个工作流模块优先保持以下顶层形状：
+| 引擎 | 目录 | 职责 |
+|------|------|------|
+| **Ingest** 摄入引擎 | `ingest/` | 文件解析 → 归一化文本块 → 深度 OCR 增强 |
+| **Digest** 消化引擎 | `digest/` | 知识图谱构建 · 教案文档生成 · 课程大纲推导 |
+| **Interact** 伴读引擎 | `interact/` | 个性化教学对话（检索增强 + 策略选择 + 流式回答） |
+| **Examine** 诊断引擎 | `examine/` | 智能出卷 → AI 判卷 → 错因归类 → 复习调度 |
+| **Profile** 显影引擎 | `profile/` | 掌握度计算 → 遗忘曲线排期 → 弱势排行 → 学习报告 |
 
-```text
-workflows/<domain>/
-├── __init__.py
-├── graph.py
-├── runtime.py
-├── state.py
-├── events.py
-├── exports.py
-├── prompts/
-└── ...
+## 目录骨架约定
+
+每个引擎模块**必须**遵循以下顶层结构：
+
+```
+workflows/<engine>/
+├── __init__.py          # 模块入口
+├── graph.py             # LangGraph 图定义（或 re-export 子图构建函数）
+├── state.py             # TypedDict 状态类型定义
+├── runtime.py           # 运行入口：初始状态 → 编译 → 执行 → 事件发布
+├── exports.py           # 导出清单，供架构图脚本读取
+├── events.py            # 领域事件定义（可选）
+├── prompts/             # 提示词模板
+│   ├── __init__.py
+│   └── prompts.py       # 必须导出 PROMPTS: dict[str, str]
+└── nodes/               # 节点实现（可选，按需拆分）
 ```
 
-含义约定：
+### 各文件职责说明
 
-- `graph.py`
-  只放 LangGraph 图定义，或者统一 re-export 子图构建函数。
-- `runtime.py`
-  只放运行入口、初始状态创建、事件发布和结果封装。
-- `state.py`
-  放工作流状态类型；如果顶层只是组合子流程，可以做状态 re-export。
-- `events.py`
-  放领域事件定义。
-- `exports.py`
-  放工作流导出清单，供流程图脚本直接读取。
-- `prompts/`
-  放提示词模板。
+| 文件 | 放什么 | 不放什么 |
+|------|--------|----------|
+| `graph.py` | `build_xxx_graph() -> StateGraph` 纯图定义 | 运行逻辑、持久化 |
+| `state.py` | `TypedDict` 状态类型 | 业务逻辑 |
+| `runtime.py` | `run_xxx_workflow()` 入口、初始状态创建、结果封装 | 图结构定义 |
+| `exports.py` | `WORKFLOW_EXPORTS` 元组，供 `generate_workflow_diagrams.py` 消费 | 运行时逻辑 |
+| `prompts/prompts.py` | 提示词常量 + `PROMPTS` 字典 | 节点逻辑 |
 
 ## 允许的内部差异
 
-顶层骨架尽量统一，但内部子目录可以按问题形状拆分，不需要强行完全一样。
+顶层骨架统一，但**内部子目录按问题形状拆分**，不强行一致：
 
-### `ingest/`
+- **`ingest/`** — 单主流程，按执行层拆：`nodes/`（节点）、`parsing/`（解析策略）
+- **`digest/`** — 多子流程编排，按业务线拆：`kg/`（图谱）、`docs/`（教案）、`curriculum/`（大纲）、`unified/`（统一编排）
+- **`examine/`** — 出卷和判卷两条独立流水线，各自在顶层文件中定义
 
-`ingest` 是单主流程，内部更像一个解析管线，所以更适合按执行层拆分：
+## 新增 Prompt 规范
 
-- `nodes/`: LangGraph 节点
-- `parsing/`: 解析策略、分类、解析器实现
+所有 `prompts/prompts.py` 必须导出一个 `PROMPTS: dict[str, str]` 字典，key 为 prompt 名称，value 为完整模板字符串。这样架构图脚本可以自动收集并展示在生成的文档中。
 
-### `digest/`
+```python
+# prompts/prompts.py 示例
+SYSTEM_PROMPT_FOO = """..."""
+SYSTEM_PROMPT_BAR = """..."""
 
-`digest` 是多子流程编排，内部更像“图谱构建 + 课程派生”两个工作流组合，所以更适合按业务子流拆分：
+PROMPTS: dict[str, str] = {
+    "foo": SYSTEM_PROMPT_FOO,
+    "bar": SYSTEM_PROMPT_BAR,
+}
+```
 
-- `kg/`: 知识图谱构建子流程
-- `curriculum/`: 课程结构派生子流程
+## 架构图自动生成
 
-## 当前建议
+运行以下命令可从编译后的 LangGraph 拓扑自动生成各引擎的 Mermaid 架构图：
 
-- 不需要把 `ingest` 硬改成 `kg/curriculum` 风格。
-- 也不需要把 `digest` 强压成 `nodes/parsing` 风格。
-- 真正要统一的是顶层入口形状和命名约定，而不是抹平业务差异。
+```bash
+conda run -n atm python scripts/generate_workflow_diagrams.py
+```
 
-
-
-TODO 改流程代码的时候把langgraph对应图也都改一下
+生成结果位于 `scripts/.generated_workflow_diagrams/`，每个引擎一个 `.md` 文件。

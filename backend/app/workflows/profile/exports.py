@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.workflows.common.graph_export import WorkflowGraphExport
 from app.workflows.profile.graph import build_profile_workflow_graph
+from app.workflows.profile.prompts.prompts import PROMPTS
 
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
@@ -11,5 +12,6 @@ WORKFLOW_EXPORTS = (
         title="Profile Workflow",
         description="High-level profile workflow from mastery updates to review scheduling, weakness ranking, and report suggestions.",
         build_graph=build_profile_workflow_graph,
+        prompts=PROMPTS,
     ),
 )

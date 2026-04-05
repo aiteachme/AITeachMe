@@ -18,5 +18,6 @@ class WorkflowGraphExport:
     # Send 动态边无法被 draw_mermaid 自动导出，
     # 在此声明需要注入的额外边（格式："src --> dst" 或 "src -. label .-> dst"）
     extra_edges: tuple[str, ...] = field(default=())
+    prompts: dict[str, str] = field(default_factory=dict)
 
 

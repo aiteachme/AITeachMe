@@ -11,6 +11,13 @@ from app.workflows.digest.graph import (
     build_kg_digest_graph,
 )
 from app.workflows.digest.unified.graph import build_unified_digest_graph
+from app.workflows.digest.prompts import KG_PROMPTS
+from app.workflows.digest.prompts.docgen_prompts import GLOBAL_OUTLINE_PROMPT, WRITER_PROMPT
+
+DOCGEN_PROMPTS = {
+    "global_outline_prompt": GLOBAL_OUTLINE_PROMPT,
+    "writer_prompt": WRITER_PROMPT,
+}
 
 
 def _build_docgen_graph_for_export():
@@ -58,6 +65,7 @@ WORKFLOW_EXPORTS = (
         title="Digest Graph Workflow",
         description="Incremental knowledge-graph build workflow.",
         build_graph=build_kg_digest_graph,
+        prompts=KG_PROMPTS,
     ),
     WorkflowGraphExport(
         key="digest_curriculum",
@@ -71,5 +79,6 @@ WORKFLOW_EXPORTS = (
         description="Knowledge document generation workflow with fan-out parallelism.",
         build_graph=_build_docgen_graph_for_export,
         extra_edges=_DOCGEN_SEND_EDGES,
+        prompts=DOCGEN_PROMPTS,
     ),
 )
