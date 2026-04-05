@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-04T18:00:24.012305",
-  "total_commits_analyzed": 387,
+  "generated_at": "2026-04-05T13:26:26.611396",
+  "total_commits_analyzed": 390,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3097,6 +3097,30 @@
       "code_lines": 85690,
       "other_lines": 27531,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-04",
+      "commit": "4a0db75",
+      "total_lines": 113221,
+      "code_lines": 85690,
+      "other_lines": 27531,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "8df2d15",
+      "total_lines": 113408,
+      "code_lines": 85852,
+      "other_lines": 27556,
+      "message": "fix: 收敛知识构建仓库导入并修复向量清理调用漂移"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "1468a30",
+      "total_lines": 113504,
+      "code_lines": 85924,
+      "other_lines": 27580,
+      "message": "fix: 增加通用 S3 寻址风格配置并修复 COS 存储兼容性"
     }
   ]
 }
