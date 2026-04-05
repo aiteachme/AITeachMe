@@ -82,9 +82,17 @@ class Settings(BaseSettings):
     s3_endpoint: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
+    s3_session_token: str | None = None
     s3_region: str | None = None
     s3_public_base_url: str | None = None  # 可选 CDN 域名
     s3_addressing_style: str = "virtual"  # "virtual" | "path" | "auto"
+    s3_credential_mode: str = "auto"  # "auto" | "static" | "dogecloud_tmp_token"
+    dogecloud_api_access_key: str | None = None
+    dogecloud_api_secret_key: str | None = None
+    dogecloud_api_base_url: str = "https://api.dogecloud.com"
+    dogecloud_tmp_token_path: str = "/auth/tmp_token.json"
+    dogecloud_tmp_token_channel: str = "OSS_FULL"
+    dogecloud_tmp_token_scope: str = "*"
 
     # ── AI 基础设施配置 ──
     model_overrides: dict[str, str] = {}
@@ -181,6 +189,43 @@ class Settings(BaseSettings):
         if normalized in {"auto", "virtual", "path"}:
             return normalized
         return "virtual"
+
+    @property
+    def resolved_s3_credential_mode(self) -> str:
+        """返回当前 S3 客户端应使用的凭证模式。"""
+
+        normalized = (self.s3_credential_mode or "auto").strip().lower()
+        if normalized in {"static", "dogecloud_tmp_token"}:
+            return normalized
+        if self.dogecloud_api_access_key and self.dogecloud_api_secret_key:
+            return "dogecloud_tmp_token"
+        return "static"
+
+    @property
+    def s3_uses_dogecloud_tmp_token(self) -> bool:
+        """是否使用多吉云 tmp_token 动态换取临时 S3 凭证。"""
+
+        return self.resolved_s3_credential_mode == "dogecloud_tmp_token"
+
+    @property
+    def resolved_dogecloud_api_access_key(self) -> str | None:
+        """返回多吉云 API AccessKey。"""
+
+        if self.dogecloud_api_access_key:
+            return self.dogecloud_api_access_key
+        if self.s3_uses_dogecloud_tmp_token:
+            return self.s3_access_key
+        return None
+
+    @property
+    def resolved_dogecloud_api_secret_key(self) -> str | None:
+        """返回多吉云 API SecretKey。"""
+
+        if self.dogecloud_api_secret_key:
+            return self.dogecloud_api_secret_key
+        if self.s3_uses_dogecloud_tmp_token:
+            return self.s3_secret_key
+        return None
 
     @property
     def resolved_guest_cookie_samesite(self) -> str:
