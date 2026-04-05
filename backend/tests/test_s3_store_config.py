@@ -70,6 +70,15 @@ def test_settings_reuse_s3_keys_for_dogecloud_api_when_explicit_mode_enabled() -
     assert settings.resolved_dogecloud_api_secret_key == "doge-sk"
 
 
+def test_settings_prefer_explicit_dogecloud_space_name() -> None:
+    settings = Settings.model_construct(
+        s3_bucket="underlying-s3-bucket",
+        dogecloud_space_name="my-space-name",
+    )
+
+    assert settings.resolved_dogecloud_space_name == "my-space-name"
+
+
 def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_client() -> None:
     settings = Settings.model_construct(
         s3_bucket="demo-bucket",
@@ -100,12 +109,13 @@ def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_cli
 
 def test_s3_artifact_store_fetches_dogecloud_tmp_credentials_before_initializing_boto_client() -> None:
     settings = Settings.model_construct(
-        s3_bucket="demo-space",
+        s3_bucket="underlying-s3-bucket",
         s3_endpoint="https://placeholder.invalid",
         s3_access_key="doge-ak",
         s3_secret_key="doge-sk",
         s3_region="ap-shanghai",
         s3_credential_mode="dogecloud_tmp_token",
+        dogecloud_space_name="demo-space",
         dogecloud_tmp_token_channel="OSS_FULL",
         dogecloud_tmp_token_scope="*",
     )

@@ -86,6 +86,10 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(
             f"    S3 Session Token       : {'SET' if settings.s3_session_token or settings.s3_uses_dogecloud_tmp_token else 'not used'}"
         )
+        if settings.s3_uses_dogecloud_tmp_token:
+            lines.append(
+                f"    DogeCloud Space Name   : {settings.resolved_dogecloud_space_name or '!! NOT_SET !!'}"
+            )
         # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
             from app.shared.infra.storage import get_artifact_store, run_store_sync

@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Callable
@@ -111,7 +111,7 @@ class S3ArtifactStore(ArtifactStore):
             return False
         if self._credentials_expire_at is None:
             return False
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         return now + _DOGECLOUD_REFRESH_SKEW >= self._credentials_expire_at
 
     def _refresh_client(self, *, force: bool = False) -> Any:
@@ -148,11 +148,11 @@ class S3ArtifactStore(ArtifactStore):
     def _fetch_dogecloud_tmp_credentials(self) -> _ResolvedS3Credentials:
         api_access_key = self._settings.resolved_dogecloud_api_access_key
         api_secret_key = self._settings.resolved_dogecloud_api_secret_key
-        bucket = (self._settings.s3_bucket or "").strip()
+        bucket = (self._settings.resolved_dogecloud_space_name or "").strip()
         if not api_access_key or not api_secret_key:
             raise ValueError("DogeCloud tmp_token 模式缺少 API AccessKey / SecretKey。")
         if not bucket:
-            raise ValueError("DogeCloud tmp_token 模式缺少 S3_BUCKET。")
+            raise ValueError("DogeCloud tmp_token 模式缺少 DOGECLOUD_SPACE_NAME（或 S3_BUCKET）。")
 
         api_path = self._settings.dogecloud_tmp_token_path.strip() or "/auth/tmp_token.json"
         body = self._build_dogecloud_tmp_token_body(bucket)
@@ -189,10 +189,11 @@ class S3ArtifactStore(ArtifactStore):
         bucket_info = parsed.data.buckets[0]
         expires_at = parsed.data.credentials.expires_at
         if expires_at is None:
-            expires_at = datetime.now(UTC) + _DOGECLOUD_DEFAULT_TTL
+            expires_at = datetime.now(timezone.utc) + _DOGECLOUD_DEFAULT_TTL
 
         logger.info(
             "dogecloud_tmp_token_fetched",
+            space_name=bucket,
             bucket=bucket_info.s3_bucket,
             endpoint=bucket_info.s3_endpoint,
             channel=(self._settings.dogecloud_tmp_token_channel or "").strip() or "OSS_FULL",

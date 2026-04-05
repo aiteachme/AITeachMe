@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     dogecloud_api_access_key: str | None = None
     dogecloud_api_secret_key: str | None = None
     dogecloud_api_base_url: str = "https://api.dogecloud.com"
+    dogecloud_space_name: str | None = None
     dogecloud_tmp_token_path: str = "/auth/tmp_token.json"
     dogecloud_tmp_token_channel: str = "OSS_FULL"
     dogecloud_tmp_token_scope: str = "*"
@@ -226,6 +227,14 @@ class Settings(BaseSettings):
         if self.s3_uses_dogecloud_tmp_token:
             return self.s3_secret_key
         return None
+
+    @property
+    def resolved_dogecloud_space_name(self) -> str | None:
+        """返回多吉云 tmp_token 请求应使用的存储空间名称。"""
+
+        if self.dogecloud_space_name:
+            return self.dogecloud_space_name
+        return self.s3_bucket
 
     @property
     def resolved_guest_cookie_samesite(self) -> str:
