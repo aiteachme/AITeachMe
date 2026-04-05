@@ -34,6 +34,7 @@ class S3ArtifactStore(ArtifactStore):
             region_name=settings.s3_region or "us-east-1",
             config=BotoConfig(
                 signature_version="s3v4",
+                s3={"addressing_style": "virtual"},
                 retries={"max_attempts": 3, "mode": "standard"},
             ),
         )
