@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-05T13:26:26.611396",
-  "total_commits_analyzed": 390,
+  "generated_at": "2026-04-05T13:46:30.771066",
+  "total_commits_analyzed": 394,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3121,6 +3121,38 @@
       "code_lines": 85924,
       "other_lines": 27580,
       "message": "fix: 增加通用 S3 寻址风格配置并修复 COS 存储兼容性"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "8a4c547",
+      "total_lines": 113504,
+      "code_lines": 85924,
+      "other_lines": 27580,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "ee965d1",
+      "total_lines": 113032,
+      "code_lines": 85561,
+      "other_lines": 27471,
+      "message": "chore: 使用vir mode"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "b3607c5",
+      "total_lines": 113505,
+      "code_lines": 85925,
+      "other_lines": 27580,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "5ef743c",
+      "total_lines": 113503,
+      "code_lines": 85923,
+      "other_lines": 27580,
+      "message": "fix: 修复 S3 存储寻址配置与客户端初始化错误"
     }
   ]
 }
