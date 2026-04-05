@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-05T15:06:44.382572",
-  "total_commits_analyzed": 403,
+  "generated_at": "2026-04-05T16:52:10.318346",
+  "total_commits_analyzed": 409,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3224,6 +3224,54 @@
       "total_lines": 114571,
       "code_lines": 87064,
       "other_lines": 27507,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "d0565cf",
+      "total_lines": 114571,
+      "code_lines": 87064,
+      "other_lines": 27507,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "4d33a49",
+      "total_lines": 112517,
+      "code_lines": 85407,
+      "other_lines": 27110,
+      "message": "docs: 文档整理"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "a9e31e8",
+      "total_lines": 113449,
+      "code_lines": 86028,
+      "other_lines": 27421,
+      "message": "docs: 更新文档"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "a1e0783",
+      "total_lines": 107281,
+      "code_lines": 82352,
+      "other_lines": 24929,
+      "message": "docs: 合并"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "361a374",
+      "total_lines": 115503,
+      "code_lines": 87685,
+      "other_lines": 27818,
+      "message": "docs: 文档整理"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "498cb94",
+      "total_lines": 115503,
+      "code_lines": 87685,
+      "other_lines": 27818,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
