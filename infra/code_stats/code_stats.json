@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-05T13:46:30.771066",
-  "total_commits_analyzed": 394,
+  "generated_at": "2026-04-05T14:24:18.202230",
+  "total_commits_analyzed": 397,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3153,6 +3153,30 @@
       "code_lines": 85923,
       "other_lines": 27580,
       "message": "fix: 修复 S3 存储寻址配置与客户端初始化错误"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "f5f5fea",
+      "total_lines": 113503,
+      "code_lines": 85923,
+      "other_lines": 27580,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "46c083c",
+      "total_lines": 113796,
+      "code_lines": 86176,
+      "other_lines": 27620,
+      "message": "fix: 支持多吉云临时密钥初始化 S3 存储"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "ca47fde",
+      "total_lines": 113796,
+      "code_lines": 86176,
+      "other_lines": 27620,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
