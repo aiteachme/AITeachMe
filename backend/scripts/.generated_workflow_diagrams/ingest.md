@@ -13,82 +13,121 @@
 
 > Background deep OCR and enhancement workflow.
 
+📊 **4** 个处理节点 · **8** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_enhance_context["Load Enhance Context"]
-    deep_enhance_file["Deep Enhance File"]
-    finalize_deep_enhance["Finalize Deep Enhance"]
-    finalize_enhance_failure["⚠ Finalize Enhance Failure"]
+    load_enhance_context["❶ Load Enhance Context"]
+    deep_enhance_file["❷ Deep Enhance File"]
+    finalize_deep_enhance(["❸ Finalize Deep Enhance"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        finalize_enhance_failure["⚠ Finalize Enhance Failure"]
+    end
+
     __start__ --> load_enhance_context
-    deep_enhance_file -->|"continue"| finalize_deep_enhance
-    deep_enhance_file -. fail .-> finalize_enhance_failure
-    finalize_deep_enhance -->|"continue"| __end__
-    finalize_deep_enhance -. fail .-> finalize_enhance_failure
-    load_enhance_context -->|"continue"| deep_enhance_file
-    load_enhance_context -. fail .-> finalize_enhance_failure
+    deep_enhance_file -->|"✓"| finalize_deep_enhance
+    deep_enhance_file -. "✗ fail" .-> finalize_enhance_failure
+    finalize_deep_enhance -->|"✓"| __end__
+    finalize_deep_enhance -. "✗ fail" .-> finalize_enhance_failure
+    load_enhance_context -->|"✓"| deep_enhance_file
+    load_enhance_context -. "✗ fail" .-> finalize_enhance_failure
     finalize_enhance_failure --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_deep_enhance termCls
     class finalize_enhance_failure failCls
     class __end__ endCls
     linkStyle 2,4,6 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Load Enhance Context | 🔀 条件路由 | `continue` → `fail` |
+| Deep Enhance File | 🔀 条件路由 | `continue` → `fail` |
+| Finalize Deep Enhance | 🔀 条件路由 | `continue` → `fail` |
+| Finalize Enhance Failure | ❌ 错误处理 | → END |
+
 ## Ingest File Parse Workflow
 
 > Single-file ingest parsing workflow.
 
+📊 **7** 个处理节点 · **14** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_raw_file["Load Raw File"]
-    compute_fingerprint["Compute Fingerprint"]
-    classify_file["Classify File"]
-    plan_parse["Plan Parse"]
-    parse_file["Parse File"]
-    finalize_success["Finalize Success"]
-    finalize_failure["⚠ Finalize Failure"]
+    load_raw_file["❶ Load Raw File"]
+    compute_fingerprint["❷ Compute Fingerprint"]
+    classify_file["❸ Classify File"]
+    plan_parse["❹ Plan Parse"]
+    parse_file["❺ Parse File"]
+    finalize_success(["❻ Finalize Success"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        finalize_failure["⚠ Finalize Failure"]
+    end
+
     __start__ --> load_raw_file
-    classify_file -. fail .-> finalize_failure
-    classify_file -->|"continue"| plan_parse
-    compute_fingerprint -->|"continue"| classify_file
-    compute_fingerprint -. fail .-> finalize_failure
-    finalize_success -->|"continue"| __end__
-    finalize_success -. fail .-> finalize_failure
-    load_raw_file -->|"continue"| compute_fingerprint
-    load_raw_file -. fail .-> finalize_failure
-    parse_file -. fail .-> finalize_failure
-    parse_file -->|"continue"| finalize_success
-    plan_parse -. fail .-> finalize_failure
-    plan_parse -->|"continue"| parse_file
+    classify_file -. "✗ fail" .-> finalize_failure
+    classify_file -->|"✓"| plan_parse
+    compute_fingerprint -->|"✓"| classify_file
+    compute_fingerprint -. "✗ fail" .-> finalize_failure
+    finalize_success -->|"✓"| __end__
+    finalize_success -. "✗ fail" .-> finalize_failure
+    load_raw_file -->|"✓"| compute_fingerprint
+    load_raw_file -. "✗ fail" .-> finalize_failure
+    parse_file -. "✗ fail" .-> finalize_failure
+    parse_file -->|"✓"| finalize_success
+    plan_parse -. "✗ fail" .-> finalize_failure
+    plan_parse -->|"✓"| parse_file
     finalize_failure --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_success termCls
     class finalize_failure failCls
     class __end__ endCls
     linkStyle 1,4,6,8,9,11 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Load Raw File | 🔀 条件路由 | `continue` → `fail` |
+| Compute Fingerprint | 🔀 条件路由 | `continue` → `fail` |
+| Classify File | 🔀 条件路由 | `fail` → `continue` |
+| Plan Parse | 🔀 条件路由 | `fail` → `continue` |
+| Parse File | 🔀 条件路由 | `fail` → `continue` |
+| Finalize Success | 🔀 条件路由 | `continue` → `fail` |
+| Finalize Failure | ❌ 错误处理 | → END |
+
 ---
 
 ## 🧬 核心 Prompt 指纹
 
-> 以下为本引擎在推理时注入大模型的核心提示词模板。点击展开查看完整内容。
+> 本引擎共使用 **3** 个核心提示词模板。点击展开查看完整内容。
 
 <details>
 <summary><b>Image Parse</b> (<code>image_parse</code>)</summary>
