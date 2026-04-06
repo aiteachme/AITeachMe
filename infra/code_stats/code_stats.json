@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-06T02:28:11.537171",
-  "total_commits_analyzed": 414,
+  "generated_at": "2026-04-06T17:27:23.822479",
+  "total_commits_analyzed": 418,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3312,6 +3312,38 @@
       "total_lines": 115961,
       "code_lines": 88035,
       "other_lines": 27926,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "7484a0e",
+      "total_lines": 115961,
+      "code_lines": 88035,
+      "other_lines": 27926,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "7bae2e9",
+      "total_lines": 107832,
+      "code_lines": 82721,
+      "other_lines": 25111,
+      "message": "chore: 拆分按钮调试"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "1c6dd46",
+      "total_lines": 116054,
+      "code_lines": 88054,
+      "other_lines": 28000,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "cacda0c",
+      "total_lines": 116054,
+      "code_lines": 88054,
+      "other_lines": 28000,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
