@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
-  ArrowRight,
   CheckCircle2,
   ChevronDown,
   Eye,
@@ -21,6 +20,7 @@ import {
   FileCode,
   FileType,
   Loader2,
+  Network,
   Paperclip,
   Sparkles,
   Trash2,
@@ -346,14 +346,14 @@ export function FilesPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
-  const knowledgeBuild = useKnowledgeBuildFlow({
+  const knowledgeDocsBuild = useKnowledgeBuildFlow({
     subjectId,
+    buildType: "docs",
     buildRequest: () => ({
       prompt: docPrompt.trim() || undefined,
     }),
-    fallbackErrorMessage: "知识构建失败",
+    fallbackErrorMessage: "知识文档构建失败",
     onSuccess: (data) => {
-      // Show toast when auto-rebuild notice is present
       const rawData = data as unknown as Record<string, unknown>;
       const vectorStatus = rawData?.vector_status as
         | { notice?: string }
@@ -369,6 +369,27 @@ export function FilesPage() {
       navigate(`/subject/${subjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
   });
+
+  const knowledgeGraphBuild = useKnowledgeBuildFlow({
+    subjectId,
+    buildType: "graph",
+    buildRequest: () => ({
+      prompt: docPrompt.trim() || undefined,
+    }),
+    fallbackErrorMessage: "知识图谱构建失败",
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
+      toast({
+        title: "知识图谱构建已启动",
+        description: `本轮纳入 ${(data.accepted_file_uids ?? []).length} 份资料，图谱和课程结构会自动刷新。`,
+        variant: "info",
+        duration: 5000,
+      });
+    },
+  });
+
+  const isAnyBuildPending = knowledgeDocsBuild.isPending || knowledgeGraphBuild.isPending;
+  const activeBuildError = knowledgeDocsBuild.errorMessage || knowledgeGraphBuild.errorMessage;
 
   const handleUpload = useCallback(
     async (selectedFiles: File[]) => {
@@ -472,14 +493,14 @@ export function FilesPage() {
           <textarea
             value={docPrompt}
             onChange={(event) => setDocPrompt(event.target.value)}
-            disabled={knowledgeBuild.isPending}
+            disabled={isAnyBuildPending}
             placeholder="可选：补充一句本次知识构建的目标，例如更偏向考前冲刺、知识梳理或错题回顾。"
             className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
           <div className="flex flex-col gap-2 px-4 pb-2">
             <SubjectVectorNotice
-              status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
+              status={knowledgeDocsBuild.latestVectorStatus ?? knowledgeGraphBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
             />
 
             {/* 调试模式下的小标签 */}
@@ -577,37 +598,64 @@ export function FilesPage() {
                   </span>
                 ) : null}
 
-                {knowledgeBuild.errorMessage ? (
+                {activeBuildError ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {knowledgeBuild.errorMessage}
+                    {activeBuildError}
                   </span>
                 ) : null}
               </div>
 
-              <Button
-                size="lg"
-                onClick={knowledgeBuild.submitBuild}
-                disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
-                className={cn(
-                  "rounded-full px-6 shadow-sm transition-all duration-300",
-                  readyFiles.length > 0 && !knowledgeBuild.isPending
-                    ? "bg-zinc-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-zinc-800"
-                    : "bg-zinc-100 text-zinc-400",
-                )}
-              >
-                {knowledgeBuild.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    正在提交构建...
-                  </>
-                ) : (
-                  <>
-                    构建知识产物
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="lg"
+                  onClick={knowledgeDocsBuild.submitBuild}
+                  disabled={readyFiles.length === 0 || isAnyBuildPending}
+                  className={cn(
+                    "rounded-full px-5 shadow-sm transition-all duration-300",
+                    readyFiles.length > 0 && !isAnyBuildPending
+                      ? "bg-zinc-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-zinc-800"
+                      : "bg-zinc-100 text-zinc-400",
+                  )}
+                >
+                  {knowledgeDocsBuild.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      构建文档中...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-1.5 h-4 w-4" />
+                      构建知识文档
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  size="lg"
+                  onClick={knowledgeGraphBuild.submitBuild}
+                  disabled={readyFiles.length === 0 || isAnyBuildPending}
+                  className={cn(
+                    "rounded-full px-5 shadow-sm transition-all duration-300",
+                    readyFiles.length > 0 && !isAnyBuildPending
+                      ? "border border-zinc-300 bg-white text-zinc-700 shadow-md hover:-translate-y-0.5 hover:bg-zinc-50"
+                      : "bg-zinc-100 text-zinc-400",
+                  )}
+                  variant="outline"
+                >
+                  {knowledgeGraphBuild.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      构建图谱中...
+                    </>
+                  ) : (
+                    <>
+                      <Network className="mr-1.5 h-4 w-4" />
+                      构建知识图谱
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -848,11 +896,11 @@ export function FilesPage() {
       </Modal>
 
       <KnowledgeBuildResolutionModal
-        open={knowledgeBuild.precheckConflict !== null}
-        conflict={knowledgeBuild.precheckConflict}
-        isSubmitting={knowledgeBuild.isPending}
-        onClose={knowledgeBuild.closePrecheckConflict}
-        onResolve={knowledgeBuild.resolvePrecheckConflict}
+        open={knowledgeDocsBuild.precheckConflict !== null || knowledgeGraphBuild.precheckConflict !== null}
+        conflict={knowledgeDocsBuild.precheckConflict ?? knowledgeGraphBuild.precheckConflict}
+        isSubmitting={isAnyBuildPending}
+        onClose={() => { knowledgeDocsBuild.closePrecheckConflict(); knowledgeGraphBuild.closePrecheckConflict(); }}
+        onResolve={knowledgeDocsBuild.precheckConflict ? knowledgeDocsBuild.resolvePrecheckConflict : knowledgeGraphBuild.resolvePrecheckConflict}
       />
     </>
   );

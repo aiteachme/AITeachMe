@@ -1,4 +1,4 @@
-﻿"""Digest build and knowledge-doc generation service helpers."""
+"""Digest build and knowledge-doc generation service helpers."""
 
 from __future__ import annotations
 
@@ -616,6 +616,98 @@ async def run_unified_build_background(
         release_knowledge_build_lock(subject)
 
 
+async def run_graph_build_background(
+    *,
+    subject: str,
+    file_ids: list[int],
+    prompt: str | None,
+    requested_at: datetime,
+) -> None:
+    """Run standalone graph + curriculum build in background.
+
+    Only builds the knowledge graph and derives curriculum.
+    Does NOT generate knowledge documents.
+    """
+
+    from app.workflows.digest import run_graph_digest_workflow
+
+    build_logger = logger.bind(subject=subject, requested_at=requested_at.isoformat())
+    build_logger.info("knowledge_graph_build_started", file_count=len(file_ids))
+    build_session_id = uuid.uuid4().hex
+
+    try:
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="running",
+            stage="prepare_shared",
+            build_session_id=build_session_id,
+            error_message=None,
+            draft_available=False,
+            source_file_ids=file_ids,
+            prompt=prompt,
+        )
+        _cleanup_pending_digest_outputs(subject)
+
+        graph_job_id = _new_graph_run_id()
+        result = await run_graph_digest_workflow(
+            subject=subject,
+            job_id=graph_job_id,
+            file_ids=file_ids,
+            build_session_id=build_session_id,
+            trigger_curriculum_after_finalize=True,
+        )
+        if result.failed:
+            _write_build_status(
+                subject,
+                requested_at=requested_at,
+                status="failed",
+                stage="failed",
+                build_session_id=build_session_id,
+                error_message=result.error.detail,
+            )
+            build_logger.error("knowledge_graph_build_failed", error=result.error.detail)
+            return
+
+        final_state = result.require_value()
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="completed",
+            stage="completed",
+            build_session_id=build_session_id,
+            error_message=None,
+        )
+        build_logger.info(
+            "knowledge_graph_build_completed",
+            chunk_count=len(final_state.get("chunk_ids", [])),
+        )
+    except asyncio.CancelledError:
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="cancelled",
+            stage="cancelled",
+            build_session_id=build_session_id,
+            error_message="build_cancelled",
+        )
+        build_logger.warning("knowledge_graph_build_cancelled")
+        raise
+    except Exception:
+        _write_build_status(
+            subject,
+            requested_at=requested_at,
+            status="failed",
+            stage="failed",
+            build_session_id=build_session_id,
+            error_message="build_crashed",
+        )
+        build_logger.exception("knowledge_graph_build_error")
+        return
+    finally:
+        release_knowledge_build_lock(subject)
+
+
 def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     """Read live docs, staging draft preview, and runtime build metadata."""
 
@@ -672,6 +764,7 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
 __all__ = [
     "get_docgen_result",
     "run_docgen_background",
+    "run_graph_build_background",
     "run_graph_digest_background",
     "run_unified_build_background",
     "trigger_docgen_build",
