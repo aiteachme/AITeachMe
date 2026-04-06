@@ -45,7 +45,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
- * @summary Trigger docs and graph digest build
+ * @summary Trigger docs and/or graph digest build
  */
 export type knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostResponse200 = {
   data: ApiResponseDocGenBuildData
@@ -142,7 +142,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type KnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPostMutationError = ErrorResponse
 
     /**
- * @summary Trigger docs and graph digest build
+ * @summary Trigger docs and/or graph digest build
  */
 export const useKnowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildApiV1SubjectsSubjectKnowledgeBuildPost>>, TError,{subject: string;data: DocGenBuildRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}

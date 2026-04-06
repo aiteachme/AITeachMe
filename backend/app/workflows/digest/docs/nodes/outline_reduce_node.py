@@ -1,4 +1,8 @@
-"""Reduce local outline candidates into a global plan."""
+"""Reduce local outline candidates into a global plan.
+
+This node is fully self-contained within the docs lane and does **not** depend
+on KG or curriculum outputs.
+"""
 
 from __future__ import annotations
 
@@ -10,20 +14,16 @@ import structlog
 from app.utils.path_helpers import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docs.services.outline_service import (
-    build_anchor_outline_tree,
     build_chapter_assignments_from_sections,
     build_fallback_outline_tree,
     build_thematic_outline_summary,
     build_thematic_outline_tree,
     ensure_multi_chapter_outline,
     generate_global_outline,
-    select_preferred_outline_tree,
 )
 from app.workflows.digest.docs.state import DocGenState
 from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
 from app.workflows.digest.shared.models import SharedInputs
-from app.workflows.digest.unified.models import ChapterPrior, ChapterPriors, TopicAnchorSnapshot
-from app.workflows.digest.unified.session import get_unified_build_session
 
 logger = structlog.get_logger()
 
@@ -70,19 +70,15 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
             )
             for item in local_outlines
         )
-        topic_snapshot = await _load_outline_topic_snapshot(build_session_id)
-        semantic_outline_tree = build_anchor_outline_tree(
-            shared_inputs.section_packets,
-            topic_snapshot=topic_snapshot,
-        )
-        fallback_outline_tree = build_thematic_outline_tree(
+        # Build outline purely from docs-lane data (no KG dependency).
+        thematic_outline_tree = build_thematic_outline_tree(
             shared_inputs.section_packets,
             fast_hints=shared_inputs.fast_hints,
         )
-        preferred_seed_outline = semantic_outline_tree if semantic_outline_tree.get("chapters") else {}
+        fallback_outline_tree = thematic_outline_tree
         seed_outline_text = (
-            build_thematic_outline_summary(preferred_seed_outline)
-            if preferred_seed_outline.get("chapters")
+            build_thematic_outline_summary(thematic_outline_tree)
+            if thematic_outline_tree.get("chapters")
             else ""
         )
 
@@ -120,41 +116,19 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
             clean_chunks,
             local_outlines,
         )
-        if semantic_outline_tree.get("chapters"):
-            outline_tree = select_preferred_outline_tree(
-                llm_outline_tree=llm_outline_tree,
-                thematic_outline_tree=semantic_outline_tree,
-                clean_chunks=clean_chunks,
-                section_packets=shared_inputs.section_packets,
-                prefer_thematic_alignment=True,
-            )
-        else:
-            outline_tree = (
-                llm_outline_tree
-                if llm_outline_tree.get("chapters")
-                else fallback_outline_tree
-            )
+        outline_tree = (
+            llm_outline_tree
+            if llm_outline_tree.get("chapters")
+            else fallback_outline_tree
+        )
         chapter_assignments = build_chapter_assignments_from_sections(
             outline_tree,
             clean_chunks=clean_chunks,
             section_packets=shared_inputs.section_packets,
         )
 
-        chapter_priors = ChapterPriors(
-            chapters=[
-                ChapterPrior(
-                    chapter_index=assignment["chapter_index"],
-                    title=assignment["title"],
-                    section_titles=list(assignment.get("section_titles", [])),
-                    key_terms=_build_key_terms(assignment),
-                    chunk_uids=list(assignment.get("chunk_uids", [])),
-                )
-                for assignment in chapter_assignments
-            ]
-        )
-        if build_session_id:
-            session = get_unified_build_session(build_session_id)
-            session.publish_chapter_priors(chapter_priors)
+        # Publish chapter priors to unified session if available (optional)
+        _try_publish_chapter_priors(build_session_id, chapter_assignments)
 
         out_dir = build_docgen_intermediate_latest_dir(state["subject"])
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -171,11 +145,8 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         node_logger.info(
             "docgen_outline_planning_completed",
             chapter_count=len(chapter_assignments),
-            semantic_anchor_count=len(topic_snapshot.anchors) if topic_snapshot else 0,
             outline_source=(
-                "kg_semantic"
-                if semantic_outline_tree.get("chapters") and outline_tree == semantic_outline_tree
-                else "llm_primary"
+                "llm_primary"
                 if llm_outline_tree.get("chapters") and outline_tree == llm_outline_tree
                 else "fallback_structure"
             ),
@@ -191,11 +162,31 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
     return outline_reduce_node
 
 
-async def _load_outline_topic_snapshot(build_session_id: str) -> TopicAnchorSnapshot | None:
+def _try_publish_chapter_priors(build_session_id: str, chapter_assignments: list[dict]) -> None:
+    """Best-effort publish chapter priors to unified session if available."""
+
     if not build_session_id:
-        return None
-    session = get_unified_build_session(build_session_id)
-    return await session.wait_for_topic_anchor_snapshot(timeout_ms=2200)
+        return
+    try:
+        from app.workflows.digest.unified.models import ChapterPrior, ChapterPriors
+        from app.workflows.digest.unified.session import get_unified_build_session
+
+        session = get_unified_build_session(build_session_id)
+        priors = ChapterPriors(
+            chapters=[
+                ChapterPrior(
+                    chapter_index=assignment["chapter_index"],
+                    title=assignment["title"],
+                    section_titles=list(assignment.get("section_titles", [])),
+                    key_terms=_build_key_terms(assignment),
+                    chunk_uids=list(assignment.get("chunk_uids", [])),
+                )
+                for assignment in chapter_assignments
+            ]
+        )
+        session.publish_chapter_priors(priors)
+    except (KeyError, ImportError):
+        pass  # unified session not available — standalone mode
 
 
 def _build_key_terms(assignment: dict) -> list[str]:

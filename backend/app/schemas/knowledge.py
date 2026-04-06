@@ -1,4 +1,4 @@
-﻿"""Knowledge-domain API schemas."""
+"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ class DocGenBuildRequest(BaseModel):
                 "file_uids": ["file_xxx", "file_yyy"],
                 "prompt": "Generate review-oriented notes",
                 "embedding_resolution": "rebuild",
+                "build_type": "all",
             }
         }
     )
@@ -31,6 +32,10 @@ class DocGenBuildRequest(BaseModel):
     embedding_resolution: Literal["rebuild", "disable"] | None = Field(
         default=None,
         description="Optional subject-level embedding resolution chosen after a precheck conflict.",
+    )
+    build_type: Literal["docs", "graph", "all"] = Field(
+        default="all",
+        description="Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
     )
 
 class GraphNodesQueryRequest(PageParams):

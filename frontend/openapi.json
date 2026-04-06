@@ -1129,7 +1129,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "Trigger docs and graph digest build",
+        "summary": "Trigger docs and/or graph digest build",
         "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
@@ -6279,12 +6279,24 @@
             ],
             "title": "Embedding Resolution",
             "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
+          },
+          "build_type": {
+            "type": "string",
+            "enum": [
+              "docs",
+              "graph",
+              "all"
+            ],
+            "title": "Build Type",
+            "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
+            "default": "all"
           }
         },
         "type": "object",
         "title": "DocGenBuildRequest",
         "description": "Trigger knowledge-doc generation.",
         "example": {
+          "build_type": "all",
           "embedding_resolution": "rebuild",
           "file_uids": [
             "file_xxx",

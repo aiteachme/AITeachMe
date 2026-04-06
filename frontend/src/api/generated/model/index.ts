@@ -108,6 +108,7 @@ export * from './curriculumSnapshotResponse';
 export * from './difficultyValue';
 export * from './docGenBuildData';
 export * from './docGenBuildRequest';
+export * from './docGenBuildRequestBuildType';
 export * from './docGenBuildStatusResponse';
 export * from './docGenGetResponse';
 export * from './errorResponse';
