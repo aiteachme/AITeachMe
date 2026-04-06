@@ -1,10 +1,9 @@
 """Generate rich Mermaid architecture diagrams from compiled LangGraph workflows.
 
-Instead of using LangGraph's built-in draw_mermaid() (which produces ugly output),
-this script reads the compiled graph topology (nodes + edges) and builds clean,
-human-readable Mermaid diagrams from scratch.
-
-Output: one markdown file per engine module with all sub-workflows combined.
+Builds Mermaid from scratch using the graph topology (nodes + edges) rather
+than LangGraph's built-in draw_mermaid(). Produces one markdown file per
+engine module with sub-workflow diagrams, auto-generated node reference
+tables, and collected prompt fingerprints.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import textwrap
 from collections import defaultdict
 from importlib import import_module
 from pathlib import Path
@@ -27,7 +25,7 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / ".generated_workflow_diag
 WORKFLOWS_DIR = BACKEND_DIR / "app" / "workflows"
 
 
-# ── Module metadata ──────────────────────────────────────────────────────────
+# ── Module metadata (fallback to auto-generated if missing) ──────────────────
 
 MODULE_META: dict[str, dict[str, str]] = {
     "ingest": {
@@ -57,7 +55,8 @@ MODULE_META: dict[str, dict[str, str]] = {
     },
 }
 
-# ── Node display name mapping ────────────────────────────────────────────────
+
+# ── Node display helpers ─────────────────────────────────────────────────────
 
 
 def _humanize(node_id: str) -> str:
@@ -77,6 +76,8 @@ def _node_shape(node_id: str, label: str) -> str:
         return f'{node_id}(["⏹ {label}"])'
     if "fail" in node_id or "error" in node_id:
         return f'{node_id}["⚠ {label}"]'
+    if "finalize" in node_id or "publish" in node_id or "cleanup" in node_id:
+        return f'{node_id}(["{label}"])'  # stadium / pill shape for terminal-like
     return f'{node_id}["{label}"]'
 
 
@@ -88,7 +89,36 @@ def _node_class(node_id: str) -> str | None:
         return "endCls"
     if "fail" in node_id or "error" in node_id:
         return "failCls"
+    if "finalize" in node_id or "publish" in node_id or "cleanup" in node_id:
+        return "termCls"
     return None
+
+
+def _classify_edge_label(label: str | None) -> str:
+    """Classify an edge label for styling purposes."""
+    if not label:
+        return "normal"
+    s = str(label).lower().strip()
+    if s in ("fail", "error"):
+        return "fail"
+    if s in ("finish",):
+        return "abort"  # early exit, typically error handling
+    if s in ("continue",):
+        return "happy"
+    return "normal"
+
+
+def _render_edge_label(label: str | None) -> str | None:
+    """Make edge labels more readable."""
+    if not label:
+        return None
+    s = str(label).strip()
+    mapping = {
+        "continue": "✓",
+        "finish": "✗ err",
+        "fail": "✗ fail",
+    }
+    return mapping.get(s.lower(), s)
 
 
 # ── Discovery ────────────────────────────────────────────────────────────────
@@ -148,54 +178,191 @@ def resolve_keys(modules: list[str]) -> list[str]:
     return modules
 
 
-# ── Mermaid builder (from scratch) ───────────────────────────────────────────
+# ── Graph analysis ───────────────────────────────────────────────────────────
 
 
-def build_mermaid(export: WorkflowGraphExport) -> str:
-    """Build a clean Mermaid flowchart from the compiled graph topology."""
+def _trace_happy_path(out_edges: dict, node_ids: list[str]) -> list[str]:
+    """Walk the graph from __start__ following only 'continue'/unlabeled edges.
+
+    Returns an ordered list of node IDs on the primary success path.
+    """
+    path: list[str] = []
+    visited: set[str] = set()
+    current = "__start__"
+
+    while current and current not in visited:
+        visited.add(current)
+        if current not in ("__start__", "__end__"):
+            path.append(current)
+
+        # Pick the next node: prefer 'continue' edge, then unlabeled, skip fail
+        outs = out_edges.get(current, [])
+        next_node = None
+        for tgt, label in outs:
+            lbl = str(label).lower().strip() if label else ""
+            if lbl == "continue":
+                next_node = tgt
+                break
+        if not next_node:
+            for tgt, label in outs:
+                lbl = str(label).lower().strip() if label else ""
+                if not lbl and tgt != "__end__":
+                    next_node = tgt
+                    break
+        if not next_node:
+            for tgt, label in outs:
+                lbl = str(label).lower().strip() if label else ""
+                if lbl not in ("fail", "error", "finish") and tgt != "__end__":
+                    next_node = tgt
+                    break
+        current = next_node
+
+    return path
+
+
+def _analyze_graph(export: WorkflowGraphExport) -> dict:
+    """Compile graph and extract rich topology + metadata for rendering."""
 
     compiled = export.build_graph().compile()
     graph = compiled.get_graph()
 
-    # Extract topology
     node_ids = [n.id for n in graph.nodes.values()]
     edges = [(e.source, e.target, e.data) for e in graph.edges]
 
-    # Also inject any extra_edges declared in the export (for Send fan-out)
-    extra_edge_sources = set()
+    # Build adjacency info
+    out_edges: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
+    in_edges: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
+    for src, tgt, label in edges:
+        out_edges[src].append((tgt, label))
+        in_edges[tgt].append((src, label))
+
+    # Trace the happy path (main success flow)
+    happy_path = _trace_happy_path(out_edges, node_ids)
+    happy_step: dict[str, int] = {nid: i + 1 for i, nid in enumerate(happy_path)}
+
+    # Identify error/fail nodes
+    fail_nodes = [n for n in node_ids if n not in ("__start__", "__end__")
+                  and ("fail" in n or "error" in n)]
+
+    # Classify each node's role
+    node_roles: dict[str, str] = {}
+    for nid in node_ids:
+        if nid == "__start__":
+            node_roles[nid] = "入口"
+        elif nid == "__end__":
+            node_roles[nid] = "出口"
+        elif nid in fail_nodes:
+            node_roles[nid] = "❌ 错误处理"
+        elif len(out_edges[nid]) > 1:
+            labels = [lbl for _, lbl in out_edges[nid] if lbl]
+            if labels:
+                node_roles[nid] = "🔀 条件路由"
+            else:
+                node_roles[nid] = "🔀 分支"
+        elif "finalize" in nid or "publish" in nid or "cleanup" in nid:
+            node_roles[nid] = "✅ 终结节点"
+        else:
+            node_roles[nid] = "⚙ 处理节点"
+
+    # Detect if graph is mostly linear (for layout direction)
+    process_nodes = [n for n in node_ids if n not in ("__start__", "__end__")]
+    max_out = max((len(out_edges[n]) for n in process_nodes), default=0)
+    is_linear = max_out <= 2 and len(process_nodes) <= 8
+
+    # Extra edges for fan-out
+    extra_edge_sources: set[str] = set()
     if export.extra_edges:
         for edge_str in export.extra_edges:
             m = re.match(r"\s*(\w+)\s", edge_str)
             if m:
                 extra_edge_sources.add(m.group(1))
 
+    return {
+        "node_ids": node_ids,
+        "edges": edges,
+        "out_edges": out_edges,
+        "in_edges": in_edges,
+        "node_roles": node_roles,
+        "happy_step": happy_step,
+        "fail_nodes": fail_nodes,
+        "is_linear": is_linear,
+        "extra_edge_sources": extra_edge_sources,
+        "process_node_count": len(process_nodes),
+        "edge_count": len(edges),
+        "has_fan_out": bool(export.extra_edges),
+    }
+
+
+# ── Mermaid builder ──────────────────────────────────────────────────────────
+
+_STEP_ICONS = ["❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾", "❿",
+               "⓫", "⓬", "⓭", "⓮", "⓯", "⓰", "⓱", "⓲", "⓳", "⓴"]
+
+
+def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
+    """Build a clean Mermaid flowchart from the analyzed graph topology."""
+
+    node_ids = analysis["node_ids"]
+    edges = analysis["edges"]
+    extra_edge_sources = analysis["extra_edge_sources"]
+    is_linear = analysis["is_linear"]
+    happy_step = analysis["happy_step"]
+    fail_nodes = analysis["fail_nodes"]
+
     lines: list[str] = []
 
-    # --- Header ---
+    # Always use top-down layout
     lines.append("flowchart TD")
 
-    # --- Node declarations ---
+    # --- Node declarations (non-fail nodes) ---
     for nid in node_ids:
+        if nid in fail_nodes:
+            continue  # declared inside subgraph below
         label = _humanize(nid)
+        # Add step number for happy-path nodes
+        step = happy_step.get(nid)
+        if step and step <= len(_STEP_ICONS):
+            label = f"{_STEP_ICONS[step - 1]} {label}"
         decl = _node_shape(nid, label)
         lines.append(f"    {decl}")
 
     lines.append("")
 
+    # --- Error handling subgraph ---
+    if fail_nodes:
+        lines.append('    subgraph error_zone ["⚠ 错误处理"]')
+        lines.append("    direction TB")
+        for nid in fail_nodes:
+            label = _humanize(nid)
+            decl = _node_shape(nid, label)
+            lines.append(f"        {decl}")
+        lines.append("    end")
+        lines.append("")
+
     # --- Edges ---
+    edge_index = 0
+    fail_indices: list[int] = []
+
     for src, tgt, label in edges:
-        # Skip fake edges that are replaced by extra_edges
+        # Skip fake edges replaced by extra_edges
         if src in extra_edge_sources:
             continue
 
-        if label:
-            edge_label = str(label).strip()
-            if "fail" in edge_label.lower() or "error" in edge_label.lower():
-                lines.append(f"    {src} -. {edge_label} .-> {tgt}")
+        rendered = _render_edge_label(label)
+        edge_type = _classify_edge_label(label)
+
+        if edge_type in ("fail", "abort"):
+            if rendered:
+                lines.append(f"    {src} -. \"{rendered}\" .-> {tgt}")
             else:
-                lines.append(f'    {src} -->|"{edge_label}"| {tgt}')
+                lines.append(f"    {src} -.-> {tgt}")
+            fail_indices.append(edge_index)
+        elif rendered:
+            lines.append(f'    {src} -->|"{rendered}"| {tgt}')
         else:
             lines.append(f"    {src} --> {tgt}")
+
+        edge_index += 1
 
     # --- Extra edges (Send fan-out) ---
     if export.extra_edges:
@@ -211,7 +378,9 @@ def build_mermaid(export: WorkflowGraphExport) -> str:
     lines.append("    classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0")
     lines.append("    classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca")
     lines.append("    classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3")
+    lines.append("    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd")
     lines.append("    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0")
+    lines.append("    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5")
 
     # Assign classes
     for nid in node_ids:
@@ -219,21 +388,57 @@ def build_mermaid(export: WorkflowGraphExport) -> str:
         if cls:
             lines.append(f"    class {nid} {cls}")
 
-    # Link style for fail edges
-    fail_edge_indices: list[int] = []
-    edge_index = 0
-    for src, tgt, label in edges:
-        if src in extra_edge_sources:
-            continue
-        if label and ("fail" in str(label).lower() or "finish" in str(label).lower()):
-            fail_edge_indices.append(edge_index)
-        edge_index += 1
-
-    if fail_edge_indices:
-        idx_str = ",".join(str(i) for i in fail_edge_indices)
+    # Red dashed links for fail edges
+    if fail_indices:
+        idx_str = ",".join(str(i) for i in fail_indices)
         lines.append(f"    linkStyle {idx_str} stroke:#f43f5e,stroke-dasharray:5")
 
     return "\n".join(lines)
+
+
+# ── Node reference table builder ─────────────────────────────────────────────
+
+
+def build_node_table(analysis: dict) -> str:
+    """Auto-generate a node reference table from graph analysis."""
+
+    node_ids = analysis["node_ids"]
+    node_roles = analysis["node_roles"]
+    out_edges = analysis["out_edges"]
+    in_edges = analysis["in_edges"]
+
+    rows = []
+    for nid in node_ids:
+        if nid in ("__start__", "__end__"):
+            continue
+
+        role = node_roles.get(nid, "⚙ 处理节点")
+        label = _humanize(nid)
+
+        # Determine routing behavior from out-edges
+        outs = out_edges.get(nid, [])
+        route_desc = ""
+        if len(outs) > 1:
+            labels = [str(lbl) for _, lbl in outs if lbl]
+            if labels:
+                route_desc = " → ".join(f"`{l}`" for l in labels)
+            else:
+                targets = [_humanize(t) for t, _ in outs]
+                route_desc = " / ".join(targets)
+        elif len(outs) == 1:
+            tgt, lbl = outs[0]
+            if tgt == "__end__":
+                route_desc = "→ END"
+            else:
+                route_desc = f"→ {_humanize(tgt)}"
+
+        rows.append(f"| {label} | {role} | {route_desc} |")
+
+    if not rows:
+        return ""
+
+    header = "| 节点 | 角色 | 路由 |\n|------|------|------|\n"
+    return header + "\n".join(rows)
 
 
 # ── Markdown assembly ────────────────────────────────────────────────────────
@@ -262,17 +467,38 @@ def build_module_md(module: str, exports: list[WorkflowGraphExport]) -> str:
 
     # Each sub-workflow
     for exp in exports:
-        mermaid = build_mermaid(exp)
+        analysis = _analyze_graph(exp)
+        mermaid = build_mermaid(exp, analysis)
+        node_table = build_node_table(analysis)
 
         parts.append(f"## {exp.title}")
         parts.append("")
         if exp.description:
             parts.append(f"> {exp.description}")
             parts.append("")
+
+        # Stats badge line
+        stats = (
+            f"📊 **{analysis['process_node_count']}** 个处理节点 · "
+            f"**{analysis['edge_count']}** 条边"
+        )
+        if analysis["has_fan_out"]:
+            stats += " · 🔄 含 Fan-out 并行"
+        parts.append(stats)
+        parts.append("")
+
+        # Diagram
         parts.append("```mermaid")
         parts.append(mermaid)
         parts.append("```")
         parts.append("")
+
+        # Node reference table
+        if node_table:
+            parts.append("**节点参考：**")
+            parts.append("")
+            parts.append(node_table)
+            parts.append("")
 
     # Prompts section (deduplicated)
     all_prompts: dict[str, str] = {}
@@ -287,7 +513,7 @@ def build_module_md(module: str, exports: list[WorkflowGraphExport]) -> str:
         parts.append("")
         parts.append("## 🧬 核心 Prompt 指纹")
         parts.append("")
-        parts.append("> 以下为本引擎在推理时注入大模型的核心提示词模板。点击展开查看完整内容。")
+        parts.append(f"> 本引擎共使用 **{len(all_prompts)}** 个核心提示词模板。点击展开查看完整内容。")
         parts.append("")
 
         for key, prompt in all_prompts.items():
@@ -337,7 +563,22 @@ def write_all(*, output_dir: Path, keys: list[str]) -> list[Path]:
         "# AITeachMe 工作流架构图",
         "",
         "> 由 `scripts/generate_workflow_diagrams.py` 从已编译的 LangGraph 拓扑自动生成。",
-        "> 运行 `conda run -n atm python scripts/generate_workflow_diagrams.py` 可重新生成。",
+        "> 运行 `conda activate atm && python scripts/generate_workflow_diagrams.py` 可重新生成。",
+        "",
+        "## 图例说明",
+        "",
+        "| 元素 | 含义 |",
+        "|------|------|",
+        "| `▶ START` (绿色) | 工作流入口 |",
+        "| `⏹ END` (红色) | 工作流出口 |",
+        "| `⚠ Fail xxx` (深红) | 错误处理节点 |",
+        "| 药丸形节点 (蓝色) | 终结/收尾节点 |",
+        "| 方形节点 (深灰) | 普通处理节点 |",
+        "| `✓` 实线箭头 | 正常流转（Happy Path） |",
+        "| `✗ err/fail` 红色虚线 | 错误/中断路径 |",
+        "| `Send xN` 虚线 | Fan-out 并行分发 |",
+        "",
+        "## 模块索引",
         "",
         "| 模块 | 文件 | 包含的子工作流 |",
         "|------|------|----------------|",

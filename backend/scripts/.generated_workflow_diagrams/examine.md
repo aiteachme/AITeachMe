@@ -14,23 +14,29 @@
 
 > Exam grading workflow including grading, mastery update, and review scheduling.
 
+📊 **5** 个处理节点 · **9** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    grade_answers["Grade Answers"]
-    update_mastery["Update Mastery"]
-    schedule_reviews["Schedule Reviews"]
-    finalize_grade["Finalize Grade"]
-    fail_grade["⚠ Fail Grade"]
+    grade_answers["❶ Grade Answers"]
+    update_mastery["❷ Update Mastery"]
+    schedule_reviews["❸ Schedule Reviews"]
+    finalize_grade(["❹ Finalize Grade"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        fail_grade["⚠ Fail Grade"]
+    end
+
     __start__ --> grade_answers
-    grade_answers -. fail .-> fail_grade
-    grade_answers -->|"continue"| update_mastery
-    schedule_reviews -. fail .-> fail_grade
-    schedule_reviews -->|"continue"| finalize_grade
-    update_mastery -. fail .-> fail_grade
-    update_mastery -->|"continue"| schedule_reviews
+    grade_answers -. "✗ fail" .-> fail_grade
+    grade_answers -->|"✓"| update_mastery
+    schedule_reviews -. "✗ fail" .-> fail_grade
+    schedule_reviews -->|"✓"| finalize_grade
+    update_mastery -. "✗ fail" .-> fail_grade
+    update_mastery -->|"✓"| schedule_reviews
     fail_grade --> __end__
     finalize_grade --> __end__
 
@@ -38,23 +44,38 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_grade termCls
     class fail_grade failCls
     class __end__ endCls
     linkStyle 1,3,5 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Grade Answers | 🔀 条件路由 | `fail` → `continue` |
+| Update Mastery | 🔀 条件路由 | `fail` → `continue` |
+| Schedule Reviews | 🔀 条件路由 | `fail` → `continue` |
+| Finalize Grade | ✅ 终结节点 | → END |
+| Fail Grade | ❌ 错误处理 | → END |
+
 ## Examine Workflow
 
 > High-level examine workflow from question-template build to grading and review scheduling.
 
+📊 **3** 个处理节点 · **4** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    question_templates_ready["Question Templates Ready"]
-    exam_paper_ready["Exam Paper Ready"]
-    exam_graded["Exam Graded"]
+    question_templates_ready["❶ Question Templates Ready"]
+    exam_paper_ready["❷ Exam Paper Ready"]
+    exam_graded["❸ Exam Graded"]
     __end__(["⏹ END"])
 
     __start__ --> question_templates_ready
@@ -66,29 +87,45 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
     class __end__ endCls
 ```
+
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Question Templates Ready | ⚙ 处理节点 | → Exam Paper Ready |
+| Exam Paper Ready | ⚙ 处理节点 | → Exam Graded |
+| Exam Graded | ⚙ 处理节点 | → END |
 
 ## Examine Question Build Workflow
 
 > Question template build workflow driven by teaching-unit validation and template generation.
 
+📊 **4** 个处理节点 · **7** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_units["Load Units"]
-    generate_templates["Generate Templates"]
-    finalize_build["Finalize Build"]
-    fail_build["⚠ Fail Build"]
+    load_units["❶ Load Units"]
+    generate_templates["❷ Generate Templates"]
+    finalize_build(["❸ Finalize Build"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        fail_build["⚠ Fail Build"]
+    end
+
     __start__ --> load_units
-    generate_templates -. fail .-> fail_build
-    generate_templates -->|"continue"| finalize_build
-    load_units -. fail .-> fail_build
-    load_units -->|"continue"| generate_templates
+    generate_templates -. "✗ fail" .-> fail_build
+    generate_templates -->|"✓"| finalize_build
+    load_units -. "✗ fail" .-> fail_build
+    load_units -->|"✓"| generate_templates
     fail_build --> __end__
     finalize_build --> __end__
 
@@ -96,18 +133,30 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_build termCls
     class fail_build failCls
     class __end__ endCls
     linkStyle 1,3 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Load Units | 🔀 条件路由 | `fail` → `continue` |
+| Generate Templates | 🔀 条件路由 | `fail` → `continue` |
+| Finalize Build | ✅ 终结节点 | → END |
+| Fail Build | ❌ 错误处理 | → END |
+
 ---
 
 ## 🧬 核心 Prompt 指纹
 
-> 以下为本引擎在推理时注入大模型的核心提示词模板。点击展开查看完整内容。
+> 本引擎共使用 **5** 个核心提示词模板。点击展开查看完整内容。
 
 <details>
 <summary><b>Exam Generate</b> (<code>exam_generate</code>)</summary>

@@ -6,45 +6,60 @@
 
 > Teaching chat workflow with history loading, retrieval, strategy selection, prompt assembly, streaming, and persistence.
 
+📊 **6** 个处理节点 · **12** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_history_state["Load History State"]
-    retrieve_context["Retrieve Context"]
-    select_teaching_strategy["Select Teaching Strategy"]
-    build_prompt["Build Prompt"]
-    stream_answer["Stream Answer"]
-    persist_turn["Persist Turn"]
+    load_history_state["❶ Load History State"]
+    retrieve_context["❷ Retrieve Context"]
+    select_teaching_strategy["❸ Select Teaching Strategy"]
+    build_prompt["❹ Build Prompt"]
+    stream_answer["❺ Stream Answer"]
+    persist_turn["❻ Persist Turn"]
     __end__(["⏹ END"])
 
     __start__ --> load_history_state
-    build_prompt -->|"finish"| __end__
-    build_prompt -->|"continue"| stream_answer
-    load_history_state -->|"finish"| __end__
-    load_history_state -->|"continue"| retrieve_context
-    retrieve_context -->|"finish"| __end__
-    retrieve_context -->|"continue"| select_teaching_strategy
-    select_teaching_strategy -->|"finish"| __end__
-    select_teaching_strategy -->|"continue"| build_prompt
-    stream_answer -->|"finish"| __end__
-    stream_answer -->|"continue"| persist_turn
+    build_prompt -. "✗ err" .-> __end__
+    build_prompt -->|"✓"| stream_answer
+    load_history_state -. "✗ err" .-> __end__
+    load_history_state -->|"✓"| retrieve_context
+    retrieve_context -. "✗ err" .-> __end__
+    retrieve_context -->|"✓"| select_teaching_strategy
+    select_teaching_strategy -. "✗ err" .-> __end__
+    select_teaching_strategy -->|"✓"| build_prompt
+    stream_answer -. "✗ err" .-> __end__
+    stream_answer -->|"✓"| persist_turn
     persist_turn --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
     class __end__ endCls
     linkStyle 1,3,5,7,9 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Load History State | 🔀 条件路由 | `finish` → `continue` |
+| Retrieve Context | 🔀 条件路由 | `finish` → `continue` |
+| Select Teaching Strategy | 🔀 条件路由 | `finish` → `continue` |
+| Build Prompt | 🔀 条件路由 | `finish` → `continue` |
+| Stream Answer | 🔀 条件路由 | `finish` → `continue` |
+| Persist Turn | ⚙ 处理节点 | → END |
+
 ---
 
 ## 🧬 核心 Prompt 指纹
 
-> 以下为本引擎在推理时注入大模型的核心提示词模板。点击展开查看完整内容。
+> 本引擎共使用 **1** 个核心提示词模板。点击展开查看完整内容。
 
 <details>
 <summary><b>System Prompt</b> (<code>system_prompt</code>)</summary>

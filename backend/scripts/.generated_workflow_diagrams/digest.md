@@ -15,23 +15,29 @@
 
 > Curriculum derivation workflow built from digest graph impact.
 
+📊 **5** 个处理节点 · **9** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    derive_units["Derive Units"]
-    derive_theme_tree["Derive Theme Tree"]
-    derive_prereq_dag["Derive Prereq Dag"]
-    finalize_curriculum["Finalize Curriculum"]
-    fail_curriculum["⚠ Fail Curriculum"]
+    derive_units["❶ Derive Units"]
+    derive_theme_tree["❷ Derive Theme Tree"]
+    derive_prereq_dag["❸ Derive Prereq Dag"]
+    finalize_curriculum(["❹ Finalize Curriculum"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        fail_curriculum["⚠ Fail Curriculum"]
+    end
+
     __start__ --> derive_units
-    derive_prereq_dag -. fail .-> fail_curriculum
-    derive_prereq_dag -->|"continue"| finalize_curriculum
-    derive_theme_tree -->|"continue"| derive_prereq_dag
-    derive_theme_tree -. fail .-> fail_curriculum
-    derive_units -->|"continue"| derive_theme_tree
-    derive_units -. fail .-> fail_curriculum
+    derive_prereq_dag -. "✗ fail" .-> fail_curriculum
+    derive_prereq_dag -->|"✓"| finalize_curriculum
+    derive_theme_tree -->|"✓"| derive_prereq_dag
+    derive_theme_tree -. "✗ fail" .-> fail_curriculum
+    derive_units -->|"✓"| derive_theme_tree
+    derive_units -. "✗ fail" .-> fail_curriculum
     fail_curriculum --> __end__
     finalize_curriculum --> __end__
 
@@ -39,37 +45,52 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_curriculum termCls
     class fail_curriculum failCls
     class __end__ endCls
     linkStyle 1,4,6 stroke:#f43f5e,stroke-dasharray:5
 ```
 
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Derive Units | 🔀 条件路由 | `continue` → `fail` |
+| Derive Theme Tree | 🔀 条件路由 | `continue` → `fail` |
+| Derive Prereq Dag | 🔀 条件路由 | `fail` → `continue` |
+| Finalize Curriculum | ✅ 终结节点 | → END |
+| Fail Curriculum | ❌ 错误处理 | → END |
+
 ## Digest DocGen Workflow
 
 > Knowledge document generation workflow with fan-out parallelism.
 
+📊 **10** 个处理节点 · **7** 条边 · 🔄 含 Fan-out 并行
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_files["Load Files"]
-    cleanse["Cleanse"]
-    outline_map["Outline Map"]
-    outline_reduce["Outline Reduce"]
+    load_files["❶ Load Files"]
+    cleanse["❷ Cleanse"]
+    outline_map["❸ Outline Map"]
+    outline_reduce["❹ Outline Reduce"]
     draft_chapter["Draft Chapter"]
     collect_drafts["Collect Drafts"]
     review_chapter["Review Chapter"]
     collect_reviews["Collect Reviews"]
     extract_metadata["Extract Metadata"]
-    finalize_assemble["Finalize Assemble"]
+    finalize_assemble(["Finalize Assemble"])
     __end__(["⏹ END"])
 
     __start__ --> load_files
-    cleanse -. fail .-> __end__
-    cleanse -->|"continue"| outline_map
-    load_files -. fail .-> __end__
-    load_files -->|"continue"| cleanse
+    cleanse -. "✗ fail" .-> __end__
+    cleanse -->|"✓"| outline_map
+    load_files -. "✗ fail" .-> __end__
+    load_files -->|"✓"| cleanse
     outline_map --> outline_reduce
 
     %% Fan-out / Send edges
@@ -85,46 +106,70 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_assemble termCls
     class __end__ endCls
     linkStyle 1,3 stroke:#f43f5e,stroke-dasharray:5
 ```
+
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Load Files | 🔀 条件路由 | `fail` → `continue` |
+| Cleanse | 🔀 条件路由 | `fail` → `continue` |
+| Outline Map | ⚙ 处理节点 | → Outline Reduce |
+| Outline Reduce | ⚙ 处理节点 | → END |
+| Draft Chapter | ⚙ 处理节点 |  |
+| Collect Drafts | ⚙ 处理节点 |  |
+| Review Chapter | ⚙ 处理节点 |  |
+| Collect Reviews | ⚙ 处理节点 |  |
+| Extract Metadata | ⚙ 处理节点 |  |
+| Finalize Assemble | ✅ 终结节点 |  |
 
 ## Digest Graph Workflow
 
 > Incremental knowledge-graph build workflow.
 
+📊 **9** 个处理节点 · **18** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    acquire_lock["Acquire Lock"]
+    acquire_lock["❶ Acquire Lock"]
     prepare["Prepare"]
     extract["Extract"]
     cluster["Cluster"]
     resolve_nodes["Resolve Nodes"]
     resolve_edges["Resolve Edges"]
     analyze_impact["Analyze Impact"]
-    finalize_graph["Finalize Graph"]
-    fail["⚠ Fail"]
+    finalize_graph(["Finalize Graph"])
     __end__(["⏹ END"])
+
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        fail["⚠ Fail"]
+    end
 
     __start__ --> acquire_lock
     acquire_lock --> fail
     acquire_lock --> prepare
     analyze_impact --> fail
-    analyze_impact -->|"continue"| finalize_graph
+    analyze_impact -->|"✓"| finalize_graph
     cluster --> fail
-    cluster -->|"continue"| resolve_nodes
-    extract -->|"continue"| cluster
+    cluster -->|"✓"| resolve_nodes
+    extract -->|"✓"| cluster
     extract --> fail
     prepare --> extract
     prepare --> fail
     prepare --> finalize_graph
-    resolve_edges -->|"continue"| analyze_impact
+    resolve_edges -->|"✓"| analyze_impact
     resolve_edges --> fail
     resolve_nodes --> fail
-    resolve_nodes -->|"continue"| resolve_edges
+    resolve_nodes -->|"✓"| resolve_edges
     fail --> __end__
     finalize_graph --> __end__
 
@@ -132,44 +177,67 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_graph termCls
     class fail failCls
     class __end__ endCls
 ```
+
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Acquire Lock | 🔀 分支 | Fail / Prepare |
+| Prepare | 🔀 分支 | Extract / Fail / Finalize Graph |
+| Extract | 🔀 条件路由 | `continue` |
+| Cluster | 🔀 条件路由 | `continue` |
+| Resolve Nodes | 🔀 条件路由 | `continue` |
+| Resolve Edges | 🔀 条件路由 | `continue` |
+| Analyze Impact | 🔀 条件路由 | `continue` |
+| Finalize Graph | ✅ 终结节点 | → END |
+| Fail | ❌ 错误处理 | → END |
 
 ## Digest Unified Workflow
 
 > Shared prepare, docs lane, graph lane, consistency, repair, and curriculum.
 
+📊 **9** 个处理节点 · **17** 条边
+
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    prepare_shared["Prepare Shared"]
-    run_parallel_lanes["Run Parallel Lanes"]
-    consistency_gate["Consistency Gate"]
-    bounded_repair["Bounded Repair"]
-    derive_curriculum["Derive Curriculum"]
-    rebuild_docs["Rebuild Docs"]
-    publish_outputs["Publish Outputs"]
-    cleanup["Cleanup"]
-    fail["⚠ Fail"]
+    prepare_shared["❶ Prepare Shared"]
+    run_parallel_lanes["❷ Run Parallel Lanes"]
+    consistency_gate["❸ Consistency Gate"]
+    bounded_repair["❹ Bounded Repair"]
+    derive_curriculum["❺ Derive Curriculum"]
+    rebuild_docs["❻ Rebuild Docs"]
+    publish_outputs(["❼ Publish Outputs"])
+    cleanup(["❽ Cleanup"])
     __end__(["⏹ END"])
 
+    subgraph error_zone ["⚠ 错误处理"]
+    direction TB
+        fail["⚠ Fail"]
+    end
+
     __start__ --> prepare_shared
-    bounded_repair -->|"continue"| derive_curriculum
+    bounded_repair -->|"✓"| derive_curriculum
     bounded_repair --> fail
-    consistency_gate -->|"continue"| bounded_repair
+    consistency_gate -->|"✓"| bounded_repair
     consistency_gate --> fail
     derive_curriculum --> fail
-    derive_curriculum -->|"continue"| rebuild_docs
+    derive_curriculum -->|"✓"| rebuild_docs
     prepare_shared --> fail
-    prepare_shared -->|"continue"| run_parallel_lanes
-    publish_outputs -->|"continue"| cleanup
+    prepare_shared -->|"✓"| run_parallel_lanes
+    publish_outputs -->|"✓"| cleanup
     publish_outputs --> fail
     rebuild_docs --> fail
-    rebuild_docs -->|"continue"| publish_outputs
-    run_parallel_lanes -->|"continue"| consistency_gate
+    rebuild_docs -->|"✓"| publish_outputs
+    run_parallel_lanes -->|"✓"| consistency_gate
     run_parallel_lanes --> fail
     cleanup --> __end__
     fail --> __end__
@@ -178,17 +246,35 @@ flowchart TD
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
     classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
     classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
+    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
+    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class publish_outputs termCls
+    class cleanup termCls
     class fail failCls
     class __end__ endCls
 ```
+
+**节点参考：**
+
+| 节点 | 角色 | 路由 |
+|------|------|------|
+| Prepare Shared | 🔀 条件路由 | `continue` |
+| Run Parallel Lanes | 🔀 条件路由 | `continue` |
+| Consistency Gate | 🔀 条件路由 | `continue` |
+| Bounded Repair | 🔀 条件路由 | `continue` |
+| Derive Curriculum | 🔀 条件路由 | `continue` |
+| Rebuild Docs | 🔀 条件路由 | `continue` |
+| Publish Outputs | 🔀 条件路由 | `continue` |
+| Cleanup | ✅ 终结节点 | → END |
+| Fail | ❌ 错误处理 | → END |
 
 ---
 
 ## 🧬 核心 Prompt 指纹
 
-> 以下为本引擎在推理时注入大模型的核心提示词模板。点击展开查看完整内容。
+> 本引擎共使用 **10** 个核心提示词模板。点击展开查看完整内容。
 
 <details>
 <summary><b>Global Outline Prompt</b> (<code>global_outline_prompt</code>)</summary>
