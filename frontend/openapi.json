@@ -5334,6 +5334,17 @@
             ],
             "title": "Mineru Api Token"
           },
+          "mineru_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Model Version"
+          },
           "mineru_enable_formula": {
             "anyOf": [
               {

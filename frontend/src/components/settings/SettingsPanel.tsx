@@ -332,6 +332,18 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                   </p>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">MinerU 模型版本（model_version）</label>
+                  <select
+                    value={draft.mineruModelVersion}
+                    onChange={(event) => patch("mineruModelVersion", event.target.value as "vlm" | "pipeline")}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
+                  >
+                    <option value="vlm">vlm（推荐）</option>
+                    <option value="pipeline">pipeline</option>
+                  </select>
+                </div>
+
                 <SwitchRow
                   title="启用公式识别（enable_formula）"
                   description="尽量将公式转为可读文本而非图片。"

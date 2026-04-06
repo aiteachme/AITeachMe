@@ -34,6 +34,7 @@ async def upload_files(
     parser_provider: str | None = Form(default=None),
     # MinerU：个人 Token 与参数（仅当 parser_provider == 'mineru' 时使用）。
     mineru_api_token: str | None = Form(default=None),
+    mineru_model_version: str | None = Form(default=None),
     mineru_enable_formula: bool | None = Form(default=None),
     mineru_enable_table: bool | None = Form(default=None),
     mineru_is_ocr: bool | None = Form(default=None),
@@ -50,6 +51,7 @@ async def upload_files(
         if parser_provider == "mineru":
             parse_request_metadata["mineru"] = {
                 "api_token": mineru_api_token,
+                "model_version": mineru_model_version,
                 "enable_formula": mineru_enable_formula,
                 "enable_table": mineru_enable_table,
                 "is_ocr": mineru_is_ocr,

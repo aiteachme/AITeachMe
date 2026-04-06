@@ -3,6 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 export type ParserProvider = "docling" | "unstructured" | "mineru";
 export type ParserMode = "balanced" | "quality" | "speed";
 export type OcrProvider = "none" | "tesseract" | "azure-document-intelligence";
+export type MinerUModelVersion = "vlm" | "pipeline";
 
 export interface AppSettings {
   apiUrl: string;
@@ -23,6 +24,8 @@ export interface AppSettings {
   mineruEnableTable: boolean;
   /** MinerU: 是否开启 OCR（通常用于图片型文档/扫描件）。 */
   mineruIsOcr: boolean;
+  /** MinerU: 模型版本（对应请求中的 model_version）。 */
+  mineruModelVersion: MinerUModelVersion;
   parserMode: ParserMode;
   ocrProvider: OcrProvider;
   parserChunkSize: number;
@@ -62,6 +65,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mineruEnableFormula: true,
   mineruEnableTable: true,
   mineruIsOcr: false,
+  mineruModelVersion: "vlm",
   parserMode: "balanced",
   ocrProvider: "none",
   parserChunkSize: 1200,
@@ -134,6 +138,13 @@ function normalizeOcrProvider(value: unknown): OcrProvider {
   return "none";
 }
 
+function normalizeMinerUModelVersion(value: unknown): MinerUModelVersion {
+  if (value === "pipeline") {
+    return "pipeline";
+  }
+  return "vlm";
+}
+
 function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
   return {
@@ -158,6 +169,7 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
         : DEFAULT_SETTINGS.mineruEnableTable,
     mineruIsOcr:
       typeof merged.mineruIsOcr === "boolean" ? merged.mineruIsOcr : DEFAULT_SETTINGS.mineruIsOcr,
+    mineruModelVersion: normalizeMinerUModelVersion(merged.mineruModelVersion),
     parserMode: normalizeParserMode(merged.parserMode),
     ocrProvider: normalizeOcrProvider(merged.ocrProvider),
     parserChunkSize: Math.round(clampNumber(Number(merged.parserChunkSize), 256, 4096)),

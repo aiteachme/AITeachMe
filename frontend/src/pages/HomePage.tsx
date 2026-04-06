@@ -38,6 +38,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
+import { formatMinerUErrorForUser } from "../lib/mineruErrors";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { getStoredAppSettings } from "../hooks/useSettings";
 
@@ -67,6 +68,7 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     }
     formData.append("parser_provider", "mineru");
     formData.append("mineru_api_token", token);
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
     formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
     formData.append("mineru_enable_table", String(settings.mineruEnableTable));
     formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
@@ -632,6 +634,13 @@ function RenameModal({
 
 function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDelete: () => void; isDeleting: boolean }) {
   const meta = getFileStatusMeta(file);
+  const failureReason = useMemo(() => {
+    if (file.status !== "failed" || !file.error_message) return null;
+    const mapped = formatMinerUErrorForUser(file.error_message);
+    if (mapped) return mapped;
+    if (/mineru/i.test(file.error_message)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
+    return file.error_message;
+  }, [file.error_message, file.status]);
   return (
     <motion.div
       layout
@@ -657,6 +666,11 @@ function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDele
           <span>{formatFileSize(file.file_size_bytes)}</span>
           {file.estimated_pages != null && (<><span>·</span><span>{file.estimated_pages} 页</span></>)}
         </div>
+        {failureReason ? (
+          <p className="mt-1 truncate text-xs text-red-600" title={failureReason}>
+            失败原因：{failureReason}
+          </p>
+        ) : null}
       </div>
       <button
         type="button"

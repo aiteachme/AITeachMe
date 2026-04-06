@@ -363,6 +363,7 @@ async def run_parse_file_workflow(
     try:
         requested_parser_provider: str | None = None
         mineru_token: str | None = None
+        mineru_model_version: str = "vlm"
         mineru_enable_formula: bool = True
         mineru_enable_table: bool = True
         mineru_is_ocr: bool = False
@@ -426,6 +427,12 @@ async def run_parse_file_workflow(
                 if isinstance(mineru_block, dict):
                     token_value = mineru_block.get("api_token")
                     mineru_token = str(token_value).strip() if token_value else None
+
+                    model_version_value = mineru_block.get("model_version")
+                    if isinstance(model_version_value, str):
+                        candidate = model_version_value.strip().lower()
+                        if candidate in {"vlm", "pipeline"}:
+                            mineru_model_version = candidate
 
                     # FastAPI Form(bool) may arrive as bool already; keep conservative parsing.
                     if isinstance(mineru_block.get("enable_formula"), bool):
@@ -613,6 +620,7 @@ async def run_parse_file_workflow(
                     file_path=file_path,
                     options=MinerURequestOptions(
                         api_token=mineru_token or "",
+                        model_version=mineru_model_version,
                         enable_formula=mineru_enable_formula,
                         enable_table=mineru_enable_table,
                         is_ocr=mineru_is_ocr,
@@ -695,6 +703,7 @@ async def run_parse_file_workflow(
             "provider_failure_reason": None,
             "requested_parser_provider": requested_parser_provider,
             "mineru": {
+                "model_version": mineru_model_version,
                 "enable_formula": mineru_enable_formula,
                 "enable_table": mineru_enable_table,
                 "is_ocr": mineru_is_ocr,

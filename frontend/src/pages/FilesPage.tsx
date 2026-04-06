@@ -38,6 +38,7 @@ import { Modal } from "../components/ui/Modal";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
+import { formatMinerUErrorForUser } from "../lib/mineruErrors";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { useToast } from "../components/ui/Toast";
@@ -72,6 +73,7 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
     }
     formData.append("parser_provider", "mineru");
     formData.append("mineru_api_token", token);
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
     formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
     formData.append("mineru_enable_table", String(settings.mineruEnableTable));
     formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
@@ -195,6 +197,13 @@ function getParserSummary(file: FileRecord): string {
   return "文件已进入自动解析流程，系统会根据格式选择合适的解析链路并持续更新结果。";
 }
 
+function formatFailureReasonForUser(raw: string): string {
+  const mapped = formatMinerUErrorForUser(raw);
+  if (mapped) return mapped;
+  if (/mineru/i.test(raw)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
+  return raw;
+}
+
 /* ── 页面外壳 ── */
 
 function PageWrapper({
@@ -287,6 +296,11 @@ function FileCard({
             </>
           )}
         </div>
+        {file.status === "failed" && file.error_message ? (
+          <p className="mt-1 truncate text-xs text-red-600" title={formatFailureReasonForUser(file.error_message)}>
+            失败原因：{formatFailureReasonForUser(file.error_message)}
+          </p>
+        ) : null}
       </div>
 
       {/* 删除按钮 */}
@@ -751,8 +765,10 @@ export function FilesPage() {
 
                   {selectedFile.error_message ? (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      <p className="font-medium">错误信息</p>
-                      <p className="mt-1 leading-6">{selectedFile.error_message}</p>
+                      <p className="font-medium">错误说明</p>
+                      <p className="mt-1 leading-6">{formatFailureReasonForUser(selectedFile.error_message)}</p>
+                      <p className="mt-3 text-xs font-medium tracking-[0.12em] text-rose-500">原始报错</p>
+                      <p className="mt-1 break-words text-xs leading-6 text-rose-600">{selectedFile.error_message}</p>
                     </div>
                   ) : null}
 

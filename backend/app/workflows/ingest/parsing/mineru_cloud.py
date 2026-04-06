@@ -189,7 +189,9 @@ def _request_batch_upload_url(
         raise RuntimeError(f"MinerU 返回非 JSON: {snippet}") from exc
 
     if decoded.get("code") != 0:
-        raise RuntimeError(f"MinerU 申请上传链接失败: {decoded.get('msg')}")
+        err_code = decoded.get("code")
+        err_msg = decoded.get("msg")
+        raise RuntimeError(f"MinerU 申请上传链接失败: {err_code}; {err_msg}")
 
     data = decoded.get("data") or {}
     batch_id = data.get("batch_id")
@@ -246,7 +248,9 @@ def _poll_until_done(
             raise RuntimeError(f"MinerU 轮询返回非 JSON: {snippet}") from exc
 
         if decoded.get("code") != 0:
-            raise RuntimeError(f"MinerU 轮询失败: {decoded.get('msg')}")
+            err_code = decoded.get("code")
+            err_msg = decoded.get("msg")
+            raise RuntimeError(f"MinerU 轮询失败: {err_code}; {err_msg}")
 
         data = decoded.get("data") or {}
         extract_results = data.get("extract_result") or []

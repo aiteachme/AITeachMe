@@ -466,6 +466,7 @@ async function uploadSampleFiles(
     }
     formData.append("parser_provider", "mineru");
     formData.append("mineru_api_token", token);
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
     formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
     formData.append("mineru_enable_table", String(settings.mineruEnableTable));
     formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
