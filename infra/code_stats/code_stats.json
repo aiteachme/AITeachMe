@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T11:37:27.749365",
-  "total_commits_analyzed": 432,
+  "generated_at": "2026-04-07T13:52:15.032910",
+  "total_commits_analyzed": 435,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3457,6 +3457,30 @@
       "code_lines": 89532,
       "other_lines": 28387,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "e66ff72",
+      "total_lines": 117919,
+      "code_lines": 89532,
+      "other_lines": 28387,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "fc73ba5",
+      "total_lines": 117249,
+      "code_lines": 88997,
+      "other_lines": 28252,
+      "message": "chore: 重命名docs为docgen，独立优化docgen流程"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "326d06e",
+      "total_lines": 117850,
+      "code_lines": 89475,
+      "other_lines": 28375,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
