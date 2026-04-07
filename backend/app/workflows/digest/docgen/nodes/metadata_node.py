@@ -1,4 +1,4 @@
-"""Extract chapter metadata for docs lane output."""
+﻿"""Extract chapter metadata for docgen lane output."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.writer_service import (
+from app.workflows.digest.docgen.services.writer_service import (
     extract_metadata,
     extract_metadata_rule_based,
 )
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 
@@ -64,3 +64,6 @@ def build_extract_metadata_node(*, context: WorkflowContext, strategy: DocGenExe
         }
 
     return extract_metadata_node
+
+
+

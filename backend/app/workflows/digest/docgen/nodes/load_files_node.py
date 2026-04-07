@@ -1,4 +1,4 @@
-"""Load docs lane inputs — standalone or from unified build session."""
+﻿"""Load docgen lane inputs 鈥?standalone or from unified build session."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 
@@ -51,7 +51,7 @@ def build_load_files_node(*, context: WorkflowContext, strategy: DocGenExecution
                 )
 
         # ------------------------------------------------------------------
-        # 2. Standalone mode — prepare shared inputs directly
+        # 2. Standalone mode 鈥?prepare shared inputs directly
         # ------------------------------------------------------------------
         if shared_inputs is None:
             # Check if already passed via state (e.g. from runtime preparation)
@@ -63,7 +63,7 @@ def build_load_files_node(*, context: WorkflowContext, strategy: DocGenExecution
             subject = state["subject"]
             file_ids = state.get("file_ids", [])
             if not file_ids:
-                return {"error": "No file_ids provided for standalone docs lane."}
+                return {"error": "No file_ids provided for standalone docgen lane."}
             shared_inputs = await prepare_shared_inputs(
                 subject,
                 file_ids,
@@ -71,7 +71,7 @@ def build_load_files_node(*, context: WorkflowContext, strategy: DocGenExecution
             )
 
         if not shared_inputs.source_packets:
-            return {"error": "No source packets found — nothing to process."}
+            return {"error": "No source packets found 鈥?nothing to process."}
 
         # ------------------------------------------------------------------
         # 3. Build raw chunks from shared inputs
@@ -100,3 +100,5 @@ def build_load_files_node(*, context: WorkflowContext, strategy: DocGenExecution
         }
 
     return load_files_node
+
+

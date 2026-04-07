@@ -1,4 +1,4 @@
-"""Finalize knowledge docs — stage or publish depending on mode."""
+﻿"""Finalize knowledge docs 鈥?stage or publish depending on mode."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ from time import perf_counter
 
 import structlog
 
-from app.workflows.digest.docs.publish import (
+from app.workflows.digest.docgen.publish import (
     publish_staged_knowledge_docs,
     stage_knowledge_docs,
 )
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docgen.state import DocGenState
 
 logger = structlog.get_logger()
 
@@ -26,17 +26,17 @@ def _is_standalone_mode(state: DocGenState) -> bool:
         from app.workflows.digest.unified.session import get_unified_build_session
 
         get_unified_build_session(build_session_id)
-        return False  # session exists → unified mode
+        return False  # session exists 鈫?unified mode
     except (KeyError, ImportError):
-        return True  # no session → standalone mode
+        return True  # no session 鈫?standalone mode
 
 
 def build_finalize_assemble_node(*, context: WorkflowContext):
     """Build the final staging / publishing node for docs outputs.
 
-    * **unified mode** — only *stage* docs; the unified graph will publish
+    * **unified mode** 鈥?only *stage* docs; the unified graph will publish
       them in a coordinated ``publish_outputs`` step later.
-    * **standalone mode** — directly *publish* docs so the pipeline is
+    * **standalone mode** 鈥?directly *publish* docs so the pipeline is
       self-contained.
     """
 
@@ -51,7 +51,7 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
         standalone = _is_standalone_mode(state)
 
         if not chapter_metadatas:
-            return {"error": "没有章节数据，无法组装。"}
+            return {"error": "娌℃湁绔犺妭鏁版嵁锛屾棤娉曠粍瑁呫€?}
 
         sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
         node_logger.info(
@@ -70,7 +70,7 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
         doc_ids: list[int] = []
 
         if standalone:
-            # Standalone mode — publish immediately
+            # Standalone mode 鈥?publish immediately
             doc_ids = publish_staged_knowledge_docs(
                 subject=subject,
                 chapter_metadatas=sorted_chapters,
@@ -103,3 +103,4 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
         }
 
     return finalize_assemble_node
+

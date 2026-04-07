@@ -1,4 +1,4 @@
-"""Models for unified digest coordination."""
+﻿"""Models for unified digest coordination."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ChapterPrior(BaseModel):
-    """Top-down chapter prior shared from docs lane to graph lane."""
+    """Top-down chapter prior shared from docgen lane to graph lane."""
 
     chapter_index: int
     title: str
@@ -22,7 +22,7 @@ class ChapterPriors(BaseModel):
 
 
 class TopicAnchor(BaseModel):
-    """Bottom-up topic anchor shared from graph lane to docs lane."""
+    """Bottom-up topic anchor shared from graph lane to docgen lane."""
 
     topic_name: str
     node_type: str = "Topic"
@@ -126,3 +126,4 @@ class MaterializedSections(BaseModel):
     chunk_ids: list[int] = Field(default_factory=list)
     chunk_uid_to_chunk_id: dict[str, int] = Field(default_factory=dict)
     chunk_id_to_chunk_uid: dict[int, str] = Field(default_factory=dict)
+

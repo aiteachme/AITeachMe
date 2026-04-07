@@ -1,12 +1,12 @@
-"""Top-level LangGraph for unified digest builds.
+﻿"""Top-level LangGraph for unified digest builds.
 
 The unified build orchestrates three independent lanes:
 
-1. **docs lane** — raw_markdowns → knowledge_markdowns (self-contained)
-2. **kg lane** — raw_markdowns → knowledge graph (self-contained)
-3. **curriculum lane** — knowledge graph → curriculum tree (depends on KG only)
+1. **docgen lane** 鈥?raw_markdowns 鈫?knowledge_markdowns (self-contained)
+2. **kg lane** 鈥?raw_markdowns 鈫?knowledge graph (self-contained)
+3. **curriculum lane** 鈥?knowledge graph 鈫?curriculum tree (depends on KG only)
 
-The docs lane and KG lane run **in parallel** but have **no cross-dependencies**.
+The docgen lane and KG lane run **in parallel** but have **no cross-dependencies**.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult
-from app.workflows.digest.docs.publish import (
+from app.workflows.digest.docgen.publish import (
     publish_staged_knowledge_docs,
 )
 from app.workflows.digest.runtime import (
@@ -44,11 +44,11 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the unified digest graph.
 
     Flow:
-        prepare_shared → run_parallel_lanes → derive_curriculum → publish_outputs → cleanup
-                                                                     ↘ fail
+        prepare_shared 鈫?run_parallel_lanes 鈫?derive_curriculum 鈫?publish_outputs 鈫?cleanup
+                                                                     鈫?fail
     The docs and KG lanes run in parallel without cross-dependencies.
     After both finish, curriculum is derived from KG only.
-    publish_outputs publishes docs from the docs lane as-is (no overwrite).
+    publish_outputs publishes docs from the docgen lane as-is (no overwrite).
     """
 
     workflow = StateGraph(UnifiedDigestState)
@@ -175,7 +175,7 @@ def route_after_parallel_lanes(state: UnifiedDigestState) -> str:
         return "fail"
     kg_state = state.get("kg_state")
     if not _graph_is_ready(kg_state):
-        # KG not ready — skip curriculum, but still publish docs
+        # KG not ready 鈥?skip curriculum, but still publish docs
         return "publish_only"
     return "continue"
 
@@ -275,7 +275,7 @@ def build_prepare_shared_node(*, context: WorkflowContext):
 
 
 def build_parallel_lanes_node(*, context: WorkflowContext):
-    """Run docs and KG lanes concurrently — no cross-dependencies."""
+    """Run docs and KG lanes concurrently 鈥?no cross-dependencies."""
 
     async def parallel_lanes_node(state: UnifiedDigestState) -> UnifiedDigestState:
         logger = context.get_logger().bind(node="run_parallel_lanes")
@@ -295,7 +295,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             docgen_max_parallel_chapters=settings.docgen_max_parallel_chapters,
         )
 
-        # ----- docs lane (independent) -----
+        # ----- docgen lane (independent) -----
         async def run_doc_lane() -> tuple[WorkflowResult[dict], int]:
             started_at = perf_counter()
             result = await run_docgen_workflow(
@@ -328,7 +328,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             run_graph_lane(),
         )
 
-        # Docs and KG are independent — each can succeed/fail independently
+        # Docs and KG are independent 鈥?each can succeed/fail independently
         doc_state: dict = {}
         kg_state: dict = {}
         errors: list[str] = []
@@ -417,7 +417,7 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
             build_session_id=state.get("build_session_id"),
         )
         if curriculum_result.failed:
-            # Curriculum failure is non-fatal — docs are already published
+            # Curriculum failure is non-fatal 鈥?docs are already published
             logger.warning(
                 "unified_curriculum_failed_non_fatal",
                 error=curriculum_result.error.detail,
@@ -446,9 +446,9 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
 
 
 def build_publish_outputs_node(*, context: WorkflowContext):
-    """Publish docs from the docs lane output.
+    """Publish docs from the docgen lane output.
 
-    The docs lane produces its own chapter content — this node publishes it
+    The docgen lane produces its own chapter content 鈥?this node publishes it
     using the curriculum version number if available, **without overwriting**
     the docs content.
     """
@@ -461,7 +461,7 @@ def build_publish_outputs_node(*, context: WorkflowContext):
 
         chapter_metadatas = list(doc_state.get("chapter_metadatas", []))
         if not chapter_metadatas:
-            # Docs lane may have failed — not a fatal error if KG succeeded
+            # Docgen lane may have failed 鈥?not a fatal error if KG succeeded
             logger.warning("unified_publish_no_docs_to_publish")
             return state
 
@@ -538,3 +538,6 @@ def build_fail_node(*, context: WorkflowContext):
 
 def _new_runtime_job_id() -> int:
     return (uuid4().int % 2_000_000_000) + 1
+
+
+

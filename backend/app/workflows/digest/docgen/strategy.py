@@ -1,4 +1,4 @@
-"""DocGen 执行策略。"""
+﻿"""DocGen 鎵ц绛栫暐銆?""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import asyncio
 from dataclasses import dataclass, field
 
 from app.shared.infra.config import get_settings
-from app.workflows.digest.docs.services.cleanse_service import analyze_cleanliness
-from app.workflows.digest.docs.services.writer_service import analyze_chapter_structure
+from app.workflows.digest.docgen.services.cleanse_service import analyze_cleanliness
+from app.workflows.digest.docgen.services.writer_service import analyze_chapter_structure
 
 
 @dataclass(slots=True)
 class CleanseDecision:
-    """单个文本块的清洗决策。"""
+    """鍗曚釜鏂囨湰鍧楃殑娓呮礂鍐崇瓥銆?""
 
     use_llm: bool
     reason: str
@@ -36,7 +36,7 @@ class ReviewExecutionPlan:
 
 @dataclass(slots=True)
 class DocGenExecutionStrategy:
-    """DocGen 平衡加速执行策略。"""
+    """DocGen 骞宠　鍔犻€熸墽琛岀瓥鐣ャ€?""
 
     max_parallel_chapters: int
     io_parallelism: int
@@ -68,7 +68,7 @@ class DocGenExecutionStrategy:
         )
 
     def decide_cleanse(self, *, source_filename: str, content: str) -> CleanseDecision:
-        """判断当前文本块是否需要 LLM 自愈。"""
+        """鍒ゆ柇褰撳墠鏂囨湰鍧楁槸鍚﹂渶瑕?LLM 鑷剤銆?""
 
         analysis = analyze_cleanliness(source_filename=source_filename, content=content)
         if analysis["force_llm"]:
@@ -138,3 +138,4 @@ __all__ = [
     "OutlineExecutionPlan",
     "ReviewExecutionPlan",
 ]
+

@@ -1,4 +1,4 @@
-"""Typed state for the docs lane."""
+﻿"""Typed state for the docgen lane."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Annotated, Any, TypedDict
 
 
 class DocGenState(TypedDict, total=False):
-    """State carried by the docs generation graph."""
+    """State carried by the docgen generation graph."""
 
     subject: str
     file_ids: list[int]
@@ -45,3 +45,5 @@ class DocGenState(TypedDict, total=False):
     timing_summary: dict[str, Any]
     token_summary: dict[str, Any]
     error: str | None
+
+

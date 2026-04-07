@@ -1,4 +1,4 @@
-"""Map local outline candidates from cleaned chunks."""
+﻿"""Map local outline candidates from cleaned chunks."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.outline_service import (
+from app.workflows.digest.docgen.services.outline_service import (
     build_chunk_preview,
     extract_headers,
     infer_outline_candidates,
 )
-from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docgen.state import DocGenState
 
 logger = structlog.get_logger()
 
@@ -63,3 +63,4 @@ def build_outline_map_node(*, context: WorkflowContext):
         }
 
     return outline_map_node
+

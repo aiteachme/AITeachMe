@@ -1,4 +1,4 @@
-"""Draft one chapter in the docs lane."""
+﻿"""Draft one chapter in the docgen lane."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ import structlog
 
 from app.utils.path_helpers import build_docgen_intermediate_latest_dir, build_knowledge_doc_build_path
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.writer_service import (
+from app.workflows.digest.docgen.services.writer_service import (
     build_global_outline_summary,
     write_chapter,
 )
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 from app.workflows.digest.shared.models import AssetItem, SharedInputs
 
 logger = structlog.get_logger()
@@ -181,3 +181,6 @@ def build_image_hints(*, shared_inputs: SharedInputs | None, chapter: dict) -> t
         suffix = f" page {asset.page_number}" if asset.page_number is not None else ""
         lines.append(f"- {filename} ({asset.asset_type}{suffix})")
     return "\n".join(lines) + "\n", len(related_assets)
+
+
+

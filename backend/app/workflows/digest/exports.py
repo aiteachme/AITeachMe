@@ -1,4 +1,4 @@
-"""Workflow graph exports for digest workflows."""
+﻿"""Workflow graph exports for digest workflows."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ DOCGEN_PROMPTS = {
 
 
 def _build_docgen_graph_for_export():
-    """Wrap the docs graph with a minimal export context."""
+    """Wrap the docgen graph with a minimal export context."""
 
     ctx = WorkflowContext(
         workflow_name="digest.docgen",
@@ -57,7 +57,7 @@ WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="digest_unified",
         title="Digest Unified Workflow",
-        description="Shared prepare, docs lane, graph lane, consistency, repair, and curriculum.",
+        description="Shared prepare, docgen lane, graph lane, consistency, repair, and curriculum.",
         build_graph=_build_unified_graph_for_export,
     ),
     WorkflowGraphExport(
@@ -82,3 +82,4 @@ WORKFLOW_EXPORTS = (
         prompts=DOCGEN_PROMPTS,
     ),
 )
+

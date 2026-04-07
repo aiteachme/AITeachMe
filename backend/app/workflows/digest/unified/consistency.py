@@ -1,4 +1,4 @@
-"""Consistency checking and bounded repair for unified digest builds."""
+﻿"""Consistency checking and bounded repair for unified digest builds."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 
 import structlog
 
-from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.unified.models import (
     CoverageReport,
@@ -200,3 +200,4 @@ def _collect_chapter_terms(chapter: dict) -> list[str]:
 
 def _tokenize(text: str) -> list[str]:
     return [match.group(0) for match in TOKEN_PATTERN.finditer(text)]
+

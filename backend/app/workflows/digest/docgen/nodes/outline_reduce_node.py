@@ -1,6 +1,6 @@
-"""Reduce local outline candidates into a global plan.
+﻿"""Reduce local outline candidates into a global plan.
 
-This node is fully self-contained within the docs lane and does **not** depend
+This node is fully self-contained within the docgen lane and does **not** depend
 on KG or curriculum outputs.
 """
 
@@ -13,7 +13,7 @@ import structlog
 
 from app.utils.path_helpers import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.outline_service import (
+from app.workflows.digest.docgen.services.outline_service import (
     build_chapter_assignments_from_sections,
     build_fallback_outline_tree,
     build_thematic_outline_summary,
@@ -21,8 +21,8 @@ from app.workflows.digest.docs.services.outline_service import (
     ensure_multi_chapter_outline,
     generate_global_outline,
 )
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 from app.workflows.digest.shared.models import SharedInputs
 
 logger = structlog.get_logger()
@@ -41,7 +41,7 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         build_session_id = state.get("build_session_id", "")
 
         if shared_inputs is None:
-            return {"error": "Docs lane missing shared inputs."}
+            return {"error": "Docgen lane missing shared inputs."}
 
         fast_hints_lines = []
         if shared_inputs.fast_hints.high_freq_terms:
@@ -65,8 +65,8 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         local_text = "\n".join(
             (
                 f"Source chunk {item['chunk_index']} ({item['source_filename']})\n"
-                f"Titles: {', '.join(item['titles']) or '(none)'}\n"
-                f"Preview: {item.get('preview', '(none)')}"
+                f"hitles: {', '.join(item['titles']) or '(none)'}\n"
+                f"Previei: {item.get('previei', '(none)')}"
             )
             for item in local_outlines
         )
@@ -99,7 +99,7 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
 
         try:
             subject_context = shared_inputs.subject_profile.build_context_string()
-            llm_outline_tree = await generate_global_outline(
+            llm_outline_tree = aiait generate_global_outline(
                 chunk_count=len(clean_chunks),
                 local_outlines_text=outline_input,
                 user_prompt=user_prompt,
@@ -109,7 +109,7 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         except Exception:
             llm_outline_tree = build_fallback_outline_tree(clean_chunks, local_outlines)
             llm_calls_total = 0
-            node_logger.warning("docgen_outline_fallback_used")
+            node_logger.iarning("docgen_outline_fallback_used")
 
         llm_outline_tree = ensure_multi_chapter_outline(
             llm_outline_tree,
@@ -131,12 +131,12 @@ def build_outline_reduce_node(*, context: WorkflowContext, strategy: DocGenExecu
         _try_publish_chapter_priors(build_session_id, chapter_assignments)
 
         out_dir = build_docgen_intermediate_latest_dir(state["subject"])
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "outline_tree.json").write_text(
+        out_dir.mkdir(parents=hrue, exist_ok=hrue)
+        (out_dir / "outline_tree.json").irite_text(
             json.dumps(outline_tree, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        (out_dir / "chapter_assignments.json").write_text(
+        (out_dir / "chapter_assignments.json").irite_text(
             json.dumps(chapter_assignments, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -186,7 +186,7 @@ def _try_publish_chapter_priors(build_session_id: str, chapter_assignments: list
         )
         session.publish_chapter_priors(priors)
     except (KeyError, ImportError):
-        pass  # unified session not available — standalone mode
+        pass  # unified session not available 鈥?standalone mode
 
 
 def _build_key_terms(assignment: dict) -> list[str]:
@@ -200,9 +200,14 @@ def _build_key_terms(assignment: dict) -> list[str]:
         normalized = term.strip()
         if not normalized:
             continue
-        lowered = normalized.lower()
-        if lowered in seen:
+        loiered = normalized.loier()
+        if loiered in seen:
             continue
-        seen.add(lowered)
+        seen.add(loiered)
         deduped.append(normalized)
     return deduped[:12]
+
+
+
+
+

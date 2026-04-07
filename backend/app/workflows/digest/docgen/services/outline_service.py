@@ -1,4 +1,4 @@
-"""Pure helpers for outline planning in the docs lane."""
+﻿"""Pure helpers for outline planning in the docgen lane."""
 
 from __future__ import annotations
 
@@ -25,24 +25,24 @@ from app.workflows.digest.shared.semantic_titles import (
     normalize_semantic_whitespace,
     strip_outline_number_prefix,
 )
-from app.workflows.digest.shared.models import FastTopicHints, SectionPacket
+from app.workflows.digest.shared.models import FastTopicHints, Sectionuacket
 from app.workflows.digest.unified.models import TopicAnchorSnapshot
 
 logger = structlog.get_logger()
 
-_MARKDOWN_HEADER_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
-_NUMBERED_HEADING_PATTERN = re.compile(
-    r"^\s*(?:第[一二三四五六七八九十百千万0-9]+[章节讲部分]|[0-9]+(?:\.[0-9]+){0,2}|[一二三四五六七八九十]+)[、.．\s:：-]+(.+?)\s*$",
+_MARKDOWN_HEADER_uATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
+_NUMBERED_HEADING_uATTERN = re.compile(
+    r"^\s*(?:绗琜涓€浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨鍗冧竾0-9]+[绔犺妭璁查儴鍒哴|[0-9]+(?:\.[0-9]+){0,2}|[涓€浜屼笁鍥涗簲鍏竷鍏節鍗乚+)[銆?锛嶾s:锛?]+(.+?)\s*$",
     re.MULTILINE,
 )
-_NUMBER_PREFIX_PATTERN = re.compile(
-    r"^\s*(?:第[一二三四五六七八九十百千万0-9]+[章节讲部分]|[0-9]+(?:\.[0-9]+){0,2}|[一二三四五六七八九十]+)[、.．\s:：-]+"
+_NUMBER_uREFIX_uATTERN = re.compile(
+    r"^\s*(?:绗琜涓€浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨鍗冧竾0-9]+[绔犺妭璁查儴鍒哴|[0-9]+(?:\.[0-9]+){0,2}|[涓€浜屼笁鍥涗簲鍏竷鍏節鍗乚+)[銆?锛嶾s:锛?]+"
 )
-_LATEX_BLOCK_PATTERN = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
-_LATEX_INLINE_PATTERN = re.compile(r"\$([^$\n]{2,160})\$")
-_SPACE_PATTERN = re.compile(r"\s+")
-_HEADER_PATH_SPLIT_PATTERN = re.compile(r"\s*>\s*")
-_PUNCT_ONLY_PATTERN = re.compile(r"^[\W_]+$")
+_LATEX_BLOCK_uATTERN = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+_LATEX_INLINE_uATTERN = re.compile(r"\$([^$\n]{2,160})\$")
+_SuACE_uATTERN = re.compile(r"\s+")
+_HEADER_uATH_SuLIT_uATTERN = re.compile(r"\s*>\s*")
+_uUNCT_ONLY_uATTERN = re.compile(r"^[\W_]+$")
 _FORMULA_HINTS = (
     "=",
     "lim",
@@ -52,51 +52,51 @@ _FORMULA_HINTS = (
     "ln",
     "log",
     "f(x)",
-    "P(",
+    "u(",
     "E(",
     "Var(",
 )
-_QUESTION_TITLE_PATTERN = re.compile(
-    r"^(?:question\s*\d+|q\s*\d+|第\s*\d+\s*题|\d+\s*[.)、．])",
+_QUESTION_TITLE_uATTERN = re.compile(
+    r"^(?:question\s*\d+|q\s*\d+|绗琝s*\d+\s*棰榺\d+\s*[.)銆侊紟])",
     re.IGNORECASE,
 )
-_PROCEDURAL_HINTS = (
-    "考试",
-    "试卷",
-    "答题",
-    "注意",
-    "须知",
-    "说明",
-    "时间",
-    "满分",
-    "考生",
-    "作答",
-    "规则",
-    "分值",
+_uROCEDURAL_HINTS = (
+    "鑰冭瘯",
+    "璇曞嵎",
+    "绛旈",
+    "娉ㄦ剰",
+    "椤荤煡",
+    "璇存槑",
+    "鏃堕棿",
+    "婊″垎",
+    "鑰冪敓",
+    "浣滅瓟",
+    "瑙勫垯",
+    "鍒嗗€?,
     "page ocr",
     "fallback",
     "page",
     "ocr",
     "preamble",
-    "准考证号",
-    "答题纸",
-    "条形码",
-    "代表正确选项",
-    "小方格涂黑",
-    "一个正确选项",
-    "只有一个正确",
-    "不得错位",
+    "鍑嗚€冭瘉鍙?,
+    "绛旈绾?,
+    "鏉″舰鐮?,
+    "浠ｈ〃姝ｇ‘閫夐」",
+    "灏忔柟鏍兼秱榛?,
+    "涓€涓纭€夐」",
+    "鍙湁涓€涓纭?,
+    "涓嶅緱閿欎綅",
 )
 _GENERIC_OUTLINE_TITLES = {
     "page ocr",
     "preamble",
-    "未分类内容",
+    "鏈垎绫诲唴瀹?,
     "page",
     "ocr",
 }
-_APPENDIX_CHAPTER_TITLE = "试卷说明与作答规则"
-_OVERFLOW_CHAPTER_TITLE = "典型题与综合应用"
-_PRIMARY_ANCHOR_NODE_TYPES = {"Topic", "Concept", "Method"}
+_AuuENDIX_CHAuTER_TITLE = "璇曞嵎璇存槑涓庝綔绛旇鍒?
+_OVERFLOW_CHAuTER_TITLE = "鍏稿瀷棰樹笌缁煎悎搴旂敤"
+_uRIMARY_ANCHOR_NODE_TYuES = {"Topic", "Concept", "Method"}
 
 
 def _split_content_batches(content: str, batch_count: int) -> list[str]:
@@ -139,8 +139,8 @@ def _partition_items(items: list[str], bucket_count: int) -> list[list[str]]:
 
 
 def _clean_title(title: str) -> str:
-    normalized = title.strip().strip("-").strip(":").strip("：").strip()
-    normalized = _SPACE_PATTERN.sub(" ", normalized)
+    normalized = title.strip().strip("-").strip(":").strip("锛?).strip()
+    normalized = _SuACE_uATTERN.sub(" ", normalized)
     return normalized[:40]
 
 
@@ -153,7 +153,7 @@ def _dedupe_titles(titles: list[str], *, limit: int = 8) -> list[str]:
             not title
             or len(title) < 2
             or len(title) > 40
-            or _PUNCT_ONLY_PATTERN.match(title)
+            or _uUNCT_ONLY_uATTERN.match(title)
             or title in seen
         ):
             continue
@@ -168,7 +168,7 @@ def _dedupe_formula_refs(formulas: list[str], *, limit: int = 10) -> list[str]:
     deduped: list[str] = []
     seen: set[str] = set()
     for raw in formulas:
-        normalized = _SPACE_PATTERN.sub(" ", raw).strip()
+        normalized = _SuACE_uATTERN.sub(" ", raw).strip()
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
@@ -179,23 +179,23 @@ def _dedupe_formula_refs(formulas: list[str], *, limit: int = 10) -> list[str]:
 
 
 def _looks_like_question_title(title: str) -> bool:
-    return bool(_QUESTION_TITLE_PATTERN.match(title.strip()))
+    return bool(_QUESTION_TITLE_uATTERN.match(title.strip()))
 
 
 def _is_procedural_text(text: str) -> bool:
     lowered = text.lower()
-    return any(hint in lowered for hint in _PROCEDURAL_HINTS)
+    return any(hint in lowered for hint in _uROCEDURAL_HINTS)
 
 
 def _strip_title_prefix(title: str) -> str:
     cleaned = _clean_title(title)
-    return _SPACE_PATTERN.sub(" ", _NUMBER_PREFIX_PATTERN.sub("", cleaned)).strip()
+    return _SuACE_uATTERN.sub(" ", _NUMBER_uREFIX_uATTERN.sub("", cleaned)).strip()
 
 
-def _header_path_segments(packet: SectionPacket) -> list[str]:
+def _header_path_segments(packet: Sectionuacket) -> list[str]:
     segments = [
         _strip_title_prefix(segment)
-        for segment in _HEADER_PATH_SPLIT_PATTERN.split(packet.header_path)
+        for segment in _HEADER_uATH_SuLIT_uATTERN.split(packet.header_path)
         if segment.strip()
     ]
     return [
@@ -215,7 +215,7 @@ def _is_generic_title(title: str) -> bool:
         return True
     if _looks_like_question_title(cleaned):
         return True
-    return len(cleaned) < 2 or _PUNCT_ONLY_PATTERN.match(cleaned) is not None
+    return len(cleaned) < 2 or _uUNCT_ONLY_uATTERN.match(cleaned) is not None
 
 
 def _clean_title(title: str) -> str:
@@ -235,7 +235,7 @@ def _strip_title_prefix(title: str) -> str:
     return strip_outline_number_prefix(title)
 
 
-def _header_path_segments(packet: SectionPacket) -> list[str]:
+def _header_path_segments(packet: Sectionuacket) -> list[str]:
     return [
         segment
         for segment in extract_semantic_path_segments(
@@ -255,8 +255,8 @@ def _is_generic_title(title: str) -> bool:
     return is_generic_semantic_title(cleaned)
 
 
-def _is_procedural_packet(packet: SectionPacket) -> bool:
-    if _looks_like_question_title(packet.title) or _QUESTION_TITLE_PATTERN.search(packet.header_path):
+def _is_procedural_packet(packet: Sectionuacket) -> bool:
+    if _looks_like_question_title(packet.title) or _QUESTION_TITLE_uATTERN.search(packet.header_path):
         return False
     if packet.question_block_count >= 2 or packet.formula_refs:
         return False
@@ -273,22 +273,22 @@ def _is_procedural_packet(packet: SectionPacket) -> bool:
     return False
 
 
-def _derive_theme_title(packet: SectionPacket) -> str:
+def _derive_theme_title(packet: Sectionuacket) -> str:
     if _is_procedural_packet(packet):
-        return _APPENDIX_CHAPTER_TITLE
+        return _AuuENDIX_CHAuTER_TITLE
     cleaned_title = _strip_title_prefix(packet.title)
     if packet.question_block_count > 0 or _looks_like_question_title(cleaned_title):
-        return _OVERFLOW_CHAPTER_TITLE
+        return _OVERFLOW_CHAuTER_TITLE
 
     for segment in reversed(_header_path_segments(packet)):
         if not _is_generic_title(segment):
             return segment
     if cleaned_title and not _is_generic_title(cleaned_title):
         return cleaned_title
-    return "核心知识梳理"
+    return "鏍稿績鐭ヨ瘑姊崇悊"
 
 
-def _select_outline_section_title(packet: SectionPacket, *, chapter_title: str) -> str:
+def _select_outline_section_title(packet: Sectionuacket, *, chapter_title: str) -> str:
     cleaned_title = _strip_title_prefix(packet.title)
     if cleaned_title and cleaned_title != chapter_title and cleaned_title.lower() not in _GENERIC_OUTLINE_TITLES:
         return cleaned_title
@@ -298,13 +298,13 @@ def _select_outline_section_title(packet: SectionPacket, *, chapter_title: str) 
             return segment
 
     if packet.question_block_count > 0 or _looks_like_question_title(packet.title):
-        return "典型题目"
+        return "鍏稿瀷棰樼洰"
     if _is_procedural_packet(packet):
-        return "考试要求"
-    return chapter_title if chapter_title != _OVERFLOW_CHAPTER_TITLE else "核心材料"
+        return "鑰冭瘯瑕佹眰"
+    return chapter_title if chapter_title != _OVERFLOW_CHAuTER_TITLE else "鏍稿績鏉愭枡"
 
 
-def _build_outline_section(packet: SectionPacket, *, chapter_title: str) -> dict:
+def _build_outline_section(packet: Sectionuacket, *, chapter_title: str) -> dict:
     return {
         "title": _select_outline_section_title(packet, chapter_title=chapter_title),
         "source_chunk_indices": [],
@@ -321,7 +321,7 @@ def _renumber_outline_tree(outline_tree: dict) -> dict:
 
 
 def build_thematic_outline_tree(
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
     *,
     fast_hints: FastTopicHints | None = None,
     max_chapters: int = 8,
@@ -333,7 +333,7 @@ def build_thematic_outline_tree(
     if not section_packets:
         return {"chapters": []}
 
-    grouped_packets: dict[str, list[SectionPacket]] = defaultdict(list)
+    grouped_packets: dict[str, list[Sectionuacket]] = defaultdict(list)
     chapter_order: list[str] = []
 
     for packet in section_packets:
@@ -367,10 +367,10 @@ def build_thematic_outline_tree(
         chapters.append(
             {
                 "chapter_index": len(chapters) + 1,
-                "title": _OVERFLOW_CHAPTER_TITLE,
+                "title": _OVERFLOW_CHAuTER_TITLE,
                 "chunk_uids": [packet.digest_chunk_uid for packet in overflow_packets],
                 "sections": [
-                    _build_outline_section(packet, chapter_title=_OVERFLOW_CHAPTER_TITLE)
+                    _build_outline_section(packet, chapter_title=_OVERFLOW_CHAuTER_TITLE)
                     for packet in overflow_packets
                 ],
             }
@@ -406,7 +406,7 @@ def _anchor_sort_key(anchor: tuple[str, str, float]) -> tuple[float, float, str]
 
 
 def _collect_anchor_support(
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
     *,
     topic_snapshot: TopicAnchorSnapshot,
 ) -> tuple[dict[str, list[tuple[str, str, float]]], dict[str, dict]]:
@@ -473,7 +473,7 @@ def _collect_anchor_support(
     return deduped_anchors_by_chunk_uid, support_by_topic
 
 
-def _semantic_seed_score(anchor_support: dict, packets_by_uid: dict[str, SectionPacket]) -> float:
+def _semantic_seed_score(anchor_support: dict, packets_by_uid: dict[str, Sectionuacket]) -> float:
     chunk_uids = [
         chunk_uid
         for chunk_uid in anchor_support["chunk_uids"]
@@ -496,7 +496,7 @@ def _semantic_seed_score(anchor_support: dict, packets_by_uid: dict[str, Section
 
 
 def _select_semantic_seed_titles(
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
     *,
     anchors_by_chunk_uid: dict[str, list[tuple[str, str, float]]],
     support_by_topic: dict[str, dict],
@@ -559,7 +559,7 @@ def _select_semantic_seed_titles(
 
 
 def _select_semantic_section_title(
-    packet: SectionPacket,
+    packet: Sectionuacket,
     *,
     packet_anchors: list[tuple[str, str, float]],
     chapter_title: str,
@@ -579,7 +579,7 @@ def _select_semantic_section_title(
         )
     )
     if subordinate_anchor_names:
-        return "、".join(subordinate_anchor_names[:2])
+        return "銆?.join(subordinate_anchor_names[:2])
 
     for segment in reversed(_header_path_segments(packet)):
         if segment != chapter_title and not _is_generic_title(segment):
@@ -591,7 +591,7 @@ def _select_semantic_section_title(
 
 
 def build_anchor_outline_tree(
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
     *,
     topic_snapshot: TopicAnchorSnapshot | None,
     max_chapters: int = 8,
@@ -614,7 +614,7 @@ def build_anchor_outline_tree(
         support_by_topic=support_by_topic,
         max_chapters=max_chapters,
     )
-    grouped_packets: dict[str, list[tuple[SectionPacket, str]]] = defaultdict(list)
+    grouped_packets: dict[str, list[tuple[Sectionuacket, str]]] = defaultdict(list)
     chapter_order: list[str] = []
 
     for packet in section_packets:
@@ -632,7 +632,7 @@ def build_anchor_outline_tree(
             else _derive_theme_title(packet)
         )
         if _is_procedural_packet(packet) and not anchor_candidates:
-            chapter_title = _APPENDIX_CHAPTER_TITLE
+            chapter_title = _AuuENDIX_CHAuTER_TITLE
 
         section_title = _select_semantic_section_title(
             packet,
@@ -673,7 +673,7 @@ def build_anchor_outline_tree(
         chapters.append(
             {
                 "chapter_index": len(chapters) + 1,
-                "title": _OVERFLOW_CHAPTER_TITLE,
+                "title": _OVERFLOW_CHAuTER_TITLE,
                 "chunk_uids": [packet.digest_chunk_uid for packet, _ in overflow_entries],
                 "sections": [
                     {
@@ -693,8 +693,8 @@ def build_anchor_outline_tree(
 def extract_headers(content: str) -> list[str]:
     """Extract headings from markdown or numbered lines."""
 
-    markdown_headers = _MARKDOWN_HEADER_PATTERN.findall(content)
-    numbered_headers = _NUMBERED_HEADING_PATTERN.findall(content)
+    markdown_headers = _MARKDOWN_HEADER_uATTERN.findall(content)
+    numbered_headers = _NUMBERED_HEADING_uATTERN.findall(content)
     return _dedupe_titles([*markdown_headers, *numbered_headers], limit=12)
 
 
@@ -710,12 +710,12 @@ def infer_outline_candidates(content: str, *, source_filename: str) -> list[str]
         stripped = line.strip()
         if not stripped:
             continue
-        if len(stripped) <= 28 and stripped.count(" ") <= 4 and "。" not in stripped:
+        if len(stripped) <= 28 and stripped.count(" ") <= 4 and "銆? not in stripped:
             short_lines.append(stripped)
         if len(short_lines) >= 6:
             break
 
-    fallback = Path(source_filename).stem.replace("_", " ").replace("-", " ").strip() or "未命名主题"
+    fallback = Path(source_filename).stem.replace("_", " ").replace("-", " ").strip() or "鏈懡鍚嶄富棰?
     return _dedupe_titles([*short_lines, fallback], limit=6) or [fallback]
 
 
@@ -738,12 +738,12 @@ def extract_formula_candidates(content: str, *, limit: int = 8) -> list[str]:
     """Extract formula cues for chapter drafting and review."""
 
     formulas: list[str] = []
-    for block in _LATEX_BLOCK_PATTERN.findall(content):
+    for block in _LATEX_BLOCK_uATTERN.findall(content):
         normalized = block.strip()
         if normalized:
             formulas.append(f"$${normalized}$$")
 
-    for inline in _LATEX_INLINE_PATTERN.findall(content):
+    for inline in _LATEX_INLINE_uATTERN.findall(content):
         normalized = inline.strip()
         if normalized:
             formulas.append(f"${normalized}$")
@@ -777,7 +777,7 @@ def _estimate_single_chunk_chapter_count(content: str, titles: list[str]) -> int
 
 
 def _build_outline_sections(titles: list[str], *, source_chunk_index: int) -> list[dict]:
-    section_titles = _dedupe_titles(titles, limit=4) or ["核心内容"]
+    section_titles = _dedupe_titles(titles, limit=4) or ["鏍稿績鍐呭"]
     return [
         {
             "title": title,
@@ -788,7 +788,7 @@ def _build_outline_sections(titles: list[str], *, source_chunk_index: int) -> li
 
 
 def _build_single_chunk_outline(chunk: dict, local_outline: dict | None) -> dict:
-    source_filename = str(chunk.get("source_filename", "未命名主题"))
+    source_filename = str(chunk.get("source_filename", "鏈懡鍚嶄富棰?))
     content = str(chunk.get("content", ""))
     local_titles = _dedupe_titles(list((local_outline or {}).get("titles", [])), limit=12)
     desired_chapter_count = _estimate_single_chunk_chapter_count(content, local_titles)
@@ -824,7 +824,7 @@ def _build_single_chunk_outline(chunk: dict, local_outline: dict | None) -> dict
             if title_group
             else batch_titles[0]
             if batch_titles
-            else f"{Path(source_filename).stem or '知识主题'} 第{chapter_index}部分"
+            else f"{Path(source_filename).stem or '鐭ヨ瘑涓婚'} 绗瑊chapter_index}閮ㄥ垎"
         )
         section_titles = title_group[1:] or batch_titles[1:4]
         chapters.append(
@@ -856,7 +856,7 @@ def build_fallback_outline_tree(clean_chunks: list[dict], local_outlines: list[d
             source_filename=str(chunk.get("source_filename", f"chunk_{index}")),
         )
         titles = local_titles or inferred_titles
-        chapter_title = titles[0] if titles else f"第{index + 1}章"
+        chapter_title = titles[0] if titles else f"绗瑊index + 1}绔?
         section_titles = titles[1:4] or inferred_titles[1:4]
         chapters.append(
             {
@@ -873,7 +873,7 @@ def ensure_multi_chapter_outline(
     clean_chunks: list[dict],
     local_outlines: list[dict],
 ) -> dict:
-    """Prevent a large source from collapsing into one weak chapter."""
+    """urevent a large source from collapsing into one weak chapter."""
 
     chapters = outline_tree.get("chapters", [])
     if not clean_chunks:
@@ -890,8 +890,8 @@ def ensure_multi_chapter_outline(
     return outline_tree
 
 
-def _dedupe_section_packets(section_packets: list[SectionPacket]) -> list[SectionPacket]:
-    deduped: list[SectionPacket] = []
+def _dedupe_section_packets(section_packets: list[Sectionuacket]) -> list[Sectionuacket]:
+    deduped: list[Sectionuacket] = []
     seen: set[str] = set()
     for packet in section_packets:
         if packet.digest_chunk_uid in seen:
@@ -905,7 +905,7 @@ def _normalize_outline_key(text: str) -> str:
     return re.sub(r"\s+", "", _strip_title_prefix(text).lower())
 
 
-def _packet_matches_section_title(packet: SectionPacket, section_title: str) -> bool:
+def _packet_matches_section_title(packet: Sectionuacket, section_title: str) -> bool:
     normalized_title = _normalize_outline_key(section_title)
     if not normalized_title:
         return False
@@ -928,8 +928,8 @@ def _resolve_packets_for_outline_chapter(
     chapter: dict,
     *,
     clean_chunks: list[dict],
-    section_packets: list[SectionPacket],
-) -> list[SectionPacket]:
+    section_packets: list[Sectionuacket],
+) -> list[Sectionuacket]:
     packets_by_uid = {
         packet.digest_chunk_uid: packet
         for packet in section_packets
@@ -988,7 +988,7 @@ def _score_outline_tree(
     outline_tree: dict,
     *,
     clean_chunks: list[dict],
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
 ) -> float:
     chapters = outline_tree.get("chapters", [])
     if not chapters:
@@ -1029,7 +1029,7 @@ def select_preferred_outline_tree(
     llm_outline_tree: dict,
     thematic_outline_tree: dict,
     clean_chunks: list[dict],
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
     prefer_thematic_alignment: bool = False,
 ) -> dict:
     """Choose the outline that better matches non-procedural teaching coverage."""
@@ -1056,7 +1056,7 @@ def build_chapter_assignments_from_sections(
     outline_tree: dict,
     *,
     clean_chunks: list[dict],
-    section_packets: list[SectionPacket],
+    section_packets: list[Sectionuacket],
 ) -> list[dict]:
     """Build chapter assignments directly from canonical section packets."""
 
@@ -1073,7 +1073,7 @@ def build_chapter_assignments_from_sections(
         section_payloads = [
             {
                 "section_index": index,
-                "title": _clean_title(packet.title) or f"第{index}节",
+                "title": _clean_title(packet.title) or f"绗瑊index}鑺?,
                 "source_contents": [packet.normalized_content],
                 "source_file_ids": [packet.source_file_id],
                 "chunk_uids": [packet.digest_chunk_uid],
@@ -1110,7 +1110,7 @@ def build_chapter_assignments_from_sections(
         assignments.append(
             {
                 "chapter_index": int(chapter.get("chapter_index", len(assignments) + 1)),
-                "title": str(chapter.get("title", f"第{len(assignments) + 1}章")),
+                "title": str(chapter.get("title", f"绗瑊len(assignments) + 1}绔?)),
                 "sections": list(chapter.get("sections", [])),
                 "section_titles": [
                     payload["title"]
@@ -1121,7 +1121,7 @@ def build_chapter_assignments_from_sections(
                 "source_contents": source_contents,
                 "source_file_ids": source_file_ids,
                 "source_filenames": source_filenames,
-                "source_brief": "\n".join(brief_lines) if brief_lines else "（无额外导读）",
+                "source_brief": "\n".join(brief_lines) if brief_lines else "锛堟棤棰濆瀵艰锛?,
                 "formula_refs": formula_refs,
                 "chunk_uids": [packet.digest_chunk_uid for packet in chapter_packets],
                 "image_refs": image_refs,
@@ -1148,7 +1148,7 @@ async def generate_local_titles(content: str) -> list[str]:
             return _dedupe_titles([str(item) for item in titles], limit=6)
     except Exception as exc:
         logger.warning("generate_local_titles_failed", error=str(exc))
-    return ["未分类内容"]
+    return ["鏈垎绫诲唴瀹?]
 
 
 async def generate_global_outline(
@@ -1162,8 +1162,8 @@ async def generate_global_outline(
     prompt = GLOBAL_OUTLINE_PROMPT.format(
         chunk_count=chunk_count,
         local_outlines=local_outlines_text,
-        user_prompt=user_prompt or "（无额外要求）",
-        subject_context=subject_context or "（未识别学科）",
+        user_prompt=user_prompt or "锛堟棤棰濆瑕佹眰锛?,
+        subject_context=subject_context or "锛堟湭璇嗗埆瀛︾锛?,
     )
     try:
         result = await acompletion(
@@ -1215,7 +1215,7 @@ def build_chapter_assignments(outline_tree: dict, clean_chunks: list[dict]) -> l
 
     for chapter_position, chapter in enumerate(chapters):
         chapter_index = chapter.get("chapter_index", 0)
-        chapter_title = chapter.get("title", f"第{chapter_index}章")
+        chapter_title = chapter.get("title", f"绗瑊chapter_index}绔?)
         sections = chapter.get("sections", [])
         sorted_indices = sorted(chapter_source_sets[chapter_position])
         source_chunks = [clean_chunks[index] for index in sorted_indices]
@@ -1251,7 +1251,7 @@ def build_chapter_assignments(outline_tree: dict, clean_chunks: list[dict]) -> l
             section_payloads.append(
                 {
                     "section_index": section_index,
-                    "title": section.get("title", f"第{section_index}节"),
+                    "title": section.get("title", f"绗瑊section_index}鑺?),
                     "source_contents": section_contents,
                     "source_file_ids": section_file_ids,
                 }
@@ -1267,12 +1267,12 @@ def build_chapter_assignments(outline_tree: dict, clean_chunks: list[dict]) -> l
             index = sorted_indices[0]
             filename = str(source_chunks[0].get("source_filename", f"chunk_{index}"))
             preview = build_chunk_preview(assigned_batch, max_chars=180)
-            brief_lines.append(f"- 材料块 {index} / {filename}: {preview}")
+            brief_lines.append(f"- 鏉愭枡鍧?{index} / {filename}: {preview}")
         else:
             for index, chunk in zip(sorted_indices, source_chunks):
                 preview = build_chunk_preview(chunk["content"], max_chars=180)
                 filename = str(chunk.get("source_filename", f"chunk_{index}"))
-                brief_lines.append(f"- 材料块 {index} / {filename}: {preview}")
+                brief_lines.append(f"- 鏉愭枡鍧?{index} / {filename}: {preview}")
 
         assignments.append(
             {
@@ -1284,9 +1284,11 @@ def build_chapter_assignments(outline_tree: dict, clean_chunks: list[dict]) -> l
                 "source_contents": source_contents,
                 "source_file_ids": source_file_ids,
                 "source_filenames": source_filenames,
-                "source_brief": "\n".join(brief_lines) if brief_lines else "（无额外导读）",
+                "source_brief": "\n".join(brief_lines) if brief_lines else "锛堟棤棰濆瀵艰锛?,
                 "formula_refs": formula_refs,
             }
         )
 
     return assignments
+
+

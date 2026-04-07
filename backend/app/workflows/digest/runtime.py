@@ -1,4 +1,4 @@
-"""Runtime entrypoints for digest workflows."""
+﻿"""Runtime entrypoints for digest workflows."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Awaitable, Callable
 
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.events import InProcessEventBus
-from app.workflows.common.result import WorkflowResult, err_result
+from app.workflows.common.result import Workflowuesult, err_result
 from app.workflows.common.runtime import run_state_graph
 from app.workflows.digest.observability import (
     build_curriculum_lane_summary,
@@ -18,12 +18,12 @@ from app.workflows.digest.observability import (
 from app.workflows.digest.events import (
     CurriculumDeriveCompletedEvent,
     CurriculumDeriveFailedEvent,
-    DigestBuildRequestedEvent,
+    DigestBuilduequestedEvent,
     DigestGraphCompletedEvent,
     DigestGraphFailedEvent,
     DocGenCompletedEvent,
     DocGenFailedEvent,
-    DocGenRequestedEvent,
+    DocGenuequestedEvent,
 )
 from app.workflows.digest.graph import (
     build_curriculum_derive_graph,
@@ -48,11 +48,11 @@ async def run_graph_digest_workflow(
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
     trigger_curriculum_after_finalize: bool = True,
-) -> WorkflowResult[KGDigestState]:
-    """Run the graph lane workflow."""
+) -> Workflowuesult[KGDigestState]:
+    """uun the graph lane workflow."""
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(DigestBuildRequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
+    await bus.publish(DigestBuilduequestedEvent(subject=subject, job_id=job_id, file_ids=file_ids))
 
     async def trigger_curriculum_derive(
         *,
@@ -165,8 +165,8 @@ async def run_curriculum_derive_workflow(
     event_bus: InProcessEventBus | None = None,
     impact_set: ImpactSet | None = None,
     build_session_id: str | None = None,
-) -> WorkflowResult[CurriculumDeriveState]:
-    """Run the curriculum derive workflow."""
+) -> Workflowuesult[CurriculumDeriveState]:
+    """uun the curriculum derive workflow."""
 
     bus = event_bus or InProcessEventBus()
     context = WorkflowContext(
@@ -260,11 +260,11 @@ async def run_docgen_workflow(
     requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
-) -> WorkflowResult[DocGenState]:
-    """Run the docs lane workflow."""
+) -> Workflowuesult[DocGenState]:
+    """Run the docgen lane workflow."""
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
+    await bus.publish(DocGenuequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
         workflow_name="digest.docgen",
@@ -353,3 +353,5 @@ __all__ = [
     "run_docgen_workflow",
     "run_graph_digest_workflow",
 ]
+
+

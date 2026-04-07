@@ -1,4 +1,4 @@
-"""Docs lane LangGraph definition."""
+﻿"""Docgen lane LangGraph definition."""
 
 from __future__ import annotations
 
@@ -9,20 +9,20 @@ from langgraph.types import Send
 
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.observability import wrap_digest_node
-from app.workflows.digest.docs.nodes.cleanse_node import build_cleanse_node
-from app.workflows.digest.docs.nodes.draft_node import build_draft_chapter_node
-from app.workflows.digest.docs.nodes.finalize_node import build_finalize_assemble_node
-from app.workflows.digest.docs.nodes.load_files_node import build_load_files_node
-from app.workflows.digest.docs.nodes.metadata_node import build_extract_metadata_node
-from app.workflows.digest.docs.nodes.outline_map_node import build_outline_map_node
-from app.workflows.digest.docs.nodes.outline_reduce_node import build_outline_reduce_node
-from app.workflows.digest.docs.nodes.review_node import build_review_chapter_node
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.nodes.cleanse_node import build_cleanse_node
+from app.workflows.digest.docgen.nodes.draft_node import build_draft_chapter_node
+from app.workflows.digest.docgen.nodes.finalize_node import build_finalize_assemble_node
+from app.workflows.digest.docgen.nodes.load_files_node import build_load_files_node
+from app.workflows.digest.docgen.nodes.metadata_node import build_extract_metadata_node
+from app.workflows.digest.docgen.nodes.outline_map_node import build_outline_map_node
+from app.workflows.digest.docgen.nodes.outline_reduce_node import build_outline_reduce_node
+from app.workflows.digest.docgen.nodes.review_node import build_review_chapter_node
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
-    """Build the docs lane graph."""
+    """Build the docgen lane graph."""
 
     workflow = StateGraph(DocGenState)
     strategy = DocGenExecutionStrategy.from_settings()
@@ -140,7 +140,7 @@ def create_docgen_initial_state(
     requested_at: datetime,
     build_session_id: str | None,
 ) -> DocGenState:
-    """Create initial docs lane state."""
+    """Create initial docgen lane state."""
 
     return {
         "subject": subject,
@@ -280,3 +280,6 @@ def build_collect_reviews_node(*, context: WorkflowContext):
         return {}
 
     return collect_reviews
+
+
+
