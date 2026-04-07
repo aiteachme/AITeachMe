@@ -22,6 +22,7 @@ dependencies = [
     "psycopg[binary]>=3.1.0",
     "pgvector>=0.3.0",
     "boto3>=1.34.0",
+    "requests>=2.32.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,4 +31,3 @@ include = ["app*"]
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
-

@@ -5383,6 +5383,72 @@
             },
             "type": "array",
             "title": "Files"
+          },
+          "parser_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Provider"
+          },
+          "mineru_api_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Api Token"
+          },
+          "mineru_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Model Version"
+          },
+          "mineru_enable_formula": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Enable Formula"
+          },
+          "mineru_enable_table": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Enable Table"
+          },
+          "mineru_is_ocr": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Is Ocr"
           }
         },
         "type": "object",

@@ -96,6 +96,24 @@ export const uploadFilesApiV1SubjectsSubjectFilesUploadPost = async (subject: st
     bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost: BodyUploadFilesApiV1SubjectsSubjectFilesUploadPost, options?: RequestInit): Promise<uploadFilesApiV1SubjectsSubjectFilesUploadPostResponse> => {
     const formData = new FormData();
 bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.files.forEach(value => formData.append(`files`, value));
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.parser_provider !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.parser_provider !== null) {
+ formData.append(`parser_provider`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.parser_provider);
+ }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token !== null) {
+ formData.append(`mineru_api_token`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_api_token);
+ }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version !== null) {
+ formData.append(`mineru_model_version`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_model_version);
+ }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_formula !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_formula !== null) {
+ formData.append(`mineru_enable_formula`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_formula.toString())
+ }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_table !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_table !== null) {
+ formData.append(`mineru_enable_table`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_enable_table.toString())
+ }
+if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_is_ocr !== undefined && bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_is_ocr !== null) {
+ formData.append(`mineru_is_ocr`, bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_is_ocr.toString())
+ }
 
   return orvalApiClient<uploadFilesApiV1SubjectsSubjectFilesUploadPostResponse>(getUploadFilesApiV1SubjectsSubjectFilesUploadPostUrl(subject),
   {      
