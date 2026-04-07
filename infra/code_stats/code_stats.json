@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T07:56:08.277122",
-  "total_commits_analyzed": 428,
+  "generated_at": "2026-04-07T11:37:27.749365",
+  "total_commits_analyzed": 432,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3425,6 +3425,38 @@
       "code_lines": 89054,
       "other_lines": 28264,
       "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "4f7531c",
+      "total_lines": 117798,
+      "code_lines": 89456,
+      "other_lines": 28342,
+      "message": "chore: 收敛 backend Python 版本到 3.11 并补齐 LangGraph 安装"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "4da02af",
+      "total_lines": 117798,
+      "code_lines": 89456,
+      "other_lines": 28342,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "b320cbc",
+      "total_lines": 117318,
+      "code_lines": 89054,
+      "other_lines": 28264,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "5e87b54",
+      "total_lines": 117919,
+      "code_lines": 89532,
+      "other_lines": 28387,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
