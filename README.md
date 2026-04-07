@@ -25,6 +25,24 @@
 - 后端 API 服务 (Render): https://aiteachme.onrender.com/api/health
 
 
+## 启动
+
+```bash
+cd frontend ; npm run dev
+
+cd frontend
+npm run dev
+```
+
+```bash
+cd backend ; uvicorn app.main:app --reload --port 8000
+
+cd backend ; conda activate atm
+uvicorn app.main:app --reload --port 8000
+```
+
+
+
 ## 项目简介
 
 AITeachMe 是一个基于 AI 的个性化学习平台，通过知识图谱、智能诊断和自适应教学技术，为学习者提供精准的学习路径和个性化辅导。
