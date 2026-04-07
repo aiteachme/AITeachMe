@@ -35,7 +35,7 @@ npm run dev
 ```
 
 ```bash
-cd backend ; uvicorn app.main:app --reload --port 8000
+cd backend ; conda activate atm ; uvicorn app.main:app --reload --port 8000
 
 cd backend ; conda activate atm
 uvicorn app.main:app --reload --port 8000

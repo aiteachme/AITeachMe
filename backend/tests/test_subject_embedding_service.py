@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.shared.infra.subject_embeddings import get_legacy_vector_table_name, get_subject_embedding_binding
+from app.shared.infra.subject_settings import get_legacy_vector_table_name, get_subject_embedding_binding
 from app.models import RawFile, RetrievalChunk, Subject, User
 from app.services.subject_embedding_service import (
     RuntimeEmbeddingConfig,

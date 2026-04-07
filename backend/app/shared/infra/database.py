@@ -1,4 +1,4 @@
-﻿"""Database bootstrap and session helpers."""
+"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.shared.infra.config import get_settings
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
-from app.shared.infra.subject_embeddings import (
+from app.shared.infra.subject_settings import (
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
     get_postgres_vector_ref,

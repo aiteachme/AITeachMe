@@ -1,4 +1,4 @@
-﻿"""Repository helpers for retrieval chunks and embeddings."""
+"""Repository helpers for retrieval chunks and embeddings."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.shared.infra.database import (
     quote_sqlite_identifier,
     vector_table_exists,
 )
-from app.shared.infra.subject_embeddings import (
+from app.shared.infra.subject_settings import (
     SubjectEmbeddingMode,
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
