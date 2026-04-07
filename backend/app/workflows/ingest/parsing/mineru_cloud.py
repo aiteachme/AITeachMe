@@ -96,7 +96,9 @@ def parse_file_to_dir(
     """
 
     if not options.api_token.strip():
-        raise RuntimeError("MinerU API Token 为空：请在前端设置中填写 Token。")
+        raise RuntimeError(
+            "MinerU API Token 为空：请在前端设置中填写 Token，或在后端环境变量 MINERU_API_TOKEN 中配置 Token。"
+        )
 
     base = base_url.rstrip("/")
     output_dir.mkdir(parents=True, exist_ok=True)
