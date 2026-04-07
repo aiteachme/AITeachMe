@@ -72,7 +72,7 @@ class DigestTimingReport(BaseModel):
     status: str = "completed"
     elapsed_ms: int = 0
     unified: dict[str, Any] = Field(default_factory=dict)
-    docs: dict[str, Any] = Field(default_factory=dict)
+    docgen: dict[str, Any] = Field(default_factory=dict)
     kg: dict[str, Any] = Field(default_factory=dict)
     curriculum: dict[str, Any] = Field(default_factory=dict)
     llm: DigestTokenSummary = Field(default_factory=DigestTokenSummary)
@@ -166,14 +166,14 @@ def step_slow_items(step_map: Mapping[str, int], *, top_k: int | None = None) ->
     )
 
 
-def build_docs_lane_summary(
+def build_docgen_lane_summary(
     state: Mapping[str, Any],
     *,
     token_summary: DigestTokenSummary,
     status: str | None = None,
     error_message: str | None = None,
 ) -> dict[str, Any]:
-    """Create a docs lane summary payload."""
+    """Create a docgen lane summary payload."""
 
     resolved_status = _resolve_status(state, status=status, error_message=error_message)
     resolved_error = _resolve_error_message(state, error_message=error_message)
@@ -223,9 +223,9 @@ def build_docs_lane_summary(
         "draft_available": bool(str(state.get("merged_markdown", "")).strip()),
         "staged_chapter_count": len(state.get("chapter_metadatas", [])),
         "published_doc_count": len(state.get("doc_ids", [])),
-        "docs_total_tokens": token_summary.total_tokens,
-        "docs_tokens_by_task_type": token_summary.tokens_by_task_type,
-        "docs_tokens_by_model": token_summary.tokens_by_model,
+        "docgen_total_tokens": token_summary.total_tokens,
+        "docgen_tokens_by_task_type": token_summary.tokens_by_task_type,
+        "docgen_tokens_by_model": token_summary.tokens_by_model,
         **_lane_llm_rollup(token_summary),
         "slowest_draft_chapters_top_k": [item.model_dump() for item in draft_items],
         "slowest_review_chapters_top_k": [item.model_dump() for item in review_items],
@@ -342,12 +342,12 @@ def build_unified_timing_report(
         "cleanup": int(final_state.get("cleanup_ms", 0)),
     }
     build_session_id = str(final_state.get("build_session_id", "")) or None
-    docs_token_summary = build_token_summary(build_session_id=build_session_id, lane="docs")
+    docgen_token_summary = build_token_summary(build_session_id=build_session_id, lane="docgen")
     kg_token_summary = build_token_summary(build_session_id=build_session_id, lane="kg")
     curriculum_token_summary = build_token_summary(build_session_id=build_session_id, lane="curriculum")
-    docs_summary = build_docs_lane_summary(
+    docgen_summary = build_docgen_lane_summary(
         doc_state,
-        token_summary=docs_token_summary,
+        token_summary=docgen_token_summary,
         status=_default_lane_status(doc_state, final_status=status),
     )
     kg_summary = build_kg_lane_summary(
@@ -364,15 +364,15 @@ def build_unified_timing_report(
         [
             *_lane_step_items("unified", unified_steps),
             *_lane_step_items(
-                "docs",
+                "docgen",
                 {
-                    "load": docs_summary.get("load_ms", 0),
-                    "cleanse": docs_summary.get("cleanse_ms", 0),
-                    "outline": docs_summary.get("outline_ms", 0),
-                    "draft": docs_summary.get("draft_ms", 0),
-                    "review": docs_summary.get("review_ms", 0),
-                    "metadata": docs_summary.get("metadata_ms", 0),
-                    "finalize": docs_summary.get("finalize_ms", 0),
+                    "load": docgen_summary.get("load_ms", 0),
+                    "cleanse": docgen_summary.get("cleanse_ms", 0),
+                    "outline": docgen_summary.get("outline_ms", 0),
+                    "draft": docgen_summary.get("draft_ms", 0),
+                    "review": docgen_summary.get("review_ms", 0),
+                    "metadata": docgen_summary.get("metadata_ms", 0),
+                    "finalize": docgen_summary.get("finalize_ms", 0),
                 },
             ),
             *_lane_step_items(
@@ -412,7 +412,7 @@ def build_unified_timing_report(
             "publish_ms": unified_steps["publish_outputs"],
             "cleanup_ms": unified_steps["cleanup"],
             "lane_total_tokens": {
-                "docs": docs_token_summary.total_tokens,
+                "docgen": docgen_token_summary.total_tokens,
                 "kg": kg_token_summary.total_tokens,
                 "curriculum": curriculum_token_summary.total_tokens,
                 "unified_repair": int(llm_summary.tokens_by_lane.get("unified_repair", 0)),
@@ -432,7 +432,7 @@ def build_unified_timing_report(
                 "heavy_task_total_tokens": llm_summary.heavy_task_total_tokens,
             },
         },
-        docs=docs_summary,
+        docgen=docgen_summary,
         kg=kg_summary,
         curriculum=curriculum_summary,
         llm=llm_summary,

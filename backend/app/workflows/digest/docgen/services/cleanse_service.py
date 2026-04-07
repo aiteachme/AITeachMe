@@ -1,4 +1,4 @@
-"""Pure helpers for lightweight docs input cleaning."""
+"""Pure helpers for lightweight docgen input cleaning."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 
 _PAGE_NUMBER_PATTERNS = [
     re.compile(r"^\s*-\s*\d+\s*-\s*$", re.MULTILINE),
-    re.compile(r"^\s*第\s*\d+\s*页\s*$", re.MULTILINE),
+    re.compile(r"^\s*\u7b2c\s*\d+\s*\u9875\s*$", re.MULTILINE),
     re.compile(r"^\s*Page\s+\d+\s*$", re.MULTILINE | re.IGNORECASE),
     re.compile(r"^\s*\d+\s*$", re.MULTILINE),
 ]
@@ -23,8 +23,10 @@ _EXCESSIVE_NEWLINES = re.compile(r"\n{3,}")
 _INVISIBLE_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufeff]")
 _MARKDOWN_HEADER_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+\S+", re.MULTILINE)
 _TABLE_LINE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)
+_LIST_PREFIX_PATTERN = re.compile(r"^\d+[.)\u3001]")
+_SENTENCE_ENDINGS = {"\u3002", "\uff01", "\uff1f", ".", "!", "?", ";", "\uff1b", ":"}
 _HEAL_CHUNK_SIZE = 2400
-_MOJIBAKE_HINTS = ("锟", "鈥", "鈩", "銆", "�")
+_MOJIBAKE_HINTS = ("\u951f", "\u9225", "\u9229", "\u9286", "\ufffd")
 
 
 def rule_based_cleanse(text: str) -> str:
@@ -43,7 +45,6 @@ def stitch_sentences(text: str) -> str:
 
     lines = text.split("\n")
     stitched: list[str] = []
-    endings = {"。", "！", "？", ".", "!", "?", ";", "；", ":"}
     for index, line in enumerate(lines):
         current = line.rstrip()
         if not current:
@@ -54,10 +55,10 @@ def stitch_sentences(text: str) -> str:
         if index + 1 < len(lines):
             next_line = lines[index + 1].strip()
             append_space = (
-                current[-1] not in endings
+                current[-1] not in _SENTENCE_ENDINGS
                 and bool(next_line)
                 and not next_line.startswith(("#", "-", "*", ">", "|"))
-                and not re.match(r"^\d+[.)、]", next_line)
+                and not _LIST_PREFIX_PATTERN.match(next_line)
             )
         stitched.append(current + (" " if append_space else ""))
     return "\n".join(stitched).strip()

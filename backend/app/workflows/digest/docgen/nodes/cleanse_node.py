@@ -34,11 +34,12 @@ def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStr
         )
 
         subject = state["subject"]
-        # 鍏变韩灞傚凡缁忓仛浜嗗熀纭€瑙勮寖鍖栵紝杩欓噷鍙仛鏁欏鎬у寮?        pre_healed = []
+        # The shared preparation layer already does baseline cleanup, so this node
+        # only performs lightweight sentence stitching before any optional LLM pass.
+        precleaned_chunks = []
         for chunk in raw_chunks:
-            # 鍙仛鍙ュ瓙鎷兼帴锛堟暀瀛︽€у寮猴級
             cleaned = stitch_sentences(chunk["content"])
-            pre_healed.append({**chunk, "content": cleaned})
+            precleaned_chunks.append({**chunk, "content": cleaned})
 
         async def _heal(chunk: dict) -> dict:
             decision = strategy.decide_cleanse(
@@ -62,7 +63,7 @@ def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStr
                 "llm_calls_skipped": 0,
             }
 
-        clean_chunks = list(await asyncio.gather(*(_heal(chunk) for chunk in pre_healed)))
+        clean_chunks = list(await asyncio.gather(*(_heal(chunk) for chunk in precleaned_chunks)))
         llm_calls_total = sum(int(chunk.get("llm_calls_total", 0)) for chunk in clean_chunks)
         llm_calls_skipped = sum(int(chunk.get("llm_calls_skipped", 0)) for chunk in clean_chunks)
 

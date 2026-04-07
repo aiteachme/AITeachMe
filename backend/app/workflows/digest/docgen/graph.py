@@ -1,4 +1,4 @@
-﻿"""Docgen lane LangGraph definition."""
+"""Docgen lane LangGraph definition."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_load_files_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="load_files",
         ),
     )
@@ -41,7 +41,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_cleanse_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="cleanse",
         ),
     )
@@ -50,7 +50,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_outline_map_node(context=context),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="outline_map",
         ),
     )
@@ -59,7 +59,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_outline_reduce_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="outline_reduce",
         ),
     )
@@ -68,7 +68,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_draft_chapter_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="draft_chapter",
         ),
     )
@@ -77,7 +77,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_collect_drafts_node(context=context),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="collect_drafts",
         ),
     )
@@ -86,7 +86,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_review_chapter_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="review_chapter",
         ),
     )
@@ -95,7 +95,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_collect_reviews_node(context=context),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="collect_reviews",
         ),
     )
@@ -104,7 +104,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_extract_metadata_node(context=context, strategy=strategy),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="extract_metadata",
         ),
     )
@@ -113,7 +113,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         wrap_digest_node(
             build_finalize_assemble_node(context=context),
             workflow_name=context.workflow_name,
-            lane="docs",
+            lane="docgen",
             node_name="finalize_assemble",
         ),
     )
@@ -282,7 +282,7 @@ def build_collect_reviews_node(*, context: WorkflowContext):
     return collect_reviews
 
 def get_langgraph_dev_docgen_graph() -> StateGraph:
-    """Create the docs-lane graph used by ``langgraph dev``."""
+    """Create the docgen-lane graph used by ``langgraph dev``."""
 
     return build_docgen_graph(
         context=create_langgraph_dev_context("digest.docgen.langgraph_dev"),

@@ -1,5 +1,4 @@
-"""试卷判卷工作流：判卷 → 掌握度更新 → 复习调度。
-
+"""Exam grading workflow orchestration.
 Reads DB: ``exam_paper*`` and downstream profile state tables.
 Writes DB: ``exam_paper.status``, graded attempts,
 ``user_knowledge_state`` and ``review_task`` via delegated profile steps.
@@ -33,6 +32,7 @@ def _workflow_logger(state: ExamGradeState) -> structlog.stdlib.BoundLogger:
     return logger.bind(
         exam_paper_id=state["exam_paper_id"],
         job_id=state["job_id"],
+        subject=state.get("subject", ""),
     )
 
 
@@ -45,12 +45,24 @@ def _node_session(session_override: Session | None) -> Generator[Session, None, 
         yield session
 
 
+def _resolve_exam_subject(
+    exam_paper_id: int,
+    *,
+    session_override: Session | None = None,
+) -> str:
+    try:
+        with _node_session(session_override) as session:
+            paper = session.get(ExamPaper, exam_paper_id)
+            return paper.subject if paper is not None else ""
+    except Exception:
+        return ""
+
 async def grade_answers_node(
     state: ExamGradeState,
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """执行判卷，并将 ExamPaper 迁移到 grading。"""
+    """Load the paper, switch it into grading, and persist answer grading."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -87,7 +99,7 @@ async def update_mastery_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """根据判卷结果更新掌握度。"""
+    """Apply mastery updates derived from the graded exam paper."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -109,7 +121,7 @@ async def schedule_reviews_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """根据更新后的状态调度复习任务（并写入 forgetting_due_at）。"""
+    """Schedule follow-up review tasks for the updated knowledge states."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -140,7 +152,7 @@ async def finalize_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """完成判卷流程，回填 score/states_updated/tasks_created。"""
+    """Mark the paper graded and log the final grading summary."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -179,7 +191,7 @@ async def fail_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """失败处理：回滚试卷状态并记录错误。"""
+    """Rollback the paper status when grading fails."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -240,9 +252,11 @@ async def run_exam_grade_workflow(
     job_id: int,
     session: Session | None = None,
 ) -> ExamGradeState:
+    subject = _resolve_exam_subject(exam_paper_id, session_override=session)
     initial_state: ExamGradeState = {
         "exam_paper_id": exam_paper_id,
         "job_id": job_id,
+        "subject": subject,
         "grade_result": None,
         "mastery_result": None,
         "review_tasks": [],
@@ -252,6 +266,7 @@ async def run_exam_grade_workflow(
         workflow_name="examine.exam_grade",
         graph_builder=lambda: build_exam_grade_graph(session=session),
         initial_state=initial_state,
+        subject=subject,
         build_session_id=str(job_id),
         lane="exam_grade",
         extra_metadata={
@@ -262,7 +277,7 @@ async def run_exam_grade_workflow(
 
 
 class ExamGradeWorkflow:
-    """供服务层调用的轻量包装。"""
+    """Thin wrapper around the exam grading workflow."""
 
     @staticmethod
     def build_graph(*, session: Session | None = None) -> StateGraph:

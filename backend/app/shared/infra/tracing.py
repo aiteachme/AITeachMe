@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from collections import defaultdict
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -35,11 +37,41 @@ class LLMTraceContext:
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
 
 
+def _langsmith_api_key_present() -> bool:
+    for env_key in ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"):
+        if os.getenv(env_key, "").strip():
+            return True
+    return False
+
+
+def _sanitize_langsmith_metadata_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _sanitize_langsmith_metadata_value(item)
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [
+            _sanitize_langsmith_metadata_value(item)
+            for item in value
+            if item not in (None, "", [], {})
+        ]
+    if isinstance(value, str):
+        if value.lower().startswith("data:"):
+            return "[redacted:data-url]"
+        limit = max(32, int(get_settings().langsmith_max_text_chars))
+        if len(value) <= limit:
+            return value
+        return f"{value[: max(1, limit - 3)]}..."
+    return value
+
+
 def langsmith_tracing_enabled() -> bool:
     """Whether LangSmith tracing should be enabled for the current process."""
 
     settings = get_settings()
-    return settings.tracing_enabled and settings.langsmith_tracing
+    return settings.tracing_enabled and settings.langsmith_tracing and _langsmith_api_key_present()
 
 
 def build_langsmith_metadata(
@@ -71,7 +103,7 @@ def build_langsmith_metadata(
     if extra_metadata:
         metadata.update(
             {
-                str(key): value
+                str(key): _sanitize_langsmith_metadata_value(value)
                 for key, value in extra_metadata.items()
                 if value not in (None, "", [], {})
             }
@@ -199,11 +231,13 @@ class LLMCallTracker:
 
     def __init__(self) -> None:
         self._records: list[LLMCallRecord] = []
-        self._by_type: dict[str, list[LLMCallRecord]] = defaultdict(list)
 
     def record(self, rec: LLMCallRecord) -> None:
         self._records.append(rec)
-        self._by_type[rec.task_type].append(rec)
+        max_records = max(1, int(get_settings().llm_observability_max_records))
+        overflow = len(self._records) - max_records
+        if overflow > 0:
+            del self._records[:overflow]
         logger.info(
             "llm_call",
             call_id=rec.call_id,

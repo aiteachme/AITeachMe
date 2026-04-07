@@ -1,8 +1,4 @@
-"""按任务类型的模型路由。
-
-不同 AI 任务（抽取、出题、判卷、对话……）可以使用不同的模型和参数。
-路由逻辑：config 中 model_overrides 覆盖 > 默认 TaskProfile > 全局 settings。
-"""
+"""Task-type-based model routing helpers."""
 
 from __future__ import annotations
 
@@ -13,24 +9,24 @@ from app.shared.infra.config import get_settings
 
 
 class TaskType(str, Enum):
-    """任务类型枚举。"""
+    """Supported task categories used by the model router."""
 
-    EXTRACT = "extract"          # Digest 抽取（需要精确）
-    GENERATE = "generate"        # Examine 出题（需要创造力）
-    GRADE = "grade"              # Examine 判卷
-    CHAT = "chat"                # Interact 对话
-    SUMMARIZE = "summarize"      # Profile 报告
-    CLASSIFY = "classify"        # Ingest 分类
-    VISION = "vision"            # Ingest 视觉解析
-    REASONING = "reasoning"      # 深度推理任务
-    DOCGEN = "docgen"            # DocGen 章节撰写与目录规划
-    DOCGEN_LIGHT = "docgen_light"  # DocGen 清洗、标签提取等轻量任务
-    DEFAULT = "default"          # 兜底
+    EXTRACT = "extract"  # Digest extraction requiring higher precision.
+    GENERATE = "generate"  # Examine question generation requiring creativity.
+    GRADE = "grade"  # Examine grading and answer evaluation.
+    CHAT = "chat"  # Interactive chat responses.
+    SUMMARIZE = "summarize"  # Profile and report summarization.
+    CLASSIFY = "classify"  # Ingest classification tasks.
+    VISION = "vision"  # OCR and multimodal parsing tasks.
+    REASONING = "reasoning"  # Longer reasoning-heavy tasks.
+    DOCGEN = "docgen"  # Chapter drafting and outline generation.
+    DOCGEN_LIGHT = "docgen_light"  # Lightweight docgen cleanup or labeling.
+    DEFAULT = "default"  # Fallback path.
 
 
 @dataclass(frozen=True)
 class TaskProfile:
-    """一类 AI 任务的模型配置。"""
+    """Resolved model configuration for one task category."""
 
     model: str
     temperature: float = 0.7
@@ -38,8 +34,6 @@ class TaskProfile:
     timeout_s: int = 60
     max_retries: int = 3
 
-
-# ── 默认 profile 表 ────────────────────────────────────────────
 
 _DEFAULT_PROFILES: dict[TaskType, TaskProfile] = {
     TaskType.EXTRACT: TaskProfile(model="", temperature=0.1, timeout_s=90),
@@ -57,25 +51,24 @@ _DEFAULT_PROFILES: dict[TaskType, TaskProfile] = {
 
 
 def get_task_profile(task_type: TaskType = TaskType.DEFAULT) -> TaskProfile:
-    """返回指定任务类型的模型配置。
+    """Resolve the effective profile for a task type.
 
-    优先级：config.model_overrides[task_type] > 默认 profile > 全局 settings。
+    Priority:
+    1. ``settings.model_overrides``
+    2. task-specific lightweight or extraction model shortcuts
+    3. the global ``settings.llm_model`` fallback
     """
 
     settings = get_settings()
     base = _DEFAULT_PROFILES.get(task_type, _DEFAULT_PROFILES[TaskType.DEFAULT])
 
-    # 如果 base.model 为空，用全局 settings 兜底
     fallback_model = settings.llm_model
-
-    # 尝试 config override
     override_model = settings.model_overrides.get(task_type.value)
 
-    # 尝试分级模型配置
     if not override_model:
-        if task_type in (TaskType.DOCGEN_LIGHT,) and settings.llm_model_light:
+        if task_type is TaskType.DOCGEN_LIGHT and settings.llm_model_light:
             override_model = settings.llm_model_light
-        elif task_type == TaskType.EXTRACT and settings.llm_model_extract:
+        elif task_type is TaskType.EXTRACT and settings.llm_model_extract:
             override_model = settings.llm_model_extract
 
     resolved_model = override_model or base.model or fallback_model

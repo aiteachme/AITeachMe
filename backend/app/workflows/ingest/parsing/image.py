@@ -9,6 +9,7 @@ import structlog
 
 from app.shared.infra.exceptions import FileParseError
 from app.shared.infra.llm import acompletion
+from app.shared.infra.model_router import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 from app.workflows.ingest.parsing.types import ParserRunOptions
@@ -17,6 +18,8 @@ from app.workflows.ingest.prompts import get_image_parse_prompt
 
 
 logger = structlog.get_logger()
+
+_UNCLEAR_MARKDOWN = "[unclear]"
 
 
 async def parse_image_with_llm_vision(
@@ -65,9 +68,10 @@ async def parse_image_bytes_with_llm_vision(
 
     if not image_bytes or len(image_bytes) < 100:
         logger.warning("parse_image_bytes_skipped", reason="image_bytes_too_small", size=len(image_bytes))
-        return "[unclear]"
+        return _UNCLEAR_MARKDOWN
 
     from app.shared.infra.config import get_settings
+
     settings = get_settings()
     ocr_model, ocr_api_key, ocr_base_url = settings.get_ocr_config()
 
@@ -87,18 +91,15 @@ async def parse_image_bytes_with_llm_vision(
     ]
 
     try:
-        from app.shared.infra.model_router import TaskType
-        # 使用 OCR 专用配置覆盖
-        import litellm
-        response = await litellm.acompletion(
-            model=f"openai/{ocr_model}",
+        text = await acompletion(
             messages=messages,
+            task_type=TaskType.VISION,
+            model=f"openai/{ocr_model}",
             api_base=ocr_base_url,
             api_key=ocr_api_key,
             timeout=120,
             temperature=0.3,
         )
-        text = response.choices[0].message.content if response.choices else ""
     except Exception as exc:
         logger.error(
             "parse_image_bytes_llm_failed",
@@ -108,16 +109,15 @@ async def parse_image_bytes_with_llm_vision(
             ocr_model=ocr_model,
             exc_info=True,
         )
-        return "[unclear]"
+        return _UNCLEAR_MARKDOWN
 
     if not text or not text.strip():
         logger.warning("parse_image_bytes_empty_response", mime_type=mime_type, ocr_model=ocr_model)
-        return "[unclear]"
+        return _UNCLEAR_MARKDOWN
 
-    # 检测拒绝响应
     text_lower = text.lower().strip()
     refuse_patterns = [
-        "请提供需要处理的图片",
+        "请提供",
         "please provide",
         "i cannot see",
         "no image",
@@ -125,6 +125,6 @@ async def parse_image_bytes_with_llm_vision(
     ]
     if any(pattern in text_lower for pattern in refuse_patterns):
         logger.warning("parse_image_bytes_refused", response_preview=text[:100], ocr_model=ocr_model)
-        return "[unclear]"
+        return _UNCLEAR_MARKDOWN
 
     return text

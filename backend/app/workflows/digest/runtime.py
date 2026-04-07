@@ -11,7 +11,7 @@ from app.workflows.common.result import WorkflowResult, err_result
 from app.workflows.common.runtime import run_state_graph
 from app.workflows.digest.observability import (
     build_curriculum_lane_summary,
-    build_docs_lane_summary,
+    build_docgen_lane_summary,
     build_kg_lane_summary,
     build_token_summary,
 )
@@ -288,10 +288,10 @@ async def run_docgen_workflow(
         context=context,
     )
     if result.failed:
-        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docs")
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docgen")
         context.get_logger().bind(node="runtime").info(
             "docgen_timing_summary",
-            **build_docs_lane_summary(
+            **build_docgen_lane_summary(
                 {},
                 token_summary=token_summary,
                 status="failed",
@@ -308,12 +308,15 @@ async def run_docgen_workflow(
         return result
 
     final_state = result.require_value()
-    docs_token_summary = build_token_summary(
+    docgen_token_summary = build_token_summary(
         build_session_id=final_state.get("build_session_id") or build_session_id or None,
-        lane="docs",
+        lane="docgen",
     )
-    final_state["token_summary"] = docs_token_summary.model_dump()
-    final_state["timing_summary"] = build_docs_lane_summary(final_state, token_summary=docs_token_summary)
+    final_state["token_summary"] = docgen_token_summary.model_dump()
+    final_state["timing_summary"] = build_docgen_lane_summary(
+        final_state,
+        token_summary=docgen_token_summary,
+    )
     context.get_logger().bind(node="runtime").info(
         "docgen_timing_summary",
         **final_state["timing_summary"],
