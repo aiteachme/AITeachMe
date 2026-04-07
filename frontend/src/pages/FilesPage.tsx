@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
-  ArrowRight,
   CheckCircle2,
   ChevronDown,
   Eye,
@@ -21,6 +20,7 @@ import {
   FileCode,
   FileType,
   Loader2,
+  Network,
   Paperclip,
   Sparkles,
   Trash2,
@@ -36,8 +36,9 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { Modal } from "../components/ui/Modal";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
-import { useSettings } from "../hooks/useSettings";
+import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
+import { formatMinerUErrorForUser } from "../lib/mineruErrors";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { useToast } from "../components/ui/Toast";
@@ -60,6 +61,22 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
+  }
+
+  // 当用户选择 MinerU 解析引擎时，把 Token/参数随上传请求传给后端。
+  // 注意：设置本身仍保存在 localStorage；这里仅用于触发后端本次 ingest 走 MinerU。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    if (!token) {
+      throw new Error("已选择 MinerU 解析引擎，但未填写 API Token，请先到设置中填写后再上传。");
+    }
+    formData.append("parser_provider", "mineru");
+    formData.append("mineru_api_token", token);
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
   }
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
@@ -180,6 +197,13 @@ function getParserSummary(file: FileRecord): string {
   return "文件已进入自动解析流程，系统会根据格式选择合适的解析链路并持续更新结果。";
 }
 
+function formatFailureReasonForUser(raw: string): string {
+  const mapped = formatMinerUErrorForUser(raw);
+  if (mapped) return mapped;
+  if (/mineru/i.test(raw)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
+  return raw;
+}
+
 /* ── 页面外壳 ── */
 
 function PageWrapper({
@@ -272,6 +296,11 @@ function FileCard({
             </>
           )}
         </div>
+        {file.status === "failed" && file.error_message ? (
+          <p className="mt-1 truncate text-xs text-red-600" title={formatFailureReasonForUser(file.error_message)}>
+            失败原因：{formatFailureReasonForUser(file.error_message)}
+          </p>
+        ) : null}
       </div>
 
       {/* 删除按钮 */}
@@ -346,14 +375,14 @@ export function FilesPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
-  const knowledgeBuild = useKnowledgeBuildFlow({
+  const knowledgeDocsBuild = useKnowledgeBuildFlow({
     subjectId,
+    buildType: "docs",
     buildRequest: () => ({
       prompt: docPrompt.trim() || undefined,
     }),
-    fallbackErrorMessage: "知识构建失败",
+    fallbackErrorMessage: "知识文档构建失败",
     onSuccess: (data) => {
-      // Show toast when auto-rebuild notice is present
       const rawData = data as unknown as Record<string, unknown>;
       const vectorStatus = rawData?.vector_status as
         | { notice?: string }
@@ -369,6 +398,27 @@ export function FilesPage() {
       navigate(`/subject/${subjectId}/knowledge-docs?requested_at=${encodeURIComponent(data.requested_at)}`);
     },
   });
+
+  const knowledgeGraphBuild = useKnowledgeBuildFlow({
+    subjectId,
+    buildType: "graph",
+    buildRequest: () => ({
+      prompt: docPrompt.trim() || undefined,
+    }),
+    fallbackErrorMessage: "知识图谱构建失败",
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
+      toast({
+        title: "知识图谱构建已启动",
+        description: `本轮纳入 ${(data.accepted_file_uids ?? []).length} 份资料，图谱和课程结构会自动刷新。`,
+        variant: "info",
+        duration: 5000,
+      });
+    },
+  });
+
+  const isAnyBuildPending = knowledgeDocsBuild.isPending || knowledgeGraphBuild.isPending;
+  const activeBuildError = knowledgeDocsBuild.errorMessage || knowledgeGraphBuild.errorMessage;
 
   const handleUpload = useCallback(
     async (selectedFiles: File[]) => {
@@ -472,14 +522,14 @@ export function FilesPage() {
           <textarea
             value={docPrompt}
             onChange={(event) => setDocPrompt(event.target.value)}
-            disabled={knowledgeBuild.isPending}
+            disabled={isAnyBuildPending}
             placeholder="可选：补充一句本次知识构建的目标，例如更偏向考前冲刺、知识梳理或错题回顾。"
             className="min-h-[120px] max-h-[250px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
 
           <div className="flex flex-col gap-2 px-4 pb-2">
             <SubjectVectorNotice
-              status={knowledgeBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
+              status={knowledgeDocsBuild.latestVectorStatus ?? knowledgeGraphBuild.latestVectorStatus ?? knowledgeDocState?.vector_status}
             />
 
             {/* 调试模式下的小标签 */}
@@ -577,37 +627,64 @@ export function FilesPage() {
                   </span>
                 ) : null}
 
-                {knowledgeBuild.errorMessage ? (
+                {activeBuildError ? (
                   <span className="flex items-center text-xs font-medium text-red-500">
                     <AlertCircle className="mr-1 h-3.5 w-3.5" />
-                    {knowledgeBuild.errorMessage}
+                    {activeBuildError}
                   </span>
                 ) : null}
               </div>
 
-              <Button
-                size="lg"
-                onClick={knowledgeBuild.submitBuild}
-                disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
-                className={cn(
-                  "rounded-full px-6 shadow-sm transition-all duration-300",
-                  readyFiles.length > 0 && !knowledgeBuild.isPending
-                    ? "bg-zinc-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-zinc-800"
-                    : "bg-zinc-100 text-zinc-400",
-                )}
-              >
-                {knowledgeBuild.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    正在提交构建...
-                  </>
-                ) : (
-                  <>
-                    构建知识产物
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="lg"
+                  onClick={knowledgeDocsBuild.submitBuild}
+                  disabled={readyFiles.length === 0 || isAnyBuildPending}
+                  className={cn(
+                    "rounded-full px-5 shadow-sm transition-all duration-300",
+                    readyFiles.length > 0 && !isAnyBuildPending
+                      ? "bg-zinc-900 text-white shadow-md hover:-translate-y-0.5 hover:bg-zinc-800"
+                      : "bg-zinc-100 text-zinc-400",
+                  )}
+                >
+                  {knowledgeDocsBuild.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      构建文档中...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-1.5 h-4 w-4" />
+                      构建知识文档
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  size="lg"
+                  onClick={knowledgeGraphBuild.submitBuild}
+                  disabled={readyFiles.length === 0 || isAnyBuildPending}
+                  className={cn(
+                    "rounded-full px-5 shadow-sm transition-all duration-300",
+                    readyFiles.length > 0 && !isAnyBuildPending
+                      ? "border border-zinc-300 bg-white text-zinc-700 shadow-md hover:-translate-y-0.5 hover:bg-zinc-50"
+                      : "bg-zinc-100 text-zinc-400",
+                  )}
+                  variant="outline"
+                >
+                  {knowledgeGraphBuild.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      构建图谱中...
+                    </>
+                  ) : (
+                    <>
+                      <Network className="mr-1.5 h-4 w-4" />
+                      构建知识图谱
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -736,8 +813,10 @@ export function FilesPage() {
 
                   {selectedFile.error_message ? (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      <p className="font-medium">错误信息</p>
-                      <p className="mt-1 leading-6">{selectedFile.error_message}</p>
+                      <p className="font-medium">错误说明</p>
+                      <p className="mt-1 leading-6">{formatFailureReasonForUser(selectedFile.error_message)}</p>
+                      <p className="mt-3 text-xs font-medium tracking-[0.12em] text-rose-500">原始报错</p>
+                      <p className="mt-1 break-words text-xs leading-6 text-rose-600">{selectedFile.error_message}</p>
                     </div>
                   ) : null}
 
@@ -848,11 +927,11 @@ export function FilesPage() {
       </Modal>
 
       <KnowledgeBuildResolutionModal
-        open={knowledgeBuild.precheckConflict !== null}
-        conflict={knowledgeBuild.precheckConflict}
-        isSubmitting={knowledgeBuild.isPending}
-        onClose={knowledgeBuild.closePrecheckConflict}
-        onResolve={knowledgeBuild.resolvePrecheckConflict}
+        open={knowledgeDocsBuild.precheckConflict !== null || knowledgeGraphBuild.precheckConflict !== null}
+        conflict={knowledgeDocsBuild.precheckConflict ?? knowledgeGraphBuild.precheckConflict}
+        isSubmitting={isAnyBuildPending}
+        onClose={() => { knowledgeDocsBuild.closePrecheckConflict(); knowledgeGraphBuild.closePrecheckConflict(); }}
+        onResolve={knowledgeDocsBuild.precheckConflict ? knowledgeDocsBuild.resolvePrecheckConflict : knowledgeGraphBuild.resolvePrecheckConflict}
       />
     </>
   );

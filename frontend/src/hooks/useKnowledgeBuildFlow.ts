@@ -32,11 +32,13 @@ export interface KnowledgeBuildRequestInput {
 
 interface KnowledgeBuildRequestPayload extends KnowledgeBuildRequestInput {
   embedding_resolution?: KnowledgeBuildResolution;
+  build_type?: "docs" | "graph" | "all";
 }
 
 interface UseKnowledgeBuildFlowOptions {
   subjectId: string;
   buildRequest: () => KnowledgeBuildRequestInput;
+  buildType?: "docs" | "graph" | "all";
   fallbackErrorMessage?: string;
   onSuccess?: (data: DocGenBuildData) => void;
 }
@@ -68,6 +70,7 @@ async function triggerKnowledgeBuild(
 export function useKnowledgeBuildFlow({
   subjectId,
   buildRequest,
+  buildType = "all",
   fallbackErrorMessage = "知识构建失败，请稍后重试。",
   onSuccess,
 }: UseKnowledgeBuildFlowOptions) {
@@ -112,12 +115,12 @@ export function useKnowledgeBuildFlow({
       return;
     }
 
-    const requestPayload = buildRequest();
+    const requestPayload = { ...buildRequest(), build_type: buildType };
     pendingRequestRef.current = requestPayload;
     setErrorMessage("");
     setPrecheckConflict(null);
     buildMutation.mutate(requestPayload);
-  }, [buildMutation, buildRequest, subjectId]);
+  }, [buildMutation, buildRequest, buildType, subjectId]);
 
   const resolvePrecheckConflict = useCallback(
     (resolution: KnowledgeBuildResolution) => {
@@ -126,7 +129,7 @@ export function useKnowledgeBuildFlow({
         return;
       }
 
-      const basePayload = pendingRequestRef.current ?? buildRequest();
+      const basePayload = pendingRequestRef.current ?? { ...buildRequest(), build_type: buildType };
       const nextPayload = {
         ...basePayload,
         embedding_resolution: resolution,
@@ -136,7 +139,7 @@ export function useKnowledgeBuildFlow({
       setErrorMessage("");
       buildMutation.mutate(nextPayload);
     },
-    [buildMutation, buildRequest, subjectId],
+    [buildMutation, buildRequest, buildType, subjectId],
   );
 
   const closePrecheckConflict = useCallback(() => {

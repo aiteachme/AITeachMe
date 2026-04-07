@@ -33,6 +33,8 @@ from app.services.knowledge.curriculum_service import (
 )
 from app.services.knowledge.digest_service import (
     get_docgen_result,
+    run_docgen_background,
+    run_graph_build_background,
     run_unified_build_background,
     trigger_docgen_build,
 )
@@ -50,7 +52,7 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
 @router.post(
     "/build",
     response_model=ApiResponse[DocGenBuildData],
-    summary="Trigger docs and graph digest build",
+    summary="Trigger docs and/or graph digest build",
     responses=build_error_responses([400, 404, 409, 422, 500]),
 )
 async def knowledge_build(
@@ -74,17 +76,45 @@ async def knowledge_build(
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
     )
-    request.app.state.background_task_registry.spawn(
-        run_unified_build_background(
+
+    build_type = body.build_type or "all"
+
+    if build_type == "docs":
+        request.app.state.background_task_registry.spawn(
+            run_docgen_background(
+                subject=normalized,
+                file_ids=accepted_file_ids,
+                prompt=data.prompt,
+                requested_at=data.requested_at,
+            ),
+            kind="knowledge.build.docs",
             subject=normalized,
-            file_ids=accepted_file_ids,
-            prompt=data.prompt,
-            requested_at=data.requested_at,
-        ),
-        kind="knowledge.build",
-        subject=normalized,
-        name=f"knowledge.build:{normalized}",
-    )
+            name=f"knowledge.build.docs:{normalized}",
+        )
+    elif build_type == "graph":
+        request.app.state.background_task_registry.spawn(
+            run_graph_build_background(
+                subject=normalized,
+                file_ids=accepted_file_ids,
+                prompt=data.prompt,
+                requested_at=data.requested_at,
+            ),
+            kind="knowledge.build.graph",
+            subject=normalized,
+            name=f"knowledge.build.graph:{normalized}",
+        )
+    else:
+        request.app.state.background_task_registry.spawn(
+            run_unified_build_background(
+                subject=normalized,
+                file_ids=accepted_file_ids,
+                prompt=data.prompt,
+                requested_at=data.requested_at,
+            ),
+            kind="knowledge.build",
+            subject=normalized,
+            name=f"knowledge.build:{normalized}",
+        )
     return ok_response(data)
 
 

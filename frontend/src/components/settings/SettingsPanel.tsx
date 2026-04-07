@@ -301,7 +301,71 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
     if (activeSection === "parser") {
       if (activeItem.id === "engine") {
-        return <select value={draft.parserProvider} onChange={(event) => patch("parserProvider", event.target.value as ParserProvider)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"><option value="docling">Docling</option><option value="unstructured">Unstructured</option><option value="mineru">MinerU</option></select>;
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">解析引擎</label>
+              <select
+                value={draft.parserProvider}
+                onChange={(event) => patch("parserProvider", event.target.value as ParserProvider)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
+              >
+                <option value="docling">Docling</option>
+                <option value="unstructured">Unstructured</option>
+                <option value="mineru">MinerU</option>
+              </select>
+            </div>
+
+            {draft.parserProvider === "mineru" ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">MinerU API Token</label>
+                  <input
+                    type="password"
+                    value={draft.mineruApiToken}
+                    onChange={(event) => patch("mineruApiToken", event.target.value)}
+                    placeholder="Bearer Token..."
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
+                  />
+                  <p className="text-xs text-slate-500">
+                    该 Token 仅保存在浏览器本地设置中；上传文件时会随请求传给后端用于本次解析。
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">MinerU 模型版本（model_version）</label>
+                  <select
+                    value={draft.mineruModelVersion}
+                    onChange={(event) => patch("mineruModelVersion", event.target.value as "vlm" | "pipeline")}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
+                  >
+                    <option value="vlm">vlm（推荐）</option>
+                    <option value="pipeline">pipeline</option>
+                  </select>
+                </div>
+
+                <SwitchRow
+                  title="启用公式识别（enable_formula）"
+                  description="尽量将公式转为可读文本而非图片。"
+                  enabled={draft.mineruEnableFormula}
+                  onToggle={() => patch("mineruEnableFormula", !draft.mineruEnableFormula)}
+                />
+                <SwitchRow
+                  title="启用表格识别（enable_table）"
+                  description="尽量保留表格结构。"
+                  enabled={draft.mineruEnableTable}
+                  onToggle={() => patch("mineruEnableTable", !draft.mineruEnableTable)}
+                />
+                <SwitchRow
+                  title="启用 OCR（is_ocr）"
+                  description="针对图片型/扫描件启用文字识别（可能更慢）。"
+                  enabled={draft.mineruIsOcr}
+                  onToggle={() => patch("mineruIsOcr", !draft.mineruIsOcr)}
+                />
+              </div>
+            ) : null}
+          </div>
+        );
       }
       if (activeItem.id === "mode") {
         return <select value={draft.parserMode} onChange={(event) => patch("parserMode", event.target.value as ParserMode)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"><option value="balanced">平衡</option><option value="quality">质量优先</option><option value="speed">速度优先</option></select>;

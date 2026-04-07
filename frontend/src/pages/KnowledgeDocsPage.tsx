@@ -1,4 +1,4 @@
-﻿import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";

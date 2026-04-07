@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
+import type { DocGenBuildRequestBuildType } from './docGenBuildRequestBuildType';
 
 /**
  * Trigger knowledge-doc generation.
@@ -16,4 +17,6 @@ export interface DocGenBuildRequest {
   prompt?: string | null;
   /** Optional subject-level embedding resolution chosen after a precheck conflict. */
   embedding_resolution?: 'rebuild' | 'disable' | null;
+  /** Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build. */
+  build_type?: DocGenBuildRequestBuildType;
 }

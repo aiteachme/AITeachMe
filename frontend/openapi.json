@@ -1129,7 +1129,7 @@
         "tags": [
           "knowledge"
         ],
-        "summary": "Trigger docs and graph digest build",
+        "summary": "Trigger docs and/or graph digest build",
         "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
         "parameters": [
           {
@@ -5383,6 +5383,72 @@
             },
             "type": "array",
             "title": "Files"
+          },
+          "parser_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Provider"
+          },
+          "mineru_api_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Api Token"
+          },
+          "mineru_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Model Version"
+          },
+          "mineru_enable_formula": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Enable Formula"
+          },
+          "mineru_enable_table": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Enable Table"
+          },
+          "mineru_is_ocr": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mineru Is Ocr"
           }
         },
         "type": "object",
@@ -6279,12 +6345,24 @@
             ],
             "title": "Embedding Resolution",
             "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
+          },
+          "build_type": {
+            "type": "string",
+            "enum": [
+              "docs",
+              "graph",
+              "all"
+            ],
+            "title": "Build Type",
+            "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
+            "default": "all"
           }
         },
         "type": "object",
         "title": "DocGenBuildRequest",
         "description": "Trigger knowledge-doc generation.",
         "example": {
+          "build_type": "all",
           "embedding_resolution": "rebuild",
           "file_uids": [
             "file_xxx",

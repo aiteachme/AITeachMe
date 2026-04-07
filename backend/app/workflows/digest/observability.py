@@ -337,10 +337,7 @@ def build_unified_timing_report(
     unified_steps = {
         "prepare_shared": int(final_state.get("shared_prepare_ms", 0)),
         "parallel_lanes": int(final_state.get("parallel_lanes_ms", 0)),
-        "consistency_gate": int(final_state.get("consistency_ms", 0)),
-        "bounded_repair": int(final_state.get("repair_ms", 0)),
         "derive_curriculum": int(final_state.get("curriculum_ms", 0)),
-        "rebuild_docs": int(final_state.get("rebuild_docs_ms", 0)),
         "publish_outputs": int(final_state.get("publish_ms", 0)),
         "cleanup": int(final_state.get("cleanup_ms", 0)),
     }
@@ -411,10 +408,7 @@ def build_unified_timing_report(
             "parallel_lanes_ms": unified_steps["parallel_lanes"],
             "doc_lane_ms": int(final_state.get("doc_lane_ms", 0)),
             "kg_lane_ms": int(final_state.get("kg_lane_ms", 0)),
-            "consistency_ms": unified_steps["consistency_gate"],
-            "repair_ms": unified_steps["bounded_repair"],
             "curriculum_ms": unified_steps["derive_curriculum"],
-            "rebuild_docs_ms": unified_steps["rebuild_docs"],
             "publish_ms": unified_steps["publish_outputs"],
             "cleanup_ms": unified_steps["cleanup"],
             "lane_total_tokens": {

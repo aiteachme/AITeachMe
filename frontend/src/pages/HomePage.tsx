@@ -38,7 +38,9 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
+import { formatMinerUErrorForUser } from "../lib/mineruErrors";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import { getStoredAppSettings } from "../hooks/useSettings";
 
 /* ── API helpers (same as FilesPage) ── */
 
@@ -55,6 +57,23 @@ async function fetchFiles(subject: string): Promise<FilesData> {
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
+
+  // 当用户在设置中选择 MinerU 时，把 Token 与参数随上传请求一并传给后端。
+  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走 MinerU。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    if (!token) {
+      throw new Error("已选择 MinerU 解析引擎，但未填写 API Token，请先到设置中填写后再上传。");
+    }
+    formData.append("parser_provider", "mineru");
+    formData.append("mineru_api_token", token);
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
+  }
+
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,
@@ -615,6 +634,13 @@ function RenameModal({
 
 function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDelete: () => void; isDeleting: boolean }) {
   const meta = getFileStatusMeta(file);
+  const failureReason = useMemo(() => {
+    if (file.status !== "failed" || !file.error_message) return null;
+    const mapped = formatMinerUErrorForUser(file.error_message);
+    if (mapped) return mapped;
+    if (/mineru/i.test(file.error_message)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
+    return file.error_message;
+  }, [file.error_message, file.status]);
   return (
     <motion.div
       layout
@@ -640,6 +666,11 @@ function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDele
           <span>{formatFileSize(file.file_size_bytes)}</span>
           {file.estimated_pages != null && (<><span>·</span><span>{file.estimated_pages} 页</span></>)}
         </div>
+        {failureReason ? (
+          <p className="mt-1 truncate text-xs text-red-600" title={failureReason}>
+            失败原因：{failureReason}
+          </p>
+        ) : null}
       </div>
       <button
         type="button"
