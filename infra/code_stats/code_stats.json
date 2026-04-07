@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T14:39:28.996098",
-  "total_commits_analyzed": 442,
+  "generated_at": "2026-04-07T17:46:53.444685",
+  "total_commits_analyzed": 444,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3537,6 +3537,22 @@
       "code_lines": 89072,
       "other_lines": 28146,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "ae88e71",
+      "total_lines": 117218,
+      "code_lines": 89072,
+      "other_lines": 28146,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "58a3991",
+      "total_lines": 117883,
+      "code_lines": 89646,
+      "other_lines": 28237,
+      "message": "refactor(backend): split llm support and tighten l"
     }
   ]
 }
