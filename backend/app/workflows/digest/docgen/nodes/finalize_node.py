@@ -6,12 +6,12 @@ from time import perf_counter
 
 import structlog
 
-from app.workflows.digest.docs.publish import (
+from app.workflows.digest.docgen.publish import (
     publish_staged_knowledge_docs,
     stage_knowledge_docs,
 )
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docgen.state import DocGenState
 
 logger = structlog.get_logger()
 

@@ -2,11 +2,11 @@
 
 The unified build orchestrates three independent lanes:
 
-1. **docs lane** — raw_markdowns → knowledge_markdowns (self-contained)
+1. **docgen lane** — raw_markdowns → knowledge_markdowns (self-contained)
 2. **kg lane** — raw_markdowns → knowledge graph (self-contained)
 3. **curriculum lane** — knowledge graph → curriculum tree (depends on KG only)
 
-The docs lane and KG lane run **in parallel** but have **no cross-dependencies**.
+The docgen lane and KG lane run **in parallel** but have **no cross-dependencies**.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common.result import WorkflowResult
-from app.workflows.digest.docs.publish import (
+from app.workflows.digest.docgen.publish import (
     publish_staged_knowledge_docs,
 )
 from app.workflows.digest.runtime import (
@@ -48,7 +48,7 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
                                                                      ↘ fail
     The docs and KG lanes run in parallel without cross-dependencies.
     After both finish, curriculum is derived from KG only.
-    publish_outputs publishes docs from the docs lane as-is (no overwrite).
+    publish_outputs publishes docs from the docgen lane as-is (no overwrite).
     """
 
     workflow = StateGraph(UnifiedDigestState)
@@ -295,7 +295,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             docgen_max_parallel_chapters=settings.docgen_max_parallel_chapters,
         )
 
-        # ----- docs lane (independent) -----
+        # ----- docgen lane (independent) -----
         async def run_doc_lane() -> tuple[WorkflowResult[dict], int]:
             started_at = perf_counter()
             result = await run_docgen_workflow(
@@ -446,9 +446,9 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
 
 
 def build_publish_outputs_node(*, context: WorkflowContext):
-    """Publish docs from the docs lane output.
+    """Publish docs from the docgen lane output.
 
-    The docs lane produces its own chapter content — this node publishes it
+    The docgen lane produces its own chapter content — this node publishes it
     using the curriculum version number if available, **without overwriting**
     the docs content.
     """
@@ -461,7 +461,7 @@ def build_publish_outputs_node(*, context: WorkflowContext):
 
         chapter_metadatas = list(doc_state.get("chapter_metadatas", []))
         if not chapter_metadatas:
-            # Docs lane may have failed — not a fatal error if KG succeeded
+            # docgen lane may have failed — not a fatal error if KG succeeded
             logger.warning("unified_publish_no_docs_to_publish")
             return state
 

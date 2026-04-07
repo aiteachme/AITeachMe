@@ -13,7 +13,7 @@ import structlog
 
 from app.utils.path_helpers import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.outline_service import (
+from app.workflows.digest.docgen.services.outline_service import (
     build_chapter_assignments_from_sections,
     build_fallback_outline_tree,
     build_thematic_outline_summary,
@@ -21,8 +21,8 @@ from app.workflows.digest.docs.services.outline_service import (
     ensure_multi_chapter_outline,
     generate_global_outline,
 )
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 from app.workflows.digest.shared.models import SharedInputs
 
 logger = structlog.get_logger()

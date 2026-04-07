@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ChapterPrior(BaseModel):
-    """Top-down chapter prior shared from docs lane to graph lane."""
+    """Top-down chapter prior shared from docgen lane to graph lane."""
 
     chapter_index: int
     title: str
@@ -22,7 +22,7 @@ class ChapterPriors(BaseModel):
 
 
 class TopicAnchor(BaseModel):
-    """Bottom-up topic anchor shared from graph lane to docs lane."""
+    """Bottom-up topic anchor shared from graph lane to docgen lane."""
 
     topic_name: str
     node_type: str = "Topic"

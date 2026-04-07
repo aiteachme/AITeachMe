@@ -261,7 +261,7 @@ async def run_docgen_workflow(
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
 ) -> WorkflowResult[DocGenState]:
-    """Run the docs lane workflow."""
+    """Run the docgen lane workflow."""
 
     bus = event_bus or InProcessEventBus()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))

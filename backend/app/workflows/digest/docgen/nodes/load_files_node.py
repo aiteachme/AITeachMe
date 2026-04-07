@@ -7,8 +7,8 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 

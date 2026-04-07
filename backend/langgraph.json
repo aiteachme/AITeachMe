@@ -21,7 +21,7 @@
       "description": "Digest curriculum derivation lane."
     },
     "digest_docgen": {
-      "path": "./app/workflows/digest/docs/graph.py:get_langgraph_dev_docgen_graph",
+      "path": "./app/workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
       "description": "Digest doc generation lane."
     },
     "digest_unified": {

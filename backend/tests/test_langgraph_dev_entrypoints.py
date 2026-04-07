@@ -4,7 +4,7 @@ import asyncio
 
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
-from app.workflows.digest.docs.graph import get_langgraph_dev_docgen_graph
+from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
 from app.workflows.digest.kg.graph import build_kg_digest_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.examine.exam_grade_workflow import build_exam_grade_graph

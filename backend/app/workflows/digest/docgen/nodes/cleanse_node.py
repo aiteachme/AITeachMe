@@ -10,12 +10,12 @@ import structlog
 
 from app.utils.path_helpers import build_docgen_intermediate_latest_dir
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.cleanse_service import (
+from app.workflows.digest.docgen.services.cleanse_service import (
     llm_heal_full,
     stitch_sentences,
 )
-from app.workflows.digest.docs.state import DocGenState
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 
 logger = structlog.get_logger()
 
@@ -34,10 +34,9 @@ def build_cleanse_node(*, context: WorkflowContext, strategy: DocGenExecutionStr
         )
 
         subject = state["subject"]
-        # 共享层已经做了基础规范化，这里只做教学性增强
-        pre_healed = []
+        # 鍏变韩灞傚凡缁忓仛浜嗗熀纭€瑙勮寖鍖栵紝杩欓噷鍙仛鏁欏鎬у寮?        pre_healed = []
         for chunk in raw_chunks:
-            # 只做句子拼接（教学性增强）
+            # 鍙仛鍙ュ瓙鎷兼帴锛堟暀瀛︽€у寮猴級
             cleaned = stitch_sentences(chunk["content"])
             pre_healed.append({**chunk, "content": cleaned})
 

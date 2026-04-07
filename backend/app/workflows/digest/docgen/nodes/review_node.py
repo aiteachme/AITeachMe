@@ -7,12 +7,12 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docs.services.writer_service import (
+from app.workflows.digest.docgen.services.writer_service import (
     build_global_outline_summary,
     review_chapter,
     write_chapter,
 )
-from app.workflows.digest.docs.strategy import DocGenExecutionStrategy
+from app.workflows.digest.docgen.strategy import DocGenExecutionStrategy
 from app.workflows.digest.unified.models import TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
