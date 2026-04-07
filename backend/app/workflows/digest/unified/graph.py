@@ -19,7 +19,7 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common.result import WorkflowResult
 from app.workflows.digest.docs.publish import (
     publish_staged_knowledge_docs,
@@ -538,3 +538,11 @@ def build_fail_node(*, context: WorkflowContext):
 
 def _new_runtime_job_id() -> int:
     return (uuid4().int % 2_000_000_000) + 1
+
+
+def get_langgraph_dev_unified_graph() -> StateGraph:
+    """Create the unified digest graph used by ``langgraph dev``."""
+
+    return build_unified_digest_graph(
+        context=create_langgraph_dev_context("digest.unified.langgraph_dev"),
+    )

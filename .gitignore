@@ -56,3 +56,6 @@ data/**
 
 
 .history
+
+# langgraph
+.langgraph_api/

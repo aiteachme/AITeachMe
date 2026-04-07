@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     model_overrides: dict[str, str] = {}
     llm_observability_enabled: bool = True
     tracing_enabled: bool = True
+    langsmith_tracing: bool = False
+    langsmith_project: str = "AITeachMe"
     guardrails_enabled: bool = True
     llm_cache_enabled: bool = False
     llm_cache_ttl_s: int = 3600

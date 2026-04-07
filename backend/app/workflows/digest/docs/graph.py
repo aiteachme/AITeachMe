@@ -7,7 +7,7 @@ from datetime import datetime
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.docs.nodes.cleanse_node import build_cleanse_node
 from app.workflows.digest.docs.nodes.draft_node import build_draft_chapter_node
@@ -280,3 +280,11 @@ def build_collect_reviews_node(*, context: WorkflowContext):
         return {}
 
     return collect_reviews
+
+
+def get_langgraph_dev_docgen_graph() -> StateGraph:
+    """Create the docs-lane graph used by ``langgraph dev``."""
+
+    return build_docgen_graph(
+        context=create_langgraph_dev_context("digest.docgen.langgraph_dev"),
+    )

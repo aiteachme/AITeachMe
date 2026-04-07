@@ -12,6 +12,8 @@ from app.workflows.common.events import InProcessEventBus
 
 logger = structlog.get_logger()
 
+LANGGRAPH_DEV_SUBJECT = "__langgraph_dev__"
+
 
 @dataclass(slots=True)
 class WorkflowContext:
@@ -33,3 +35,11 @@ class WorkflowContext:
             **self.metadata,
         )
 
+
+def create_langgraph_dev_context(workflow_name: str) -> WorkflowContext:
+    """Create a minimal workflow context for ``langgraph dev`` debugging."""
+
+    return WorkflowContext(
+        workflow_name=workflow_name,
+        subject=LANGGRAPH_DEV_SUBJECT,
+    )

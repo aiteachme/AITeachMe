@@ -83,7 +83,7 @@ uvicorn app.main:app --reload --port 8000
 - `examine_exam_grade`
 - `profile_pipeline`
 
-这些 graph 是在现有 FastAPI / service 入口之外新增的调试表面，不替换原有业务调用链。
+这些 graph 由 `langgraph.json` 直接指向各自 workflow 模块内的图定义或轻量调试工厂函数，不替换原有 FastAPI / service 调用链，也不需要再维护一个单独的汇总入口文件。
 
 ### 使用说明
 
@@ -100,6 +100,18 @@ langgraph dev --config langgraph.json
 - `backend` 现在将 Python 版本要求收敛为 `3.11+`，这样 `pip install -e .` 会一并安装 LangGraph Dev 所需依赖。
 - `interact_chat` 使用的是“非生产 SSE 外壳”的调试图，目的是在 Studio 里直接观察完整 state，而不改变线上聊天接口行为。
 - `profile_pipeline` 是为调试新增的可执行 graph；原有 `profile` 概览图仍然保留。
+
+### LangSmith
+
+如果希望在 LangSmith 中直接查看 workflow 与 LLM 调用链路，可额外配置：
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_xxx
+LANGSMITH_PROJECT=AITeachMe
+```
+
+当前约定下，workflow 统一运行入口和 `app.shared.infra.llm` 会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
 
 ## 手动验证
 

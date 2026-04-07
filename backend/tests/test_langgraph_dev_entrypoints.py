@@ -2,54 +2,55 @@ from __future__ import annotations
 
 import asyncio
 
-from app.langgraph_dev import (
-    digest_curriculum_graph,
-    digest_docgen_graph,
-    digest_kg_graph,
-    digest_unified_graph,
-    examine_exam_grade_graph,
-    examine_question_build_graph,
-    ingest_deep_enhance_graph,
-    ingest_fast_parse_graph,
-    interact_chat_graph,
-    profile_pipeline_graph,
-)
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
+from app.workflows.digest.docs.graph import get_langgraph_dev_docgen_graph
+from app.workflows.digest.kg.graph import build_kg_digest_graph
+from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
+from app.workflows.examine.exam_grade_workflow import build_exam_grade_graph
+from app.workflows.examine.question_build_workflow import build_question_build_graph
+from app.workflows.ingest.graph import (
+    build_deep_enhance_graph,
+    get_langgraph_dev_fast_parse_graph,
+)
+from app.workflows.interact.graph import get_langgraph_dev_interact_graph
 from app.workflows.interact.nodes import stream as stream_module
+from app.workflows.profile.graph import build_profile_pipeline_graph
 
 
-def _node_ids(compiled_graph) -> set[str]:
+def _node_ids(graph) -> set[str]:
+    compiled_graph = graph if hasattr(graph, "get_graph") else graph.compile()
     return {node.id for node in compiled_graph.get_graph().nodes.values()}
 
 
 def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
     assert {"load_raw_file", "parse_file", "finalize_success"}.issubset(
-        _node_ids(ingest_fast_parse_graph)
+        _node_ids(get_langgraph_dev_fast_parse_graph())
     )
     assert {"load_enhance_context", "deep_enhance_file", "finalize_deep_enhance"}.issubset(
-        _node_ids(ingest_deep_enhance_graph)
+        _node_ids(build_deep_enhance_graph())
     )
-    assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(digest_kg_graph))
+    assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(build_kg_digest_graph()))
     assert {"derive_units", "derive_theme_tree", "finalize_curriculum"}.issubset(
-        _node_ids(digest_curriculum_graph)
+        _node_ids(build_curriculum_derive_graph())
     )
     assert {"load_files", "outline_reduce", "finalize_assemble"}.issubset(
-        _node_ids(digest_docgen_graph)
+        _node_ids(get_langgraph_dev_docgen_graph())
     )
     assert {"prepare_shared", "run_parallel_lanes", "publish_outputs"}.issubset(
-        _node_ids(digest_unified_graph)
+        _node_ids(get_langgraph_dev_unified_graph())
     )
     assert {"load_history_state", "stream_answer", "persist_turn"}.issubset(
-        _node_ids(interact_chat_graph)
+        _node_ids(get_langgraph_dev_interact_graph())
     )
     assert {"load_units", "generate_templates", "finalize_build"}.issubset(
-        _node_ids(examine_question_build_graph)
+        _node_ids(build_question_build_graph())
     )
     assert {"grade_answers", "update_mastery", "finalize_grade"}.issubset(
-        _node_ids(examine_exam_grade_graph)
+        _node_ids(build_exam_grade_graph())
     )
     assert {"resolve_profile_context", "update_mastery", "refresh_user_profile"}.issubset(
-        _node_ids(profile_pipeline_graph)
+        _node_ids(build_profile_pipeline_graph())
     )
 
 

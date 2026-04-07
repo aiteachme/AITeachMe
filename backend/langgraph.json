@@ -5,43 +5,43 @@
   ],
   "graphs": {
     "ingest_fast_parse": {
-      "path": "./app/langgraph_dev.py:ingest_fast_parse_graph",
+      "path": "./app/workflows/ingest/graph.py:get_langgraph_dev_fast_parse_graph",
       "description": "Ingest Phase 1 fast-parse workflow."
     },
     "ingest_deep_enhance": {
-      "path": "./app/langgraph_dev.py:ingest_deep_enhance_graph",
+      "path": "./app/workflows/ingest/graph.py:build_deep_enhance_graph",
       "description": "Ingest Phase 2 deep-enhance workflow."
     },
     "digest_kg": {
-      "path": "./app/langgraph_dev.py:digest_kg_graph",
+      "path": "./app/workflows/digest/kg/graph.py:build_kg_digest_graph",
       "description": "Digest knowledge-graph lane."
     },
     "digest_curriculum": {
-      "path": "./app/langgraph_dev.py:digest_curriculum_graph",
+      "path": "./app/workflows/digest/curriculum/graph.py:build_curriculum_derive_graph",
       "description": "Digest curriculum derivation lane."
     },
     "digest_docgen": {
-      "path": "./app/langgraph_dev.py:digest_docgen_graph",
+      "path": "./app/workflows/digest/docs/graph.py:get_langgraph_dev_docgen_graph",
       "description": "Digest doc generation lane."
     },
     "digest_unified": {
-      "path": "./app/langgraph_dev.py:digest_unified_graph",
+      "path": "./app/workflows/digest/unified/graph.py:get_langgraph_dev_unified_graph",
       "description": "Digest unified build workflow."
     },
     "interact_chat": {
-      "path": "./app/langgraph_dev.py:interact_chat_graph",
+      "path": "./app/workflows/interact/graph.py:get_langgraph_dev_interact_graph",
       "description": "Interact chat workflow without the production SSE shell."
     },
     "examine_question_build": {
-      "path": "./app/langgraph_dev.py:examine_question_build_graph",
+      "path": "./app/workflows/examine/question_build_workflow.py:build_question_build_graph",
       "description": "Examine question template build workflow."
     },
     "examine_exam_grade": {
-      "path": "./app/langgraph_dev.py:examine_exam_grade_graph",
+      "path": "./app/workflows/examine/exam_grade_workflow.py:build_exam_grade_graph",
       "description": "Examine exam grading workflow."
     },
     "profile_pipeline": {
-      "path": "./app/langgraph_dev.py:profile_pipeline_graph",
+      "path": "./app/workflows/profile/graph.py:build_profile_pipeline_graph",
       "description": "Executable profile pipeline for mastery, review, weakness, and summary refresh."
     }
   },

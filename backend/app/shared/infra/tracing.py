@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from typing import Any, Iterator
 from uuid import uuid4
 
 import structlog
+from langsmith import trace as langsmith_trace_run
+from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.model_router import TaskType, get_task_profile
@@ -30,6 +33,99 @@ class LLMTraceContext:
 
 
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
+
+
+def langsmith_tracing_enabled() -> bool:
+    """Whether LangSmith tracing should be enabled for the current process."""
+
+    settings = get_settings()
+    return settings.tracing_enabled and settings.langsmith_tracing
+
+
+def build_langsmith_metadata(
+    *,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a normalized LangSmith metadata payload."""
+
+    settings = get_settings()
+    metadata: dict[str, Any] = {
+        "app": "aiteachme-backend",
+        "app_version": settings.app_version,
+    }
+    if subject:
+        metadata["subject"] = subject
+    if build_session_id:
+        metadata["build_session_id"] = build_session_id
+    if workflow:
+        metadata["workflow"] = workflow
+    if lane:
+        metadata["lane"] = lane
+    if node:
+        metadata["node"] = node
+    if extra_metadata:
+        metadata.update(
+            {
+                str(key): value
+                for key, value in extra_metadata.items()
+                if value not in (None, "", [], {})
+            }
+        )
+    return metadata
+
+
+def build_langsmith_tags(
+    *,
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_tags: list[str] | None = None,
+) -> list[str]:
+    """Build a stable LangSmith tag list."""
+
+    tags = ["aiteachme"]
+    if workflow:
+        tags.append(f"workflow:{workflow}")
+    if lane:
+        tags.append(f"lane:{lane}")
+    if node:
+        tags.append(f"node:{node}")
+    if extra_tags:
+        tags.extend(tag for tag in extra_tags if tag)
+    return list(dict.fromkeys(tags))
+
+
+def _build_langsmith_context(
+    *,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> tuple[str | None, dict[str, Any], list[str]]:
+    project_name = (get_settings().langsmith_project or "").strip() or None
+    metadata = build_langsmith_metadata(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_metadata=extra_metadata,
+    )
+    tags = build_langsmith_tags(
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_tags=extra_tags,
+    )
+    return project_name, metadata, tags
 
 
 @dataclass
@@ -323,6 +419,87 @@ def llm_trace_scope(
         yield merged
     finally:
         _TRACE_CONTEXT.reset(token)
+
+
+@contextmanager
+def langsmith_tracing_scope(
+    *,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> Iterator[None]:
+    """Temporarily enable and enrich LangSmith tracing for nested runs."""
+
+    if not langsmith_tracing_enabled():
+        yield
+        return
+
+    project_name, metadata, tags = _build_langsmith_context(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_metadata=extra_metadata,
+        extra_tags=extra_tags,
+    )
+    with tracing_context(
+        enabled=True,
+        project_name=project_name,
+        metadata=metadata,
+        tags=tags,
+    ):
+        yield
+
+
+@contextmanager
+def langsmith_trace(
+    *,
+    name: str,
+    run_type: str,
+    inputs: dict[str, Any] | None = None,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> Iterator[Any | None]:
+    """Create a LangSmith run when tracing is enabled."""
+
+    if not langsmith_tracing_enabled():
+        yield None
+        return
+
+    project_name, metadata, tags = _build_langsmith_context(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_metadata=extra_metadata,
+        extra_tags=extra_tags,
+    )
+    with tracing_context(
+        enabled=True,
+        project_name=project_name,
+        metadata=metadata,
+        tags=tags,
+    ):
+        with langsmith_trace_run(
+            name=name,
+            run_type=run_type,
+            inputs=inputs,
+            project_name=project_name,
+            metadata=metadata,
+            tags=tags,
+        ) as run:
+            yield run
 
 
 def get_llm_trace_context() -> LLMTraceContext:

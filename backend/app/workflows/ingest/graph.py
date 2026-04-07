@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.ingest.nodes.enhance import (
     build_deep_enhance_file_node,
     build_finalize_deep_enhance_node,
@@ -142,3 +142,11 @@ def build_deep_enhance_graph() -> StateGraph:
 def build_parse_file_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the single-file ingest workflow (legacy alias for fast parse)."""
     return build_fast_parse_graph(context=context)
+
+
+def get_langgraph_dev_fast_parse_graph() -> StateGraph:
+    """Create the fast-parse graph used by ``langgraph dev``."""
+
+    return build_fast_parse_graph(
+        context=create_langgraph_dev_context("ingest.file.parse.langgraph_dev"),
+    )

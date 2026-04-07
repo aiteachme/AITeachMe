@@ -20,6 +20,7 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
+from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
@@ -239,8 +240,6 @@ async def run_exam_grade_workflow(
     job_id: int,
     session: Session | None = None,
 ) -> ExamGradeState:
-    graph = build_exam_grade_graph(session=session)
-    app = graph.compile()
     initial_state: ExamGradeState = {
         "exam_paper_id": exam_paper_id,
         "job_id": job_id,
@@ -249,8 +248,17 @@ async def run_exam_grade_workflow(
         "review_tasks": [],
         "error": None,
     }
-    result = await app.ainvoke(initial_state)
-    return result
+    return await invoke_state_graph(
+        workflow_name="examine.exam_grade",
+        graph_builder=lambda: build_exam_grade_graph(session=session),
+        initial_state=initial_state,
+        build_session_id=str(job_id),
+        lane="exam_grade",
+        extra_metadata={
+            "job_id": job_id,
+            "exam_paper_id": exam_paper_id,
+        },
+    )
 
 
 class ExamGradeWorkflow:

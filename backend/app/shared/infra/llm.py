@@ -15,13 +15,19 @@ import time
 from typing import Any, AsyncGenerator, TypeVar
 
 import litellm
+from pydantic import BaseModel
 import structlog
 try:
     import instructor
 except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
     instructor = None
 
-from app.shared.infra.tracing import LLMCallRecord, get_llm_trace_context, get_tracker
+from app.shared.infra.tracing import (
+    LLMCallRecord,
+    get_llm_trace_context,
+    get_tracker,
+    langsmith_trace,
+)
 from app.shared.infra.config import get_settings
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
 from app.shared.infra.model_router import TaskType, get_task_profile
@@ -100,6 +106,146 @@ def _build_completion_kwargs(
     return completion_kwargs
 
 
+def _langsmith_usage(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+) -> dict[str, int]:
+    return {
+        "input_tokens": int(prompt_tokens),
+        "output_tokens": int(completion_tokens),
+        "total_tokens": int(total_tokens),
+    }
+
+
+def _serialize_langsmith_value(value: Any) -> Any:
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
+def _langsmith_tool_calls(message: Any) -> list[dict[str, Any]]:
+    tool_calls = getattr(message, "tool_calls", None) or []
+    return [
+        {
+            "id": tool_call.id,
+            "type": tool_call.type or "function",
+            "function": {
+                "name": tool_call.function.name,
+                "arguments": tool_call.function.arguments,
+            },
+        }
+        for tool_call in tool_calls
+    ]
+
+
+def _langsmith_outputs(
+    *,
+    text: str | None = None,
+    result: Any = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+) -> dict[str, Any]:
+    outputs: dict[str, Any] = {
+        "usage": _langsmith_usage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+    }
+    if text is not None:
+        outputs["text"] = text
+    if result is not None:
+        outputs["result"] = _serialize_langsmith_value(result)
+    if tool_calls:
+        outputs["tool_calls"] = tool_calls
+    return outputs
+
+
+def _end_langsmith_trace(
+    trace_run: Any | None,
+    *,
+    text: str | None = None,
+    result: Any = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+) -> None:
+    if trace_run is None:
+        return
+    trace_run.end(
+        outputs=_langsmith_outputs(
+            text=text,
+            result=result,
+            tool_calls=tool_calls,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+    )
+
+
+def _serialize_structured_result(result: Any) -> str:
+    if isinstance(result, BaseModel):
+        return result.model_dump_json()
+    return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def _langsmith_llm_metadata(
+    *,
+    task_type: TaskType,
+    model: str,
+    attempt: int | None = None,
+    mode: str,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "task_type": task_type.value,
+        "model": model,
+        "mode": mode,
+    }
+    if attempt is not None:
+        metadata["attempt"] = attempt
+    return metadata
+
+
+def _langsmith_trace_kwargs(
+    *,
+    task_type: TaskType,
+    model: str,
+    mode: str,
+    messages: list[ChatMessage],
+    attempt: int | None = None,
+    tools: list[dict] | None = None,
+) -> dict[str, Any]:
+    trace_context = get_llm_trace_context()
+    inputs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+    }
+    if tools:
+        inputs["tools"] = tools
+    return {
+        "inputs": inputs,
+        "subject": trace_context.subject,
+        "build_session_id": trace_context.build_session_id,
+        "workflow": trace_context.workflow,
+        "lane": trace_context.lane,
+        "node": trace_context.node,
+        "extra_metadata": _langsmith_llm_metadata(
+            task_type=task_type,
+            model=model,
+            attempt=attempt,
+            mode=mode,
+        ),
+        "extra_tags": [
+            f"task:{task_type.value}",
+            f"mode:{mode}",
+        ],
+    }
 
 
 def _model_json_schema(response_model: type[T]) -> dict[str, Any]:
@@ -306,11 +452,29 @@ async def acompletion(
                 timeout_s=profile.timeout_s,
             )
             try:
-                response = await asyncio.wait_for(
-                    litellm.acompletion(**call_kwargs),
-                    timeout=profile.timeout_s + 2,
-                )
-                prompt_t, completion_t, total_t = _extract_usage(response)
+                with langsmith_trace(
+                    name="llm.acompletion",
+                    run_type="llm",
+                    **_langsmith_trace_kwargs(
+                        task_type=task_type,
+                        model=profile.model,
+                        mode="text",
+                        messages=messages,
+                        attempt=attempt,
+                    ),
+                ) as trace_run:
+                    response = await asyncio.wait_for(
+                        litellm.acompletion(**call_kwargs),
+                        timeout=profile.timeout_s + 2,
+                    )
+                    prompt_t, completion_t, total_t = _extract_usage(response)
+                    _end_langsmith_trace(
+                        trace_run,
+                        text=response.choices[0].message.content or "",
+                        prompt_tokens=prompt_t,
+                        completion_tokens=completion_t,
+                        total_tokens=total_t,
+                    )
                 logger.info(
                     "llm_completion_complete",
                     attempt=attempt,
@@ -423,51 +587,70 @@ async def acompletion_structured(
                 prompt_t = 0
                 completion_t = 0
                 total_t = 0
-                if use_instructor:
-                    try:
-                        result = await asyncio.wait_for(
-                            client.chat.completions.create(
-                                response_model=response_model,
-                                max_retries=0,
-                                **call_kwargs,
-                            ),
-                            timeout=profile.timeout_s + 2,
+                assistant_text = ""
+                with langsmith_trace(
+                    name="llm.acompletion_structured",
+                    run_type="llm",
+                    **_langsmith_trace_kwargs(
+                        task_type=task_type,
+                        model=profile.model,
+                        mode="structured",
+                        messages=messages,
+                        attempt=attempt,
+                    ),
+                ) as trace_run:
+                    if use_instructor:
+                        try:
+                            result = await asyncio.wait_for(
+                                client.chat.completions.create(
+                                    response_model=response_model,
+                                    max_retries=0,
+                                    **call_kwargs,
+                                ),
+                                timeout=profile.timeout_s + 2,
+                            )
+                            prompt_t, completion_t, total_t = _extract_usage(result)
+                        except Exception as instructor_exc:
+                            logger.warning(
+                                "llm_structured_instructor_parse_failed_trying_repair",
+                                response_model=response_model.__name__,
+                                error=str(instructor_exc)[:200],
+                                **_trace_log_fields(),
+                            )
+                            raw_response = await asyncio.wait_for(
+                                litellm.acompletion(**call_kwargs),
+                                timeout=profile.timeout_s + 2,
+                            )
+                            prompt_t, completion_t, total_t = _extract_usage(raw_response)
+                            raw_text = ""
+                            tool_calls = getattr(raw_response.choices[0].message, "tool_calls", None)
+                            if tool_calls:
+                                raw_text = tool_calls[0].function.arguments or ""
+                            if not raw_text:
+                                raw_text = raw_response.choices[0].message.content or ""
+                            assistant_text = raw_text
+                            result = _parse_structured_response_text(response_model, raw_text)
+                    else:
+                        call_kwargs["messages"] = _build_structured_fallback_messages(
+                            response_model,
+                            call_kwargs["messages"],
                         )
-                        prompt_t, completion_t, total_t = _extract_usage(result)
-                    except Exception as instructor_exc:
-                        # Instructor parse failed — try to salvage from tool_call args
-                        logger.warning(
-                            "llm_structured_instructor_parse_failed_trying_repair",
-                            response_model=response_model.__name__,
-                            error=str(instructor_exc)[:200],
-                            **_trace_log_fields(),
-                        )
-                        # Re-call without instructor to get raw response for JSON repair
-                        raw_response = await asyncio.wait_for(
+                        response = await asyncio.wait_for(
                             litellm.acompletion(**call_kwargs),
                             timeout=profile.timeout_s + 2,
                         )
-                        prompt_t, completion_t, total_t = _extract_usage(raw_response)
-                        # Try tool_call arguments first
-                        raw_text = ""
-                        tool_calls = getattr(raw_response.choices[0].message, "tool_calls", None)
-                        if tool_calls:
-                            raw_text = tool_calls[0].function.arguments or ""
-                        if not raw_text:
-                            raw_text = raw_response.choices[0].message.content or ""
-                        result = _parse_structured_response_text(response_model, raw_text)
-                else:
-                    call_kwargs["messages"] = _build_structured_fallback_messages(
-                        response_model,
-                        call_kwargs["messages"],
+                        prompt_t, completion_t, total_t = _extract_usage(response)
+                        raw_content = response.choices[0].message.content or ""
+                        assistant_text = raw_content
+                        result = _parse_structured_response_text(response_model, raw_content)
+                    _end_langsmith_trace(
+                        trace_run,
+                        text=assistant_text.strip() or _serialize_structured_result(result),
+                        result=result,
+                        prompt_tokens=prompt_t,
+                        completion_tokens=completion_t,
+                        total_tokens=total_t,
                     )
-                    response = await asyncio.wait_for(
-                        litellm.acompletion(**call_kwargs),
-                        timeout=profile.timeout_s + 2,
-                    )
-                    prompt_t, completion_t, total_t = _extract_usage(response)
-                    raw_content = response.choices[0].message.content or ""
-                    result = _parse_structured_response_text(response_model, raw_content)
                 logger.info(
                     "llm_structured_complete",
                     attempt=attempt,
@@ -564,14 +747,31 @@ async def acompletion_stream(
                 task_type=task_type.value,
                 timeout_s=profile.timeout_s,
             )
-            response = await asyncio.wait_for(
-                litellm.acompletion(**call_kwargs),
-                timeout=profile.timeout_s + 2,
-            )
-            async for chunk in response:
-                delta = chunk.choices[0].delta
-                if delta.content:
+            streamed_chunks: list[str] = []
+            with langsmith_trace(
+                name="llm.acompletion_stream",
+                run_type="llm",
+                **_langsmith_trace_kwargs(
+                    task_type=task_type,
+                    model=profile.model,
+                    mode="stream",
+                    messages=messages,
+                ),
+            ) as trace_run:
+                response = await asyncio.wait_for(
+                    litellm.acompletion(**call_kwargs),
+                    timeout=profile.timeout_s + 2,
+                )
+                async for chunk in response:
+                    delta = chunk.choices[0].delta
+                    if not delta.content:
+                        continue
+                    streamed_chunks.append(delta.content)
                     yield delta.content
+                _end_langsmith_trace(
+                    trace_run,
+                    text="".join(streamed_chunks),
+                )
             logger.info(
                 "llm_stream_complete",
                 elapsed_s=round(time.monotonic() - start, 2),
@@ -651,11 +851,32 @@ async def acompletion_with_tools(
                 tool_count=len(tools) if tools else 0,
             )
             try:
-                response = await asyncio.wait_for(
-                    litellm.acompletion(**call_kwargs),
-                    timeout=profile.timeout_s + 2,
-                )
-                prompt_t, completion_t, total_t = _extract_usage(response)
+                with langsmith_trace(
+                    name="llm.acompletion_with_tools",
+                    run_type="llm",
+                    **_langsmith_trace_kwargs(
+                        task_type=task_type,
+                        model=profile.model,
+                        mode="tools",
+                        messages=messages,
+                        attempt=attempt,
+                        tools=tools,
+                    ),
+                ) as trace_run:
+                    response = await asyncio.wait_for(
+                        litellm.acompletion(**call_kwargs),
+                        timeout=profile.timeout_s + 2,
+                    )
+                    prompt_t, completion_t, total_t = _extract_usage(response)
+                    message = response.choices[0].message
+                    _end_langsmith_trace(
+                        trace_run,
+                        text=message.content or "",
+                        tool_calls=_langsmith_tool_calls(message),
+                        prompt_tokens=prompt_t,
+                        completion_tokens=completion_t,
+                        total_tokens=total_t,
+                    )
                 logger.info(
                     "llm_tools_complete",
                     attempt=attempt,

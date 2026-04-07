@@ -78,3 +78,55 @@ conda run -n atm python scripts/generate_workflow_diagrams.py
 ```
 
 生成结果位于 `scripts/.generated_workflow_diagrams/`，每个引擎一个 `.md` 文件。
+
+## 调试与观测规范
+
+为了保证“写完 workflow 就能直接看过程”，新的 workflow 默认必须接入统一的 LangGraph 调试与 tracing 约定，而不是各自手写一套日志逻辑。
+
+### 1. 统一运行入口
+
+- 优先通过 `app.workflows.common.runtime.run_state_graph()` 执行 LangGraph。
+- 这样可以自动获得：
+  - `structlog` 的 workflow 开始/结束/失败日志
+  - 统一的 `llm_trace_scope`
+  - LangSmith tracing 上下文
+- 如果某个 workflow 因为流式输出或历史包袱不能直接走 `run_state_graph()`，优先复用 `app.workflows.common.runtime.invoke_state_graph()` 这类共享薄包装，而不是在模块里重复手写 `compile().ainvoke()` + tracing。
+
+### 2. 统一 LLM 调用入口
+
+- 所有节点内的模型调用统一走 `app.shared.infra.llm`。
+- 不要在 workflow 节点里直接调用 `litellm`、`instructor` 或其他 SDK。
+- 这样可以自动获得：
+  - 模型路由
+  - 重试/超时控制
+  - 现有的 token 统计
+  - LangSmith LLM trace
+
+### 3. 统一 Graph 暴露方式
+
+- 每个 workflow 至少暴露一个 `build_xxx_graph() -> StateGraph`。
+- 需要给 `langgraph dev` 提供默认 `WorkflowContext` 的模块，可以额外暴露 `get_langgraph_dev_xxx_graph()` 这种零参数工厂函数。
+- `backend/langgraph.json` 只引用 graph 对象或零参数工厂函数，不再额外维护一份复制业务逻辑的调试实现。
+
+### 4. 上下文元数据约定
+
+- `WorkflowContext.metadata` 中如果存在稳定的运行标识，优先使用 `build_session_id`。
+- 如果没有 `build_session_id`，可以退化为 `job_id` 的字符串形式。
+- 这些字段用于把 LangSmith trace、结构化日志、业务事件串起来，所以新增 workflow 时要尽量补齐。
+
+## LangGraph Dev 与 LangSmith
+
+推荐的最小接入方式如下：
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_xxx
+LANGSMITH_PROJECT=AITeachMe
+```
+
+配合：
+
+- `backend/langgraph.json`
+- `langgraph dev --config langgraph.json`
+
+即可在 Studio 中查看 graph、state、节点执行过程；如果 workflow 和 LLM 调用都遵循上面的统一约定，就不需要为每个模块再单独写一遍 tracing 代码。

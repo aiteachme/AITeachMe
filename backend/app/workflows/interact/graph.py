@@ -6,7 +6,7 @@ from fastapi import Request
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.interact.nodes import (
     build_load_history_state_node,
     build_persist_turn_node,
@@ -170,4 +170,16 @@ def _noop_node(state: InteractWorkflowState) -> InteractWorkflowState:
     return state
 
 
-__all__ = ["InteractWorkflowState", "build_interact_workflow_graph"]
+def get_langgraph_dev_interact_graph() -> StateGraph:
+    """Create the interact graph used by ``langgraph dev``."""
+
+    return build_interact_workflow_graph(
+        context=create_langgraph_dev_context("interact.chat.langgraph_dev"),
+    )
+
+
+__all__ = [
+    "InteractWorkflowState",
+    "build_interact_workflow_graph",
+    "get_langgraph_dev_interact_graph",
+]

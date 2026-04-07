@@ -6,6 +6,7 @@ import asyncio
 from time import perf_counter
 from typing import Any
 
+from app.shared.infra.tracing import langsmith_tracing_scope, llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult, err_result, ok_result
 
@@ -20,6 +21,36 @@ async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
         await asyncio.gather(*active_tasks, return_exceptions=True)
 
 
+async def invoke_state_graph(
+    *,
+    workflow_name: str,
+    graph_builder,
+    initial_state: Any,
+    subject: str = "",
+    build_session_id: str = "",
+    lane: str = "",
+    extra_metadata: dict[str, Any] | None = None,
+) -> Any:
+    """Execute a StateGraph directly while preserving shared tracing context."""
+
+    with llm_trace_scope(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow_name,
+        lane=lane,
+    ):
+        with langsmith_tracing_scope(
+            subject=subject,
+            build_session_id=build_session_id,
+            workflow=workflow_name,
+            lane=lane,
+            extra_metadata=extra_metadata,
+        ):
+            graph = graph_builder()
+            compiled = graph.compile()
+            return await compiled.ainvoke(initial_state)
+
+
 async def run_state_graph(
     *,
     workflow_name: str,
@@ -32,10 +63,22 @@ async def run_state_graph(
     workflow_logger = context.get_logger()
     started_at = perf_counter()
     workflow_logger.info("workflow_started", workflow_name=workflow_name)
+    build_session_id = str(context.metadata.get("build_session_id", ""))
     try:
-        graph = graph_builder()
-        compiled = graph.compile()
-        final_state = await compiled.ainvoke(initial_state)
+        with llm_trace_scope(
+            subject=context.subject,
+            build_session_id=build_session_id,
+            workflow=workflow_name,
+        ):
+            with langsmith_tracing_scope(
+                subject=context.subject,
+                build_session_id=build_session_id,
+                workflow=workflow_name,
+                extra_metadata={"context_metadata": dict(context.metadata)},
+            ):
+                graph = graph_builder()
+                compiled = graph.compile()
+                final_state = await compiled.ainvoke(initial_state)
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         workflow_logger.info("workflow_completed", workflow_name=workflow_name, elapsed_ms=elapsed_ms)
         if isinstance(final_state, dict):
