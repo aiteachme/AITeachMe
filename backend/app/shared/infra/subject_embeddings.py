@@ -7,11 +7,13 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.shared.infra.config import get_settings
 from app.models.subject import Subject
 from app.utils.time import utcnow
 
 _LEGACY_VECTOR_TABLE = "chunk_embeddings"
 _SUBJECT_VECTOR_TABLE_PREFIX = "chunk_embeddings_"
+_POSTGRES_VECTOR_REF = "retrieval_chunk.embedding"
 
 
 class SubjectEmbeddingMode(str, Enum):
@@ -93,11 +95,18 @@ def build_enabled_binding(
 ) -> SubjectEmbeddingBinding:
     """Create an enabled binding for one subject."""
 
+    settings = get_settings()
+    vector_target = (
+        _POSTGRES_VECTOR_REF
+        if settings.is_cloud_mode
+        else build_subject_vector_table_name(subject_slug)
+    )
+
     return SubjectEmbeddingBinding(
         mode=SubjectEmbeddingMode.ENABLED,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
-        vector_table=build_subject_vector_table_name(subject_slug),
+        vector_table=vector_target,
         disabled_reason=None,
         updated_at=updated_at or utcnow(),
     )
@@ -123,7 +132,11 @@ def build_disabled_binding(
         vector_table=(
             previous_binding.vector_table
             if previous_binding is not None
-            else build_subject_vector_table_name(subject_slug)
+            else (
+                _POSTGRES_VECTOR_REF
+                if get_settings().is_cloud_mode
+                else build_subject_vector_table_name(subject_slug)
+            )
         ),
         disabled_reason=disabled_reason,
         updated_at=updated_at or utcnow(),
@@ -137,9 +150,16 @@ __all__ = [
     "build_disabled_binding",
     "build_enabled_binding",
     "build_subject_vector_table_name",
+    "get_postgres_vector_ref",
     "dump_subject_settings",
     "get_legacy_vector_table_name",
     "get_subject_embedding_binding",
     "load_subject_settings",
     "set_subject_embedding_binding",
 ]
+
+
+def get_postgres_vector_ref() -> str:
+    """Return the canonical pgvector storage target."""
+
+    return _POSTGRES_VECTOR_REF
