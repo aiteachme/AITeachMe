@@ -8,14 +8,27 @@ Idempotency: should run once per completed turn; rerunning would create another 
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Generator
+
 from sqlmodel import Session
 
 from app.repositories.chats_repo import create_message_pair
+from app.shared.infra.database import managed_session
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 
 
-def build_persist_turn_node(*, context: WorkflowContext, session: Session):
+@contextmanager
+def _node_session(session_override: Session | None) -> Generator[Session, None, None]:
+    if session_override is not None:
+        yield session_override
+        return
+    with managed_session() as session:
+        yield session
+
+
+def build_persist_turn_node(*, context: WorkflowContext, session: Session | None = None):
     """Build the node that persists the final chat turn."""
 
     workflow_logger = context.get_logger()
@@ -44,18 +57,19 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session):
                 "error": "Missing session_id for chat persistence.",
             }
 
-        _, assistant_message = create_message_pair(
-            session,
-            subject=state["subject"],
-            user_id=state["user_id"],
-            session_id=session_id,
-            user_content=state["question"],
-            assistant_content=assistant_response,
-            contexts=[
-                item.model_dump()
-                for item in (state.get("contexts") or [])
-            ] or None,
-        )
+        with _node_session(session) as db_session:
+            _, assistant_message = create_message_pair(
+                db_session,
+                subject=state["subject"],
+                user_id=state["user_id"],
+                session_id=session_id,
+                user_content=state["question"],
+                assistant_content=assistant_response,
+                contexts=[
+                    item.model_dump()
+                    for item in (state.get("contexts") or [])
+                ] or None,
+            )
         workflow_logger.info(
             "interact_turn_persisted",
             turn_id=assistant_message.turn_id,

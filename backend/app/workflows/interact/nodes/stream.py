@@ -17,11 +17,23 @@ from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.streaming import SSEEventEmitter
 
 
+async def _is_disconnected(request: Request | None) -> bool:
+    if request is None:
+        return False
+    return await request.is_disconnected()
+
+
+async def _emit_token(emitter: SSEEventEmitter | None, token: str) -> None:
+    if emitter is None:
+        return
+    await emitter.emit_token(token)
+
+
 def build_stream_answer_node(
     *,
     context: WorkflowContext,
-    request: Request,
-    emitter: SSEEventEmitter,
+    request: Request | None = None,
+    emitter: SSEEventEmitter | None = None,
 ):
     """Build the node that streams assistant tokens to the client."""
 
@@ -38,7 +50,7 @@ def build_stream_answer_node(
         )
         try:
             async for token in stream:
-                if await request.is_disconnected():
+                if await _is_disconnected(request):
                     await stream.aclose()
                     workflow_logger.info("interact_stream_disconnected")
                     return {
@@ -47,7 +59,7 @@ def build_stream_answer_node(
                         "stream_interrupted": True,
                     }
                 collected_tokens.append(token)
-                await emitter.emit_token(token)
+                await _emit_token(emitter, token)
         except Exception as exc:
             workflow_logger.exception("interact_stream_failed")
             return {
@@ -60,6 +72,7 @@ def build_stream_answer_node(
         workflow_logger.info(
             "interact_stream_completed",
             response_chars=len(assistant_response),
+            streaming_enabled=emitter is not None,
         )
         return {
             **state,

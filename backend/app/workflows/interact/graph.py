@@ -118,7 +118,7 @@ def _resolve_history_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_load_history_state_node(context=context, session=session)
 
@@ -128,7 +128,7 @@ def _resolve_retrieval_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_retrieve_context_node(context=context, session=session)
 
@@ -151,7 +151,7 @@ def _resolve_stream_node(
     request: Request | None,
     emitter: SSEEventEmitter | None,
 ):
-    if context is None or request is None or emitter is None:
+    if context is None:
         return _noop_node
     return build_stream_answer_node(context=context, request=request, emitter=emitter)
 
@@ -161,7 +161,7 @@ def _resolve_persist_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_persist_turn_node(context=context, session=session)
 

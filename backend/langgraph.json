@@ -1,0 +1,49 @@
+{
+  "python_version": "3.11",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "ingest_fast_parse": {
+      "path": "./app/langgraph_dev.py:ingest_fast_parse_graph",
+      "description": "Ingest Phase 1 fast-parse workflow."
+    },
+    "ingest_deep_enhance": {
+      "path": "./app/langgraph_dev.py:ingest_deep_enhance_graph",
+      "description": "Ingest Phase 2 deep-enhance workflow."
+    },
+    "digest_kg": {
+      "path": "./app/langgraph_dev.py:digest_kg_graph",
+      "description": "Digest knowledge-graph lane."
+    },
+    "digest_curriculum": {
+      "path": "./app/langgraph_dev.py:digest_curriculum_graph",
+      "description": "Digest curriculum derivation lane."
+    },
+    "digest_docgen": {
+      "path": "./app/langgraph_dev.py:digest_docgen_graph",
+      "description": "Digest doc generation lane."
+    },
+    "digest_unified": {
+      "path": "./app/langgraph_dev.py:digest_unified_graph",
+      "description": "Digest unified build workflow."
+    },
+    "interact_chat": {
+      "path": "./app/langgraph_dev.py:interact_chat_graph",
+      "description": "Interact chat workflow without the production SSE shell."
+    },
+    "examine_question_build": {
+      "path": "./app/langgraph_dev.py:examine_question_build_graph",
+      "description": "Examine question template build workflow."
+    },
+    "examine_exam_grade": {
+      "path": "./app/langgraph_dev.py:examine_exam_grade_graph",
+      "description": "Examine exam grading workflow."
+    },
+    "profile_pipeline": {
+      "path": "./app/langgraph_dev.py:profile_pipeline_graph",
+      "description": "Executable profile pipeline for mastery, review, weakness, and summary refresh."
+    }
+  },
+  "env": "../.env"
+}
