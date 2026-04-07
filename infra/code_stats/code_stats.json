@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-06T17:27:23.822479",
-  "total_commits_analyzed": 418,
+  "generated_at": "2026-04-07T02:54:11.481867",
+  "total_commits_analyzed": 423,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3345,6 +3345,46 @@
       "code_lines": 88054,
       "other_lines": 28000,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-05",
+      "commit": "9b1c45c",
+      "total_lines": 111219,
+      "code_lines": 84396,
+      "other_lines": 26823,
+      "message": "feature(ingest): integrate MinerU cloud parser"
+    },
+    {
+      "date": "2026-04-06",
+      "commit": "b75345d",
+      "total_lines": 116054,
+      "code_lines": 88054,
+      "other_lines": 28000,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "5a26094",
+      "total_lines": 111463,
+      "code_lines": 84621,
+      "other_lines": 26842,
+      "message": "feat(mineru): support model_version and friendly e"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "48d6bfd",
+      "total_lines": 111463,
+      "code_lines": 84621,
+      "other_lines": 26842,
+      "message": "update"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "4046cf9",
+      "total_lines": 117197,
+      "code_lines": 88978,
+      "other_lines": 28219,
+      "message": "Merge remote-tracking branch 'origin/dev_cy'"
     }
   ]
 }
