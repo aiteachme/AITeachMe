@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T13:52:15.032910",
-  "total_commits_analyzed": 435,
+  "generated_at": "2026-04-07T14:39:28.996098",
+  "total_commits_analyzed": 442,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3481,6 +3481,62 @@
       "code_lines": 89475,
       "other_lines": 28375,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "9e7689a",
+      "total_lines": 117203,
+      "code_lines": 88951,
+      "other_lines": 28252,
+      "message": "style: 上传页面修改"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "5460a65",
+      "total_lines": 117139,
+      "code_lines": 89012,
+      "other_lines": 28127,
+      "message": "refactor: 收薄 LangSmith 追踪封装并统一工作流调试入口"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "f232d78",
+      "total_lines": 117202,
+      "code_lines": 89063,
+      "other_lines": 28139,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "d55d304",
+      "total_lines": 117850,
+      "code_lines": 89475,
+      "other_lines": 28375,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "e52ccf9",
+      "total_lines": 117200,
+      "code_lines": 89062,
+      "other_lines": 28138,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "f0136a2",
+      "total_lines": 117218,
+      "code_lines": 89072,
+      "other_lines": 28146,
+      "message": "docs: update readme"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "93ab0ee",
+      "total_lines": 117218,
+      "code_lines": 89072,
+      "other_lines": 28146,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
