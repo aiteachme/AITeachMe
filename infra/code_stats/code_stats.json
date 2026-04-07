@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T02:54:11.481867",
-  "total_commits_analyzed": 423,
+  "generated_at": "2026-04-07T07:56:08.277122",
+  "total_commits_analyzed": 428,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3385,6 +3385,46 @@
       "code_lines": 88978,
       "other_lines": 28219,
       "message": "Merge remote-tracking branch 'origin/dev_cy'"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "4433243",
+      "total_lines": 116139,
+      "code_lines": 88189,
+      "other_lines": 27950,
+      "message": "fix: 数据库问题"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "fc8592d",
+      "total_lines": 117197,
+      "code_lines": 88978,
+      "other_lines": 28219,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "62b2d1c",
+      "total_lines": 117140,
+      "code_lines": 88900,
+      "other_lines": 28240,
+      "message": "chore: ui改动"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "17a1fa0",
+      "total_lines": 117375,
+      "code_lines": 89132,
+      "other_lines": 28243,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "1211bac",
+      "total_lines": 117318,
+      "code_lines": 89054,
+      "other_lines": 28264,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
     }
   ]
 }
