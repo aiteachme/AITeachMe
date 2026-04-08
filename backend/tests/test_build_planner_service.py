@@ -197,15 +197,14 @@ def test_create_build_planner_session_normalizes_dirty_workflow_payload(session:
     planner_session = session.get(BuildPlannerSession, response.session_id)
 
     assert response.plan.digest_mode == "sprint"
-    assert len(response.plan.chapter_plan) == 4
-    assert response.plan.chapter_plan[0].title.endswith("快速建立直觉")
-    assert response.plan.chapter_plan[1].title.endswith("公式与方法")
-    assert response.plan.chapter_plan[2].title.endswith("题型拆解")
-    assert response.plan.chapter_plan[3].title.endswith("易错点与冲刺复盘")
+    assert 3 <= len(response.plan.chapter_plan) <= 6
+    assert response.plan.chapter_plan[0].title.startswith("考前快速复习")
+    assert response.plan.build_constraints["target_chapter_count"] == len(response.plan.chapter_plan)
+    assert "fixed_chapter_count" not in response.plan.build_constraints
     assert "冲刺型知识文档" in response.plan.plan_summary
     assert planner_session is not None
     assert planner_session.latest_plan_json is not None
-    assert planner_session.latest_plan_json["chapter_plan"][0]["title"].endswith("快速建立直觉")
+    assert planner_session.latest_plan_json["chapter_plan"][0]["title"].startswith("考前快速复习")
     assert planner_session.latest_summary == response.plan.plan_summary
 
 

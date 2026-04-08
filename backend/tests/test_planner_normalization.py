@@ -69,7 +69,8 @@ def test_normalize_planner_draft_repairs_sprint_contract() -> None:
     assert normalized.chapter_plan[1].title.startswith("\u8fde\u7eed")
     assert normalized.chapter_plan[2].title.startswith("\u5bfc\u6570")
     assert normalized.chapter_plan[3].title.startswith("\u5fae\u5206")
-    assert normalized.build_constraints["fixed_chapter_count"] == 4
+    assert normalized.build_constraints["target_chapter_count"] == len(normalized.chapter_plan)
+    assert "fixed_chapter_count" not in normalized.build_constraints
     assert "\u5feb\u901f" in normalized.chapter_plan[0].objective
     assert "\u51b2\u523a\u578b\u77e5\u8bc6\u6587\u6863" in normalized.plan_summary
 
@@ -170,9 +171,10 @@ def test_normalize_planner_draft_repairs_systematic_contract_from_previous_plan(
     assert len(normalized.chapter_plan) == 6
     assert normalized.chapter_plan[0].title == "\u5168\u666f\u5bfc\u8bba"
     assert normalized.chapter_plan[-1].title == "\u603b\u7ed3\u4e0e\u5ef6\u5c55"
-    assert normalized.chapter_plan[1].title == "\u6781\u9650\uff1a\u5b9a\u4e49\u4e0e\u65b9\u6cd5"
-    assert normalized.build_constraints["min_chapters"] == 6
-    assert normalized.build_constraints["max_chapters"] == 10
+    assert normalized.chapter_plan[1].title.startswith("\u6781\u9650\uff1a")
+    assert normalized.build_constraints["min_chapters"] == 5
+    assert normalized.build_constraints["max_chapters"] == 12
+    assert normalized.build_constraints["target_chapter_count"] == len(normalized.chapter_plan)
     assert "\u7cfb\u7edf\u578b\u77e5\u8bc6\u6587\u6863" in normalized.plan_summary
     assert "\u9ad8\u7b49\u6570\u5b66 \u5bfc\u6570 \u603b\u7ed3" in normalized.research_queries
 

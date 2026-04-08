@@ -249,8 +249,10 @@ def _build_raw_plan_from_preview(
             if _clean_preview_line(_replace_subject_slug(task, display_subject))
         ]
 
+    chapter_count = max(len(preview_tasks), len(fallback_plan.chapter_plan)) if preview_tasks else len(fallback_plan.chapter_plan)
     chapter_plan: list[dict[str, Any]] = []
-    for index, fallback in enumerate(fallback_plan.chapter_plan):
+    for index in range(chapter_count):
+        fallback = fallback_plan.chapter_plan[min(index, len(fallback_plan.chapter_plan) - 1)]
         task = preview_tasks[index] if index < len(preview_tasks) else ""
         chapter_payload = fallback.model_dump(mode="json")
         if task:

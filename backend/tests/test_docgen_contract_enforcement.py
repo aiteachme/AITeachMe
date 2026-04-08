@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlmodel import select
 
@@ -49,7 +49,7 @@ def test_load_context_requires_confirmed_plan() -> None:
         node(
             {
                 "subject": "demo",
-                "requested_at": datetime.utcnow(),
+                "requested_at": datetime.now(timezone.utc),
                 "file_ids": [1],
                 "shared_inputs": _build_shared_inputs(),
                 "digest_mode": "systematic",
@@ -60,6 +60,41 @@ def test_load_context_requires_confirmed_plan() -> None:
     )
 
     assert "缺少已确认的构建方案" in result["error"]
+
+
+def test_load_context_allows_search_only_docgen() -> None:
+    node = build_load_context_node(context=create_langgraph_dev_context("digest.docgen.contract"))
+    result = asyncio.run(
+        node(
+            {
+                "subject": "demo",
+                "requested_at": datetime.now(timezone.utc),
+                "file_ids": [],
+                "shared_inputs": SharedInputs(),
+                "digest_mode": "systematic",
+                "tone": "encouraging",
+                "confirmed_plan": {
+                    "digest_mode": "systematic",
+                    "tone": "encouraging",
+                    "user_goal": "系统整理偏导数与梯度",
+                    "plan_summary": "按章节联网检索并整理成系统讲义",
+                    "chapter_plan": [
+                        {
+                            "chapter_index": 1,
+                            "title": "偏导数的直觉与定义",
+                            "objective": "建立偏导数的基础认知",
+                            "search_queries": ["偏导数 几何意义", "偏导数 定义"],
+                        }
+                    ],
+                },
+            }
+        )
+    )
+
+    assert result.get("error") is None
+    assert result["document_context"]["source_strategy"] == "web_first"
+    assert result["chapter_assignments"][0]["title"] == "偏导数的直觉与定义"
+    assert result["raw_chunks"] == []
 
 
 def test_docgen_lane_summary_counts_chinese_markdown() -> None:

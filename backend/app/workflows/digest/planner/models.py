@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -14,18 +13,15 @@ from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, Sub
 
 DEFAULT_DIGEST_MODE = "systematic"
 DEFAULT_TONE = "encouraging"
-SYSTEMATIC_FIRST_TITLE = "全景导论"
-SYSTEMATIC_LAST_TITLE = "总结与延展"
 MEDIA_HINT_KEYS = ("images", "mermaid", "interactive")
-SPRINT_ROLE_LABELS = (
-    "核心直觉",
-    "公式与方法",
-    "题型拆解",
-    "易错复盘",
-)
+SPRINT_MIN_CHAPTERS = 3
+SPRINT_MAX_CHAPTERS = 6
+SYSTEMATIC_MIN_CHAPTERS = 5
+SYSTEMATIC_MAX_CHAPTERS = 12
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
+_TOPIC_SPLIT_RE = re.compile(r"[，。；：,.!?！？/\n]")
 
 
 class PlannerChapterPlan(BaseModel):
@@ -50,6 +46,119 @@ class BuildPlannerDraft(BaseModel):
     media_plan: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     plan_summary: str = ""
+
+
+class ChapterAngleSpec(BaseModel):
+    label: str
+    required_elements: list[str] = Field(default_factory=list)
+    query_suffixes: list[str] = Field(default_factory=list)
+    writing_instruction: str = ""
+    objective_template: str = ""
+
+
+SPRINT_ANGLE_SPECS = [
+    ChapterAngleSpec(
+        label="核心概念",
+        required_elements=["核心概念", "高频考点", "直觉理解"],
+        query_suffixes=["核心概念", "通俗理解", "考点梳理"],
+        writing_instruction="优先解释最少但最关键的概念，用大白话说明它为什么重要，并点明最常见的考法。",
+        objective_template="围绕“{topic}”快速抓住核心概念与考点，先建立能直接拿来应试的理解抓手。",
+    ),
+    ChapterAngleSpec(
+        label="公式方法",
+        required_elements=["核心公式", "使用条件", "方法判断"],
+        query_suffixes=["公式总结", "方法技巧", "使用条件"],
+        writing_instruction="突出公式、方法和使用条件，每个要点都补一条快速判断规则，避免死记硬背。",
+        objective_template="围绕“{topic}”整理最常用的公式与方法，帮助学生快速判断什么时候该用什么。",
+    ),
+    ChapterAngleSpec(
+        label="题型突破",
+        required_elements=["典型题型", "步骤拆解", "变式提醒"],
+        query_suffixes=["典型题型", "例题解析", "真题变式"],
+        writing_instruction="按题型展开，明确题眼、解题步骤和变式方向，让学生看到题就能找到入口。",
+        objective_template="围绕“{topic}”拆解高频题型与解题路径，把会做一道题扩展成会做一类题。",
+    ),
+    ChapterAngleSpec(
+        label="易错辨析",
+        required_elements=["易错点", "混淆概念", "失分原因"],
+        query_suffixes=["易错点总结", "常见陷阱", "对比辨析"],
+        writing_instruction="集中讲清最容易混淆和失分的地方，明确为什么会错、如何快速自查。",
+        objective_template="围绕“{topic}”集中处理最容易失分的误区，避免学生在考场上踩重复的坑。",
+    ),
+    ChapterAngleSpec(
+        label="综合迁移",
+        required_elements=["综合变式", "跨题型迁移", "得分策略"],
+        query_suffixes=["综合变式", "迁移应用", "得分技巧"],
+        writing_instruction="强调同一知识点在不同题型中的变形方式，补充综合场景下的得分策略。",
+        objective_template="围绕“{topic}”补足综合变式和迁移能力，避免学生只会单一路径的套路题。",
+    ),
+    ChapterAngleSpec(
+        label="考前速查",
+        required_elements=["速查表", "最后回看", "记忆抓手"],
+        query_suffixes=["速查表", "考前回看", "记忆口诀"],
+        writing_instruction="压缩表达，形成适合最后回看的速查清单，确保一分钟能复盘关键抓手。",
+        objective_template="围绕“{topic}”沉淀一页可快速回看的抓手，让学生在考前能高效完成最后复盘。",
+    ),
+]
+
+SYSTEMATIC_ANGLE_SPECS = [
+    ChapterAngleSpec(
+        label="主题导入",
+        required_elements=["学习目标", "前置关系", "核心问题"],
+        query_suffixes=["学习路径", "知识框架", "前置知识"],
+        writing_instruction="先交代这一章解决什么问题、与整套内容如何衔接，再进入细节展开。",
+        objective_template="围绕“{topic}”建立学习入口，让学生先知道为什么学、先学什么、后学什么。",
+    ),
+    ChapterAngleSpec(
+        label="概念定义",
+        required_elements=["核心定义", "关键概念", "符号说明"],
+        query_suffixes=["定义", "概念梳理", "符号说明"],
+        writing_instruction="从概念、定义、符号和最小例子出发，搭好本章的理解底座。",
+        objective_template="围绕“{topic}”建立准确的概念与定义理解，打牢后续推理和应用的基础。",
+    ),
+    ChapterAngleSpec(
+        label="结构公式",
+        required_elements=["关键结构", "核心公式", "成立条件"],
+        query_suffixes=["关键结构", "核心公式", "成立条件"],
+        writing_instruction="讲清结构、公式和它们的成立边界，不要只罗列结论，要补上使用前提。",
+        objective_template="围绕“{topic}”梳理关键结构与公式，帮助学生建立可推演、可调用的知识骨架。",
+    ),
+    ChapterAngleSpec(
+        label="方法推理",
+        required_elements=["推理过程", "方法步骤", "判断依据"],
+        query_suffixes=["推理思路", "方法步骤", "证明思路"],
+        writing_instruction="强调方法链路、推理过程和判断依据，让学生知道为什么这样做而不是只记结果。",
+        objective_template="围绕“{topic}”建立从原理到方法的推理链，形成更完整的系统理解。",
+    ),
+    ChapterAngleSpec(
+        label="例题应用",
+        required_elements=["典型例题", "应用场景", "变式扩展"],
+        query_suffixes=["例题解析", "应用场景", "变式拓展"],
+        writing_instruction="通过例题与应用场景把抽象知识落地，突出从概念到解题的转化过程。",
+        objective_template="围绕“{topic}”把知识落到典型例题和应用场景中，提升理解到运用的转化能力。",
+    ),
+    ChapterAngleSpec(
+        label="边界辨析",
+        required_elements=["易混点", "边界条件", "反例提醒"],
+        query_suffixes=["易混概念", "边界条件", "反例辨析"],
+        writing_instruction="专门处理容易混淆的边界和反例，避免学生形成看似顺畅但不稳的理解。",
+        objective_template="围绕“{topic}”处理最容易混淆的边界条件和反例，补齐系统学习中最容易漏掉的薄弱点。",
+    ),
+    ChapterAngleSpec(
+        label="综合迁移",
+        required_elements=["综合问题", "跨主题联系", "迁移能力"],
+        query_suffixes=["综合问题", "知识联系", "迁移应用"],
+        writing_instruction="把多个主题串起来，说明它们如何在综合问题中协同出现并互相支撑。",
+        objective_template="围绕“{topic}”搭建跨主题联系，帮助学生把局部知识组织成可迁移的整体能力。",
+    ),
+    ChapterAngleSpec(
+        label="总结延伸",
+        required_elements=["本章回顾", "复习建议", "进阶方向"],
+        query_suffixes=["总结回顾", "复习建议", "进阶学习"],
+        writing_instruction="收束这一章的主线，指出后续延伸方向和推荐的复习顺序。",
+        objective_template="围绕“{topic}”完成回收与延伸，帮助学生把本章内容沉淀成稳定的长期结构。",
+    ),
+]
 
 
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
@@ -99,6 +208,14 @@ def _dedupe_strings(items: Iterable[Any], *, limit: int | None = None) -> list[s
         if limit is not None and len(cleaned) >= limit:
             break
     return cleaned
+
+
+def _read_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -151,23 +268,24 @@ def _normalize_build_constraints(value: Any, fallback: dict[str, Any], *, digest
     raw = _coerce_mapping(value)
     merged = dict(fallback)
     merged.update(raw)
+    min_chapters = SPRINT_MIN_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
+    max_chapters = SPRINT_MAX_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
+    default_length = "3000-5000字" if digest_mode == "sprint" else "10000-15000字"
     merged["include_exercises"] = bool(merged.get("include_exercises", True))
     merged["include_sources"] = bool(merged.get("include_sources", True))
     merged["math_mode"] = bool(merged.get("math_mode", False))
-    if digest_mode == "sprint":
-        merged["fixed_chapter_count"] = 4
-        merged.pop("min_chapters", None)
-        merged.pop("max_chapters", None)
-        merged.setdefault("target_length", "3000-5000字")
-    else:
-        merged["min_chapters"] = 6
-        merged["max_chapters"] = 10
-        merged.pop("fixed_chapter_count", None)
-        merged.setdefault("target_length", "10000-15000字")
+    target_count = _read_positive_int(merged.get("target_chapter_count")) or _read_positive_int(
+        fallback.get("target_chapter_count")
+    ) or min_chapters
+    merged["min_chapters"] = min_chapters
+    merged["max_chapters"] = max_chapters
+    merged["target_chapter_count"] = min(max_chapters, max(min_chapters, target_count))
+    merged["target_length"] = _clean_text(merged.get("target_length")) or default_length
+    merged.pop("fixed_chapter_count", None)
     return merged
 
 
-def _collect_topic_hints(shared_inputs: SharedInputs | None, *, limit: int = 8) -> list[str]:
+def _collect_topic_hints(shared_inputs: SharedInputs | None, *, limit: int = 12) -> list[str]:
     if shared_inputs is None:
         return []
     raw_topics = [
@@ -177,12 +295,43 @@ def _collect_topic_hints(shared_inputs: SharedInputs | None, *, limit: int = 8) 
     return _dedupe_strings(raw_topics, limit=limit)
 
 
-def _pick_topic(topics: list[str], index: int, fallback: str) -> str:
-    if index < len(topics):
-        return topics[index]
-    if topics:
-        return topics[0]
-    return fallback
+def _estimate_target_chapter_count(
+    *,
+    digest_mode: str,
+    shared_inputs: SharedInputs,
+    user_goal: str,
+    requested_count: int | None = None,
+) -> int:
+    normalized_mode = _normalize_digest_mode(digest_mode)
+    min_chapters = SPRINT_MIN_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
+    max_chapters = SPRINT_MAX_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
+    if requested_count is not None and requested_count > 0:
+        return min(max_chapters, max(min_chapters, requested_count))
+
+    topic_count = len(_collect_topic_hints(shared_inputs, limit=12))
+    goal_text = _clean_text(user_goal)
+    goal_weight = sum(
+        1
+        for marker in ("系统", "完整", "全面", "详细", "深入", "从零", "体系", "进阶", "扩展", "考试", "真题", "冲刺")
+        if marker in goal_text
+    )
+
+    if normalized_mode == "sprint":
+        estimated = topic_count if topic_count > 0 else SPRINT_MIN_CHAPTERS
+        if goal_weight >= 2:
+            estimated += 1
+        return min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, estimated))
+
+    estimated = topic_count if topic_count > 0 else SYSTEMATIC_MIN_CHAPTERS
+    if shared_inputs.subject_profile.has_heavy_formulas:
+        estimated += 1
+    if shared_inputs.subject_profile.has_heavy_questions:
+        estimated += 1
+    if goal_weight >= 2:
+        estimated += 1
+    if goal_weight >= 4:
+        estimated += 1
+    return min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, estimated))
 
 
 def _looks_like_subject_slug(value: Any) -> bool:
@@ -230,295 +379,171 @@ def _replace_subject_slug_text(value: Any, replacement: str) -> str:
     return _SUBJECT_SLUG_INLINE_RE.sub(replacement, text)
 
 
-def _build_sprint_title(topic: str, role: str) -> str:
-    if role == "核心直觉":
-        return f"{topic}：快速建立直觉"
-    if role == "公式与方法":
-        return f"{topic}：公式与方法"
-    if role == "题型拆解":
-        return f"{topic}：题型拆解"
-    if role == "易错复盘":
-        return f"{topic}：易错点与冲刺复盘"
-    return f"{topic}：重点梳理"
+def _extract_goal_topic_hints(user_goal: str, *, display_subject: str) -> list[str]:
+    fragments = [
+        fragment.strip()
+        for fragment in _TOPIC_SPLIT_RE.split(_replace_subject_slug_text(user_goal, display_subject))
+        if fragment.strip()
+    ]
+    hints: list[str] = []
+    for fragment in fragments:
+        if fragment == display_subject or len(fragment) < 2 or len(fragment) > 20 or not _has_cjk(fragment):
+            continue
+        hints.append(fragment)
+    return _dedupe_strings(hints, limit=4)
 
 
-def _build_sprint_chapter_specs(
-    *,
-    subject: str,
-    shared_inputs: SharedInputs,
-    user_goal: str = "",
-) -> list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]]:
-    topics = _collect_topic_hints(shared_inputs, limit=4)
-    fallback_topic = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
-    chapter_topics = [_pick_topic(topics, index, fallback_topic) for index in range(4)]
+def _angle_specs_for_mode(digest_mode: str) -> list[ChapterAngleSpec]:
+    return SPRINT_ANGLE_SPECS if _normalize_digest_mode(digest_mode) == "sprint" else SYSTEMATIC_ANGLE_SPECS
+
+
+def _topic_candidates(*, subject: str, shared_inputs: SharedInputs, user_goal: str) -> list[str]:
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
+    return _dedupe_strings(
+        [
+            *_collect_topic_hints(shared_inputs, limit=12),
+            *_extract_goal_topic_hints(user_goal, display_subject=display_subject),
+            display_subject,
+        ],
+        limit=12,
+    )
+
+
+def _build_topic_sequence(topics: list[str], *, display_subject: str, target_count: int) -> list[tuple[str, bool]]:
+    seeds = topics or [display_subject]
     return [
-        (
-            _build_sprint_title(chapter_topics[0], SPRINT_ROLE_LABELS[0]),
-            f"围绕“{chapter_topics[0]}”快速建立生活化直觉、核心概念和知识抓手，让学生先看懂、再记住。",
-            ["通俗类比", "核心概念", "知识关系"],
-            [
-                f"{subject} {chapter_topics[0]} 通俗理解",
-                f"{subject} {chapter_topics[0]} 核心概念 梳理",
-            ],
-            "先用生活化例子或考场场景引入，再解释核心概念之间的关系，并补一个 Mermaid 结构图占位符。",
-            {
-                "images": [f"{chapter_topics[0]} 的直觉示意图"],
-                "mermaid": [f"{chapter_topics[0]} 的概念关系图"],
-                "interactive": [],
-            },
-        ),
-        (
-            _build_sprint_title(chapter_topics[1], SPRINT_ROLE_LABELS[1]),
-            f"把“{chapter_topics[1]}”最关键的公式、方法、使用条件和一眼判断抓出来，形成冲刺工具箱。",
-            ["核心公式", "适用条件", "方法判断"],
-            [
-                f"{subject} {chapter_topics[1]} 公式 总结",
-                f"{subject} {chapter_topics[1]} 方法 条件",
-            ],
-            "每个公式或方法后面都要补一条大白话解释，并点明什么时候能用、什么时候最容易用错。",
-            {
-                "images": [f"{chapter_topics[1]} 的公式示意图"],
-                "mermaid": [f"{chapter_topics[1]} 的方法判断图"],
-                "interactive": [],
-            },
-        ),
-        (
-            _build_sprint_title(chapter_topics[2], SPRINT_ROLE_LABELS[2]),
-            f"围绕“{chapter_topics[2]}”整理高频题型，拆开解题路径、关键转折和常见变式。",
-            ["典型题型", "步骤拆解", "变式提醒"],
-            [
-                f"{subject} {chapter_topics[2]} 典型例题 解析",
-                f"{subject} {chapter_topics[2]} 真题 解法",
-            ],
-            "必须给出步骤化拆解，突出题型抓手、关键转折点和一题多变的提醒。",
-            {
-                "images": [f"{chapter_topics[2]} 的题型步骤图"],
-                "mermaid": [f"{chapter_topics[2]} 的解题流程图"],
-                "interactive": [],
-            },
-        ),
-        (
-            _build_sprint_title(chapter_topics[3], SPRINT_ROLE_LABELS[3]),
-            f"把“{chapter_topics[3]}”里最容易混淆、最容易失分的点集中收尾，形成考前回看清单。",
-            ["易错点", "混淆概念", "考前清单"],
-            [
-                f"{subject} {chapter_topics[3]} 易错点 总结",
-                f"{subject} {chapter_topics[3]} 常见陷阱 对比",
-            ],
-            "要明确列出最常见的错法、为什么会错，以及考前一分钟应该回看什么。",
-            {
-                "images": [f"{chapter_topics[3]} 的常见错误示意图"],
-                "mermaid": [f"{chapter_topics[3]} 的易错点对照图"],
-                "interactive": [],
-            },
-        ),
+        (seeds[index] if index < len(seeds) else seeds[index % len(seeds)], index >= len(seeds))
+        for index in range(target_count)
     ]
 
 
-def _build_systematic_middle_titles(topic_hints: list[str], *, target_count: int) -> list[str]:
-    fallback_titles = [
-        "核心定义与符号",
-        "关键结构与公式",
-        "推理与证明思路",
-        "应用与例题",
-        "易混概念与边界条件",
-        "方法串联与综合理解",
-        "典型场景与扩展问题",
-        "知识回看与迁移练习",
-    ]
-    if topic_hints:
-        hinted_titles = [f"{topic}：定义与方法" for topic in topic_hints[:target_count]]
-        if len(hinted_titles) >= target_count:
-            return hinted_titles[:target_count]
-        return hinted_titles + fallback_titles[: target_count - len(hinted_titles)]
-    return fallback_titles[:target_count]
+def _build_chapter_title(
+    *,
+    topic: str,
+    angle: ChapterAngleSpec,
+    repeated_topic: bool,
+    used_titles: set[str],
+) -> str:
+    cleaned_topic = _clean_text(topic) or "当前主题"
+    title = cleaned_topic if not repeated_topic else f"{cleaned_topic}：{angle.label}"
+    if title in used_titles:
+        title = f"{cleaned_topic}：{angle.label}"
+    if title in used_titles:
+        suffix = 2
+        candidate = f"{cleaned_topic}：{angle.label}{suffix}"
+        while candidate in used_titles:
+            suffix += 1
+            candidate = f"{cleaned_topic}：{angle.label}{suffix}"
+        title = candidate
+    used_titles.add(title)
+    return title
 
 
-def _build_systematic_chapter_specs(
+def _build_search_queries(
     *,
     subject: str,
-    shared_inputs: SharedInputs,
-    user_goal: str = "",
-    target_count: int | None = None,
-) -> list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]]:
-    topic_hints = _collect_topic_hints(shared_inputs, limit=8)
-    if target_count is None:
-        target_count = math.ceil(max(1, len(topic_hints)) / 1.5) + 2
-    target_count = min(10, max(6, target_count))
-    middle_titles = _build_systematic_middle_titles(topic_hints, target_count=target_count - 2)
-    titles = [SYSTEMATIC_FIRST_TITLE, *middle_titles, SYSTEMATIC_LAST_TITLE]
-    overall_topic = "、".join(topic_hints[:4]) if topic_hints else _resolve_subject_display_name(
-        subject,
-        shared_inputs=shared_inputs,
-        user_goal=user_goal,
-    )
-    specs: list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]] = []
-
-    for index, title in enumerate(titles, start=1):
-        if index == 1:
-            specs.append(
-                (
-                    SYSTEMATIC_FIRST_TITLE,
-                    "先建立整个主题的知识全景、学习顺序和章节关系，再进入细节。",
-                    ["知识全景", "学习路径", "概念关系图"],
-                    [
-                        f"{subject} {overall_topic} 知识框架",
-                        f"{subject} {overall_topic} 学习路线",
-                    ],
-                    "这一章必须是全景导论，先交代整体学习路径，再给出全局脉络图，并说明后续章节分别解决什么问题。",
-                    {
-                        "images": [f"{overall_topic} 的整体结构示意图"],
-                        "mermaid": [f"{overall_topic} 的全景知识脉络图"],
-                        "interactive": [],
-                    },
-                )
-            )
-            continue
-        if index == len(titles):
-            specs.append(
-                (
-                    SYSTEMATIC_LAST_TITLE,
-                    "回收整份文档的主线，串起核心知识，并给出进一步深入学习的路径。",
-                    ["全局串联", "常见误区", "进阶路径"],
-                    [
-                        f"{subject} {overall_topic} 总结 复习",
-                        f"{subject} {overall_topic} 进阶 学习路径",
-                    ],
-                    "这一章必须承担总结与延展的职责，回顾全文主线，并给出后续进阶建议。",
-                    {
-                        "images": [f"{overall_topic} 的进阶学习路线图"],
-                        "mermaid": [f"{overall_topic} 的知识回收图"],
-                        "interactive": [],
-                    },
-                )
-            )
-            continue
-
-        focus_topic = title.split("：", 1)[0].strip() or title
-        specs.append(
-            (
-                title,
-                f"围绕“{focus_topic}”建立定义、公式、推理和应用之间的系统理解。",
-                ["前置知识", "核心定义", "推理或证明", "应用示例"],
-                [
-                    f"{subject} {focus_topic} 定义 公式",
-                    f"{subject} {focus_topic} 例题 应用",
-                ],
-                "本章要按“前置知识 -> 动机引入 -> 核心定义与定理 -> 推理与应用 -> 本章要点”的结构展开。",
-                {
-                    "images": [f"{focus_topic} 的解释性配图"],
-                    "mermaid": [f"{focus_topic} 在整体知识中的位置图"],
-                    "interactive": [],
-                },
-            )
-        )
-    return specs
-
-
-def _chapter_from_spec(
-    index: int,
-    spec: tuple[str, str, list[str], list[str], str, dict[str, list[str]]],
-) -> PlannerChapterPlan:
-    title, objective, required_elements, queries, instructions, media_hints = spec
-    return PlannerChapterPlan(
-        chapter_index=index,
-        title=title,
-        objective=objective,
-        required_elements=required_elements,
-        search_queries=queries,
-        writing_instructions=instructions,
-        media_hints=media_hints,
+    display_subject: str,
+    topic: str,
+    angle: ChapterAngleSpec,
+) -> list[str]:
+    query_subject = _clean_text(subject)
+    query_topic = _clean_text(topic) or display_subject
+    base_subject = query_subject if query_subject and not _looks_like_subject_slug(query_subject) else display_subject
+    return _dedupe_strings(
+        [f"{base_subject} {query_topic} {suffix}" for suffix in angle.query_suffixes],
+        limit=4,
     )
 
 
-def _build_sprint_fallback_plan(
+def _build_media_hints(topic: str, angle: ChapterAngleSpec) -> dict[str, list[str]]:
+    cleaned_topic = _clean_text(topic) or "当前主题"
+    return {
+        "images": [f"{cleaned_topic} 的{angle.label}示意图"],
+        "mermaid": [f"{cleaned_topic} 的{angle.label}关系图"],
+        "interactive": [],
+    }
+
+
+def _build_fallback_chapter_plan(
     *,
     subject: str,
     user_goal: str,
-    tone: str,
+    digest_mode: str,
     shared_inputs: SharedInputs,
-) -> BuildPlannerDraft:
-    settings = get_settings()
+    target_count: int,
+) -> list[PlannerChapterPlan]:
     display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
-    chapter_plan = [
-        _chapter_from_spec(index, spec)
-        for index, spec in enumerate(
-            _build_sprint_chapter_specs(subject=subject, shared_inputs=shared_inputs, user_goal=user_goal),
-            start=1,
+    topic_sequence = _build_topic_sequence(
+        _topic_candidates(subject=subject, shared_inputs=shared_inputs, user_goal=user_goal),
+        display_subject=display_subject,
+        target_count=target_count,
+    )
+    angle_specs = _angle_specs_for_mode(digest_mode)
+    used_titles: set[str] = set()
+    chapter_plan: list[PlannerChapterPlan] = []
+
+    for index, (topic, repeated_topic) in enumerate(topic_sequence, start=1):
+        angle = angle_specs[(index - 1) % len(angle_specs)]
+        chapter_plan.append(
+            PlannerChapterPlan(
+                chapter_index=index,
+                title=_build_chapter_title(
+                    topic=topic,
+                    angle=angle,
+                    repeated_topic=repeated_topic,
+                    used_titles=used_titles,
+                ),
+                objective=angle.objective_template.format(topic=topic or display_subject),
+                required_elements=list(angle.required_elements),
+                search_queries=_build_search_queries(
+                    subject=subject,
+                    display_subject=display_subject,
+                    topic=topic,
+                    angle=angle,
+                ),
+                writing_instructions=angle.writing_instruction,
+                media_hints=_build_media_hints(topic, angle),
+            )
         )
-    ]
-    research_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
-    return BuildPlannerDraft(
-        subject=display_subject,
-        user_goal=user_goal,
-        digest_mode="sprint",
-        tone=tone,
-        chapter_plan=chapter_plan,
-        research_queries=_dedupe_strings(research_queries, limit=24),
-        media_plan={
-            "enable_mermaid": settings.enable_mermaid_generation,
-            "enable_images": settings.enable_image_generation,
-            "enable_interactive_html": False,
-        },
-        build_constraints={
-            "fixed_chapter_count": 4,
+    return chapter_plan
+
+
+def _build_build_constraints(
+    *,
+    digest_mode: str,
+    target_count: int,
+    shared_inputs: SharedInputs,
+) -> dict[str, Any]:
+    if _normalize_digest_mode(digest_mode) == "sprint":
+        return {
+            "min_chapters": SPRINT_MIN_CHAPTERS,
+            "max_chapters": SPRINT_MAX_CHAPTERS,
+            "target_chapter_count": min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, target_count)),
             "include_exercises": True,
             "include_sources": True,
             "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
             "target_length": "3000-5000字",
-        },
-        plan_summary=(
-            f"围绕 {display_subject} 生成一份冲刺型知识文档，固定 4 章，但每章标题、目标和检索词都紧贴当前资料主题与用户目标。"
-        ),
-    )
+        }
+    return {
+        "min_chapters": SYSTEMATIC_MIN_CHAPTERS,
+        "max_chapters": SYSTEMATIC_MAX_CHAPTERS,
+        "target_chapter_count": min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, target_count)),
+        "include_exercises": True,
+        "include_sources": True,
+        "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
+        "target_length": "10000-15000字",
+    }
 
 
-def _build_systematic_fallback_plan(
-    *,
-    subject: str,
-    user_goal: str,
-    tone: str,
-    shared_inputs: SharedInputs,
-    target_count: int | None = None,
-) -> BuildPlannerDraft:
-    settings = get_settings()
-    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
-    chapter_plan = [
-        _chapter_from_spec(index, spec)
-        for index, spec in enumerate(
-            _build_systematic_chapter_specs(
-                subject=subject,
-                shared_inputs=shared_inputs,
-                user_goal=user_goal,
-                target_count=target_count,
-            ),
-            start=1,
+def _build_plan_summary(display_subject: str, *, digest_mode: str, chapter_count: int) -> str:
+    if _normalize_digest_mode(digest_mode) == "sprint":
+        return (
+            f"围绕 {display_subject} 生成一份冲刺型知识文档，按当前主题密度组织约 {chapter_count} 章内容，"
+            "优先覆盖考点、题型、易错点和最后复盘抓手。"
         )
-    ]
-    research_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
-    return BuildPlannerDraft(
-        subject=display_subject,
-        user_goal=user_goal,
-        digest_mode="systematic",
-        tone=tone,
-        chapter_plan=chapter_plan,
-        research_queries=_dedupe_strings(research_queries, limit=24),
-        media_plan={
-            "enable_mermaid": settings.enable_mermaid_generation,
-            "enable_images": settings.enable_image_generation,
-            "enable_interactive_html": False,
-        },
-        build_constraints={
-            "min_chapters": 6,
-            "max_chapters": 10,
-            "include_exercises": True,
-            "include_sources": True,
-            "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
-            "target_length": "10000-15000字",
-        },
-        plan_summary=(
-            f"围绕 {display_subject} 生成一份系统型知识文档，首章为全景导论，末章为总结与延展，中间章节按资料主题逐层展开。"
-        ),
+    return (
+        f"围绕 {display_subject} 生成一份系统型知识文档，按主题依赖组织约 {chapter_count} 章内容，"
+        "逐步展开概念、方法、应用、辨析与综合迁移。"
     )
 
 
@@ -533,19 +558,47 @@ def build_fallback_plan(
 ) -> BuildPlannerDraft:
     normalized_mode = _normalize_digest_mode(digest_mode)
     normalized_tone = _normalize_tone(tone)
-    if normalized_mode == "sprint":
-        return _build_sprint_fallback_plan(
-            subject=subject,
-            user_goal=user_goal,
-            tone=normalized_tone,
-            shared_inputs=shared_inputs,
-        )
-    return _build_systematic_fallback_plan(
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
+    resolved_count = _estimate_target_chapter_count(
+        digest_mode=normalized_mode,
+        shared_inputs=shared_inputs,
+        user_goal=user_goal,
+        requested_count=target_count,
+    )
+    chapter_plan = _build_fallback_chapter_plan(
         subject=subject,
         user_goal=user_goal,
-        tone=normalized_tone,
+        digest_mode=normalized_mode,
         shared_inputs=shared_inputs,
-        target_count=target_count,
+        target_count=resolved_count,
+    )
+    research_queries = _dedupe_strings(
+        [query for chapter in chapter_plan for query in chapter.search_queries],
+        limit=24,
+    )
+    settings = get_settings()
+    return BuildPlannerDraft(
+        subject=display_subject,
+        user_goal=user_goal,
+        digest_mode=normalized_mode,
+        tone=normalized_tone,
+        chapter_plan=chapter_plan,
+        research_queries=research_queries,
+        media_plan={
+            "enable_mermaid": settings.enable_mermaid_generation,
+            "enable_images": settings.enable_image_generation,
+            "enable_interactive_html": False,
+        },
+        build_constraints=_build_build_constraints(
+            digest_mode=normalized_mode,
+            target_count=resolved_count,
+            shared_inputs=shared_inputs,
+        ),
+        plan_summary=_build_plan_summary(
+            display_subject,
+            digest_mode=normalized_mode,
+            chapter_count=resolved_count,
+        ),
     )
 
 
@@ -561,29 +614,40 @@ def _merge_chapter(
     previous: Any,
     fallback: PlannerChapterPlan,
     subject_display_name: str,
-    forced_title: str | None = None,
 ) -> PlannerChapterPlan:
-    raw = _merge_raw_candidates(current, previous)
-    raw_title = _replace_subject_slug_text(raw.get("title"), subject_display_name)
-    raw_objective = _replace_subject_slug_text(raw.get("objective"), subject_display_name)
-    raw_writing = _replace_subject_slug_text(raw.get("writing_instructions"), subject_display_name)
+    current_raw = _coerce_mapping(current)
+    previous_raw = _coerce_mapping(previous)
+    merged = _merge_raw_candidates(current_raw, previous_raw)
+    current_title = _replace_subject_slug_text(current_raw.get("title"), subject_display_name)
+    previous_title = _replace_subject_slug_text(previous_raw.get("title"), subject_display_name)
+    current_objective = _replace_subject_slug_text(current_raw.get("objective"), subject_display_name)
+    previous_objective = _replace_subject_slug_text(previous_raw.get("objective"), subject_display_name)
+    current_writing = _replace_subject_slug_text(current_raw.get("writing_instructions"), subject_display_name)
+    previous_writing = _replace_subject_slug_text(previous_raw.get("writing_instructions"), subject_display_name)
     title = (
-        forced_title
-        or (_clean_text(raw_title) if _is_usable_cn_text(raw_title) else fallback.title)
+        _clean_text(current_title)
+        if _is_usable_cn_text(current_title)
+        else _clean_text(previous_title)
+        if _is_usable_cn_text(previous_title)
+        else fallback.title
     )
     objective = (
-        _clean_text(raw_objective)
-        if _is_usable_cn_text(raw_objective, min_length=6)
+        _clean_text(current_objective)
+        if _is_usable_cn_text(current_objective, min_length=6)
+        else _clean_text(previous_objective)
+        if _is_usable_cn_text(previous_objective, min_length=6)
         else fallback.objective
     )
     writing_instructions = (
-        _clean_text(raw_writing)
-        if _is_usable_cn_text(raw_writing, min_length=8)
+        _clean_text(current_writing)
+        if _is_usable_cn_text(current_writing, min_length=8)
+        else _clean_text(previous_writing)
+        if _is_usable_cn_text(previous_writing, min_length=8)
         else fallback.writing_instructions
     )
     normalized_queries = [
         _replace_subject_slug_text(item, subject_display_name)
-        for item in list(raw.get("search_queries") or [])
+        for item in list(merged.get("search_queries") or [])
     ]
     fallback_queries = [
         _replace_subject_slug_text(item, subject_display_name)
@@ -593,10 +657,10 @@ def _merge_chapter(
         chapter_index=fallback.chapter_index,
         title=title,
         objective=objective,
-        required_elements=_normalize_required_elements(raw.get("required_elements"), fallback.required_elements),
+        required_elements=_normalize_required_elements(merged.get("required_elements"), fallback.required_elements),
         search_queries=_normalize_search_queries(normalized_queries, fallback_queries),
         writing_instructions=writing_instructions,
-        media_hints=_normalize_media_hints(raw.get("media_hints"), fallback.media_hints),
+        media_hints=_normalize_media_hints(merged.get("media_hints"), fallback.media_hints),
     )
 
 
@@ -689,7 +753,35 @@ def _normalize_systematic_chapters(
     return normalized
 
 
-def _normalize_plan_summary(value: Any, fallback: str, *, digest_mode: str, subject_display_name: str) -> str:
+def _resolve_requested_count(
+    *,
+    digest_mode: str,
+    shared_inputs: SharedInputs,
+    user_goal: str,
+    current_raw: dict[str, Any],
+    previous_raw: dict[str, Any],
+) -> int:
+    baseline = _estimate_target_chapter_count(
+        digest_mode=digest_mode,
+        shared_inputs=shared_inputs,
+        user_goal=user_goal,
+    )
+    candidates = [
+        len(_coerce_chapter_mappings(current_raw.get("chapter_plan"))),
+        len(_coerce_chapter_mappings(previous_raw.get("chapter_plan"))),
+        _read_positive_int(_coerce_mapping(current_raw.get("build_constraints")).get("target_chapter_count")),
+        _read_positive_int(_coerce_mapping(previous_raw.get("build_constraints")).get("target_chapter_count")),
+    ]
+    requested_count = max([baseline, *[candidate for candidate in candidates if candidate]], default=baseline)
+    return _estimate_target_chapter_count(
+        digest_mode=digest_mode,
+        shared_inputs=shared_inputs,
+        user_goal=user_goal,
+        requested_count=requested_count,
+    )
+
+
+def _normalize_plan_summary(value: Any, fallback: str, *, subject_display_name: str) -> str:
     text = _replace_subject_slug_text(value, subject_display_name)
     if not _is_usable_cn_text(text, min_length=10):
         return fallback
@@ -707,46 +799,39 @@ def normalize_planner_draft(
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
     shared = shared_inputs or _minimal_shared_inputs(subject)
-    subject_display_name = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
     current_raw = _coerce_mapping(draft)
     previous_raw = _coerce_mapping(latest_plan)
     digest_mode = _normalize_digest_mode(
         requested_digest_mode or current_raw.get("digest_mode") or previous_raw.get("digest_mode")
     )
     tone = _normalize_tone(requested_tone or current_raw.get("tone") or previous_raw.get("tone"))
-
-    if digest_mode == "sprint":
-        fallback_plan = build_fallback_plan(
-            subject=subject,
-            user_goal=user_goal,
-            digest_mode=digest_mode,
-            tone=tone,
-            shared_inputs=shared,
-        )
-        chapter_plan = _normalize_sprint_chapters(
-            current_chapters=_coerce_chapter_mappings(current_raw.get("chapter_plan")),
-            previous_chapters=_coerce_chapter_mappings(previous_raw.get("chapter_plan")),
-            fallback_plan=fallback_plan,
+    subject_display_name = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
+    target_count = _resolve_requested_count(
+        digest_mode=digest_mode,
+        shared_inputs=shared,
+        user_goal=user_goal,
+        current_raw=current_raw,
+        previous_raw=previous_raw,
+    )
+    fallback_plan = build_fallback_plan(
+        subject=subject,
+        user_goal=user_goal,
+        digest_mode=digest_mode,
+        tone=tone,
+        shared_inputs=shared,
+        target_count=target_count,
+    )
+    current_chapters = _coerce_chapter_mappings(current_raw.get("chapter_plan"))
+    previous_chapters = _coerce_chapter_mappings(previous_raw.get("chapter_plan"))
+    chapter_plan = [
+        _merge_chapter(
+            current=current_chapters[index] if index < len(current_chapters) else {},
+            previous=previous_chapters[index] if index < len(previous_chapters) else {},
+            fallback=fallback,
             subject_display_name=subject_display_name,
         )
-    else:
-        fallback_plan = build_fallback_plan(
-            subject=subject,
-            user_goal=user_goal,
-            digest_mode=digest_mode,
-            tone=tone,
-            shared_inputs=shared,
-        )
-        chapter_plan = _normalize_systematic_chapters(
-            subject=subject,
-            user_goal=user_goal,
-            tone=tone,
-            shared_inputs=shared,
-            current_chapters=_coerce_chapter_mappings(current_raw.get("chapter_plan")),
-            previous_chapters=_coerce_chapter_mappings(previous_raw.get("chapter_plan")),
-            subject_display_name=subject_display_name,
-        )
-        fallback_plan = fallback_plan.model_copy(update={"chapter_plan": chapter_plan})
+        for index, fallback in enumerate(fallback_plan.chapter_plan)
+    ]
 
     chapter_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     research_queries = _dedupe_strings(
@@ -780,7 +865,6 @@ def normalize_planner_draft(
         plan_summary=_normalize_plan_summary(
             current_raw.get("plan_summary") or previous_raw.get("plan_summary"),
             fallback_plan.plan_summary,
-            digest_mode=digest_mode,
             subject_display_name=subject_display_name,
         ),
     )

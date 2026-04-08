@@ -34,8 +34,6 @@ def build_load_context_node(*, context: WorkflowContext):
                 state.get("file_ids", []),
                 user_prompt=state.get("user_prompt"),
             )
-        if not shared_inputs.source_packets:
-            return {"error": "当前没有可用于文档构建的已解析资料。"}
 
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
         tone = state.get("tone") or "encouraging"
@@ -54,12 +52,14 @@ def build_load_context_node(*, context: WorkflowContext):
         if not assignments:
             return {"error": "已确认的构建方案中没有可执行的章节。"}
 
+        has_local_materials = bool(shared_inputs.source_packets)
         document_context = {
             "subject": state["subject"],
             "digest_mode": digest_mode,
             "tone": tone,
             "user_goal": str(plan_payload.get("user_goal") or state.get("user_prompt") or ""),
             "plan_summary": str(plan_payload.get("plan_summary") or ""),
+            "source_strategy": "local_first" if has_local_materials else "web_first",
         }
 
         update_knowledge_build_status(
@@ -71,7 +71,11 @@ def build_load_context_node(*, context: WorkflowContext):
             confirmed_plan_id=state.get("confirmed_plan_id") or None,
             digest_mode=digest_mode,
             mode_reason=(plan_payload.get("mode_reason") or "confirmed_build_plan"),
-            current_stage_description=str(plan_payload.get("plan_summary") or "方案已确认，开始按章节执行。"),
+            current_stage_description=(
+                str(plan_payload.get("plan_summary") or "方案已确认，开始按章节执行。")
+                if has_local_materials
+                else str(plan_payload.get("plan_summary") or "方案已确认，当前没有本地资料，将优先执行联网研究。")
+            ),
             total_chunks=len(assignments),
             processed_chunks=0,
             current_chunk=0,
@@ -96,7 +100,11 @@ def build_load_context_node(*, context: WorkflowContext):
             requested_at=state["requested_at"],
             event={
                 "stage": "planner_confirmed",
-                "summary": f"方案已确认，共 {len(assignments)} 章，开始准备章节研究。",
+                "summary": (
+                    f"方案已确认，共 {len(assignments)} 章，开始准备章节研究。"
+                    if has_local_materials
+                    else f"方案已确认，共 {len(assignments)} 章，当前没有本地资料，将直接进入联网研究。"
+                ),
                 "created_at": utcnow(),
             },
         )
@@ -109,6 +117,7 @@ def build_load_context_node(*, context: WorkflowContext):
                 "chapter_count": len(assignments),
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
+                "local_source_count": len(shared_inputs.source_packets),
             },
         )
         return {
