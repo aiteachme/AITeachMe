@@ -20,21 +20,21 @@ def _mode_contract(digest_mode: str) -> str:
    - 第 4 章：防坑指南
 3. 不允许新增、删减、改名或调换这 4 章。
 4. 每章的 `writing_instructions` 必须具体到写作动作，不能只写“详细说明”“展开讲解”这类空话。
-5. 方案摘要必须体现“冲刺、抓分、速记、易错点、题型拆解”的目标。
-6. 自然语言内容必须全部使用中文。
-""".strip()
+5. `plan_summary` 必须体现“冲刺、抓分、速记、真题、易错点”的目标。
+6. 所有自然语言字段必须使用中文。
+        """.strip()
     return """
 模式硬约束（必须全部满足）：
 1. `digest_mode` 固定为 `systematic`。
 2. `chapter_plan` 章节数必须在 6 到 10 章之间。
 3. 第 1 章标题必须是“全景导论”。
 4. 最后一章标题必须是“总结与延展”。
-5. 中间章节必须围绕主题逐层展开，不允许退化成原始文件目录复写。
+5. 中间章节必须围绕学习路径逐层展开，不能退化成原始文件目录复写。
 6. 中间章节的 `writing_instructions` 必须稳定体现：
    “前置知识 -> 动机引入 -> 核心定义与定理 -> 推理与应用 -> 本章要点”。
-7. 方案摘要必须体现“系统化、可反复精读、重视定义/推导/应用”的目标。
-8. 自然语言内容必须全部使用中文。
-""".strip()
+7. `plan_summary` 必须体现“系统化、可反复精读、重视定义/推导/应用”的目标。
+8. 所有自然语言字段必须使用中文。
+    """.strip()
 
 
 def build_planner_prompt(
@@ -63,8 +63,7 @@ def build_planner_prompt(
     conversation = "\n".join(f"- {item}" for item in message_history if item.strip()) or "- 暂无额外修改意见"
 
     return f"""
-你是 AITeachMe 的 Build Planner。
-你的任务不是闲聊，而是产出一份“用户可以直接确认并开始构建”的正式知识文档方案。
+你是 AITeachMe 的 Build Planner。你的任务不是闲聊，而是产出一份“用户可以直接确认并开始构建”的正式知识文档方案。
 
 你必须只返回一个合法 JSON 对象，不要输出任何解释、前后缀、注释或 Markdown 代码块。
 
@@ -91,7 +90,7 @@ def build_planner_prompt(
 输出总要求：
 1. JSON 的字段名保持英文 schema，不要发明新字段。
 2. 所有自然语言字段内容必须使用中文，包括 `title`、`objective`、`writing_instructions`、`plan_summary`。
-3. `chapter_plan` 中每一章都必须有：
+3. `chapter_plan` 中每一章都必须包含：
    - `chapter_index`
    - `title`
    - `objective`
@@ -101,13 +100,13 @@ def build_planner_prompt(
    - `media_hints`
 4. `research_queries` 必须去重，并能覆盖整份文档的研究范围。
 5. `media_plan` 必须明确说明 Mermaid、图片、交互式 HTML 的开关。
-6. `build_constraints` 必须体现质量约束，如目标字数、是否包含来源、是否包含练习、章节数限制等。
+6. `build_constraints` 必须体现质量约束，例如目标字数、是否包含来源、是否包含练习、章节数限制等。
 7. 章节结构必须优先服从学习路径，而不是原始文件目录。
 8. 如果对话历史里有修改意见，必须吸收进当前方案，而不是忽略。
 9. 不允许出现英文标题、英文摘要、英文章节目标。
 
 {_mode_contract(digest_mode)}
-""".strip()
+    """.strip()
 
 
 __all__ = ["build_planner_prompt"]

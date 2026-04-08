@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from typing import Any
 
 from sqlmodel import Session
@@ -17,7 +16,6 @@ from app.repositories.build_planner_repo import (
     create_planner_session,
     create_planner_turn,
     get_confirmed_plan,
-    get_confirmed_plan_by_session,
     get_planner_session,
     list_planner_turns,
     update_confirmed_plan,
@@ -46,6 +44,7 @@ from app.shared.infra.exceptions import (
 )
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
+from app.workflows.digest.planner.models import normalize_planner_payload
 from app.workflows.digest.planner.runtime import run_build_planner_workflow
 
 
@@ -145,6 +144,25 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_persisted_plan(
+    plan: dict[str, Any] | None,
+    *,
+    subject: str,
+    user_goal: str,
+    digest_mode: str,
+    tone: str,
+    latest_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return normalize_planner_payload(
+        plan or {},
+        subject=subject,
+        user_goal=user_goal,
+        requested_digest_mode=digest_mode,
+        requested_tone=tone,
+        latest_plan=latest_plan,
+    )
+
+
 async def create_build_planner_session_service(
     session: Session,
     *,
@@ -196,9 +214,15 @@ async def create_build_planner_session_service(
         message_history=[user_goal],
     )
     final_state = workflow_result.require_value()
-    plan = dict(final_state.get("plan") or {})
+    plan = _normalize_persisted_plan(
+        dict(final_state.get("plan") or {}),
+        subject=subject.slug,
+        user_goal=user_goal,
+        digest_mode=digest_mode,
+        tone=tone,
+    )
     record.latest_plan_json = plan
-    record.latest_summary = str(final_state.get("plan_summary") or plan.get("plan_summary") or "")
+    record.latest_summary = str(plan.get("plan_summary") or final_state.get("plan_summary") or "")
     record.digest_mode = str(plan.get("digest_mode") or digest_mode)
     record.tone = str(plan.get("tone") or tone)
     record.updated_at = utcnow()
@@ -267,9 +291,16 @@ async def append_build_planner_message_service(
         latest_plan=record.latest_plan_json,
     )
     final_state = workflow_result.require_value()
-    plan = dict(final_state.get("plan") or {})
+    plan = _normalize_persisted_plan(
+        dict(final_state.get("plan") or {}),
+        subject=subject.slug,
+        user_goal=record.user_goal,
+        digest_mode=record.digest_mode,
+        tone=record.tone,
+        latest_plan=record.latest_plan_json,
+    )
     record.latest_plan_json = plan
-    record.latest_summary = str(final_state.get("plan_summary") or plan.get("plan_summary") or "")
+    record.latest_summary = str(plan.get("plan_summary") or final_state.get("plan_summary") or "")
     record.digest_mode = str(plan.get("digest_mode") or record.digest_mode)
     record.tone = str(plan.get("tone") or record.tone)
     record.status = "draft"
@@ -321,7 +352,14 @@ def confirm_build_planner_session_service(
     if not record.latest_plan_json:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    plan_payload = dict(record.latest_plan_json)
+    plan_payload = _normalize_persisted_plan(
+        dict(record.latest_plan_json),
+        subject=subject.slug,
+        user_goal=record.user_goal,
+        digest_mode=record.digest_mode,
+        tone=record.tone,
+    )
+    record.latest_plan_json = plan_payload
     current_confirmed = None
     if record.confirmed_plan_id:
         current_confirmed = get_confirmed_plan(

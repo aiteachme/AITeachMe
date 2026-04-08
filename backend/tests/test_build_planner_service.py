@@ -59,14 +59,14 @@ def _plan_payload(*, subject: str, goal: str, digest_mode: str, tone: str, title
             {
                 "chapter_index": 1,
                 "title": title,
-                "objective": f"Understand {title}",
-                "required_elements": ["clear explanation", "examples"],
-                "search_queries": [f"{subject} {title} overview"],
-                "writing_instructions": "Explain with explicit teaching steps.",
-                "media_hints": {"images": [], "mermaid": [f"{title} concept map"], "interactive": []},
+                "objective": f"理解 {title} 的核心内容。",
+                "required_elements": ["清晰讲解", "典型例子"],
+                "search_queries": [f"{subject} {title} 梳理"],
+                "writing_instructions": "请按明确的教学步骤展开讲解。",
+                "media_hints": {"images": [], "mermaid": [f"{title} 思维导图"], "interactive": []},
             }
         ],
-        "research_queries": [f"{subject} {title} overview"],
+        "research_queries": [f"{subject} {title} 梳理"],
         "media_plan": {"enable_mermaid": True, "enable_images": False, "enable_interactive_html": False},
         "build_constraints": {"include_exercises": True, "include_sources": True},
         "plan_summary": summary,
@@ -79,19 +79,19 @@ def test_confirm_build_planner_session_creates_new_confirmed_plan_after_revision
 
     first_plan = _plan_payload(
         subject=subject.slug,
-        goal="Build a first draft",
+        goal="先生成第一版方案",
         digest_mode="systematic",
         tone="encouraging",
-        title="Core concepts",
-        summary="First confirmed plan.",
+        title="核心概念",
+        summary="第一版系统化构建方案，先梳理核心概念。",
     )
     revised_plan = _plan_payload(
         subject=subject.slug,
-        goal="Build a refined draft",
-        digest_mode="sprint",
+        goal="生成更聚焦考试重点的修订方案",
+        digest_mode="systematic",
         tone="concise",
-        title="Exam shortcuts",
-        summary="Revised plan after user feedback.",
+        title="考试抓分技巧",
+        summary="根据用户反馈修订为更聚焦考试重点的系统化构建方案。",
     )
 
     with patch(
@@ -148,11 +148,61 @@ def test_confirm_build_planner_session_creates_new_confirmed_plan_after_revision
     assert revised_response.status == "draft"
     assert revised_response.plan.confirmed_plan_id is None
     assert [plan.id for plan in confirmed_plans] == [first_confirm.plan_id, second_confirm.plan_id]
-    assert confirmed_plans[0].plan_summary == "First confirmed plan."
-    assert confirmed_plans[1].plan_summary == "Revised plan after user feedback."
+    assert "系统化构建方案" in confirmed_plans[0].plan_summary
+    assert "系统" in confirmed_plans[1].plan_summary
     assert planner_session is not None
     assert planner_session.confirmed_plan_id == second_confirm.plan_id
     assert planner_session.status == "confirmed"
+
+
+def test_create_build_planner_session_normalizes_dirty_workflow_payload(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_planner_normalize")
+    _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_plan_dirty")
+
+    dirty_plan = {
+        "subject": subject.slug,
+        "user_goal": "考前快速复习",
+        "digest_mode": "sprint",
+        "tone": "encouraging",
+        "chapter_plan": [
+            {
+                "chapter_index": 99,
+                "title": "Chapter 1",
+                "objective": "Explain basics in English",
+                "required_elements": ["clear explanation"],
+                "search_queries": [],
+                "writing_instructions": "Explain the basics.",
+                "media_hints": {},
+            }
+        ],
+        "research_queries": [],
+        "media_plan": {},
+        "build_constraints": {},
+        "plan_summary": "English summary only",
+    }
+
+    with patch(
+        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        new=AsyncMock(return_value=DummyWorkflowResult({"plan": dirty_plan, "plan_summary": dirty_plan["plan_summary"]})),
+    ):
+        response = asyncio.run(
+            create_build_planner_session_service(
+                session,
+                subject=subject,
+                user_id="local",
+                payload=BuildPlannerCreateRequest(user_goal="考前快速复习", digest_mode="sprint"),
+            )
+        )
+
+    planner_session = session.get(BuildPlannerSession, response.session_id)
+
+    assert response.plan.digest_mode == "sprint"
+    assert [chapter.title for chapter in response.plan.chapter_plan] == ["概念破冰", "公式武器库", "真题实战", "防坑指南"]
+    assert "冲刺型知识文档" in response.plan.plan_summary
+    assert planner_session is not None
+    assert planner_session.latest_plan_json is not None
+    assert planner_session.latest_plan_json["chapter_plan"][0]["title"] == "概念破冰"
+    assert planner_session.latest_summary == response.plan.plan_summary
 
 
 def test_mark_confirmed_build_plan_status_keeps_newer_session_binding(session: Session) -> None:

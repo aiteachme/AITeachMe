@@ -8,7 +8,11 @@ from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.model_router import TaskType
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.observability import wrap_digest_node
-from app.workflows.digest.planner.models import BuildPlannerDraft, build_fallback_plan
+from app.workflows.digest.planner.models import (
+    BuildPlannerDraft,
+    build_fallback_plan,
+    normalize_planner_draft,
+)
 from app.workflows.digest.prompts import build_planner_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
@@ -77,23 +81,40 @@ def build_draft_plan_node(*, context: WorkflowContext):
             latest_plan=state.get("latest_plan"),
         )
         try:
-            draft = await acompletion_with_fallback(
+            raw_draft = await acompletion_with_fallback(
                 [{"role": "user", "content": prompt}],
                 task_type=TaskType.REASONING,
                 tier="strategic",
                 response_model=BuildPlannerDraft,
-                extra_metadata={"planner_session_id": state.get("planner_session_id", "")},
+                extra_metadata={
+                    "planner_session_id": state.get("planner_session_id", ""),
+                    "digest_mode": digest_mode,
+                },
             )
         except Exception:
-            draft = build_fallback_plan(
+            raw_draft = build_fallback_plan(
                 subject=state["subject"],
                 user_goal=state.get("user_goal") or "",
                 digest_mode=digest_mode,
                 tone=tone,
                 shared_inputs=shared_inputs,
             )
+        draft = normalize_planner_draft(
+            raw_draft,
+            subject=state["subject"],
+            user_goal=state.get("user_goal") or "",
+            requested_digest_mode=digest_mode,
+            requested_tone=tone,
+            shared_inputs=shared_inputs,
+            latest_plan=state.get("latest_plan"),
+        )
         plan = draft.model_dump(mode="json")
-        return {"plan": plan, "plan_summary": draft.plan_summary, "digest_mode": draft.digest_mode, "tone": draft.tone}
+        return {
+            "plan": plan,
+            "plan_summary": draft.plan_summary,
+            "digest_mode": draft.digest_mode,
+            "tone": draft.tone,
+        }
 
     return draft_plan_node
 

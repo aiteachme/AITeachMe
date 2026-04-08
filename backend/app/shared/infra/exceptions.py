@@ -315,7 +315,7 @@ class BuildPlannerSessionNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, session_id: str) -> None:
-        super().__init__(detail=f"Build planner session `{session_id}` does not exist.")
+        super().__init__(detail=f"构建方案会话 `{session_id}` 不存在。")
 
 
 class ConfirmedBuildPlanNotFoundError(AITeachMeError):
@@ -323,7 +323,7 @@ class ConfirmedBuildPlanNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, plan_id: str) -> None:
-        super().__init__(detail=f"Confirmed build plan `{plan_id}` does not exist.")
+        super().__init__(detail=f"已确认构建方案 `{plan_id}` 不存在。")
 
 
 class BuildPlannerEmptyPlanError(AITeachMeError):
@@ -331,4 +331,4 @@ class BuildPlannerEmptyPlanError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, session_id: str) -> None:
-        super().__init__(detail=f"Build planner session `{session_id}` has no plan draft to confirm.")
+        super().__init__(detail=f"构建方案会话 `{session_id}` 当前没有可确认的方案草稿。")
