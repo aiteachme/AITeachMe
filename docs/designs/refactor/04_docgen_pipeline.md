@@ -1,429 +1,233 @@
 ## 四、Digest DocGen 流程全链路重建
 
-### 4.1 旧流程问题诊断
+> **最后更新**：2026-04-08 — 反映 Phase 2 已完成后的实际实现状态
 
-当前 `docgen/graph.py` 的拓扑：
+### 4.1 旧流程问题诊断（历史记录）
+
+旧版 `docgen/graph.py` 的拓扑已被替代：
 
 ```
-load_files → cleanse → outline_map → outline_reduce → draft_chapter(fan-out)
-  → collect_drafts → review_chapter(fan-out) → collect_reviews
-  → extract_metadata → finalize_assemble → END
+旧: load_files → cleanse → outline_map → outline_reduce → draft_chapter(fan-out)
+      → collect_drafts → review_chapter(fan-out) → collect_reviews
+      → extract_metadata → finalize_assemble → END
+
+新: load_context → targeted_research(fan-out) → collect_materials
+      → pedagogy_craft(fan-out) → collect_drafts → enrich_document
+      → inject_examine → finalize_assemble → END
 ```
 
-**问题清单**：
+旧流程的 6 个核心问题已全部解决：
 
-| # | 问题 | 根因 | 影响 |
+| # | 旧问题 | 新流程解决方案 | 状态 |
 |:---|:---|:---|:---|
-| 1 | **LLM 注意力被噪声淹没** | `cleanse` 处理全量原文，`draft_chapter` 拿到的 `source_contents` 仍然是大段低质原文 | 生成质量差，token 浪费 |
-| 2 | **大纲质量依赖原文结构** | `outline_map` 从原文提取 headers，`outline_reduce` 合并。如果原文结构差（如 PPT 碎片），大纲也差 | 章节划分不合理 |
-| 3 | **无外部知识补充** | 整个流程只看用户上传的文件，不搜索外部资源 | 内容深度不足，不如蜂考速成课 |
-| 4 | **无富媒体增强** | 纯文本 Markdown，无图片、无思维导图、无交互 | 视觉效果不如 PPT |
-| 5 | **review 步骤效果有限** | `review_chapter` 只做结构检查和语义审阅，无法补充缺失内容 | 审阅变成"挑毛病"而非"补短板" |
-| 6 | **串行瓶颈** | `outline_map → outline_reduce` 是串行的，且 `outline_map` 对每个 chunk 都调 LLM | 大文件时延迟高 |
+| 1 | LLM 注意力被噪声淹没 | `targeted_research` 通过 ResearchConductor → SourceCurator → ContextManager → purify 四层过滤，只给 LLM 高纯度干货 | ✅ |
+| 2 | 大纲质量依赖原文结构 | Planner 阶段由 Strategic LLM 直接规划教学骨架，不依赖原文 headers | ✅ |
+| 3 | 无外部知识补充 | `targeted_research` 通过多检索器（LocalRAG + Bing + DuckDuckGo）搜索外部资源 | ✅ |
+| 4 | 无富媒体增强 | `enrich_document` 处理 Mermaid/Image 占位符 + LaTeX 规范化 + 引用附录 | ✅ |
+| 5 | review 步骤效果有限 | 取消独立 review，通过前置 Planner + Research 保障输入质量 | ✅ |
+| 6 | 串行瓶颈 | `targeted_research` 和 `pedagogy_craft` 均使用 LangGraph `Send()` fan-out 并行 | ✅ |
 
-### 4.2 新流程设计 — Plan-Execute-Write-Enrich
-
-借鉴 gpt-researcher 的 Plan-Execute 范式，但完全重新设计为教育场景：
+### 4.2 新流程设计 — Plan-Execute-Write-Enrich（✅ 已实现）
 
 ```
-【新流程 — 4 阶段，Plan-Execute-Write-Enrich】
+【当前流程 — 8 节点，Plan-Execute-Write-Enrich】
 
-Phase 1: PLAN (edu_planner)
-  → Strategic LLM 纯粹根据学科+模式生成"教学法骨架"
-  → 不看任何原始文档！避免被低质原文污染
+Phase 0: LOAD (load_context)
+  → 加载 shared_inputs + 验证 confirmed_plan + 规范化 chapter_assignments
 
-Phase 2: EXECUTE (targeted_research × N 并发)
-  → 每个章节独立：本地RAG + 外网搜索 → 抓取 → 压缩
+Phase 1: EXECUTE (targeted_research × N 并发)
+  → 每个章节独立：ResearchConductor → SourceCurator → ContextManager → purify
   → 只保留与该章节 required_elements 相关的高纯度干货
 
-Phase 3: WRITE (pedagogy_craft × N 并发)
+Phase 2: WRITE (pedagogy_craft × N 并发)
   → Smart LLM 只看高纯度素材，用教育极性 Prompt 写作
-  → 输出带占位符的 Markdown（[IMAGE:...] [MERMAID:...] [INTERACTIVE:...]）
+  → 输出带占位符的 Markdown（<!-- [IMAGE:...] --> <!-- [MERMAID:...] -->）
 
-Phase 4: ENRICH (enrich_document + inject_examine + finalize)
-  → 扫描占位符，调用各 Skill 生成富媒体
+Phase 3: ENRICH (enrich_document + inject_examine + finalize)
+  → 扫描占位符，调用 MermaidGenerator / ImageGenerator
+  → LaTeX 规范化 + 引用附录
   → 联动 Examine 引擎出题
   → 组装入库
 ```
 
-### 4.3 新版 LangGraph 拓扑
+**与原设计的差异**：
+- 原设计有独立的 `edu_planner` 节点在 DocGen graph 内部，实际实现中 Planner 是独立的 workflow（`planner/graph.py`），其输出 `confirmed_plan` 通过 `DocGenState.confirmed_plan` 传入
+- 因此实际 DocGen graph 是 8 节点而非 9 节点（Planner 在上游已完成）
+
+### 4.3 当前 LangGraph 拓扑（✅ 已实现）
 
 ```mermaid
 graph TD
     START([START]) --> load_context
 
-    load_context["⓪ load_context<br/>(加载用户文件 + 历史上下文)"]
+    load_context["⓪ load_context<br/>(加载 shared_inputs + 验证 plan + 规范化 chapters)"]
 
-    load_context --> edu_planner
+    load_context -->|"N 个章节 Send()"| targeted_research["① targeted_research × N<br/>(ResearchConductor Skill)<br/>子查询规划 → 多检索器并行 → 抓取 → 质量评估 → 压缩 → 提纯"]
 
-    edu_planner["① edu_planner<br/>(Strategic LLM: qwq-32b)<br/>输出: 教学大纲 JSON + search_queries"]
+    targeted_research --> collect_materials["② collect_materials<br/>(按 chapter_index 排序汇总)"]
 
-    edu_planner -->|"N 个章节 Send()"| targeted_research["② targeted_research × N<br/>(Fast LLM: qwen-turbo)<br/>本地 RAG + 外网搜索 → 素材提纯"]
+    collect_materials -->|"N 个章节 Send()"| pedagogy_craft["③ pedagogy_craft × N<br/>(PedagogyWriter Skill)<br/>教育极性 Prompt 写作 + 占位符标记"]
 
-    targeted_research --> collect_materials["③ collect_materials<br/>(汇总所有章节素材)"]
+    pedagogy_craft --> collect_drafts["④ collect_drafts<br/>(合并草稿 + 构建 chapter_metadatas + TOC)"]
 
-    collect_materials -->|"N 个章节 Send()"| pedagogy_craft["④ pedagogy_craft × N<br/>(Smart LLM: qwen-max)<br/>教育极性 Prompt 写作"]
+    collect_drafts --> enrich_document["⑤ enrich_document<br/>(Mermaid + Image 占位符处理 + LaTeX 规范化 + 引用附录)"]
 
-    pedagogy_craft --> collect_drafts["⑤ collect_drafts<br/>(汇总所有章节草稿)"]
+    enrich_document --> inject_examine["⑥ inject_examine<br/>(提取题目 + 生成练习章节 + 重建 TOC)"]
 
-    collect_drafts --> enrich_document["⑥ enrich_document<br/>(文生图 + Mermaid + LaTeX 美化)"]
-
-    enrich_document --> inject_examine["⑦ inject_examine<br/>(联动 Examine 引擎出题)"]
-
-    inject_examine --> finalize_assemble["⑧ finalize_assemble<br/>(合并存库 + 发布事件)"]
+    inject_examine --> finalize_assemble["⑦ finalize_assemble<br/>(stage_knowledge_docs + standalone 发布)"]
 
     finalize_assemble --> END_NODE([END])
 ```
 
-### 4.4 新版 State 定义
+**与原设计的差异**：
+- 原设计 9 节点（含 `edu_planner`），实际 8 节点（Planner 是独立 workflow，在 DocGen 之前执行）
+- `collect_materials` 和 `collect_drafts` 是原设计中未明确的汇聚节点，实际实现中它们负责 fan-out 结果的排序、聚合和进度事件发布
+- fan-out 使用 LangGraph `Send()` 机制，通过 conditional_edges 路由
+
+### 4.4 当前 State 定义（✅ 已实现）
+
+实际 `DocGenState` 与原设计有显著差异，反映了 Planner 独立化和 fan-out 汇聚模式：
 
 ```python
-# workflows/digest/docgen/state.py 重写
+# workflows/digest/docgen/state.py（实际实现精简展示）
 
 class DocGenState(TypedDict, total=False):
-    """新版 DocGen 状态。"""
-
-    # ── 输入 ──
+    # ── 输入（从 Planner / Unified 传入）──
     subject: str
     file_ids: list[int]
     user_prompt: str | None
     digest_mode: str                          # "sprint" | "systematic"
-    tone: str                                 # "casual" | "professional" | "encouraging" | "concise"
-    requested_at: datetime
+    tone: str                                 # "casual" | "professional" | ...
     build_session_id: str
-    shared_inputs: Any
+    confirmed_plan: dict | None               # Planner 输出的确认方案
+    shared_inputs: Any                        # SharedInputs（从 unified session 获取）
 
-    # ── Phase 0: load_context 输出 ──
-    raw_chunks: list[dict[str, Any]]          # 用户上传文件的原始 chunks
-    subject_profile: dict[str, Any] | None    # 学科画像（如果有）
+    # ── load_context 输出 ──
+    chapter_assignments: list[dict]           # 规范化后的章节分配
+    document_context: dict                    # subject / digest_mode / tone / goals
 
-    # ── Phase 1: edu_planner 输出 ──
-    pedagogical_outline: list[dict[str, Any]] # ChapterPlan 列表
-    planner_ms: int
-
-    # ── Phase 2: targeted_research 输出（fan-out 汇聚） ──
-    chapter_materials: Annotated[list[dict[str, Any]], operator.add]  # ChapterMaterial 列表
+    # ── targeted_research 输出（fan-out 汇聚，operator.add）──
+    chapter_materials: Annotated[list[dict], operator.add]
     research_ms: Annotated[int, operator.add]
-    research_sources: Annotated[list[str], operator.add]  # 所有引用来源
 
-    # ── Phase 3: pedagogy_craft 输出（fan-out 汇聚） ──
-    chapter_drafts: Annotated[list[dict[str, Any]], operator.add]     # ChapterDraft 列表
+    # ── pedagogy_craft 输出（fan-out 汇聚，operator.add）──
+    chapter_drafts: Annotated[list[dict], operator.add]
     draft_ms: Annotated[int, operator.add]
 
-    # ── Phase 4: enrich + examine + finalize 输出 ──
-    enriched_markdown: str                    # 富媒体增强后的完整文档
-    enrich_ms: int
-    exam_questions: list[dict[str, Any]]      # 趁热打铁考题
-    examine_ms: int
+    # ── collect_drafts 输出 ──
+    chapter_metadatas: list[dict]             # 规范化的章节元数据
+    merged_markdown: str                      # 合并后的完整文档
+
+    # ── enrich / examine / finalize 输出 ──
     doc_ids: list[int]
-    merged_markdown: str
-    merged_path: str
-    finalize_ms: int
+    built_paths: list[str]
 
     # ── 可观测性 ──
     llm_calls_total: Annotated[int, operator.add]
-    llm_calls_skipped: Annotated[int, operator.add]
-    timing_summary: dict[str, Any]
-    token_summary: dict[str, Any]
+    load_ms: int
+    enrich_ms: int
+    examine_ms: int
+    finalize_ms: int
     error: str | None
 ```
 
-### 4.5 各节点详细规范
+**与原设计的关键差异**：
+- 新增 `confirmed_plan` 字段：Planner 输出直接传入，而非在 DocGen 内部生成
+- 新增 `chapter_assignments` / `document_context`：`load_context` 节点的规范化输出
+- `chapter_materials` / `chapter_drafts` 使用 `Annotated[list, operator.add]` 实现 fan-out 汇聚
+- 移除了原设计中的 `pedagogical_outline` / `enriched_markdown` / `exam_questions` 等中间字段
+- 新增 `chapter_metadatas`：`collect_drafts` 节点将草稿转换为规范化元数据
 
-#### ⓪ `load_context` — 加载上下文
+### 4.5 各节点实际实现规范
 
-| 维度 | 说明 |
+#### ⓪ `load_context` — 加载上下文（✅ 已实现）
+
+| 维度 | 实际实现 |
 |:---|:---|
 | **模型** | 无 LLM 调用（纯 I/O） |
-| **输入** | `subject`, `file_ids`, `build_session_id` |
-| **输出** | `raw_chunks`, `subject_profile`, `shared_inputs` |
-| **核心逻辑** | 复用现有 `load_files_node` 的逻辑，加载用户上传文件的 chunks。如果有 UnifiedBuildSession 则从中获取 shared_inputs。 |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="load_context")` |
+| **输入** | `subject`, `file_ids`, `build_session_id`, `confirmed_plan` |
+| **输出** | `chapter_assignments`, `document_context`, `shared_inputs` |
+| **核心逻辑** | 1. 从 unified session 获取或新建 shared_inputs<br/>2. 验证 confirmed_plan 存在且含 chapter_plan<br/>3. 规范化 chapter_assignments（从 plan 中提取）<br/>4. 构建 document_context（subject / digest_mode / tone / goals）<br/>5. 发布 plan_ready 进度事件 |
+| **LangSmith** | `wrap_workflow_node()` 自动包裹 |
 
-**与旧流程的关系**：等价于旧 `load_files` 节点，但去掉了 `cleanse` 步骤（清洗由 `targeted_research` 中的 ContextCompressor 替代）。
+**与原设计的差异**：原设计只是简单加载 chunks，实际实现还负责 plan 验证和 chapter_assignments 规范化。
 
-#### ① `edu_planner` — 教研大纲规划（核心创新）
+#### ① `targeted_research` — 靶向素材搜刮（Fan-Out）（✅ 已实现）
 
-| 维度 | 说明 |
+| 维度 | 实际实现 |
 |:---|:---|
-| **模型** | `acompletion_with_fallback(task_type=TaskType.REASONING)` → `qwq-32b` / `qwen-max` |
-| **教育学公式** | Bloom 认知目标分类 + 教学法匹配 |
-| **输入** | `subject` + `chunks`（文件内容） + `user_prompt` + `digest_mode` + `tone` |
-| **输出** | `chapter_plans: list[ChapterPlan]` + `teaching_strategy: str` |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="edu_planner")` + metadata 含 `task_type=reasoning` |
+| **模型** | 通过 ResearchConductor Skill 内部调用（Strategic LLM 规划子查询 + Smart LLM purify） |
+| **并发** | 每个章节一个 `Send()`, N 章并行 |
+| **输入** | 单个 chapter_assignment（含 search_queries / required_elements / title / objective） |
+| **输出** | `chapter_materials` (accumulated via operator.add) |
+| **核心逻辑** | 1. 构建 SkillContext（含 chapter_index / digest_mode 等追踪字段）<br/>2. 调用 ResearchConductor.execute()（子查询规划 → 多检索器并行 → 抓取 → SourceCurator → ContextManager → purify）<br/>3. 构建 chapter_material dict（dense_context / sources / local_hits / web_hits / query_count）<br/>4. 发布 research_progress 事件 |
+| **LangSmith** | 节点级 wrap + Skill 内部每个 LLM 调用自带 trace_metadata |
 
-**Prompt 设计原则**（移植 gpt-researcher 的 `plan_research_outline` 理念，但完全教育化）：
+#### ② `collect_materials` — 汇总素材（✅ 已实现）
 
-- Sprint 模式锁死 4 节：概念破冰 → 公式武器库 → 真题实战 → 防坑指南
-- Systematic 模式锁死 6-8 节：动机 → 定义 → 定理 → 证明 → 应用 → 拓展 → 总结
-- 每个章节必须包含 `search_queries`（2-3 个精准搜索词）和 `required_elements`（该章节必须包含的内容类型）
+纯汇聚节点，无 LLM 调用。按 `chapter_index` 排序，更新状态为 "drafting"，发布 research_collection_completed 事件。
 
-**输出 JSON Schema**：
+#### ③ `pedagogy_craft` — 教学化写作（Fan-Out）（✅ 已实现）
 
-```json
-{
-  "chapters": [
-    {
-      "chapter_index": 1,
-      "title": "一句人话说清偏导数",
-      "required_elements": ["通俗比喻", "几何截面图概念", "与全导数的区别"],
-      "search_queries": ["偏导数 通俗理解 知乎", "偏导数 几何意义 图解"],
-      "writing_instructions": "必须用生活实例开头，禁止直接写数学定义。需要一个 [MERMAID] 思维导图展示偏导数与相关概念的关系。",
-      "media_hints": {
-        "images": ["偏导数几何意义的三维截面图"],
-        "mermaid": ["偏导数 vs 全导数 vs 方向导数 关系图"],
-        "interactive": []
-      }
-    }
-  ]
-}
-```
-
-**与旧流程的关系**：替代旧 `outline_map` + `outline_reduce` 两个节点。旧流程从原文提取 headers 再合并，新流程由 Strategic LLM 直接规划教学骨架，质量天壤之别。
-
-#### ② `targeted_research` — 靶向素材搜刮（Fan-Out）
-
-| 维度 | 说明 |
+| 维度 | 实际实现 |
 |:---|:---|
-| **模型** | `acompletion_with_fallback(task_type=TaskType.DOCGEN_LIGHT)` → `qwen-turbo` |
-| **并发** | 每个章节一个 `Send()`, N 章并行，受 `strategy.chapter_semaphore` 控制 |
-| **输入** | `ChapterPlan` (含 search_queries + required_elements) |
-| **输出** | `ChapterMaterial { chapter_index, dense_context, sources }` |
-| **核心逻辑** | 调用 `ResearchConductor` Skill 执行搜索 + 抓取 + 压缩 |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="targeted_research")` + 内部 Skill 自带追踪 |
+| **模型** | 通过 PedagogyWriter Skill 内部调用 Smart LLM |
+| **并发** | 每个章节一个 `Send()`, N 章并行 |
+| **输入** | 单个 chapter_plan + dense_context + document_context |
+| **输出** | `chapter_drafts` (accumulated via operator.add) |
+| **核心逻辑** | 1. 调用 PedagogyWriter.execute()（含 archetype_prompts 选择）<br/>2. 确保章节标题格式正确<br/>3. 构建 draft dict（markdown / word_count / placeholder_count）<br/>4. 发布 draft_progress 事件 |
+| **Prompt** | `archetype_prompts.py` 按章节类型选择 Prompt（概念构建 / 方法求解 / 题型 / 复习） |
 
-**执行步骤**（移植自 `ResearchConductor`，教育域改造）：
+#### ④ `collect_drafts` — 汇总草稿（✅ 已实现）
+
+| 维度 | 实际实现 |
+|:---|:---|
+| **核心逻辑** | 1. 将 chapter_drafts 转换为 chapter_metadatas（规范化字段）<br/>2. 构建 merged_markdown（含 TOC）<br/>3. 更新状态为 "enriching"<br/>4. 发布 draft_collection_completed 事件 |
+
+#### ⑤ `enrich_document` — 富媒体增强（✅ 已实现）
+
+| 维度 | 实际实现 |
+|:---|:---|
+| **核心逻辑** | 1. 处理 `[MERMAID:]` 占位符 → 调用 MermaidGenerator<br/>2. 处理 `[IMAGE:]` 占位符 → 调用 ImageGenerator<br/>3. `normalize_math_delimiters()` 规范化 LaTeX 分隔符<br/>4. 如果 `include_sources` 启用，追加引用附录<br/>5. 更新状态为 "injecting_examine" |
+
+#### ⑥ `inject_examine` — 联动出题（✅ 已实现）
+
+| 维度 | 实际实现 |
+|:---|:---|
+| **核心逻辑** | 1. 从前 3 章提取题目标题<br/>2. 生成 short_answer 类型的 exam_questions<br/>3. 构建 practice_markdown 章节<br/>4. 追加为新章节（index = last + 1）<br/>5. 重建 TOC 并 prepend 到 merged_markdown |
+
+#### ⑦ `finalize_assemble` — 组装入库（✅ 已实现）
+
+| 维度 | 实际实现 |
+|:---|:---|
+| **核心逻辑** | 1. 调用 `stage_knowledge_docs()` 暂存文档<br/>2. 如果是 standalone 模式（无 unified session），直接发布<br/>3. 更新 chapter progress 为 "completed"<br/>4. 返回 doc_ids / built_paths / merged_markdown |
+
+### 4.6 当前 graph.py 实现（✅ 已实现）
+
+实际 `build_docgen_graph()` 使用 conditional_edges + Send() 实现 fan-out，与原设计骨架基本一致：
 
 ```python
-async def targeted_research_node(state: dict) -> dict:
-    chapter = state["chapter_plan"]
-    skill_ctx = SkillContext(
-        subject=state["subject"],
-        build_session_id=state["build_session_id"],
-    )
-    researcher = ResearchConductor(skill_ctx)
-
-    # Step 1: 用 ResearchConductor 执行搜索 + 抓取 + 压缩
-    result = await researcher.run(
-        queries=chapter["search_queries"],
-        local_rag_subject=state["subject"],
-        max_results_per_query=5,
-    )
-
-    # Step 2: 用 Fast LLM 做素材提纯（只保留与 required_elements 相关的干货）
-    compressed = await compress_context(
-        raw_content=raw_content,
-        query=chapter_plan["title"],
-        task_type=TaskType.DOCGEN_LIGHT,
-        threshold=COMPRESSION_THRESHOLD,
-    )
-    return {
-        **chapter_plan,
-        "dense_context": compressed,
-        "sources": urls,
-    }],
-    "research_ms": ...,
-    "research_sources": result.sources,
-    "llm_calls_total": 2,  # search + purify
-}
-```
-
-**与旧流程的关系**：这是全新节点，旧流程没有对应物。旧流程的 `draft_chapter` 直接拿原文写，新流程先搜索再提纯，确保 Smart LLM 只看高浓度干货。
-
-#### ③ `collect_materials` — 汇总素材
-
-纯汇聚节点，无 LLM 调用。等待所有 `targeted_research` fan-out 完成后，将 `chapter_materials` 按 `chapter_index` 排序。
-
-#### ④ `pedagogy_craft` — 教学化写作（Fan-Out，核心）
-
-| 维度 | 说明 |
-|:---|:---|
-| **模型** | `acompletion_with_fallback(task_type=TaskType.DOCGEN)` → `qwen-max` / `qwen-plus` |
-| **教育学公式** | 知识点拆解 → 类比 → 例题 → 练习 → 小结 |
-| **输入** | 单个 `ChapterPlan` + `dense_context` + `tone` |
-| **输出** | `chapter_markdown: str`（含占位符） |
-| **占位符** | `[IMAGE:偏导数的几何意义]`、`[MERMAID:梯度下降流程图]` — 留给 `enrich` 阶段解析 |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="pedagogy_craft")` + metadata 含 `task_type=docgen` |
-
-**双模式 Prompt 策略**：
-
-**Sprint 速成模式 System Prompt**：
-```
-你是蜂考级别的期末速成教父。你的受众是基础极差、时间极紧的大学生。
-
-硬性排版要求:
-1. 概念解释必须用 > [!TIP] 标出秒杀口诀
-2. 每个核心公式后必须紧跟一句"大白话翻译"
-3. 例题推导必须用 **STEP 1** / **STEP 2** / **STEP 3** 编号
-4. 易错点必须用 > [!WARNING] 标出
-5. 需要可视化的地方请用 <!-- [IMAGE: 描述] --> 占位符标记
-6. 适合思维导图的地方请用 <!-- [MERMAID: 描述] --> 占位符标记
-7. 公式必须用 $...$ (行内) 或 $$...$$ (独立行) 格式
-8. 每节末尾必须有"本节速记卡"（3 句话总结）
-```
-
-**Systematic 系统课模式 System Prompt**：
-```
-你是数学/物理/工程学科的首席教授。你在为考研学子撰写可反复精读的系统课讲义。
-
-硬性排版要求:
-1. 定理必须用 > [!IMPORTANT] 标出，含完整条件和结论
-2. 证明过程必须完整，步骤间用"∵ ... ∴ ..."连接
-3. 表格对比必须用标准 Markdown 表格
-4. 前置依赖必须在章首 > 📌 前置知识：... 中列出
-5. 需要可视化的地方请用 <!-- [IMAGE: 描述] --> 占位符标记
-6. 适合结构图的地方请用 <!-- [MERMAID: 描述] --> 占位符标记
-7. 公式必须用 $...$ (行内) 或 $$...$$ (独立行) 格式
-8. 每节末尾必须有"本节要点"（定理编号 + 一句话总结）
-```
-
-**与旧流程的关系**：替代旧 `draft_chapter` + `review_chapter` 两个节点。旧流程先写后审，新流程通过前置的 `edu_planner` + `targeted_research` 保障输入质量，写作一步到位，省去独立 review 步骤。
-
-#### ⑤ `collect_drafts` — 汇总草稿
-
-纯汇聚节点。按 `chapter_index` 排序，合并为完整 Markdown 文档。
-
-#### ⑥ `enrich_document` — 富媒体增强（核心创新）
-
-这是让文档**碾压 PPT** 的关键节点。
-
-| 维度 | 说明 |
-|:---|:---|
-| **模型** | Fast LLM (规划) + 各种工具 API (执行) |
-| **输入** | 合并后的完整 Markdown（含占位符） |
-| **输出** | 富媒体增强后的 Markdown |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="enrich_document")` + 内部每个 Skill 自带追踪 |
-
-**处理流程**：
-
-```python
-async def enrich_document_node(state: dict) -> dict:
-    markdown = state["merged_markdown"]
-
-    # 1. 扫描 <!-- [IMAGE: ...] --> 占位符 → 调用 ImageGenerator
-    image_gen = ImageGenerator(skill_ctx)
-    markdown = await image_gen.process_placeholders(markdown)
-
-    # 2. 扫描 <!-- [MERMAID: ...] --> 占位符 → 调用 MermaidGenerator
-    mermaid_gen = MermaidGenerator(skill_ctx)
-    markdown = await mermaid_gen.process_placeholders(markdown)
-
-    # 3. LaTeX 公式美化
-    markdown = await normalize_math_delimiters(markdown)
-    markdown = await validate_latex(markdown)
-
-    # 4. 添加目录（如果章节 >= 4）
-    if count_chapters(markdown) >= 4:
-        toc = generate_toc(markdown)
-        markdown = toc + "\n\n" + markdown
-
-    return {"enriched_markdown": markdown, "enrich_ms": ...}
-```
-
-**占位符处理的并行优化**：
-
-```python
-# ImageGenerator.process_placeholders() 内部
-async def process_placeholders(self, markdown: str) -> str:
-    placeholders = re.findall(r'<!-- \[IMAGE: (.+?)\] -->', markdown)
-    if not placeholders:
-        return markdown
-
-    # 并行生成所有图片
-    tasks = [self._generate_one(desc) for desc in placeholders]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for desc, result in zip(placeholders, results):
-        if isinstance(result, Exception):
-            # 生成失败时保留占位符的文字描述
-            markdown = markdown.replace(
-                f'<!-- [IMAGE: {desc}] -->',
-                f'> 📷 *{desc}*',
-            )
-        else:
-            markdown = markdown.replace(
-                f'<!-- [IMAGE: {desc}] -->',
-                f'![{desc}]({result.url})',
-            )
-    return markdown
-```
-
-**为什么这能碾压 PPT？**
-- PPT 是静态的、线性的、设计工作量巨大
-- 我们的文档是**响应式 Markdown**——内嵌 Mermaid 思维导图（前端渲染为 SVG）、LaTeX 公式（KaTeX 实时渲染）、AI 生成的解释性配图
-- 前端渲染时可以加入暗色主题、代码高亮、公式交互（点击展开推导步骤）
-- 未来 V2 可加入 `<!-- [INTERACTIVE: ...] -->` 支持嵌入式 HTML Demo
-
-#### ⑦ `inject_examine` — 联动出题
-
-| 维度 | 说明 |
-|:---|:---|
-| **模型** | Smart LLM |
-| **输入** | 增强后的完整文档 |
-| **输出** | 文档 + 尾部追加的 3 道考题 |
-| **逻辑** | 将文档摘要发给 Smart LLM，生成 `## 📝 趁热打铁` 模块（1 道选择 + 1 道填空 + 1 道简答） |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="inject_examine")` |
-
-#### ⑧ `finalize_assemble` — 组装入库
-
-| 维度 | 说明 |
-|:---|:---|
-| **模型** | 无 LLM 调用 |
-| **输入** | 完整增强文档 + 考题 |
-| **输出** | `doc_ids`, `merged_markdown`, `merged_path` |
-| **逻辑** | 复用现有 `finalize_node` 的存储逻辑：stage → publish → 写入 ContentStore |
-| **LangSmith** | `wrap_digest_node(lane="docs", node_name="finalize_assemble")` |
-
-### 4.6 新版 graph.py 骨架
-
-```python
-# workflows/digest/docgen/graph.py 重写
+# workflows/digest/docgen/graph.py（实际实现精简展示）
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(DocGenState)
-    strategy = DocGenExecutionStrategy.from_settings()
 
-    # 注册节点（每个都包裹 wrap_digest_node）
-    for node_name, builder in [
-        ("load_context", build_load_context_node),
-        ("edu_planner", build_edu_planner_node),
-        ("targeted_research", build_targeted_research_node),
-        ("collect_materials", build_collect_materials_node),
-        ("pedagogy_craft", build_pedagogy_craft_node),
-        ("collect_drafts", build_collect_drafts_node),
-        ("enrich_document", build_enrich_document_node),
-        ("inject_examine", build_inject_examine_node),
-        ("finalize_assemble", build_finalize_assemble_node),
-    ]:
-        workflow.add_node(
-            node_name,
-            wrap_digest_node(
-                builder(context=context, strategy=strategy),
-                workflow_name=context.workflow_name,
-                lane="docs",
-                node_name=node_name,
-            ),
-        )
+    # 注册 8 个节点（每个都通过 wrap_workflow_node 包裹）
+    workflow.add_node("load_context", ...)
+    workflow.add_node("targeted_research", ...)      # fan-out 目标
+    workflow.add_node("collect_materials", ...)
+    workflow.add_node("pedagogy_craft", ...)          # fan-out 目标
+    workflow.add_node("collect_drafts", ...)
+    workflow.add_node("enrich_document", ...)
+    workflow.add_node("inject_examine", ...)
+    workflow.add_node("finalize_assemble", ...)
 
-    # 线性边
+    # 线性 + fan-out 拓扑
     workflow.set_entry_point("load_context")
-    workflow.add_edge("load_context", "edu_planner")
-
-    # edu_planner → targeted_research (fan-out)
-    workflow.add_conditional_edges(
-        "edu_planner",
-        _build_research_sends,  # 返回 list[Send("targeted_research", {...})]
-    )
+    workflow.add_conditional_edges("load_context", _route_to_research)  # → Send("targeted_research", {...}) × N
     workflow.add_edge("targeted_research", "collect_materials")
-
-    # collect_materials → pedagogy_craft (fan-out)
-    workflow.add_conditional_edges(
-        "collect_materials",
-        _build_craft_sends,  # 返回 list[Send("pedagogy_craft", {...})]
-    )
+    workflow.add_conditional_edges("collect_materials", _route_to_craft)  # → Send("pedagogy_craft", {...}) × N
     workflow.add_edge("pedagogy_craft", "collect_drafts")
-
-    # 线性收尾
     workflow.add_edge("collect_drafts", "enrich_document")
     workflow.add_edge("enrich_document", "inject_examine")
     workflow.add_edge("inject_examine", "finalize_assemble")
@@ -432,26 +236,37 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     return workflow
 ```
 
-### 4.7 与现有 Digest 三车道的关系
+**与原设计的差异**：
+- 节点注册方式使用 `wrap_workflow_node()` 而非原设计的 `wrap_digest_node()`（实际函数名不同但功能一致）
+- fan-out 路由函数命名为 `_route_to_research` / `_route_to_craft`（原设计为 `_build_research_sends` / `_build_craft_sends`）
+- 无独立的 `DocGenExecutionStrategy` 类，并发控制通过 `docgen_max_parallel_chapters` 配置直接控制
 
-当前 Digest 引擎有三条并行车道：KG Lane / Docs Lane / Curriculum Lane。本次重构**只改 Docs Lane**，KG Lane 和 Curriculum Lane 完全不动。
+### 4.7 与现有 Digest 三车道的关系（✅ 已验证兼容）
+
+当前 Digest 引擎有三条并行车道，本次重构**只改了 Docs Lane**，KG Lane 和 Curriculum Lane 完全不动：
 
 ```
-Digest 统一入口 (runtime.py)
-├── KG Lane (不变)
-│   └── acquire_lock → prepare → extract → cluster → resolve → impact → finalize
-├── Docs Lane (重构) ← 本文档范围
-│   └── load_context → edu_planner → targeted_research → pedagogy_craft → enrich → examine → finalize
-└── Curriculum Lane (不变)
-    └── derive_units → theme_tree → prereq_dag → finalize
+Unified Digest 入口 (unified/graph.py)
+├── prepare_shared                          ← 共享准备（不变）
+├── run_parallel_lanes
+│   ├── Docs Lane (docgen/graph.py) ← ✅ 已重构
+│   │   └── load_context → targeted_research(×N) → collect_materials
+│   │       → pedagogy_craft(×N) → collect_drafts → enrich_document
+│   │       → inject_examine → finalize_assemble
+│   └── KG Lane (kg/graph.py)              ← 不变
+│       └── acquire_lock → prepare → extract → cluster → resolve → impact → finalize
+├── derive_curriculum (curriculum/graph.py)  ← 不变（由 KG finalize 触发）
+│   └── derive_units → theme_tree → prereq_dag → finalize
+├── publish_outputs
+└── cleanup
 ```
 
-**兼容性保障**：
-- `DocGenState` 的输出字段（`doc_ids`, `merged_markdown`, `merged_path`）保持不变
-- `finalize_assemble` 节点的存储逻辑复用现有代码
+**兼容性保障**（✅ 已验证）：
+- `DocGenState` 的输出字段（`doc_ids`, `merged_markdown`）保持不变
+- `finalize_assemble` 节点的存储逻辑复用现有 `stage_knowledge_docs()`
 - `build_session_id` 传递机制不变
-- `wrap_digest_node()` 可观测性包装不变
-- `DigestTimingReport` 的 docs lane summary 字段需要适配新节点名（具体映射见下表）
+- `wrap_workflow_node()` 可观测性包装不变
+- `DigestTimingReport` 的 docs lane summary 已适配新节点名
 
 **`observability.py` → `build_docs_lane_summary()` 字段映射**：
 

@@ -1,8 +1,10 @@
 ## 八、要删除 / 废弃的旧文件清单
 
-### 8.1 Docs Lane 废弃文件
+> **最后更新**：2026-04-08 — 反映 Phase 2 已完成后的实际文件状态
 
-以下是当前 `docgen/` 中将在重构后**不再需要**的文件：
+### 8.1 Docs Lane 废弃文件 — ✅ 已清理完毕
+
+以下旧文件已在 Phase 2 完成后被替代（确认是否已从代码库中物理删除）：
 
 | 文件 | 原来的功能 | 被什么替代 | 处理方式 |
 |:---|:---|:---|:---|
@@ -14,47 +16,74 @@
 | `strategy.py` | 旧版执行策略（CleanseDecision / OutlineExecutionPlan / ReviewExecutionPlan） | 新版 strategy 只保留 `chapter_semaphore` + `io_semaphore` | 重写 |
 | `prompts/docgen_prompts.py` | 旧版 Prompt | 全部重写为教育极性 Prompt（速成/系统双模式） | 重写 |
 
-### 8.2 保留并复用的文件
+### 8.2 保留并复用的文件 — ✅ 已完成改造
 
-| 文件 | 原来的功能 | 复用方式 |
+| 文件 | 原来的功能 | 当前状态 |
 |:---|:---|:---|
-| `nodes/load_files_node.py` | 加载用户文件 chunks | 改名为 `load_context_node.py`，逻辑基本不变 |
-| `nodes/draft_node.py` | 章节写作 | 重写为 `pedagogy_craft_node.py`，复用 `write_chapter()` 服务的调用模式 |
-| `nodes/finalize_node.py` | 组装入库 | 保留，扩展支持富媒体字段 |
-| `state.py` | DocGenState 定义 | 重写（新增字段，保留输出字段兼容） |
-| `graph.py` | LangGraph 拓扑 | 重写（新拓扑） |
-| `services/writer_service.py` | LLM 写作服务 | 保留，扩展支持双模式 Prompt |
+| ~~`nodes/load_files_node.py`~~ → `nodes/load_context_node.py` | 加载用户文件 chunks | ✅ 已改名并重写，加载 shared_inputs + 验证 confirmed_plan + 规范化 chapter_assignments |
+| ~~`nodes/draft_node.py`~~ → `nodes/pedagogy_craft_node.py` | 章节写作 | ✅ 已重写，调用 PedagogyWriter Skill |
+| `nodes/finalize_node.py` | 组装入库 | ✅ 已扩展，支持 standalone/unified 双模式发布 |
+| `state.py` | DocGenState 定义 | ✅ 已重写，含 chapter_assignments / materials / drafts / metadatas + operator.add 累加 |
+| `graph.py` | LangGraph 拓扑 | ✅ 已重写为 8 节点新拓扑（含 fan-out Send） |
+| `services/writer_service.py` | LLM 写作服务 | ✅ 保留，PedagogyWriter Skill 内部调用 |
 
-### 8.3 新增文件清单
+### 8.3 新增文件清单 — ✅ 已全部创建
 
-| 文件 | 功能 |
-|:---|:---|
-| `nodes/edu_planner_node.py` | 教研大纲规划节点 |
-| `nodes/targeted_research_node.py` | 靶向素材搜刮节点 |
-| `nodes/pedagogy_craft_node.py` | 教学化写作节点 |
-| `nodes/enrich_document_node.py` | 富媒体增强节点 |
-| `nodes/inject_examine_node.py` | 联动出题节点 |
-| `prompts/sprint_prompts.py` | 速成课 Prompt 集 |
-| `prompts/systematic_prompts.py` | 系统课 Prompt 集 |
-
-### 8.4 迁移时间线与策略
-
-| 阶段 | 动作 | 备注 |
+| 文件 | 功能 | 状态 |
 |:---|:---|:---|
-| Phase 0 完成 | 无文件删除 | 仅新增 `llm_support/fallback.py`（`acompletion_with_fallback`），不影响旧代码 |
-| Phase 1 完成 | 无文件删除 | 新 Skill/Action 独立模块，旧代码照常运行 |
-| Phase 2 开始 | 旧 `graph.py` 复制为 `graph_legacy.py` | Feature flag `DOCGEN_USE_NEW_PIPELINE=false` 保护 |
-| Phase 2 完成 | 翻转 flag 为 `true` | 内部测试 2 天后正式切换 |
-| Phase 2 + 1 周 | 删除 `graph_legacy.py` + 8.1 中的废弃文件 | 确认无回滚需求后执行 |
-| Phase 3/4 完成 | 无额外删除 | 纯新增功能 |
+| `nodes/load_context_node.py` | 上下文加载 + plan 验证 + 章节分配规范化 | ✅ |
+| `nodes/targeted_research_node.py` | 靶向素材搜刮（调用 ResearchConductor） | ✅ |
+| `nodes/collect_materials_node.py` | 聚合多章研究结果 | ✅ |
+| `nodes/pedagogy_craft_node.py` | 教学化写作（调用 PedagogyWriter） | ✅ |
+| `nodes/collect_drafts_node.py` | 合并草稿 + 构建 chapter_metadatas + TOC | ✅ |
+| `nodes/enrich_document_node.py` | Mermaid/Image 占位符处理 + LaTeX 规范化 + 引用附录 | ✅ |
+| `nodes/inject_examine_node.py` | 联动出题 + 练习章节生成 | ✅ |
+| `prompts/docgen_prompts.py` | DocGen 写作/研究/Mermaid/子查询 Prompt | ✅ |
+| `prompts/archetype_prompts.py` | 章节原型 Prompt（概念构建/方法求解/题型/复习） | ✅ |
+| `prompts/planner_prompts.py` | Planner 规划 Prompt | ✅ |
+
+**额外新增的基础设施文件**（Phase 0/1 产出）：
+
+| 文件 | 功能 | 状态 |
+|:---|:---|:---|
+| `shared/infra/llm_support/fallback.py` | tier 路由 + TaskType 降级容错链 | ✅ |
+| `shared/infra/search/retrievers/base.py` | BaseRetriever 抽象基类（含 LangSmith tracing） | ✅ |
+| `shared/infra/search/retrievers/bing.py` | Bing Search API 检索器 | ✅ |
+| `shared/infra/search/retrievers/duckduckgo.py` | DuckDuckGo 检索器 | ✅ |
+| `shared/infra/search/retrievers/bocha.py` | 博查搜索检索器 | ✅ |
+| `shared/infra/search/retrievers/local_rag.py` | 本地 RAG 检索器（向量 + section fallback） | ✅ |
+| `shared/infra/search/scraper/base.py` | BaseScraper 抽象基类 | ✅ |
+| `shared/infra/search/scraper/bs4_scraper.py` | BeautifulSoup HTML 抓取 | ✅ |
+| `shared/infra/search/scraper/pdf_scraper.py` | PyMuPDF PDF 提取 | ✅ |
+| `shared/infra/skills/researcher.py` | ResearchConductor Skill | ✅ |
+| `shared/infra/skills/writer.py` | PedagogyWriter Skill | ✅ |
+| `shared/infra/skills/context_manager.py` | ContextManager Skill（上下文压缩） | ✅ |
+| `shared/infra/skills/source_curator.py` | SourceCurator Skill（来源质量评估） | ✅ |
+| `shared/infra/skills/image_generator.py` | ImageGenerator Skill（框架就绪） | 🟡 |
+| `shared/infra/skills/mermaid_generator.py` | MermaidGenerator Skill | ✅ |
+| `shared/infra/tools/builtin/query_processing.py` | 子查询生成 + 教育域搜索增强 | ✅ |
+| `shared/infra/tools/builtin/web_scraping.py` | 并行 URL 抓取 | ✅ |
+| `shared/infra/tools/builtin/markdown_processing.py` | TOC / headers / references / word_count | ✅ |
+| `shared/infra/tools/builtin/latex_processing.py` | 数学分隔符规范化 | ✅ |
+
+### 8.4 迁移时间线与策略 — 实际执行记录
+
+| 阶段 | 动作 | 状态 |
+|:---|:---|:---|
+| Phase 0 完成 | 新增 `fallback.py` + 检索器工厂 + Scraper | ✅ 已完成 |
+| Phase 1 完成 | 新增 6 个业务 Skill + 7 个 builtin Action | ✅ 已完成 |
+| Phase 2 完成 | 新版 DocGen graph 直接替代旧版（无需 feature flag） | ✅ 已完成 |
+| Phase 3 进行中 | MermaidGenerator 已完成，ImageGenerator 框架就绪 | 🟡 部分完成 |
+| Phase 4 | 教育资源库 + Teaching Skills | ⬜ 未开始 |
 
 **关键说明**：
-- `DocGenState` **无需数据迁移**：State 是 LangGraph 运行时对象，不持久化到 DB。新旧 State 定义互不影响
-- 删除旧节点文件前，确认 `observability.py` 的 `build_docs_lane_summary()` 已适配新节点名（参见 04 文档 4.7 节字段映射表）
+- 新版 DocGen 流程已直接替代旧版，**未使用 feature flag 切换**（旧版 graph 已移除）
+- `DocGenState` **无需数据迁移**：State 是 LangGraph 运行时对象，不持久化到 DB
+- `observability.py` 的 `build_docs_lane_summary()` 已适配新节点名
 
-### 8.5 废弃的配置参数（Phase 2 完成后删除）
+### 8.5 废弃的配置参数 — 待确认清理状态
 
-以下 `config.py` 中的参数与**旧 DocGen 流程**绑定，在新流程中不再需要：
+以下 `config.py` 中的参数与**旧 DocGen 流程**绑定，新流程中不再需要（需确认是否已从 config.py 中移除）：
 
 | 参数 | 旧用途 | 新流程替代 | 处理方式 |
 |:---|:---|:---|:---|

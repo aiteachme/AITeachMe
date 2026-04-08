@@ -1,25 +1,27 @@
 ## 一、两个项目的架构对齐 — "我有什么 / 他有什么 / 我缺什么"
 
+> **最后更新**：2026-04-08 — 反映 Phase 0 / 1 / 2 实际落地后的状态
+
 ### 1.1 能力矩阵对照
 
-| 能力维度 | gpt-researcher 实现 | AITeachMe 现状 | 差距评估 | 重构优先级 |
+| 能力维度 | gpt-researcher 实现 | AITeachMe 现状 | 状态 | 后续方向 |
 |:---|:---|:---|:---|:---|
-| **LLM 调用** | `GenericLLMProvider` → 20+ provider, 三级模型 (fast/smart/strategic) | `shared/infra/llm.py` → LiteLLM + Instructor, `model_router.py` 按 TaskType 路由 | 🟡 已有 TaskType 路由，需扩展为三级分层 | P0 |
-| **搜索引擎** | `retrievers/` → 14 种 (Tavily / Bing / DuckDuckGo / arXiv / MCP ...) | `shared/infra/search/` → `web_search()` + `search_knowledge()` 向量检索 | 🔴 Web 检索器种类极少，无工厂模式 | P0 |
-| **网页抓取** | `scraper/` → 8 种 (BS4 / PyMuPDF / Selenium / Firecrawl ...) + URL 去重 + 并行 | 无独立 Scraper 模块（Ingest 有 markitdown 解析但不做 URL 抓取） | 🔴 需新建 | P0 |
-| **上下文压缩** | `context/compression.py` → `ContextCompressor`(Embedding 相似度过滤) + `WrittenContentCompressor` + 小文档快速路径 | `shared/infra/embedding.py` 有 embedding，`search/api.py` 有 rerank，但无独立 Compressor 管道 | 🟡 可基于现有 embedding + reranker 快速接入 | P1 |
-| **Skills（技能层）** | `skills/` → 6 个 Skill 类 (Researcher / Writer / ContextManager / Browser / Curator / ImageGenerator) | `shared/infra/skills/base.py` → `@skill` 装饰器 + `SkillRegistry`，但只有注册框架无业务实现 | 🟡 框架已有，需填充业务 Skill 类 | P1 |
-| **Actions（原子操作）** | `actions/` → 7 个模块 (query_processing / retriever / web_scraping / report_generation / markdown_processing / agent_creator / utils) | `shared/infra/tools/` → `ToolRegistry` + `ToolDefinition`，但 builtin 工具极少 | 🟡 需补充教育域原子操作 | P1 |
-| **文生图** | `skills/image_generator.py` → 两阶段 (LLM 规划 → 并行生成) + `embed_images_in_report()` 自动嵌入 | 无 | 🔴 需新建 | P2 |
-| **Mermaid / 交互 HTML** | 无（纯 Markdown 报告） | 无 | 🔴 需自研 | P2 |
-| **流式输出** | `stream_output()` → WebSocket 实时推送 (logs/report/images/cost/path) | WebSocket 有（Interact 引擎），但 DocGen 不使用 | 🟡 需打通到 DocGen | P2 |
-| **三级 LLM 策略** | `FAST_LLM` / `SMART_LLM` / `STRATEGIC_LLM` + 降级容错链 | `model_router.py` 有 11 个 TaskType 但无 fast/smart/strategic 分层 | 🟡 需在现有 TaskType 上叠加三级分层 | P0 |
-| **MCP 协议** | `mcp/` → MCPRetriever + MCPToolSelector + MCPResearchSkill + 三种策略 (disabled/fast/deep) | `shared/infra/mcp.py` → 有骨架 | 🟡 可扩展 | P3 |
-| **并发控制** | `WorkerPool` + `Semaphore` + `asyncio.gather` | LangGraph `Send()` 并发 + `DocGenExecutionStrategy.chapter_semaphore` + 全局 `_LLM_SEMAPHORE` | ✅ 已有，且更精细 | — |
-| **可观测性** | 简单日志 + JSON handler + 可选 LangSmith | `shared/infra/tracing.py` → LangSmith 集成 + `LLMCallTracker` + `wrap_digest_node()` + `DigestTimingReport` | ✅ 已有，且远超 gpt-researcher | — |
-| **成本追踪** | `utils/costs.py` → `estimate_embedding_cost()` + `add_costs()` 回调 | `LLMCallTracker` 记录 token 用量，但无金额换算 | 🟡 可选扩展 | P3 |
+| **LLM 调用** | `GenericLLMProvider` → 20+ provider, 三级模型 (fast/smart/strategic) | `llm_support/fallback.py` → `acompletion_with_fallback()` 已实现 tier 路由 (strategic→smart→fast)，基于 `TaskType` 降级链 | ✅ 已完成 | 调优各 tier 默认模型配置，收集 LangSmith 数据验证降级频率 |
+| **搜索引擎** | `retrievers/` → 14 种 (Tavily / Bing / DuckDuckGo / arXiv / MCP ...) | `search/retrievers/` → 工厂模式已落地，含 `BaseRetriever` + Bing / DuckDuckGo / Bocha / LocalRAG 四种实现，`factory.py` 按 subject 自动组装 | ✅ 已完成 | 可扩展 Tavily / arXiv 等学术检索器 |
+| **网页抓取** | `scraper/` → 8 种 (BS4 / PyMuPDF / Selenium / Firecrawl ...) + URL 去重 + 并行 | `search/scraper/` → `BaseScraper` + BS4 + PyMuPDF 两种实现，`web_scraping.py` 支持并行抓取 + URL 去重 | ✅ 已完成 | 可按需扩展 Selenium / Firecrawl |
+| **上下文压缩** | `context/compression.py` → `ContextCompressor` + 小文档快速路径 | `skills/context_manager.py` → `ContextManager` 已实现语义+词法相似度评分、段落去重、字符限制压缩 | ✅ 已完成 | 可引入 Embedding 向量过滤提升精度 |
+| **Skills（技能层）** | `skills/` → 6 个 Skill 类 | `skills/` → `BaseSkill` + `SkillContext` + `SkillResult` 已落地，已实现 ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator 共 6 个业务 Skill | ✅ 已完成 | 扩展教育专属 Teaching Skills（solve_step_by_step 等） |
+| **Actions（原子操作）** | `actions/` → 7 个模块 | `tools/builtin/` → 已实现 query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops 共 7 个模块 | ✅ 已完成 | 补充教育域原子操作（公式验证、题目生成等） |
+| **文生图** | `skills/image_generator.py` → 两阶段 + 自动嵌入 | `skills/image_generator.py` → 已实现占位符处理框架（`<!-- [IMAGE: ...] -->`），当前返回文字建议 | 🟡 框架就绪，生成能力待接入 | 接入通义万相 / DALL-E 实际生成 |
+| **Mermaid / 交互 HTML** | 无（纯 Markdown 报告） | `skills/mermaid_generator.py` → 已实现 mindmap 生成 + 关键词回退；`enrich_document_node` 自动处理 `[MERMAID:]` 占位符 | ✅ Mermaid 已完成 | 交互 HTML（V2 预留） |
+| **流式输出** | `stream_output()` → WebSocket 实时推送 | DocGen 各节点已通过 `events.py` 发布进度事件（plan_ready / research_progress / draft_progress 等），前端可订阅 | 🟡 事件已有，WebSocket 推送待打通 | 打通 DocGen 事件到前端 WebSocket |
+| **三级 LLM 策略** | `FAST_LLM` / `SMART_LLM` / `STRATEGIC_LLM` + 降级容错链 | `llm_support/fallback.py` → `acompletion_with_fallback()` 已实现，通过 `tier` 参数选择，自动降级 | ✅ 已完成 | 收集降级频率数据，调优模型配置 |
+| **MCP 协议** | `mcp/` → MCPRetriever + MCPToolSelector + 三种策略 | `shared/infra/mcp.py` → 有骨架 | 🟡 可扩展 | P3 |
+| **并发控制** | `WorkerPool` + `Semaphore` + `asyncio.gather` | LangGraph `Send()` fan-out 并发 + `docgen_max_parallel_chapters` 控制 + 全局 `_LLM_SEMAPHORE` | ✅ 已有，且更精细 | — |
+| **可观测性** | 简单日志 + JSON handler + 可选 LangSmith | `tracing.py` → LangSmith 全链路集成 + `LLMCallTracker` + `wrap_workflow_node()` + `DigestTimingReport` + 每个 Skill/Retriever 自带 trace metadata | ✅ 已有，且远超 gpt-researcher | 建立自定义 Dashboard（见 10 文档） |
+| **成本追踪** | `utils/costs.py` → `estimate_embedding_cost()` + `add_costs()` 回调 | `LLMCallTracker` 记录 token 用量，`SkillResult.cost_tokens` 追踪 Skill 级消耗 | 🟡 可选扩展 | P3：金额换算 |
 
-### 1.2 我们不需要照搬的部分
+### 1.2 我们不需要照搬的部分（不变）
 
 - ❌ `multi_agents/` 编辑部模式（总编辑-记者-审稿人）→ 我们有自己的五大引擎编排
 - ❌ `backend/` FastAPI 服务 → 我们有自己的 FastAPI 后端
@@ -29,18 +31,32 @@
 - ❌ `memory/embeddings.py` → 我们有 `shared/infra/embedding.py`（已适配 DashScope）
 - ❌ `vector_store/` → 我们有 sqlite-vec 向量检索 + reranker
 
-### 1.3 我们要"移植"的核心
+### 1.3 移植核心 — 完成状态追踪
 
-抽取灵魂，不照搬皮囊：
-
-| 序号 | 移植目标 | 来源 | 融入位置 | 改造要点 |
+| 序号 | 移植目标 | 融入位置 | 状态 | 备注 |
 |:---|:---|:---|:---|:---|
-| 1 | **三级 LLM 策略** | `config/variables/default.py` 的 FAST/SMART/STRATEGIC 分层 + `query_processing.py` 的降级容错链 | `model_router.py` 扩展 | 在现有 TaskType 上叠加 LLMTier 维度，不破坏已有路由 |
-| 2 | **Skill 组合模式** | `skills/` 的 6 个 Skill 类各司其职 | `shared/infra/skills/` 新增业务 Skill 类 | 保留 `@skill` 装饰器用于轻量 Skill，新增 `BaseSkill` 类用于重量级 Skill |
-| 3 | **Plan-Execute-Write 范式** | `ResearchConductor.plan_research()` → `conduct_research()` → `ReportGenerator.write_report()` | `workflows/digest/docgen/` 重建 graph | 用 LangGraph 节点实现，保留 `wrap_digest_node()` 可观测性 |
-| 4 | **上下文压缩管道** | `context/compression.py` 的 `ContextCompressor` | `shared/infra/context/` 新建 | 用我们的 embedding 替换 LangChain 的 `OPENAI_EMBEDDING_MODEL` |
-| 5 | **检索器工厂** | `actions/retriever.py` 的 `get_retriever()` / `get_retrievers()` | `shared/infra/search/` 扩展 | 加入本地 RAG 优先策略 |
-| 6 | **Scraper 调度器** | `scraper/scraper.py` 的 URL 去重 + 类型路由 + 并行抓取 | `shared/infra/search/scraper/` 新建 | 精简到 BS4 + PyMuPDF 两种，按需扩展 |
-| 7 | **文生图两阶段** | `skills/image_generator.py` 的 `_plan_image_concepts()` → 并行生成 → `embed_images_in_report()` | `shared/infra/skills/image_generator.py` 新建 | 底层替换为通义万相 / Qwen-VL |
+| 1 | **三级 LLM 策略** | `llm_support/fallback.py` | ✅ 已完成 | `acompletion_with_fallback()` 支持 tier 参数 + TaskType 降级链 |
+| 2 | **Skill 组合模式** | `shared/infra/skills/` | ✅ 已完成 | `BaseSkill` + `@skill` 双模式共存，6 个业务 Skill 已实现 |
+| 3 | **Plan-Execute-Write 范式** | `workflows/digest/docgen/` | ✅ 已完成 | 8 节点 LangGraph 拓扑：load_context → targeted_research → collect_materials → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble |
+| 4 | **上下文压缩管道** | `skills/context_manager.py` | ✅ 已完成 | 语义+词法双通道评分，段落去重，字符限制 |
+| 5 | **检索器工厂** | `search/retrievers/` + `search/factory.py` | ✅ 已完成 | `BaseRetriever` + 4 种实现 + `get_retrievers_for_subject()` 工厂 |
+| 6 | **Scraper 调度器** | `search/scraper/` + `tools/builtin/web_scraping.py` | ✅ 已完成 | BS4 + PyMuPDF + 并行抓取 + URL 去重 |
+| 7 | **文生图两阶段** | `skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入 |
+
+### 1.4 下一阶段重点（Phase 3+）
+
+核心移植已完成，后续聚焦于**质量提升和功能扩展**：
+
+| 优先级 | 方向 | 具体内容 |
+|:---|:---|:---|
+| P0 | **文档质量调优** | 速成课/系统课 Prompt 精调，确保章节结构符合 05 文档规范，系统课字数达标 ≥10000 |
+| P0 | **LangSmith Dashboard** | 建立 tier 成本分析、降级监控、DocGen 端到端、检索器命中率等自定义视图 |
+| P1 | **文生图实际接入** | 通义万相 / DALL-E API 接入，替换当前的文字建议占位 |
+| P1 | **DocGen 事件 → WebSocket** | 打通 DocGen 进度事件到前端实时展示 |
+| P1 | **教育 Teaching Skills** | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` |
+| P2 | **本地教育语料库** | `data/edu_corpus/` 预置高数/线代/概率论知识条目 |
+| P2 | **学术检索器扩展** | Tavily / arXiv / PubMed 等学术检索器 |
+| P3 | **交互式 HTML** | iframe 沙箱 + Desmos / GeoGebra 嵌入 |
+| P3 | **MCP 协议扩展** | MCPRetriever + MCPToolSelector |
 
 ---

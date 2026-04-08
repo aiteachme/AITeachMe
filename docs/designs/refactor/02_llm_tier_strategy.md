@@ -1,5 +1,7 @@
 ## 二、三级模型策略（通过 TaskType 实现 LLMTier 概念）
 
+> **最后更新**：2026-04-08 — `acompletion_with_fallback()` 已在 `llm_support/fallback.py` 落地，实际实现比原设计更丰富（支持 `tier` 参数 + `extra_metadata` 注入）
+
 ### 2.1 设计原则：复用 TaskType 而非新增 tier 参数
 
 当前 `model_router.py` 已有 11 个 `TaskType`，每个 TaskType 有独立的 temperature / timeout / max_retries。

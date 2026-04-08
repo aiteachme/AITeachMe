@@ -1,11 +1,15 @@
 ## 三、工具体系重构 — Skills + Actions + Retrievers + Scraper
 
-### 3.1 现状分析
+> **最后更新**：2026-04-08 — 反映 Phase 0/1 实际落地后的状态，所有核心 Skill/Action/Retriever/Scraper 已实现
 
-**当前 AITeachMe 的工具体系**：
-- `shared/infra/skills/base.py` — `@skill` 装饰器 + `SkillRegistry`，自动同步到 `ToolRegistry`。框架完整但**无业务 Skill 实现**。
-- `shared/infra/tools/registry.py` — `ToolRegistry` 管理注册/查询/执行，支持 OpenAI function calling 格式。框架完整但 **builtin 工具极少**。
-- `shared/infra/search/api.py` — `web_search()` + `search_knowledge()` 两个入口，向量检索 + rerank 管道已通。但 **web 检索器只有一种**，无工厂模式。
+### 3.1 现状分析（已更新）
+
+**当前 AITeachMe 的工具体系**（Phase 0/1 完成后）：
+- `shared/infra/skills/base.py` — `BaseSkill` 抽象基类 + `SkillContext` + `SkillResult` + `@skill` 装饰器 + `SkillRegistry`，**双模式共存**。
+- `shared/infra/skills/` — 已实现 6 个业务 Skill：ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator。
+- `shared/infra/tools/builtin/` — 已实现 7 个原子操作：query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops。
+- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / Bocha / LocalRAG 四种实现。
+- `shared/infra/search/scraper/` — BaseScraper + BS4 + PyMuPDF 两种实现。
 
 **gpt-researcher 的工具体系**：
 - `skills/` — 6 个重量级 Skill 类（ResearchConductor / ReportGenerator / ContextManager / BrowserManager / SourceCurator / ImageGenerator），每个类持有 `researcher` 引用，内部编排多个 Action。
@@ -13,233 +17,158 @@
 - `retrievers/` — 14 种检索器 + 工厂函数 `get_retriever(name)`。
 - `scraper/` — 8 种抓取器 + 统一调度器 `Scraper` 类（URL 去重 + 类型路由 + 并行抓取）。
 
-**核心差距**：我们有框架但缺业务实现；gpt-researcher 有丰富实现但缺框架规范。融合的关键是**把 gpt-researcher 的业务逻辑灌入我们的框架骨架**。
+**当前状态**：核心融合已完成。gpt-researcher 的业务逻辑已灌入我们的框架骨架。后续重点是**质量调优和功能扩展**（教育 Teaching Skills、学术检索器、实际图片生成 API 接入）。
 
-### 3.2 Skills 层重构 — 引入 BaseSkill 抽象类
+### 3.2 Skills 层 — BaseSkill 抽象类（✅ 已实现）
 
-当前 `@skill` 装饰器适合轻量级函数式 Skill（如 `find_resources`）。但 gpt-researcher 的 Skill 是**有状态的类**（持有 researcher 引用、内部缓存、多步编排）。我们需要两层并存：
+`BaseSkill` + `SkillContext` + `SkillResult` 已落地在 `shared/infra/skills/base.py`，与 `@skill` 装饰器双模式共存：
 
 ```python
-# shared/infra/skills/base.py 新增
-
-class BaseSkill(ABC):
-    """重量级 Skill 基类（移植自 gpt-researcher 的 Skill 模式）。
-
-    与 @skill 装饰器的区别：
-    - @skill: 无状态函数，适合单步操作（如搜索、翻译）
-    - BaseSkill: 有状态类，适合多步编排（如研究、写作、图片生成）
-
-    每个 BaseSkill 子类必须实现 execute() 方法。
-    """
-
-    def __init__(self, context: SkillContext) -> None:
-        self.context = context
-        self.logger = structlog.get_logger().bind(skill=self.__class__.__name__)
-
-    @abstractmethod
-    async def execute(self, **kwargs: Any) -> SkillResult:
-        """执行 Skill 的核心逻辑。"""
-        ...
-
-    @property
-    def name(self) -> str:
-        return self.__class__.__name__
-
+# 实际实现（精简展示）— shared/infra/skills/base.py
 
 @dataclass(slots=True)
 class SkillContext:
-    """Skill 执行上下文，替代 gpt-researcher 中 Skill 持有 researcher 引用的模式。"""
-
     subject: str
-    build_session_id: str
+    build_session_id: str = ""
     workflow_context: WorkflowContext | None = None
-    # LLM 调用入口（避免 Skill 直接依赖 llm.py 的全局函数）
-    llm_caller: Callable | None = None  # 默认用 acompletion_with_fallback
+    planner_session_id: str = ""
+    confirmed_plan_id: str = ""
+    digest_mode: str = ""
+    chapter_index: int | None = None
+    llm_caller: Callable[..., Awaitable[Any]] | None = None
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
 
+    def resolve_llm_caller(self) -> Callable[..., Awaitable[Any]]:
+        return self.llm_caller or acompletion_with_fallback
+
+    def trace_metadata(self, **extra) -> dict[str, Any]:
+        """自动注入 planner_session_id / confirmed_plan_id / digest_mode / chapter_index 等追踪字段。"""
+        ...
 
 @dataclass(slots=True)
 class SkillResult:
-    """Skill 执行结果。"""
-
     content: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
     images: list[dict[str, Any]] = field(default_factory=list)
     cost_tokens: int = 0
+
+class BaseSkill(ABC):
+    def __init__(self, context: SkillContext) -> None:
+        self.context = context
+        self.logger = structlog.get_logger(__name__).bind(
+            skill_name=self.name, subject=context.subject,
+            build_session_id=context.build_session_id,
+        )
+
+    @abstractmethod
+    async def execute(self, **kwargs: Any) -> SkillResult: ...
 ```
 
-### 3.3 具体 Skill 实现规划
+**与原设计的差异**：
+- `SkillContext` 比原设计更丰富：新增 `planner_session_id` / `confirmed_plan_id` / `digest_mode` / `chapter_index` / `extra_metadata`，支持完整的 LangSmith 追踪链路
+- `SkillContext.trace_metadata()` 方法自动构建追踪元数据，Skill 内部 LLM 调用无需手动拼装
+- `extract_skill_result_metadata()` 辅助函数从 SkillResult 中提取日志/追踪字段
+
+### 3.3 具体 Skill 实现 — 当前状态
 
 ```
 shared/infra/skills/
-├── base.py                    # BaseSkill + SkillContext + SkillResult + @skill 装饰器（现有）
-├── researcher.py              # 🔬 ResearchConductor — 搜索 + 抓取 + 上下文汇聚
-├── writer.py                  # ✍️ PedagogyWriter — 教育风文档撰写
-├── context_manager.py         # 📚 ContextManager — 上下文检索 + 压缩去重
-├── image_generator.py         # 🎨 ImageGenerator — 文生图（两阶段）
-├── mermaid_generator.py       # 🗺️ MermaidGenerator — 知识点思维导图
-├── interactive_builder.py     # 🖥️ InteractiveHTMLBuilder — 可交互公式/动画（V2）
-└── source_curator.py          # 🔍 SourceCurator — 来源质量排序
+├── base.py                    # ✅ BaseSkill + SkillContext + SkillResult + @skill + SkillRegistry
+├── researcher.py              # ✅ ResearchConductor — 子查询规划 → 多检索器并行 → 抓取 → SourceCurator → ContextManager → purify
+├── writer.py                  # ✅ PedagogyWriter — 教育风文档撰写
+├── context_manager.py         # ✅ ContextManager — 语义+词法双通道评分 + 段落去重 + 字符限制
+├── image_generator.py         # 🟡 ImageGenerator — 占位符处理框架就绪，实际生成 API 待接入
+├── mermaid_generator.py       # ✅ MermaidGenerator — mindmap 生成 + 关键词回退
+├── source_curator.py          # ✅ SourceCurator — 域名可信度 + 词法重叠 + 本地源优先
+├── loader.py                  # ✅ Skill 加载器（多路径扫描 + SKILL.md 解析）
+├── api.py                     # ✅ run_skill() / list_skills() 对外 API
+└── interactive_builder.py     # ⬜ InteractiveHTMLBuilder（V2 预留）
 ```
 
-#### 3.3.1 ResearchConductor（核心，P0）
+#### 3.3.1 ResearchConductor（✅ 已实现）
 
-**移植来源**：`gpt_researcher/skills/researcher.py`
+**实际实现文件**：`shared/infra/skills/researcher.py`
 
-**改造要点**：
-- gpt-researcher 的 `ResearchConductor` 持有 `self.researcher`（GPTResearcher 实例），我们改为持有 `SkillContext`
-- 原来的 `plan_research()` → `conduct_research()` 两步，我们拆成 LangGraph 节点调用
-- 原来直接调 `create_chat_completion()`，我们改为调 `acompletion_with_fallback(task_type=TaskType.REASONING)`
-- 原来的 MCP 策略（disabled/fast/deep）保留，但通过 `SkillContext` 传入配置
+**与原设计的差异**（实际实现更完善）：
+- 原设计是简化的 "per-query 串行" 模式，实际实现是 **"子查询规划 → 多检索器并行 → 批量抓取 → SourceCurator 质量评估 → ContextManager 压缩 → LLM purify"** 的完整管道
+- 新增 `SourceCurator` 环节：域名可信度评分 + 词法重叠过滤 + 本地源优先
+- 新增 `purify` 环节：用 Smart LLM 对压缩后的上下文做最终提纯
+- `SkillResult.metadata` 包含丰富的追踪字段：`query_count` / `candidate_count` / `curated_source_count` / `local_hits` / `web_hits` / `purify_used` / `retriever_stats`
 
-```python
-# shared/infra/skills/researcher.py
-
-class ResearchConductor(BaseSkill):
-    """搜索 + 抓取 + 上下文汇聚。
-
-    移植自 gpt-researcher 的 ResearchConductor，核心改造：
-    1. 检索优先级：本地 RAG → Bing/博查 → DuckDuckGo（教育域专属）
-    2. LLM 调用走我们的 acompletion_with_fallback（自带 LangSmith 追踪）
-    3. 上下文压缩走我们的 ContextManager（用我们的 embedding）
-    """
-
-    async def execute(
-        self,
-        *,
-        queries: list[str],
-        local_rag_subject: str | None = None,
-        max_results_per_query: int = 5,
-    ) -> SkillResult:
-        """对每个 query 执行：本地RAG → 外网搜索 → 抓取 → 压缩。"""
-        all_context = []
-        all_sources = []
-
-        for query in queries:
-            # Step 1: 本地 RAG（如果有 subject）
-            local_results = []
-            if local_rag_subject:
-                local_results = await search_knowledge(
-                    query, local_rag_subject, top_k=max_results_per_query,
-                )
-
-            # Step 2: 如果本地不足，降级外网搜索
-            web_results = []
-            if len(local_results) < 3:
-                web_results = await self._web_search_and_scrape(
-                    query, max_results=max_results_per_query,
-                )
-
-            # Step 3: 合并 + 压缩
-            combined = self._merge_results(local_results, web_results)
-            compressed = await self._compress_context(query, combined)
-            all_context.append(compressed)
-            all_sources.extend(self._extract_sources(local_results, web_results))
-
-        return SkillResult(
-            content="\n\n---\n\n".join(all_context),
-            sources=list(set(all_sources)),
-        )
+**实际执行流程**：
+```
+execute()
+├── dedupe_queries() → 去重 + 限制查询数
+├── generate_sub_queries() → Strategic LLM 规划子查询
+├── for query in planned_queries:
+│   └── for retriever in retrievers:
+│       └── retriever.retrieve(query) → 并行检索
+├── scrape_urls() → 并行抓取搜索结果 URL
+├── SourceCurator.curate() → 质量评估 + 过滤
+├── ContextManager.build_dense_context() → 语义压缩
+└── LLM purify → Smart LLM 最终提纯（可选）
 ```
 
-#### 3.3.2 ContextManager（P1）
+**后续优化方向**：
+- 引入检索结果缓存（同一 query 短时间内不重复搜索）
+- 扩展学术检索器（Tavily / arXiv）
+- 教育域 site filter 更精细化
 
-**移植来源**：`gpt_researcher/skills/context_manager.py` + `context/compression.py`
+#### 3.3.2 ContextManager（✅ 已实现）
 
-**改造要点**：
-- 原来用 LangChain 的 `ContextualCompressionRetriever` + `EmbeddingsFilter`，我们改为用自己的 `aembed_texts()` + 余弦相似度过滤
-- 保留 gpt-researcher 的**小文档快速路径**优化（内容小于阈值时跳过 embedding）
-- 保留 `WrittenContentCompressor` 的去重逻辑（用于多章节写作时避免重复）
+**实际实现文件**：`shared/infra/skills/context_manager.py`
 
-```python
-# shared/infra/skills/context_manager.py
+**与原设计的差异**：
+- 原设计基于 Embedding 向量余弦相似度过滤，实际实现采用**语义+词法双通道评分**（无需额外 embedding 调用，更快）
+- 实际实现包含：段落级去重（基于文本哈希）、字符限制截断、相似度阈值过滤
+- `build_dense_context()` 方法接受 `chapter_title` / `objective` / `required_elements` / `digest_mode` 参数，上下文压缩更精准
 
-class ContextManager(BaseSkill):
-    """上下文检索 + 压缩去重。"""
+**后续优化方向**：
+- 可引入 Embedding 向量过滤作为可选的高精度模式（当前词法模式已够用）
+- 考虑引入 gpt-researcher 的 `WrittenContentCompressor` 去重逻辑（多章节写作时避免重复）
 
-    async def compress(
-        self,
-        query: str,
-        documents: list[str],
-        *,
-        similarity_threshold: float = 0.42,
-        max_results: int = 10,
-    ) -> str:
-        """压缩文档列表，返回与 query 最相关的内容。
+#### 3.3.3 ImageGenerator（🟡 框架就绪，生成 API 待接入）
 
-        快速路径：如果总内容 < 2000 字符，跳过 embedding 直接返回。
-        """
-        total_chars = sum(len(d) for d in documents)
-        if total_chars < 2000:
-            return "\n\n".join(documents[:max_results])
+**实际实现文件**：`shared/infra/skills/image_generator.py`
 
-        # 用我们的 embedding 计算相似度
-        all_texts = [query] + documents
-        embeddings = await aembed_texts(all_texts)
-        query_emb = embeddings[0]
-        doc_embs = embeddings[1:]
+**当前状态**：
+- `<!-- [IMAGE: ...] -->` 占位符解析和替换逻辑已实现
+- 当前返回文字建议（注释形式），实际图片生成 API 尚未接入
+- `enrich_document_node.py` 已集成调用 ImageGenerator
 
-        # 余弦相似度过滤
-        scored = []
-        for doc, emb in zip(documents, doc_embs):
-            sim = cosine_similarity(query_emb, emb)
-            if sim >= similarity_threshold:
-                scored.append((sim, doc))
+**待完成**：
+- 接入通义万相 (Wanxiang) / DALL-E API 实际生成图片
+- 实现 gpt-researcher 的两阶段模式：`_plan_image_concepts()` → 并行生成
+- 图片存储到 ContentStore + 返回可访问 URL
 
-        scored.sort(key=lambda x: -x[0])
-        return "\n\n".join(doc for _, doc in scored[:max_results])
-```
+#### 3.3.4 MermaidGenerator（✅ 已实现）
 
-#### 3.3.3 ImageGenerator（P2）
+**实际实现文件**：`shared/infra/skills/mermaid_generator.py`
 
-**移植来源**：`gpt_researcher/skills/image_generator.py`
+**实际实现**：
+- 支持 mindmap 语法生成
+- 包含关键词回退机制（LLM 生成失败时从上下文提取关键词构建简单 mindmap）
+- `enrich_document_node.py` 已集成调用，自动处理 `[MERMAID:]` 占位符
 
-**两阶段模式完整保留**：
-1. `_plan_image_concepts()` — 用 Fast LLM 分析文档，识别 2-3 个可视化机会
-2. `_generate_images()` — 并行调用图片生成 API
-3. `embed_images_in_report()` — 扫描占位符，替换为实际图片
-
-**底层替换**：gpt-researcher 用 Gemini，我们用通义万相 (Wanxiang) 或 Qwen-VL。
-
-#### 3.3.4 MermaidGenerator（自研，P2）
-
-```python
-class MermaidGenerator(BaseSkill):
-    """知识点思维导图生成。"""
-
-    async def execute(self, *, topic: str, context: str) -> SkillResult:
-        """用 Fast LLM 生成 Mermaid 语法的思维导图。"""
-        prompt = f"""根据以下内容，生成一个 Mermaid mindmap 语法的思维导图。
-要求：
-1. 根节点是主题名
-2. 最多 3 层深度
-3. 每层最多 5 个节点
-4. 用中文
-
-主题：{topic}
-内容：{context[:3000]}
-"""
-        mermaid_code = await acompletion_with_fallback(
-            [{"role": "user", "content": prompt}],
-            task_type=TaskType.DOCGEN_LIGHT,
-        )
-        return SkillResult(content=f"```mermaid\n{mermaid_code}\n```")
-```
-
-### 3.4 Actions 层重构（原子操作）
-
-Actions 是更细粒度的、无状态的、可复用的底层函数。融入 `shared/infra/tools/builtin/`：
+### 3.4 Actions 层（原子操作）— ✅ 已实现
 
 ```
 shared/infra/tools/builtin/
 ├── __init__.py
-├── query_processing.py        # 📋 generate_sub_queries() / plan_research_outline()
-├── web_scraping.py            # 🌐 scrape_urls() / batch_scrape()
-├── markdown_processing.py     # 📝 extract_headers() / add_references() / embed_media()
-├── latex_processing.py        # 📐 validate_latex() / normalize_math_delimiters()
-├── context_compression.py     # 🗜️ compress_by_similarity() / fast_path_check()
-└── report_generation.py       # 📄 generate_section() / write_conclusion()
+├── query_processing.py        # ✅ generate_sub_queries() / enrich_queries_for_education() / dedupe_queries() / build_research_focus_text()
+├── web_scraping.py            # ✅ scrape_urls() 并行抓取 + URL 去重 + 类型路由
+├── web_search.py              # ✅ web_search tool（@tool 注册）
+├── search_kb.py               # ✅ search_knowledge tool（@tool 注册）
+├── markdown_processing.py     # ✅ build_toc() / extract_headers() / add_references() / count_words()
+├── latex_processing.py        # ✅ normalize_math_delimiters()（数学分隔符规范化）
+└── memory_ops.py              # ✅ remember / recall tools
 ```
+
+**与原设计的差异**：
+- `query_processing.py` 比原设计更丰富：新增 `enrich_queries_for_education()` 教育域搜索增强 + `build_research_focus_text()` 研究焦点构建
+- `web_scraping.py` 已实现完整的 URL 去重 + 类型路由（.pdf → PyMuPDF, 其他 → BS4）+ Semaphore 并发控制
+- 原设计中的 `context_compression.py` 和 `report_generation.py` 功能已分别由 `ContextManager` Skill 和 `PedagogyWriter` Skill 承担，无需独立 Action
 
 #### 3.4.1 query_processing.py（P0）
 
@@ -309,202 +238,105 @@ async def scrape_urls(
     return [r for r in results if r is not None]
 ```
 
-### 3.5 Retrievers 层重构（搜索引擎工厂）
-
-在 `shared/infra/search/` 中引入工厂模式：
+### 3.5 Retrievers + Scraper 层 — ✅ 已实现
 
 ```
 shared/infra/search/
 ├── __init__.py
-├── api.py                     # 现有（search_knowledge + web_search）
-├── types.py                   # 现有
-├── web.py                     # 现有
-├── factory.py                 # 🏭 新增：get_retriever(name) 工厂
-├── retrievers/                # 🆕 新增目录
+├── api.py                     # ✅ search_knowledge + web_search
+├── types.py                   # ✅ SearchResult / ScrapedPage / WebSearchResult
+├── web.py                     # ✅ 多检索器聚合 + 去重
+├── factory.py                 # ✅ get_retrievers_for_subject() 工厂
+├── retrievers/
 │   ├── __init__.py
-│   ├── base.py                # BaseRetriever 抽象基类
-│   ├── bing.py                # Bing Search（中文搜索首选）
-│   ├── bocha.py               # 博查 Search（国内 AI 搜索）
-│   ├── duckduckgo.py          # DuckDuckGo（免费兜底）
-│   ├── local_rag.py           # 🎯 本地 RAG 向量库检索（封装 search_knowledge）
-│   └── tavily.py              # Tavily（英文搜索备用）
-└── scraper/                   # 🆕 新增目录
+│   ├── base.py                # ✅ BaseRetriever（含 LangSmith tracing）
+│   ├── bing.py                # ✅ Bing Search API
+│   ├── bocha.py               # ✅ 博查搜索
+│   ├── duckduckgo.py          # ✅ DuckDuckGo（免费兜底）
+│   └── local_rag.py           # ✅ 本地 RAG（向量 + section fallback）
+└── scraper/
     ├── __init__.py
-    ├── base.py                # BaseScraper 抽象基类
-    ├── bs4_scraper.py         # BeautifulSoup 抓取器
-    └── pdf_scraper.py         # PyMuPDF PDF 解析
+    ├── base.py                # ✅ BaseScraper（含 LangSmith tracing）
+    ├── bs4_scraper.py         # ✅ BeautifulSoup HTML 抓取
+    └── pdf_scraper.py         # ✅ PyMuPDF PDF 提取
 ```
 
-#### 3.5.1 BaseRetriever 接口
+**与原设计的差异**：
+- `BaseRetriever` 实际接口使用 `retrieve(query, top_k)` 而非 `search(query, max_results)`，与 LangChain retriever 命名习惯一致
+- `factory.py` 的 `get_retrievers_for_subject()` 接受 `local_sections` 参数，支持将用户上传文件的 section 直接注入 LocalRAG
+- `LocalRAGRetriever` 实现了向量检索 + section fallback 双通道，比原设计更健壮
+- Tavily 检索器尚未实现（当前 4 种检索器已满足需求）
 
-```python
-# shared/infra/search/retrievers/base.py
-
-class BaseRetriever(ABC):
-    """检索器抽象基类（移植自 gpt-researcher 的 Retriever 接口）。"""
-
-    @abstractmethod
-    async def search(
-        self,
-        query: str,
-        *,
-        max_results: int = 5,
-    ) -> list[SearchResult]:
-        ...
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        ...
-
-
-@dataclass(slots=True)
-class SearchResult:
-    """统一的搜索结果格式。"""
-    url: str
-    title: str
-    snippet: str
-    score: float = 0.0
-    source: str = ""  # retriever name
-```
-
-#### 3.5.2 工厂函数
-
-```python
-# shared/infra/search/factory.py
-
-def get_retriever(name: str) -> BaseRetriever:
-    """检索器工厂（移植自 gpt-researcher 的 get_retriever）。"""
-    match name.lower().strip():
-        case "bing":
-            from .retrievers.bing import BingRetriever
-            return BingRetriever()
-        case "bocha":
-            from .retrievers.bocha import BochaRetriever
-            return BochaRetriever()
-        case "duckduckgo" | "ddg":
-            from .retrievers.duckduckgo import DuckDuckGoRetriever
-            return DuckDuckGoRetriever()
-        case "local_rag" | "rag":
-            from .retrievers.local_rag import LocalRAGRetriever
-            return LocalRAGRetriever()
-        case "tavily":
-            from .retrievers.tavily import TavilyRetriever
-            return TavilyRetriever()
-        case _:
-            raise ValueError(f"Unknown retriever: {name}")
-
-
-def get_retrievers_for_subject(
-    subject: str | None = None,
-) -> list[BaseRetriever]:
-    """教育域检索优先级策略。"""
-    retrievers = []
-    if subject:
-        retrievers.append(get_retriever("local_rag"))
-    settings = get_settings()
-    web_retriever = settings.web_search_retriever or "bing"
-    retrievers.append(get_retriever(web_retriever))
-    retrievers.append(get_retriever("duckduckgo"))  # 免费兜底
-    return retrievers
-```
-
-#### 3.5.3 检索优先级策略（教育域专属）
-
+**检索优先级策略（不变）**：
 ```
 1. 本地 RAG (local_rag)        ← 用户上传的教材，最高质量，零成本
 2. Bing / 博查搜索             ← 中文互联网（知乎、CSDN、考研论坛）
 3. DuckDuckGo                  ← 免费兜底，无需 API Key
 ```
 
-**配置方式**（`.env`）：
-```env
-# 检索器配置
-WEB_SEARCH_RETRIEVER=bing          # 主力 web 检索器
-BING_API_KEY=xxx                   # Bing Search API Key
-BOCHA_API_KEY=xxx                  # 博查 API Key（可选）
-LOCAL_RAG_PRIORITY=true            # 是否优先查本地 RAG
-LOCAL_RAG_MIN_RESULTS=3            # 本地结果少于此数时降级查外网
-```
+**后续扩展方向**：
+- Tavily 检索器（英文学术搜索）
+- arXiv 检索器（论文搜索）
+- 教育垂直站点定向检索（见 06 文档）
 
-### 3.6 LangSmith 全链路追踪适配
+### 3.6 LangSmith 全链路追踪 — ✅ 已实现
 
-**关键原则**：每个 Skill / Action / Retriever 的调用都必须在 LangSmith 中可追踪。
+**实际实现方式**（与原设计略有差异）：
 
 #### 3.6.1 Skill 层追踪
 
-```python
-# BaseSkill.execute() 自动包裹 LangSmith trace
+实际实现中，Skill 的 LangSmith 追踪通过 `SkillContext.trace_metadata()` + 调用方（LangGraph 节点）的 `wrap_workflow_node()` 实现，而非 BaseSkill 内部的 `run()` 包装：
 
-class BaseSkill(ABC):
-    async def run(self, **kwargs: Any) -> SkillResult:
-        """外部调用入口，自动包裹 LangSmith trace。"""
-        with langsmith_trace(
-            name=f"skill.{self.name}",
-            run_type="chain",
-            inputs=kwargs,
-            metadata=build_langsmith_metadata(
-                workflow=self.context.workflow_context.workflow_name if self.context.workflow_context else "",
-                node=f"skill.{self.name}",
-            ),
-        ) as run:
-            result = await self.execute(**kwargs)
-            if run:
-                run.end(outputs={"content_len": len(result.content), "source_count": len(result.sources)})
-            return result
+```python
+# 实际模式：节点调用 Skill 时传入 trace metadata
+skill = ResearchConductor(context=SkillContext(
+    subject=state["subject"],
+    build_session_id=state["build_session_id"],
+    digest_mode=state.get("digest_mode", ""),
+    chapter_index=chapter_index,
+))
+result = await skill.execute(queries=queries, ...)
+# Skill 内部的 LLM 调用自动携带 trace_metadata
 ```
 
 #### 3.6.2 Retriever 层追踪
 
-```python
-# BaseRetriever 自动追踪
+`BaseRetriever` 基类已内置 LangSmith tracing，每次 `retrieve()` 调用自动记录 retriever_name / query / result_count。
 
-class BaseRetriever(ABC):
-    async def traced_search(self, query: str, **kwargs) -> list[SearchResult]:
-        """带 LangSmith 追踪的搜索。"""
-        with langsmith_trace(
-            name=f"retriever.{self.name}",
-            run_type="retriever",
-            inputs={"query": query, **kwargs},
-        ) as run:
-            results = await self.search(query, **kwargs)
-            if run:
-                run.end(outputs={"result_count": len(results)})
-            return results
-```
-
-#### 3.6.3 在 LangSmith 中的可视化效果
-
-重构后，一次完整的 DocGen 流程在 LangSmith 中的 trace 树：
+#### 3.6.3 实际 LangSmith trace 树结构
 
 ```
 digest.docgen (chain)
-├── edu_planner (chain)
-│   └── llm.acompletion [task_type=reasoning] (llm)
-├── targeted_research.chapter_1 (chain)
-│   ├── retriever.local_rag (retriever)
-│   ├── retriever.bing (retriever)
-│   ├── skill.ResearchConductor (chain)
-│   │   ├── scraper.bs4 (tool)
-│   │   └── skill.ContextManager.compress (chain)
-│   │       └── llm.acompletion [task_type=docgen_light] (llm)
-│   └── llm.acompletion [task_type=extract] (llm)
-├── targeted_research.chapter_2 (chain)  ← 并行
+├── load_context (chain)
+├── targeted_research.ch_0 (chain)          ← fan-out Send
+│   ├── ResearchConductor.execute
+│   │   ├── generate_sub_queries [tier=strategic]
+│   │   ├── retriever.local_rag
+│   │   ├── retriever.bing
+│   │   ├── scrape_urls
+│   │   ├── SourceCurator.curate
+│   │   ├── ContextManager.build_dense_context
+│   │   └── llm.purify_context [tier=smart]
+│   └── chapter_material → state
+├── targeted_research.ch_1 (chain)          ← 并行
 │   └── ...
-├── pedagogy_craft.chapter_1 (chain)
-│   └── llm.acompletion [task_type=docgen] (llm)
-├── pedagogy_craft.chapter_2 (chain)  ← 并行
+├── collect_materials (chain)
+├── pedagogy_craft.ch_0 (chain)             ← fan-out Send
+│   ├── PedagogyWriter.execute
+│   │   └── llm.write_chapter [tier=smart]
+│   └── chapter_draft → state
+├── pedagogy_craft.ch_1 (chain)             ← 并行
 │   └── ...
+├── collect_drafts (chain)
 ├── enrich_document (chain)
-│   ├── skill.ImageGenerator (chain)
-│   │   ├── llm.acompletion [task_type=docgen_light] (llm)  ← plan concepts
-│   │   └── tool.wanxiang_generate (tool)       ← generate image
-│   ├── skill.MermaidGenerator (chain)
-│   │   └── llm.acompletion [task_type=docgen_light] (llm)
-│   └── tool.validate_latex (tool)
+│   ├── MermaidGenerator (per placeholder)
+│   ├── ImageGenerator (per placeholder)
+│   ├── normalize_math_delimiters
+│   └── add_references
 ├── inject_examine (chain)
-│   └── llm.acompletion [task_type=docgen] (llm)
+│   └── generate exam questions
 └── finalize_assemble (chain)
+    └── stage_knowledge_docs
 ```
 
 ---
