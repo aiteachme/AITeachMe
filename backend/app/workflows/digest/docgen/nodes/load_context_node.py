@@ -12,7 +12,6 @@ from app.workflows.digest.docgen.nodes.common import (
     serialize_section,
 )
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.planner.models import build_fallback_plan
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
 
 
@@ -40,15 +39,11 @@ def build_load_context_node(*, context: WorkflowContext):
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
         tone = state.get("tone") or "encouraging"
         plan_payload = deepcopy(state.get("confirmed_plan") or {})
+        if not plan_payload:
+            return {"error": "DocGen 缺少已确认的构建方案，不能直接进入文档生成。"}
         if not plan_payload.get("chapter_plan"):
-            fallback = build_fallback_plan(
-                subject=state["subject"],
-                user_goal=state.get("user_prompt") or "生成一份结构化的学习文档。",
-                digest_mode=digest_mode,
-                tone=tone,
-                shared_inputs=shared_inputs,
-            )
-            plan_payload = fallback.model_dump(mode="json")
+            return {"error": "已确认的构建方案缺少章节规划，无法继续生成知识文档。"}
+
         digest_mode = str(plan_payload.get("digest_mode") or digest_mode)
         tone = str(plan_payload.get("tone") or tone)
         assignments = normalize_chapter_assignments(
@@ -75,7 +70,7 @@ def build_load_context_node(*, context: WorkflowContext):
             confirmed_plan_id=state.get("confirmed_plan_id") or None,
             digest_mode=digest_mode,
             mode_reason=(plan_payload.get("mode_reason") or "confirmed_build_plan"),
-            current_stage_description=str(plan_payload.get("plan_summary") or "已确认构建方案，开始按规划执行。"),
+            current_stage_description=str(plan_payload.get("plan_summary") or "已确认构建方案，开始按章节执行。"),
             total_chunks=len(assignments),
             processed_chunks=0,
             current_chunk=0,

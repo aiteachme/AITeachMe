@@ -8,7 +8,11 @@ from app.shared.infra.skills.mermaid_generator import MermaidGenerator
 from app.shared.infra.skills.researcher import ResearchConductor
 from app.shared.infra.skills.source_curator import SourceCurator
 from app.shared.infra.skills.writer import PedagogyWriter
-from app.teaching import _skill_tools as _teaching_skill_tools
+
+try:  # pragma: no cover - defensive import to avoid package init cycles
+    from app.teaching import _skill_tools as _teaching_skill_tools
+except ImportError:  # pragma: no cover - teaching package may still be initializing
+    _teaching_skill_tools = None
 
 __all__ = [
     "BaseSkill",

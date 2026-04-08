@@ -59,6 +59,7 @@ class KnowledgeDocsManifest(BaseModel):
     """Metadata describing the published merged knowledge docs."""
 
     updated_at: datetime
+    version_no: int = 0
     source_file_ids: list[int] = Field(default_factory=list)
     prompt: str | None = None
     chapter_count: int = 0
@@ -368,12 +369,31 @@ def clear_docgen_staging(subject: str) -> None:
 
 
 def clear_published_knowledge_docs_files(subject: str) -> None:
-    """Remove published chapter markdown files before replacing them."""
+    """Remove all published knowledge-doc files, including archived versions."""
 
     cs = get_content_store()
     keys = run_store_sync(cs.list_prefix, f"{subject}/knowledge_markdowns/", default=[])
     for key in keys:
-        filename = key.rsplit("/", 1)[-1] if "/" in key else key
+        relative = key.removeprefix(f"{subject}/knowledge_markdowns/")
+        filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
+        if (
+            filename.startswith("chapter_")
+            or filename == "merged_knowledge_base.md"
+            or relative.startswith("versions/")
+        ):
+            run_store_sync(cs.delete, key, default=None)
+
+
+def clear_current_published_knowledge_docs_files(subject: str) -> None:
+    """Remove only the current published chapter markdown files."""
+
+    cs = get_content_store()
+    keys = run_store_sync(cs.list_prefix, f"{subject}/knowledge_markdowns/", default=[])
+    for key in keys:
+        relative = key.removeprefix(f"{subject}/knowledge_markdowns/")
+        if relative.startswith("versions/"):
+            continue
+        filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
         if filename.startswith("chapter_") or filename == "merged_knowledge_base.md":
             run_store_sync(cs.delete, key, default=None)
 
@@ -397,6 +417,7 @@ __all__ = [
     "KnowledgeDocsManifest",
     "STALE_BUILD_LOCK_TTL",
     "acquire_knowledge_build_lock",
+    "clear_current_published_knowledge_docs_files",
     "clear_docgen_staging",
     "clear_knowledge_build_status",
     "clear_knowledge_runtime_artifacts",

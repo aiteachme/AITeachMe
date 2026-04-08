@@ -9,7 +9,7 @@ from app.models import IngestStatus, RawFile, RetrievalChunk, Subject, TaskStatu
 from app.models.build_planner import ConfirmedBuildPlan
 from app.schemas.knowledge import KnowledgeBuildPrecheckConflictData, SubjectVectorStatusResponse
 from app.services.knowledge.digest_service import trigger_docgen_build
-from app.shared.infra.exceptions import SubjectBuildLockConflictError
+from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, SubjectBuildLockConflictError
 
 
 def _seed_subject(session: Session, *, subject_slug: str) -> Subject:
@@ -147,6 +147,7 @@ def test_trigger_docgen_build_force_full_rebuild_clears_chunk_vector_metadata(
             prompt="  review me  ",
             embedding_resolution=None,
             confirmed_plan_id=None,
+            build_type="graph",
         )
 
     session.refresh(chunk)
@@ -199,6 +200,7 @@ def test_trigger_docgen_build_calls_direct_clear_chunk_vector_metadata(session: 
             prompt=None,
             embedding_resolution=None,
             confirmed_plan_id=None,
+            build_type="graph",
         )
 
     clear_mock.assert_called_once_with(session, subject=subject.slug)
@@ -244,6 +246,7 @@ def test_trigger_docgen_build_uses_confirmed_plan_selection_and_prompt(session: 
             prompt="manual override",
             embedding_resolution=None,
             confirmed_plan_id=plan.id,
+            build_type="docs",
         )
 
     assert accepted_file_ids == [int(second_file.id or 0)]
@@ -285,6 +288,31 @@ def test_trigger_docgen_build_rejects_building_confirmed_plan(session: Session) 
                 prompt="try again",
                 embedding_resolution=None,
                 confirmed_plan_id=plan.id,
+                build_type="docs",
             )
 
     lock_mock.assert_not_called()
+
+
+def test_trigger_docgen_build_requires_confirmed_plan_for_docs(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_digest_missing_plan")
+    ready_file = _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_digest_missing_plan")
+
+    with patch(
+        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        return_value=None,
+    ), patch(
+        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        return_value=_vector_status(),
+    ):
+        with pytest.raises(ConfirmedBuildPlanRequiredError):
+            trigger_docgen_build(
+                session,
+                subject=subject,
+                user_id="local",
+                file_uids=[ready_file.uid],
+                prompt="direct docs build",
+                embedding_resolution=None,
+                confirmed_plan_id=None,
+                build_type="docs",
+            )

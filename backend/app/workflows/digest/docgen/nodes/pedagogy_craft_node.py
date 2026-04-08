@@ -6,7 +6,7 @@ from copy import deepcopy
 from time import perf_counter
 
 from app.shared.infra.skills import PedagogyWriter, SkillContext
-from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
+from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import ensure_chapter_heading, publish_docgen_progress, resolve_docgen_dependency
 from app.workflows.digest.docgen.state import DocGenState
@@ -53,9 +53,16 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "fallback_used": bool(material.get("fallback_used", False)),
             "compression_mode": str(material.get("compression_mode") or ""),
             "executed_queries": list(material.get("executed_queries") or []),
+            "base_queries": list(material.get("base_queries") or []),
+            "planned_queries": list(material.get("planned_queries") or []),
+            "fallback_queries": list(material.get("fallback_queries") or []),
+            "query_count": int(material.get("query_count", 0) or 0),
+            "scraped_url_count": int(material.get("scraped_url_count", 0) or 0),
+            "document_count": int(material.get("document_count", 0) or 0),
+            "purify_used": bool(material.get("purify_used", False)),
             "curated_source_count": int(material.get("curated_source_count", 0) or 0),
             "draft_ms": elapsed_ms,
-            "word_count": len([token for token in markdown.split() if token]),
+            "word_count": count_words(markdown),
             "placeholder_count": markdown.count("[MERMAID:") + markdown.count("[IMAGE:") + markdown.count("[INTERACTIVE:"),
         }
         await publish_docgen_progress(

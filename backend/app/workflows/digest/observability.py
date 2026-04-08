@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.tracing import get_tracker, langsmith_trace, llm_trace_scope
 
 logger = structlog.get_logger(__name__)
@@ -220,6 +221,11 @@ def build_docgen_lane_summary(
     web_hit_count = sum(int(chapter.get("web_hits", 0) or 0) for chapter in chapter_materials)
     fallback_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False)))
     curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
+    planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
+    executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
+    scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
+    research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
+    purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
     return {
         "status": resolved_status,
         "error_message": resolved_error,
@@ -248,8 +254,13 @@ def build_docgen_lane_summary(
         "web_hit_count": web_hit_count,
         "fallback_chapter_count": fallback_chapter_count,
         "curated_source_count": curated_source_count,
+        "planned_query_count": planned_query_count,
+        "executed_query_count": executed_query_count,
+        "scraped_url_count": scraped_url_count,
+        "research_document_count": research_document_count,
+        "purify_chapter_count": purify_chapter_count,
         "placeholder_count": placeholder_count,
-        "final_word_count": len([token for token in final_markdown.split() if token]),
+        "final_word_count": count_words(final_markdown),
         "docgen_total_tokens": token_summary.total_tokens,
         "docgen_tokens_by_task_type": token_summary.tokens_by_task_type,
         "docgen_tokens_by_model": token_summary.tokens_by_model,
@@ -582,6 +593,10 @@ def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[s
         outputs["local_hits"] = sum(int(item.get("local_hits", 0) or 0) for item in chapter_materials)
         outputs["web_hits"] = sum(int(item.get("web_hits", 0) or 0) for item in chapter_materials)
         outputs["fallback_used"] = any(bool(item.get("fallback_used", False)) for item in chapter_materials)
+        outputs["planned_query_count"] = sum(len(item.get("planned_queries", []) or []) for item in chapter_materials)
+        outputs["executed_query_count"] = sum(len(item.get("executed_queries", []) or []) for item in chapter_materials)
+        outputs["scraped_url_count"] = sum(int(item.get("scraped_url_count", 0) or 0) for item in chapter_materials)
+        outputs["document_count"] = sum(int(item.get("document_count", 0) or 0) for item in chapter_materials)
         compression_modes = sorted(
             {
                 str(item.get("compression_mode") or "").strip()
@@ -600,12 +615,12 @@ def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[s
         chapter_metadatas = list(result.get("chapter_metadatas", []))
         outputs["staged_chapter_count"] = len(chapter_metadatas)
         outputs["source_count"] = sum(len(item.get("sources", []) or []) for item in chapter_metadatas)
-        outputs["final_word_count"] = sum(len(str(item.get("markdown") or "").split()) for item in chapter_metadatas)
+        outputs["final_word_count"] = sum(count_words(str(item.get("markdown") or "")) for item in chapter_metadatas)
     if result.get("doc_ids"):
         outputs["doc_count"] = len(result.get("doc_ids", []))
     merged_markdown = str(result.get("enriched_markdown") or result.get("merged_markdown") or "")
     if merged_markdown.strip():
-        outputs["final_word_count"] = len(merged_markdown.split())
+        outputs["final_word_count"] = count_words(merged_markdown)
     if result.get("error"):
         outputs["error"] = str(result.get("error"))
     return outputs

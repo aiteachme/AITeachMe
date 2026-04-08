@@ -157,6 +157,7 @@ async def knowledge_build(
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
+        build_type=body.build_type or "all",
     )
 
     build_type = body.build_type or "all"

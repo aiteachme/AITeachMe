@@ -24,17 +24,35 @@ def get_docs_by_subject(
     subject: str,
     *,
     status: str | None = None,
+    only_current: bool | None = None,
+    version_no: int | None = None,
 ) -> list[KnowledgeDoc]:
     """按学科查询知识文档，并按章节顺序返回。"""
 
     statement = (
         select(KnowledgeDoc)
         .where(KnowledgeDoc.subject == subject)
-        .order_by(KnowledgeDoc.chapter_index)
+        .order_by(KnowledgeDoc.version_no, KnowledgeDoc.chapter_index)
     )
     if status is not None:
         statement = statement.where(KnowledgeDoc.status == status)
+    if only_current is not None:
+        statement = statement.where(KnowledgeDoc.is_current.is_(only_current))
+    if version_no is not None:
+        statement = statement.where(KnowledgeDoc.version_no == version_no)
     return list(session.exec(statement).all())
+
+
+def get_latest_version_no(session: Session, subject: str) -> int:
+    """Return the latest published version number for one subject."""
+
+    statement = (
+        select(KnowledgeDoc.version_no)
+        .where(KnowledgeDoc.subject == subject)
+        .order_by(KnowledgeDoc.version_no.desc(), KnowledgeDoc.id.desc())
+    )
+    latest = session.exec(statement).first()
+    return int(latest or 0)
 
 
 def get_doc_by_id(session: Session, doc_id: int) -> KnowledgeDoc | None:

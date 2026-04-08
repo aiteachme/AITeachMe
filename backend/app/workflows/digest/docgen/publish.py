@@ -13,11 +13,11 @@ from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store, run_store_sync
-from app.shared.infra.tools.builtin.markdown_processing import normalize_source_details
+from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_source_details
 from app.teaching.documents import build_document_overview
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
-    clear_published_knowledge_docs_files,
+    clear_current_published_knowledge_docs_files,
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
@@ -31,13 +31,6 @@ class StagedKnowledgeDocs(BaseModel):
 
     merged_markdown: str = ""
     built_paths: list[tuple[int, str]] = Field(default_factory=list)
-
-
-
-def count_words(text: str) -> int:
-    """Return a simple CJK-friendly word count."""
-
-    return len(text.replace(" ", "").replace("\n", ""))
 
 
 
@@ -97,6 +90,15 @@ def _build_chapter_key(subject: str, chapter_index: int, title: str) -> str:
     return f"{subject}/knowledge_markdowns/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
+def _build_versioned_chapter_key(subject: str, version_no: int, chapter_index: int, title: str) -> str:
+    safe_title = sanitize_doc_title(title)
+    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/chapter_{chapter_index:02d}_{safe_title}.md"
+
+
+def _build_versioned_merged_key(subject: str, version_no: int) -> str:
+    return f"{subject}/knowledge_markdowns/versions/v{version_no:04d}/merged_knowledge_base.md"
+
+
 
 def _staging_chapter_key(subject: str, chapter_index: int, title: str) -> str:
     safe_title = sanitize_doc_title(title)
@@ -119,6 +121,13 @@ def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
         "fallback_used": bool(chapter.get("fallback_used", False)),
         "compression_mode": str(chapter.get("compression_mode") or ""),
         "executed_queries": list(chapter.get("executed_queries") or []),
+        "base_queries": list(chapter.get("base_queries") or []),
+        "planned_queries": list(chapter.get("planned_queries") or []),
+        "fallback_queries": list(chapter.get("fallback_queries") or []),
+        "query_count": int(chapter.get("query_count", 0) or 0),
+        "scraped_url_count": int(chapter.get("scraped_url_count", 0) or 0),
+        "document_count": int(chapter.get("document_count", 0) or 0),
+        "purify_used": bool(chapter.get("purify_used", False)),
     }
 
 
@@ -207,8 +216,12 @@ def publish_staged_knowledge_docs(
 
     cs = get_content_store()
     sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+    with managed_session() as session:
+        latest_version_no = docgen_repo.get_latest_version_no(session, subject)
+    resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
+    package_key = f"{subject}:docgen:v{resolved_version_no:04d}"
 
-    clear_published_knowledge_docs_files(subject)
+    clear_current_published_knowledge_docs_files(subject)
 
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
@@ -222,6 +235,13 @@ def publish_staged_knowledge_docs(
             source_file_ids = list(chapter_assignments[index].get("source_file_ids") or [])
 
         final_key = _build_chapter_key(subject, chapter_index, chapter_title)
+        archive_key = _build_versioned_chapter_key(
+            subject,
+            resolved_version_no,
+            chapter_index,
+            chapter_title,
+        )
+        run_store_sync(cs.write_text, archive_key, chapter_markdown)
         run_store_sync(cs.write_text, final_key, chapter_markdown)
 
         docs_to_create.append(
@@ -231,12 +251,13 @@ def publish_staged_knowledge_docs(
                 title=chapter_title,
                 summary=summary,
                 markdown_content=chapter_markdown,
-                markdown_path=final_key,
+                markdown_path=archive_key,
                 tags=json.dumps(tags, ensure_ascii=False),
                 source_file_ids=json.dumps(source_file_ids),
                 word_count=count_words(chapter_markdown),
-                version=version_no,
-                version_no=version_no,
+                version=resolved_version_no,
+                version_no=resolved_version_no,
+                package_key=package_key,
                 build_session_id=build_session_id,
                 is_current=True,
                 status="published",
@@ -248,11 +269,13 @@ def publish_staged_knowledge_docs(
         )
 
     merged_markdown = build_merged_markdown(sorted_chapters, document_context=document_context)
+    run_store_sync(cs.write_text, _build_versioned_merged_key(subject, resolved_version_no), merged_markdown)
     run_store_sync(cs.write_text, cs.knowledge_doc_key(subject, "merged_knowledge_base.md"), merged_markdown)
     run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
 
     manifest = KnowledgeDocsManifest(
         updated_at=requested_at,
+        version_no=resolved_version_no,
         source_file_ids=sorted(
             {
                 int(file_id)
@@ -278,7 +301,19 @@ def publish_staged_knowledge_docs(
     )
 
     with managed_session() as session:
-        docgen_repo.delete_docs_by_subject(session, subject)
-        created_docs = docgen_repo.bulk_create_knowledge_docs(session, docs_to_create)
+        current_docs = docgen_repo.get_docs_by_subject(session, subject, only_current=True)
+        for doc in current_docs:
+            doc.is_current = False
+            doc.status = "superseded"
+            doc.superseded_at = requested_at
+            doc.updated_at = requested_at
+            session.add(doc)
+        for doc in docs_to_create:
+            session.add(doc)
+        session.commit()
+        created_docs: list[KnowledgeDoc] = []
+        for doc in docs_to_create:
+            session.refresh(doc)
+            created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]

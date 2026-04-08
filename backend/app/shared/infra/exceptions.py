@@ -258,6 +258,18 @@ class NoReadyFilesForDocGenError(AITeachMeError):
         super().__init__(detail=f"学科 `{subject}` 暂无可用的已解析文件，无法开始知识构建。")
 
 
+class ConfirmedBuildPlanRequiredError(AITeachMeError):
+    error_code = "CONFIRMED_BUILD_PLAN_REQUIRED"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, build_type: str) -> None:
+        build_label = {
+            "docs": "知识文档构建",
+            "all": "统一知识构建",
+        }.get(build_type, "当前构建")
+        super().__init__(detail=f"{build_label}必须基于已确认的构建方案执行，请先完成 planner 确认。")
+
+
 class SubjectBuildLockConflictError(AITeachMeError):
     error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT

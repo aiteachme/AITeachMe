@@ -23,7 +23,8 @@ def extract_image_placeholders(markdown: str) -> list[str]:
 
 
 def count_words(markdown: str) -> int:
-    return len([token for token in re.split(r"\s+", markdown.strip()) if token])
+    compact = re.sub(r"\s+", "", markdown).strip()
+    return len(compact)
 
 
 
