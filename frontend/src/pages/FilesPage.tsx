@@ -764,9 +764,11 @@ export function FilesPage() {
                 >
                   {message.role === "assistant" ? (
                     <>
-                      <div className="whitespace-pre-line rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm leading-6 text-zinc-700 shadow-sm">
-                        {message.content}
-                      </div>
+                      {!message.plan && message.content ? (
+                        <div className="whitespace-pre-line rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm leading-6 text-zinc-700 shadow-sm">
+                          {message.content}
+                        </div>
+                      ) : null}
 
                       {message.plan ? (
                         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
