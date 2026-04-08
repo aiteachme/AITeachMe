@@ -585,12 +585,16 @@ def _merge_chapter(
         _replace_subject_slug_text(item, subject_display_name)
         for item in list(raw.get("search_queries") or [])
     ]
+    fallback_queries = [
+        _replace_subject_slug_text(item, subject_display_name)
+        for item in list(fallback.search_queries)
+    ]
     return PlannerChapterPlan(
         chapter_index=fallback.chapter_index,
         title=title,
         objective=objective,
         required_elements=_normalize_required_elements(raw.get("required_elements"), fallback.required_elements),
-        search_queries=_normalize_search_queries(normalized_queries, fallback.search_queries),
+        search_queries=_normalize_search_queries(normalized_queries, fallback_queries),
         writing_instructions=writing_instructions,
         media_hints=_normalize_media_hints(raw.get("media_hints"), fallback.media_hints),
     )
@@ -753,13 +757,17 @@ def normalize_planner_draft(
         ],
         limit=24,
     )
+    fallback_research_queries = [
+        _replace_subject_slug_text(item, subject_display_name)
+        for item in list(fallback_plan.research_queries)
+    ]
     return BuildPlannerDraft(
         subject=subject_display_name,
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
         chapter_plan=chapter_plan,
-        research_queries=research_queries or list(fallback_plan.research_queries),
+        research_queries=research_queries or fallback_research_queries,
         media_plan=_normalize_media_plan(
             current_raw.get("media_plan") or previous_raw.get("media_plan"),
             fallback_plan.media_plan,

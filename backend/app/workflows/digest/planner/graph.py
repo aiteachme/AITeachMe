@@ -31,6 +31,7 @@ from app.workflows.digest.shared.prepare import prepare_shared_inputs
 _PLANNER_STREAM_MAX_TOKENS = 260
 _PLANNER_STREAM_TIMEOUT_S = 10
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
+_SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 _TASK_LINE_RE = re.compile(r"^\((\d+)\)\s*(.+)$")
 _HEADER_LINES = {"研究任务", "研究网站", "分析结果", "生成报告"}
 _LEADING_VERB_RE = re.compile(r"^(?:梳理|理解|调研|整理|分析|掌握|比较|构建|明确|总结|回顾|聚焦|说明|建立|打通|认识|学习|覆盖|提炼)")
@@ -121,6 +122,10 @@ def _clean_preview_line(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+def _replace_subject_slug(value: str, replacement: str) -> str:
+    return _SUBJECT_SLUG_INLINE_RE.sub(replacement, str(value or ""))
+
+
 def _extract_preview_title(raw_text: str) -> str:
     lines = [_clean_preview_line(line) for line in str(raw_text or "").replace("\r", "").split("\n")]
     for line in lines:
@@ -161,7 +166,7 @@ def _truncate_text(value: str, *, limit: int) -> str:
 
 
 def _build_preview_title(*, display_subject: str, user_goal: str, digest_mode: str) -> str:
-    goal = _clean_preview_line(user_goal)
+    goal = _clean_preview_line(_replace_subject_slug(user_goal, display_subject))
     subject = _clean_preview_line(display_subject) or "当前主题"
     if goal and goal != subject and len(goal) <= 18 and "知识文档" not in goal:
         topic = goal
@@ -231,10 +236,18 @@ def _build_raw_plan_from_preview(
     tone: str,
     fallback_plan,
 ) -> tuple[dict[str, Any], list[str]]:
-    preview_title = _extract_preview_title(preview_text)
-    preview_tasks = _extract_preview_tasks(preview_text)
+    preview_title = _clean_preview_line(_replace_subject_slug(_extract_preview_title(preview_text), display_subject))
+    preview_tasks = [
+        _clean_preview_line(_replace_subject_slug(task, display_subject))
+        for task in _extract_preview_tasks(preview_text)
+        if _clean_preview_line(_replace_subject_slug(task, display_subject))
+    ]
     if not preview_tasks:
-        preview_tasks = list(fallback_plan.research_queries[:6])
+        preview_tasks = [
+            _clean_preview_line(_replace_subject_slug(task, display_subject))
+            for task in list(fallback_plan.research_queries[:6])
+            if _clean_preview_line(_replace_subject_slug(task, display_subject))
+        ]
 
     chapter_plan: list[dict[str, Any]] = []
     for index, fallback in enumerate(fallback_plan.chapter_plan):

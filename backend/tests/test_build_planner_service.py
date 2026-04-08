@@ -309,7 +309,7 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
             },
         ],
         "fallback_used": False,
-        "planner_generation_mode": "text_json",
+        "planner_generation_mode": "stream_plaintext",
     }
 
     with patch(
@@ -329,7 +329,7 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
     assert response.runtime_stats.workflow_elapsed_ms == 345
     assert response.runtime_stats.node_timings_ms["load_context"] == 32
     assert response.runtime_stats.node_timings_ms["draft_plan"] == 280
-    assert response.runtime_stats.generation_mode == "text_json"
+    assert response.runtime_stats.generation_mode == "stream_plaintext"
     assert [event.node_name for event in response.runtime_stats.node_events] == [
         "load_context",
         "draft_plan",
