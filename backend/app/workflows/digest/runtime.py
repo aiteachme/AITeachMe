@@ -9,12 +9,6 @@ from app.workflows.common.context import WorkflowContext
 from app.workflows.common.events import InProcessEventBus
 from app.workflows.common.result import WorkflowResult, err_result
 from app.workflows.common.runtime import run_state_graph
-from app.workflows.digest.observability import (
-    build_curriculum_lane_summary,
-    build_docgen_lane_summary,
-    build_kg_lane_summary,
-    build_token_summary,
-)
 from app.workflows.digest.events import (
     CurriculumDeriveCompletedEvent,
     CurriculumDeriveFailedEvent,
@@ -35,6 +29,12 @@ from app.workflows.digest.graph import (
 )
 from app.workflows.digest.kg.finalize_nodes import trigger_curriculum_derive_safe
 from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.observability import (
+    build_curriculum_lane_summary,
+    build_docgen_lane_summary,
+    build_kg_lane_summary,
+    build_token_summary,
+)
 from app.workflows.digest.state import CurriculumDeriveState, DocGenState, KGDigestState
 
 CurriculumTrigger = Callable[..., Awaitable[None]]
@@ -260,8 +260,14 @@ async def run_docgen_workflow(
     requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
+    shared_inputs: object | None = None,
+    confirmed_plan: dict | None = None,
+    planner_session_id: str | None = None,
+    confirmed_plan_id: str | None = None,
+    digest_mode: str | None = None,
+    tone: str | None = None,
 ) -> WorkflowResult[DocGenState]:
-    """Run the docgen lane workflow."""
+    """Run the DocGen lane workflow."""
 
     bus = event_bus or InProcessEventBus()
     await bus.publish(DocGenRequestedEvent(subject=subject, requested_at=requested_at, file_ids=file_ids))
@@ -273,6 +279,9 @@ async def run_docgen_workflow(
         metadata={
             "requested_at": requested_at.isoformat(),
             "build_session_id": build_session_id or "",
+            "planner_session_id": planner_session_id or "",
+            "confirmed_plan_id": confirmed_plan_id or "",
+            "digest_mode": digest_mode or "",
         },
     )
     result = await run_state_graph(
@@ -284,6 +293,12 @@ async def run_docgen_workflow(
             user_prompt=user_prompt,
             requested_at=requested_at,
             build_session_id=build_session_id,
+            shared_inputs=shared_inputs,
+            confirmed_plan=confirmed_plan,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=digest_mode,
+            tone=tone,
         ),
         context=context,
     )

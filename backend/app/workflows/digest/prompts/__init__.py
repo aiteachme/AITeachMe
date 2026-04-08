@@ -1,20 +1,23 @@
-"""Digest Engine 提示词模块。
+"""Centralized prompt exports for digest workflows."""
 
-集中导出系统提示词与模板映射，其他模块可直接 from prompts import。
-"""
-
-from .prompts import PROMPTS
+from .docgen_prompts import (
+    build_docgen_mermaid_prompt,
+    build_docgen_research_purify_messages,
+    build_docgen_writer_messages,
+)
 from .kg_prompts import (
     KG_PROMPTS,
-    SYSTEM_PROMPT_KG_EXTRACT,
-    USER_PROMPT_KG_EXTRACT,
     SYSTEM_PROMPT_KG_ENTITY_MATCH,
-    USER_PROMPT_KG_ENTITY_MATCH,
-    SYSTEM_PROMPT_KG_UNIT_NAMING,
-    USER_PROMPT_KG_UNIT_NAMING,
+    SYSTEM_PROMPT_KG_EXTRACT,
     SYSTEM_PROMPT_KG_THEME_TREE,
+    SYSTEM_PROMPT_KG_UNIT_NAMING,
+    USER_PROMPT_KG_ENTITY_MATCH,
+    USER_PROMPT_KG_EXTRACT,
     USER_PROMPT_KG_THEME_TREE,
+    USER_PROMPT_KG_UNIT_NAMING,
 )
+from .planner_prompts import build_planner_prompt
+from .prompts import PROMPTS
 
 __all__ = [
     "PROMPTS",
@@ -27,4 +30,8 @@ __all__ = [
     "USER_PROMPT_KG_UNIT_NAMING",
     "SYSTEM_PROMPT_KG_THEME_TREE",
     "USER_PROMPT_KG_THEME_TREE",
+    "build_docgen_mermaid_prompt",
+    "build_docgen_research_purify_messages",
+    "build_docgen_writer_messages",
+    "build_planner_prompt",
 ]

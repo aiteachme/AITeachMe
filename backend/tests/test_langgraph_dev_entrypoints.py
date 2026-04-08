@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 
@@ -6,6 +6,7 @@ from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
 from app.workflows.digest.kg.graph import build_kg_digest_graph
+from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.examine.exam_grade_workflow import build_exam_grade_graph
 from app.workflows.examine.question_build_workflow import build_question_build_graph
@@ -34,7 +35,10 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
     assert {"derive_units", "derive_theme_tree", "finalize_curriculum"}.issubset(
         _node_ids(build_curriculum_derive_graph())
     )
-    assert {"load_files", "outline_reduce", "finalize_assemble"}.issubset(
+    assert {"load_context", "draft_plan"}.issubset(
+        _node_ids(get_langgraph_dev_planner_graph())
+    )
+    assert {"load_context", "targeted_research", "finalize_assemble"}.issubset(
         _node_ids(get_langgraph_dev_docgen_graph())
     )
     assert {"prepare_shared", "run_parallel_lanes", "publish_outputs"}.issubset(
@@ -84,12 +88,12 @@ def test_interact_stream_node_supports_debug_mode(monkeypatch) -> None:
 
     result = asyncio.run(
         node(
-                {
-                    "messages": [{"role": "user", "content": "AB"}],
-                    "error": None,
-                }
-            )
+            {
+                "messages": [{"role": "user", "content": "AB"}],
+                "error": None,
+            }
         )
+    )
 
     assert result["assistant_response"] == "AB"
     assert result["stream_interrupted"] is False

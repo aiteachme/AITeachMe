@@ -19,22 +19,24 @@ class UnifiedDigestState(TypedDict, total=False):
     user_prompt: str | None
     requested_at: datetime
     build_session_id: str
+    planner_session_id: str
+    confirmed_plan_id: str
+    confirmed_plan: dict[str, Any] | None
+    digest_mode: str
+    tone: str
     graph_job_id: int
     curriculum_job_id: int
     shared_inputs: SharedInputs
     materialized: MaterializedSections
 
-    # Per-lane outputs — fully independent
     doc_state: dict[str, Any]
     kg_state: dict[str, Any]
     curriculum_state: dict[str, Any]
 
-    # Lane status flags
     graph_ready: bool
     doc_lane_error: str | None
     kg_lane_error: str | None
 
-    # Timing
     shared_prepare_ms: int
     lane_ms: int
     parallel_lanes_ms: int
@@ -53,6 +55,8 @@ class UnifiedBuildResult(BaseModel):
 
     subject: str
     build_session_id: str
+    planner_session_id: str | None = None
+    confirmed_plan_id: str | None = None
     success: bool
     error: str | None = None
     doc_count: int = 0

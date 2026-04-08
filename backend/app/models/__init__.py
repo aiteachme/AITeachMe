@@ -1,5 +1,6 @@
-﻿"""Central model exports."""
+"""Central model exports."""
 
+from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -47,8 +48,11 @@ from app.models.user import User
 
 __all__ = [
     "AsyncJobStatus",
+    "BuildPlannerSession",
+    "BuildPlannerTurn",
     "ChatMessage",
     "ChatSession",
+    "ConfirmedBuildPlan",
     "Curriculum",
     "CurriculumSnapshot",
     "CurriculumVersion",

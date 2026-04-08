@@ -28,6 +28,7 @@ from app.shared.infra.subject_settings import (
     get_legacy_vector_table_name,
     get_postgres_vector_ref,
 )
+from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,

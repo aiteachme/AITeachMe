@@ -1,20 +1,21 @@
-"""Skill 定义与 @skill 装饰器。
-
-每个 Skill 是一个 async 函数，通过 @skill 装饰器注册。
-注册后自动同步到 ToolRegistry，可被 Agent Loop 调用。
-"""
+﻿"""Skill definitions and registration helpers."""
 
 from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable
+from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, get_type_hints
 
 import structlog
 
-logger = structlog.get_logger()
+from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.tracing import langsmith_trace
+from app.workflows.common.context import WorkflowContext
+
+logger = structlog.get_logger(__name__)
 
 _TYPE_MAP = {
     str: "string",
@@ -26,19 +27,100 @@ _TYPE_MAP = {
 }
 
 
+@dataclass(slots=True)
+class SkillContext:
+    subject: str
+    build_session_id: str = ""
+    workflow_context: WorkflowContext | None = None
+    planner_session_id: str = ""
+    confirmed_plan_id: str = ""
+    digest_mode: str = ""
+    chapter_index: int | None = None
+    llm_caller: Callable[..., Awaitable[Any]] | None = None
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
+
+    def resolve_llm_caller(self) -> Callable[..., Awaitable[Any]]:
+        return self.llm_caller or acompletion_with_fallback
+
+    def trace_metadata(self, **extra: Any) -> dict[str, Any]:
+        metadata = dict(self.extra_metadata)
+        if self.planner_session_id:
+            metadata.setdefault("planner_session_id", self.planner_session_id)
+        if self.confirmed_plan_id:
+            metadata.setdefault("confirmed_plan_id", self.confirmed_plan_id)
+        if self.digest_mode:
+            metadata.setdefault("digest_mode", self.digest_mode)
+        if self.chapter_index is not None:
+            metadata.setdefault("chapter_index", self.chapter_index)
+        metadata.update({key: value for key, value in extra.items() if value not in (None, "", [], {})})
+        return metadata
+
+
+@dataclass(slots=True)
+class SkillResult:
+    content: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    sources: list[str] = field(default_factory=list)
+    images: list[dict[str, Any]] = field(default_factory=list)
+    cost_tokens: int = 0
+
+
+class BaseSkill(ABC):
+    def __init__(self, context: SkillContext) -> None:
+        self.context = context
+        self.logger = structlog.get_logger(__name__).bind(
+            skill_name=self.name,
+            subject=context.subject,
+            build_session_id=context.build_session_id,
+        )
+
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
+    async def run(self, **kwargs: Any) -> SkillResult:
+        workflow_context = self.context.workflow_context
+        workflow_name = workflow_context.workflow_name if workflow_context is not None else ""
+        lane = str(workflow_context.metadata.get("lane", "")) if workflow_context is not None else ""
+        node = f"skill.{self.name}"
+        with langsmith_trace(
+            name=node,
+            run_type="chain",
+            inputs=kwargs,
+            subject=self.context.subject,
+            build_session_id=self.context.build_session_id,
+            workflow=workflow_name,
+            lane=lane,
+            node=node,
+            extra_metadata=self.context.trace_metadata(skill_name=self.name),
+            extra_tags=[f"skill:{self.name}"],
+        ) as run:
+            result = await self.execute(**kwargs)
+            if run is not None:
+                run.end(
+                    outputs={
+                        "content_length": len(result.content),
+                        "source_count": len(result.sources),
+                        "image_count": len(result.images),
+                    }
+                )
+            return result
+
+    @abstractmethod
+    async def execute(self, **kwargs: Any) -> SkillResult:
+        raise NotImplementedError
+
+
 @dataclass
 class SkillDefinition:
-    """Skill 定义。"""
-
     name: str
     description: str
-    parameters: dict           # JSON Schema
-    handler: Callable
+    parameters: dict[str, Any]
+    handler: Callable[..., Any]
     is_async: bool = False
     tags: list[str] = field(default_factory=list)
 
     def to_tool_definition(self):
-        """将 Skill 转为 ToolDefinition 并注册到工具表。"""
         from app.shared.infra.tools.definition import ToolDefinition
 
         return ToolDefinition(
@@ -50,22 +132,16 @@ class SkillDefinition:
         )
 
 
-# ── Skill 注册表 ──────────────────────────────────────────────
-
-
 class SkillRegistry:
-    """Skill 注册表（内部使用）。"""
-
     def __init__(self) -> None:
         self._skills: dict[str, SkillDefinition] = {}
 
-    def register(self, sd: SkillDefinition) -> None:
-        self._skills[sd.name] = sd
-        logger.info("skill_registered", name=sd.name, tags=sd.tags)
-
-        # 同步注册为 Tool
+    def register(self, definition: SkillDefinition) -> None:
+        self._skills[definition.name] = definition
+        logger.info("skill_registered", name=definition.name, tags=definition.tags)
         from app.shared.infra.tools.registry import get_tool_registry
-        get_tool_registry().register(sd.to_tool_definition())
+
+        get_tool_registry().register(definition.to_tool_definition())
 
     def get(self, name: str) -> SkillDefinition | None:
         return self._skills.get(name)
@@ -84,58 +160,29 @@ def get_skill_registry() -> SkillRegistry:
     return _registry
 
 
-# ── @skill 装饰器 ─────────────────────────────────────────────
-
-
-def _build_schema(func: Callable) -> dict:
-    """从函数签名自动生成 JSON Schema。"""
-
+def _build_schema(func: Callable[..., Any]) -> dict[str, Any]:
     sig = inspect.signature(func)
     hints = get_type_hints(func)
-    props: dict[str, Any] = {}
+    properties: dict[str, Any] = {}
     required: list[str] = []
 
     for name, param in sig.parameters.items():
-        if name in ("self", "cls"):
+        if name in {"self", "cls"}:
             continue
-        tp = hints.get(name, str)
-        prop: dict[str, Any] = {
-            "type": _TYPE_MAP.get(tp, "string"),
+        annotation = hints.get(name, str)
+        properties[name] = {
+            "type": _TYPE_MAP.get(annotation, "string"),
+            "description": f"Parameter {name}",
         }
-        # 尝试从 docstring 或参数名生成描述
-        prop["description"] = f"参数 {name}"
-        props[name] = prop
-
         if param.default is inspect.Parameter.empty:
             required.append(name)
 
-    return {"type": "object", "properties": props, "required": required}
+    return {"type": "object", "properties": properties, "required": required}
 
 
-def skill(
-    name: str,
-    description: str,
-    *,
-    tags: list[str] | None = None,
-) -> Callable:
-    """装饰器：将函数注册为可被 LLM 调用的教学 Skill。
-
-    Skill 注册后自动同步到 ToolRegistry，可被 Agent Loop 发现和调用。
-
-    Args:
-        name: Skill 名称（英文标识符）。
-        description: Skill 描述（中文，会作为 LLM 的工具描述）。
-        tags: 可选标签（用于分类，如 ["教学", "检索"]）。
-
-    Example::
-
-        @skill("find_resources", "根据学习主题搜索互联网上的免费学习资料")
-        async def find_resources(topic: str, difficulty: str = "入门") -> str:
-            ...
-    """
-
-    def decorator(func: Callable) -> Callable:
-        sd = SkillDefinition(
+def skill(name: str, description: str, *, tags: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        definition = SkillDefinition(
             name=name,
             description=description,
             parameters=_build_schema(func),
@@ -143,7 +190,18 @@ def skill(
             is_async=asyncio.iscoroutinefunction(func),
             tags=tags or [],
         )
-        get_skill_registry().register(sd)
+        get_skill_registry().register(definition)
         return func
 
     return decorator
+
+
+__all__ = [
+    "BaseSkill",
+    "SkillContext",
+    "SkillDefinition",
+    "SkillRegistry",
+    "SkillResult",
+    "get_skill_registry",
+    "skill",
+]

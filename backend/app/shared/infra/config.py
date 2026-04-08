@@ -1,4 +1,4 @@
-"""Application configuration."""
+﻿"""Application configuration."""
 
 from __future__ import annotations
 
@@ -117,12 +117,21 @@ class Settings(BaseSettings):
     digest_token_summary_enabled: bool = True
     docgen_max_parallel_chapters: int = 20
     docgen_io_parallelism: int = 20
-    docgen_outline_fast_path_max_chunks: int = 1
-    docgen_skip_llm_cleanse_for_clean_markdown: bool = True
-    docgen_skip_llm_review_for_single_chapter: bool = True
-    docgen_review_fast_path_max_chapters: int = 1
-    docgen_review_retry_mode: str = "targeted"
-    docgen_metadata_fallback_llm: bool = True
+    web_search_retriever: str = "duckduckgo"
+    bing_api_key: str | None = None
+    bocha_api_key: str | None = None
+    local_rag_priority: bool = True
+    local_rag_min_results: int = 2
+    search_max_results_per_query: int = 5
+    search_scrape_timeout_s: int = 20
+    planner_default_tone: str = "encouraging"
+    planner_default_digest_mode: str = "systematic"
+    planner_min_chapters: int = 6
+    planner_max_chapters: int = 10
+    planner_allow_external_search: bool = True
+    docgen_max_research_queries: int = 3
+    enable_image_generation: bool = False
+    enable_mermaid_generation: bool = True
 
     # RAG reranking settings.
     rag_rerank_model: str | None = None
@@ -296,3 +305,4 @@ def get_settings() -> Settings:
     """Return the cached settings instance."""
 
     return Settings()
+

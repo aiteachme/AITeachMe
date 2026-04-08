@@ -10,6 +10,10 @@ from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
     AnchorManageRequest,
+    BuildPlannerConfirmResponse,
+    BuildPlannerCreateRequest,
+    BuildPlannerMessageRequest,
+    BuildPlannerSessionResponse,
     ChunkContextRequest,
     ChunkContextResponse,
     ClearKnowledgeResponse,
@@ -25,6 +29,11 @@ from app.schemas.knowledge import (
     TaxonomyAnchorResponse,
     TeachingUnitDetailResponse,
     UnitDetailRequest,
+)
+from app.services.knowledge.build_planner_service import (
+    append_build_planner_message_service,
+    confirm_build_planner_session_service,
+    create_build_planner_session_service,
 )
 from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.knowledge.curriculum_service import (
@@ -50,6 +59,77 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
 
 
 @router.post(
+    "/build/plans",
+    response_model=ApiResponse[BuildPlannerSessionResponse],
+    summary="Create a build planner session",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def knowledge_build_plan_create(
+    subject: str = Path(...),
+    body: BuildPlannerCreateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerSessionResponse]:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data = await create_build_planner_session_service(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        payload=body,
+    )
+    return ok_response(data)
+
+
+@router.post(
+    "/build/plans/{session_id}/messages",
+    response_model=ApiResponse[BuildPlannerSessionResponse],
+    summary="Append planner feedback and regenerate the plan",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def knowledge_build_plan_message(
+    subject: str = Path(...),
+    session_id: str = Path(...),
+    body: BuildPlannerMessageRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerSessionResponse]:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data = await append_build_planner_message_service(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        session_id=session_id,
+        payload=body,
+    )
+    return ok_response(data)
+
+
+@router.post(
+    "/build/plans/{session_id}/confirm",
+    response_model=ApiResponse[BuildPlannerConfirmResponse],
+    summary="Confirm the current planner draft and freeze a build plan",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+def knowledge_build_plan_confirm(
+    subject: str = Path(...),
+    session_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerConfirmResponse]:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data = confirm_build_planner_session_service(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        session_id=session_id,
+    )
+    return ok_response(data)
+
+
+@router.post(
     "/build",
     response_model=ApiResponse[DocGenBuildData],
     summary="Trigger docs and/or graph digest build",
@@ -72,9 +152,11 @@ async def knowledge_build(
     data, accepted_file_ids = trigger_docgen_build(
         session,
         subject=subject_record,
+        user_id=user.user_id,
         file_uids=body.file_uids,
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
+        confirmed_plan_id=body.confirmed_plan_id,
     )
 
     build_type = body.build_type or "all"
@@ -86,6 +168,9 @@ async def knowledge_build(
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
                 requested_at=data.requested_at,
+                planner_session_id=data.planner_session_id,
+                confirmed_plan_id=data.confirmed_plan_id,
+                user_id=user.user_id,
             ),
             kind="knowledge.build.docs",
             subject=normalized,
@@ -110,6 +195,9 @@ async def knowledge_build(
                 file_ids=accepted_file_ids,
                 prompt=data.prompt,
                 requested_at=data.requested_at,
+                planner_session_id=data.planner_session_id,
+                confirmed_plan_id=data.confirmed_plan_id,
+                user_id=user.user_id,
             ),
             kind="knowledge.build",
             subject=normalized,

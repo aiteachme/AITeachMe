@@ -12,11 +12,12 @@ from app.workflows.digest.graph import (
 )
 from app.workflows.digest.unified.graph import build_unified_digest_graph
 from app.workflows.digest.prompts import KG_PROMPTS
-from app.workflows.digest.prompts.docgen_prompts import GLOBAL_OUTLINE_PROMPT, WRITER_PROMPT
 
 DOCGEN_PROMPTS = {
-    "global_outline_prompt": GLOBAL_OUTLINE_PROMPT,
-    "writer_prompt": WRITER_PROMPT,
+    "planner_prompt": "构建方案规划提示词：负责输出全中文、可直接确认的章节方案。",
+    "research_purify_prompt": "研究提纯提示词：负责把资料压缩为面向章节写作的中文研究笔记。",
+    "writer_prompt": "章节写作提示词：负责按 sprint / systematic 契约生成教学化 Markdown。",
+    "mermaid_prompt": "Mermaid 生成提示词：负责把章节知识关系转成中文 Mermaid mindmap。",
 }
 
 
@@ -43,12 +44,13 @@ def _build_unified_graph_for_export():
 
 
 _DOCGEN_SEND_EDGES = (
-    "outline_reduce -. Send xN .-> draft_chapter",
-    "draft_chapter --> collect_drafts",
-    "collect_drafts -. Send xN .-> review_chapter",
-    "review_chapter --> collect_reviews",
-    "collect_reviews -. Send xN .-> extract_metadata",
-    "extract_metadata --> finalize_assemble",
+    "load_context -. Send xN .-> targeted_research",
+    "targeted_research --> collect_materials",
+    "collect_materials -. Send xN .-> pedagogy_craft",
+    "pedagogy_craft --> collect_drafts",
+    "collect_drafts --> enrich_document",
+    "enrich_document --> inject_examine",
+    "inject_examine --> finalize_assemble",
     "finalize_assemble --> __end__",
 )
 

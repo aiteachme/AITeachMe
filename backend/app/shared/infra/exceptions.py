@@ -297,3 +297,26 @@ class EvidenceNotFoundError(AITeachMeError):
     def __init__(self, evidence_id: int) -> None:
         super().__init__(detail=f"证据 #{evidence_id} 不存在。")
 
+
+class BuildPlannerSessionNotFoundError(AITeachMeError):
+    error_code = "BUILD_PLANNER_SESSION_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(detail=f"Build planner session `{session_id}` does not exist.")
+
+
+class ConfirmedBuildPlanNotFoundError(AITeachMeError):
+    error_code = "CONFIRMED_BUILD_PLAN_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, plan_id: str) -> None:
+        super().__init__(detail=f"Confirmed build plan `{plan_id}` does not exist.")
+
+
+class BuildPlannerEmptyPlanError(AITeachMeError):
+    error_code = "BUILD_PLANNER_EMPTY_PLAN"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(detail=f"Build planner session `{session_id}` has no plan draft to confirm.")
