@@ -7,6 +7,7 @@ from time import perf_counter
 import structlog
 
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs, stage_knowledge_docs
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -82,6 +83,16 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
             merged_chars=len(staged_docs.merged_markdown),
             finalize_ms=finalize_ms,
             published=standalone,
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="docgen_finalized",
+            payload={
+                "chapter_count": len(staged_docs.built_paths),
+                "published_doc_count": len(doc_ids),
+                "draft_available": bool(staged_docs.merged_markdown.strip()),
+            },
         )
         return {
             "doc_ids": doc_ids,
