@@ -139,7 +139,7 @@ def _langsmith_inputs(
     messages: list[ChatMessage],
     tools: list[dict] | None = None,
 ) -> dict[str, Any]:
-    capture_inputs = get_settings().langsmith_capture_inputs
+    capture_inputs = get_settings().resolved_langsmith_capture_inputs
     inputs: dict[str, Any] = {
         "model": _sanitize_langsmith_text(call_model, capture_text=True, field_name="model"),
         "messages": _sanitize_langsmith_value(messages, capture_text=capture_inputs, field_name="messages"),
@@ -158,7 +158,7 @@ def _langsmith_outputs(
     completion_tokens: int = 0,
     total_tokens: int = 0,
 ) -> dict[str, Any]:
-    capture_outputs = get_settings().langsmith_capture_outputs
+    capture_outputs = get_settings().resolved_langsmith_capture_outputs
     assistant_message: dict[str, Any] = {
         "role": "assistant",
         "content": _sanitize_langsmith_value(
@@ -191,7 +191,7 @@ def _langsmith_outputs(
 
 
 def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, Any]:
-    capture_inputs = get_settings().langsmith_capture_inputs
+    capture_inputs = get_settings().resolved_langsmith_capture_inputs
     invocation_params: dict[str, Any] = {}
     for key in (
         "temperature",

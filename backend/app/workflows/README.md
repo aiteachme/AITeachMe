@@ -58,6 +58,19 @@ workflow 根 span          ← 由 runtime 统一入口自动创建
 
 ---
 
+### 协作开发黄金规则
+
+这部分可以直接当作给 AI 协作者的高优先级提示词。
+
+1. `graph.py` 只负责拓扑、路由和 fan-out/fan-in，不写重业务逻辑。
+2. 真正执行外部动作的节点必须能在 LangSmith 中被单独看见；优先做成 `wrap_workflow_node` 包裹的业务节点。
+3. 一个业务动作如果内部还要做多步 LLM / retriever / scraper / tool 编排，优先下沉到 `Skill`、`Retriever`、`Scraper` 或 `shared/infra`，不要继续把 graph 切碎。
+4. 新增节点前先问自己：这是一个值得在 LangSmith 单独观测、单独计时、单独失败定位的步骤吗？如果不是，放进现有节点或 Skill。
+5. state 是 trace 的来源，不要把可观测字段藏在闭包、本地变量、全局变量里。
+6. 任何新 workflow 的默认目标都是：LangSmith 打开后，能一眼看懂主流程、输入规模、关键分支、失败位置和主要成本来源。
+
+---
+
 ### 规则 1：Workflow 入口 — 统一 runtime
 
 graph 执行必须走 `common/runtime` 提供的统一函数（当前是 `run_state_graph` / `invoke_state_graph`）。
@@ -112,6 +125,32 @@ graph 执行必须走 `common/runtime` 提供的统一函数（当前是 `run_st
 
 ---
 
+### 规则 4：允许的例外边界
+
+上面的规则是默认方案，但协作开发里有少数合理例外。文档必须把例外讲清楚，否则人和 AI 都容易“过度机械化”。
+
+允许手写 `llm_trace_scope()` 的场景：
+
+- 节点内部存在一个长生命周期、流式或生成器式的 LLM 过程，必须人为收紧 span 边界。
+- 某个 helper 不是 graph 节点，但它确实是一个独立的 LLM 动作，且需要单独的 `lane` / `node` 标识。
+- 历史模块还没完全 Skill 化，但短期内必须先保持 trace 清晰。
+
+不允许手写 `langsmith_tracing_scope()` 或自行创建 workflow 根 span 的场景：
+
+- workflow runtime 内部
+- graph 节点边界
+- 任何已经被 `run_state_graph()`、`invoke_state_graph()` 或 `wrap_workflow_node()` 覆盖的地方
+
+允许例外时也必须遵守：
+
+- 只能补子级 `llm_trace_scope()`，不能绕开统一 runtime。
+- `workflow` / `lane` / `node` 命名必须与 graph 中看到的业务语义一致。
+- 如果例外逻辑未来可能复用，应优先收敛成 `BaseSkill` 或统一 helper，而不是继续在节点里复制。
+
+一句话：允许补“子 span”，不允许另起“第二套 tracing 体系”。
+
+---
+
 ### Skill / Retriever / Scraper 层
 
 这三类组件已内置 LangSmith tracing，在节点中调用时 trace 会自动嵌套在 node span 下：
@@ -148,6 +187,30 @@ wrapper 会自动从 state 中提取以下字段。新建 workflow 时，state �
 `workflow` / `lane` / `node` 由 wrapper 自动注入，不需要放在 state 里。
 
 wrapper 还会自动对 state 中的 list 字段计数（如 `file_ids` → `file_count`、`doc_ids` → `doc_count`、`review_tasks` → `review_task_count`），以及自动记录 `elapsed_ms` / `status` / `error` 到 trace outputs。
+
+---
+
+### State 设计契约
+
+为了让 LangSmith 真正“可读”，新增或重构 workflow 时，state 设计要遵守下面的契约：
+
+1. 稳定标识优先。
+   `subject`、`build_session_id`、`session_id`、`job_id`、`planner_session_id` 等字段尽早进入 state，不要拖到中途才补。
+2. fan-out 字段显式化。
+   并行章节、题目、任务等都要保留 `chapter_index`、`task_id` 一类稳定标识，避免 LangSmith 里看不出哪条分支对应哪一份工作。
+3. 错误语义统一。
+   可恢复错误写入 `error` 字段；不可恢复异常直接抛出，由 wrapper / runtime 记录失败 span。
+4. 统计字段结构化。
+   数量信息优先放到 list 字段或明确的 `*_count` / `*_hits` / `*_ms` 字段，避免把关键统计埋进长文本。
+5. 返回值保持可合并。
+   节点返回的 dict 应能直接 merge 回 state，不要返回难以追踪的匿名 tuple 或位置语义对象。
+
+推荐做法：
+
+- 章节类并行任务统一带 `chapter_index`
+- 研究类节点统一带 `retriever_stats`、`local_hits`、`web_hits`
+- 写作类节点统一带 `word_count`、`source_count`、`placeholder_count`
+- 汇总类节点统一带 `total_*` 字段
 
 ---
 
@@ -250,6 +313,63 @@ profile.pipeline
 - [ ] state 中包含适用的可观测字段
 - [ ] 如果调用 Skill，正确构建了 `SkillContext`
 - [ ] 如果是双层 graph，子 workflow 全部接了 wrapper
+- [ ] 例外场景如果手写了 `llm_trace_scope()`，有明确理由且没有新增第二层 workflow 根 span
+
+## AI 协作者模板
+
+下面三个模板可以直接复制，优先保持结构一致。
+
+### 模板 1：新增 workflow runtime
+
+```python
+async def run_xxx_workflow(...):
+    context = WorkflowContext(
+        workflow_name="engine.sub",
+        subject=subject,
+        metadata={"build_session_id": build_session_id},
+    )
+    result = await run_state_graph(
+        workflow_name=context.workflow_name,
+        graph_builder=lambda: build_xxx_graph(context=context),
+        initial_state=initial_state,
+        context=context,
+    )
+    return result
+```
+
+### 模板 2：新增 graph 节点
+
+```python
+workflow.add_node(
+    "node_name",
+    wrap_workflow_node(
+        build_node_name_node(context=context),
+        workflow_name=context.workflow_name,
+        lane="lane_name",
+        node_name="node_name",
+        timing_field="node_name_ms",
+    ),
+)
+```
+
+### 模板 3：节点中调用 Skill
+
+```python
+skill = SomeSkill(
+    SkillContext(
+        subject=state["subject"],
+        build_session_id=state.get("build_session_id", ""),
+        workflow_context=context,
+        planner_session_id=state.get("planner_session_id", ""),
+        confirmed_plan_id=state.get("confirmed_plan_id", ""),
+        digest_mode=state.get("digest_mode", ""),
+        chapter_index=state.get("chapter_index"),
+    )
+)
+result = await skill.run(...)
+```
+
+如果你写出的代码明显偏离这三个模板，默认说明实现方式需要重新审视。
 
 ## Graph 暴露约定
 
@@ -267,10 +387,32 @@ conda run -n atm python backend/scripts/generate_workflow_diagrams.py
 
 输出到 `backend/scripts/.generated_workflow_diagrams/`。`exports.py` 优先暴露真实执行图。
 
+## 自检命令
+
+协作开发提交前，建议至少执行下面几条检索，快速排除 tracing 兼容性回退：
+
+```bash
+rg -n "compile\\(\\)\\.ainvoke" backend/app/workflows
+rg -n "import openai|import litellm" backend/app/workflows
+rg -n "langsmith_tracing_scope\\(" backend/app/workflows
+rg -n "wrap_workflow_node\\(" backend/app/workflows
+```
+
+期望结果：
+
+- `compile().ainvoke` 只应出现在 `workflows/common/runtime.py`
+- `import openai` / `import litellm` 不应出现在 `workflows/`
+- `langsmith_tracing_scope(` 只应出现在统一 runtime 或 tracing 基础设施
+- 新增业务节点应该能在 `wrap_workflow_node(` 检索结果里看到
+
 ## 风格
 
 - graph 只编排节点
 - skills/tools 承载业务动作
 - tracing 只保留一层统一接入，不扩散 adapter / bridge / compat 中间层
 
-目标：读 graph 看懂流程，读 skill 看懂动作，LangSmith 自动跟着走。
+目标：
+
+- 读 graph 看懂主流程和并行结构
+- 读 skill 看懂动作和策略
+- 打开 LangSmith 就能看懂输入、输出、耗时、分支和失败点

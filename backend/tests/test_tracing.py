@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from app.shared.infra import llm as llm_module
-from app.shared.infra.config import get_settings
+from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.model_router import TaskType
 from app.shared.infra.skills.base import BaseSkill, SkillContext, SkillResult
 from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trace_context
@@ -101,6 +101,30 @@ def test_langsmith_value_redacts_data_urls() -> None:
     )
 
     assert value["image_url"] == "[redacted:data-url:image/png]"
+
+
+def test_langsmith_capture_defaults_to_enabled_in_local_mode() -> None:
+    settings = Settings(_env_file=None, app_mode="local")
+
+    assert settings.resolved_langsmith_capture_inputs is True
+    assert settings.resolved_langsmith_capture_outputs is True
+
+
+def test_langsmith_capture_defaults_to_disabled_in_cloud_mode() -> None:
+    settings = Settings(_env_file=None, app_mode="cloud")
+
+    assert settings.resolved_langsmith_capture_inputs is False
+    assert settings.resolved_langsmith_capture_outputs is False
+
+
+def test_langsmith_capture_respects_explicit_env_flags(monkeypatch) -> None:
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
+    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "true")
+
+    settings = Settings(_env_file=None, app_mode="local")
+
+    assert settings.resolved_langsmith_capture_inputs is False
+    assert settings.resolved_langsmith_capture_outputs is True
 
 
 def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
