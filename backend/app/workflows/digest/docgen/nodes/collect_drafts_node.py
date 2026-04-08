@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
-from app.utils.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
 from app.workflows.digest.docgen.publish import build_merged_markdown
@@ -66,7 +67,16 @@ def build_collect_drafts_node(*, context: WorkflowContext):
             stage="enriching",
             digest_mode=state.get("digest_mode") or None,
             staged_chapter_count=len(chapter_metadatas),
-            current_stage_description=f"已生成 {len(chapter_metadatas)} 章草稿，开始进行文档增强。",
+            current_stage_description=f"已生成 {len(chapter_metadatas)} 章草稿，开始增强文档与媒体占位。",
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "draft_collection_completed",
+                "summary": f"章节草稿已收齐，共 {len(chapter_metadatas)} 章，开始统一增强文档格式。",
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

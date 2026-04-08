@@ -8,15 +8,13 @@
 import type { CoursePackageItemStats } from './coursePackageItemStats';
 
 /**
- * 共享课程目录中的一个 .atmx 文件。
+ * 共享课程目录中的一个 `.atmx` 文件。
  */
 export interface CoursePackageItem {
   /** 文件名。 */
   filename: string;
   /** 学科名称（从 manifest 读取）。 */
   subject_name: string;
-  /** 学科描述。 */
-  description?: string;
   file_size_bytes?: number;
   exported_at?: string | null;
   stats?: CoursePackageItemStats;

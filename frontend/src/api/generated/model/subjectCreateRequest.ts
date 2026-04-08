@@ -12,6 +12,4 @@ export interface SubjectCreateRequest {
    * @minLength 1
    */
   name: string;
-  /** 学科描述。 */
-  description?: string;
 }

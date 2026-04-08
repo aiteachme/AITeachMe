@@ -20,4 +20,14 @@ export interface KnowledgeBuildStatusResponse {
   error_message?: string | null;
   /** Whether a staging draft is currently available. */
   draft_available?: boolean;
+  /** Planner session id bound to the current build. */
+  planner_session_id?: string | null;
+  /** Confirmed build plan id bound to the current build. */
+  confirmed_plan_id?: string | null;
+  /** Digest mode for the current build. */
+  digest_mode?: string | null;
+  /** Reason for the current digest mode. */
+  mode_reason?: string | null;
+  /** Friendly description of the current build stage. */
+  current_stage_description?: string | null;
 }

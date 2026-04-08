@@ -19,7 +19,6 @@ class Subject(SQLModel, table=True):
     slug: str = Field(index=True, unique=True)
     name: str
     normalized_name: str | None = Field(default=None, index=True)
-    description: str = ""
     preferred_digest_mode: str | None = None
     preferred_digest_note: str | None = None
     detected_discipline: str | None = None

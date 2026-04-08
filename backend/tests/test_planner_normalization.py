@@ -62,9 +62,13 @@ def test_normalize_planner_draft_repairs_sprint_contract() -> None:
     )
 
     assert normalized.digest_mode == "sprint"
-    assert [chapter.title for chapter in normalized.chapter_plan] == ["概念破冰", "公式武器库", "真题实战", "防坑指南"]
+    assert len(normalized.chapter_plan) == 4
+    assert normalized.chapter_plan[0].title.startswith("极限：")
+    assert normalized.chapter_plan[1].title.startswith("连续：")
+    assert normalized.chapter_plan[2].title.startswith("导数：")
+    assert normalized.chapter_plan[3].title.startswith("微分：")
     assert normalized.build_constraints["fixed_chapter_count"] == 4
-    assert normalized.chapter_plan[0].objective == "先用生活化视角把最难啃的概念讲明白，让学生快速建立第一层直觉。"
+    assert "快速建立" in normalized.chapter_plan[0].objective
     assert "冲刺型知识文档" in normalized.plan_summary
 
 
@@ -116,7 +120,7 @@ def test_normalize_planner_draft_repairs_systematic_contract_from_previous_plan(
     assert len(normalized.chapter_plan) == 6
     assert normalized.chapter_plan[0].title == "全景导论"
     assert normalized.chapter_plan[-1].title == "总结与延展"
-    assert normalized.chapter_plan[1].title == "极限：核心定义与方法"
+    assert normalized.chapter_plan[1].title == "极限：定义与方法"
     assert normalized.build_constraints["min_chapters"] == 6
     assert normalized.build_constraints["max_chapters"] == 10
     assert "系统型知识文档" in normalized.plan_summary

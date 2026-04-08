@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Lock, RLock
 
 from pydantic import BaseModel, Field
 
@@ -40,19 +41,22 @@ _STAGE_DESCRIPTION = {
     "idle": "当前没有正在进行的知识文档构建任务。",
     "build_accepted": "已接收构建请求，等待启动。",
     "prepare_shared": "正在准备共享资料上下文。",
-    "planner_confirmed": "已确认构建方案，准备开始执行。",
-    "researching": "正在按章节研究资料。",
+    "planner_confirmed": "构建方案已确认，准备按章节启动。",
+    "researching": "正在按章节检索与整理资料。",
     "drafting": "正在生成章节讲义草稿。",
-    "enriching": "正在增强 Markdown、公式和媒体占位内容。",
-    "injecting_examine": "正在加入练习与自检内容。",
-    "doc_lane_staged": "文档草稿已暂存，等待发布。",
+    "enriching": "正在增强 Markdown、公式与媒体占位内容。",
+    "injecting_examine": "正在注入练习与自检内容。",
+    "doc_lane_staged": "文档草稿已暂存，等待统一发布。",
     "graph_ready": "知识图谱已就绪。",
-    "curriculum_deriving": "正在根据图谱推导课程结构。",
+    "curriculum_deriving": "正在推导课程结构。",
     "publishing": "正在发布最终知识文档。",
     "completed": "知识文档构建完成。",
     "failed": "知识文档构建失败。",
     "cancelled": "知识文档构建已取消。",
 }
+
+_STATUS_LOCK_GUARD = Lock()
+_STATUS_LOCKS: dict[str, RLock] = {}
 
 
 class KnowledgeDocsManifest(BaseModel):
@@ -102,6 +106,18 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     total_chunks: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
+    plan_summary: str | None = None
+    chapter_progress: list[dict[str, object]] = Field(default_factory=list)
+    recent_events: list[dict[str, object]] = Field(default_factory=list)
+
+
+def _get_status_lock(subject: str) -> RLock:
+    with _STATUS_LOCK_GUARD:
+        lock = _STATUS_LOCKS.get(subject)
+        if lock is None:
+            lock = RLock()
+            _STATUS_LOCKS[subject] = lock
+        return lock
 
 
 def _build_sample_cards(
@@ -116,9 +132,9 @@ def _build_sample_cards(
                 "title": "构建模式",
                 "card_type": "mode",
                 "summary": (
-                    "冲刺模式强调快速抓重点、贴近题型和考前复盘。"
+                    "冲刺模式更强调快速抓重点、贴近题型和考前回顾。"
                     if digest_mode == "sprint"
-                    else "系统模式强调概念完整、推导清晰和结构化学习。"
+                    else "系统模式更强调概念完整、推导清晰和结构化学习。"
                 ),
             }
         )
@@ -138,9 +154,42 @@ def _build_sample_cards(
     return cards[:4]
 
 
+def _normalize_chapter_progress_entry(entry: dict[str, object]) -> dict[str, object]:
+    chapter_index = int(entry.get("chapter_index", 0) or 0)
+    fallback_title = f"第 {chapter_index} 章" if chapter_index > 0 else "未命名章节"
+    title = str(entry.get("title") or fallback_title).strip() or fallback_title
+    return {
+        "chapter_index": chapter_index,
+        "title": title,
+        "status": str(entry.get("status") or "planned").strip() or "planned",
+        "source_count": int(entry.get("source_count", 0) or 0),
+        "local_hits": int(entry.get("local_hits", 0) or 0),
+        "web_hits": int(entry.get("web_hits", 0) or 0),
+        "query_count": int(entry.get("query_count", 0) or 0),
+        "word_count": int(entry.get("word_count", 0) or 0),
+        "fallback_used": bool(entry.get("fallback_used", False)),
+    }
+
+
+def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]:
+    created_at = entry.get("created_at")
+    if not isinstance(created_at, datetime):
+        created_at = utcnow()
+    chapter_index = entry.get("chapter_index")
+    normalized_chapter_index = int(chapter_index) if chapter_index not in (None, "") else None
+    title = str(entry.get("title") or "").strip() or None
+    return {
+        "stage": str(entry.get("stage") or "").strip(),
+        "chapter_index": normalized_chapter_index,
+        "title": title,
+        "summary": str(entry.get("summary") or "").strip(),
+        "created_at": created_at,
+    }
+
+
 def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
     if not status.current_stage_description:
-        status.current_stage_description = _STAGE_DESCRIPTION.get(status.stage, "Knowledge build in progress.")
+        status.current_stage_description = _STAGE_DESCRIPTION.get(status.stage, "知识文档构建进行中。")
 
     stage_progress = _STAGE_PROGRESS.get(status.stage)
     if status.status == "completed":
@@ -166,6 +215,22 @@ def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBui
     else:
         status.estimated_remaining_seconds = None
 
+    status.chapter_progress = [
+        _normalize_chapter_progress_entry(dict(item))
+        for item in list(status.chapter_progress or [])
+    ]
+    status.chapter_progress.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
+    status.recent_events = [
+        _normalize_recent_event_entry(dict(item))
+        for item in list(status.recent_events or [])
+        if str(dict(item).get("summary") or "").strip()
+    ]
+    status.recent_events.sort(
+        key=lambda item: (
+            item.get("created_at") if isinstance(item.get("created_at"), datetime) else utcnow()
+        ),
+        reverse=True,
+    )
     if not status.sample_cards:
         status.sample_cards = _build_sample_cards(
             sample_nodes=status.sample_nodes,
@@ -320,16 +385,64 @@ def write_knowledge_build_status(subject: str, status: KnowledgeBuildRuntimeStat
 def update_knowledge_build_status(subject: str, **kwargs: object) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into the runtime build-status payload."""
 
-    existing = read_knowledge_build_status(subject)
-    requested_at = kwargs.get("requested_at")
-    if existing is None:
-        existing = KnowledgeBuildRuntimeStatus(
-            requested_at=requested_at if isinstance(requested_at, datetime) else utcnow(),
-        )
-    updated = existing.model_copy(update=kwargs)
-    updated = _hydrate_runtime_status(updated)
-    write_knowledge_build_status(subject, updated)
-    return updated
+    with _get_status_lock(subject):
+        existing = read_knowledge_build_status(subject)
+        requested_at = kwargs.get("requested_at")
+        if existing is None:
+            existing = KnowledgeBuildRuntimeStatus(
+                requested_at=requested_at if isinstance(requested_at, datetime) else utcnow(),
+            )
+        updated = existing.model_copy(update=kwargs)
+        updated = _hydrate_runtime_status(updated)
+        write_knowledge_build_status(subject, updated)
+        return updated
+
+
+def upsert_knowledge_build_chapter_progress(
+    subject: str,
+    *,
+    chapter_progress: dict[str, object],
+    requested_at: datetime | None = None,
+) -> KnowledgeBuildRuntimeStatus:
+    """Merge one chapter progress entry into the runtime build status."""
+
+    with _get_status_lock(subject):
+        existing = read_knowledge_build_status(subject)
+        if existing is None:
+            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        normalized = _normalize_chapter_progress_entry(chapter_progress)
+        current = {
+            int(item.get("chapter_index", 0) or 0): _normalize_chapter_progress_entry(dict(item))
+            for item in list(existing.chapter_progress or [])
+        }
+        chapter_index = int(normalized["chapter_index"])
+        merged = dict(current.get(chapter_index, {}))
+        merged.update(normalized)
+        current[chapter_index] = _normalize_chapter_progress_entry(merged)
+        existing.chapter_progress = [current[key] for key in sorted(current)]
+        existing = _hydrate_runtime_status(existing)
+        write_knowledge_build_status(subject, existing)
+        return existing
+
+
+def append_knowledge_build_recent_event(
+    subject: str,
+    *,
+    event: dict[str, object],
+    requested_at: datetime | None = None,
+    limit: int = 24,
+) -> KnowledgeBuildRuntimeStatus:
+    """Append one recent event into the runtime build status."""
+
+    with _get_status_lock(subject):
+        existing = read_knowledge_build_status(subject)
+        if existing is None:
+            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        normalized = _normalize_recent_event_entry(event)
+        existing.recent_events = [normalized, *list(existing.recent_events or [])][: max(1, int(limit))]
+        existing = _hydrate_runtime_status(existing)
+        write_knowledge_build_status(subject, existing)
+        return existing
 
 
 def clear_knowledge_build_status(subject: str) -> None:
@@ -417,6 +530,7 @@ __all__ = [
     "KnowledgeDocsManifest",
     "STALE_BUILD_LOCK_TTL",
     "acquire_knowledge_build_lock",
+    "append_knowledge_build_recent_event",
     "clear_current_published_knowledge_docs_files",
     "clear_docgen_staging",
     "clear_knowledge_build_status",
@@ -428,6 +542,7 @@ __all__ = [
     "read_knowledge_manifest",
     "release_knowledge_build_lock",
     "update_knowledge_build_status",
+    "upsert_knowledge_build_chapter_progress",
     "write_knowledge_build_status",
     "write_knowledge_manifest",
 ]

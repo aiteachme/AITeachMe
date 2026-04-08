@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from time import perf_counter
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,7 +10,8 @@ import structlog
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.shared.infra.tracing import get_tracker, langsmith_trace, llm_trace_scope
+from app.shared.infra.tracing import get_tracker
+from app.workflows.common.observability import wrap_workflow_node
 
 logger = structlog.get_logger(__name__)
 
@@ -498,180 +498,15 @@ def wrap_digest_node(
     node_name: str,
     timing_field: str | None = None,
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Wrap a workflow node with LangSmith spans and generic timing logs."""
+    """Wrap a digest node with the shared lightweight LangSmith wrapper."""
 
-    async def wrapped(state: Any) -> dict[str, Any]:
-        subject = str(state.get("subject", ""))
-        build_session_id = str(state.get("build_session_id", ""))
-        trace_metadata = _node_trace_metadata(state)
-        node_logger = logger.bind(
-            workflow=workflow_name,
-            lane=lane,
-            node=node_name,
-            subject=subject,
-            build_session_id=build_session_id,
-            **trace_metadata,
-        )
-        started_at = perf_counter()
-        try:
-            with langsmith_trace(
-                name=f"{lane}.{node_name}",
-                run_type="chain",
-                inputs=_node_trace_inputs(state),
-                subject=subject,
-                build_session_id=build_session_id,
-                workflow=workflow_name,
-                lane=lane,
-                node=node_name,
-                extra_metadata=trace_metadata,
-                extra_tags=_node_trace_tags(trace_metadata),
-            ) as run:
-                with llm_trace_scope(
-                    subject=subject,
-                    build_session_id=build_session_id,
-                    workflow=workflow_name,
-                    lane=lane,
-                    node=node_name,
-                ):
-                    result = await handler(state)
-                elapsed_ms = int((perf_counter() - started_at) * 1000)
-                if timing_field:
-                    result = {**result, timing_field: elapsed_ms}
-                if run is not None:
-                    run.end(outputs=_node_trace_outputs(result, elapsed_ms=elapsed_ms))
-        except Exception:
-            elapsed_ms = int((perf_counter() - started_at) * 1000)
-            node_logger.exception("digest_node_failed", elapsed_ms=elapsed_ms)
-            raise
-
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        node_logger.info(
-            "digest_node_completed",
-            elapsed_ms=elapsed_ms,
-            status="failed" if result.get("error") else "ok",
-        )
-        return result
-
-    return wrapped
-
-
-def _node_trace_metadata(state: Mapping[str, Any]) -> dict[str, Any]:
-    metadata: dict[str, Any] = {}
-    planner_session_id = str(state.get("planner_session_id", "") or "")
-    confirmed_plan_id = str(state.get("confirmed_plan_id", "") or "")
-    digest_mode = str(state.get("digest_mode", "") or "")
-    chapter_index = _extract_chapter_index(state)
-    if planner_session_id:
-        metadata["planner_session_id"] = planner_session_id
-    if confirmed_plan_id:
-        metadata["confirmed_plan_id"] = confirmed_plan_id
-    if digest_mode:
-        metadata["digest_mode"] = digest_mode
-    if chapter_index is not None:
-        metadata["chapter_index"] = chapter_index
-    return metadata
-
-
-def _node_trace_inputs(state: Mapping[str, Any]) -> dict[str, Any]:
-    inputs: dict[str, Any] = {}
-    for field_name in ("subject", "build_session_id", "planner_session_id", "confirmed_plan_id", "digest_mode", "tone"):
-        value = state.get(field_name)
-        if value not in (None, "", [], {}):
-            inputs[field_name] = value
-    if state.get("file_ids"):
-        inputs["file_count"] = len(state.get("file_ids", []))
-    if state.get("chapter_assignments"):
-        inputs["chapter_count"] = len(state.get("chapter_assignments", []))
-    chapter_index = _extract_chapter_index(state)
-    if chapter_index is not None:
-        inputs["chapter_index"] = chapter_index
-    return inputs
-
-
-def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[str, Any]:
-    outputs: dict[str, Any] = {
-        "elapsed_ms": elapsed_ms,
-        "status": "failed" if result.get("error") else "ok",
-        "output_keys": sorted(result.keys()),
-    }
-    for field_name in ("load_ms", "planner_ms", "research_ms", "draft_ms", "enrich_ms", "examine_ms", "finalize_ms"):
-        value = result.get(field_name)
-        if value not in (None, 0):
-            outputs[field_name] = int(value)
-    if result.get("chapter_materials"):
-        chapter_materials = list(result.get("chapter_materials", []))
-        outputs["chapter_material_count"] = len(chapter_materials)
-        outputs["source_count"] = sum(len(item.get("sources", []) or []) for item in chapter_materials)
-        outputs["local_hits"] = sum(int(item.get("local_hits", 0) or 0) for item in chapter_materials)
-        outputs["web_hits"] = sum(int(item.get("web_hits", 0) or 0) for item in chapter_materials)
-        outputs["fallback_used"] = any(bool(item.get("fallback_used", False)) for item in chapter_materials)
-        outputs["trusted_source_count"] = sum(int(item.get("trusted_source_count", 0) or 0) for item in chapter_materials)
-        outputs["planned_query_count"] = sum(len(item.get("planned_queries", []) or []) for item in chapter_materials)
-        outputs["executed_query_count"] = sum(len(item.get("executed_queries", []) or []) for item in chapter_materials)
-        outputs["scraped_url_count"] = sum(int(item.get("scraped_url_count", 0) or 0) for item in chapter_materials)
-        outputs["document_count"] = sum(int(item.get("document_count", 0) or 0) for item in chapter_materials)
-        retriever_names = sorted(
-            {
-                str(retriever_name)
-                for item in chapter_materials
-                for retriever_name in dict(item.get("retriever_stats", {}) or {}).keys()
-                if str(retriever_name).strip()
-            }
-        )
-        if retriever_names:
-            outputs["retriever_names"] = retriever_names
-            outputs["retriever_count"] = len(retriever_names)
-        compression_modes = sorted(
-            {
-                str(item.get("compression_mode") or "").strip()
-                for item in chapter_materials
-                if str(item.get("compression_mode") or "").strip()
-            }
-        )
-        if compression_modes:
-            outputs["compression_mode"] = ",".join(compression_modes)
-    if result.get("chapter_drafts"):
-        chapter_drafts = list(result.get("chapter_drafts", []))
-        outputs["chapter_draft_count"] = len(chapter_drafts)
-        outputs["word_count"] = sum(int(item.get("word_count", 0) or 0) for item in chapter_drafts)
-        outputs["placeholder_count"] = sum(int(item.get("placeholder_count", 0) or 0) for item in chapter_drafts)
-    if result.get("chapter_metadatas"):
-        chapter_metadatas = list(result.get("chapter_metadatas", []))
-        outputs["staged_chapter_count"] = len(chapter_metadatas)
-        outputs["source_count"] = sum(len(item.get("sources", []) or []) for item in chapter_metadatas)
-        outputs["final_word_count"] = sum(count_words(str(item.get("markdown") or "")) for item in chapter_metadatas)
-    if result.get("doc_ids"):
-        outputs["doc_count"] = len(result.get("doc_ids", []))
-    merged_markdown = str(result.get("enriched_markdown") or result.get("merged_markdown") or "")
-    if merged_markdown.strip():
-        outputs["final_word_count"] = count_words(merged_markdown)
-    if result.get("error"):
-        outputs["error"] = str(result.get("error"))
-    return outputs
-
-
-def _node_trace_tags(metadata: Mapping[str, Any]) -> list[str]:
-    tags: list[str] = []
-    digest_mode = str(metadata.get("digest_mode", "") or "")
-    chapter_index = metadata.get("chapter_index")
-    if digest_mode:
-        tags.append(f"mode:{digest_mode}")
-    if chapter_index is not None:
-        tags.append(f"chapter:{chapter_index}")
-    return tags
-
-
-def _extract_chapter_index(state: Mapping[str, Any]) -> int | None:
-    for key in ("chapter_index",):
-        value = state.get(key)
-        if value not in (None, ""):
-            return int(value)
-    for key in ("chapter_assignment", "chapter_material"):
-        payload = state.get(key) or {}
-        value = payload.get("chapter_index") if isinstance(payload, Mapping) else None
-        if value not in (None, ""):
-            return int(value)
-    return None
+    return wrap_workflow_node(
+        handler,
+        workflow_name=workflow_name,
+        lane=lane,
+        node_name=node_name,
+        timing_field=timing_field,
+    )
 
 
 def _top_k(value: int | None = None) -> int:

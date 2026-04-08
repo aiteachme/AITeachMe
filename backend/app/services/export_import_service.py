@@ -80,7 +80,6 @@ SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 class _ManifestSubject(BaseModel):
     slug: str
     name: str
-    description: str = ""
 
 
 class _ManifestStats(BaseModel):
@@ -402,7 +401,6 @@ def list_available_courses() -> list[CoursePackageItem]:
                 CoursePackageItem(
                     filename=path.name,
                     subject_name=manifest.subject.name,
-                    description=manifest.subject.description,
                     file_size_bytes=path.stat().st_size,
                     exported_at=manifest.exported_at,
                     stats=stats_dict,
@@ -732,7 +730,6 @@ def _build_manifest(
         subject=_ManifestSubject(
             slug=subject.slug,
             name=subject.name,
-            description=subject.description,
         ),
         stats=_ManifestStats(
             raw_file_count=len(exported.get("raw_file", [])),

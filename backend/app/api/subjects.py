@@ -43,7 +43,6 @@ async def create_subject_api(
             session,
             owner_user_id=user.user_id,
             name=body.name,
-            description=body.description,
         )
     )
 
@@ -127,6 +126,5 @@ async def update_subject_api(
             owner_user_id=user.user_id,
             subject_id=body.subject_id,
             name=body.name,
-            description=body.description,
         )
     )

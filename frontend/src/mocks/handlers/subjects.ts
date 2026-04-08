@@ -4,7 +4,6 @@ export interface SubjectItem {
   id: number;
   subject_id: string;
   name: string;
-  description: string;
   created_at: string;
   updated_at: string;
 }
@@ -14,11 +13,11 @@ let mockSubjects: SubjectItem[] = [
     id: 1,
     subject_id: "subj_2gr8k4m9q7pn",
     name: "高数",
-    description: "高等数学",
     created_at: "2026-03-01T00:00:00Z",
     updated_at: "2026-03-01T00:00:00Z",
   },
 ];
+
 let nextId = 2;
 
 function buildMockSubjectId() {
@@ -34,13 +33,12 @@ export const subjectHandlers = [
   }),
 
   http.post("/api/v1/subjects/add", async ({ request }) => {
-    const body = (await request.json()) as { name: string; description?: string };
+    const body = (await request.json()) as { name: string };
     const now = new Date().toISOString();
     const newSubject: SubjectItem = {
       id: nextId++,
       subject_id: buildMockSubjectId(),
       name: body.name,
-      description: body.description ?? "",
       created_at: now,
       updated_at: now,
     };
@@ -100,9 +98,10 @@ export const subjectHandlers = [
           error_code: "SUBJECT_IN_USE",
           detail: `学科 \`${body.subject_id}\` 下仍有内容，请先确认级联删除。`,
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
+
     mockSubjects = mockSubjects.filter((item) => item.subject_id !== body.subject_id);
     return HttpResponse.json({
       code: 0,

@@ -150,6 +150,30 @@ class BuildPreviewNodeResponse(BaseModel):
     node_type: str = Field(description="Topic / Concept / Method / Definition / Example")
 
 
+class BuildPreviewChapterProgressResponse(BaseModel):
+    """Per-chapter runtime progress shown while docgen is building."""
+
+    chapter_index: int
+    title: str
+    status: str = Field(description="planned / researching / researched / drafting / drafted / completed")
+    source_count: int = 0
+    local_hits: int = 0
+    web_hits: int = 0
+    query_count: int = 0
+    word_count: int = 0
+    fallback_used: bool = False
+
+
+class BuildPreviewRecentEventResponse(BaseModel):
+    """Recent build events surfaced in the docs waiting UI."""
+
+    stage: str
+    chapter_index: int | None = None
+    title: str | None = None
+    summary: str
+    created_at: datetime | None = None
+
+
 class KnowledgeBuildPreviewResponse(BaseModel):
     """Human-facing preview payload for ongoing digest builds."""
 
@@ -162,6 +186,9 @@ class KnowledgeBuildPreviewResponse(BaseModel):
     discovered_node_types: dict[str, int] = Field(default_factory=dict, description="Node counts by node type.")
     sample_nodes: list[BuildPreviewNodeResponse] = Field(default_factory=list, description="Sample discovered nodes.")
     sample_cards: list[BuildSampleCardResponse] = Field(default_factory=list, description="Small preview cards for the waiting UI.")
+    plan_summary: str | None = Field(default=None, description="Confirmed build plan summary for the current build.")
+    chapter_progress: list[BuildPreviewChapterProgressResponse] = Field(default_factory=list, description="Per-chapter progress for the current build.")
+    recent_events: list[BuildPreviewRecentEventResponse] = Field(default_factory=list, description="Recent research / writing / publishing events for the current build.")
     latest_chapter_titles: list[str] = Field(default_factory=list, description="Recently staged or published chapter titles.")
     draft_excerpt: str = Field(default="", description="Short excerpt from the current draft markdown, if any.")
 
@@ -548,7 +575,7 @@ ThemeTreeNodeResponse.model_rebuild()
 class BuildPlannerCreateRequest(BaseModel):
     """Create a new planner session and generate the first plan draft."""
 
-    file_uids: list[str] | None = Field(default=None, description="Optional ready file UIDs to bind to the planner session.")
+    file_uids: list[str] | None = Field(default=None, description="Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner 会优先使用已解析内容，不足时退化到文件名与资料元信息。")
     user_goal: str = Field(description="Learner goal or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     tone: str | None = Field(default=None, description="Optional requested writing tone.")
@@ -578,6 +605,22 @@ class BuildPlannerChapterPlanResponse(BaseModel):
     media_hints: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class BuildPlannerNodeTimingResponse(BaseModel):
+    node_name: str
+    lane: str = "planner"
+    workflow: str = "digest.planner"
+    elapsed_ms: int = 0
+    status: str = "ok"
+
+
+class BuildPlannerRuntimeStatsResponse(BaseModel):
+    workflow_elapsed_ms: int = 0
+    node_timings_ms: dict[str, int] = Field(default_factory=dict)
+    node_events: list[BuildPlannerNodeTimingResponse] = Field(default_factory=list)
+    fallback_used: bool = False
+    generation_mode: str | None = None
+
+
 class BuildPlannerPlanResponse(BaseModel):
     subject: str
     selected_file_uids: list[str] = Field(default_factory=list)
@@ -600,6 +643,7 @@ class BuildPlannerSessionResponse(BaseModel):
     status: str
     plan: BuildPlannerPlanResponse
     turns: list[BuildPlannerTurnResponse] = Field(default_factory=list)
+    runtime_stats: BuildPlannerRuntimeStatsResponse | None = None
 
 
 class BuildPlannerConfirmResponse(BaseModel):

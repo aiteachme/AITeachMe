@@ -28,6 +28,7 @@ export interface KnowledgeBuildPrecheckConflictData {
 export interface KnowledgeBuildRequestInput {
   file_uids?: string[];
   prompt?: string;
+  confirmed_plan_id?: string;
 }
 
 interface KnowledgeBuildRequestPayload extends KnowledgeBuildRequestInput {
@@ -109,13 +110,18 @@ export function useKnowledgeBuildFlow({
     },
   });
 
-  const submitBuild = useCallback(() => {
+  const submitBuild = useCallback((overrides?: Partial<KnowledgeBuildRequestInput>) => {
     if (!subjectId) {
       setErrorMessage("缺少学科 ID，暂时无法发起知识构建。");
       return;
     }
 
-    const requestPayload = { ...buildRequest(), build_type: buildType };
+    const requestPayload = {
+      ...buildRequest(),
+      ...overrides,
+      build_type: buildType,
+    } satisfies KnowledgeBuildRequestPayload;
+
     pendingRequestRef.current = requestPayload;
     setErrorMessage("");
     setPrecheckConflict(null);
@@ -129,7 +135,8 @@ export function useKnowledgeBuildFlow({
         return;
       }
 
-      const basePayload = pendingRequestRef.current ?? { ...buildRequest(), build_type: buildType };
+      const basePayload =
+        pendingRequestRef.current ?? { ...buildRequest(), build_type: buildType };
       const nextPayload = {
         ...basePayload,
         embedding_resolution: resolution,

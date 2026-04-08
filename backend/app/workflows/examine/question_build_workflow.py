@@ -16,8 +16,10 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.tracing import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
+from app.workflows.common.observability import wrap_workflow_node
 from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.question_builder import build_question_templates
 from app.workflows.examine.state import QuestionBuildState
@@ -230,10 +232,42 @@ def _route_after_step(state: QuestionBuildState) -> str:
 
 def build_question_build_graph(*, session: Session | None = None) -> StateGraph:
     workflow = StateGraph(QuestionBuildState)
-    workflow.add_node("load_units", partial(load_units_node, session_override=session))
-    workflow.add_node("generate_templates", partial(generate_templates_node, session_override=session))
-    workflow.add_node("finalize_build", partial(finalize_build_node, session_override=session))
-    workflow.add_node("fail_build", partial(fail_build_node, session_override=session))
+    workflow.add_node(
+        "load_units",
+        wrap_workflow_node(
+            partial(load_units_node, session_override=session),
+            workflow_name="examine.question_build",
+            lane="question_build",
+            node_name="load_units",
+        ),
+    )
+    workflow.add_node(
+        "generate_templates",
+        wrap_workflow_node(
+            partial(generate_templates_node, session_override=session),
+            workflow_name="examine.question_build",
+            lane="question_build",
+            node_name="generate_templates",
+        ),
+    )
+    workflow.add_node(
+        "finalize_build",
+        wrap_workflow_node(
+            partial(finalize_build_node, session_override=session),
+            workflow_name="examine.question_build",
+            lane="question_build",
+            node_name="finalize_build",
+        ),
+    )
+    workflow.add_node(
+        "fail_build",
+        wrap_workflow_node(
+            partial(fail_build_node, session_override=session),
+            workflow_name="examine.question_build",
+            lane="question_build",
+            node_name="fail_build",
+        ),
+    )
 
     workflow.set_entry_point("load_units")
     workflow.add_conditional_edges(

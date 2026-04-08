@@ -8,6 +8,8 @@ from time import perf_counter
 from app.shared.infra.config import get_settings
 from app.shared.infra.skills import ResearchConductor, SkillContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
+from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
 from app.workflows.digest.docgen.state import DocGenState
@@ -17,6 +19,29 @@ def build_targeted_research_node(*, context: WorkflowContext):
     async def targeted_research_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         assignment = deepcopy(state["chapter_assignment"])
+        chapter_index = int(assignment.get("chapter_index", 0) or 0)
+        chapter_title = str(assignment.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章"
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={
+                "chapter_index": chapter_index,
+                "title": chapter_title,
+                "status": "researching",
+            },
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "researching",
+                "chapter_index": chapter_index,
+                "title": chapter_title,
+                "summary": f"{chapter_title} 开始研究，正在检索资料与整理上下文。",
+                "created_at": utcnow(),
+            },
+        )
+
         skill_context = SkillContext(
             subject=state["subject"],
             build_session_id=state.get("build_session_id", ""),
@@ -24,7 +49,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
-            chapter_index=int(assignment.get("chapter_index", 0) or 0),
+            chapter_index=chapter_index,
         )
         researcher_cls = resolve_docgen_dependency("ResearchConductor", ResearchConductor)
         researcher = researcher_cls(skill_context)
@@ -36,12 +61,12 @@ def build_targeted_research_node(*, context: WorkflowContext):
             if str(item).strip()
         ]
         if not queries:
-            queries = [str(assignment.get("title") or "").strip()]
+            queries = [chapter_title]
         result = await researcher.run(
             queries=queries[: max(1, int(get_settings().docgen_max_research_queries))],
             local_rag_subject=state["subject"],
             local_sections=section_packets,
-            chapter_title=str(assignment.get("title") or ""),
+            chapter_title=chapter_title,
             objective=str(assignment.get("objective") or ""),
             required_elements=list(assignment.get("required_elements") or []),
             digest_mode=state.get("digest_mode") or "",
@@ -75,6 +100,31 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "top_domains": dict(result.metadata.get("top_domains", {}) or {}),
             "retriever_stats": dict(result.metadata.get("retriever_stats", {}) or {}),
         }
+        upsert_knowledge_build_chapter_progress(
+            state["subject"],
+            requested_at=state["requested_at"],
+            chapter_progress={
+                "chapter_index": chapter_index,
+                "title": chapter_title,
+                "status": "researched",
+                "source_count": len(chapter_material["sources"]),
+                "local_hits": chapter_material["local_hits"],
+                "web_hits": chapter_material["web_hits"],
+                "query_count": chapter_material["query_count"],
+                "fallback_used": chapter_material["fallback_used"],
+            },
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "research_completed",
+                "chapter_index": chapter_index,
+                "title": chapter_title,
+                "summary": f"{chapter_title} 研究完成，本地命中 {chapter_material['local_hits']}，外部命中 {chapter_material['web_hits']}，整理来源 {len(chapter_material['sources'])}。",  # noqa: E501
+                "created_at": utcnow(),
+            },
+        )
         await publish_docgen_progress(
             context,
             state=state,

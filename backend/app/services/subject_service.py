@@ -33,7 +33,6 @@ def _to_subject_item(subject: Subject) -> SubjectItem:
         id=require_id(subject.id, "Subject.id"),
         subject_id=subject.slug,
         name=subject.name,
-        description=subject.description,
         created_at=subject.created_at,
         updated_at=subject.updated_at,
     )
@@ -44,7 +43,6 @@ def create_subject_record(
     *,
     owner_user_id: str,
     name: str,
-    description: str = "",
 ) -> SubjectItem:
     subject = create_subject(
         session,
@@ -52,7 +50,6 @@ def create_subject_record(
             user_id=owner_user_id,
             slug=_create_unique_subject_id(session),
             name=name.strip() or "Untitled Subject",
-            description=description.strip(),
         ),
     )
     return _to_subject_item(subject)
@@ -111,14 +108,12 @@ def update_subject_record(
     owner_user_id: str,
     subject_id: str,
     name: str,
-    description: str = "",
 ) -> SubjectItem:
     subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     updated = update_subject(
         session,
         subject,
         name=name.strip() or subject.name,
-        description=description.strip(),
     )
     return _to_subject_item(updated)
 

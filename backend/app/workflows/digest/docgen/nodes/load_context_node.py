@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.utils.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import (
     normalize_chapter_assignments,
@@ -70,10 +71,34 @@ def build_load_context_node(*, context: WorkflowContext):
             confirmed_plan_id=state.get("confirmed_plan_id") or None,
             digest_mode=digest_mode,
             mode_reason=(plan_payload.get("mode_reason") or "confirmed_build_plan"),
-            current_stage_description=str(plan_payload.get("plan_summary") or "已确认构建方案，开始按章节执行。"),
+            current_stage_description=str(plan_payload.get("plan_summary") or "方案已确认，开始按章节执行。"),
             total_chunks=len(assignments),
             processed_chunks=0,
             current_chunk=0,
+            plan_summary=str(plan_payload.get("plan_summary") or ""),
+            chapter_progress=[
+                {
+                    "chapter_index": int(item.get("chapter_index", index + 1) or (index + 1)),
+                    "title": str(item.get("title") or f"第 {index + 1} 章").strip() or f"第 {index + 1} 章",
+                    "status": "planned",
+                    "source_count": 0,
+                    "local_hits": 0,
+                    "web_hits": 0,
+                    "query_count": 0,
+                    "word_count": 0,
+                    "fallback_used": False,
+                }
+                for index, item in enumerate(assignments)
+            ],
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "planner_confirmed",
+                "summary": f"方案已确认，共 {len(assignments)} 章，开始准备章节研究。",
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

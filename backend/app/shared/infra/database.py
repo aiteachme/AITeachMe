@@ -65,6 +65,9 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
+    BuildPlannerSession,
+    BuildPlannerTurn,
+    ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
     KnowledgeNode,
@@ -183,6 +186,7 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
         and not _is_allowed_runtime_table(table_name)
     )
     missing_columns: dict[str, list[str]] = {}
+    unexpected_columns: dict[str, list[str]] = {}
     for table_name, expected_columns in _EXPECTED_SCHEMA_COLUMNS.items():
         if table_name not in existing_tables:
             continue
@@ -191,15 +195,19 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
             for column in inspector.get_columns(table_name)
         }
         missing = sorted(expected_columns - existing_columns)
+        unexpected = sorted(existing_columns - expected_columns)
         if missing:
             missing_columns[table_name] = missing
+        if unexpected:
+            unexpected_columns[table_name] = unexpected
 
-    if not unexpected_tables and not missing_columns:
+    if not unexpected_tables and not missing_columns and not unexpected_columns:
         return None
 
     return {
         "unexpected_tables": unexpected_tables,
         "missing_columns": missing_columns,
+        "unexpected_columns": unexpected_columns,
     }
 
 
@@ -222,7 +230,8 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         raise RuntimeError(
             "Database schema drift detected for non-local mode. "
             f"db_path={db_path}, unexpected_tables={drift['unexpected_tables']}, "
-            f"missing_columns={drift['missing_columns']}"
+            f"missing_columns={drift['missing_columns']}, "
+            f"unexpected_columns={drift['unexpected_columns']}"
         )
 
     logger.warning(
@@ -230,6 +239,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         db_path=str(db_path),
         unexpected_tables=drift["unexpected_tables"],
         missing_columns=drift["missing_columns"],
+        unexpected_columns=drift["unexpected_columns"],
     )
     reset_runtime_state()
     _remove_sqlite_files(db_path)

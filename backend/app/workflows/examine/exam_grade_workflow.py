@@ -19,6 +19,7 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
+from app.workflows.common.observability import wrap_workflow_node
 from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
@@ -219,11 +220,51 @@ def _route_after_step(state: ExamGradeState) -> str:
 
 def build_exam_grade_graph(*, session: Session | None = None) -> StateGraph:
     workflow = StateGraph(ExamGradeState)
-    workflow.add_node("grade_answers", partial(grade_answers_node, session_override=session))
-    workflow.add_node("update_mastery", partial(update_mastery_node, session_override=session))
-    workflow.add_node("schedule_reviews", partial(schedule_reviews_node, session_override=session))
-    workflow.add_node("finalize_grade", partial(finalize_grade_node, session_override=session))
-    workflow.add_node("fail_grade", partial(fail_grade_node, session_override=session))
+    workflow.add_node(
+        "grade_answers",
+        wrap_workflow_node(
+            partial(grade_answers_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="grade_answers",
+        ),
+    )
+    workflow.add_node(
+        "update_mastery",
+        wrap_workflow_node(
+            partial(update_mastery_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="update_mastery",
+        ),
+    )
+    workflow.add_node(
+        "schedule_reviews",
+        wrap_workflow_node(
+            partial(schedule_reviews_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="schedule_reviews",
+        ),
+    )
+    workflow.add_node(
+        "finalize_grade",
+        wrap_workflow_node(
+            partial(finalize_grade_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="finalize_grade",
+        ),
+    )
+    workflow.add_node(
+        "fail_grade",
+        wrap_workflow_node(
+            partial(fail_grade_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="fail_grade",
+        ),
+    )
 
     workflow.set_entry_point("grade_answers")
     workflow.add_conditional_edges(

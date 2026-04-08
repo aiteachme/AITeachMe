@@ -14,7 +14,16 @@ from app.models.raw_file import RawFile
 from app.models.subject import Subject
 from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids, list_raw_files_by_uids
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
-from app.schemas.knowledge import BuildPreviewNodeResponse, DocGenBuildData, DocGenGetResponse, KnowledgeBuildMetricsResponse, KnowledgeBuildPreviewResponse, KnowledgeBuildStatusResponse
+from app.schemas.knowledge import (
+    BuildPreviewChapterProgressResponse,
+    BuildPreviewNodeResponse,
+    BuildPreviewRecentEventResponse,
+    DocGenBuildData,
+    DocGenGetResponse,
+    KnowledgeBuildMetricsResponse,
+    KnowledgeBuildPreviewResponse,
+    KnowledgeBuildStatusResponse,
+)
 from app.services.knowledge.build_planner_service import get_confirmed_build_plan_service, mark_confirmed_build_plan_status
 from app.services.subject_embedding_service import get_subject_vector_status_by_slug, inspect_subject_build_precheck, resolve_subject_build_vector_status
 from app.shared.infra.database import managed_session
@@ -44,17 +53,17 @@ def _sanitize_build_error_message(error_message: str | None) -> str | None:
     if not text:
         return None
     if text == "build_cancelled":
-        return "Knowledge build was cancelled."
+        return "知识构建已取消。"
     if text == "build_crashed":
-        return "Knowledge build failed unexpectedly."
+        return "知识构建异常失败。"
     if text == "no_ready_digest_inputs":
-        return "No ready parsed source files are available for this build."
+        return "当前没有可用于构建的已解析资料。"
     if text == "confirmed_plan_required":
-        return "A confirmed build plan is required before starting this build."
+        return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
     if "Dimension mismatch" in text or "sqlite3.OperationalError" in text or ("chunk_embeddings" in text and "embedding" in text):
-        return "Embedding configuration changed. Please rebuild vectors before continuing."
+        return "Embedding 配置已变化，请先重建向量后再继续。"
     if "[SQL:" in text or "parameters:" in text or "Traceback" in text or len(text) > 240:
-        return "Knowledge build failed unexpectedly."
+        return "知识构建异常失败。"
     return text
 
 
@@ -173,6 +182,27 @@ def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[st
     return titles
 
 
+def _build_initial_chapter_progress(plan: ConfirmedBuildPlan) -> list[dict[str, object]]:
+    chapter_plan = list(plan.chapter_plan_json or [])
+    progress: list[dict[str, object]] = []
+    for index, chapter in enumerate(chapter_plan, start=1):
+        chapter_index = int(chapter.get("chapter_index", index) or index)
+        progress.append(
+            {
+                "chapter_index": chapter_index,
+                "title": str(chapter.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章",
+                "status": "planned",
+                "source_count": 0,
+                "local_hits": 0,
+                "web_hits": 0,
+                "query_count": 0,
+                "word_count": 0,
+                "fallback_used": False,
+            }
+        )
+    return progress
+
+
 def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> KnowledgeBuildPreviewResponse | None:
     if build_status is None and not draft_markdown.strip() and manifest is None:
         return None
@@ -181,7 +211,15 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
     if build_status is not None:
         sample_nodes = [BuildPreviewNodeResponse(name=str(item.get("name", "")).strip(), node_type=str(item.get("type", "Topic")).strip() or "Topic") for item in build_status.sample_nodes if str(item.get("name", "")).strip()][:6]
         sample_cards = [{"title": str(item.get("title", "")).strip(), "card_type": str(item.get("card_type", "")).strip() or "topic", "summary": str(item.get("summary", "")).strip()} for item in build_status.sample_cards if str(item.get("title", "")).strip() and str(item.get("summary", "")).strip()]
-    return KnowledgeBuildPreviewResponse(current_stage_description=(build_status.current_stage_description if build_status is not None else None), digest_mode=(build_status.digest_mode if build_status is not None else None), mode_reason=(build_status.mode_reason if build_status is not None else None), processed_chunks=(build_status.processed_chunks if build_status is not None else 0), total_chunks=(build_status.total_chunks if build_status is not None else 0), discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0), discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}), sample_nodes=sample_nodes, sample_cards=sample_cards, latest_chapter_titles=_resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest), draft_excerpt=_extract_markdown_excerpt(draft_markdown))
+    chapter_progress = [
+        BuildPreviewChapterProgressResponse.model_validate(item)
+        for item in list(build_status.chapter_progress or [])
+    ] if build_status is not None else []
+    recent_events = [
+        BuildPreviewRecentEventResponse.model_validate(item)
+        for item in list(build_status.recent_events or [])
+    ] if build_status is not None else []
+    return KnowledgeBuildPreviewResponse(current_stage_description=(build_status.current_stage_description if build_status is not None else None), digest_mode=(build_status.digest_mode if build_status is not None else None), mode_reason=(build_status.mode_reason if build_status is not None else None), processed_chunks=(build_status.processed_chunks if build_status is not None else 0), total_chunks=(build_status.total_chunks if build_status is not None else 0), discovered_node_count=(build_status.discovered_node_count if build_status is not None else 0), discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}), sample_nodes=sample_nodes, sample_cards=sample_cards, plan_summary=(build_status.plan_summary if build_status is not None else None), chapter_progress=chapter_progress, recent_events=recent_events, latest_chapter_titles=_resolve_preview_chapter_titles(draft_markdown=draft_markdown, manifest=manifest), draft_excerpt=_extract_markdown_excerpt(draft_markdown))
 
 
 def _build_runtime_metrics(*, build_status) -> KnowledgeBuildMetricsResponse | None:
@@ -237,6 +275,9 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
         clear_chunk_vector_metadata(session, subject=subject.slug)
     planner_session_id = None
     digest_mode = None
+    plan_summary = None
+    chapter_progress: list[dict[str, object]] = []
+    recent_events: list[dict[str, object]] = []
     cleaned_prompt = _clean_prompt(prompt)
     if build_type != "graph" and not confirmed_plan_id:
         raise ConfirmedBuildPlanRequiredError(build_type)
@@ -246,6 +287,17 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
             raise SubjectBuildLockConflictError(subject.slug)
         planner_session_id = plan.planner_session_id
         digest_mode = plan.digest_mode
+        plan_summary = plan.plan_summary
+        chapter_progress = _build_initial_chapter_progress(plan)
+        recent_events = [
+            {
+                "stage": "build_accepted",
+                "chapter_index": None,
+                "title": None,
+                "summary": f"方案已确认，共 {len(chapter_progress)} 章，构建请求已受理。",
+                "created_at": utcnow(),
+            }
+        ]
         accepted_files, ready_file_count = _select_ready_docgen_files_by_ids(session, subject=subject.slug, file_ids=list(plan.selected_file_ids_json))
         plan_prompt = _clean_prompt(plan.user_goal) or _clean_prompt(plan.plan_summary)
         if file_uids:
@@ -270,7 +322,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     if not acquire_knowledge_build_lock(subject.slug, KnowledgeBuildLock(requested_at=requested_at, source_file_ids=accepted_file_ids, prompt=cleaned_prompt)):
         raise SubjectBuildLockConflictError(subject.slug)
     clear_docgen_staging(subject.slug)
-    _write_build_status(subject.slug, requested_at=requested_at, status="accepted", stage="build_accepted", error_message=None, draft_available=False, source_file_ids=accepted_file_ids, prompt=cleaned_prompt, staged_chapter_count=0, published_doc_count=0, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode)
+    _write_build_status(subject.slug, requested_at=requested_at, status="accepted", stage="build_accepted", error_message=None, draft_available=False, source_file_ids=accepted_file_ids, prompt=cleaned_prompt, staged_chapter_count=0, published_doc_count=0, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode, plan_summary=plan_summary, chapter_progress=chapter_progress, recent_events=recent_events, current_stage_description=("方案已确认，正在排队启动构建。" if confirmed_plan_id else None))
     logger.info("knowledge_build_requested", subject=subject.slug, requested_at=requested_at.isoformat(), file_count=len(accepted_file_ids), force_full_rebuild=force_full_rebuild, vector_mode=vector_status.mode, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id)
     return DocGenBuildData(accepted_file_uids=accepted_file_uids, ready_file_count=ready_file_count, prompt=cleaned_prompt, requested_at=requested_at, vector_status=vector_status, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode), accepted_file_ids
 

@@ -125,7 +125,6 @@ interface ImportResultData {
 interface CoursePackageItem {
   filename: string;
   subject_name: string;
-  description: string;
   file_size_bytes: number;
   exported_at: string | null;
   stats: Record<string, number>;
@@ -572,7 +571,7 @@ function RenameModal({
       await apiClient({
         method: "POST",
         url: `/api/v1/subjects/update`,
-        data: { subject_id: subjectId, name: name.trim(), description: "" },
+        data: { subject_id: subjectId, name: name.trim() },
       });
     },
     onSuccess: () => { onSuccess(); onClose(); },
@@ -780,9 +779,9 @@ export function HomePage() {
 
   // ── Mutations ──
   const createMutation = useMutation({
-    mutationFn: async ({ name, description }: { name: string; description: string }) => {
+    mutationFn: async ({ name }: { name: string }) => {
       const created = unwrapOrvalResponse(
-        await createSubjectApiApiV1SubjectsAddPost({ name, description })
+        await createSubjectApiApiV1SubjectsAddPost({ name })
       );
       if (!created) throw new Error("创建学科失败");
       return created;
@@ -834,7 +833,7 @@ export function HomePage() {
     if (!canGenerate) return;
     setError(null);
     const name = generateSubjectName(pendingFiles, prompt);
-    createMutation.mutate({ name, description: prompt.trim() });
+    createMutation.mutate({ name });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1007,7 +1006,7 @@ export function HomePage() {
                   </button>
                 ) : (
                   <button
-                    onClick={knowledgeBuild.submitBuild}
+                    onClick={() => knowledgeBuild.submitBuild()}
                     disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
                     className={cn(
                       "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
@@ -1278,9 +1277,6 @@ export function HomePage() {
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
                                   <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
-                                  {course.description && (
-                                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{course.description}</p>
-                                  )}
                                 </div>
                                 <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
                                   <Package className="w-5 h-5 text-emerald-500" />

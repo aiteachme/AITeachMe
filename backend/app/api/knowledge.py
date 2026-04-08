@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from fastapi import APIRouter, Body, Depends, Path, Request
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
@@ -54,8 +56,89 @@ from app.services.knowledge.graph_query_service import (
 from app.services.knowledge.overview_service import get_knowledge_overview
 from app.services.knowledge.study_plan_service import handle_study_plan_request
 from app.services.subject_service import get_subject_record
+from app.workflows.interact.support.streaming import SSEEventEmitter
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowledge"])
+
+
+def _planner_status_detail(payload: dict[str, object]) -> str:
+    node_name = str(payload.get("node_name") or "").strip()
+    elapsed_ms = int(payload.get("elapsed_ms", 0) or 0)
+    status = str(payload.get("status") or "ok").strip() or "ok"
+    if node_name:
+        if status == "failed":
+            return f"{node_name} 失败，耗时 {elapsed_ms} ms。"
+        return f"{node_name} 完成，耗时 {elapsed_ms} ms。"
+    return "正在生成构建方案。"
+
+
+def _planner_stream_response(
+    *,
+    request: Request,
+    runner,
+) -> StreamingResponse:
+    emitter = SSEEventEmitter()
+
+    async def workflow_task() -> None:
+        try:
+            await emitter.emit_event(
+                "status",
+                {
+                    "stage": "accepted",
+                    "detail": "已接收请求，正在读取资料与用户目标。",
+                },
+            )
+
+            async def progress_callback(payload: dict[str, object]) -> None:
+                await emitter.emit_event(
+                    "status",
+                    {
+                        **payload,
+                        "stage": str(payload.get("node_name") or "node"),
+                        "detail": str(payload.get("detail") or "").strip() or _planner_status_detail(payload),
+                    },
+                )
+
+            async def token_callback(token: str) -> None:
+                await emitter.emit_token(token)
+
+            response = await runner(progress_callback, token_callback)
+            runtime_stats = getattr(response, "runtime_stats", None)
+            await emitter.emit_event(
+                "status",
+                {
+                    "stage": "completed",
+                    "detail": (
+                        f"方案生成完成，总耗时 {runtime_stats.workflow_elapsed_ms} ms。"
+                        if runtime_stats is not None
+                        else "方案生成完成。"
+                    ),
+                    "workflow_elapsed_ms": (
+                        int(runtime_stats.workflow_elapsed_ms)
+                        if runtime_stats is not None
+                        else 0
+                    ),
+                },
+            )
+            await emitter.emit_event("done", {"session": response.model_dump(mode="json")})
+        except Exception as exc:
+            await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
+        finally:
+            await emitter.close()
+
+    async def event_stream():
+        task = asyncio.create_task(workflow_task())
+        async for payload in emitter.stream(request=request, workflow_task=task):
+            yield payload
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post(
@@ -82,6 +165,33 @@ async def knowledge_build_plan_create(
 
 
 @router.post(
+    "/build/plans/stream",
+    summary="Create a build planner session with SSE progress",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def knowledge_build_plan_create_stream(
+    request: Request,
+    subject: str = Path(...),
+    body: BuildPlannerCreateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    return _planner_stream_response(
+        request=request,
+        runner=lambda progress_callback, token_callback: create_build_planner_session_service(
+            session,
+            subject=subject_record,
+            user_id=user.user_id,
+            payload=body,
+            progress_callback=progress_callback,
+            token_callback=token_callback,
+        ),
+    )
+
+
+@router.post(
     "/build/plans/{session_id}/messages",
     response_model=ApiResponse[BuildPlannerSessionResponse],
     summary="Append planner feedback and regenerate the plan",
@@ -104,6 +214,35 @@ async def knowledge_build_plan_message(
         payload=body,
     )
     return ok_response(data)
+
+
+@router.post(
+    "/build/plans/{session_id}/messages/stream",
+    summary="Append planner feedback with SSE progress",
+    responses=build_error_responses([400, 404, 422, 500]),
+)
+async def knowledge_build_plan_message_stream(
+    request: Request,
+    subject: str = Path(...),
+    session_id: str = Path(...),
+    body: BuildPlannerMessageRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> StreamingResponse:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    return _planner_stream_response(
+        request=request,
+        runner=lambda progress_callback, token_callback: append_build_planner_message_service(
+            session,
+            subject=subject_record,
+            user_id=user.user_id,
+            session_id=session_id,
+            payload=body,
+            progress_callback=progress_callback,
+            token_callback=token_callback,
+        ),
+    )
 
 
 @router.post(

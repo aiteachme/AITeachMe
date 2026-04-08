@@ -171,7 +171,7 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_keys(modules: list[str]) -> list[str]:
     if not modules or "all" in modules:
-        return sorted(REGISTRY)
+        return list(REGISTRY)
     bad = [m for m in modules if m not in REGISTRY]
     if bad:
         raise ValueError(f"Unknown: {bad}. Available: {sorted(REGISTRY)}")
@@ -562,8 +562,8 @@ def write_all(*, output_dir: Path, keys: list[str]) -> list[Path]:
     readme = "\n".join([
         "# AITeachMe 工作流架构图",
         "",
-        "> 由 `scripts/generate_workflow_diagrams.py` 从已编译的 LangGraph 拓扑自动生成。",
-        "> 运行 `conda activate atm && python scripts/generate_workflow_diagrams.py` 可重新生成。",
+        "> 由 `backend/scripts/generate_workflow_diagrams.py` 从已编译的 LangGraph 拓扑自动生成。",
+        "> 运行 `conda activate atm && python backend/scripts/generate_workflow_diagrams.py` 可重新生成。",
         "",
         "## 图例说明",
         "",
@@ -606,7 +606,7 @@ def main() -> int:
 
     print(f"Generated {len(paths)} files:")
     for p in paths:
-        print(f"  ✓ {p.name}")
+        print(f"  - {p.name}")
     return 0
 
 

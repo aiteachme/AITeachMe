@@ -24,6 +24,10 @@
       "path": "./app/workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
       "description": "Digest doc generation lane."
     },
+    "digest_planner": {
+      "path": "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph",
+      "description": "Digest planner workflow for confirmed build plans."
+    },
     "digest_unified": {
       "path": "./app/workflows/digest/unified/graph.py:get_langgraph_dev_unified_graph",
       "description": "Digest unified build workflow."

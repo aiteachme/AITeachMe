@@ -5,7 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
-from app.utils.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import build_examine_markdown, publish_docgen_progress
 from app.workflows.digest.docgen.publish import build_merged_markdown
@@ -72,6 +73,15 @@ def build_inject_examine_node(*, context: WorkflowContext):
             staged_chapter_count=len(chapter_metadatas),
             current_stage_description="文档组装完成，开始发布知识文档。",
             draft_available=bool(merged_markdown.strip()),
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "examine_injected",
+                "summary": f"练习与自检内容已注入，新增 {len(exam_questions)} 道自检题。",
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

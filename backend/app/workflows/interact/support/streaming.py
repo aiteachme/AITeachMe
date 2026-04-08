@@ -25,16 +25,14 @@ class SSEEventEmitter:
         self._queue: asyncio.Queue[str | None] = asyncio.Queue()
         self._closed = False
 
+    async def emit_event(self, event: str, data: dict) -> None:
+        await self._queue.put(format_sse_event(event, data))
+
     async def emit_token(self, content: str) -> None:
-        await self._queue.put(format_sse_event("token", {"content": content}))
+        await self.emit_event("token", {"content": content})
 
     async def emit_error(self, *, detail: str, error_code: str) -> None:
-        await self._queue.put(
-            format_sse_event(
-                "error",
-                {"detail": detail, "error_code": error_code},
-            )
-        )
+        await self.emit_event("error", {"detail": detail, "error_code": error_code})
 
     async def emit_done(
         self,
@@ -46,7 +44,7 @@ class SSEEventEmitter:
             "turn_id": turn_id,
             "contexts": [item.model_dump() for item in contexts] if contexts else None,
         }
-        await self._queue.put(format_sse_event("done", payload))
+        await self.emit_event("done", payload)
 
     async def close(self) -> None:
         if self._closed:

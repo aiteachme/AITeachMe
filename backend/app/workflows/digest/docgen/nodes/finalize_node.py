@@ -6,6 +6,8 @@ from time import perf_counter
 
 import structlog
 
+from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs, stage_knowledge_docs
@@ -76,6 +78,26 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
             )
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 
+        for chapter in chapter_metadatas:
+            title = str(chapter.get("title") or "").strip()
+            if title == "练习与自检":
+                continue
+            upsert_knowledge_build_chapter_progress(
+                subject,
+                requested_at=requested_at,
+                chapter_progress={
+                    "chapter_index": int(chapter.get("chapter_index", 0) or 0),
+                    "title": title,
+                    "status": "completed",
+                    "source_count": len(list(chapter.get("sources") or [])),
+                    "local_hits": int(chapter.get("local_hits", 0) or 0),
+                    "web_hits": int(chapter.get("web_hits", 0) or 0),
+                    "query_count": int(chapter.get("query_count", 0) or 0),
+                    "word_count": int(chapter.get("word_count", 0) or 0),
+                    "fallback_used": bool(chapter.get("fallback_used", False)),
+                },
+            )
+
         finalize_ms = int((perf_counter() - started_at) * 1000)
         node_logger.info(
             "docgen_finalize_completed",
@@ -83,6 +105,19 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
             merged_chars=len(staged_docs.merged_markdown),
             finalize_ms=finalize_ms,
             published=standalone,
+        )
+        append_knowledge_build_recent_event(
+            subject,
+            requested_at=requested_at,
+            event={
+                "stage": "docgen_finalized",
+                "summary": (
+                    f"知识文档已发布，共 {len(doc_ids)} 篇正式文档。"
+                    if standalone
+                    else f"知识文档草稿已暂存，共 {len(staged_docs.built_paths)} 个章节。"
+                ),
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

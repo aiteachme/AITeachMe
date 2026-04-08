@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import structlog
 from sqlmodel import Session
 
 from app.models import IngestStatus, TaskStatus
@@ -30,7 +31,9 @@ from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
+    BuildPlannerNodeTimingResponse,
     BuildPlannerPlanResponse,
+    BuildPlannerRuntimeStatsResponse,
     BuildPlannerSessionResponse,
     BuildPlannerTurnResponse,
 )
@@ -39,13 +42,14 @@ from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
-    NoReadyFilesForDocGenError,
     RawFileNotFoundError,
 )
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.planner.models import normalize_planner_payload
 from app.workflows.digest.planner.runtime import run_build_planner_workflow
+
+logger = structlog.get_logger(__name__)
 
 
 def _markdown_ready(raw_file: RawFile) -> bool:
@@ -62,26 +66,26 @@ def _markdown_ready(raw_file: RawFile) -> bool:
     )
 
 
-def _select_ready_files(
+def _planner_file_available(raw_file: RawFile) -> bool:
+    return raw_file.id is not None
+
+
+def _select_planner_files(
     session: Session,
     *,
     subject: str,
     file_uids: list[str] | None,
 ) -> list[RawFile]:
-    ready_files = [item for item in list_all_raw_files_by_subject(session, subject) if item.id is not None and _markdown_ready(item)]
-    if not ready_files:
-        raise NoReadyFilesForDocGenError(subject)
+    available_files = [item for item in list_all_raw_files_by_subject(session, subject) if _planner_file_available(item)]
     if not file_uids:
-        return ready_files
+        return available_files
     requested = list_raw_files_by_uids(session, subject, file_uids)
     found_uids = {require_uid(item.uid, "RawFile.uid") for item in requested}
     missing = [uid for uid in file_uids if uid not in found_uids]
     if missing:
         raise RawFileNotFoundError(missing[0])
-    ready_ids = {require_id(item.id, "RawFile.id") for item in ready_files}
-    selected = [item for item in requested if item.id is not None and require_id(item.id, "RawFile.id") in ready_ids]
-    if not selected:
-        raise NoReadyFilesForDocGenError(subject)
+    available_ids = {require_id(item.id, "RawFile.id") for item in available_files}
+    selected = [item for item in requested if item.id is not None and require_id(item.id, "RawFile.id") in available_ids]
     return selected
 
 
@@ -144,6 +148,59 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerRuntimeStatsResponse | None:
+    if not isinstance(final_state, dict):
+        return None
+
+    node_timings_raw = final_state.get("node_timings_ms") or {}
+    node_timings_ms = {
+        str(key): int(value)
+        for key, value in dict(node_timings_raw).items()
+        if value not in (None, "")
+    } if isinstance(node_timings_raw, dict) else {}
+
+    node_events: list[BuildPlannerNodeTimingResponse] = []
+    for item in list(final_state.get("node_events") or []):
+        if not isinstance(item, dict):
+            continue
+        node_events.append(
+            BuildPlannerNodeTimingResponse(
+                node_name=str(item.get("node_name") or ""),
+                lane=str(item.get("lane") or "planner"),
+                workflow=str(item.get("workflow") or "digest.planner"),
+                elapsed_ms=int(item.get("elapsed_ms", 0) or 0),
+                status=str(item.get("status") or "ok"),
+            )
+        )
+
+    return BuildPlannerRuntimeStatsResponse(
+        workflow_elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
+        node_timings_ms=node_timings_ms,
+        node_events=node_events,
+        fallback_used=bool(final_state.get("fallback_used", False)),
+        generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
+    )
+
+
+def _log_planner_runtime(
+    *,
+    subject: str,
+    session_id: str,
+    runtime_stats: BuildPlannerRuntimeStatsResponse | None,
+) -> None:
+    if runtime_stats is None:
+        return
+    logger.info(
+        "planner_runtime_summary",
+        subject=subject,
+        planner_session_id=session_id,
+        workflow_elapsed_ms=runtime_stats.workflow_elapsed_ms,
+        node_timings_ms=runtime_stats.node_timings_ms,
+        fallback_used=runtime_stats.fallback_used,
+        generation_mode=runtime_stats.generation_mode,
+    )
+
+
 def _normalize_persisted_plan(
     plan: dict[str, Any] | None,
     *,
@@ -151,6 +208,7 @@ def _normalize_persisted_plan(
     user_goal: str,
     digest_mode: str,
     tone: str,
+    shared_inputs: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return normalize_planner_payload(
@@ -159,6 +217,7 @@ def _normalize_persisted_plan(
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
         requested_tone=tone,
+        shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     )
 
@@ -169,11 +228,13 @@ async def create_build_planner_session_service(
     subject: Subject,
     user_id: str,
     payload: BuildPlannerCreateRequest,
+    progress_callback: object | None = None,
+    token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
     settings = get_settings()
-    ready_files = _select_ready_files(session, subject=subject.slug, file_uids=payload.file_uids)
-    file_ids = [require_id(item.id, "RawFile.id") for item in ready_files]
-    file_uids = [require_uid(item.uid, "RawFile.uid") for item in ready_files]
+    planner_files = _select_planner_files(session, subject=subject.slug, file_uids=payload.file_uids)
+    file_ids = [require_id(item.id, "RawFile.id") for item in planner_files]
+    file_uids = [require_uid(item.uid, "RawFile.uid") for item in planner_files]
     session_id = uuid.uuid4().hex
     tone = (payload.tone or settings.planner_default_tone).strip() or settings.planner_default_tone
     digest_mode = (payload.digest_mode or settings.planner_default_digest_mode).strip() or settings.planner_default_digest_mode
@@ -212,14 +273,18 @@ async def create_build_planner_session_service(
         digest_mode=digest_mode,
         tone=tone,
         message_history=[user_goal],
+        progress_callback=progress_callback,
+        token_callback=token_callback,
     )
     final_state = workflow_result.require_value()
+    runtime_stats = _runtime_stats_response(final_state)
     plan = _normalize_persisted_plan(
         dict(final_state.get("plan") or {}),
         subject=subject.slug,
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
+        shared_inputs=final_state.get("shared_inputs"),
     )
     record.latest_plan_json = plan
     record.latest_summary = str(plan.get("plan_summary") or final_state.get("plan_summary") or "")
@@ -239,7 +304,7 @@ async def create_build_planner_session_service(
             plan_json=plan,
         ),
     )
-    return BuildPlannerSessionResponse(
+    response = BuildPlannerSessionResponse(
         session_id=record.id,
         title=record.title,
         status=record.status,
@@ -252,7 +317,10 @@ async def create_build_planner_session_service(
             plan=plan,
         ),
         turns=[_turn_response(user_turn), _turn_response(assistant_turn)],
+        runtime_stats=runtime_stats,
     )
+    _log_planner_runtime(subject=subject.slug, session_id=record.id, runtime_stats=runtime_stats)
+    return response
 
 
 async def append_build_planner_message_service(
@@ -262,6 +330,8 @@ async def append_build_planner_message_service(
     user_id: str,
     session_id: str,
     payload: BuildPlannerMessageRequest,
+    progress_callback: object | None = None,
+    token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
     record = get_planner_session(session, subject=subject.slug, session_id=session_id, user_id=user_id)
     if record is None:
@@ -289,14 +359,18 @@ async def append_build_planner_message_service(
         tone=record.tone,
         message_history=message_history,
         latest_plan=record.latest_plan_json,
+        progress_callback=progress_callback,
+        token_callback=token_callback,
     )
     final_state = workflow_result.require_value()
+    runtime_stats = _runtime_stats_response(final_state)
     plan = _normalize_persisted_plan(
         dict(final_state.get("plan") or {}),
         subject=subject.slug,
         user_goal=record.user_goal,
         digest_mode=record.digest_mode,
         tone=record.tone,
+        shared_inputs=final_state.get("shared_inputs"),
         latest_plan=record.latest_plan_json,
     )
     record.latest_plan_json = plan
@@ -323,7 +397,7 @@ async def append_build_planner_message_service(
         for turn in list_planner_turns(session, session_id=session_id)
     ]
     file_uids = _file_uids_from_ids(session, subject=subject.slug, file_ids=list(record.selected_file_ids_json))
-    return BuildPlannerSessionResponse(
+    response = BuildPlannerSessionResponse(
         session_id=record.id,
         title=record.title,
         status=record.status,
@@ -336,7 +410,10 @@ async def append_build_planner_message_service(
             plan=plan,
         ),
         turns=response_turns,
+        runtime_stats=runtime_stats,
     )
+    _log_planner_runtime(subject=subject.slug, session_id=record.id, runtime_stats=runtime_stats)
+    return response
 
 
 def confirm_build_planner_session_service(
@@ -352,13 +429,7 @@ def confirm_build_planner_session_service(
     if not record.latest_plan_json:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    plan_payload = _normalize_persisted_plan(
-        dict(record.latest_plan_json),
-        subject=subject.slug,
-        user_goal=record.user_goal,
-        digest_mode=record.digest_mode,
-        tone=record.tone,
-    )
+    plan_payload = _normalized_plan_payload(dict(record.latest_plan_json))
     record.latest_plan_json = plan_payload
     current_confirmed = None
     if record.confirmed_plan_id:

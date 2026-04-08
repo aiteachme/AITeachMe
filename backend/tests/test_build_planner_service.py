@@ -197,11 +197,15 @@ def test_create_build_planner_session_normalizes_dirty_workflow_payload(session:
     planner_session = session.get(BuildPlannerSession, response.session_id)
 
     assert response.plan.digest_mode == "sprint"
-    assert [chapter.title for chapter in response.plan.chapter_plan] == ["概念破冰", "公式武器库", "真题实战", "防坑指南"]
+    assert len(response.plan.chapter_plan) == 4
+    assert response.plan.chapter_plan[0].title.endswith("快速建立直觉")
+    assert response.plan.chapter_plan[1].title.endswith("公式与方法")
+    assert response.plan.chapter_plan[2].title.endswith("题型拆解")
+    assert response.plan.chapter_plan[3].title.endswith("易错点与冲刺复盘")
     assert "冲刺型知识文档" in response.plan.plan_summary
     assert planner_session is not None
     assert planner_session.latest_plan_json is not None
-    assert planner_session.latest_plan_json["chapter_plan"][0]["title"] == "概念破冰"
+    assert planner_session.latest_plan_json["chapter_plan"][0]["title"].endswith("快速建立直觉")
     assert planner_session.latest_summary == response.plan.plan_summary
 
 
@@ -266,3 +270,67 @@ def test_mark_confirmed_build_plan_status_keeps_newer_session_binding(session: S
     assert older_plan.status == "completed"
     assert planner_session.confirmed_plan_id == newer_plan.id
     assert planner_session.status == "draft"
+
+
+def test_create_build_planner_session_exposes_runtime_stats(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_planner_runtime")
+    _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_plan_runtime")
+
+    plan = _plan_payload(
+        subject=subject.slug,
+        goal="生成更快的规划方案",
+        digest_mode="systematic",
+        tone="encouraging",
+        title="极限与连续",
+        summary="围绕极限与连续整理一份系统化知识文档方案。",
+    )
+    workflow_state = {
+        "plan": plan,
+        "plan_summary": plan["plan_summary"],
+        "workflow_elapsed_ms": 345,
+        "node_timings_ms": {
+            "load_context": 32,
+            "draft_plan": 280,
+        },
+        "node_events": [
+            {
+                "node_name": "load_context",
+                "lane": "planner",
+                "workflow": "digest.planner",
+                "elapsed_ms": 32,
+                "status": "ok",
+            },
+            {
+                "node_name": "draft_plan",
+                "lane": "planner",
+                "workflow": "digest.planner",
+                "elapsed_ms": 280,
+                "status": "ok",
+            },
+        ],
+        "fallback_used": False,
+        "planner_generation_mode": "text_json",
+    }
+
+    with patch(
+        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        new=AsyncMock(return_value=DummyWorkflowResult(workflow_state)),
+    ):
+        response = asyncio.run(
+            create_build_planner_session_service(
+                session,
+                subject=subject,
+                user_id="local",
+                payload=BuildPlannerCreateRequest(user_goal="生成更快的规划方案"),
+            )
+        )
+
+    assert response.runtime_stats is not None
+    assert response.runtime_stats.workflow_elapsed_ms == 345
+    assert response.runtime_stats.node_timings_ms["load_context"] == 32
+    assert response.runtime_stats.node_timings_ms["draft_plan"] == 280
+    assert response.runtime_stats.generation_mode == "text_json"
+    assert [event.node_name for event in response.runtime_stats.node_events] == [
+        "load_context",
+        "draft_plan",
+    ]

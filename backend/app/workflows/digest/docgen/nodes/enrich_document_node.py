@@ -8,7 +8,8 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.skills import ImageGenerator, MermaidGenerator, SkillContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, build_draft_excerpt, prepend_table_of_contents
-from app.utils.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
 from app.workflows.digest.docgen.publish import build_merged_markdown
@@ -67,8 +68,17 @@ def build_enrich_document_node(*, context: WorkflowContext):
             status="running",
             stage="injecting_examine",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="文档增强已完成，开始注入练习与自检内容。",
+            current_stage_description="文档增强完成，开始注入练习与自检内容。",
             draft_available=bool(merged_markdown.strip()),
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "document_enriched",
+                "summary": f"文档增强完成，处理 Mermaid 占位 {mermaid_count} 个，图片占位 {image_count} 个。",
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

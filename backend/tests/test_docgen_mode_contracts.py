@@ -44,7 +44,10 @@ def test_sprint_fallback_plan_uses_fixed_four_chapters() -> None:
     )
 
     assert plan.digest_mode == "sprint"
-    assert [chapter.title for chapter in plan.chapter_plan] == ["概念破冰", "公式武器库", "真题实战", "防坑指南"]
+    assert len(plan.chapter_plan) == 4
+    assert plan.chapter_plan[0].title.startswith("偏导数：")
+    assert plan.chapter_plan[1].title.startswith("梯度：")
+    assert plan.chapter_plan[2].title.startswith("方向导数：")
     assert plan.build_constraints["fixed_chapter_count"] == 4
     assert "冲刺型知识文档" in plan.plan_summary
 

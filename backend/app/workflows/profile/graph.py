@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from app.models import ExamPaper
 from app.shared.infra.database import managed_session
+from app.workflows.common.observability import wrap_workflow_node
 from app.workflows.profile.mastery_updater import MasteryUpdateResult, update_mastery_from_exam
 from app.workflows.profile.review_scheduler import schedule_reviews
 from app.workflows.profile.state import ProfileWorkflowState
@@ -287,13 +288,69 @@ def build_profile_pipeline_graph(*, session: Session | None = None) -> StateGrap
     """Build an executable profile pipeline graph for local debugging."""
 
     workflow = StateGraph(ProfileWorkflowState)
-    workflow.add_node("resolve_profile_context", _resolve_profile_context_node(session=session))
-    workflow.add_node("update_mastery", _update_mastery_node(session=session))
-    workflow.add_node("schedule_reviews", _schedule_reviews_node(session=session))
-    workflow.add_node("analyze_weakness", _analyze_weakness_node(session=session))
-    workflow.add_node("refresh_subject_profile", _refresh_subject_profile_node(session=session))
-    workflow.add_node("refresh_user_profile", _refresh_user_profile_node(session=session))
-    workflow.add_node("fail_profile_pipeline", _fail_profile_pipeline_node)
+    workflow.add_node(
+        "resolve_profile_context",
+        wrap_workflow_node(
+            _resolve_profile_context_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="resolve_profile_context",
+        ),
+    )
+    workflow.add_node(
+        "update_mastery",
+        wrap_workflow_node(
+            _update_mastery_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="update_mastery",
+        ),
+    )
+    workflow.add_node(
+        "schedule_reviews",
+        wrap_workflow_node(
+            _schedule_reviews_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="schedule_reviews",
+        ),
+    )
+    workflow.add_node(
+        "analyze_weakness",
+        wrap_workflow_node(
+            _analyze_weakness_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="analyze_weakness",
+        ),
+    )
+    workflow.add_node(
+        "refresh_subject_profile",
+        wrap_workflow_node(
+            _refresh_subject_profile_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="refresh_subject_profile",
+        ),
+    )
+    workflow.add_node(
+        "refresh_user_profile",
+        wrap_workflow_node(
+            _refresh_user_profile_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="refresh_user_profile",
+        ),
+    )
+    workflow.add_node(
+        "fail_profile_pipeline",
+        wrap_workflow_node(
+            _fail_profile_pipeline_node,
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="fail_profile_pipeline",
+        ),
+    )
 
     workflow.set_entry_point("resolve_profile_context")
     workflow.add_conditional_edges(

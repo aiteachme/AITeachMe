@@ -669,7 +669,7 @@ export function DigestBuildButton() {
             <Button variant="outline" onClick={closeModal} disabled={isBuilding}>
               取消
             </Button>
-            <Button onClick={knowledgeBuild.submitBuild} disabled={selectedFileUids.size === 0 || isBuilding}>
+            <Button onClick={() => knowledgeBuild.submitBuild()} disabled={selectedFileUids.size === 0 || isBuilding}>
               {isBuilding ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />

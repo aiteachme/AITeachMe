@@ -1124,6 +1124,429 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/plans": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create a build planner session",
+        "operationId": "knowledge_build_plan_create_api_v1_subjects__subject__knowledge_build_plans_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildPlannerCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuildPlannerSessionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/plans/stream": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create a build planner session with SSE progress",
+        "operationId": "knowledge_build_plan_create_stream_api_v1_subjects__subject__knowledge_build_plans_stream_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildPlannerCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Append planner feedback and regenerate the plan",
+        "operationId": "knowledge_build_plan_message_api_v1_subjects__subject__knowledge_build_plans__session_id__messages_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildPlannerMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuildPlannerSessionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages/stream": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Append planner feedback with SSE progress",
+        "operationId": "knowledge_build_plan_message_stream_api_v1_subjects__subject__knowledge_build_plans__session_id__messages_stream_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildPlannerMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/confirm": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Confirm the current planner draft and freeze a build plan",
+        "operationId": "knowledge_build_plan_confirm_api_v1_subjects__subject__knowledge_build_plans__session_id__confirm_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuildPlannerConfirmResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
@@ -3972,6 +4395,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_BuildPlannerConfirmResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlannerConfirmResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[BuildPlannerConfirmResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_BuildPlannerSessionResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlannerSessionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[BuildPlannerSessionResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ChatClearData_": {
         "properties": {
           "code": {
@@ -5457,6 +5948,464 @@
         ],
         "title": "Body_upload_files_api_v1_subjects__subject__files_upload_post"
       },
+      "BuildPlannerChapterPlanResponse": {
+        "properties": {
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective",
+            "default": ""
+          },
+          "required_elements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Elements"
+          },
+          "search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Queries"
+          },
+          "writing_instructions": {
+            "type": "string",
+            "title": "Writing Instructions",
+            "default": ""
+          },
+          "media_hints": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Media Hints"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapter_index",
+          "title"
+        ],
+        "title": "BuildPlannerChapterPlanResponse"
+      },
+      "BuildPlannerConfirmResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/BuildPlannerPlanResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "plan_id",
+          "plan"
+        ],
+        "title": "BuildPlannerConfirmResponse"
+      },
+      "BuildPlannerCreateRequest": {
+        "properties": {
+          "file_uids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Uids",
+            "description": "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner 会优先使用已解析内容，不足时退化到文件名与资料元信息。"
+          },
+          "user_goal": {
+            "type": "string",
+            "title": "User Goal",
+            "description": "Learner goal or requested document target."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sprint",
+                  "systematic"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "Optional requested digest mode."
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone",
+            "description": "Optional requested writing tone."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Optional planner session title."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_goal"
+        ],
+        "title": "BuildPlannerCreateRequest",
+        "description": "Create a new planner session and generate the first plan draft."
+      },
+      "BuildPlannerMessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User feedback used to revise the current plan draft."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "BuildPlannerMessageRequest",
+        "description": "Append one planner revision message."
+      },
+      "BuildPlannerNodeTimingResponse": {
+        "properties": {
+          "node_name": {
+            "type": "string",
+            "title": "Node Name"
+          },
+          "lane": {
+            "type": "string",
+            "title": "Lane",
+            "default": "planner"
+          },
+          "workflow": {
+            "type": "string",
+            "title": "Workflow",
+            "default": "digest.planner"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_name"
+        ],
+        "title": "BuildPlannerNodeTimingResponse"
+      },
+      "BuildPlannerPlanResponse": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "selected_file_uids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected File Uids"
+          },
+          "user_goal": {
+            "type": "string",
+            "title": "User Goal"
+          },
+          "digest_mode": {
+            "type": "string",
+            "title": "Digest Mode"
+          },
+          "tone": {
+            "type": "string",
+            "title": "Tone"
+          },
+          "chapter_plan": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerChapterPlanResponse"
+            },
+            "type": "array",
+            "title": "Chapter Plan"
+          },
+          "research_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Research Queries"
+          },
+          "media_plan": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Media Plan"
+          },
+          "build_constraints": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Build Constraints"
+          },
+          "plan_summary": {
+            "type": "string",
+            "title": "Plan Summary",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "draft"
+          },
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id"
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "user_goal",
+          "digest_mode",
+          "tone"
+        ],
+        "title": "BuildPlannerPlanResponse"
+      },
+      "BuildPlannerRuntimeStatsResponse": {
+        "properties": {
+          "workflow_elapsed_ms": {
+            "type": "integer",
+            "title": "Workflow Elapsed Ms",
+            "default": 0
+          },
+          "node_timings_ms": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Node Timings Ms"
+          },
+          "node_events": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerNodeTimingResponse"
+            },
+            "type": "array",
+            "title": "Node Events"
+          },
+          "fallback_used": {
+            "type": "boolean",
+            "title": "Fallback Used",
+            "default": false
+          },
+          "generation_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Mode"
+          }
+        },
+        "type": "object",
+        "title": "BuildPlannerRuntimeStatsResponse"
+      },
+      "BuildPlannerSessionResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/BuildPlannerPlanResponse"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerTurnResponse"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "runtime_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlannerRuntimeStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "status",
+          "plan"
+        ],
+        "title": "BuildPlannerSessionResponse"
+      },
+      "BuildPlannerTurnResponse": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "BuildPlannerTurnResponse"
+      },
+      "BuildPreviewChapterProgressResponse": {
+        "properties": {
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "planned / researching / researched / drafting / drafted / completed"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count",
+            "default": 0
+          },
+          "local_hits": {
+            "type": "integer",
+            "title": "Local Hits",
+            "default": 0
+          },
+          "web_hits": {
+            "type": "integer",
+            "title": "Web Hits",
+            "default": 0
+          },
+          "query_count": {
+            "type": "integer",
+            "title": "Query Count",
+            "default": 0
+          },
+          "word_count": {
+            "type": "integer",
+            "title": "Word Count",
+            "default": 0
+          },
+          "fallback_used": {
+            "type": "boolean",
+            "title": "Fallback Used",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapter_index",
+          "title",
+          "status"
+        ],
+        "title": "BuildPreviewChapterProgressResponse",
+        "description": "Per-chapter runtime progress shown while docgen is building."
+      },
       "BuildPreviewNodeResponse": {
         "properties": {
           "name": {
@@ -5476,6 +6425,59 @@
         ],
         "title": "BuildPreviewNodeResponse",
         "description": "One lightweight node preview surfaced during digest polling."
+      },
+      "BuildPreviewRecentEventResponse": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "chapter_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Index"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "summary"
+        ],
+        "title": "BuildPreviewRecentEventResponse",
+        "description": "Recent build events surfaced in the docs waiting UI."
       },
       "BuildSampleCardResponse": {
         "properties": {
@@ -6148,12 +7150,6 @@
             "title": "Subject Name",
             "description": "学科名称（从 manifest 读取）。"
           },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "学科描述。",
-            "default": ""
-          },
           "file_size_bytes": {
             "type": "integer",
             "title": "File Size Bytes",
@@ -6185,7 +7181,7 @@
           "subject_name"
         ],
         "title": "CoursePackageItem",
-        "description": "共享课程目录中的一个 .atmx 文件。"
+        "description": "共享课程目录中的一个 `.atmx` 文件。"
       },
       "CurriculumSnapshotResponse": {
         "properties": {
@@ -6275,7 +7271,7 @@
               }
             ],
             "title": "Prompt",
-            "description": "User prompt for the docs build."
+            "description": "Effective user prompt for the docs build after planner overrides are applied."
           },
           "ready_file_count": {
             "type": "integer",
@@ -6292,6 +7288,42 @@
           "vector_status": {
             "$ref": "#/components/schemas/SubjectVectorStatusResponse",
             "description": "Current subject-level vector capability status."
+          },
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id",
+            "description": "Planner session id bound to this build."
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id",
+            "description": "Confirmed build plan id bound to this build."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "Digest mode frozen in the confirmed build plan."
           }
         },
         "type": "object",
@@ -6316,7 +7348,7 @@
               }
             ],
             "title": "File Uids",
-            "description": "Optional parsed raw file UIDs; omitted means auto-pick all available files for the subject."
+            "description": "Optional parsed raw file UIDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided."
           },
           "prompt": {
             "anyOf": [
@@ -6328,7 +7360,7 @@
               }
             ],
             "title": "Prompt",
-            "description": "Optional user instruction for doc generation."
+            "description": "Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is provided and the confirmed plan already freezes the build goal."
           },
           "embedding_resolution": {
             "anyOf": [
@@ -6356,6 +7388,18 @@
             "title": "Build Type",
             "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
             "default": "all"
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id",
+            "description": "Planner 生成并确认后的构建方案 ID。`docs` 和 `all` 构建必须提供该字段；提供后会以方案冻结的文件选择、章节规划和用户目标作为正式构建契约。"
           }
         },
         "type": "object",
@@ -6472,6 +7516,42 @@
           "vector_status": {
             "$ref": "#/components/schemas/SubjectVectorStatusResponse",
             "description": "Current subject-level vector capability status."
+          },
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id",
+            "description": "Planner session id bound to this build."
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id",
+            "description": "Confirmed build plan id bound to this build."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "Digest mode frozen in the confirmed build plan."
           }
         },
         "type": "object",
@@ -8219,6 +9299,34 @@
             "title": "Sample Cards",
             "description": "Small preview cards for the waiting UI."
           },
+          "plan_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Summary",
+            "description": "Confirmed build plan summary for the current build."
+          },
+          "chapter_progress": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPreviewChapterProgressResponse"
+            },
+            "type": "array",
+            "title": "Chapter Progress",
+            "description": "Per-chapter progress for the current build."
+          },
+          "recent_events": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPreviewRecentEventResponse"
+            },
+            "type": "array",
+            "title": "Recent Events",
+            "description": "Recent research / writing / publishing events for the current build."
+          },
           "latest_chapter_titles": {
             "items": {
               "type": "string"
@@ -8273,6 +9381,66 @@
             "title": "Draft Available",
             "description": "Whether a staging draft is currently available.",
             "default": false
+          },
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id",
+            "description": "Planner session id bound to the current build."
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id",
+            "description": "Confirmed build plan id bound to the current build."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "Digest mode for the current build."
+          },
+          "mode_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Reason",
+            "description": "Reason for the current digest mode."
+          },
+          "current_stage_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Description",
+            "description": "Friendly description of the current build stage."
           }
         },
         "type": "object",
@@ -8514,6 +9682,42 @@
           "vector_status": {
             "$ref": "#/components/schemas/SubjectVectorStatusResponse",
             "description": "Current subject-level vector capability status."
+          },
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id",
+            "description": "Planner session id bound to this build."
+          },
+          "confirmed_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Plan Id",
+            "description": "Confirmed build plan id bound to this build."
+          },
+          "digest_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Mode",
+            "description": "Digest mode frozen in the confirmed build plan."
           }
         },
         "type": "object",
@@ -9558,12 +10762,6 @@
             "minLength": 1,
             "title": "Name",
             "description": "展示名称。"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "学科描述。",
-            "default": ""
           }
         },
         "type": "object",
@@ -9572,7 +10770,6 @@
         ],
         "title": "SubjectCreateRequest",
         "example": {
-          "description": "用于手动联调的学科空间。",
           "name": "高等数学"
         }
       },
@@ -9737,11 +10934,6 @@
             "title": "Name",
             "description": "展示名称。"
           },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "学科描述。"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -9760,7 +10952,6 @@
           "id",
           "subject_id",
           "name",
-          "description",
           "created_at",
           "updated_at"
         ],
@@ -9934,12 +11125,6 @@
             "minLength": 1,
             "title": "Name",
             "description": "展示名称。"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "学科描述。",
-            "default": ""
           }
         },
         "type": "object",

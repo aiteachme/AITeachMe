@@ -14,11 +14,18 @@ from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, Sub
 
 DEFAULT_DIGEST_MODE = "systematic"
 DEFAULT_TONE = "encouraging"
-SPRINT_CHAPTER_TITLES = ("概念破冰", "公式武器库", "真题实战", "防坑指南")
 SYSTEMATIC_FIRST_TITLE = "全景导论"
 SYSTEMATIC_LAST_TITLE = "总结与延展"
 MEDIA_HINT_KEYS = ("images", "mermaid", "interactive")
+SPRINT_ROLE_LABELS = (
+    "核心直觉",
+    "公式与方法",
+    "题型拆解",
+    "易错复盘",
+)
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
+_SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 
 
 class PlannerChapterPlan(BaseModel):
@@ -48,7 +55,7 @@ class BuildPlannerDraft(BaseModel):
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
-        subject_profile=SubjectProfile(subject_name=subject, subject_slug=subject),
+        subject_profile=SubjectProfile(subject_name="", subject_slug=subject),
     )
 
 
@@ -124,8 +131,7 @@ def _normalize_media_hints(value: Any, fallback: dict[str, list[str]]) -> dict[s
     raw = _coerce_mapping(value)
     normalized: dict[str, list[str]] = {}
     for key in MEDIA_HINT_KEYS:
-        items = _dedupe_strings(raw.get(key) or [], limit=5)
-        normalized[key] = items or list(fallback.get(key, []))
+        normalized[key] = _dedupe_strings(raw.get(key) or [], limit=5) or list(fallback.get(key, []))
     return normalized
 
 
@@ -171,71 +177,138 @@ def _collect_topic_hints(shared_inputs: SharedInputs | None, *, limit: int = 8) 
     return _dedupe_strings(raw_topics, limit=limit)
 
 
+def _pick_topic(topics: list[str], index: int, fallback: str) -> str:
+    if index < len(topics):
+        return topics[index]
+    if topics:
+        return topics[0]
+    return fallback
+
+
+def _looks_like_subject_slug(value: Any) -> bool:
+    text = _clean_text(value)
+    return bool(text) and bool(_SUBJECT_SLUG_RE.fullmatch(text))
+
+
+def _resolve_subject_display_name(
+    subject: str,
+    *,
+    shared_inputs: SharedInputs | None,
+    user_goal: str = "",
+) -> str:
+    profile_name = _clean_text((shared_inputs.subject_profile.subject_name if shared_inputs else ""))
+    if profile_name and not _looks_like_subject_slug(profile_name):
+        return profile_name
+
+    if shared_inputs is not None:
+        for candidate in [
+            *shared_inputs.subject_profile.key_topics,
+            *shared_inputs.fast_hints.chapter_candidates,
+        ]:
+            cleaned = _clean_text(candidate)
+            if cleaned and not _looks_like_subject_slug(cleaned):
+                return cleaned
+
+    goal = _clean_text(user_goal)
+    if goal and not _looks_like_subject_slug(goal):
+        if len(goal) <= 20:
+            return goal
+        goal_head = re.split(r"[，。；：,.!?！？\n]", goal, maxsplit=1)[0].strip()
+        if goal_head and len(goal_head) <= 20:
+            return goal_head
+
+    normalized_subject = _clean_text(subject)
+    if normalized_subject and not _looks_like_subject_slug(normalized_subject):
+        return normalized_subject
+    return "当前主题"
+
+
+def _replace_subject_slug_text(value: Any, replacement: str) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    return _SUBJECT_SLUG_INLINE_RE.sub(replacement, text)
+
+
+def _build_sprint_title(topic: str, role: str) -> str:
+    if role == "核心直觉":
+        return f"{topic}：快速建立直觉"
+    if role == "公式与方法":
+        return f"{topic}：公式与方法"
+    if role == "题型拆解":
+        return f"{topic}：题型拆解"
+    if role == "易错复盘":
+        return f"{topic}：易错点与冲刺复盘"
+    return f"{topic}：重点梳理"
+
+
 def _build_sprint_chapter_specs(
     *,
     subject: str,
     shared_inputs: SharedInputs,
+    user_goal: str = "",
 ) -> list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]]:
     topics = _collect_topic_hints(shared_inputs, limit=4)
-    focus_topic = topics[0] if topics else (shared_inputs.subject_profile.subject_name or subject)
+    fallback_topic = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
+    chapter_topics = [_pick_topic(topics, index, fallback_topic) for index in range(4)]
     return [
         (
-            "概念破冰",
-            "先用生活化视角把最难啃的概念讲明白，让学生快速建立第一层直觉。",
+            _build_sprint_title(chapter_topics[0], SPRINT_ROLE_LABELS[0]),
+            f"围绕“{chapter_topics[0]}”快速建立生活化直觉、核心概念和知识抓手，让学生先看懂、再记住。",
             ["通俗类比", "核心概念", "知识关系"],
             [
-                f"{subject} {focus_topic} 通俗理解",
-                f"{subject} {focus_topic} 核心概念 梳理",
+                f"{subject} {chapter_topics[0]} 通俗理解",
+                f"{subject} {chapter_topics[0]} 核心概念 梳理",
             ],
-            "必须先用生活例子或考场场景引入，再解释核心概念之间的关系，并加入一个 Mermaid 速记图占位符。",
+            "先用生活化例子或考场场景引入，再解释核心概念之间的关系，并补一个 Mermaid 结构图占位符。",
             {
-                "images": [f"{focus_topic} 的直观示意图"],
-                "mermaid": [f"{focus_topic} 的概念速记图"],
+                "images": [f"{chapter_topics[0]} 的直觉示意图"],
+                "mermaid": [f"{chapter_topics[0]} 的概念关系图"],
                 "interactive": [],
             },
         ),
         (
-            "公式武器库",
-            "把最关键的公式、适用条件和大白话翻译整理成冲刺可背的工具箱。",
-            ["核心公式", "适用条件", "公式翻译"],
+            _build_sprint_title(chapter_topics[1], SPRINT_ROLE_LABELS[1]),
+            f"把“{chapter_topics[1]}”最关键的公式、方法、使用条件和一眼判断抓出来，形成冲刺工具箱。",
+            ["核心公式", "适用条件", "方法判断"],
             [
-                f"{subject} {focus_topic} 公式 总结",
-                f"{subject} {focus_topic} 常用公式 条件",
+                f"{subject} {chapter_topics[1]} 公式 总结",
+                f"{subject} {chapter_topics[1]} 方法 条件",
             ],
-            "每个公式后面都要补一句大白话解释，并强调什么时候能用、什么时候最容易用错。",
+            "每个公式或方法后面都要补一条大白话解释，并点明什么时候能用、什么时候最容易用错。",
             {
-                "images": [f"{focus_topic} 的公式使用示意图"],
-                "mermaid": [f"{focus_topic} 公式之间的关系图"],
+                "images": [f"{chapter_topics[1]} 的公式示意图"],
+                "mermaid": [f"{chapter_topics[1]} 的方法判断图"],
                 "interactive": [],
             },
         ),
         (
-            "真题实战",
-            "围绕高频题型拆步骤、讲思路、补变式，帮助学生形成考场操作感。",
-            ["典型题型", "步骤推导", "变式提醒"],
+            _build_sprint_title(chapter_topics[2], SPRINT_ROLE_LABELS[2]),
+            f"围绕“{chapter_topics[2]}”整理高频题型，拆开解题路径、关键转折和常见变式。",
+            ["典型题型", "步骤拆解", "变式提醒"],
             [
-                f"{subject} {focus_topic} 典型例题 解析",
-                f"{subject} {focus_topic} 真题 解法",
+                f"{subject} {chapter_topics[2]} 典型例题 解析",
+                f"{subject} {chapter_topics[2]} 真题 解法",
             ],
             "必须给出步骤化拆解，突出题型抓手、关键转折点和一题多变的提醒。",
             {
-                "images": [f"{focus_topic} 典型题型的步骤图"],
-                "mermaid": [f"{focus_topic} 解题流程图"],
+                "images": [f"{chapter_topics[2]} 的题型步骤图"],
+                "mermaid": [f"{chapter_topics[2]} 的解题流程图"],
                 "interactive": [],
             },
         ),
         (
-            "防坑指南",
-            "汇总最常见的误区、混淆点和考前检查清单，帮助学生最后兜底。",
+            _build_sprint_title(chapter_topics[3], SPRINT_ROLE_LABELS[3]),
+            f"把“{chapter_topics[3]}”里最容易混淆、最容易失分的点集中收尾，形成考前回看清单。",
             ["易错点", "混淆概念", "考前清单"],
             [
-                f"{subject} {focus_topic} 易错点 总结",
-                f"{subject} {focus_topic} 常见陷阱 对比",
+                f"{subject} {chapter_topics[3]} 易错点 总结",
+                f"{subject} {chapter_topics[3]} 常见陷阱 对比",
             ],
             "要明确列出最常见的错法、为什么会错，以及考前一分钟应该回看什么。",
             {
-                "images": [f"{focus_topic} 常见错误示意图"],
-                "mermaid": [f"{focus_topic} 易错点对照图"],
+                "images": [f"{chapter_topics[3]} 的常见错误示意图"],
+                "mermaid": [f"{chapter_topics[3]} 的易错点对照图"],
                 "interactive": [],
             },
         ),
@@ -254,7 +327,7 @@ def _build_systematic_middle_titles(topic_hints: list[str], *, target_count: int
         "知识回看与迁移练习",
     ]
     if topic_hints:
-        hinted_titles = [f"{topic}：核心定义与方法" for topic in topic_hints[:target_count]]
+        hinted_titles = [f"{topic}：定义与方法" for topic in topic_hints[:target_count]]
         if len(hinted_titles) >= target_count:
             return hinted_titles[:target_count]
         return hinted_titles + fallback_titles[: target_count - len(hinted_titles)]
@@ -265,6 +338,7 @@ def _build_systematic_chapter_specs(
     *,
     subject: str,
     shared_inputs: SharedInputs,
+    user_goal: str = "",
     target_count: int | None = None,
 ) -> list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]]:
     topic_hints = _collect_topic_hints(shared_inputs, limit=8)
@@ -273,7 +347,11 @@ def _build_systematic_chapter_specs(
     target_count = min(10, max(6, target_count))
     middle_titles = _build_systematic_middle_titles(topic_hints, target_count=target_count - 2)
     titles = [SYSTEMATIC_FIRST_TITLE, *middle_titles, SYSTEMATIC_LAST_TITLE]
-    overall_topic = "、".join(topic_hints[:4]) if topic_hints else (shared_inputs.subject_profile.subject_name or subject)
+    overall_topic = "、".join(topic_hints[:4]) if topic_hints else _resolve_subject_display_name(
+        subject,
+        shared_inputs=shared_inputs,
+        user_goal=user_goal,
+    )
     specs: list[tuple[str, str, list[str], list[str], str, dict[str, list[str]]]] = []
 
     for index, title in enumerate(titles, start=1):
@@ -320,7 +398,7 @@ def _build_systematic_chapter_specs(
         specs.append(
             (
                 title,
-                f"围绕“{focus_topic}”建立定义、公式、推理、应用之间的系统理解。",
+                f"围绕“{focus_topic}”建立定义、公式、推理和应用之间的系统理解。",
                 ["前置知识", "核心定义", "推理或证明", "应用示例"],
                 [
                     f"{subject} {focus_topic} 定义 公式",
@@ -361,16 +439,17 @@ def _build_sprint_fallback_plan(
     shared_inputs: SharedInputs,
 ) -> BuildPlannerDraft:
     settings = get_settings()
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
     chapter_plan = [
         _chapter_from_spec(index, spec)
         for index, spec in enumerate(
-            _build_sprint_chapter_specs(subject=subject, shared_inputs=shared_inputs),
+            _build_sprint_chapter_specs(subject=subject, shared_inputs=shared_inputs, user_goal=user_goal),
             start=1,
         )
     ]
     research_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     return BuildPlannerDraft(
-        subject=subject,
+        subject=display_subject,
         user_goal=user_goal,
         digest_mode="sprint",
         tone=tone,
@@ -389,8 +468,7 @@ def _build_sprint_fallback_plan(
             "target_length": "3000-5000字",
         },
         plan_summary=(
-            f"围绕 {subject} 生成一份冲刺型知识文档，固定为 4 章："
-            "概念破冰、公式武器库、真题实战、防坑指南。"
+            f"围绕 {display_subject} 生成一份冲刺型知识文档，固定 4 章，但每章标题、目标和检索词都紧贴当前资料主题与用户目标。"
         ),
     )
 
@@ -404,12 +482,14 @@ def _build_systematic_fallback_plan(
     target_count: int | None = None,
 ) -> BuildPlannerDraft:
     settings = get_settings()
+    display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
     chapter_plan = [
         _chapter_from_spec(index, spec)
         for index, spec in enumerate(
             _build_systematic_chapter_specs(
                 subject=subject,
                 shared_inputs=shared_inputs,
+                user_goal=user_goal,
                 target_count=target_count,
             ),
             start=1,
@@ -417,7 +497,7 @@ def _build_systematic_fallback_plan(
     ]
     research_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     return BuildPlannerDraft(
-        subject=subject,
+        subject=display_subject,
         user_goal=user_goal,
         digest_mode="systematic",
         tone=tone,
@@ -437,8 +517,7 @@ def _build_systematic_fallback_plan(
             "target_length": "10000-15000字",
         },
         plan_summary=(
-            f"围绕 {subject} 生成一份系统型知识文档，首章为全景导论，"
-            "末章为总结与延展，中间章节按主题逐层展开。"
+            f"围绕 {display_subject} 生成一份系统型知识文档，首章为全景导论，末章为总结与延展，中间章节按资料主题逐层展开。"
         ),
     )
 
@@ -481,22 +560,37 @@ def _merge_chapter(
     current: Any,
     previous: Any,
     fallback: PlannerChapterPlan,
+    subject_display_name: str,
     forced_title: str | None = None,
 ) -> PlannerChapterPlan:
     raw = _merge_raw_candidates(current, previous)
-    title = forced_title or (_clean_text(raw.get("title")) if _is_usable_cn_text(raw.get("title")) else fallback.title)
-    objective = _clean_text(raw.get("objective")) if _is_usable_cn_text(raw.get("objective"), min_length=6) else fallback.objective
+    raw_title = _replace_subject_slug_text(raw.get("title"), subject_display_name)
+    raw_objective = _replace_subject_slug_text(raw.get("objective"), subject_display_name)
+    raw_writing = _replace_subject_slug_text(raw.get("writing_instructions"), subject_display_name)
+    title = (
+        forced_title
+        or (_clean_text(raw_title) if _is_usable_cn_text(raw_title) else fallback.title)
+    )
+    objective = (
+        _clean_text(raw_objective)
+        if _is_usable_cn_text(raw_objective, min_length=6)
+        else fallback.objective
+    )
     writing_instructions = (
-        _clean_text(raw.get("writing_instructions"))
-        if _is_usable_cn_text(raw.get("writing_instructions"), min_length=8)
+        _clean_text(raw_writing)
+        if _is_usable_cn_text(raw_writing, min_length=8)
         else fallback.writing_instructions
     )
+    normalized_queries = [
+        _replace_subject_slug_text(item, subject_display_name)
+        for item in list(raw.get("search_queries") or [])
+    ]
     return PlannerChapterPlan(
         chapter_index=fallback.chapter_index,
         title=title,
         objective=objective,
         required_elements=_normalize_required_elements(raw.get("required_elements"), fallback.required_elements),
-        search_queries=_normalize_search_queries(raw.get("search_queries"), fallback.search_queries),
+        search_queries=_normalize_search_queries(normalized_queries, fallback.search_queries),
         writing_instructions=writing_instructions,
         media_hints=_normalize_media_hints(raw.get("media_hints"), fallback.media_hints),
     )
@@ -507,6 +601,7 @@ def _normalize_sprint_chapters(
     current_chapters: list[dict[str, Any]],
     previous_chapters: list[dict[str, Any]],
     fallback_plan: BuildPlannerDraft,
+    subject_display_name: str,
 ) -> list[PlannerChapterPlan]:
     normalized: list[PlannerChapterPlan] = []
     for index, fallback in enumerate(fallback_plan.chapter_plan):
@@ -517,7 +612,7 @@ def _normalize_sprint_chapters(
                 current=current,
                 previous=previous,
                 fallback=fallback,
-                forced_title=SPRINT_CHAPTER_TITLES[index],
+                subject_display_name=subject_display_name,
             )
         )
     return normalized
@@ -538,6 +633,7 @@ def _normalize_systematic_chapters(
     shared_inputs: SharedInputs,
     current_chapters: list[dict[str, Any]],
     previous_chapters: list[dict[str, Any]],
+    subject_display_name: str,
 ) -> list[PlannerChapterPlan]:
     raw_count = len(current_chapters) or len(previous_chapters) or 0
     target_count = min(10, max(6, raw_count or 6))
@@ -550,7 +646,6 @@ def _normalize_systematic_chapters(
         target_count=target_count,
     )
     normalized: list[PlannerChapterPlan] = []
-    last_index = target_count - 1
     middle_current = current_chapters[1:-1] if len(current_chapters) >= 2 else []
     middle_previous = previous_chapters[1:-1] if len(previous_chapters) >= 2 else []
 
@@ -559,21 +654,22 @@ def _normalize_systematic_chapters(
             current=current_chapters[0] if current_chapters else {},
             previous=previous_chapters[0] if previous_chapters else {},
             fallback=fallback_plan.chapter_plan[0],
+            subject_display_name=subject_display_name,
             forced_title=SYSTEMATIC_FIRST_TITLE,
         )
     )
 
-    for offset, fallback in enumerate(fallback_plan.chapter_plan[1:-1], start=0):
+    for offset, fallback in enumerate(fallback_plan.chapter_plan[1:-1]):
         current = middle_current[offset] if offset < len(middle_current) else {}
         previous = middle_previous[offset] if offset < len(middle_previous) else {}
         merged_raw = _merge_raw_candidates(current, previous)
-        forced_title = _normalize_middle_title(merged_raw.get("title"), fallback.title)
         normalized.append(
             _merge_chapter(
                 current=current,
                 previous=previous,
                 fallback=fallback,
-                forced_title=forced_title,
+                subject_display_name=subject_display_name,
+                forced_title=_normalize_middle_title(merged_raw.get("title"), fallback.title),
             )
         )
 
@@ -581,19 +677,17 @@ def _normalize_systematic_chapters(
         _merge_chapter(
             current=current_chapters[-1] if len(current_chapters) >= 2 else {},
             previous=previous_chapters[-1] if len(previous_chapters) >= 2 else {},
-            fallback=fallback_plan.chapter_plan[last_index],
+            fallback=fallback_plan.chapter_plan[-1],
+            subject_display_name=subject_display_name,
             forced_title=SYSTEMATIC_LAST_TITLE,
         )
     )
     return normalized
 
 
-def _normalize_plan_summary(value: Any, fallback: str, *, digest_mode: str) -> str:
-    text = _clean_text(value)
+def _normalize_plan_summary(value: Any, fallback: str, *, digest_mode: str, subject_display_name: str) -> str:
+    text = _replace_subject_slug_text(value, subject_display_name)
     if not _is_usable_cn_text(text, min_length=10):
-        return fallback
-    required_keywords = ("冲刺", "速记", "抓分", "真题") if digest_mode == "sprint" else ("系统", "全景", "逐层", "延展")
-    if not any(keyword in text for keyword in required_keywords):
         return fallback
     return text
 
@@ -609,6 +703,7 @@ def normalize_planner_draft(
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
     shared = shared_inputs or _minimal_shared_inputs(subject)
+    subject_display_name = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
     current_raw = _coerce_mapping(draft)
     previous_raw = _coerce_mapping(latest_plan)
     digest_mode = _normalize_digest_mode(
@@ -628,6 +723,7 @@ def normalize_planner_draft(
             current_chapters=_coerce_chapter_mappings(current_raw.get("chapter_plan")),
             previous_chapters=_coerce_chapter_mappings(previous_raw.get("chapter_plan")),
             fallback_plan=fallback_plan,
+            subject_display_name=subject_display_name,
         )
     else:
         fallback_plan = build_fallback_plan(
@@ -644,20 +740,21 @@ def normalize_planner_draft(
             shared_inputs=shared,
             current_chapters=_coerce_chapter_mappings(current_raw.get("chapter_plan")),
             previous_chapters=_coerce_chapter_mappings(previous_raw.get("chapter_plan")),
+            subject_display_name=subject_display_name,
         )
         fallback_plan = fallback_plan.model_copy(update={"chapter_plan": chapter_plan})
 
     chapter_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     research_queries = _dedupe_strings(
         [
-            *list(current_raw.get("research_queries") or []),
-            *list(previous_raw.get("research_queries") or []),
+            *[_replace_subject_slug_text(item, subject_display_name) for item in list(current_raw.get("research_queries") or [])],
+            *[_replace_subject_slug_text(item, subject_display_name) for item in list(previous_raw.get("research_queries") or [])],
             *chapter_queries,
         ],
         limit=24,
     )
     return BuildPlannerDraft(
-        subject=subject,
+        subject=subject_display_name,
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
@@ -676,6 +773,7 @@ def normalize_planner_draft(
             current_raw.get("plan_summary") or previous_raw.get("plan_summary"),
             fallback_plan.plan_summary,
             digest_mode=digest_mode,
+            subject_display_name=subject_display_name,
         ),
     )
 
@@ -704,6 +802,7 @@ def normalize_planner_payload(
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
+    "_resolve_subject_display_name",
     "build_fallback_plan",
     "normalize_planner_draft",
     "normalize_planner_payload",

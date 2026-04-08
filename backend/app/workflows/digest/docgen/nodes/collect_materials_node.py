@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app.utils.docgen_store import update_knowledge_build_status
+from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
@@ -24,6 +25,15 @@ def build_collect_materials_node(*, context: WorkflowContext):
             total_chunks=len(materials),
             current_chunk=len(materials),
             current_stage_description=f"已完成 {len(materials)} 章资料研究，开始生成章节讲义。",
+        )
+        append_knowledge_build_recent_event(
+            state["subject"],
+            requested_at=state["requested_at"],
+            event={
+                "stage": "research_collection_completed",
+                "summary": f"章节研究已收齐，共 {len(materials)} 章，开始进入教学化写作阶段。",
+                "created_at": utcnow(),
+            },
         )
         await publish_docgen_progress(
             context,

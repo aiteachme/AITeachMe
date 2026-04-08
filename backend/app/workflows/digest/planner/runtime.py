@@ -19,6 +19,8 @@ async def run_build_planner_workflow(
     tone: str,
     message_history: list[str],
     latest_plan: dict | None = None,
+    progress_callback: object | None = None,
+    token_callback: object | None = None,
 ) -> WorkflowResult[BuildPlannerState]:
     context = WorkflowContext(
         workflow_name="digest.planner",
@@ -41,6 +43,8 @@ async def run_build_planner_workflow(
             planner_session_id=planner_session_id,
             message_history=message_history,
             latest_plan=latest_plan,
+            progress_callback=progress_callback,
+            token_callback=token_callback,
         ),
         context=context,
     )

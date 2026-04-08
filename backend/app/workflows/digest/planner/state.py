@@ -19,6 +19,11 @@ class BuildPlannerState(TypedDict, total=False):
     shared_inputs: SharedInputs
     plan: dict[str, Any]
     plan_summary: str
+    workflow_elapsed_ms: int
+    node_timings_ms: dict[str, int]
+    node_events: list[dict[str, Any]]
+    progress_callback: Any
+    token_callback: Any
     error: str | None
 
 
