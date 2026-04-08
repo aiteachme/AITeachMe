@@ -40,9 +40,9 @@ async def _fake_llm_caller(*_args, **_kwargs) -> str:
 async def _fake_query_planner(*_args, **_kwargs) -> ResearchSubQueryPlan:
     return ResearchSubQueryPlan(
         queries=[
-            "偏导数 核心定义 直观理解",
-            "偏导数 几何意义 例题",
-            "偏导数 几何意义 例题",
+            "partial derivative intuitive definition",
+            "partial derivative geometric meaning example",
+            "partial derivative geometric meaning example",
         ]
     )
 
@@ -50,10 +50,10 @@ async def _fake_query_planner(*_args, **_kwargs) -> ResearchSubQueryPlan:
 async def _run_context_manager_fast_path() -> SkillResult:
     manager = ContextManager(SkillContext(subject="demo"))
     return await manager.run(
-        query="偏导数 几何意义",
+        query="partial derivative geometric meaning",
         documents=[
-            "# 偏导数\n\n偏导数描述多元函数沿某一坐标方向的变化率。",
-            "# 例题\n\n结合曲面截面图可以更直观地理解几何意义。",
+            "# Partial Derivative\n\nPartial derivatives describe the rate of change along one coordinate direction.",
+            "# Example\n\nA surface slice helps explain the geometric meaning more directly.",
         ],
         max_results=2,
     )
@@ -63,18 +63,18 @@ def test_context_manager_fast_path_keeps_small_documents() -> None:
     result = asyncio.run(_run_context_manager_fast_path())
 
     assert result.metadata["compression_mode"] == "fast_path"
-    assert "偏导数" in result.content
-    assert "例题" in result.content
+    assert "Partial Derivative" in result.content
+    assert "Example" in result.content
 
 
 def test_context_manager_embedding_filter_prefers_relevant_passages() -> None:
-    relevant_doc = "# 偏导数\n\n" + ("偏导数 梯度 方向导数 截面图 几何意义 " * 120)
-    irrelevant_doc = "# 概率论\n\n" + ("随机变量 概率分布 条件概率 贝叶斯公式 " * 120)
+    relevant_doc = "# Partial Derivative\n\n" + ("partial derivative gradient directional derivative surface slice " * 120)
+    irrelevant_doc = "# Probability\n\n" + ("random variable probability distribution bayes theorem " * 120)
 
     async def fake_embed_texts(texts: list[str]) -> list[list[float]]:
         embeddings: list[list[float]] = []
         for text in texts:
-            if "偏导数" in text or "梯度" in text or "几何意义" in text:
+            if "partial derivative" in text or "gradient" in text or "surface slice" in text:
                 embeddings.append([1.0, 0.0])
             else:
                 embeddings.append([0.0, 1.0])
@@ -84,31 +84,31 @@ def test_context_manager_embedding_filter_prefers_relevant_passages() -> None:
     with patch("app.shared.infra.skills.context_manager.aembed_texts", new=fake_embed_texts):
         result = asyncio.run(
             manager.run(
-                query="偏导数",
-                focus_terms=["梯度", "几何意义"],
+                query="partial derivative",
+                focus_terms=["gradient", "surface slice"],
                 documents=[relevant_doc, irrelevant_doc],
                 max_results=2,
             )
         )
 
     assert result.metadata["compression_mode"] == "embedding_filter"
-    assert "偏导数" in result.content
-    assert "概率分布" not in result.content
+    assert "partial derivative" in result.content
+    assert "probability distribution" not in result.content
 
 
 def test_generate_sub_queries_prefers_structured_result_and_dedupes() -> None:
     result = asyncio.run(
         generate_sub_queries(
-            "偏导数",
-            context=["几何意义", "典型例题"],
+            "partial derivative",
+            context=["geometric meaning", "worked examples"],
             max_queries=3,
             llm_caller=_fake_query_planner,
         )
     )
 
     assert result == [
-        "偏导数 核心定义 直观理解",
-        "偏导数 几何意义 例题",
+        "partial derivative intuitive definition",
+        "partial derivative geometric meaning example",
     ]
 
 
@@ -147,8 +147,8 @@ def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
 
 def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     local_results = [
-        SearchResult(url="local://chunk/1", title="偏导数定义", snippet="偏导数描述变化率", source="local_rag"),
-        SearchResult(url="local://chunk/2", title="几何意义", snippet="曲面截面图帮助理解", source="local_rag"),
+        SearchResult(url="local://chunk/1", title="Partial derivative definition", snippet="Rate of change on one axis", source="local_rag"),
+        SearchResult(url="local://chunk/2", title="Geometric meaning", snippet="Surface slice interpretation", source="local_rag"),
     ]
     local_retriever = FakeRetriever(name="local_rag", results=local_results)
     web_retriever = FakeRetriever(
@@ -170,7 +170,7 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     ):
         result = asyncio.run(
             skill.run(
-                queries=["偏导数 几何意义"],
+                queries=["partial derivative geometric meaning"],
                 local_rag_subject="demo",
             )
         )
@@ -178,30 +178,32 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     assert result.metadata["local_hits"] == 2
     assert result.metadata["web_hits"] == 0
     assert result.metadata["fallback_used"] is False
-    assert result.metadata["executed_queries"] == ["偏导数 几何意义"]
+    assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
+    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
+    assert result.metadata["retriever_stats"]["local_rag"]["result_count"] == 2
     assert web_retriever.calls == []
-    assert "偏导数" in result.content
+    assert "Partial derivative" in result.content
 
 
 def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     local_retriever = FakeRetriever(
         name="local_rag",
-        results=[SearchResult(url="local://chunk/1", title="偏导数定义", snippet="多元函数某方向的变化率", source="local_rag")],
+        results=[SearchResult(url="local://chunk/1", title="Definition", snippet="Rate of change along one axis", source="local_rag")],
     )
     web_retriever = FakeRetriever(
         name="duckduckgo",
         results=[
-            SearchResult(url="https://example.com/math", title="偏导数几何意义", snippet="截面图与切线斜率", source="duckduckgo"),
-            SearchResult(url="https://example.com/math", title="偏导数几何意义", snippet="重复结果", source="duckduckgo"),
-            SearchResult(url="https://example.com/proof", title="偏导数例题", snippet="例题与解析", source="duckduckgo"),
+            SearchResult(url="https://example.com/math", title="Geometric meaning", snippet="surface slice and tangent slope", source="duckduckgo"),
+            SearchResult(url="https://example.com/math", title="Geometric meaning", snippet="duplicate result", source="duckduckgo"),
+            SearchResult(url="https://example.com/proof", title="Worked example", snippet="example and solution", source="duckduckgo"),
         ],
     )
     scraper = FakeScraper(
         {
             "https://example.com/math": ScrapedPage(
                 url="https://example.com/math",
-                title="偏导数的几何意义",
-                content="曲面截面图可以帮助理解偏导数与切线斜率的关系。",
+                title="Geometric meaning of partial derivatives",
+                content="A surface slice helps explain the relation between tangent slope and partial derivative.",
                 success=True,
             ),
             "https://example.com/proof": ScrapedPage(
@@ -232,11 +234,11 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     ):
         result = asyncio.run(
             skill.run(
-                queries=["偏导数 几何意义"],
+                queries=["partial derivative geometric meaning"],
                 local_rag_subject="demo",
-                chapter_title="偏导数的几何意义",
-                objective="帮助学生理解截面图、切线斜率与偏导数之间的关系。",
-                required_elements=["几何意义", "截面图", "例题"],
+                chapter_title="Geometric meaning of partial derivatives",
+                objective="Help the learner connect surface slices, tangent slopes, and partial derivatives.",
+                required_elements=["geometric meaning", "surface slice", "worked example"],
                 digest_mode="systematic",
             )
         )
@@ -245,7 +247,11 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     assert result.metadata["fallback_used"] is True
     assert result.metadata["purify_used"] is True
     assert result.metadata["scraped_url_count"] == 1
-    assert result.metadata["executed_queries"] == ["偏导数 几何意义"]
+    assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
+    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
+    assert result.metadata["retriever_stats"]["duckduckgo"]["query_count"] >= 1
+    assert result.metadata["trusted_source_count"] >= 1
+    assert result.metadata["web_source_count"] >= 1
     assert sorted(result.sources) == ["https://example.com/math", "https://example.com/proof", "local://chunk/1"]
 
 
@@ -267,7 +273,10 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
                     "fallback_used": True,
                     "compression_mode": "embedding_filter",
                     "purify_used": True,
-                    "executed_queries": ["偏导数 几何意义"],
+                    "executed_queries": ["partial derivative geometric meaning"],
+                    "curated_source_count": 3,
+                    "trusted_source_count": 2,
+                    "retriever_stats": {"local_rag": {"query_count": 1, "result_count": 2}},
                 },
             )
 
@@ -282,10 +291,10 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
         "shared_inputs": None,
         "chapter_assignment": {
             "chapter_index": 1,
-            "title": "偏导数的几何意义",
-            "objective": "帮助学生看懂偏导数与截面图的关系。",
-            "required_elements": ["几何意义", "截面图"],
-            "search_queries": ["偏导数 几何意义"],
+            "title": "Geometric meaning of partial derivatives",
+            "objective": "Help the learner understand the link between surface slices and partial derivatives.",
+            "required_elements": ["geometric meaning", "surface slice"],
+            "search_queries": ["partial derivative geometric meaning"],
             "source_file_ids": [1],
         },
     }
@@ -294,10 +303,13 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
         result = asyncio.run(node(state))
 
     kwargs = captured["kwargs"]
-    assert kwargs["chapter_title"] == "偏导数的几何意义"
-    assert kwargs["objective"] == "帮助学生看懂偏导数与截面图的关系。"
-    assert kwargs["required_elements"] == ["几何意义", "截面图"]
+    assert kwargs["chapter_title"] == "Geometric meaning of partial derivatives"
+    assert kwargs["objective"] == "Help the learner understand the link between surface slices and partial derivatives."
+    assert kwargs["required_elements"] == ["geometric meaning", "surface slice"]
     assert kwargs["digest_mode"] == "sprint"
     assert result["chapter_materials"][0]["fallback_used"] is True
     assert result["chapter_materials"][0]["compression_mode"] == "embedding_filter"
+    assert result["chapter_materials"][0]["curated_source_count"] == 3
+    assert result["chapter_materials"][0]["trusted_source_count"] == 2
+    assert result["chapter_materials"][0]["retriever_stats"]["local_rag"]["query_count"] == 1
     assert result["llm_calls_total"] == 1

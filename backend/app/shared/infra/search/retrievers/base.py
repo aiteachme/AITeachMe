@@ -34,7 +34,13 @@ class BaseRetriever(ABC):
         ) as run:
             results = await self.search(query, max_results=max_results)
             if run is not None:
-                run.end(outputs={"result_count": len(results)})
+                run.end(
+                    outputs={
+                        "result_count": len(results),
+                        "unique_url_count": len({item.url for item in results if item.url}),
+                        "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
+                    }
+                )
             return results
 
 

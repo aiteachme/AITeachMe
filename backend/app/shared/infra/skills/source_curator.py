@@ -51,12 +51,22 @@ class SourceCurator(BaseSkill):
         filtered = self._filter_sources(sources)
         ranked = self._rank_sources(query=query, sources=filtered)
         curated = ranked[:max_results]
+        curated_domains = [_domain_from_url(item.url) for item in curated if not item.url.startswith("local://")]
+        domain_counts = Counter(domain for domain in curated_domains if domain)
+        trusted_source_count = sum(1 for item in curated if self._credibility_score(item.url, domain=_domain_from_url(item.url)) >= 0.8)
+        local_source_count = sum(1 for item in curated if item.url.startswith("local://"))
+        web_source_count = max(0, len(curated) - local_source_count)
         return SkillResult(
             metadata={
                 "curated_sources": [item.to_dict() for item in curated],
                 "candidate_count": len(sources),
                 "filtered_count": len(filtered),
                 "selected_count": len(curated),
+                "trusted_source_count": trusted_source_count,
+                "local_source_count": local_source_count,
+                "web_source_count": web_source_count,
+                "unique_domain_count": len(domain_counts),
+                "top_domains": dict(domain_counts.most_common(5)),
             },
             sources=[item.url for item in curated if item.url],
         )

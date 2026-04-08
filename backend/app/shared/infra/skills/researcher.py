@@ -96,10 +96,17 @@ class ResearchConductor(BaseSkill):
         local_hits = 0
         web_hits = 0
         fallback_queries: list[str] = []
+        retriever_stats: dict[str, dict[str, Any]] = {}
 
         for query in research_queries:
             local_results = self._filter_search_results(
                 await local_retriever.traced_search(query, max_results=query_limit)
+            )
+            self._record_retriever_call(
+                retriever_stats,
+                retriever_name=local_retriever.name,
+                query=query,
+                results=local_results,
             )
             local_hits += len(local_results)
             combined_results = list(local_results)
@@ -111,6 +118,12 @@ class ResearchConductor(BaseSkill):
                     for expanded_query in expanded_queries:
                         provider_results = self._filter_search_results(
                             await retriever.traced_search(expanded_query, max_results=query_limit)
+                        )
+                        self._record_retriever_call(
+                            retriever_stats,
+                            retriever_name=retriever.name,
+                            query=expanded_query,
+                            results=provider_results,
                         )
                         if provider_results:
                             web_hits += len(provider_results)
@@ -171,6 +184,12 @@ class ResearchConductor(BaseSkill):
                 "compression_mode": compression_result.metadata.get("compression_mode", "empty"),
                 "purify_used": purify_used,
                 "curated_source_count": curator_metadata.get("selected_count", len(curated_results)),
+                "trusted_source_count": curator_metadata.get("trusted_source_count", 0),
+                "local_source_count": curator_metadata.get("local_source_count", 0),
+                "web_source_count": curator_metadata.get("web_source_count", 0),
+                "unique_domain_count": curator_metadata.get("unique_domain_count", 0),
+                "top_domains": curator_metadata.get("top_domains", {}),
+                "retriever_stats": retriever_stats,
                 "source_details": [item.to_dict() for item in curated_results],
             },
         )
@@ -275,6 +294,29 @@ class ResearchConductor(BaseSkill):
             if max_results is not None and len(deduped) >= max_results:
                 break
         return deduped
+
+    def _record_retriever_call(
+        self,
+        stats_map: dict[str, dict[str, Any]],
+        *,
+        retriever_name: str,
+        query: str,
+        results: list[SearchResult],
+    ) -> None:
+        entry = stats_map.setdefault(
+            retriever_name,
+            {
+                "query_count": 0,
+                "result_count": 0,
+                "queries": [],
+            },
+        )
+        entry["query_count"] = int(entry.get("query_count", 0) or 0) + 1
+        entry["result_count"] = int(entry.get("result_count", 0) or 0) + len(results)
+        queries = list(entry.get("queries", []))
+        if query not in queries:
+            queries.append(query)
+        entry["queries"] = queries[:8]
 
 
 __all__ = ["ResearchConductor"]

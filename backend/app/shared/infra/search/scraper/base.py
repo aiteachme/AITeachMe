@@ -34,7 +34,14 @@ class BaseScraper(ABC):
         ) as run:
             result = await self.scrape(url)
             if run is not None:
-                run.end(outputs={"success": result.success, "content_length": len(result.content)})
+                run.end(
+                    outputs={
+                        "success": result.success,
+                        "content_length": len(result.content),
+                        "content_type": result.content_type,
+                        "error": result.error or "",
+                    }
+                )
             return result
 
 

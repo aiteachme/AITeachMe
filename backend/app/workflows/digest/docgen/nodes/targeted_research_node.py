@@ -68,6 +68,12 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "document_count": int(result.metadata.get("document_count", 0) or 0),
             "purify_used": bool(result.metadata.get("purify_used", False)),
             "curated_source_count": int(result.metadata.get("curated_source_count", 0)),
+            "trusted_source_count": int(result.metadata.get("trusted_source_count", 0) or 0),
+            "local_source_count": int(result.metadata.get("local_source_count", 0) or 0),
+            "web_source_count": int(result.metadata.get("web_source_count", 0) or 0),
+            "unique_domain_count": int(result.metadata.get("unique_domain_count", 0) or 0),
+            "top_domains": dict(result.metadata.get("top_domains", {}) or {}),
+            "retriever_stats": dict(result.metadata.get("retriever_stats", {}) or {}),
         }
         await publish_docgen_progress(
             context,
@@ -81,6 +87,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
                 "web_hits": chapter_material["web_hits"],
                 "fallback_used": chapter_material["fallback_used"],
                 "query_count": chapter_material["query_count"],
+                "curated_source_count": chapter_material["curated_source_count"],
             },
         )
         return {

@@ -221,11 +221,20 @@ def build_docgen_lane_summary(
     web_hit_count = sum(int(chapter.get("web_hits", 0) or 0) for chapter in chapter_materials)
     fallback_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False)))
     curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
+    trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in chapter_materials)
     planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
     executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
     scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
     research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
     purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
+    retriever_names = sorted(
+        {
+            str(retriever_name)
+            for chapter in chapter_materials
+            for retriever_name in dict(chapter.get("retriever_stats", {}) or {}).keys()
+            if str(retriever_name).strip()
+        }
+    )
     return {
         "status": resolved_status,
         "error_message": resolved_error,
@@ -254,6 +263,9 @@ def build_docgen_lane_summary(
         "web_hit_count": web_hit_count,
         "fallback_chapter_count": fallback_chapter_count,
         "curated_source_count": curated_source_count,
+        "trusted_source_count": trusted_source_count,
+        "retriever_names": retriever_names,
+        "retriever_count": len(retriever_names),
         "planned_query_count": planned_query_count,
         "executed_query_count": executed_query_count,
         "scraped_url_count": scraped_url_count,
@@ -593,10 +605,22 @@ def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[s
         outputs["local_hits"] = sum(int(item.get("local_hits", 0) or 0) for item in chapter_materials)
         outputs["web_hits"] = sum(int(item.get("web_hits", 0) or 0) for item in chapter_materials)
         outputs["fallback_used"] = any(bool(item.get("fallback_used", False)) for item in chapter_materials)
+        outputs["trusted_source_count"] = sum(int(item.get("trusted_source_count", 0) or 0) for item in chapter_materials)
         outputs["planned_query_count"] = sum(len(item.get("planned_queries", []) or []) for item in chapter_materials)
         outputs["executed_query_count"] = sum(len(item.get("executed_queries", []) or []) for item in chapter_materials)
         outputs["scraped_url_count"] = sum(int(item.get("scraped_url_count", 0) or 0) for item in chapter_materials)
         outputs["document_count"] = sum(int(item.get("document_count", 0) or 0) for item in chapter_materials)
+        retriever_names = sorted(
+            {
+                str(retriever_name)
+                for item in chapter_materials
+                for retriever_name in dict(item.get("retriever_stats", {}) or {}).keys()
+                if str(retriever_name).strip()
+            }
+        )
+        if retriever_names:
+            outputs["retriever_names"] = retriever_names
+            outputs["retriever_count"] = len(retriever_names)
         compression_modes = sorted(
             {
                 str(item.get("compression_mode") or "").strip()

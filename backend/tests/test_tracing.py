@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.shared.infra import llm as llm_module
 from app.shared.infra.config import get_settings
 from app.shared.infra.model_router import TaskType
-from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker
+from app.shared.infra.skills.base import BaseSkill, SkillContext, SkillResult
+from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trace_context
 from app.shared.infra import tracing as tracing_module
+from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
 
 
 @pytest.fixture(autouse=True)
@@ -122,3 +126,34 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     get_settings.cache_clear()
 
     assert tracing_module.langsmith_tracing_enabled() is True
+
+
+def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
+    class DummySkill(BaseSkill):
+        async def execute(self, **kwargs) -> SkillResult:
+            del kwargs
+            trace = get_llm_trace_context()
+            return SkillResult(
+                metadata={
+                    "trace_workflow": trace.workflow,
+                    "trace_lane": trace.lane,
+                    "trace_node": trace.node,
+                }
+            )
+
+    context = SkillContext(
+        subject="demo",
+        build_session_id="build-1",
+        workflow_context=WorkflowContext(
+            workflow_name="digest.docgen.test",
+            subject=LANGGRAPH_DEV_SUBJECT,
+            metadata={"lane": "docgen"},
+        ),
+        digest_mode="sprint",
+        chapter_index=2,
+    )
+    result = asyncio.run(DummySkill(context).run())
+
+    assert result.metadata["trace_workflow"] == "digest.docgen.test"
+    assert result.metadata["trace_lane"] == "docgen"
+    assert result.metadata["trace_node"] == "skill.DummySkill"

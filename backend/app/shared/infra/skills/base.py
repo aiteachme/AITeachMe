@@ -12,7 +12,7 @@ from typing import Any, get_type_hints
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tracing import langsmith_trace
+from app.shared.infra.tracing import langsmith_trace, llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 
 logger = structlog.get_logger(__name__)
@@ -83,6 +83,11 @@ class BaseSkill(ABC):
         workflow_name = workflow_context.workflow_name if workflow_context is not None else ""
         lane = str(workflow_context.metadata.get("lane", "")) if workflow_context is not None else ""
         node = f"skill.{self.name}"
+        extra_tags = [f"skill:{self.name}"]
+        if self.context.digest_mode:
+            extra_tags.append(f"mode:{self.context.digest_mode}")
+        if self.context.chapter_index is not None:
+            extra_tags.append(f"chapter:{self.context.chapter_index}")
         with langsmith_trace(
             name=node,
             run_type="chain",
@@ -93,17 +98,18 @@ class BaseSkill(ABC):
             lane=lane,
             node=node,
             extra_metadata=self.context.trace_metadata(skill_name=self.name),
-            extra_tags=[f"skill:{self.name}"],
+            extra_tags=extra_tags,
         ) as run:
-            result = await self.execute(**kwargs)
+            with llm_trace_scope(
+                subject=self.context.subject,
+                build_session_id=self.context.build_session_id,
+                workflow=workflow_name,
+                lane=lane,
+                node=node,
+            ):
+                result = await self.execute(**kwargs)
             if run is not None:
-                run.end(
-                    outputs={
-                        "content_length": len(result.content),
-                        "source_count": len(result.sources),
-                        "image_count": len(result.images),
-                    }
-                )
+                run.end(outputs=_skill_trace_outputs(result))
             return result
 
     @abstractmethod
@@ -194,6 +200,49 @@ def skill(name: str, description: str, *, tags: list[str] | None = None) -> Call
         return func
 
     return decorator
+
+
+def _skill_trace_outputs(result: SkillResult) -> dict[str, Any]:
+    outputs: dict[str, Any] = {
+        "content_length": len(result.content),
+        "source_count": len(result.sources),
+        "image_count": len(result.images),
+        "metadata_keys": sorted(result.metadata.keys()),
+    }
+    for field_name in (
+        "local_hits",
+        "web_hits",
+        "query_count",
+        "scraped_url_count",
+        "document_count",
+        "candidate_count",
+        "filtered_count",
+        "selected_count",
+        "curated_source_count",
+        "trusted_source_count",
+        "local_source_count",
+        "web_source_count",
+        "unique_domain_count",
+    ):
+        value = result.metadata.get(field_name)
+        if value not in (None, "", [], {}):
+            outputs[field_name] = value
+    for field_name in ("fallback_used", "purify_used"):
+        value = result.metadata.get(field_name)
+        if value is not None:
+            outputs[field_name] = bool(value)
+    compression_mode = str(result.metadata.get("compression_mode") or "").strip()
+    if compression_mode:
+        outputs["compression_mode"] = compression_mode
+    retriever_stats = result.metadata.get("retriever_stats")
+    if isinstance(retriever_stats, Mapping) and retriever_stats:
+        outputs["retriever_names"] = sorted(str(name) for name in retriever_stats.keys())
+        outputs["retriever_call_count"] = sum(
+            int((stats or {}).get("query_count", 0) or 0)
+            for stats in retriever_stats.values()
+            if isinstance(stats, Mapping)
+        )
+    return outputs
 
 
 __all__ = [

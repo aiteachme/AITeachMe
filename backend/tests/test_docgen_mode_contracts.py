@@ -111,6 +111,8 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "web_hits": 1,
                     "fallback_used": True,
                     "curated_source_count": 2,
+                    "trusted_source_count": 1,
+                    "retriever_stats": {"local_rag": {"query_count": 1}, "bing": {"query_count": 1}},
                     "research_ms": 120,
                 }
             ],
@@ -141,6 +143,8 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert summary["web_hit_count"] == 1
     assert summary["fallback_chapter_count"] == 1
     assert summary["curated_source_count"] == 2
+    assert summary["trusted_source_count"] == 1
+    assert summary["retriever_names"] == ["bing", "local_rag"]
     assert summary["placeholder_count"] == 1
     assert "cleanse_ms" not in summary
     assert "outline_ms" not in summary
