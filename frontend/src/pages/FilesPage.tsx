@@ -112,7 +112,10 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
   }
 
   try {
-    const raw = window.sessionStorage.getItem(storageKey(subjectId));
+    const key = storageKey(subjectId);
+    const raw =
+      window.localStorage.getItem(key) ??
+      window.sessionStorage.getItem(key);
     return raw ? (JSON.parse(raw) as PersistedPlannerState) : null;
   } catch {
     return null;
@@ -123,7 +126,10 @@ function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
   if (!subjectId || typeof window === "undefined") {
     return;
   }
-  window.sessionStorage.setItem(storageKey(subjectId), JSON.stringify(value));
+  const key = storageKey(subjectId);
+  const serialized = JSON.stringify(value);
+  window.localStorage.setItem(key, serialized);
+  window.sessionStorage.setItem(key, serialized);
 }
 
 function sameStringSet(left: string[], right: string[]) {
@@ -417,6 +423,7 @@ export function FilesPage() {
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在生成构建方案...");
+  const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
     queryKey: ["files", subjectId],
@@ -452,6 +459,7 @@ export function FilesPage() {
     setInputValue(persisted?.inputValue ?? navState?.initialPrompt ?? "");
     setPlannerNeedsRefresh(Boolean(persisted?.plannerNeedsRefresh));
     setHasAutoUploaded(false);
+    setIsRevisingPlan(false);
     loadedSubjectRef.current = subjectId;
   }, [subjectId, navState?.initialPrompt]);
 
@@ -512,9 +520,9 @@ export function FilesPage() {
 
   const knowledgeBuild = useKnowledgeBuildFlow({
     subjectId,
-    buildType: "all",
+    buildType: readyFileUids.length > 0 ? "all" : "docs",
     buildRequest: () => ({
-      file_uids: readyFileUids,
+      file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
       prompt: currentPlanRef.current?.user_goal ?? undefined,
       confirmed_plan_id: currentPlanRef.current?.confirmed_plan_id ?? undefined,
     }),
@@ -546,12 +554,43 @@ export function FilesPage() {
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
   const isBuilding = knowledgeBuild.isPending;
 
+  const focusComposer = useCallback(() => {
+    const focusInput = () => {
+      const target = inputRef.current;
+      if (!target) {
+        return;
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus();
+      target.style.height = "auto";
+      target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+      const cursor = target.value.length;
+      target.setSelectionRange(cursor, cursor);
+    };
+
+    if (typeof window === "undefined") {
+      focusInput();
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(focusInput);
+    });
+  }, []);
+
+  const handleContinueAdjust = useCallback(() => {
+    setIsRevisingPlan(true);
+    setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
+    focusComposer();
+  }, [focusComposer]);
+
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
       setPlannerSessionId(response.session_id);
       setCurrentPlan(response.plan);
       setPlannerNeedsRefresh(false);
+      setIsRevisingPlan(false);
       setMessages((prev) => [
         ...prev,
         createMessage(
@@ -574,6 +613,7 @@ export function FilesPage() {
     const shouldCreateSession = !plannerSessionId || !currentPlan || plannerNeedsRefresh;
     setMessages((prev) => [...prev, createMessage("user", text)]);
     setInputValue("");
+    setIsRevisingPlan(false);
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
@@ -656,26 +696,21 @@ export function FilesPage() {
     try {
       const response = await confirmPlannerMutation.mutateAsync(plannerSessionId);
       setCurrentPlan(response.plan);
-
-      if (readyFileUids.length === 0) {
-        setMessages((prev) => [
-          ...prev,
-          createMessage(
-            "system",
-            "方案已经确认，但当前还没有解析完成的资料，所以暂时不能正式构建。你可以继续上传资料，或者先完善规划目标。",
-          ),
-        ]);
-        return;
-      }
+      setIsRevisingPlan(false);
 
       setMessages((prev) => [
         ...prev,
-        createMessage("system", "方案已确认，正在切换到知识库页面并启动正式构建。"),
+        createMessage(
+          "system",
+          readyFileUids.length > 0
+            ? "方案已确认，正在切换到知识库页面并启动正式构建。"
+            : "方案已确认。当前没有已解析资料，本轮会直接进入联网研究模式来生成知识文档。",
+        ),
       ]);
 
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.plan_id,
-        file_uids: readyFileUids,
+        file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
         prompt: response.plan.user_goal,
       });
     } catch (error) {
@@ -716,7 +751,9 @@ export function FilesPage() {
   ]);
 
   const inputPlaceholder = currentPlan
-    ? "继续补充你想调整的章节、风格、重点或检索方向"
+    ? isRevisingPlan
+      ? "例如：压缩为 4 章，强化真题变式，并增加公式推导和图示"
+      : "继续补充你想调整的章节、风格、重点或检索方向"
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   return (
@@ -859,7 +896,7 @@ export function FilesPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => inputRef.current?.focus()}
+                              onClick={handleContinueAdjust}
                               className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600"
                             >
                               <RefreshCw className="h-3.5 w-3.5" />
@@ -946,6 +983,22 @@ export function FilesPage() {
 
         <div className="border-t border-zinc-200/60 bg-white/80 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
+            {isRevisingPlan ? (
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或检索方向。</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRevisingPlan(false)}
+                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-100"
+                >
+                  取消
+                </button>
+              </div>
+            ) : null}
+
             <div className="flex items-end gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
               <textarea
                 ref={inputRef}
@@ -1051,6 +1104,10 @@ export function FilesPage() {
                 </div>
               ) : null}
             </div>
+
+            <p className="mt-2 text-center text-[11px] text-zinc-400">
+              不上传资料也可以先构建知识文档；如果你上传了资料，系统会优先参考本地内容，再补充外部检索。
+            </p>
 
             <p className="mt-1 text-center text-[11px] text-zinc-400">
               先生成方案，再确认构建。点击开始构建后会立刻跳到知识库页面查看真实进度。

@@ -6469,6 +6469,30 @@
               }
             ],
             "title": "Created At"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Domains",
+            "description": "Top domains touched by this event, when applicable."
+          },
+          "source_titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Titles",
+            "description": "Short source titles surfaced for this event."
+          },
+          "source_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Urls",
+            "description": "Representative URLs surfaced for this event."
           }
         },
         "type": "object",
