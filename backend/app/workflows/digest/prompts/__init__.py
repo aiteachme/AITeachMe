@@ -3,6 +3,7 @@
 from .docgen_prompts import (
     build_docgen_mermaid_prompt,
     build_docgen_research_purify_messages,
+    build_docgen_sub_query_messages,
     build_docgen_writer_messages,
 )
 from .kg_prompts import (
@@ -32,6 +33,7 @@ __all__ = [
     "USER_PROMPT_KG_THEME_TREE",
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
+    "build_docgen_sub_query_messages",
     "build_docgen_writer_messages",
     "build_planner_prompt",
 ]

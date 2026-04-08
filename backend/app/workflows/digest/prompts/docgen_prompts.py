@@ -163,8 +163,54 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 """.strip()
 
 
+def build_docgen_sub_query_messages(
+    *,
+    query: str,
+    context_summary: list[dict[str, str]],
+    max_queries: int,
+    domain: str,
+    fallback_queries: list[str],
+) -> list[dict[str, str]]:
+    context_lines = "\n".join(
+        f"- {item['text']}"
+        for item in context_summary
+        if str(item.get("text") or "").strip()
+    ) or "- 当前没有额外上下文"
+    fallback_lines = "\n".join(f"- {item}" for item in fallback_queries if str(item).strip()) or "- 无"
+    user_prompt = f"""
+请围绕下面这个教学章节主题，拆解出更适合后续检索和抓取的研究子查询。
+
+主题：{query}
+领域：{domain}
+最多输出：{max_queries} 条
+
+已有线索：
+{context_lines}
+
+输出要求：
+1. 只输出适合中文搜索引擎或知识库检索的查询语句。
+2. 查询要彼此互补，不要只是同义改写。
+3. 优先覆盖：核心定义、推导/公式、应用例题、易错点/常见误区。
+4. 如果主题更偏系统课，可适当补“前置知识”“适用条件”“概念关系”。
+5. 如果主题更偏冲刺课，可适当补“真题”“高频题型”“防坑提醒”。
+6. 所有查询必须使用中文。
+7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
+
+可参考但不要机械照抄的兜底方向：
+{fallback_lines}
+""".strip()
+    return [
+        {
+            "role": "system",
+            "content": "你是 AITeachMe 的研究规划助手，负责把单个教学主题拆成可检索、可抓取、可用于知识整理的中文子查询。",
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+
+
 __all__ = [
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
+    "build_docgen_sub_query_messages",
     "build_docgen_writer_messages",
 ]

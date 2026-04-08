@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable
 from typing import Any
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.model_router import TaskType
-from app.shared.infra.search.factory import get_retrievers_for_subject, get_scraper_for_url
+from app.shared.infra.search.factory import get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills.base import BaseSkill, SkillResult
@@ -18,7 +17,9 @@ from app.shared.infra.tools.builtin.query_processing import (
     build_research_focus_text,
     dedupe_queries,
     enrich_queries_for_education,
+    generate_sub_queries,
 )
+from app.shared.infra.tools.builtin.web_scraping import scrape_urls
 from app.workflows.digest.prompts import build_docgen_research_purify_messages
 
 _LOW_VALUE_SOURCE_MARKERS = (
@@ -59,6 +60,29 @@ class ResearchConductor(BaseSkill):
             required_elements=required_elements,
             digest_mode=digest_mode,
         )
+        planned_queries = await generate_sub_queries(
+            focus_text or base_queries[0],
+            context=[
+                *base_queries,
+                {"title": chapter_title, "objective": objective},
+                *[
+                    {"name": item}
+                    for item in list(required_elements or [])
+                    if str(item).strip()
+                ],
+            ],
+            max_queries=max(1, int(settings.docgen_max_research_queries)),
+            domain=search_domain,
+            llm_caller=self.context.resolve_llm_caller(),
+            extra_metadata=self.context.trace_metadata(
+                skill_name=self.name,
+                research_stage="plan_sub_queries",
+            ),
+        )
+        research_queries = dedupe_queries(
+            [*base_queries, *planned_queries],
+            limit=max(1, int(settings.docgen_max_research_queries)),
+        )
         local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
         other_retrievers = [
             retriever
@@ -73,7 +97,7 @@ class ResearchConductor(BaseSkill):
         web_hits = 0
         fallback_queries: list[str] = []
 
-        for query in base_queries:
+        for query in research_queries:
             local_results = self._filter_search_results(
                 await local_retriever.traced_search(query, max_results=query_limit)
             )
@@ -100,7 +124,7 @@ class ResearchConductor(BaseSkill):
 
         merged_results = self._dedupe_results(
             self._filter_search_results(all_results),
-            max_results=max(query_limit * max(1, len(base_queries)), query_limit),
+            max_results=max(query_limit * max(1, len(research_queries)), query_limit),
         )
         curated_results, curator_metadata = await curator.curate_sources(
             query=focus_text or base_queries[0],
@@ -136,10 +160,12 @@ class ResearchConductor(BaseSkill):
             metadata={
                 "local_hits": local_hits,
                 "web_hits": web_hits,
-                "query_count": len(base_queries),
+                "query_count": len(research_queries),
+                "base_queries": base_queries,
+                "planned_queries": planned_queries,
                 "fallback_queries": list(dict.fromkeys(fallback_queries)),
                 "fallback_used": bool(fallback_queries),
-                "executed_queries": base_queries,
+                "executed_queries": research_queries,
                 "scraped_url_count": scraped_url_count,
                 "document_count": len(documents),
                 "compression_mode": compression_result.metadata.get("compression_mode", "empty"),
@@ -165,15 +191,12 @@ class ResearchConductor(BaseSkill):
             seen_urls.add(item.url)
             external_results.append(item)
 
-        pages = await asyncio.gather(
-            *[get_scraper_for_url(item.url).traced_scrape(item.url) for item in external_results],
-            return_exceptions=True,
-        )
+        pages = await scrape_urls([item.url for item in external_results])
+        page_map = {page.url: page for page in pages}
 
         scraped_url_count = 0
-        for item, page in zip(external_results, pages, strict=False):
-            if isinstance(page, Exception):
-                page = ScrapedPage(url=item.url, success=False, error=str(page))
+        for item in external_results:
+            page = page_map.get(item.url) or ScrapedPage(url=item.url, success=False, error="missing scraped page")
             if page.success and page.content.strip():
                 scraped_url_count += 1
                 title = page.title.strip() or item.title.strip() or item.url.strip()

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 from datetime import datetime
@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills import ContextManager, ResearchConductor, SkillContext, SkillResult
+from app.shared.infra.tools.builtin.query_processing import ResearchSubQueryPlan, generate_sub_queries
+from app.shared.infra.tools.builtin.web_scraping import scrape_urls
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import build_targeted_research_node
 
@@ -35,6 +37,16 @@ async def _fake_llm_caller(*_args, **_kwargs) -> str:
     return "Purified research notes"
 
 
+async def _fake_query_planner(*_args, **_kwargs) -> ResearchSubQueryPlan:
+    return ResearchSubQueryPlan(
+        queries=[
+            "偏导数 核心定义 直观理解",
+            "偏导数 几何意义 例题",
+            "偏导数 几何意义 例题",
+        ]
+    )
+
+
 async def _run_context_manager_fast_path() -> SkillResult:
     manager = ContextManager(SkillContext(subject="demo"))
     return await manager.run(
@@ -47,14 +59,12 @@ async def _run_context_manager_fast_path() -> SkillResult:
     )
 
 
-
 def test_context_manager_fast_path_keeps_small_documents() -> None:
     result = asyncio.run(_run_context_manager_fast_path())
 
     assert result.metadata["compression_mode"] == "fast_path"
     assert "偏导数" in result.content
     assert "例题" in result.content
-
 
 
 def test_context_manager_embedding_filter_prefers_relevant_passages() -> None:
@@ -86,6 +96,54 @@ def test_context_manager_embedding_filter_prefers_relevant_passages() -> None:
     assert "概率分布" not in result.content
 
 
+def test_generate_sub_queries_prefers_structured_result_and_dedupes() -> None:
+    result = asyncio.run(
+        generate_sub_queries(
+            "偏导数",
+            context=["几何意义", "典型例题"],
+            max_queries=3,
+            llm_caller=_fake_query_planner,
+        )
+    )
+
+    assert result == [
+        "偏导数 核心定义 直观理解",
+        "偏导数 几何意义 例题",
+    ]
+
+
+def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
+    html_scraper = FakeScraper(
+        {
+            "https://example.com/a": ScrapedPage(url="https://example.com/a", title="A", content="Alpha", success=True),
+            "https://example.com/b": ScrapedPage(url="https://example.com/b", title="B", content="Beta", success=True),
+        }
+    )
+
+    with patch(
+        "app.shared.infra.tools.builtin.web_scraping.get_scraper_for_url",
+        new=lambda _url: html_scraper,
+    ):
+        pages = asyncio.run(
+            scrape_urls(
+                [
+                    "https://example.com/a",
+                    "https://example.com/a",
+                    "https://example.com/b",
+                ],
+                max_workers=2,
+            )
+        )
+
+    assert [page.url for page in pages] == [
+        "https://example.com/a",
+        "https://example.com/b",
+    ]
+    assert html_scraper.calls == [
+        "https://example.com/a",
+        "https://example.com/b",
+    ]
+
 
 def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     local_results = [
@@ -99,9 +157,16 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     )
 
     skill = ResearchConductor(SkillContext(subject="demo"))
+
+    async def no_sub_queries(*_args, **_kwargs) -> list[str]:
+        return []
+
     with patch("app.shared.infra.skills.researcher.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
         "app.shared.infra.skills.researcher.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
+    ), patch(
+        "app.shared.infra.skills.researcher.generate_sub_queries",
+        new=no_sub_queries,
     ):
         result = asyncio.run(
             skill.run(
@@ -113,9 +178,9 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     assert result.metadata["local_hits"] == 2
     assert result.metadata["web_hits"] == 0
     assert result.metadata["fallback_used"] is False
+    assert result.metadata["executed_queries"] == ["偏导数 几何意义"]
     assert web_retriever.calls == []
     assert "偏导数" in result.content
-
 
 
 def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
@@ -148,12 +213,22 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     )
     skill = ResearchConductor(SkillContext(subject="demo", llm_caller=_fake_llm_caller))
 
+    async def no_sub_queries(*_args, **_kwargs) -> list[str]:
+        return []
+
+    async def fake_scrape_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+        del max_workers
+        return [scraper.pages[url] for url in urls]
+
     with patch("app.shared.infra.skills.researcher.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
         "app.shared.infra.skills.researcher.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.shared.infra.skills.researcher.get_scraper_for_url",
-        new=lambda _url: scraper,
+        "app.shared.infra.skills.researcher.generate_sub_queries",
+        new=no_sub_queries,
+    ), patch(
+        "app.shared.infra.skills.researcher.scrape_urls",
+        new=fake_scrape_urls,
     ):
         result = asyncio.run(
             skill.run(
@@ -170,9 +245,8 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     assert result.metadata["fallback_used"] is True
     assert result.metadata["purify_used"] is True
     assert result.metadata["scraped_url_count"] == 1
-    assert scraper.calls == ["https://example.com/math", "https://example.com/proof"]
+    assert result.metadata["executed_queries"] == ["偏导数 几何意义"]
     assert sorted(result.sources) == ["https://example.com/math", "https://example.com/proof", "local://chunk/1"]
-
 
 
 def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
