@@ -19,9 +19,13 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  Globe,
+  Search,
+  Files,
+  Clock3,
 } from "lucide-react";
 import { useLocation, useParams } from "react-router-dom";
-import type { SubjectVectorStatusResponse } from "../api/generated/model";
+import type { FileRecord, SubjectVectorStatusResponse } from "../api/generated/model";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
@@ -222,6 +226,10 @@ interface DocGenGetResponse {
   vector_status?: SubjectVectorStatusResponse | null;
 }
 
+interface FilesListResponse {
+  items: FileRecord[];
+}
+
 type DocViewMode = "live" | "draft";
 
 const ACTIVE_DOC_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
@@ -283,6 +291,134 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatFileSize(value?: number | null): string | null {
+  if (!value || value <= 0) {
+    return null;
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function extractFirstMarkdownHeading(markdown: string): string | null {
+  const lines = markdown.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^#\s+(.+?)\s*$/);
+    if (match?.[1]?.trim()) {
+      return match[1].trim();
+    }
+  }
+  return null;
+}
+
+function extractFirstMarkdownParagraph(markdown: string): string | null {
+  const lines = markdown.split(/\r?\n/);
+  let buffer = "";
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (buffer) {
+        break;
+      }
+      continue;
+    }
+    if (line.startsWith("#") || line.startsWith(">") || line.startsWith("```")) {
+      if (buffer) {
+        break;
+      }
+      continue;
+    }
+    buffer = buffer ? `${buffer} ${line}` : line;
+    if (buffer.length >= 120) {
+      break;
+    }
+  }
+  return buffer.trim() || null;
+}
+
+function normalizeDomainLabel(input: string): string {
+  try {
+    const hostname = new URL(input).hostname.replace(/^www\./, "");
+    return hostname || input;
+  } catch {
+    return input.replace(/^https?:\/\//, "").split("/")[0] || input;
+  }
+}
+
+function resolveFileProcessingLabel(file: FileRecord): string {
+  if (file.error_message?.trim()) {
+    return "处理失败";
+  }
+  if (file.digest_current_step?.trim()) {
+    return `已进入 ${file.digest_current_step.trim()}`;
+  }
+  if (file.markdown_ready) {
+    return file.asset_ready ? "已完成解析与素材抽取" : "已完成正文解析";
+  }
+  if (file.ingest_status?.trim()) {
+    switch (file.ingest_status.trim()) {
+      case "classifying":
+        return "正在识别文档类型";
+      case "fast_parsing":
+      case "parsing":
+        return "正在提取正文与结构";
+      case "enhancing":
+        return "正在做公式、图片和结构增强";
+      case "ready_for_digest":
+        return "已准备进入 digest";
+      default:
+        return `处理中：${file.ingest_status.trim()}`;
+    }
+  }
+  if (file.status === "processing") {
+    return "上传完成，正在处理";
+  }
+  return "等待处理";
+}
+
+function resolveFileProgressScore(file: FileRecord): number {
+  if (file.error_message?.trim()) {
+    return 100;
+  }
+  if (file.digest_current_step?.trim()) {
+    return 100;
+  }
+  if (file.markdown_ready && file.asset_ready) {
+    return 92;
+  }
+  if (file.markdown_ready) {
+    return 74;
+  }
+  switch ((file.ingest_status ?? "").trim()) {
+    case "classifying":
+      return 24;
+    case "fast_parsing":
+    case "parsing":
+      return 46;
+    case "enhancing":
+      return 66;
+    case "ready_for_digest":
+      return 84;
+    default:
+      return file.status === "processing" ? 18 : 8;
+  }
+}
+
+async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
+  const response = await apiClient<ApiResponse<FilesListResponse>>({
+    method: "GET",
+    url: `/api/v1/subjects/${subjectId}/files`,
+  });
+  return response.data?.items ?? [];
 }
 
 function resolveDocBuildStatusText(
@@ -607,6 +743,333 @@ function formatBuildEventTime(value?: string | null): string | null {
   });
 }
 
+type ProcessStepState = "done" | "active" | "pending";
+
+interface BuildProcessStep {
+  key: string;
+  title: string;
+  description: string;
+  state: ProcessStepState;
+}
+
+function stepStateClasses(state: ProcessStepState): string {
+  switch (state) {
+    case "done":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "active":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+    default:
+      return "border-slate-200 bg-white text-slate-400";
+  }
+}
+
+function chapterStatusClasses(status: string | undefined): string {
+  switch ((status ?? "").trim()) {
+    case "completed":
+      return "bg-emerald-500";
+    case "drafted":
+    case "drafting":
+      return "bg-sky-500";
+    case "researched":
+    case "researching":
+      return "bg-amber-500";
+    default:
+      return "bg-slate-300";
+  }
+}
+
+function buildProcessSteps(
+  buildPreview: KnowledgeBuildPreview | null | undefined,
+  sourceFiles: FileRecord[],
+  progress: number,
+): BuildProcessStep[] {
+  const chapterProgress = buildPreview?.chapter_progress ?? [];
+  const recentEvents = buildPreview?.recent_events ?? [];
+  const hasMaterialReady = sourceFiles.some(
+    (file) => Boolean(file.markdown_ready) || Boolean(file.asset_ready) || Boolean(file.digest_current_step?.trim()),
+  );
+  const hasResearchSignals =
+    chapterProgress.some(
+      (chapter) =>
+        (chapter.query_count ?? 0) > 0 ||
+        (chapter.web_hits ?? 0) > 0 ||
+        (chapter.local_hits ?? 0) > 0 ||
+        chapter.status === "researching" ||
+        chapter.status === "researched",
+    ) || recentEvents.some((event) => (event.source_urls?.length ?? 0) > 0 || (event.domains?.length ?? 0) > 0);
+  const hasDraftSignals =
+    Boolean(buildPreview?.draft_excerpt?.trim()) ||
+    chapterProgress.some((chapter) => ["drafting", "drafted", "completed"].includes(chapter.status)) ||
+    (buildPreview?.latest_chapter_titles?.length ?? 0) > 0;
+
+  return [
+    {
+      key: "scope",
+      title: "确认范围",
+      description: buildPreview?.digest_mode === "systematic" ? "系统课大纲已确认" : "速成课目标已确认",
+      state: "done",
+    },
+    {
+      key: "materials",
+      title: "处理材料",
+      description: sourceFiles.length > 0 ? `已识别 ${sourceFiles.length} 份材料` : "等待材料或内部知识库",
+      state: hasMaterialReady ? "done" : progress >= 10 ? "active" : "pending",
+    },
+    {
+      key: "research",
+      title: "检索资料",
+      description: hasResearchSignals ? "正在扩展检索与比对来源" : "尚未进入外部检索",
+      state: hasResearchSignals ? (hasDraftSignals ? "done" : "active") : "pending",
+    },
+    {
+      key: "drafting",
+      title: "写章节",
+      description: hasDraftSignals ? "目录与正文正在成形" : "准备开始写作",
+      state: hasDraftSignals ? (progress >= 90 ? "done" : "active") : "pending",
+    },
+    {
+      key: "publish",
+      title: "发布文档",
+      description: progress >= 96 ? "正在合并并发布正式版" : "等待全文稳定后发布",
+      state: progress >= 100 ? "done" : progress >= 96 ? "active" : "pending",
+    },
+  ];
+}
+
+function BuildProcessRail({
+  buildPreview,
+  sourceFiles,
+  progress,
+}: {
+  buildPreview?: KnowledgeBuildPreview | null;
+  sourceFiles: FileRecord[];
+  progress: number;
+}) {
+  const steps = buildProcessSteps(buildPreview, sourceFiles, progress);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Build Flow</p>
+          <h3 className="mt-1 text-sm font-medium text-slate-900">本轮知识文档正在逐步成形</h3>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-500">
+          {Math.round(progress)}%
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
+        {steps.map((step, index) => (
+          <div key={step.key} className="relative">
+            {index < steps.length - 1 ? (
+              <div className="absolute left-[calc(100%-0.5rem)] top-4 hidden h-px w-[calc(100%+0.5rem)] bg-slate-200 md:block" />
+            ) : null}
+            <div className={cn("relative rounded-2xl border px-3 py-3", stepStateClasses(step.state))}>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "h-2.5 w-2.5 rounded-full",
+                    step.state === "done"
+                      ? "bg-emerald-500"
+                      : step.state === "active"
+                        ? "bg-sky-500"
+                        : "bg-slate-300",
+                  )}
+                />
+                <p className="text-sm font-medium">{step.title}</p>
+              </div>
+              <p className="mt-2 text-[12px] leading-5 opacity-90">{step.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BuildResearchRadar({
+  buildPreview,
+}: {
+  buildPreview?: KnowledgeBuildPreview | null;
+}) {
+  const recentEvents = buildPreview?.recent_events ?? [];
+  const sourceMap = new Map<
+    string,
+    { domain: string; title: string; url: string; count: number }
+  >();
+
+  for (const event of recentEvents) {
+    const urls = event.source_urls ?? [];
+    urls.forEach((url, index) => {
+      const title = event.source_titles?.[index]?.trim() || normalizeDomainLabel(url);
+      const key = `${url}__${title}`;
+      const existing = sourceMap.get(key);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      sourceMap.set(key, {
+        domain: normalizeDomainLabel(url),
+        title,
+        url,
+        count: 1,
+      });
+    });
+  }
+
+  const items = Array.from(sourceMap.values()).slice(0, 10);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Research Radar</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-900">本轮检索命中的网站</h3>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+          <Search className="h-3.5 w-3.5" />
+          {items.length} 个来源
+        </div>
+      </div>
+      {items.length > 0 ? (
+        <div className="mt-4 space-y-2.5">
+          {items.map((item) => (
+            <a
+              key={`${item.url}-${item.title}`}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 transition hover:border-slate-300 hover:bg-white"
+            >
+              <div className="mt-0.5 rounded-lg bg-white p-1.5 text-slate-500 shadow-sm">
+                <Globe className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                    {item.domain}
+                  </span>
+                  {item.count > 1 ? (
+                    <span className="text-[10px] text-slate-400">x{item.count}</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-900">{item.title}</p>
+                <p className="mt-1 truncate text-[11px] text-slate-500">{item.url}</p>
+              </div>
+              <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-400 transition group-hover:text-slate-700" />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm leading-6 text-slate-500">
+          还没有可展示的外部来源，系统会在检索到站点后实时追加到这里。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuildFilePipeline({
+  files,
+  isFetching,
+}: {
+  files: FileRecord[];
+  isFetching: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Material Pipeline</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-900">上传材料处理过程</h3>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+          {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Files className="h-3.5 w-3.5" />}
+          {files.length} 份材料
+        </div>
+      </div>
+
+      {files.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          {files.map((file) => {
+            const score = resolveFileProgressScore(file);
+            const statusLabel = resolveFileProcessingLabel(file);
+            const updatedLabel = formatDocTimestamp(file.latest_updated_at);
+            const sizeLabel = formatFileSize(file.file_size_bytes);
+            return (
+              <article key={file.uid} className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                        {file.filetype || "file"}
+                      </span>
+                      {file.parser_used ? (
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">
+                          {file.parser_used}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 truncate text-sm font-medium text-slate-900">{file.filename}</p>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-600">{statusLabel}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-900">{Math.max(8, Math.round(score))}%</p>
+                    {updatedLabel ? (
+                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-500">
+                        <Clock3 className="h-3 w-3" />
+                        {updatedLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#94a3b8_0%,#38bdf8_45%,#22c55e_100%)] transition-[width] duration-500"
+                    style={{ width: `${Math.min(Math.max(score, 0), 100)}%` }}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                  {sizeLabel ? <span className="rounded-full bg-white px-2.5 py-1">{sizeLabel}</span> : null}
+                  {typeof file.estimated_pages === "number" && file.estimated_pages > 0 ? (
+                    <span className="rounded-full bg-white px-2.5 py-1">{file.estimated_pages} 页</span>
+                  ) : null}
+                  {typeof file.image_count === "number" && file.image_count > 0 ? (
+                    <span className="rounded-full bg-white px-2.5 py-1">{file.image_count} 张图</span>
+                  ) : null}
+                  {file.markdown_ready ? (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">正文已转 markdown</span>
+                  ) : null}
+                  {file.asset_ready ? (
+                    <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-cyan-700">图片已抽取</span>
+                  ) : null}
+                  {file.digest_current_step?.trim() ? (
+                    <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">
+                      {file.digest_current_step.trim()}
+                    </span>
+                  ) : null}
+                  {file.error_message?.trim() ? (
+                    <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">
+                      {file.error_message.trim()}
+                    </span>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm leading-6 text-slate-500">
+          本轮没有上传材料，系统会直接基于主题范围与外部来源组织知识文档。
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BuildLiveActivity({
   buildPreview,
   compact = false,
@@ -624,114 +1087,113 @@ function BuildLiveActivity({
   }
 
   return (
-    <div className="mt-5 space-y-4">
+    <div className={cn("mt-5", compact ? "space-y-3" : "grid gap-4 xl:grid-cols-[0.92fr_1.08fr]")}>
       {visibleChapters.length > 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">章节进度</p>
-            <span className="text-[11px] text-slate-400">{chapterProgress.length} 章</span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Chapter Status</p>
+              <h3 className="mt-1 text-sm font-medium text-slate-900">章节推进情况</h3>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
+              {chapterProgress.length} 章
+            </span>
           </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="mt-4 space-y-2.5">
             {visibleChapters.map((chapter) => (
               <article
                 key={`${chapter.chapter_index}-${chapter.title}`}
-                className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+                className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">
-                    {chapter.chapter_index}. {chapter.title}
-                  </p>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">
-                    {buildChapterStatusLabel(chapter.status)}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                  {(chapter.query_count ?? 0) > 0 ? (
-                    <span className="rounded-full bg-white px-2 py-0.5">queries {chapter.query_count}</span>
-                  ) : null}
-                  {(chapter.source_count ?? 0) > 0 ? (
-                    <span className="rounded-full bg-white px-2 py-0.5">sources {chapter.source_count}</span>
-                  ) : null}
-                  {(chapter.local_hits ?? 0) > 0 ? (
-                    <span className="rounded-full bg-white px-2 py-0.5">local {chapter.local_hits}</span>
-                  ) : null}
-                  {(chapter.web_hits ?? 0) > 0 ? (
-                    <span className="rounded-full bg-white px-2 py-0.5">web {chapter.web_hits}</span>
-                  ) : null}
-                  {(chapter.word_count ?? 0) > 0 ? (
-                    <span className="rounded-full bg-white px-2 py-0.5">{chapter.word_count} 字</span>
-                  ) : null}
-                  {chapter.fallback_used ? (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">已走外部补检</span>
-                  ) : null}
+                <div className="flex items-start gap-3">
+                  <span className={cn("mt-1.5 h-2.5 w-2.5 rounded-full", chapterStatusClasses(chapter.status))} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-medium text-slate-900">
+                        {chapter.chapter_index}. {chapter.title}
+                      </p>
+                      <span className="shrink-0 text-[11px] text-slate-500">
+                        {buildChapterStatusLabel(chapter.status)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                      {(chapter.query_count ?? 0) > 0 ? (
+                        <span className="rounded-full bg-white px-2 py-0.5">检索 {chapter.query_count}</span>
+                      ) : null}
+                      {(chapter.source_count ?? 0) > 0 ? (
+                        <span className="rounded-full bg-white px-2 py-0.5">来源 {chapter.source_count}</span>
+                      ) : null}
+                      {(chapter.word_count ?? 0) > 0 ? (
+                        <span className="rounded-full bg-white px-2 py-0.5">{chapter.word_count} 字</span>
+                      ) : null}
+                      {chapter.fallback_used ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">补检已启用</span>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               </article>
             ))}
           </div>
-        </div>
+        </section>
       ) : null}
 
       {visibleEvents.length > 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">实时过程</p>
-            <span className="text-[11px] text-slate-400">持续刷新</span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Live Timeline</p>
+              <h3 className="mt-1 text-sm font-medium text-slate-900">系统正在做的事情</h3>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
+              持续刷新
+            </span>
           </div>
-          <div className="mt-3 space-y-3">
+          <div className="mt-4 space-y-3">
             {visibleEvents.map((event, index) => {
               const eventTime = formatBuildEventTime(event.created_at);
               return (
-                <article
-                  key={`${event.stage}-${event.chapter_index ?? "na"}-${index}`}
-                  className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-                          {event.stage}
-                        </span>
-                        {event.title ? <span className="text-sm font-medium text-slate-900">{event.title}</span> : null}
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">{event.summary}</p>
-                    </div>
-                    {eventTime ? <span className="shrink-0 text-[11px] text-slate-400">{eventTime}</span> : null}
-                  </div>
-
-                  {event.source_urls?.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {event.source_urls.map((url, sourceIndex) => (
-                        <a
-                          key={`${url}-${sourceIndex}`}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-slate-300 hover:text-slate-900"
-                        >
-                          <span className="max-w-[220px] truncate">
-                            {event.source_titles?.[sourceIndex] || url}
+                <article key={`${event.stage}-${event.chapter_index ?? "na"}-${index}`} className="relative pl-6">
+                  <div className="absolute left-[7px] top-0 h-full w-px bg-slate-200" />
+                  <span className="absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-sky-500 shadow-sm" />
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                            {event.stage}
                           </span>
-                          <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
-                      ))}
+                          {event.title ? <span className="text-sm font-medium text-slate-900">{event.title}</span> : null}
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{event.summary}</p>
+                      </div>
+                      {eventTime ? <span className="shrink-0 text-[11px] text-slate-400">{eventTime}</span> : null}
                     </div>
-                  ) : event.domains?.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {event.domains.map((domain) => (
-                        <span
-                          key={domain}
-                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600"
-                        >
-                          {domain}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
+
+                    {event.source_urls?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {event.source_urls.slice(0, compact ? 2 : 4).map((url, sourceIndex) => (
+                          <a
+                            key={`${url}-${sourceIndex}`}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                          >
+                            <span className="max-w-[220px] truncate">
+                              {event.source_titles?.[sourceIndex] || normalizeDomainLabel(url)}
+                            </span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </article>
               );
             })}
           </div>
-        </div>
+        </section>
       ) : null}
     </div>
   );
@@ -743,16 +1205,30 @@ function DocGeneratingState({
   statusText,
   buildPreview,
   buildMetrics,
+  sourceFiles,
+  sourceFilesFetching,
 }: {
   isFetching: boolean;
   progress: number;
   statusText: string;
   buildPreview?: KnowledgeBuildPreview | null;
   buildMetrics?: KnowledgeBuildMetrics | null;
+  sourceFiles: FileRecord[];
+  sourceFilesFetching: boolean;
 }) {
   const sampleCards = buildPreview?.sample_cards ?? [];
   const sampleNodes = buildPreview?.sample_nodes ?? [];
   const chapterTitles = buildPreview?.latest_chapter_titles ?? [];
+  const chapterProgress = buildPreview?.chapter_progress ?? [];
+  const currentChapter =
+    chapterProgress.find((chapter) => chapter.status === "drafting" || chapter.status === "researching") ??
+    chapterProgress.find((chapter) => chapter.status === "drafted" || chapter.status === "researched") ??
+    chapterProgress[0] ??
+    null;
+  const processTitle =
+    chapterTitles[0] ??
+    currentChapter?.title ??
+    "知识文档";
   const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
   const chunkLabel =
     (buildPreview?.total_chunks ?? 0) > 0
@@ -771,87 +1247,162 @@ function DocGeneratingState({
       : null;
 
   return (
-    <section className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white via-stone-50 to-stone-100 p-7 md:p-9 shadow-[0_30px_70px_-45px_rgba(28,25,23,0.2)]">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-700">
-          {isFetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">知识文档构建中</h2>
-          <p className="text-sm text-slate-600">等待期间会持续显示已提取结构和草稿片段，减少空白等待。</p>
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <DocBuildProgress
-          progress={progress}
-          statusText={buildPreview?.current_stage_description?.trim() || statusText}
-          isFetching={isFetching}
-        />
-      </div>
-
-      {chunkLabel || nodeLabel || llmLabel || avgLatency ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
-          {chunkLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{chunkLabel}</span> : null}
-          {nodeLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{nodeLabel}</span> : null}
-          {llmLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmLabel}</span> : null}
-          {avgLatency ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {avgLatency}</span> : null}
-        </div>
-      ) : null}
-
-      <BuildLiveActivity buildPreview={buildPreview} />
-
-      {sampleCards.length > 0 ? (
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {sampleCards.slice(0, 4).map((card) => (
-            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{card.title}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-                  {card.card_type}
-                </span>
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="min-w-0 space-y-5">
+        <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_-48px_rgba(15,23,42,0.35)]">
+          <div className="border-b border-slate-200 bg-slate-50/75 px-6 py-5 md:px-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+                {isFetching ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Sparkles className="h-4.5 w-4.5" />}
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
-            </article>
-          ))}
-        </div>
-      ) : sampleNodes.length > 0 ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Discovered Nodes</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {sampleNodes.slice(0, 6).map((node) => (
-              <span
-                key={`${node.node_type}-${node.name}`}
-                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
-              >
-                {node.node_type}: {node.name}
-              </span>
-            ))}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Document Draft</p>
+                <h2 className="mt-1 text-sm font-medium text-slate-900">知识文档已经打开，内容正在持续补全</h2>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1">构建中</span>
+              {chunkLabel ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1">{chunkLabel}</span> : null}
+              {nodeLabel ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1">{nodeLabel}</span> : null}
+              {llmLabel ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1">{llmLabel}</span> : null}
+              {avgLatency ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1">平均 {avgLatency}</span> : null}
+            </div>
+
+            <div className="mt-5">
+              <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-slate-900">{processTitle}</h1>
+              <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
+                {buildPreview?.plan_summary?.trim() || buildPreview?.current_stage_description?.trim() || statusText}
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <DocBuildProgress
+                progress={progress}
+                statusText={buildPreview?.current_stage_description?.trim() || statusText}
+                isFetching={isFetching}
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
 
-      {chapterTitles.length > 0 || draftExcerpt ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
-          {chapterTitles.length > 0 ? (
-            <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {chapterTitles.slice(0, 4).map((title) => (
-                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
-                    {title}
-                  </span>
-                ))}
+          <div className="px-6 py-6 md:px-8">
+            <BuildProcessRail buildPreview={buildPreview} sourceFiles={sourceFiles} progress={progress} />
+
+            {chapterProgress.length > 0 ? (
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Draft Outline</p>
+                <div className="mt-3 space-y-2.5">
+                  {chapterProgress.slice(0, 8).map((chapter) => (
+                    <div
+                      key={`${chapter.chapter_index}-${chapter.title}`}
+                      className={cn(
+                        "rounded-2xl border px-4 py-3",
+                        currentChapter?.chapter_index === chapter.chapter_index
+                          ? "border-sky-200 bg-sky-50/70"
+                          : "border-slate-200 bg-slate-50/70",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={cn("mt-1.5 h-2.5 w-2.5 rounded-full", chapterStatusClasses(chapter.status))} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-medium text-slate-900">
+                              {chapter.chapter_index}. {chapter.title}
+                            </p>
+                            <span className="shrink-0 text-[11px] text-slate-500">
+                              {buildChapterStatusLabel(chapter.status)}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                            {(chapter.query_count ?? 0) > 0 ? (
+                              <span className="rounded-full bg-white px-2 py-0.5">检索 {chapter.query_count}</span>
+                            ) : null}
+                            {(chapter.source_count ?? 0) > 0 ? (
+                              <span className="rounded-full bg-white px-2 py-0.5">来源 {chapter.source_count}</span>
+                            ) : null}
+                            {(chapter.word_count ?? 0) > 0 ? (
+                              <span className="rounded-full bg-white px-2 py-0.5">{chapter.word_count} 字</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </>
-          ) : null}
-          {draftExcerpt ? (
-            <pre className="mt-3 overflow-hidden whitespace-pre-wrap rounded-lg bg-slate-950 px-3 py-3 text-[11px] leading-5 text-slate-100">
-              {draftExcerpt}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
+            ) : null}
+
+            <div className="mt-6 rounded-[24px] border border-slate-200 bg-white px-5 py-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Live Draft</p>
+                  <h3 className="mt-1 text-sm font-medium text-slate-900">
+                    {currentChapter ? `当前正在补全：${currentChapter.title}` : "正文草稿正在生成"}
+                  </h3>
+                </div>
+                {currentChapter ? (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
+                    {buildChapterStatusLabel(currentChapter.status)}
+                  </span>
+                ) : null}
+              </div>
+
+              {draftExcerpt ? (
+                <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4">
+                  <CommentMarkdown content={draftExcerpt} />
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div className="h-4 w-4/5 rounded-full bg-slate-100" />
+                  <div className="h-4 w-full rounded-full bg-slate-100" />
+                  <div className="h-4 w-[92%] rounded-full bg-slate-100" />
+                  <div className="h-4 w-3/4 rounded-full bg-slate-100" />
+                </div>
+              )}
+            </div>
+
+            {sampleCards.length > 0 ? (
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Key Findings</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {sampleCards.slice(0, 4).map((card) => (
+                    <article key={`${card.card_type}-${card.title}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900">{card.title}</p>
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                          {card.card_type}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{card.summary}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : sampleNodes.length > 0 ? (
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Discovered Nodes</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {sampleNodes.slice(0, 8).map((node) => (
+                    <span
+                      key={`${node.node_type}-${node.name}`}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+                    >
+                      {node.node_type}: {node.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <BuildLiveActivity buildPreview={buildPreview} />
+      </div>
+
+      <aside className="space-y-4">
+        <BuildResearchRadar buildPreview={buildPreview} />
+        <BuildFilePipeline files={sourceFiles} isFetching={sourceFilesFetching} />
+      </aside>
     </section>
   );
 }
@@ -1281,6 +1832,52 @@ export function KnowledgeDocsPage() {
         : "知识文档";
   const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
   const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
+  const renderedDocTitle =
+    extractFirstMarkdownHeading(renderedMarkdown) ??
+    renderedChapterHighlights[0] ??
+    renderedSubjectLabel;
+  const renderedDocSummary =
+    extractFirstMarkdownParagraph(renderedMarkdown) ??
+    buildPreview?.plan_summary?.trim() ??
+    buildStatusText;
+  const sourceFilesQuery = useQuery({
+    queryKey: ["knowledge-build-source-files", subjectId],
+    enabled: Boolean(subjectId) && (isBuildActive || isWaitingForRequestedBuild),
+    queryFn: () => fetchSourceFiles(subjectId as string),
+    refetchInterval: ({ state }) => {
+      if (!subjectId || (!isBuildActive && !isWaitingForRequestedBuild)) {
+        return false;
+      }
+      return state.dataUpdatedAt ? 2500 : 1200;
+    },
+  });
+  const sourceFiles = useMemo(() => {
+    const items = sourceFilesQuery.data ?? [];
+    if (items.length === 0) {
+      return [];
+    }
+
+    const selectedFileUids = new Set(docMarkdownQuery.data?.source_file_uids ?? []);
+    const filtered =
+      selectedFileUids.size > 0
+        ? items.filter((file) => selectedFileUids.has(file.uid))
+        : items.filter(
+            (file) =>
+              Boolean(file.markdown_ready) ||
+              Boolean(file.asset_ready) ||
+              Boolean(file.digest_current_step?.trim()) ||
+              file.status === "processing" ||
+              Boolean(file.error_message?.trim()),
+          );
+
+    return [...filtered]
+      .sort((a, b) => {
+        const aTime = parseIsoTimestamp(a.latest_updated_at) ?? 0;
+        const bTime = parseIsoTimestamp(b.latest_updated_at) ?? 0;
+        return bTime - aTime;
+      })
+      .slice(0, 6);
+  }, [docMarkdownQuery.data?.source_file_uids, sourceFilesQuery.data]);
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&
@@ -3150,7 +3747,15 @@ export function KnowledgeDocsPage() {
                       }}
                     />
                   ) : showDocGeneratingState ? (
-                    <DocGeneratingState isFetching={docMarkdownQuery.isFetching} progress={buildProgress} statusText={buildStatusText} buildPreview={buildPreview} buildMetrics={buildMetrics} />
+                    <DocGeneratingState
+                      isFetching={docMarkdownQuery.isFetching}
+                      progress={buildProgress}
+                      statusText={buildStatusText}
+                      buildPreview={buildPreview}
+                      buildMetrics={buildMetrics}
+                      sourceFiles={sourceFiles}
+                      sourceFilesFetching={sourceFilesQuery.isFetching}
+                    />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
                       message={buildStatusText}
@@ -3176,71 +3781,42 @@ export function KnowledgeDocsPage() {
                           onViewModeChange={setDocViewMode}
                         />
                       )}
-                      <div className="overflow-hidden rounded-[32px] border border-stone-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#fffdf8_38%,#ffffff_100%)] shadow-[0_40px_100px_-76px_rgba(41,37,36,0.58)]">
-                        <div className="border-b border-stone-200/80 bg-[radial-gradient(circle_at_top_left,#e0f2fe_0%,#ffffff_42%,#fef3c7_100%)] px-6 py-6 md:px-8">
-                          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-                            <div className="space-y-4">
-                              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600">
-                                <span className="rounded-full border border-stone-200 bg-white/90 px-3 py-1">
-                                  {effectiveDocViewMode === "draft" ? "构建草稿" : "正式讲义"}
-                                </span>
-                                <span className="rounded-full border border-sky-200 bg-sky-50/90 px-3 py-1 text-sky-700">
-                                  {renderedDigestModeLabel}
-                                </span>
-                                {renderedDocUpdatedLabel ? (
-                                  <span className="rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1 text-amber-700">
-                                    更新于 {renderedDocUpdatedLabel}
-                                  </span>
-                                ) : null}
-                              </div>
+                      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_-48px_rgba(15,23,42,0.35)]">
+                        <div className="border-b border-slate-200 bg-slate-50/75 px-6 py-5 md:px-8">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+                              {effectiveDocViewMode === "draft" ? "构建草稿" : "正式文档"}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
+                              {renderedDigestModeLabel}
+                            </span>
+                            {renderedDocUpdatedLabel ? (
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+                                更新于 {renderedDocUpdatedLabel}
+                              </span>
+                            ) : null}
+                            {buildMetrics?.llm_total_calls ? (
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+                                {buildMetrics.llm_total_calls} 次模型调用
+                              </span>
+                            ) : null}
+                          </div>
 
-                              <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">
-                                  Knowledge Canvas
-                                </p>
-                                <h1 className="mt-2 font-serif text-[2.2rem] font-semibold tracking-[-0.03em] text-stone-900">
-                                  {renderedSubjectLabel}
-                                </h1>
-                                <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-600">
-                                  {buildPreview?.plan_summary?.trim() || buildStatusText}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[22rem]">
-                              <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                                  章节亮点
-                                </p>
-                                <p className="mt-2 text-2xl font-semibold text-stone-900">
-                                  {renderedChapterHighlights.length || "—"}
-                                </p>
-                                <p className="mt-1 text-xs leading-5 text-stone-500">
-                                  当前页面已提炼的重点章节与知识组织线索
-                                </p>
-                              </div>
-                              <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                                  模型调度
-                                </p>
-                                <p className="mt-2 text-2xl font-semibold text-stone-900">
-                                  {buildMetrics?.llm_total_calls ?? "—"}
-                                </p>
-                                <p className="mt-1 text-xs leading-5 text-stone-500">
-                                  {buildMetrics?.llm_avg_latency_ms
-                                    ? `平均延迟 ${Math.round(buildMetrics.llm_avg_latency_ms)} ms`
-                                    : "构建完成后可在这里看到本轮 LLM 调度强度"}
-                                </p>
-                              </div>
-                            </div>
+                          <div className="mt-4">
+                            <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-slate-900">
+                              {renderedDocTitle}
+                            </h1>
+                            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
+                              {renderedDocSummary}
+                            </p>
                           </div>
 
                           {renderedChapterHighlights.length > 0 ? (
-                            <div className="mt-5 flex flex-wrap gap-2">
+                            <div className="mt-4 flex flex-wrap gap-2">
                               {renderedChapterHighlights.map((title) => (
                                 <span
                                   key={title}
-                                  className="rounded-full border border-stone-200 bg-white/90 px-3 py-1.5 text-xs text-stone-600 shadow-sm"
+                                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
                                 >
                                   {title}
                                 </span>
