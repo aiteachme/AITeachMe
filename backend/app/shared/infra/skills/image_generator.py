@@ -13,9 +13,17 @@ _PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 class ImageGenerator(BaseSkill):
     async def execute(self, *, description: str) -> SkillResult:
         settings = get_settings()
-        if not settings.enable_image_generation:
-            return SkillResult(content=f"> [!NOTE]\n> 建议配图：{description}")
-        return SkillResult(content=f"> [!NOTE]\n> 建议配图：{description}")
+        model_name = (settings.image_generation_model or "").strip()
+        if not settings.image_generation_enabled:
+            return SkillResult(
+                content=f"> [!NOTE]\n> 未配置文生图模型，暂以配图建议占位：{description}",
+                metadata={"capability_enabled": False},
+            )
+        # 当前流水线仍以“配图占位 + 提示词”方式落地，后续再接真实图片生成接口。
+        return SkillResult(
+            content=f"> [!NOTE]\n> 建议配图：{description}\n>\n> 已配置文生图模型：`{model_name or 'legacy-boolean-enabled'}`",
+            metadata={"capability_enabled": True, "model": model_name or None},
+        )
 
     async def process_placeholders(self, markdown: str) -> str:
         output = markdown

@@ -37,13 +37,13 @@ from app.schemas.knowledge import (
     BuildPlannerSessionResponse,
     BuildPlannerTurnResponse,
 )
-from app.shared.infra.config import get_settings
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
 )
+from app.teaching.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.planner.models import normalize_planner_payload
@@ -231,13 +231,13 @@ async def create_build_planner_session_service(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
-    settings = get_settings()
+    planner_defaults = get_teaching_runtime_config().planner
     planner_files = _select_planner_files(session, subject=subject.slug, file_uids=payload.file_uids)
     file_ids = [require_id(item.id, "RawFile.id") for item in planner_files]
     file_uids = [require_uid(item.uid, "RawFile.uid") for item in planner_files]
     session_id = uuid.uuid4().hex
-    tone = (payload.tone or settings.planner_default_tone).strip() or settings.planner_default_tone
-    digest_mode = (payload.digest_mode or settings.planner_default_digest_mode).strip() or settings.planner_default_digest_mode
+    tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
+    digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     user_goal = payload.user_goal.strip()
 
     record = create_planner_session(
@@ -570,4 +570,3 @@ __all__ = [
     "get_latest_planner_session_service",
     "mark_confirmed_build_plan_status",
 ]
-

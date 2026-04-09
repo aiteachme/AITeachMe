@@ -1,0 +1,148 @@
+# 非敏感运行默认值放这里。
+# 密钥、Token、数据库和对象存储配置放 `.env`。
+
+models:
+  # 主模型。
+  primary: qwen-plus-latest
+  # 轻量模型。留空回退主模型。
+  light: ""
+  # 抽取模型。留空回退主模型。
+  extract: ""
+  # OCR 模型。留空回退主模型。
+  ocr: ""
+  # Embedding 模型。
+  embedding: text-embedding-v3
+  # 文生图模型。留空禁用。
+  image_generation: ""
+  # Mermaid 模型。留空禁用。
+  mermaid_generation: qwen-plus-latest
+
+files:
+  # 单文件上传上限（MB）。
+  max_upload_size_mb: 50
+
+chat:
+  # 对话历史保留轮数。
+  history_turns: 10
+
+planner:
+  # 默认课程模式：sprint / systematic。
+  default_digest_mode: systematic
+  # 默认写作语气。
+  default_tone: encouraging
+  # 是否允许补外部检索。
+  allow_external_search: true
+
+  sprint:
+    # 最少章节数。
+    min_chapters: 3
+    # 最多章节数。
+    max_chapters: 6
+    # 目标字数范围。
+    target_length: 3000-5000字
+
+  systematic:
+    # 最少章节数。
+    min_chapters: 5
+    # 最多章节数。
+    max_chapters: 12
+    # 目标字数范围。
+    target_length: 10000-15000字
+
+docgen:
+  # 章节并发数。
+  max_parallel_chapters: 20
+  # IO 并发度。
+  io_parallelism: 20
+  # 每章最多保留的研究查询数。
+  max_research_queries: 3
+
+ingest:
+  # 文档解析并发数。
+  parse_concurrency: 5
+  # 单文件解析超时（秒）。
+  parser_timeout_s: 90
+
+rag:
+  # 本地检索返回的 Top-K。
+  top_k: 5
+  # 相似度阈值。
+  similarity_threshold: 0.3
+  # 重排模型。留空禁用。
+  rerank_model: ""
+  # 重排后保留数量。
+  rerank_top_k: 3
+
+search:
+  # 单条外部查询最多返回多少条结果。
+  max_results_per_query: 5
+  # 外部抓取超时（秒）。
+  scrape_timeout_s: 20
+
+web_search:
+  # 预设检索 profile。
+  retriever_profile: ""
+  # 显式检索器列表，逗号分隔。
+  retrievers: ""
+
+local_rag:
+  # 是否优先保留本地结果。
+  priority: true
+  # 本地结果少于该值时可补外部检索。
+  min_results: 2
+
+runtime:
+  # LLM 全局并发上限。
+  llm_concurrency_limit: 20
+  # 默认 token 预算。
+  default_token_budget: 4000
+
+embedding:
+  # Embedding 批大小。
+  batch_size: 10
+  # 两批之间的等待秒数。
+  batch_delay_s: 0.1
+
+digest:
+  # 统计面板展示的耗时 Top-K。
+  timing_top_k: 5
+  # 是否输出 token 摘要。
+  token_summary_enabled: true
+  # 章节先验等待上限（毫秒）。
+  chapter_priors_timeout_ms: 0
+
+knowledge_graph:
+  # 实体关系抽取并发数。
+  extract_max_parallelism: 20
+
+observability:
+  # 是否记录 LLM 调用摘要。
+  llm_observability_enabled: true
+  # 是否启用统一 tracing。
+  tracing_enabled: true
+  # 内存中保留的调用记录数。
+  llm_observability_max_records: 5000
+
+langsmith:
+  # 是否把 trace 发送到 LangSmith。
+  tracing: true
+  # LangSmith 项目名。
+  project: AITeachMe
+  # 是否记录输入文本。null 表示 local=true / cloud=false。
+  capture_inputs: true
+  # 是否记录输出文本。null 表示 local=true / cloud=false。
+  capture_outputs: true
+  # 单段文本保留上限。
+  max_text_chars: 2000
+
+safety:
+  # 是否启用内容安全护栏。
+  guardrails_enabled: true
+
+cache:
+  # 是否启用 LLM 结果缓存。
+  enabled: false
+  # 缓存 TTL（秒）。
+  ttl_s: 3600
+  # 最大缓存条目数。
+  max_entries: 1000

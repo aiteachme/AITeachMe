@@ -73,7 +73,7 @@ workflows / api
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
-| `config.py` | 全局运行配置入口 | 读取模型、存储、LangSmith、搜索、并发等配置 |
+| `config.py` | 全局运行配置入口 | 统一读取环境变量、`.env`、repo-root `config.yaml` |
 | `database.py` | DB Session/连接辅助 | 给 repository / service / workflow 统一使用 |
 | `logger.py` | 结构化日志初始化 | 统一 `structlog` 风格 |
 | `runtime_paths.py` | 运行时路径约定 | 管理数据目录、缓存目录、临时目录 |
@@ -82,6 +82,43 @@ workflows / api
 | `storage/` | 内容存储抽象 | 支持本地和 S3，统一 raw markdown / assets / knowledge docs 的读写 |
 
 这组模块主要解决“系统怎么跑起来”。
+
+### 3.1.1 配置分层约定
+
+当前对外只保留三处配置入口：
+
+1. repo-root `config.yaml`
+2. repo-root `.env`
+3. 页面 UI 设置（用户级 / 当前请求级覆盖）
+
+推荐放置原则：
+
+- `.env`：
+  - API Key / Token / Secret
+  - Base URL
+  - 数据库、S3、SMTP、鉴权
+  - 云部署模式与账号参数
+- `config.yaml`：
+  - `models` 段中的默认模型名
+  - planner / docgen / ingest / search / rag 的默认策略
+  - 非敏感的并发、超时、章节范围、目标字数
+  - 文档富媒体能力对应的模型名，例如 `models.mermaid_generation`
+- 页面 UI 设置：
+  - 当前浏览器或本次请求的局部覆盖
+  - 例如前端 MinerU token、调试开关、当前连接地址
+  - 不承担项目默认值真相源职责
+
+不要把“能力是否可用”只写成抽象布尔开关，尤其是依赖模型的能力。
+更推荐直接配置模型名：
+
+- `models.image_generation`
+- `models.mermaid_generation`
+
+这样做的好处是：
+
+- 一眼能看出能力到底依赖哪个模型
+- 更适合后续接入多模型分层与 provider 路由
+- “留空即禁用”的语义比布尔值更直接
 
 ## 3.2 LLM 与调用封装
 

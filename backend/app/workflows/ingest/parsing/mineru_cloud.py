@@ -27,8 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import structlog
+
 
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
+logger = structlog.get_logger(__name__)
 
 
 def _get_requests():
@@ -102,6 +105,14 @@ def parse_file_to_dir(
 
     base = base_url.rstrip("/")
     output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        "mineru_cloud_parse_requested",
+        file_name=file_path.name,
+        model_version=options.model_version,
+        enable_formula=options.enable_formula,
+        enable_table=options.enable_table,
+        is_ocr=options.is_ocr,
+    )
 
     # 1) 申请预签名上传 URL
     batch_id, upload_url, file_name = _request_batch_upload_url(
@@ -112,6 +123,7 @@ def parse_file_to_dir(
 
     # 2) 上传文件字节到预签名 URL
     _put_file(upload_url, file_path)
+    logger.info("mineru_cloud_upload_completed", batch_id=batch_id, file_name=file_name)
 
     # 3) 轮询直到 done/failed
     zip_url = _poll_until_done(
@@ -126,6 +138,7 @@ def parse_file_to_dir(
     # 4) 下载 zip
     zip_path = output_dir / "mineru_result.zip"
     _download_file(zip_url, zip_path)
+    logger.info("mineru_cloud_result_downloaded", batch_id=batch_id, zip_path=str(zip_path))
 
     # 5) 解压并定位 full.md 与 images/
     with zipfile.ZipFile(zip_path, "r") as zf:
@@ -214,6 +227,8 @@ def _request_batch_upload_url(
     if not upload_url or not upload_url.strip().startswith("http"):
         raise RuntimeError("MinerU 返回数据不完整：upload_url 无效")
 
+    logger.info("mineru_cloud_batch_created", batch_id=str(batch_id), file_name=file_name)
+
     return str(batch_id), upload_url.strip(), file_name
 
 
@@ -280,6 +295,7 @@ def _poll_until_done(
             zip_url = matched.get("full_zip_url")
             if not zip_url:
                 raise RuntimeError("MinerU 返回 done 但缺少 full_zip_url")
+            logger.info("mineru_cloud_poll_completed", batch_id=batch_id, file_name=file_name)
             return str(zip_url)
 
         if state == "failed":

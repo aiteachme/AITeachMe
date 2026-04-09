@@ -33,7 +33,7 @@ def build_enrich_document_node(*, context: WorkflowContext):
             markdown = str(chapter.get("markdown") or "")
             mermaid_count += markdown.count("[MERMAID:")
             image_count += markdown.count("[IMAGE:")
-            if "[MERMAID:" in markdown and settings.enable_mermaid_generation:
+            if "[MERMAID:" in markdown and settings.mermaid_generation_enabled:
                 markdown = await MermaidGenerator(
                     SkillContext(
                         subject=state["subject"],
