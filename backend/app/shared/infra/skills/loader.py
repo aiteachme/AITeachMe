@@ -33,6 +33,10 @@ from pathlib import Path
 import structlog
 
 logger = structlog.get_logger()
+_PROJECT_SKILL_MODULES = (
+    "app.teaching.skill_tools",
+)
+_project_skill_modules_loaded = False
 
 # ── 默认扫描路径 ──────────────────────────────────────────────
 
@@ -215,3 +219,20 @@ def auto_discover_python_skills() -> None:
             logger.debug("python_skill_imported", module=name)
         except Exception as exc:
             logger.warning("python_skill_import_failed", module=name, error=str(exc))
+
+
+def ensure_project_skill_modules_loaded() -> None:
+    """Load project-owned Python skill modules through an explicit entrypoint."""
+
+    global _project_skill_modules_loaded
+    if _project_skill_modules_loaded:
+        return
+
+    for module_name in _PROJECT_SKILL_MODULES:
+        try:
+            importlib.import_module(module_name)
+            logger.debug("project_skill_module_imported", module=module_name)
+        except Exception as exc:
+            logger.warning("project_skill_module_import_failed", module=module_name, error=str(exc))
+
+    _project_skill_modules_loaded = True

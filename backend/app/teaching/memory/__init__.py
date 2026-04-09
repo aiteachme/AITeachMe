@@ -1,8 +1,10 @@
-"""多层记忆系统 — 对外极简 API。"""
+"""Compatibility facade for the canonical memory package."""
+
 from app.teaching.memory.api import (
     forget,
     get_learning_log,
     get_user_profile,
+    log_learning_event,
     recall,
     remember,
 )
@@ -23,6 +25,7 @@ __all__ = [
     "forget",
     "get_learning_log",
     "get_user_profile",
+    "log_learning_event",
     "recall",
     "remember",
     "append_to_learner_section",

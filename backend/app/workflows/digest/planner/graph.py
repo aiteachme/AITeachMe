@@ -26,6 +26,10 @@ from app.workflows.digest.planner.models import (
 )
 from app.workflows.digest.prompts import build_planner_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
+from app.workflows.digest.shared.contracts import (
+    resolve_digest_course_type,
+    resolve_planner_retrieval_profile,
+)
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
 
@@ -183,7 +187,7 @@ def _build_preview_tail(tasks: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _suggest_chapter_title_from_task(task: str, fallback_title: str) -> str:
+def _suggest_provisional_title_from_task(task: str, fallback_title: str) -> str:
     cleaned = _clean_preview_line(task)
     if not cleaned:
         return fallback_title
@@ -257,7 +261,7 @@ def _build_raw_plan_from_preview(
         task = preview_tasks[index] if index < len(preview_tasks) else ""
         chapter_payload = fallback.model_dump(mode="json")
         if task:
-            chapter_payload["title"] = _suggest_chapter_title_from_task(task, chapter_payload["title"])
+            chapter_payload["title"] = _suggest_provisional_title_from_task(task, chapter_payload["title"])
             chapter_payload["objective"] = _truncate_text(task, limit=32)
             chapter_payload["search_queries"] = _merge_task_queries(
                 task,
@@ -423,6 +427,11 @@ def build_load_context_node(*, context: WorkflowContext):
         return {
             "shared_inputs": shared_inputs,
             "digest_mode": state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value,
+            "course_type": resolve_digest_course_type(
+                state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
+            ),
+            "retrieval_profile": resolve_planner_retrieval_profile(),
+            "teaching_action": "plan_course",
             "tone": state.get("tone") or "encouraging",
         }
 
@@ -474,6 +483,9 @@ def build_draft_plan_node(*, context: WorkflowContext):
             shared_inputs=shared_inputs,
             user_goal=state.get("user_goal") or "",
         )
+        course_type = str(state.get("course_type") or resolve_digest_course_type(digest_mode))
+        retrieval_profile = str(state.get("retrieval_profile") or resolve_planner_retrieval_profile())
+        teaching_action = str(state.get("teaching_action") or "plan_course")
         fallback_plan = build_fallback_plan(
             subject=state["subject"],
             user_goal=state.get("user_goal") or "",
@@ -513,6 +525,13 @@ def build_draft_plan_node(*, context: WorkflowContext):
                     task_type=TaskType.DOCGEN_LIGHT,
                     temperature=0.1,
                     max_tokens=_PLANNER_STREAM_MAX_TOKENS,
+                    extra_metadata={
+                        "planner_session_id": state.get("planner_session_id") or "",
+                        "digest_mode": digest_mode,
+                        "course_type": course_type,
+                        "retrieval_profile": retrieval_profile,
+                        "teaching_action": teaching_action,
+                    },
                 )
                 async for token in stream:
                     streamed_tokens.append(token)
@@ -558,6 +577,9 @@ def build_draft_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
+            "course_type": resolve_digest_course_type(draft.digest_mode),
+            "retrieval_profile": resolve_planner_retrieval_profile(),
+            "teaching_action": teaching_action,
             "tone": draft.tone,
             "fallback_used": fallback_used,
             "planner_generation_mode": generation_mode,
@@ -579,11 +601,15 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
+    course_type = resolve_digest_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
+        "course_type": course_type,
+        "retrieval_profile": resolve_planner_retrieval_profile(),
+        "teaching_action": "plan_course",
         "tone": tone,
         "planner_session_id": planner_session_id,
         "message_history": message_history,

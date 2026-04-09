@@ -12,9 +12,10 @@ from pydantic import BaseModel, Field
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
+from app.shared.infra.skills.teaching_hooks import build_learning_document_overview
+from app.teaching.documents import resolve_effective_chapter_title
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_source_details
-from app.teaching.documents import build_document_overview
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_current_published_knowledge_docs_files,
@@ -59,12 +60,13 @@ def build_merged_markdown(
 ) -> str:
     """Merge chapter markdown into the published knowledge-doc layout."""
 
-    overview = build_document_overview(
+    overview = build_learning_document_overview(
         subject=str((document_context or {}).get("subject") or "未命名学科"),
         digest_mode=str((document_context or {}).get("digest_mode") or ""),
         tone=str((document_context or {}).get("tone") or ""),
         user_goal=str((document_context or {}).get("user_goal") or ""),
         plan_summary=str((document_context or {}).get("plan_summary") or ""),
+        source_strategy=str((document_context or {}).get("source_strategy") or ""),
         chapters=chapters,
     )
     separator = "\n\n---\n\n"
@@ -108,10 +110,18 @@ def _staging_chapter_key(subject: str, chapter_index: int, title: str) -> str:
 
 def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
     source_details = normalize_source_details(list(chapter.get("source_details") or []))
+    chapter_index = int(chapter.get("chapter_index", 0) or 0)
+    effective_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     return {
-        "chapter_index": int(chapter.get("chapter_index", 0) or 0),
-        "title": str(chapter.get("title") or ""),
+        "chapter_index": chapter_index,
+        "title": effective_title,
+        "resolved_title": str(chapter.get("resolved_title") or "").strip(),
+        "provisional_title": str(chapter.get("title") or "").strip(),
         "summary": str(chapter.get("summary") or ""),
+        "digest_mode": str(chapter.get("digest_mode") or ""),
+        "course_type": str(chapter.get("course_type") or ""),
+        "retrieval_profile": str(chapter.get("retrieval_profile") or ""),
+        "teaching_action": str(chapter.get("teaching_action") or ""),
         "source_count": len(source_details),
         "source_details": source_details,
         "research_summary": str(chapter.get("research_summary") or ""),
@@ -170,7 +180,7 @@ async def stage_knowledge_docs(
 
     for index, chapter in enumerate(sorted_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index))
-        chapter_title = str(chapter.get("title") or f"第 {chapter_index} 章")
+        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         chapter_markdown = str(chapter.get("markdown") or "")
         staging_key = _staging_chapter_key(subject, chapter_index, chapter_title)
         write_tasks.append(asyncio.create_task(cs.write_text(staging_key, chapter_markdown)))
@@ -226,7 +236,7 @@ def publish_staged_knowledge_docs(
     docs_to_create: list[KnowledgeDoc] = []
     for index, chapter in enumerate(sorted_chapters):
         chapter_index = int(chapter.get("chapter_index", index + 1))
-        chapter_title = str(chapter.get("title") or f"第 {chapter_index} 章")
+        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         chapter_markdown = str(chapter.get("markdown") or "")
         summary = str(chapter.get("summary") or "")
         tags = list(chapter.get("tags") or [])
@@ -285,7 +295,13 @@ def publish_staged_knowledge_docs(
         ),
         prompt=user_prompt,
         chapter_count=len(sorted_chapters),
-        chapter_titles=[str(chapter.get("title") or "") for chapter in sorted_chapters],
+        chapter_titles=[
+            resolve_effective_chapter_title(
+                chapter,
+                chapter_index=int(chapter.get("chapter_index", 0) or 0) or None,
+            )
+            for chapter in sorted_chapters
+        ],
     )
     write_knowledge_manifest(subject, manifest)
     update_knowledge_build_status(
