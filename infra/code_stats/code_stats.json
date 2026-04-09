@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-08T18:37:25.222036",
-  "total_commits_analyzed": 462,
+  "generated_at": "2026-04-09T05:48:19.492319",
+  "total_commits_analyzed": 466,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3697,6 +3697,38 @@
       "code_lines": 96716,
       "other_lines": 29787,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "ceb4d65",
+      "total_lines": 126503,
+      "code_lines": 96716,
+      "other_lines": 29787,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "09727ed",
+      "total_lines": 126267,
+      "code_lines": 96494,
+      "other_lines": 29773,
+      "message": "  feat: 增加知识图谱调试入口并补充基础架构文档"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "122e1c5",
+      "total_lines": 127051,
+      "code_lines": 97141,
+      "other_lines": 29910,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "8271152",
+      "total_lines": 127051,
+      "code_lines": 97141,
+      "other_lines": 29910,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
