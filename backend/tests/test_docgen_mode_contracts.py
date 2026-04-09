@@ -82,7 +82,16 @@ def test_learning_scaffold_enforces_sprint_sections() -> None:
         source_count=2,
     )
 
-    for heading in ("## 本章导读", "## 核心抓手", "## 题型拆解", "## 本章速记卡", "## 易错提醒", "## 快速回顾"):
+    for heading in (
+        "## 本章导读",
+        "## 术语速览",
+        "## 学习目标对照",
+        "## 核心抓手",
+        "## 题型拆解",
+        "## 本章速记卡",
+        "## 易错提醒",
+        "## 快速回顾",
+    ):
         assert heading in enriched
 
 
@@ -97,10 +106,42 @@ def test_learning_scaffold_enforces_systematic_sections_and_mermaid() -> None:
         source_count=3,
     )
 
-    for heading in ("## 本章导读", "## 前置知识", "## 动机引入", "## 核心定义与定理", "## 推理与应用", "## 本章要点"):
+    for heading in (
+        "## 本章导读",
+        "## 术语速览",
+        "## 学习目标对照",
+        "## 前置知识",
+        "## 动机引入",
+        "## 核心定义与定理",
+        "## 推理与应用",
+        "## 本章要点",
+    ):
         assert heading in enriched
     assert "## 全局脉络图" in enriched
     assert "<!-- [MERMAID:" in enriched
+
+
+def test_learning_scaffold_does_not_duplicate_support_sections() -> None:
+    markdown = "# 偏导数\n\n偏导数描述多元函数沿坐标方向的变化率。"
+    enriched_once = ensure_chapter_learning_scaffold(
+        markdown,
+        title="偏导数",
+        objective="建立偏导数和梯度的基本联系。",
+        required_elements=["偏导数", "梯度"],
+        digest_mode="systematic",
+        source_count=1,
+    )
+    enriched_twice = ensure_chapter_learning_scaffold(
+        enriched_once,
+        title="偏导数",
+        objective="建立偏导数和梯度的基本联系。",
+        required_elements=["偏导数", "梯度"],
+        digest_mode="systematic",
+        source_count=1,
+    )
+
+    assert enriched_twice.count("## 术语速览") == 1
+    assert enriched_twice.count("## 学习目标对照") == 1
 
 
 def test_docgen_lane_summary_uses_new_fields_only() -> None:

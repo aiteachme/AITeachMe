@@ -10,7 +10,7 @@
   </p>
 
   <p style="margin:0;">
-    <img src="https://img.shields.io/badge/Python-3.10+-green" alt="Python" />
+    <img src="https://img.shields.io/badge/Python-3.11+-green" alt="Python" />
     <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript" />
     <img src="https://img.shields.io/badge/代码行数-117.9k-blue" alt="Lines of Code" />
     <img src="https://img.shields.io/badge/Status-MVP-orange" alt="Status" />

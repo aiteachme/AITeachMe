@@ -1,6 +1,6 @@
 ## 十一、开放问题（需要确认）
 
-> **最后更新**：2026-04-08 — 标记已解决的问题，新增实现过程中发现的新问题
+> **最后更新**：2026-04-09 — 标记检索层第一阶段已解决的问题，并保留剩余待决项
 
 > [!IMPORTANT]
 > 以下问题将直接影响代码实现路径，请逐条确认：
@@ -18,7 +18,7 @@
 
 3. **Bing Search API Key** — ✅ 已解决
    - Bing 检索器已实现（`search/retrievers/bing.py`），通过 `.env` 配置 API Key
-   - 博查搜索也已实现（`search/retrievers/bocha.py`）作为备选
+   - `Bocha` 文件已建，但当前仍是 placeholder，尚未接入真实 API
 
 ### 11.2 文档模式相关
 
@@ -51,28 +51,35 @@
     - 当前无缓存，每次搜索都是实时请求
     - 建议：内存 dict 缓存，TTL 1 小时（见 09 文档 9.9 节）
 
+11. **是否引入更多 gpt-researcher 检索器** — 🟡 已部分执行
+    - 结论：不需要追求“全量 14 种”对齐
+    - 已落地：`web_search_retriever` 已升级为多检索器 list / profile 配置；`tavily` 已接入
+    - 当前优先顺序更新为：`bocha` 真接入 → `arxiv` → `semantic_scholar` → `custom`
+    - `pubmed_central` 仅在医学/生命科学学科启用
+    - 剩余需要：把 Planner / DocGen 调用侧进一步细分为场景化 profile
+
 ### 11.4 前端与交互相关
 
-11. **交互式 HTML** — ⬜ V2 预留
+12. **交互式 HTML** — ⬜ V2 预留
     - 当前无 `[INTERACTIVE:]` 占位符处理
     - 建议不变：MVP 不支持
 
-12. **文档导出格式** — ⬜ 待确认
+13. **文档导出格式** — ⬜ 待确认
     - 建议不变：MVP 只支持前端渲染 + Markdown 下载
 
-13. **文档版本管理** — ⬜ 待确认
+14. **文档版本管理** — ⬜ 待确认
     - 当前 `finalize_node` 每次生成新 doc_ids，不覆盖旧版本
     - 需要：前端展示历史版本切换 UI
 
 ### 11.5 其他框架调研（不变）
 
-14. **其他 Deep Research 框架**：
+15. **其他 Deep Research 框架**：
     - [STORM (Stanford)](https://github.com/stanford-oval/storm) — 学术论文级别的研究报告生成
     - [Tavily Research](https://tavily.com) — 专注搜索质量的 API
     - [Perplexity-style](https://github.com/rashadphz/farfalle) — 开源 Perplexity 克隆
     - 建议：当前 gpt-researcher 的 Plan-Execute 范式已经足够，其他框架可作为 V2 参考
 
-15. **教育领域专属工具/API**：
+16. **教育领域专属工具/API**：
     - [Wolfram Alpha API](https://products.wolframalpha.com/api/) — 数学计算验证
     - [Mathpix](https://mathpix.com/) — OCR 识别手写公式
     - [Khan Academy API](https://www.khanacademy.org/) — 教育内容
@@ -80,28 +87,28 @@
 
 ### 11.6 新增问题（实现过程中发现）
 
-16. **Planner 与 DocGen 的解耦边界** — 🟡 需要明确
+17. **Planner 与 DocGen 的解耦边界** — 🟡 需要明确
     - 当前 Planner 是独立 workflow（`planner/graph.py`），其输出通过 `confirmed_plan` 传入 DocGen
     - 原设计中 `edu_planner` 是 DocGen graph 内部节点，实际实现已分离
     - 问题：Planner 的 Prompt 质量直接决定 DocGen 输出质量，但两者在不同 graph 中，调试时需要跨 graph 追踪
     - 建议：在 LangSmith 中通过 `planner_session_id` + `confirmed_plan_id` 关联两个 graph 的 trace
 
-17. **ResearchConductor 的 purify 步骤是否必要** — 🟡 需要数据验证
+18. **ResearchConductor 的 purify 步骤是否必要** — 🟡 需要数据验证
     - 当前 ResearchConductor 在 ContextManager 压缩后还有一步 LLM purify
     - 这增加了一次 Smart LLM 调用（成本 + 延迟）
     - 需要：对比有/无 purify 的文档质量差异，决定是否保留或改为可选
 
-18. **archetype_prompts 的章节类型匹配准确度** — 🟡 需要验证
+19. **archetype_prompts 的章节类型匹配准确度** — 🟡 需要验证
     - `get_writer_prompt()` 根据章节类型选择不同的 Prompt 模板
     - 但章节类型由 Planner 输出决定，如果 Planner 输出的类型标签不准确，会导致 Prompt 不匹配
     - 需要：验证 Planner 输出的章节类型与 archetype_prompts 的匹配率
 
-19. **fan-out 并发度与 API rate limit 的平衡** — ⬜ 待调优
+20. **fan-out 并发度与 API rate limit 的平衡** — ⬜ 待调优
     - 当前 `targeted_research` 和 `pedagogy_craft` 都使用 Send() fan-out
     - 如果章节数较多（系统课 8-10 章），同时发起的 LLM 调用 + 搜索请求可能触发 rate limit
     - 需要：通过 `docgen_max_parallel_chapters` 配置控制并发度，并在 LangSmith 中监控 rate limit 错误
 
-20. **前端 Mermaid / KaTeX 渲染兼容性** — ⬜ 待验证
+21. **前端 Mermaid / KaTeX 渲染兼容性** — ⬜ 待验证
     - 后端生成的 Mermaid 语法和 LaTeX 公式需要前端正确渲染
     - 需要：验证前端 Mermaid.js 和 KaTeX 组件是否已集成，以及复杂公式的渲染效果
 

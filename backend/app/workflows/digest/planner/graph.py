@@ -18,6 +18,7 @@ from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.model_router import TaskType
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.observability import wrap_digest_node
+from app.workflows.digest.planner.concept_grounding import collect_planner_concept_briefing
 from app.workflows.digest.planner.models import (
     _resolve_subject_display_name,
     build_fallback_plan,
@@ -343,6 +344,24 @@ def _build_fast_planner_prompt(base_prompt: str) -> str:
     )
 
 
+def _merge_planner_topic_hints(shared_inputs: SharedInputs, topic_hints: list[str]) -> SharedInputs:
+    if not topic_hints:
+        return shared_inputs
+
+    merged_candidates = list(shared_inputs.fast_hints.chapter_candidates)
+    merged_topics = list(shared_inputs.subject_profile.key_topics)
+    for item in topic_hints:
+        if item not in merged_candidates:
+            merged_candidates.append(item)
+        if item not in merged_topics:
+            merged_topics.append(item)
+
+    next_inputs = shared_inputs.model_copy(deep=True)
+    next_inputs.fast_hints.chapter_candidates = merged_candidates[:12]
+    next_inputs.subject_profile.key_topics = merged_topics[:12]
+    return next_inputs
+
+
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(BuildPlannerState)
     workflow.add_node(
@@ -355,6 +374,15 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
+        "ground_concepts",
+        wrap_digest_node(
+            build_ground_concepts_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="planner",
+            node_name="ground_concepts",
+        ),
+    )
+    workflow.add_node(
         "draft_plan",
         wrap_digest_node(
             build_draft_plan_node(context=context),
@@ -364,7 +392,8 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.set_entry_point("load_context")
-    workflow.add_conditional_edges("load_context", route_after_step, {"continue": "draft_plan", "fail": END})
+    workflow.add_conditional_edges("load_context", route_after_step, {"continue": "ground_concepts", "fail": END})
+    workflow.add_conditional_edges("ground_concepts", route_after_step, {"continue": "draft_plan", "fail": END})
     workflow.add_edge("draft_plan", END)
     return workflow
 
@@ -400,6 +429,41 @@ def build_load_context_node(*, context: WorkflowContext):
     return load_context_node
 
 
+def build_ground_concepts_node(*, context: WorkflowContext):
+    async def ground_concepts_node(state: BuildPlannerState) -> dict:
+        shared_inputs = state["shared_inputs"]
+        await _emit_planner_status(
+            state,
+            node_name="ground_concepts",
+            detail="正在快速检索基础概念与知识框架，给大纲规划补充事实锚点...",
+        )
+        concept_brief = await collect_planner_concept_briefing(
+            subject=state["subject"],
+            user_goal=state.get("user_goal") or "",
+            shared_inputs=shared_inputs,
+            latest_plan=state.get("latest_plan"),
+        )
+        enhanced_inputs = _merge_planner_topic_hints(shared_inputs, concept_brief.topic_hints)
+        await _emit_planner_status(
+            state,
+            node_name="ground_concepts",
+            detail=(
+                f"已补充 {concept_brief.local_hit_count} 条本地概念锚点"
+                f"{'，' + str(concept_brief.web_hit_count) + ' 条外部概念锚点' if concept_brief.web_hit_count else ''}。"
+            ),
+        )
+        return {
+            "shared_inputs": enhanced_inputs,
+            "concept_queries": concept_brief.queries,
+            "concept_briefing": concept_brief.briefing,
+            "concept_topic_hints": concept_brief.topic_hints,
+            "concept_local_hit_count": concept_brief.local_hit_count,
+            "concept_web_hit_count": concept_brief.web_hit_count,
+        }
+
+    return ground_concepts_node
+
+
 def build_draft_plan_node(*, context: WorkflowContext):
     async def draft_plan_node(state: BuildPlannerState) -> dict:
         shared_inputs = state["shared_inputs"]
@@ -430,6 +494,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 shared_inputs=shared_inputs,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
+                concept_briefing=state.get("concept_briefing") or "",
             )
         )
         await _emit_planner_status(

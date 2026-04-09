@@ -258,6 +258,17 @@ function advanceKnowledgeBuild() {
       "",
       pendingKnowledgeBuild.prompt ?? "未提供额外提示，本章按照默认教学结构组织。",
       "",
+      "```mermaid",
+      "mindmap",
+      "  root((方法拆解))",
+      "    识别题型",
+      "    套用定义",
+      "    验算边界",
+      "    复盘易错点",
+      "```",
+      "",
+      "![方法图示](../assets/1/figure-1.svg)",
+      "",
       "标签：#方法 #例题",
       "",
       "---",
@@ -286,6 +297,32 @@ function buildMockSvg(label: string): string {
     `<text x="320" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#475569">${label}</text>`,
     `</svg>`,
   ].join("");
+}
+
+function buildMockAssetResponse(subject: string, assetPath: string) {
+  const normalized = assetPath.replace(/^\/+/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  const assetDirName = parts.length >= 2 && parts[0] === "assets" ? parts[1] : "";
+  const assetName = parts[parts.length - 1] ?? "";
+  const file = mockFiles.find((item) => String(item.internal_id) === assetDirName);
+  const asset = file?.assets.find((item) => item.name === assetName);
+
+  if (!file || !asset) {
+    return HttpResponse.json(
+      {
+        code: 404,
+        message: "Asset not found",
+        error_code: "RAW_FILE_NOT_FOUND",
+      },
+      { status: 404 },
+    );
+  }
+
+  return new HttpResponse(buildMockSvg(`${subject} / ${file.filename} / ${assetName}`), {
+    headers: {
+      "Content-Type": asset.mime_type ?? "image/svg+xml",
+    },
+  });
 }
 
 export const fileHandlers = [
@@ -368,27 +405,17 @@ export const fileHandlers = [
   }),
 
   http.get("/_assets/:subject/assets/:assetDirName/:assetName", ({ params }) => {
-    const assetDirName = String(params.assetDirName);
-    const assetName = String(params.assetName);
-    const file = mockFiles.find((item) => String(item.internal_id) === assetDirName);
-    const asset = file?.assets.find((item) => item.name === assetName);
+    return buildMockAssetResponse(
+      String(params.subject),
+      `assets/${String(params.assetDirName)}/${String(params.assetName)}`,
+    );
+  }),
 
-    if (!file || !asset) {
-      return HttpResponse.json(
-        {
-          code: 404,
-          message: "Asset not found",
-          error_code: "RAW_FILE_NOT_FOUND",
-        },
-        { status: 404 },
-      );
-    }
-
-    return new HttpResponse(buildMockSvg(`${file.filename} / ${assetName}`), {
-      headers: {
-        "Content-Type": asset.mime_type ?? "image/svg+xml",
-      },
-    });
+  http.get("/api/v1/subjects/:subject/files/assets/:assetPath*", ({ params }) => {
+    const assetPath = Array.isArray(params.assetPath)
+      ? params.assetPath.join("/")
+      : String(params.assetPath ?? "");
+    return buildMockAssetResponse(String(params.subject), assetPath);
   }),
 
   http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {

@@ -87,12 +87,14 @@ def build_planner_prompt(
     shared_inputs: SharedInputs,
     message_history: list[str],
     latest_plan: dict | None,
+    concept_briefing: str = "",
 ) -> str:
     compact_goal = user_goal.strip() or f"围绕 {subject} 生成知识文档"
     return (
         "你是 AITeachMe 的构建方案规划助手。\n"
         "你的任务不是写文档正文，而是像 Deep Research 的前置规划阶段一样，"
         "快速给出一组可直接确认的研究任务。\n"
+        "本轮规划必须先参考已经检索到的基础概念锚点，再组织章节任务，不要只靠主观联想裸生成。\n"
         "请严格依据用户目标、资料主题和最近修改意见来规划，避免空泛模板。\n\n"
         f"主题：{subject}\n"
         f"用户目标：{compact_goal}\n"
@@ -106,12 +108,15 @@ def build_planner_prompt(
         f"{_compact_message_history(message_history)}\n\n"
         "上一版方案：\n"
         f"{_compact_latest_plan(latest_plan)}\n\n"
+        "快速概念锚点：\n"
+        f"{concept_briefing.strip() or '暂无额外概念检索结果，可先依据资料主题与用户目标规划。'}\n\n"
         f"{_mode_contract(digest_mode)}\n\n"
         "输出目标：\n"
         "1. 研究任务必须是中文自然语言。\n"
         "2. 每条任务都要能直接变成后续检索词或章节写作目标。\n"
         "3. 任务重点要贴合当前主题，不要出现 subj_ 这类内部标识。\n"
-        "4. 整体语气要清晰、直接、可执行。"
+        "4. 优先覆盖快速概念检索里反复出现的核心概念、结构关系和基础方法，但不要机械照抄标题。\n"
+        "5. 整体语气要清晰、直接、可执行。"
     )
 
 
