@@ -1,7 +1,7 @@
 # AITeachMe × GPT-Researcher 重构基线
 
-> 文档定位：本目录不是“庆功手册”，而是后续 Digest 重构、工具分层和 LangSmith 接入的执行合同。
-> 最后更新：2026-04-09
+> 文档定位：本目录不是”庆功手册”，而是后续 Digest 重构、工具分层和 LangSmith 接入的执行合同。
+> 最后更新：2026-04-10
 
 ---
 
@@ -36,22 +36,27 @@
 
 ## 2. 当前基线与主要风险
 
-### 2.1 已有基线
+### 2.1 已有基线（2026-04-10 校准）
 
-- `digest/docgen` 已有 8 节点 LangGraph 主链路
-- `shared/infra/skills`、`search`、`tools` 已具备初步骨架
-- 前端已具备 Markdown、Mermaid、公式的基础阅读能力
-- LangSmith tracing 已经有比较好的基础设施
+- `digest/docgen` 已有 **9 节点** LangGraph 主链路（load_context → targeted_research → collect_materials → resolve_titles → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble），其中 `resolve_titles` 是后加的标题解析节点
+- `digest/unified` 已有 6 节点顶层编排图（prepare_shared → run_parallel_lanes → derive_curriculum → publish_outputs → cleanup / fail），Doc Lane 与 KG Lane 通过 `asyncio.gather` 并行
+- `shared/infra/` 已从单文件升级为完整 package，含 `tools/`（registry + decorator + builtin）、`skills/`（BaseSkill + 6 个业务 Skill）、`search/`（retrievers + scraper + factory）、`memory/`（canonical store）、`storage/`、`guardrails/` 等子包
+- `shared/kernel/` 已独立为纯内核层（ids / time / events / exceptions）
+- `teaching/` 已有 `documents/`（content_blocks + report_generation）、`memory/`（兼容 facade）、`context.py`、`skill_tools.py` 等
+- 前端已具备 Markdown、Mermaid、公式的基础阅读能力，DigestBuildPanel 已有进度追踪
+- LangSmith tracing 已有 `wrap_digest_node` + `LLMCallTracker` + `DigestTimingReport` 等基础设施
+- Planner 对话流程已落地，支持 `build_session_id / planner_session_id / confirmed_plan_id` 串联
 
-### 2.2 当前最需要先写清楚的风险
+### 2.2 当前最需要先写清楚的风险（2026-04-10 更新）
 
-| 风险 | 说明 | 本轮文档策略 |
-| --- | --- | --- |
-| `shared/infra` 与 `teaching` 边界仍有摇摆 | 典型例子是 `memory` 出现双份实现，且路径语义不一致 | 明确 canonical 模块和过渡模块 |
-| 部分文档“完成态”表述过强 | 容易掩盖剩余技术债，误导后续开发 | 改为“现状 + 缺口 + 分阶段目标” |
-| Digest 还没有真正 deep-research 化 | 当前更像“章节 fan-out 写作”，不是“质量驱动的研究型文档生产” | 增加 Build Contract、检索 profile、章节级研究微循环 |
-| 课程模式约束还不够强 | 速成课/系统课的章节结构、字数目标、媒体策略仍需收敛 | 单独定义文档产物契约 |
-| 不能为了 Digest 重构伤及其他引擎 | `ingest` / `interact` / `examine` / `profile` 需要保持稳定 | 所有实施计划都以“只改 Docs Lane”为前提 |
+| 风险 | 说明 | 当前状态 | 本轮文档策略 |
+| --- | --- | --- | --- |
+| `shared/infra` 与 `teaching` 边界仍有摇摆 | `memory` 出现双份实现（`shared/infra/memory` vs `teaching/memory`），`learner_doc.py` 路径语义分叉 | `teaching/context.py` 已正确依赖 `shared/infra/memory`，但 `teaching/memory/` 仍保留独立实现 | 明确 canonical 模块，标记过渡模块，禁止新增平行逻辑 |
+| `confirmed_plan` 结构不够稳定 | 当前 `load_context_node` 从 `confirmed_plan` dict 中取 `chapter_plan`、`digest_mode`、`tone` 等，但缺少 schema 约束 | Planner 对话已落地，但输出仍是松散 dict | 定义 `BuildContract` Pydantic model，收紧上游输出 |
+| Digest 章节研究仍是一次性 | `targeted_research_node` 调用 `ResearchConductor.run()` 一次，缺少”识别缺口 → 补检索”的质量驱动循环 | `ResearchConductor` 已有 plan-search-compress 基本能力 | 在 Skill 内部增加轻量微循环，不改 graph 拓扑 |
+| 课程模式约束不够硬 | `course_type` 已在 state 中流转，但 `sprint` / `systematic` 的章节结构、字数目标、媒体策略仍靠 prompt 隐式控制 | `resolve_docgen_course_type()` 已存在 | 定义 05 文档中的产物契约，让 writer 和 enrich 节点显式遵守 |
+| 不能为了 Digest 重构伤及其他引擎 | `ingest` / `interact` / `examine` / `profile` 需要保持稳定 | unified graph 已做到 Doc/KG 并行隔离 | 所有改动限制在 Docs Lane + shared/infra，不碰其他引擎 |
+| `app/utils/docgen_store` 散落状态管理 | 多处直接调用 `update_knowledge_build_status()` 和 `append_knowledge_build_recent_event()`，状态更新逻辑分散在各节点中 | 已在用但缺少统一抽象 | 后续考虑收敛为 progress reporter 接口 |
 
 ---
 
@@ -82,27 +87,37 @@
 
 ---
 
-## 5. 推荐实施顺序
+## 5. 推荐实施顺序（2026-04-10 更新）
 
-### Phase A：先冻结边界
+### Phase 0：边界冻结与文档对齐 ✅ 已完成
 
-- 明确 `memory`、`skill`、`teaching function`、`documents` 的 canonical 落点
-- 停止继续在过渡目录里新增平行实现
+- 明确 `shared/infra`、`teaching`、`workflows` 三层职责
+- 明确 canonical memory 在 `shared/infra/memory`
+- 完成 refactor 系列文档初版
 
-### Phase B：先把 Docs Lane 的输入契约写清楚
+### Phase 1：LangSmith 契约加固与 Build Contract 收紧
 
-- 通过对话确认课程模式、目标、风格、媒体偏好、检索策略
-- 让 Planner 输出稳定的 `Build Contract`
+- 统一 trace metadata（`course_type / retrieval_profile / teaching_action`）
+- 定义 `BuildContract` Pydantic model 替代松散 `confirmed_plan` dict
+- 打通 Planner → DocGen 的 LangSmith 关联
 
-### Phase C：再增强章节级研究与文档质量
+### Phase 2：检索 profile 与章节研究升级
 
-- 做检索 profile、章节 research 微循环、结构化富媒体插槽
-- 先保证质量，再追求更多花哨能力
+- 引入显式检索 profile（`docgen_sprint` / `docgen_systematic`）
+- `ResearchConductor` 内部增加轻量质量驱动微循环
+- 补齐检索结果缓存，避免重复裸搜
 
-### Phase D：最后补教学闭环
+### Phase 3：文档质量与课程模式收紧
 
-- 用 `teaching` 接住 `examine` / `profile` 的解释层
-- 让知识文档、练习、画像形成统一教学语言
+- `sprint` / `systematic` 的章节结构契约硬编码到 writer 和 enrich 节点
+- `PedagogyWriter` 输出带结构元信息的 `ChapterDraft`
+- 引入显式 `AssetPlan` 替代自由占位符
+
+### Phase 4：富媒体与教学闭环
+
+- 完善 Mermaid / image / interactive HTML 插槽
+- 接入 `teaching/documents` 的教学块（导读、recap、错因卡、公式卡）
+- 把 `examine` / `profile` 的结果翻译成文档增强
 
 ---
 

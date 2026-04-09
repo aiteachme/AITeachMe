@@ -1,84 +1,125 @@
 ## 四、Digest DocGen 流程升级
 
-> 目标：把当前 DocGen 从“章节 fan-out 写作流程”升级为“教育型 deep research 文档生产流程”。
+> 目标：把当前 DocGen 从”章节 fan-out 写作流程”升级为”教育型 deep research 文档生产流程”。
 > 约束：只改 Docs Lane，不破坏 KG Lane、Curriculum Lane 和其他四大引擎。
-> 最后更新：2026-04-09
+> 最后更新：2026-04-10
 
 ---
 
-## 4.1 当前基线
+## 4.1 当前基线（2026-04-10 校准）
 
-当前 `docgen` 已有稳定的 8 节点流程：
+当前 `docgen` 已有稳定的 **9 节点**流程：
 
 ```text
 load_context
-→ targeted_research (fan-out)
+→ targeted_research (fan-out via Send)
 → collect_materials
-→ pedagogy_craft (fan-out)
+→ resolve_titles          ← 后加的标题解析节点
+→ pedagogy_craft (fan-out via Send)
 → collect_drafts
 → enrich_document
 → inject_examine
 → finalize_assemble
 ```
 
-这个基线已经具备三个优点：
+### 当前实际代码路径
 
-- Docs Lane 与 KG / Curriculum Lane 已经分离
-- LangGraph fan-out / fan-in 结构清晰
+| 节点 | 实现文件 | 核心依赖 |
+|:---|:---|:---|
+| `load_context` | `docgen/nodes/load_context_node.py` | 从 `confirmed_plan` dict 解析章节分配，调用 `prepare_shared_inputs()` |
+| `targeted_research` | `docgen/nodes/targeted_research_node.py` | `ResearchConductor.run()` — 一次性 plan-search-compress |
+| `collect_materials` | `docgen/nodes/collect_materials_node.py` | 汇聚 fan-out 结果 |
+| `resolve_titles` | `docgen/nodes/resolve_titles_node.py` | 标题去重与规范化 |
+| `pedagogy_craft` | `docgen/nodes/pedagogy_craft_node.py` | `PedagogyWriter.run()` — 章节写作 |
+| `collect_drafts` | `docgen/nodes/collect_drafts_node.py` | 汇聚 fan-out 结果，合并 markdown |
+| `enrich_document` | `docgen/nodes/enrich_document_node.py` | Mermaid / Image 占位符处理 |
+| `inject_examine` | `docgen/nodes/inject_examine_node.py` | 练习题注入 |
+| `finalize_assemble` | `docgen/nodes/finalize_node.py` | 最终组装与路径写入 |
+
+### 上游编排
+
+DocGen 不是独立运行的，它被 `unified/graph.py` 的 `run_parallel_lanes` 节点调用：
+
+```text
+unified: prepare_shared
+→ run_parallel_lanes (asyncio.gather)
+    ├── Doc Lane (docgen graph)
+    └── KG Lane (kg graph)
+→ derive_curriculum
+→ publish_outputs
+→ cleanup
+```
+
+### 当前基线的优点
+
+- Docs Lane 与 KG / Curriculum Lane 已通过 unified graph 隔离
+- LangGraph `Send()` fan-out / fan-in 结构清晰，章节并行可控（`docgen_max_parallel_chapters`）
 - Research / Write / Enrich 的基本阶段已经存在
+- `wrap_digest_node` 提供统一的 timing + tracing 包装
+- `course_type` / `retrieval_profile` / `teaching_action` 已在 state 中流转
 
 所以这轮重构不是推倒重来，而是在这个基线上升级。
 
 ---
 
-## 4.2 当前还不够好的地方
+## 4.2 当前还不够好的地方（2026-04-10 基于代码校准）
 
-### 问题 1：用户选择还没有收敛成稳定的 Build Contract
+### 问题 1：`confirmed_plan` 是松散 dict，缺少 schema 约束
 
-用户希望在构建过程中通过对话确定：
+当前 `load_context_node` 从 `confirmed_plan` dict 中取值：
 
-- 是速成课还是系统课
-- 面向考试还是学科系统学习
-- 文风、深度、公式强度、例题密度
-- 是否要更多 Mermaid / 配图 / 交互 HTML
+```python
+# load_context_node.py 实际代码
+plan_payload = deepcopy(state.get(“confirmed_plan”) or {})
+digest_mode = str(plan_payload.get(“digest_mode”) or digest_mode)
+tone = str(plan_payload.get(“tone”) or tone)
+assignments = normalize_chapter_assignments(
+    plan_payload.get(“chapter_plan”) or [],
+    default_source_file_ids=list(state.get(“file_ids”, [])),
+)
+```
 
-当前这些意图分散在 `user_prompt`、planner 对话和若干隐式默认值里，后续很难稳定控制输出质量。
+问题：
+- 没有 Pydantic model 校验，字段缺失时 fallback 逻辑分散在多处
+- `chapter_plan` 中每章的 `search_queries`、`required_elements`、`media_hints` 等字段全靠 `normalize_chapter_assignments()` 兜底
+- Planner 对话输出的结构与 DocGen 期望的结构之间没有显式契约
 
-### 问题 2：章节研究还不够“deep research”
+### 问题 2：章节研究是一次性的，缺少质量驱动循环
 
-当前 `targeted_research` 已经有检索、抓取、压缩和提纯，但整体仍偏一次性：
+当前 `targeted_research_node` 的核心逻辑：
 
-- 查一轮
-- 压一轮
-- 直接交给写作
+```python
+# targeted_research_node.py 实际代码
+result = await researcher.run(
+    queries=queries[:max(1, int(get_settings().docgen_max_queries_per_chapter))],
+    section_packets=section_packets,
+    chapter_assignment=assignment,
+)
+```
 
-还缺少“识别缺口 -> 定向补检索 -> 再压缩”的质量驱动机制。
+`ResearchConductor.run()` 内部做了 plan → search → compress → purify，但只跑一轮。缺少：
+- 研究结果的缺口评估（哪些 `required_elements` 没有被覆盖？）
+- 定向补检索（针对缺口生成新 query 再搜一轮）
+- 质量置信度判断（当前材料是否足够支撑写作？）
 
-### 问题 3：文档仍然过度依赖 Markdown 字符串作为中间表达
+这是与 gpt-researcher 的 `deep_research.py` 最大的差距——后者有递归的 breadth/depth 探索 + learnings 提取 + follow-up 生成。
 
-这在早期是合理的，但当文档要支持：
+### 问题 3：writer 和 enrich 节点未按课程模式做差异化
 
-- 公式卡片
-- 思维导图
-- 文生图
-- 交互 HTML
-- 章节统计卡
-- 章节练习块
+当前 `course_type` 已在 state 中流转（`resolve_docgen_course_type()` 已存在），但：
+- `pedagogy_craft_node` 的 prompt 没有根据 `sprint` / `systematic` 做结构性差异
+- `enrich_document_node` 的教学块补充逻辑没有按模式区分
+- `inject_examine_node` 的练习注入没有区分”冲刺型速测”和”形成性检查”
 
-就需要更稳定的中间契约，而不是只依赖自由文本和占位符。
+### 问题 4：中间产物仍是自由 Markdown 字符串
 
-### 问题 4：产物模式约束不够硬
+`chapter_drafts` 和 `chapter_materials` 都是 `list[dict]`，但内部结构松散：
+- `pedagogy_craft_node` 输出的 draft 只有 `markdown` + `chapter_index` + `word_count`
+- 缺少 `required_elements_coverage`（必备要点覆盖情况）
+- 缺少 `asset_hints`（媒体增强建议）
+- 缺少 `question_hooks`（练习注入锚点）
 
-“速成课”和“系统课”已经被提出来了，但还没有成为真正的产物契约：
-
-- 章节数范围
-- 每章必含区块
-- 字数下限
-- 例题密度
-- 富媒体密度
-- 公式推导要求
-
-都还需要收紧。
+这导致下游 `enrich_document` 和 `inject_examine` 只能靠正则匹配占位符，无法做结构化增强。
 
 ---
 
@@ -109,31 +150,61 @@ load_context
 
 ---
 
-## 4.4 Build Contract：Planner 必须产出的上游契约
+## 4.4 Build Contract：从松散 dict 到 Pydantic Model
 
-后续 DocGen 不应再只吃一个宽泛的 `confirmed_plan`，而应明确依赖一份更稳定的构建合同。
+### 当前状态
 
-### 建议字段
+Planner 对话输出的 `confirmed_plan` 是一个松散 dict，`load_context_node` 通过 `.get()` 取值并逐字段 fallback。当前已有的字段包括：
 
-| 字段 | 说明 |
-| --- | --- |
-| `course_type` | `sprint` / `systematic` |
-| `learning_goal` | 这份文档最终要帮助用户完成什么 |
-| `exam_context` | 若是考试型任务，记录考试名、题型偏好、分值导向 |
-| `tone` | 文风，如 `casual` / `professional` / `encouraging` |
-| `target_word_count` | 全文目标字数 |
-| `formula_depth` | `light` / `standard` / `full_derivation` |
-| `example_density` | 例题密度偏好 |
-| `media_plan` | Mermaid / image / interactive HTML / tables 的偏好 |
-| `retrieval_profile` | `planner_grounding` / `docgen_sprint` / `docgen_systematic` |
-| `profile_signals` | 来自 learner profile 的难点、薄弱点、偏好 |
-| `chapter_contracts` | 每章的标题、目标、必备要点、输出要求 |
+```python
+# 从 load_context_node.py 和 normalize_chapter_assignments() 反推的实际字段
+confirmed_plan = {
+    “digest_mode”: “sprint” | “systematic”,
+    “tone”: “casual” | “professional” | “encouraging”,
+    “plan_summary”: str,
+    “user_goal”: str,
+    “mode_reason”: str,
+    “chapter_plan”: [
+        {
+            “chapter_index”: int,
+            “title”: str,
+            “objective”: str,
+            “required_elements”: list[str],
+            “search_queries”: list[str],
+            “writing_instructions”: str,
+            “media_hints”: {“images”: [], “mermaid”: [], “interactive”: []},
+            “source_file_ids”: list[int],
+        }
+    ]
+}
+```
 
-### 设计意图
+### 目标：定义 `BuildContract` Pydantic Model
 
-- Planner 负责“先把课设计清楚”
-- DocGen 负责“按合同把课做出来”
-- 这样才能让后续调优集中在具体质量问题，而不是反复猜用户意图
+后续 DocGen 不应再只吃一个宽泛的 `confirmed_plan`，而应明确依赖一份有 schema 约束的构建合同。
+
+### 建议字段（在当前基础上扩展）
+
+| 字段 | 类型 | 说明 | 当前是否已有 |
+| --- | --- | --- | --- |
+| `course_type` | `Literal[“sprint”, “systematic”]` | 课程模式 | ✅ 通过 `digest_mode` 间接推导 |
+| `learning_goal` | `str` | 这份文档最终要帮助用户完成什么 | 🟡 `user_goal` 存在但不稳定 |
+| `exam_context` | `ExamContext | None` | 考试名、题型偏好、分值导向 | ❌ 新增 |
+| `tone` | `Literal[“casual”, “professional”, “encouraging”]` | 文风 | ✅ 已有 |
+| `target_word_count` | `int` | 全文目标字数 | ❌ 新增，sprint 默认 6000，systematic 默认 12000 |
+| `formula_depth` | `Literal[“light”, “standard”, “full_derivation”]` | 公式深度 | ❌ 新增 |
+| `example_density` | `Literal[“low”, “medium”, “high”]` | 例题密度偏好 | ❌ 新增 |
+| `media_preferences` | `MediaPreferences` | Mermaid / image / interactive HTML 的偏好 | 🟡 `media_hints` 在章节级存在 |
+| `retrieval_profile` | `str` | 检索 profile 名 | ✅ 已有 `resolve_docgen_retrieval_profile()` |
+| `profile_signals` | `list[str]` | 来自 learner profile 的难点、薄弱点 | ❌ 新增 |
+| `chapter_contracts` | `list[ChapterContract]` | 每章的标题、目标、必备要点、输出要求 | ✅ 当前是 `chapter_plan` list[dict] |
+
+### 实施策略
+
+1. 先在 `workflows/digest/shared/contracts.py` 定义 `BuildContract` 和 `ChapterContract` Pydantic model
+2. `load_context_node` 改为 `BuildContract.model_validate(confirmed_plan)` 一次性校验
+3. Planner 输出端逐步对齐，新增字段先给默认值
+4. 不改 Planner 对话流程本身，只收紧输出格式
 
 ---
 
@@ -192,33 +263,67 @@ user dialog
 
 ---
 
-## 4.6 章节级“研究微循环”建议
+## 4.6 章节级”研究微循环”具体实施方案
 
-为了不把 graph 切得过碎，也为了保持 LangSmith 图可读，推荐把 deep research 的“递进式补研究”先放在 `ResearchConductor` 内部，而不是马上扩成更多 graph 节点。
+### 当前代码路径
 
-### 微循环结构
+`targeted_research_node` → `ResearchConductor.run()` → 一次性返回 `SkillResult`
+
+当前 `ResearchConductor` 内部已有 plan → search → compress → purify 的基本能力，但只跑一轮。
+
+### 微循环设计（在 `ResearchConductor.run()` 内部实现）
 
 ```text
-plan queries
-→ retrieve
-→ curate
-→ compress
-→ assess gaps
-→ (需要时再补一轮 retrieve/compress)
-→ purify
+┌─────────────────────────────────────────────┐
+│  ResearchConductor.run(queries, chapter)    │
+│                                             │
+│  1. plan_queries(chapter.search_queries)    │
+│  2. retrieve(queries, profile)              │
+│  3. curate(results)                         │
+│  4. compress(curated_context)               │
+│  5. assess_gaps(                            │
+│       compressed_context,                   │
+│       chapter.required_elements             │
+│     )                                       │
+│  6. IF gaps AND round < max_rounds:         │
+│       generate_gap_queries(gaps)            │
+│       → goto 2 (补检索)                     │
+│  7. purify(final_context)                   │
+│  8. return SkillResult(                     │
+│       context, sources, gaps, confidence    │
+│     )                                       │
+└─────────────────────────────────────────────┘
 ```
 
-### 适用规则
+### 关键实现细节
 
-- `sprint`：默认最多 1 轮补研究，优先速度
-- `systematic`：允许 1-2 轮补研究，优先完整性
-- 一旦触发 rate limit 或质量收益过低，直接停止补研究
+**缺口评估函数 `assess_gaps()`**：
+- 输入：压缩后的上下文 + 章节 `required_elements` 列表
+- 用 Fast LLM（`TaskType.DOCGEN_LIGHT`）判断哪些 required_elements 在当前上下文中覆盖不足
+- 输出：`list[str]` 未覆盖的要点
+
+**补检索 query 生成 `generate_gap_queries()`**：
+- 输入：未覆盖的要点列表
+- 用 Fast LLM 生成 1-3 个针对性搜索 query
+- 输出：`list[str]` 新 query
+
+**轮次控制**：
+- `sprint`：`max_rounds=1`（最多补 1 轮），优先速度
+- `systematic`：`max_rounds=2`（最多补 2 轮），优先完整性
+- 每轮补检索前检查：如果 gaps 数量 ≤ 1 或上一轮没有新增有效结果，直接停止
+- 触发 rate limit 时立即停止，不重试
+
+**LangSmith 可观测性**：
+- 每轮 retrieve/compress 作为独立 span（`research_round_1` / `research_round_2`）
+- `assess_gaps` 作为独立 span，输出 gaps 列表
+- 最终 `SkillResult` 中记录 `rounds_executed` / `gaps_remaining` / `confidence_level`
 
 ### 为什么先做成 skill 内部循环
 
-- 不污染 graph 结构
-- 便于按章节开关
-- 依旧能在 LangSmith 里看见 skill 内部的研究阶段
+- 不改变 docgen graph 的 9 节点拓扑，LangSmith 图保持清晰
+- 便于按章节开关（某些章节本地材料充足，不需要补检索）
+- 微循环的每一步仍能在 LangSmith 的 skill span 内部看见
+- 后续如果需要更复杂的研究策略，可以在不改 graph 的前提下升级 skill 内部逻辑
 
 ---
 

@@ -10,15 +10,13 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
 from app.teaching.documents import looks_like_legacy_template_title
+from app.teaching.runtime_config import (
+    get_planner_mode_runtime_config,
+    get_teaching_runtime_config,
+)
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SubjectProfile
 
-DEFAULT_DIGEST_MODE = "systematic"
-DEFAULT_TONE = "encouraging"
 MEDIA_HINT_KEYS = ("images", "mermaid", "interactive")
-SPRINT_MIN_CHAPTERS = 3
-SPRINT_MAX_CHAPTERS = 6
-SYSTEMATIC_MIN_CHAPTERS = 5
-SYSTEMATIC_MAX_CHAPTERS = 12
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
@@ -40,8 +38,8 @@ class PlannerChapterPlan(BaseModel):
 class BuildPlannerDraft(BaseModel):
     subject: str
     user_goal: str
-    digest_mode: str = DEFAULT_DIGEST_MODE
-    tone: str = DEFAULT_TONE
+    digest_mode: str = "systematic"
+    tone: str = "encouraging"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -170,13 +168,14 @@ def _minimal_shared_inputs(subject: str) -> SharedInputs:
 
 
 def _normalize_digest_mode(value: Any) -> str:
-    normalized = str(value or DEFAULT_DIGEST_MODE).strip().lower()
-    return "sprint" if normalized == "sprint" else DEFAULT_DIGEST_MODE
+    default_mode = get_teaching_runtime_config().planner.default_digest_mode
+    normalized = str(value or default_mode).strip().lower()
+    return "sprint" if normalized == "sprint" else "systematic"
 
 
 def _normalize_tone(value: Any) -> str:
     text = _clean_text(value)
-    return text or DEFAULT_TONE
+    return text or get_teaching_runtime_config().planner.default_tone
 
 
 def _clean_text(value: Any) -> str:
@@ -269,9 +268,10 @@ def _normalize_build_constraints(value: Any, fallback: dict[str, Any], *, digest
     raw = _coerce_mapping(value)
     merged = dict(fallback)
     merged.update(raw)
-    min_chapters = SPRINT_MIN_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
-    max_chapters = SPRINT_MAX_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
-    default_length = "3000-5000字" if digest_mode == "sprint" else "10000-15000字"
+    mode_config = get_planner_mode_runtime_config(digest_mode)
+    min_chapters = mode_config.min_chapters
+    max_chapters = mode_config.max_chapters
+    default_length = mode_config.target_length
     merged["include_exercises"] = bool(merged.get("include_exercises", True))
     merged["include_sources"] = bool(merged.get("include_sources", True))
     merged["math_mode"] = bool(merged.get("math_mode", False))
@@ -304,8 +304,9 @@ def _estimate_target_chapter_count(
     requested_count: int | None = None,
 ) -> int:
     normalized_mode = _normalize_digest_mode(digest_mode)
-    min_chapters = SPRINT_MIN_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
-    max_chapters = SPRINT_MAX_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
+    mode_config = get_planner_mode_runtime_config(normalized_mode)
+    min_chapters = mode_config.min_chapters
+    max_chapters = mode_config.max_chapters
     if requested_count is not None and requested_count > 0:
         return min(max_chapters, max(min_chapters, requested_count))
 
@@ -318,12 +319,12 @@ def _estimate_target_chapter_count(
     )
 
     if normalized_mode == "sprint":
-        estimated = topic_count if topic_count > 0 else SPRINT_MIN_CHAPTERS
+        estimated = topic_count if topic_count > 0 else min_chapters
         if goal_weight >= 2:
             estimated += 1
-        return min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, estimated))
+        return min(max_chapters, max(min_chapters, estimated))
 
-    estimated = topic_count if topic_count > 0 else SYSTEMATIC_MIN_CHAPTERS
+    estimated = topic_count if topic_count > 0 else min_chapters
     if shared_inputs.subject_profile.has_heavy_formulas:
         estimated += 1
     if shared_inputs.subject_profile.has_heavy_questions:
@@ -332,7 +333,7 @@ def _estimate_target_chapter_count(
         estimated += 1
     if goal_weight >= 4:
         estimated += 1
-    return min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, estimated))
+    return min(max_chapters, max(min_chapters, estimated))
 
 
 def _looks_like_subject_slug(value: Any) -> bool:
@@ -487,24 +488,26 @@ def _build_build_constraints(
     target_count: int,
     shared_inputs: SharedInputs,
 ) -> dict[str, Any]:
-    if _normalize_digest_mode(digest_mode) == "sprint":
+    normalized_mode = _normalize_digest_mode(digest_mode)
+    mode_config = get_planner_mode_runtime_config(normalized_mode)
+    if normalized_mode == "sprint":
         return {
-            "min_chapters": SPRINT_MIN_CHAPTERS,
-            "max_chapters": SPRINT_MAX_CHAPTERS,
-            "target_chapter_count": min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, target_count)),
+            "min_chapters": mode_config.min_chapters,
+            "max_chapters": mode_config.max_chapters,
+            "target_chapter_count": min(mode_config.max_chapters, max(mode_config.min_chapters, target_count)),
             "include_exercises": True,
             "include_sources": True,
             "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
-            "target_length": "3000-5000字",
+            "target_length": mode_config.target_length,
         }
     return {
-        "min_chapters": SYSTEMATIC_MIN_CHAPTERS,
-        "max_chapters": SYSTEMATIC_MAX_CHAPTERS,
-        "target_chapter_count": min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, target_count)),
+        "min_chapters": mode_config.min_chapters,
+        "max_chapters": mode_config.max_chapters,
+        "target_chapter_count": min(mode_config.max_chapters, max(mode_config.min_chapters, target_count)),
         "include_exercises": True,
         "include_sources": True,
         "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
-        "target_length": "10000-15000字",
+        "target_length": mode_config.target_length,
     }
 
 
@@ -558,8 +561,8 @@ def build_fallback_plan(
         chapter_plan=chapter_plan,
         research_queries=research_queries,
         media_plan={
-            "enable_mermaid": settings.enable_mermaid_generation,
-            "enable_images": settings.enable_image_generation,
+            "enable_mermaid": settings.mermaid_generation_enabled,
+            "enable_images": settings.image_generation_enabled,
             "enable_interactive_html": False,
         },
         build_constraints=_build_build_constraints(

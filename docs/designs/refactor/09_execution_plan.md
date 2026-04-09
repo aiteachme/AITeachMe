@@ -1,7 +1,7 @@
 ## 九、分阶段执行计划
 
 > 目标：把重构拆成可以逐阶段上线、逐阶段验证、逐阶段回滚的计划，而不是一次性大改。
-> 最后更新：2026-04-09
+> 最后更新：2026-04-10
 
 ---
 
@@ -21,215 +21,134 @@
 
 ### 总原则
 
-1. 只要一个阶段结束，就应该是“可运行、可观测、可回退”的。
+1. 只要一个阶段结束，就应该是”可运行、可观测、可回退”的。
 2. 所有实质性行为改动优先限制在 `planner/docgen`。
 3. 所有阶段都要验证不会破坏 KG Lane 和其他四个引擎。
 
 ---
 
-## 9.2 Phase 0：边界冻结与文档对齐
+## 9.2 Phase 0：边界冻结与文档对齐 ✅ 已完成
 
 ### 目标
 
 先把未来所有改动的设计地基打稳。
 
-### 范围
+### 已完成的事
 
-- `docs/designs/refactor/*`
-- `docs/designs/10_repo_structure_and_runtime_files.md`
+- ✅ 明确 `shared/infra`、`teaching`、`workflows` 三层职责（03 文档）
+- ✅ 明确 canonical memory 在 `shared/infra/memory`，`teaching/memory` 仅为过渡层
+- ✅ 明确 `sprint` / `systematic` 的输出契约（05 文档）
+- ✅ 明确 LangSmith 命名与 metadata 口径（10 文档）
+- ✅ refactor 系列 11 份文档初版完成
 
-### 要完成的事
-
-- 明确 `shared/infra`、`teaching`、`workflows` 的职责
-- 明确 canonical memory 在 `shared/infra/memory`
-- 明确 `teaching/memory` 仅为过渡层
-- 明确 `sprint` / `systematic` 的输出契约
-- 明确 LangSmith 命名与 metadata 口径
-
-### 验收标准
+### 验收结果
 
 - 后续新代码能够根据文档直接判断放哪层
-- 不再出现“教学逻辑写回 workflow”“第二套 memory 实现”这类模糊地带
+- 分层边界已在代码中初步体现（`teaching/context.py` 依赖 `shared/infra/memory`，`skills/writer.py` 调用 `teaching/documents`）
 
 ---
 
-## 9.3 Phase 1：LangSmith 与运行时契约加固
+## 9.3 Phase 1：Build Contract 收紧与 LangSmith 契约加固
 
 ### 目标
 
-让 Planner、DocGen、Asset、Examine 注入都能在 LangSmith 里串起来。
+让 Planner 输出有 schema 约束，让 DocGen 全链路在 LangSmith 里可串联、可比较。
 
-### 主要改动
+### 具体改动清单
 
-- 统一 `build_session_id / planner_session_id / confirmed_plan_id`
-- 增加 `course_type / retrieval_profile / asset_kind / teaching_action` 等 metadata
-- 打通前端进度事件与 LangSmith 节点语义
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| 定义 `BuildContract` model | `workflows/digest/shared/contracts.py`（新增） | Pydantic model，含 `course_type` / `target_word_count` / `formula_depth` / `example_density` / `chapter_contracts` 等 |
+| `load_context_node` 改用 model_validate | `docgen/nodes/load_context_node.py` | 替代当前的 `.get()` + fallback 散逻辑 |
+| 补充 trace metadata | `docgen/nodes/*.py` | 每个节点的 `wrap_digest_node` 调用补充 `course_type` / `retrieval_profile` / `chapter_index` |
+| 统一进度事件语义 | `docgen/nodes/common.py` | `publish_docgen_progress()` 补充业务维度字段 |
+| Planner 输出端对齐 | `services/knowledge/build_planner_service.py` | Planner confirm 时输出符合 `BuildContract` schema 的 dict |
 
 ### 只允许改动
 
-- `workflows/common`
+- `workflows/digest/shared/contracts.py`（新增）
+- `workflows/digest/docgen/nodes/`
 - `workflows/digest/observability.py`
-- `planner` / `docgen` 相关 state 与 event
-- 相关 skill 的 trace metadata
+- `services/knowledge/build_planner_service.py`
+- `workflows/common/` 的 event 定义
+
+### 不允许改动
+
+- `digest/kg/` 任何文件
+- `digest/curriculum/` 任何文件
+- `ingest/` / `interact/` / `examine/` / `profile/`
+- `unified/graph.py` 的节点拓扑
 
 ### 验收标准
 
-- 打开 LangSmith 后，能一眼看到 Planner → DocGen 的关联
-- 每章 research / writing / enrich / examine 都能单独定位
+- `BuildContract.model_validate(confirmed_plan)` 在 `load_context_node` 中一次性校验通过
+- 打开 LangSmith 后，能通过 `build_session_id` 一眼看到 Planner → DocGen 的关联
+- 每章 research / writing / enrich / examine 都能通过 `chapter_index` + `course_type` 单独定位
+- 现有测试和前端流程不受影响
 
 ---
 
-## 9.4 Phase 2：检索 profile 与工具基座加固
+## 9.4 Phase 2：章节研究微循环与检索 profile
 
 ### 目标
 
-把“什么场景用什么检索组合”从隐式逻辑变成显式 profile。
+让章节 research 从”一次性搜一轮”升级为”轻量质量驱动研究”，同时让检索策略按课程模式差异化。
 
-### 主要改动
+### 具体改动清单
 
-- 引入 `planner_grounding` / `docgen_sprint` / `docgen_systematic` / `media_hunting`
-- 增加检索结果缓存和抓取缓存
-- 补齐高价值检索器与高质量抓取策略
-- 停止继续扩散平行工具实现
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| `ResearchConductor.run()` 增加微循环 | `shared/infra/skills/researcher.py` | 增加 `assess_gaps()` → `generate_gap_queries()` → 补检索 的内部循环 |
+| 新增 `assess_gaps()` 方法 | `shared/infra/skills/researcher.py` | 用 Fast LLM 判断 `required_elements` 覆盖情况 |
+| 检索 profile 显式化 | `shared/infra/search/factory.py` | `docgen_sprint` / `docgen_systematic` profile 控制检索器组合和优先级 |
+| 检索结果缓存 | `shared/infra/search/cache.py`（新增或扩展） | 同一 `build_session_id` 内相同 query 不重复搜索 |
+| `SkillResult` 扩展 | `shared/infra/skills/base.py` | 增加 `rounds_executed` / `gaps_remaining` / `confidence_level` 字段 |
 
-### 关键目录
+### 只允许改动
 
-- `shared/infra/search`
-- `shared/infra/tools`
 - `shared/infra/skills/researcher.py`
-
-### 验收标准
-
-- 同一查询不再反复裸搜
-- `sprint` 与 `systematic` 在 LangSmith 上呈现不同的检索 profile
-- ResearchConductor 的输出能带出清晰的来源分类
-
----
-
-## 9.5 Phase 3：Digest 研究链升级
-
-### 目标
-
-让当前章节 research 从“一次性搜一轮”升级为“轻量质量驱动研究”。
-
-### 主要改动
-
-- Planner 输出稳定的 `Build Contract`
-- `targeted_research` 内部加入章节级 research 微循环
-- `PedagogyWriter` 输出更稳定的章节结构信息
-- 章节草稿不再只是一段自由 Markdown
+- `shared/infra/search/`
+- `shared/infra/skills/base.py`（SkillResult 扩展）
 
 ### 关键约束
 
-- 先把 deep research 风格的“补缺口”做在 skill 内部
-- 不要急着把 graph 拆成十几个节点
-- 保持 Docs Lane 图在 LangSmith 中依然清楚
+- 微循环在 `ResearchConductor` 内部实现，不改 docgen graph 的 9 节点拓扑
+- `sprint` 最多 1 轮补研究，`systematic` 最多 2 轮
+- 每轮补检索作为独立 LangSmith span
 
 ### 验收标准
 
-- `sprint` 章节更像冲刺讲义
-- `systematic` 章节更像课程讲义
-- 章节 research 可以解释“为什么还要再补一轮”
+- `systematic` 模式下，章节研究能自动识别缺口并补检索
+- LangSmith 中能看到 `research_round_1` / `research_round_2` / `assess_gaps` 等 span
+- 同一 query 在同一 build session 内不重复搜索
+- `sprint` 模式下研究速度不明显退化
 
 ---
 
-## 9.6 Phase 4：富媒体与课程呈现升级
+## 9.5 Phase 3：课程模式硬约束与 Writer 升级
 
 ### 目标
 
-让知识文档不只是“长 Markdown”，而是可持续增强的课程产物。
+让 `sprint` / `systematic` 的差异从”prompt 暗示”变成”结构性硬约束”。
 
-### 主要改动
+### 具体改动清单
 
-- 引入显式 `asset_plan`
-- 完善 Mermaid / image / interactive HTML 插槽
-- 丰富章节 recap、公式卡、错因卡、导览块
-- 优化发布时的资源落盘与 manifest
-
-### 关键目录
-
-- `shared/infra/skills/image_generator.py`
-- `shared/infra/skills/mermaid_generator.py`
-- `app.teaching.documents`
-- 前端阅读页面与 MarkdownViewer
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| 课程模式 prompt 模板 | `workflows/digest/prompts/`（新增或扩展） | `sprint_chapter_prompt` / `systematic_chapter_prompt` 分别定义章节必备区块 |
+| `PedagogyWriter` 按模式分支 | `shared/infra/skills/writer.py` | 根据 `course_type` 选择不同的 prompt 模板和字数目标 |
+| `ChapterDraft` 结构化 | `workflows/digest/shared/contracts.py` | 定义 `ChapterDraft` model，含 `markdown` / `word_count` / `required_elements_coverage` / `asset_hints` |
+| `enrich_document_node` 按模式增强 | `docgen/nodes/enrich_document_node.py` | `sprint` 补速记卡/错因卡，`systematic` 补脉络图/推导说明 |
+| `inject_examine_node` 按模式差异化 | `docgen/nodes/inject_examine_node.py` | `sprint` 注入真题范例/速测，`systematic` 注入形成性检查/延展问题 |
+| 教学块定义 | `teaching/documents/content_blocks.py` | 扩展 `recap_block` / `formula_card_block` / `misconception_block` 等 |
 
 ### 验收标准
 
-- 文档富媒体增强不破坏正文主线
-- 发布后的文档和资源能稳定追踪
-- 前端渲染表现明显优于“原始 Markdown 列表页”
-
----
-
-## 9.7 Phase 5：Teaching 闭环接入
-
-### 目标
-
-把 `examine`、`profile` 的结果真正翻译成教学表达和文档增强。
-
-### 主要改动
-
-- 建设教学解释类 tool / adapter
-- 把弱点、错因、学习建议接到 DocGen 与 Interact
-- 形成“知识文档 -> 练习 -> 画像 -> 再次文档增强”的闭环
-
-### 关键目录
-
-- `app.teaching`
-- `workflows/digest/docgen`
-- `workflows/interact`
-- `workflows/examine`
-- `workflows/profile`
-
-### 验收标准
-
-- 文档可以根据用户画像呈现不同的强调点
-- 练习反馈不只是判分，而是能回流成教学建议
-
----
-
-## 9.8 Phase 6：教育语料库与评测
-
-### 目标
-
-让系统具备自己的高质量教育底仓和稳定评测手段。
-
-### 主要改动
-
-- 建立最小可用教育语料库
-- 定义文档质量评测样本
-- 建立速度 / 质量 / 成本三类 Dashboard
-
-### 关键目录
-
-- `backend/data/edu_corpus/`
-- `docs/designs/refactor/10_langsmith_observability.md`
-- 相关评测脚本与样本集
-
-### 验收标准
-
-- 没有上传资料时，依然能生成有质量的系统课
-- 可以量化比较不同 prompt / profile / asset 策略的效果
-
----
-
-## 9.9 关键里程碑与风险控制
-
-### 里程碑 1
-
-边界冻结完成后，任何新能力都能明确放层。
-
-### 里程碑 2
-
-Planner 与 DocGen 的 trace 串联完成后，主流程具备可持续优化能力。
-
-### 里程碑 3
-
-课程模式契约稳定后，生成质量才会真正可控。
-
-### 里程碑 4
-
-富媒体资产与教学闭环接入后，知识文档才会显著区别于通用 deep research。
+- `sprint` 文档每章必含：导读 + 核心概念 + 范例题 + 易错点 + 快速回顾
+- `systematic` 文档每章必含：导读 + 概念体系 + 推导/论证 + 应用案例 + 章节总结 + 延展思考
+- `systematic` 文档总字数稳定 ≥ 10000 字
+- `sprint` 文档总字数在 4000-8000 字范围
+- 前端渲染无异常
 
 ---
 

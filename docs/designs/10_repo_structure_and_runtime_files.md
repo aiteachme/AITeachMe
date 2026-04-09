@@ -22,6 +22,7 @@
 4. `services` 是用例入口和后台任务控制层，不变成第二个 workflow 层。
 5. `utils` 只放纯 helper 或运行时路径 helper，不继续承接核心业务。
 6. 运行时文件路径必须统一走 helper，读写统一用 UTF-8。
+7. 项目级非敏感默认配置优先放 repo-root `config.yaml`；密钥和部署参数优先放 `.env`。
 
 ---
 
@@ -390,6 +391,22 @@ runtime root 的真相源：
 当前默认常见落点：
 
 `backend/data/`
+
+## 9.1 配置文件真相源
+
+当前建议明确三层配置来源：
+
+| 层 | 真相源 | 适合放什么 |
+| --- | --- | --- |
+| 项目级非敏感默认值 | repo-root `config.yaml` | planner/docgen/ingest/search/rag 默认策略、章节范围、目标字数、能力模型名 |
+| 部署级与敏感值 | repo-root `.env` | API Key、Token、数据库、S3、SMTP、鉴权、上游 Base URL |
+| 用户设备级临时偏好 | 前端 `localStorage` | 当前浏览器里的 API 地址、调试开关、MinerU 个人 token 等 |
+
+### 当前最重要的规则
+
+- `config.yaml` 不是给用户每次构建时手动填的临时面板。
+- `.env` 不要继续塞大量教学策略，否则会越来越难读。
+- 前端设置不要和后端项目默认值混成一套配置协议。
 
 ---
 

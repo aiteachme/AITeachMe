@@ -45,9 +45,11 @@ def _log_infra_diagnostics(settings) -> None:
 
     import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
+    from app.teaching.runtime_config import get_teaching_runtime_config_path
 
     engine = get_engine()
     dialect = engine.dialect.name
+    project_config_path = get_teaching_runtime_config_path()
 
     lines = [
         "",
@@ -60,6 +62,7 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {settings.resolved_app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
+        f"    PROJECT_CONFIG_PATH    : {project_config_path}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         "",
         "  [DATABASE]",
@@ -115,6 +118,23 @@ def _log_infra_diagnostics(settings) -> None:
     else:
         from app.shared.infra.runtime_paths import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
+
+    lines.append("")
+    lines.append("  [TEACHING]")
+    lines.append(f"    Primary Model          : {settings.llm_model}")
+    lines.append(f"    Light Model            : {settings.llm_model_light or settings.llm_model}")
+    lines.append(f"    Extract Model          : {settings.llm_model_extract or settings.llm_model}")
+    lines.append(f"    Embedding Model        : {settings.embedding_model}")
+    lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
+    lines.append(
+        f"    MinerU Server Token    : {'SET' if settings.mineru_api_token else 'not set'}"
+    )
+    lines.append(
+        f"    Mermaid Model          : {settings.mermaid_generation_model or 'disabled'}"
+    )
+    lines.append(
+        f"    Image Model            : {settings.image_generation_model or 'disabled'}"
+    )
 
     lines.append("")
     lines.append("  [AUTH]")

@@ -7,6 +7,12 @@
 - `kernel/`: pure domain/kernel primitives (time, ids, base events, base exceptions entrypoint)
 - `infra/`: infrastructure entrypoints (config, db, logging, llm, embedding, cache)
 
+`infra/config.py` 现在统一处理三层配置来源：
+
+- 环境变量 / `.env`
+- 仓库根目录 `config.yaml`
+- 代码默认值
+
 ## Current migration mode
 
 This is a compatibility-first phase:
@@ -19,4 +25,3 @@ This is a compatibility-first phase:
 
 - Business modules should prefer importing shared foundations from `app.shared.*`.
 - Cross-module business logic should not import other modules' infrastructure directly.
-
