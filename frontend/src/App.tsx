@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
 import { HomePage } from "./pages/HomePage";
-import { FilesPage } from "./pages/FilesPage";
+import { BuildPlanPage } from "./pages/BuildPlanPage";
 import { ExamsPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
@@ -15,7 +15,7 @@ import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavig
 const queryClient = new QueryClient();
 
 const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
-  files: <FilesPage />,
+  build: <BuildPlanPage />,
   "knowledge-docs": <KnowledgeDocsPage />,
   "knowledge-graph": <KnowledgeGraphPage />,
   chat: <ChatPage />,

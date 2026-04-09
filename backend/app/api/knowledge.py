@@ -36,6 +36,7 @@ from app.services.knowledge.build_planner_service import (
     append_build_planner_message_service,
     confirm_build_planner_session_service,
     create_build_planner_session_service,
+    get_latest_planner_session_service,
 )
 from app.services.knowledge.cleanup_service import clear_subject_knowledge
 from app.services.knowledge.curriculum_service import (
@@ -160,6 +161,27 @@ async def knowledge_build_plan_create(
         subject=subject_record,
         user_id=user.user_id,
         payload=body,
+    )
+    return ok_response(data)
+
+
+@router.post(
+    "/build/plans/latest",
+    response_model=ApiResponse[BuildPlannerSessionResponse | None],
+    summary="Get the latest build planner session for this subject",
+    responses=build_error_responses([400, 404, 500]),
+)
+def knowledge_build_plan_latest(
+    subject: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerSessionResponse | None]:
+    normalized = normalize_subject_slug(subject)
+    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
+    data = get_latest_planner_session_service(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
     )
     return ok_response(data)
 

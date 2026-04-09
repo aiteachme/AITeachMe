@@ -1,4 +1,4 @@
-﻿"""Persistence helpers for build planner entities."""
+"""Persistence helpers for build planner entities."""
 
 from __future__ import annotations
 
@@ -96,12 +96,32 @@ def get_confirmed_plan_by_session(
     return session.exec(stmt).first()
 
 
+def get_latest_planner_session(
+    session: Session,
+    *,
+    subject: str,
+    user_id: str,
+) -> BuildPlannerSession | None:
+    """Return the most recently updated planner session for a subject+user."""
+    stmt = (
+        select(BuildPlannerSession)
+        .where(
+            BuildPlannerSession.subject == subject,
+            BuildPlannerSession.user_id == user_id,
+        )
+        .order_by(BuildPlannerSession.updated_at.desc())
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
 __all__ = [
     "create_confirmed_plan",
     "create_planner_session",
     "create_planner_turn",
     "get_confirmed_plan",
     "get_confirmed_plan_by_session",
+    "get_latest_planner_session",
     "get_planner_session",
     "list_planner_turns",
     "update_confirmed_plan",

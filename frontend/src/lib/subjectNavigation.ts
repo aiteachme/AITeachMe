@@ -5,11 +5,11 @@ import {
   FileText,
   MessageSquareText,
   Network,
-  Upload,
+  Sparkles,
 } from "lucide-react";
 
 export type SubjectRouteId =
-  | "files"
+  | "build"
   | "knowledge-docs"
   | "knowledge-graph"
   | "chat"
@@ -25,10 +25,10 @@ export interface SubjectNavItem {
 
 export const SUBJECT_NAV_ITEMS: SubjectNavItem[] = [
   {
-    id: "files",
-    label: "文件",
-    icon: Upload,
-    description: "上传与管理资料文件",
+    id: "build",
+    label: "构建",
+    icon: Sparkles,
+    description: "上传资料，规划并启动知识构建",
   },
   {
     id: "knowledge-docs",
@@ -63,7 +63,8 @@ export const SUBJECT_NAV_ITEMS: SubjectNavItem[] = [
 ];
 
 export const SUBJECT_ROUTE_REDIRECTS = {
-  upload: "files",
+  files: "build",
+  upload: "build",
   summary: "knowledge-docs",
   exam: "exams",
   analysis: "profile",

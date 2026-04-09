@@ -20,12 +20,14 @@ import type {
   ApiResponseSubjectDeleteData,
   ApiResponseSubjectDeletePreviewData,
   ApiResponseSubjectItem,
+  ApiResponseSubjectNameSuggestionResponse,
   ErrorResponse,
   HTTPValidationError,
   SubjectCreateRequest,
   SubjectDeletePreviewRequest,
   SubjectDeleteRequest,
   SubjectListRequest,
+  SubjectNameSuggestionRequest,
   SubjectUpdateRequest
 } from './model';
 
@@ -551,5 +553,104 @@ export const useUpdateSubjectApiApiV1SubjectsUpdatePost = <TError = ErrorRespons
         TContext
       > => {
       return useMutation(getUpdateSubjectApiApiV1SubjectsUpdatePostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary 根据用户输入快速生成学科名称
+ */
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse200 = {
+  data: ApiResponseSubjectNameSuggestionResponse
+  status: 200
+}
+
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponseSuccess = (suggestSubjectNameApiV1SubjectsSuggestNamePostResponse200) & {
+  headers: Headers;
+};
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponseError = (suggestSubjectNameApiV1SubjectsSuggestNamePostResponse400 | suggestSubjectNameApiV1SubjectsSuggestNamePostResponse422 | suggestSubjectNameApiV1SubjectsSuggestNamePostResponse500) & {
+  headers: Headers;
+};
+
+export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse = (suggestSubjectNameApiV1SubjectsSuggestNamePostResponseSuccess | suggestSubjectNameApiV1SubjectsSuggestNamePostResponseError)
+
+export const getSuggestSubjectNameApiV1SubjectsSuggestNamePostUrl = () => {
+
+
+  
+
+  return `/api/v1/subjects/suggest-name`
+}
+
+export const suggestSubjectNameApiV1SubjectsSuggestNamePost = async (subjectNameSuggestionRequest: SubjectNameSuggestionRequest, options?: RequestInit): Promise<suggestSubjectNameApiV1SubjectsSuggestNamePostResponse> => {
+  
+  return orvalApiClient<suggestSubjectNameApiV1SubjectsSuggestNamePostResponse>(getSuggestSubjectNameApiV1SubjectsSuggestNamePostUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      subjectNameSuggestionRequest,)
+  }
+);}
+  
+
+
+
+export const getSuggestSubjectNameApiV1SubjectsSuggestNamePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>, TError,{data: SubjectNameSuggestionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>, TError,{data: SubjectNameSuggestionRequest}, TContext> => {
+
+const mutationKey = ['suggestSubjectNameApiV1SubjectsSuggestNamePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>, {data: SubjectNameSuggestionRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  suggestSubjectNameApiV1SubjectsSuggestNamePost(data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SuggestSubjectNameApiV1SubjectsSuggestNamePostMutationResult = NonNullable<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>>
+    export type SuggestSubjectNameApiV1SubjectsSuggestNamePostMutationBody = SubjectNameSuggestionRequest
+    export type SuggestSubjectNameApiV1SubjectsSuggestNamePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary 根据用户输入快速生成学科名称
+ */
+export const useSuggestSubjectNameApiV1SubjectsSuggestNamePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>, TError,{data: SubjectNameSuggestionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>,
+        TError,
+        {data: SubjectNameSuggestionRequest},
+        TContext
+      > => {
+      return useMutation(getSuggestSubjectNameApiV1SubjectsSuggestNamePostMutationOptions(options), queryClient);
     }
     
