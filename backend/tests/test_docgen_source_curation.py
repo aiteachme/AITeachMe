@@ -148,9 +148,12 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
                     "document_context": {
                         "subject": "demo",
                         "digest_mode": "systematic",
+                        "course_type": "systematic",
+                        "retrieval_profile": "docgen_systematic",
                         "tone": "encouraging",
                         "user_goal": "Build a clean study document",
                         "plan_summary": "One focused chapter with clear evidence.",
+                        "source_strategy": "local_first",
                     },
                     "chapter_drafts": craft_result["chapter_drafts"],
                 }
@@ -165,9 +168,12 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
                     "document_context": {
                         "subject": "demo",
                         "digest_mode": "systematic",
+                        "course_type": "systematic",
+                        "retrieval_profile": "docgen_systematic",
                         "tone": "encouraging",
                         "user_goal": "Build a clean study document",
                         "plan_summary": "One focused chapter with clear evidence.",
+                        "source_strategy": "local_first",
                     },
                     "confirmed_plan": {"build_constraints": {"include_sources": True}},
                     "chapter_metadatas": collect_result["chapter_metadatas"],
@@ -182,6 +188,8 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
 
     assert captured["kwargs"]["digest_mode"] == "systematic"
     assert draft["digest_mode"] == "systematic"
+    assert draft["course_type"] == "systematic"
+    assert draft["retrieval_profile"] == "docgen_systematic"
     assert draft["research_summary"] == "Explain the definition and connect it to an example."
     assert collect_result["chapter_metadatas"][0]["local_hits"] == 2
     assert collect_result["chapter_metadatas"][0]["executed_queries"] == [
@@ -192,6 +200,7 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
     assert "https://example.edu/partial" in chapter["markdown"]
     assert "## 目录" in enrich_result["merged_markdown"]
     assert "## 章节路线图" in enrich_result["merged_markdown"]
+    assert "资料策略：优先基于上传资料整理" in enrich_result["merged_markdown"]
     assert manifest["source_count"] == 2
     assert manifest["fallback_used"] is True
     assert source_scope["local_source_count"] == 1

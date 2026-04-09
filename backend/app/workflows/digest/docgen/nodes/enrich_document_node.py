@@ -11,7 +11,7 @@ from app.shared.infra.tools.builtin.markdown_processing import append_reference_
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
+from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type, resolve_docgen_dependency
 from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -30,22 +30,39 @@ def build_enrich_document_node(*, context: WorkflowContext):
         mermaid_count = 0
         image_count = 0
         for chapter in chapter_metadatas:
-            skill_context = SkillContext(
-                subject=state["subject"],
-                build_session_id=state.get("build_session_id", ""),
-                workflow_context=context,
-                planner_session_id=state.get("planner_session_id", ""),
-                confirmed_plan_id=state.get("confirmed_plan_id", ""),
-                digest_mode=state.get("digest_mode", ""),
-                chapter_index=int(chapter.get("chapter_index", 0) or 0),
-            )
             markdown = str(chapter.get("markdown") or "")
             mermaid_count += markdown.count("[MERMAID:")
             image_count += markdown.count("[IMAGE:")
             if "[MERMAID:" in markdown and settings.enable_mermaid_generation:
-                markdown = await MermaidGenerator(skill_context).process_placeholders(markdown)
+                markdown = await MermaidGenerator(
+                    SkillContext(
+                        subject=state["subject"],
+                        build_session_id=state.get("build_session_id", ""),
+                        workflow_context=context,
+                        planner_session_id=state.get("planner_session_id", ""),
+                        confirmed_plan_id=state.get("confirmed_plan_id", ""),
+                        digest_mode=state.get("digest_mode", ""),
+                        course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
+                        teaching_action="document_enrich",
+                        asset_kind="mermaid",
+                        chapter_index=int(chapter.get("chapter_index", 0) or 0),
+                    )
+                ).process_placeholders(markdown)
             if "[IMAGE:" in markdown:
-                markdown = await ImageGenerator(skill_context).process_placeholders(markdown)
+                markdown = await ImageGenerator(
+                    SkillContext(
+                        subject=state["subject"],
+                        build_session_id=state.get("build_session_id", ""),
+                        workflow_context=context,
+                        planner_session_id=state.get("planner_session_id", ""),
+                        confirmed_plan_id=state.get("confirmed_plan_id", ""),
+                        digest_mode=state.get("digest_mode", ""),
+                        course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
+                        teaching_action="document_enrich",
+                        asset_kind="image",
+                        chapter_index=int(chapter.get("chapter_index", 0) or 0),
+                    )
+                ).process_placeholders(markdown)
             markdown = normalize_math_delimiters(markdown)
             markdown = validate_latex(markdown)
             if include_sources:

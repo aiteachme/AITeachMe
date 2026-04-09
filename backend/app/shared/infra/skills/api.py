@@ -5,6 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.shared.infra.skills.base import get_skill_registry
+from app.shared.infra.skills.loader import ensure_project_skill_modules_loaded
 
 logger = structlog.get_logger()
 
@@ -30,6 +31,7 @@ async def run_skill(name: str, **kwargs) -> str:
         result = await run_skill("find_resources", topic="微积分")
     """
 
+    ensure_project_skill_modules_loaded()
     registry = get_skill_registry()
     sd = registry.get(name)
     if sd is None:
@@ -57,6 +59,7 @@ def list_skills() -> list[dict]:
             print(f"{s['name']}: {s['description']}")
     """
 
+    ensure_project_skill_modules_loaded()
     registry = get_skill_registry()
     return [
         {

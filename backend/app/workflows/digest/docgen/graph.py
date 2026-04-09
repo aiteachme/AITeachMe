@@ -19,8 +19,10 @@ from app.workflows.digest.docgen.nodes import (
     build_inject_examine_node,
     build_load_context_node,
     build_pedagogy_craft_node,
+    build_resolve_titles_node,
     build_targeted_research_node,
 )
+from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.observability import wrap_digest_node
 
@@ -55,6 +57,15 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
             workflow_name=context.workflow_name,
             lane="docgen",
             node_name="collect_materials",
+        ),
+    )
+    workflow.add_node(
+        "resolve_titles",
+        wrap_digest_node(
+            build_resolve_titles_node(context=context),
+            workflow_name=context.workflow_name,
+            lane="docgen",
+            node_name="resolve_titles",
         ),
     )
     workflow.add_node(
@@ -108,7 +119,8 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.set_entry_point("load_context")
     workflow.add_conditional_edges("load_context", route_after_load_context, {"continue": "targeted_research", "fail": END})
     workflow.add_edge("targeted_research", "collect_materials")
-    workflow.add_conditional_edges("collect_materials", build_craft_sends)
+    workflow.add_edge("collect_materials", "resolve_titles")
+    workflow.add_conditional_edges("resolve_titles", build_craft_sends)
     workflow.add_edge("pedagogy_craft", "collect_drafts")
     workflow.add_conditional_edges("collect_drafts", route_after_step, {"continue": "enrich_document", "fail": END})
     workflow.add_conditional_edges("enrich_document", route_after_step, {"continue": "inject_examine", "fail": END})
@@ -133,6 +145,7 @@ def create_docgen_initial_state(
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
 
+    course_type = resolve_docgen_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
@@ -144,6 +157,9 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
+        "course_type": course_type,
+        "retrieval_profile": resolve_docgen_retrieval_profile(course_type),
+        "teaching_action": "docgen_build",
         "tone": tone or "",
         "document_context": None,
         "error": None,
@@ -176,6 +192,9 @@ def build_research_sends(state: DocGenState) -> list[Send]:
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
                 "digest_mode": state.get("digest_mode", ""),
+                "course_type": state.get("course_type", ""),
+                "retrieval_profile": state.get("retrieval_profile", ""),
+                "teaching_action": "chapter_research",
                 "tone": state.get("tone", ""),
                 "shared_inputs": state.get("shared_inputs"),
                 "chapter_assignment": chapter,
@@ -202,6 +221,9 @@ def build_craft_sends(state: DocGenState) -> list[Send]:
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
                 "digest_mode": state.get("digest_mode", ""),
+                "course_type": state.get("course_type", ""),
+                "retrieval_profile": state.get("retrieval_profile", ""),
+                "teaching_action": "chapter_write",
                 "tone": state.get("tone", ""),
                 "chapter_material": material,
                 "total_chapters": total,
@@ -226,6 +248,7 @@ __all__ = [
     "build_inject_examine_node",
     "build_load_context_node",
     "build_pedagogy_craft_node",
+    "build_resolve_titles_node",
     "build_research_sends",
     "build_targeted_research_node",
     "create_docgen_initial_state",

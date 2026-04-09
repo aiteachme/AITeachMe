@@ -24,14 +24,14 @@ def build_collect_materials_node(*, context: WorkflowContext):
             processed_chunks=len(materials),
             total_chunks=len(materials),
             current_chunk=len(materials),
-            current_stage_description=f"已完成 {len(materials)} 章资料研究，开始生成章节讲义。",
+            current_stage_description=f"已完成 {len(materials)} 章资料研究，开始根据研究结果收口章节标题。",
         )
         append_knowledge_build_recent_event(
             state["subject"],
             requested_at=state["requested_at"],
             event={
                 "stage": "research_collection_completed",
-                "summary": f"章节研究已收齐，共 {len(materials)} 章，开始进入教学化写作阶段。",
+                "summary": f"章节研究已收齐，共 {len(materials)} 章，开始收口最终章节标题。",
                 "created_at": utcnow(),
             },
         )

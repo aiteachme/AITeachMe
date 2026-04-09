@@ -34,7 +34,7 @@ def _build_shared_inputs() -> SharedInputs:
     )
 
 
-def test_sprint_fallback_plan_uses_dynamic_topic_structure() -> None:
+def test_fallback_plan_uses_neutral_provisional_titles() -> None:
     plan = build_fallback_plan(
         subject="高等数学",
         user_goal="考前冲刺偏导数",
@@ -45,41 +45,23 @@ def test_sprint_fallback_plan_uses_dynamic_topic_structure() -> None:
 
     assert plan.digest_mode == "sprint"
     assert 3 <= len(plan.chapter_plan) <= 6
-    assert plan.chapter_plan[0].title.startswith("偏导数")
-    assert plan.chapter_plan[1].title.startswith("梯度")
-    assert plan.chapter_plan[2].title.startswith("方向导数")
+    assert [chapter.title for chapter in plan.chapter_plan[:3]] == ["第 1 章", "第 2 章", "第 3 章"]
     assert plan.build_constraints["target_chapter_count"] == len(plan.chapter_plan)
     assert "fixed_chapter_count" not in plan.build_constraints
     assert "冲刺型知识文档" in plan.plan_summary
 
 
-def test_systematic_fallback_plan_uses_dynamic_topic_structure() -> None:
-    plan = build_fallback_plan(
-        subject="高等数学",
-        user_goal="系统学习偏导数",
-        digest_mode="systematic",
-        tone="professional",
-        shared_inputs=_build_shared_inputs(),
-    )
-
-    assert plan.digest_mode == "systematic"
-    assert 5 <= len(plan.chapter_plan) <= 12
-    assert plan.chapter_plan[0].title.startswith("偏导数")
-    assert plan.chapter_plan[1].title.startswith("梯度")
-    assert plan.chapter_plan[2].title.startswith("方向导数")
-    assert plan.build_constraints["min_chapters"] == 5
-    assert plan.build_constraints["max_chapters"] == 12
-
-
 def test_learning_scaffold_enforces_sprint_sections() -> None:
-    markdown = "# 概念破冰\n\n这里先给一段简单内容。"
+    markdown = "# 偏导数直觉建立\n\n这里先给一段简单内容。"
     enriched = ensure_chapter_learning_scaffold(
         markdown,
-        title="概念破冰",
+        title="偏导数直觉建立",
         objective="快速建立偏导数的直觉。",
         required_elements=["核心概念", "直观类比", "易错点"],
         digest_mode="sprint",
         source_count=2,
+        chapter_index=1,
+        chapter_count=5,
     )
 
     for heading in (
@@ -96,14 +78,16 @@ def test_learning_scaffold_enforces_sprint_sections() -> None:
 
 
 def test_learning_scaffold_enforces_systematic_sections_and_mermaid() -> None:
-    markdown = "# 全景导论\n\n本章先从整体结构讲起。"
+    markdown = "# 多元函数变化图景\n\n本章先从整体结构讲起。"
     enriched = ensure_chapter_learning_scaffold(
         markdown,
-        title="全景导论",
+        title="多元函数变化图景",
         objective="建立整体知识地图。",
         required_elements=["知识全景", "学习路径", "概念关系"],
         digest_mode="systematic",
         source_count=3,
+        chapter_index=1,
+        chapter_count=6,
     )
 
     for heading in (
@@ -148,16 +132,19 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     summary = build_docgen_lane_summary(
         {
             "digest_mode": "systematic",
+            "course_type": "systematic",
             "chapter_materials": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                     "local_hits": 2,
                     "web_hits": 1,
                     "fallback_used": True,
                     "curated_source_count": 2,
                     "trusted_source_count": 1,
+                    "retrieval_profile": "docgen_systematic",
+                    "teaching_action": "chapter_research",
                     "retriever_stats": {"local_rag": {"query_count": 1}, "bing": {"query_count": 1}},
                     "research_ms": 120,
                 }
@@ -165,16 +152,17 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
             "chapter_drafts": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "draft_ms": 80,
                     "word_count": 320,
                     "placeholder_count": 1,
+                    "teaching_action": "chapter_write",
                 }
             ],
             "chapter_metadatas": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
@@ -190,6 +178,9 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert summary["fallback_chapter_count"] == 1
     assert summary["curated_source_count"] == 2
     assert summary["trusted_source_count"] == 1
+    assert summary["course_type"] == "systematic"
+    assert summary["retrieval_profiles"] == ["docgen_systematic"]
+    assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["retriever_names"] == ["bing", "local_rag"]
     assert summary["placeholder_count"] == 1
     assert "cleanse_ms" not in summary

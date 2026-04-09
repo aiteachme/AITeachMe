@@ -10,7 +10,14 @@ from app.shared.infra.tools.builtin.markdown_processing import build_draft_excer
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import ensure_chapter_heading, publish_docgen_progress, resolve_docgen_dependency
+from app.workflows.digest.docgen.nodes.common import (
+    ensure_chapter_heading,
+    get_effective_chapter_title,
+    publish_docgen_progress,
+    resolve_docgen_course_type,
+    resolve_docgen_dependency,
+    resolve_docgen_retrieval_profile,
+)
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -18,8 +25,9 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
     async def pedagogy_craft_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         material = deepcopy(state["chapter_material"])
+        material["total_chapters"] = int(state.get("total_chapters", 0) or material.get("total_chapters", 0) or 0)
         chapter_index = int(material.get("chapter_index", 0) or 0)
-        chapter_title = str(material.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章"
+        chapter_title = get_effective_chapter_title(material, fallback_index=chapter_index)
         upsert_knowledge_build_chapter_progress(
             state["subject"],
             requested_at=state["requested_at"],
@@ -53,6 +61,13 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
+            course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
+            retrieval_profile=str(
+                material.get("retrieval_profile")
+                or state.get("retrieval_profile")
+                or resolve_docgen_retrieval_profile(state.get("course_type") or state.get("digest_mode"))
+            ),
+            teaching_action=str(state.get("teaching_action") or "chapter_write"),
             chapter_index=chapter_index,
         )
         writer_cls = resolve_docgen_dependency("PedagogyWriter", PedagogyWriter)
@@ -67,7 +82,8 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         draft = {
             "chapter_index": chapter_index,
-            "title": chapter_title,
+            "title": str(material.get("title") or "").strip(),
+            "resolved_title": str(material.get("resolved_title") or chapter_title).strip(),
             "markdown": markdown,
             "summary": build_draft_excerpt(markdown, max_chars=260),
             "tags": list(material.get("required_elements") or []),
@@ -75,6 +91,9 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "sources": list(material.get("sources") or []),
             "source_details": list(material.get("source_details") or []),
             "digest_mode": state.get("digest_mode") or "",
+            "course_type": skill_context.course_type,
+            "retrieval_profile": skill_context.retrieval_profile,
+            "teaching_action": skill_context.teaching_action,
             "research_summary": str(material.get("research_summary") or ""),
             "research_ms": int(material.get("research_ms", 0) or 0),
             "local_hits": int(material.get("local_hits", 0) or 0),
@@ -126,7 +145,8 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             stage="draft_chapter_completed",
             payload={
                 "chapter_index": chapter_index,
-                "title": draft["title"],
+                "title": chapter_title,
+                "resolved_title": draft["resolved_title"],
                 "word_count": draft["word_count"],
                 "placeholder_count": draft["placeholder_count"],
             },

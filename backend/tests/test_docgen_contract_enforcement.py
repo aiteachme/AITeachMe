@@ -4,14 +4,16 @@ import asyncio
 import inspect
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from sqlmodel import select
 
 from app.models.knowledge_doc import KnowledgeDoc
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.common.context import create_langgraph_dev_context
+from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
-from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs
+from app.workflows.digest.docgen.publish import build_merged_markdown, publish_staged_knowledge_docs
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 
@@ -92,7 +94,12 @@ def test_load_context_allows_search_only_docgen() -> None:
     )
 
     assert result.get("error") is None
+    assert result["course_type"] == "systematic"
+    assert result["retrieval_profile"] == "docgen_systematic"
+    assert result["teaching_action"] == "docgen_build"
     assert result["document_context"]["source_strategy"] == "web_first"
+    assert result["document_context"]["course_type"] == "systematic"
+    assert result["document_context"]["retrieval_profile"] == "docgen_systematic"
     assert result["chapter_assignments"][0]["title"] == "偏导数的直觉与定义"
     assert result["raw_chunks"] == []
 
@@ -102,10 +109,11 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
     summary = build_docgen_lane_summary(
         {
             "digest_mode": "systematic",
+            "course_type": "systematic",
             "chapter_materials": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                     "local_hits": 2,
                     "web_hits": 1,
@@ -116,25 +124,29 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
                     "scraped_url_count": 1,
                     "document_count": 2,
                     "purify_used": True,
+                    "retrieval_profile": "docgen_systematic",
+                    "teaching_action": "chapter_research",
                     "research_ms": 120,
                 }
             ],
             "chapter_drafts": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "draft_ms": 80,
                     "word_count": count_words(final_markdown),
                     "placeholder_count": 1,
+                    "teaching_action": "chapter_write",
                 }
             ],
             "chapter_metadatas": [
                 {
                     "chapter_index": 1,
-                    "title": "全景导论",
+                    "title": "多元函数变化图景",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
+            "document_context": {"source_strategy": "local_first"},
             "merged_markdown": final_markdown,
             "exam_questions": [{"question_index": 1}],
             "doc_ids": [101],
@@ -147,7 +159,95 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
     assert summary["scraped_url_count"] == 1
     assert summary["research_document_count"] == 2
     assert summary["purify_chapter_count"] == 1
+    assert summary["course_type"] == "systematic"
+    assert summary["source_strategy"] == "local_first"
+    assert summary["retrieval_profiles"] == ["docgen_systematic"]
+    assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["final_word_count"] == count_words(final_markdown)
+
+
+def test_build_merged_markdown_uses_explicit_teaching_hook() -> None:
+    captured: dict[str, object] = {}
+
+    def fake_overview(**kwargs):
+        captured.update(kwargs)
+        return "# Hooked Overview"
+
+    with patch("app.workflows.digest.docgen.publish.build_learning_document_overview", new=fake_overview):
+        merged = build_merged_markdown(
+            [
+                {
+                    "chapter_index": 1,
+                    "title": "偏导数的直觉与定义",
+                    "markdown": "# 偏导数的直觉与定义\n\n正文",
+                }
+            ],
+            document_context={
+                "subject": "demo",
+                "digest_mode": "systematic",
+                "tone": "encouraging",
+                "user_goal": "系统整理偏导数",
+                "plan_summary": "先讲直觉，再讲定义",
+                "source_strategy": "web_first",
+            },
+        )
+
+    assert captured["subject"] == "demo"
+    assert captured["digest_mode"] == "systematic"
+    assert captured["source_strategy"] == "web_first"
+    assert merged.startswith("# Hooked Overview")
+
+
+def test_inject_examine_and_overview_prefer_resolved_title() -> None:
+    chapter_metadatas = [
+        {
+            "chapter_index": 1,
+            "title": "第 1 章",
+            "resolved_title": "多元函数的变化率直觉",
+            "markdown": "# 多元函数的变化率直觉\n\n正文",
+            "summary": "先建立几何直觉。",
+            "source_file_ids": [1],
+            "source_details": [],
+            "sources": [],
+        }
+    ]
+
+    merged = build_merged_markdown(
+        chapter_metadatas,
+        document_context={
+            "subject": "demo",
+            "digest_mode": "systematic",
+            "tone": "encouraging",
+            "user_goal": "系统整理偏导数",
+            "plan_summary": "按章节整理成讲义",
+            "source_strategy": "local_first",
+        },
+    )
+    node = build_inject_examine_node(context=create_langgraph_dev_context("digest.docgen.contract"))
+    with patch("app.workflows.digest.docgen.nodes.inject_examine_node.update_knowledge_build_status"), patch(
+        "app.workflows.digest.docgen.nodes.inject_examine_node.append_knowledge_build_recent_event"
+    ):
+        result = asyncio.run(
+            node(
+                {
+                    "subject": "demo",
+                    "requested_at": datetime.now(timezone.utc),
+                    "digest_mode": "systematic",
+                    "document_context": {
+                        "subject": "demo",
+                        "digest_mode": "systematic",
+                        "tone": "encouraging",
+                        "user_goal": "系统整理偏导数",
+                        "plan_summary": "按章节整理成讲义",
+                        "source_strategy": "local_first",
+                    },
+                    "chapter_metadatas": chapter_metadatas,
+                }
+            )
+        )
+
+    assert "多元函数的变化率直觉" in merged
+    assert result["exam_questions"][0]["question"].startswith("请解释《多元函数的变化率直觉》")
 
 
 def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(session, monkeypatch) -> None:
@@ -232,8 +332,9 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
         chapter_metadatas=[
             {
                 "chapter_index": 1,
-                "title": "新章节",
-                "markdown": "# 新章节\n\n新的知识整理",
+                "title": "第 1 章",
+                "resolved_title": "多元函数的变化率直觉",
+                "markdown": "# 多元函数的变化率直觉\n\n新的知识整理",
                 "summary": "新摘要",
                 "source_file_ids": [1],
                 "digest_mode": "systematic",
@@ -260,8 +361,11 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
     assert docs[0].status == "superseded"
     assert docs[0].superseded_at is not None
     assert docs[1].is_current is True
+    assert docs[1].title == "多元函数的变化率直觉"
     assert docs[1].version_no == 2
     assert "versions/v0002/" in str(docs[1].markdown_path)
+    assert "chapter_01_多元函数的变化率直觉.md" in str(docs[1].markdown_path)
     assert "demo/knowledge_markdowns/versions/v0002/merged_knowledge_base.md" in fake_store.text
     assert "demo/knowledge_markdowns/merged_knowledge_base.md" in fake_store.text
     assert captured_manifest["demo"].version_no == 2
+    assert captured_manifest["demo"].chapter_titles == ["多元函数的变化率直觉"]

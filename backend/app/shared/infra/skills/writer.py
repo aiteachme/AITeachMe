@@ -7,7 +7,10 @@ from typing import Any
 
 from app.shared.infra.model_router import TaskType
 from app.shared.infra.skills.base import BaseSkill, SkillResult
-from app.teaching.documents import ensure_chapter_learning_scaffold
+from app.shared.infra.skills.teaching_hooks import (
+    apply_chapter_learning_scaffold,
+    resolve_learning_chapter_title,
+)
 from app.workflows.digest.prompts import build_docgen_writer_messages
 
 
@@ -21,12 +24,14 @@ class PedagogyWriter(BaseSkill):
         digest_mode: str,
     ) -> SkillResult:
         llm = self.context.resolve_llm_caller()
-        title = str(chapter_plan.get("title") or "Untitled Chapter")
+        title = resolve_learning_chapter_title(chapter_plan, fallback_title="Untitled Chapter")
         objective = str(chapter_plan.get("objective") or "")
         required_elements = [str(item) for item in chapter_plan.get("required_elements", []) if str(item).strip()]
         writing_instructions = str(chapter_plan.get("writing_instructions") or "")
         media_hints = chapter_plan.get("media_hints") or {}
         source_count = len(list(chapter_plan.get("source_details") or []))
+        chapter_index = int(chapter_plan.get("chapter_index", 0) or 0) or None
+        chapter_count = int(chapter_plan.get("total_chapters", 0) or 0) or None
         messages = build_docgen_writer_messages(
             title=title,
             objective=objective,
@@ -36,6 +41,8 @@ class PedagogyWriter(BaseSkill):
             writing_instructions=writing_instructions,
             source_count=source_count,
             dense_context=dense_context,
+            chapter_index=chapter_index,
+            chapter_count=chapter_count,
         )
         try:
             markdown = await llm(
@@ -48,13 +55,15 @@ class PedagogyWriter(BaseSkill):
             markdown = self._fallback_markdown(title=title, objective=objective, dense_context=dense_context)
 
         markdown = str(markdown).strip()
-        markdown = ensure_chapter_learning_scaffold(
+        markdown = apply_chapter_learning_scaffold(
             markdown,
             title=title,
             objective=objective,
             required_elements=required_elements,
             digest_mode=digest_mode,
             source_count=source_count,
+            chapter_index=chapter_index,
+            chapter_count=chapter_count,
         )
         if media_hints:
             markdown = self._ensure_media_placeholders(markdown, media_hints)

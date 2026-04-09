@@ -12,6 +12,9 @@ class BuildPlannerState(TypedDict, total=False):
     file_ids: list[int]
     user_goal: str
     digest_mode: str
+    course_type: str
+    retrieval_profile: str
+    teaching_action: str
     tone: str
     planner_session_id: str
     message_history: list[str]
@@ -27,6 +30,8 @@ class BuildPlannerState(TypedDict, total=False):
     workflow_elapsed_ms: int
     node_timings_ms: dict[str, int]
     node_events: list[dict[str, Any]]
+    fallback_used: bool
+    planner_generation_mode: str
     progress_callback: Any
     token_callback: Any
     error: str | None

@@ -19,6 +19,9 @@ class DocGenState(TypedDict, total=False):
     confirmed_plan_id: str
     confirmed_plan: dict[str, Any] | None
     digest_mode: str
+    course_type: str
+    retrieval_profile: str
+    teaching_action: str
     tone: str
     shared_inputs: Any
     document_context: dict[str, Any] | None

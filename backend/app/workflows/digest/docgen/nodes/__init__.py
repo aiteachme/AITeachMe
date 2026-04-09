@@ -7,6 +7,7 @@ from .finalize_node import build_finalize_assemble_node
 from .inject_examine_node import build_inject_examine_node
 from .load_context_node import build_load_context_node
 from .pedagogy_craft_node import build_pedagogy_craft_node
+from .resolve_titles_node import build_resolve_titles_node
 from .targeted_research_node import build_targeted_research_node
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "build_inject_examine_node",
     "build_load_context_node",
     "build_pedagogy_craft_node",
+    "build_resolve_titles_node",
     "build_targeted_research_node",
 ]

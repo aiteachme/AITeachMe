@@ -181,6 +181,7 @@ def build_docgen_lane_summary(
     chapter_materials = list(state.get("chapter_materials", []))
     chapter_drafts = list(state.get("chapter_drafts", []))
     chapter_metadatas = list(state.get("chapter_metadatas", []))
+    document_context = dict(state.get("document_context", {}) or {})
     chapter_count = max(len(chapter_metadatas), len(chapter_drafts), len(chapter_materials))
     research_items = build_slow_items(
         state.get("slowest_research_chapters")
@@ -222,6 +223,24 @@ def build_docgen_lane_summary(
     fallback_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False)))
     curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
     trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in chapter_materials)
+    retrieval_profiles = sorted(
+        {
+            str(chapter.get("retrieval_profile") or "").strip()
+            for chapter in chapter_materials
+            if str(chapter.get("retrieval_profile") or "").strip()
+        }
+    )
+    if not retrieval_profiles and str(state.get("retrieval_profile") or "").strip():
+        retrieval_profiles = [str(state.get("retrieval_profile") or "").strip()]
+    teaching_actions = sorted(
+        {
+            str(item.get("teaching_action") or "").strip()
+            for item in [*chapter_materials, *chapter_drafts]
+            if str(item.get("teaching_action") or "").strip()
+        }
+    )
+    if not teaching_actions and str(state.get("teaching_action") or "").strip():
+        teaching_actions = [str(state.get("teaching_action") or "").strip()]
     planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
     executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
     scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
@@ -241,6 +260,15 @@ def build_docgen_lane_summary(
         "planner_session_id": str(state.get("planner_session_id", "") or ""),
         "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
         "digest_mode": str(state.get("digest_mode", "") or ""),
+        "course_type": str(
+            state.get("course_type", "")
+            or document_context.get("course_type", "")
+            or state.get("digest_mode", "")
+            or ""
+        ),
+        "source_strategy": str(document_context.get("source_strategy", "") or ""),
+        "retrieval_profiles": retrieval_profiles,
+        "teaching_actions": teaching_actions,
         "chapter_count": chapter_count,
         "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
         "load_ms": int(state.get("load_ms", 0)),
@@ -580,4 +608,3 @@ def _lane_step_items(lane: str, step_map: Mapping[str, Any]) -> list[dict[str, A
             }
         )
     return items
-
