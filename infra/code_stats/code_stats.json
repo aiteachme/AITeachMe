@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-07T17:46:53.444685",
-  "total_commits_analyzed": 444,
+  "generated_at": "2026-04-09T05:48:19.492319",
+  "total_commits_analyzed": 466,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3553,6 +3553,182 @@
       "code_lines": 89646,
       "other_lines": 28237,
       "message": "refactor(backend): split llm support and tighten l"
+    },
+    {
+      "date": "2026-04-07",
+      "commit": "49a545d",
+      "total_lines": 117883,
+      "code_lines": 89646,
+      "other_lines": 28237,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "ccb66bc",
+      "total_lines": 119449,
+      "code_lines": 90603,
+      "other_lines": 28846,
+      "message": "chore: 更新架构、文档"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "8185092",
+      "total_lines": 120995,
+      "code_lines": 92068,
+      "other_lines": 28927,
+      "message": "refactor: 初步重构工具模块和digest"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "574cbf3",
+      "total_lines": 121289,
+      "code_lines": 92312,
+      "other_lines": 28977,
+      "message": "refactor(docgen): 将新主链拆分为独立节点模块并补齐阶段进度事件"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "fdcaf9b",
+      "total_lines": 121611,
+      "code_lines": 92589,
+      "other_lines": 29022,
+      "message": "feat(research): 引入子查询规划与批量抓取动作并接入 ResearchConducto"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "c9ec3d3",
+      "total_lines": 122009,
+      "code_lines": 92947,
+      "other_lines": 29062,
+      "message": "refactor(docgen): 强制 confirmed plan 主链并收口版本化发布"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "188c3a3",
+      "total_lines": 122647,
+      "code_lines": 93503,
+      "other_lines": 29144,
+      "message": "feat(planner): 收紧构建方案规范化与确认契约"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "7b87e0f",
+      "total_lines": 122843,
+      "code_lines": 93690,
+      "other_lines": 29153,
+      "message": "feat(observability): 收紧 research 链路 LangSmith 调试元数"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "7230ad4",
+      "total_lines": 125728,
+      "code_lines": 96024,
+      "other_lines": 29704,
+      "message": "feat: 将 planner 调整为类 Deep Research 的流式研究计划交互"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "1b12bcf",
+      "total_lines": 125934,
+      "code_lines": 96215,
+      "other_lines": 29719,
+      "message": "chore: 完成sse"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "4822f95",
+      "total_lines": 125936,
+      "code_lines": 96217,
+      "other_lines": 29719,
+      "message": "  fix: 去除 planner 结果重复渲染"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "42ca5a6",
+      "total_lines": 125719,
+      "code_lines": 96069,
+      "other_lines": 29650,
+      "message": "docs: 重构文档优化"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "d648b38",
+      "total_lines": 125739,
+      "code_lines": 96065,
+      "other_lines": 29674,
+      "message": "docs: 增加兼容langsmith规范"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "79e4f2b",
+      "total_lines": 125930,
+      "code_lines": 96197,
+      "other_lines": 29733,
+      "message": "fix: 明确本地调试阶段的 LangSmith 采集配置"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "dc81e01",
+      "total_lines": 125930,
+      "code_lines": 96197,
+      "other_lines": 29733,
+      "message": "chore: update .env.sample"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "3d56d41",
+      "total_lines": 126246,
+      "code_lines": 96477,
+      "other_lines": 29769,
+      "message": "  refactor: 调整知识文档规划为动态章节并增强构建过程可视化"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "489308d",
+      "total_lines": 126503,
+      "code_lines": 96716,
+      "other_lines": 29787,
+      "message": "chore: 额外添加改动"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "c28ad40",
+      "total_lines": 126503,
+      "code_lines": 96716,
+      "other_lines": 29787,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "ceb4d65",
+      "total_lines": 126503,
+      "code_lines": 96716,
+      "other_lines": 29787,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "09727ed",
+      "total_lines": 126267,
+      "code_lines": 96494,
+      "other_lines": 29773,
+      "message": "  feat: 增加知识图谱调试入口并补充基础架构文档"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "122e1c5",
+      "total_lines": 127051,
+      "code_lines": 97141,
+      "other_lines": 29910,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "8271152",
+      "total_lines": 127051,
+      "code_lines": 97141,
+      "other_lines": 29910,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
     }
   ]
 }
