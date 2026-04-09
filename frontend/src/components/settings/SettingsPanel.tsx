@@ -328,7 +328,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
                   />
                   <p className="text-xs text-slate-500">
-                    该 Token 仅保存在浏览器本地设置中；上传文件时会随请求传给后端用于本次解析。
+                    该 Token 仅保存在浏览器本地设置中；上传文件时会随请求传给后端用于本次解析。若部署端已配置 MINERU_API_TOKEN，可留空。
                   </p>
                 </div>
 

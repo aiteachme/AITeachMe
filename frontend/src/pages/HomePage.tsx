@@ -63,11 +63,10 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   const settings = getStoredAppSettings();
   if (settings.parserProvider === "mineru") {
     const token = settings.mineruApiToken?.trim();
-    if (!token) {
-      throw new Error("已选择 MinerU 解析引擎，但未填写 API Token，请先到设置中填写后再上传。");
-    }
     formData.append("parser_provider", "mineru");
-    formData.append("mineru_api_token", token);
+    if (token) {
+      formData.append("mineru_api_token", token);
+    }
     formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
     formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
     formData.append("mineru_enable_table", String(settings.mineruEnableTable));

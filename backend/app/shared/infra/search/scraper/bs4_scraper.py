@@ -15,9 +15,19 @@ logger = structlog.get_logger(__name__)
 
 
 class BS4Scraper(BaseScraper):
+    aliases = ("html", "web")
+    priority = 10
+
     @property
     def name(self) -> str:
         return "bs4"
+
+    @classmethod
+    def supports_url(cls, url: str) -> bool:
+        normalized = str(url or "").strip().lower()
+        if not normalized.startswith(("http://", "https://")):
+            return False
+        return not (normalized.endswith(".pdf") or ".pdf?" in normalized)
 
     async def scrape(self, url: str) -> ScrapedPage:
         settings = get_settings()
@@ -45,7 +55,13 @@ class BS4Scraper(BaseScraper):
             title = title_match.group(1).strip() if title_match else ""
             content = re.sub(r"<[^>]+>", " ", html)
             content = re.sub(r"\s+", " ", content).strip()
-        return ScrapedPage(url=url, title=title, content=content[:12000], content_type="text/html")
+        return ScrapedPage(
+            url=url,
+            title=title,
+            content=content[:12000],
+            content_type="text/html",
+            reader_name=self.name,
+        )
 
 
 __all__ = ["BS4Scraper"]

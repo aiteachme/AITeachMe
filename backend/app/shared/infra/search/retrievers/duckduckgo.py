@@ -11,6 +11,8 @@ logger = structlog.get_logger(__name__)
 
 
 class DuckDuckGoRetriever(BaseRetriever):
+    aliases = ("ddg",)
+
     @property
     def name(self) -> str:
         return "duckduckgo"

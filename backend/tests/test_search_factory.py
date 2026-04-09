@@ -4,12 +4,16 @@ import asyncio
 
 from app.shared.infra.config import Settings
 from app.shared.infra.search.factory import (
+    get_reader_for_url,
     get_configured_retriever_names,
+    get_retriever,
     get_retrievers_for_subject,
 )
 from app.shared.infra.search.retrievers.arxiv import ArxivRetriever
 from app.shared.infra.search.retrievers.semantic_scholar import SemanticScholarRetriever
 from app.shared.infra.search.retrievers.tavily import TavilyRetriever
+from app.shared.infra.search.scraper.bs4_scraper import BS4Scraper
+from app.shared.infra.search.scraper.pdf_scraper import PDFScraper
 
 
 def test_settings_parse_retrievers_prefers_explicit_list_and_dedupes() -> None:
@@ -106,6 +110,23 @@ def test_get_retrievers_for_subject_skips_local_rag_without_context(monkeypatch)
         "tavily",
         "duckduckgo",
     ]
+
+
+def test_get_retriever_supports_registered_aliases() -> None:
+    assert get_retriever("ddg").name == "duckduckgo"
+    assert get_retriever("rag", subject="math").name == "local_rag"
+
+
+def test_get_reader_for_url_routes_pdf_urls_to_pdf_reader() -> None:
+    reader = get_reader_for_url("https://example.com/lecture-notes.pdf")
+
+    assert isinstance(reader, PDFScraper)
+
+
+def test_get_reader_for_url_can_respect_preferred_reader_name() -> None:
+    reader = get_reader_for_url("https://example.com/lecture-notes.pdf", preferred="bs4")
+
+    assert isinstance(reader, BS4Scraper)
 
 
 def test_tavily_retriever_maps_results(monkeypatch) -> None:

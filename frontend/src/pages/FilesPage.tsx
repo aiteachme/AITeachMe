@@ -31,8 +31,8 @@ import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
-import { useSettings } from "../hooks/useSettings";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -291,6 +291,22 @@ async function fetchFiles(subject: string): Promise<FilesData> {
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
+
+  // 当用户选择 MinerU 解析时，将前端设置随上传请求一并提交给后端。
+  // Token 可留空，此时后端可继续使用环境变量中的默认凭据。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    data.append("parser_provider", "mineru");
+    if (token) {
+      data.append("mineru_api_token", token);
+    }
+    data.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    data.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    data.append("mineru_enable_table", String(settings.mineruEnableTable));
+    data.append("mineru_is_ocr", String(settings.mineruIsOcr));
+  }
+
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,

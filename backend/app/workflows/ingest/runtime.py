@@ -35,6 +35,7 @@ from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.state import IngestParseState
 from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.shared.infra.config import get_settings
 
 try:
     from PIL import Image
@@ -482,6 +483,12 @@ async def run_parse_file_workflow(
                     )
                 else:
                     mineru_token = None
+
+            # Fallback: allow centralized deployment to provide MinerU token via env.
+            if requested_parser_provider == "mineru" and not (mineru_token and mineru_token.strip()):
+                env_token = (get_settings().mineru_api_token or "").strip()
+                if env_token:
+                    mineru_token = env_token
 
             # ── Fast Path: text/markdown/code files skip classify+plan entirely ──
             # (改进 2: RAGFlow Naive + LangChain 直通思路)

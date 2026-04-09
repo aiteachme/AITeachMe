@@ -30,6 +30,7 @@ class ScrapedPage:
     title: str = ""
     content: str = ""
     content_type: str = "text/html"
+    reader_name: str = ""
     success: bool = True
     error: str | None = None
 

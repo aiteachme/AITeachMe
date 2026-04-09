@@ -1,58 +1,388 @@
-## 七、教育工具集成与 Teaching Skills
+## 七、Teaching Tools 与教学能力落位
 
-### 7.1 可集成的教育领域工具调研
+> 目标：明确哪些能力属于通用工具，哪些能力属于教学工具，避免 `infra` 和 `teaching` 再次长出平行实现。
+> 最后更新：2026-04-09
 
-| 工具/服务 | 用途 | 集成方式 | 优先级 |
-|:---|:---|:---|:---|
-| **Wolfram Alpha API** | 数学公式验证、符号计算、函数图像 | REST API → Action | P2 |
-| **Manim / 3Blue1Brown** | 数学动画生成（如偏导数几何意义动画） | Python 库 → Skill | P3（V2） |
-| **Desmos API** | 交互式函数图像嵌入 | iframe 嵌入 → InteractiveBuilder | P2 |
-| **GeoGebra** | 几何/代数交互演示 | iframe 嵌入 → InteractiveBuilder | P3（V2） |
-| **KaTeX / MathJax** | LaTeX 公式前端渲染 | 前端集成（已有基础） | P0 |
-| **Mermaid.js** | 思维导图/流程图前端渲染 | 前端集成 | P1 |
-| **Excalidraw** | 手绘风格图表 | 前端集成（可选） | P3 |
-| **Anki Connect** | 导出为 Anki 闪卡 | REST API → Action | P3 |
+### 7.4 真正需要补齐的 Teaching Tool 分层（新增）
 
-### 7.2 Skill 类型对照表
+如果目标是“工具覆盖面要比 GPT-Researcher 更多更好”，教学工具不能只停留在 4 个示例函数，至少应分成下面 5 组：
 
-两种 Skill 实现模式的适用场景：
-
-| 特性 | `@skill` 装饰器（轻量） | `BaseSkill` 类（重量级） |
+| 分组 | 目标 | 示例工具 |
 |:---|:---|:---|
-| **状态** | 无状态函数 | 有状态类（持有 SkillContext） |
-| **适用场景** | 单步操作 | 多步编排 |
-| **LLM 调用** | 被 LLM tool_call 调用 | 被 LangGraph 节点直接调用 |
-| **LangSmith 追踪** | 通过 ToolRegistry 自动追踪 | 通过 `BaseSkill.run()` 包装追踪 |
-| **示例** | `solve_step_by_step`, `explain_formula` | `ResearchConductor`, `ImageGenerator` |
+| 概念教学 | 讲清楚“是什么” | `explain_formula` / `compare_concepts` / `build_glossary_section` |
+| 方法教学 | 讲清楚“怎么做” | `solve_step_by_step` / `method_selector` / `proof_outline_builder` |
+| 练习生成 | 讲清楚“怎么练” | `generate_similar_problems` / `difficulty_ladder_builder` / `distractor_builder` |
+| 纠错诊断 | 讲清楚“哪里容易错” | `misconception_detector` / `error_pattern_explainer` |
+| 记忆迁移 | 讲清楚“怎么记、怎么迁移” | `memory_hooks_builder` / `analogy_builder` / `transfer_question_builder` |
 
-### 7.3 Teaching Skills 扩展
+#### 7.4.1 推荐优先补齐的 Teaching Tools
 
-在 `shared/infra/skills/` 中预留教育专属 Skill 接口：
+**P1：必须优先做**
 
-```python
-# ── @skill 装饰器：轻量级，被 LLM tool_call 调用 ──
+- `build_misconception_section`
+  - 生成“易错点 / 常见误区”
+- `build_formula_walkthrough_section`
+  - 对关键公式做逐项解释
+- `build_example_variations_section`
+  - 同一例题的 2-3 个变式
+- `difficulty_ladder_builder`
+  - 基础 -> 中档 -> 综合 的题目梯度
+- `memory_hooks_builder`
+  - 秒杀口诀 / 类比 / 记忆钩子
 
-@skill("solve_step_by_step", "对数学题进行分步求解并展示过程")
-async def solve_step_by_step(problem: str, subject: str = "math") -> str:
-    """调用 Strategic LLM 进行分步求解。"""
-    ...
+**P2：对理工科非常有价值**
 
-@skill("generate_similar_problems", "根据一道题生成相似变型题")
-async def generate_similar_problems(problem: str, count: int = 3) -> str:
-    """调用 Smart LLM 生成变型题。"""
-    ...
+- `proof_outline_builder`
+  - 证明题思路骨架
+- `graph_scene_builder`
+  - 函数图像/几何场景说明
+- `unit_conversion_checker`
+  - 物理/工程单位一致性检查
+- `symbolic_math_checker`
+  - 接 Wolfram / SymPy 的数学验证工具
 
-@skill("explain_formula", "用大白话解释一个数学公式")
-async def explain_formula(formula: str, level: str = "beginner") -> str:
-    """调用 Fast LLM 生成公式的通俗解释。"""
-    ...
+**P3：系统课质量增强**
 
-@skill("compare_concepts", "对比两个易混淆概念")
-async def compare_concepts(concept_a: str, concept_b: str) -> str:
-    """生成对比表格。"""
-    ...
-```
+- `dependency_explainer`
+  - 解释知识前置依赖
+- `concept_transfer_builder`
+  - 构造跨章节迁移题
+- `oral_quiz_builder`
+  - 生成口头提问卡片
+- `anki_export_builder`
+  - 闪卡导出
 
-这些 Skill 可以在 `pedagogy_craft` 节点的写作过程中被 LLM 通过 tool_call 调用，也可以在 `enrich_document` 阶段独立调用。
+### 7.5 一个关键判断：AITeachMe 不该只比它“工具更多”，而要比它“教学链更完整”（新增）
+
+GPT-Researcher 的强项是：
+
+- 找资料
+- 读资料
+- 写报告
+
+AITeachMe 该强于它的地方是：
+
+- 找资料
+- 读资料
+- 组织证据
+- 写讲义
+- 插图和交互演示
+- 出题
+- 诊断误区
+- 量化学习状态
+
+所以“工具更多更好”的真正定义应该是：
+
+- 检索更广
+- 读取更稳
+- 证据更结构化
+- 教学工具更深
+- 富媒体更强
+- 验收更可量化
+
+而不是简单比较“总共有多少个 retriever”。
 
 ---
+
+## 7.1 先回答当前最核心的问题
+
+### “`infra` 里放通用工具，`teaching` 里放教学相关工具，合理吗？”
+
+合理。
+但要满足下面这条前提：
+
+> **`infra` 负责接口、抽象、策略和统一 runtime；`teaching` 负责 AITeachMe 教学任务适配和教学表达。**
+
+如果 `teaching` 开始复制：
+
+- memory store
+- retriever
+- tool registry
+- LLM provider
+- runtime path
+
+那这就不再是合理分层，而是形成第二套底座。
+
+---
+
+## 7.2 三层职责
+
+### 7.2.1 `shared/infra`
+
+负责：
+
+- 通用 tool / skill / search / scraper / tracing / memory / storage
+- 第三方 API 接入
+- 统一输入输出与错误语义
+- 可替换接口、基类、工厂与策略
+
+这里关注的是：
+
+- 功能能不能稳定调用
+- 结果能不能复用
+- LangSmith 能不能看清
+- 能力是否足够抽象，能被多个教学场景复用
+
+### 7.2.2 `teaching`
+
+负责：
+
+- 把通用能力翻译成 AITeachMe 的教学任务
+- 学习者视角的解释方式
+- 教学脚手架
+- 教学块与文档结构
+- 错因翻译、学习建议、习题讲评
+- 针对不同课程模式的教学表达
+
+这里关注的是：
+
+- 这是不是“在教”
+- 这是不是更容易学
+- 这是不是更符合考试或课程场景
+- 这是不是符合我们的产品理念和教学方法
+
+### 7.2.3 `workflows`
+
+负责：
+
+- 什么时候调用哪些 teaching / infra 能力
+- 状态如何推进
+- 并发与错误如何处理
+
+---
+
+## 7.3 教学能力应该怎么分级
+
+### A. 通用底层工具
+
+这些不属于教学专属：
+
+- 网页搜索
+- 抓取
+- Markdown / LaTeX 处理
+- memory 读写
+- 内容分析
+- 图像生成
+- Mermaid 生成
+
+建议落点：
+
+- `shared/infra/tools`
+- `shared/infra/skills`
+
+### B. 教学适配器
+
+这些是“把通用能力翻译成教学动作”：
+
+- 解释一个概念
+- 用大白话翻译公式
+- 对比两个易混概念
+- 给出章节导读
+- 把错题诊断翻译成学习建议
+
+建议落点：
+
+- `app.teaching`
+
+这里最关键的不只是“写几个模板”，而是把任务级判断沉下来：
+
+- 这章该怎么教
+- 冲刺课该强调什么
+- 系统课该展开什么
+- 这类错题应该怎样解释才符合 AITeachMe 的教学目标
+
+### C. 教学流程编排
+
+这些属于 workflow：
+
+- 章节何时 research
+- 章节何时写作
+- 何时插入练习
+- 何时回写 profile
+
+建议落点：
+
+- `workflows/*`
+
+---
+
+## 7.4 当前最需要修正的边界
+
+### 边界 1：memory 的 canonical 位置
+
+推荐明确：
+
+- canonical：`app.shared.infra.memory`
+- `app.teaching.memory`：仅保留兼容 facade，不再新增底层逻辑
+
+原因：
+
+- memory 是系统级能力，不是教学专属能力
+- 它涉及路径、存储、读写、一致性，必须只有一个真相源
+
+代码事实：
+
+- `teaching/context.py` 当前就是直接读取 `app.shared.infra.memory`
+- 这说明 teaching 已经在做“教学场景适配”，而不是自己实现 memory runtime
+
+### 边界 2：教学函数与 Skill 的关系
+
+建议这样理解：
+
+- `BaseSkill`：通用组合能力，强调接口和策略可复用
+- `teaching function`：教学语义动作，强调任务适配和产品表达
+
+当一个教学动作开始依赖：
+
+- 多步检索
+- 富媒体生成
+- 多轮压缩
+- 独立 tracing
+
+就应升级成 `shared/infra/skills` 中的组合 Skill，由 `teaching` 作为调用方或包装方。
+
+### 边界 3：教学文档表达的唯一入口
+
+章节导读、术语速览、学习目标对照、错因块、复习块，建议统一从：
+
+- `app.teaching.documents`
+
+向外提供。
+不要把这些字符串模板再次写回 workflow 节点里。
+
+代码事实：
+
+- `shared/infra/skills/writer.py` 已经调用 `app.teaching.documents.ensure_chapter_learning_scaffold`
+- `workflows/digest/docgen/publish.py` 已经调用 `app.teaching.documents.build_document_overview`
+
+这正好说明 teaching 更适合承载“任务适配后的教学表达”。
+
+但边界上还要额外强调：
+
+- 当前若存在 `infra -> teaching`，只能是显式列出的教学表达 hook
+- 目标态仍应坚持 `teaching -> infra` 为主依赖方向
+
+---
+
+## 7.5 推荐的教学能力目录
+
+### 7.5.1 `teaching/documents`
+
+负责：
+
+- 文档总览页
+- 章节导读
+- 学习目标对照
+- glossary
+- recap / 本章要点
+- 课程模式专属块
+
+### 7.5.2 `teaching/diagnostics`（建议新增）
+
+负责：
+
+- 错因解释
+- 误区归因
+- 学习建议
+- 弱点到练习建议的翻译
+
+### 7.5.3 `teaching/practice`（建议新增）
+
+负责：
+
+- 例题讲评模板
+- 变式题说明
+- 题型拆解模板
+- 考试型课程的冲刺建议
+
+### 7.5.4 `teaching/context`
+
+继续负责：
+
+- 教学上下文拼装
+- learner profile / recall / knowledge snippets 到教学 prompt 的整合
+
+---
+
+## 7.6 推荐建设的 Teaching Tools
+
+### 面向 `sprint`
+
+- `diagnose_exam_traps`
+- `generate_variant_problems`
+- `explain_solution_path`
+- `build_formula_flashcard`
+- `build_last_minute_recap`
+
+### 面向 `systematic`
+
+- `explain_concept_chain`
+- `compare_similar_concepts`
+- `expand_theorem_intuition`
+- `build_prerequisite_bridge`
+- `suggest_next_study_path`
+
+### 两种模式都可复用
+
+- `explain_formula`
+- `summarize_chapter`
+- `translate_profile_signal_to_teaching_advice`
+
+---
+
+## 7.7 外部教育工具怎么接
+
+### 原则
+
+外部 API 的接入点在 `infra`，教学包装在 `teaching`。
+
+### 示例
+
+| 能力 | 底层落点 | 教学落点 |
+| --- | --- | --- |
+| Wolfram Alpha | `shared/infra/tools` 或 `shared/infra/skills` | `teaching` 调用后组织成“公式解释 / 验证结果” |
+| Mathpix | `shared/infra/tools` | `teaching` 用于公式讲解、作业解析 |
+| Desmos / GeoGebra | `shared/infra/skills` | `teaching` 决定何时需要交互图 |
+| 文生图模型 | `shared/infra/skills/image_generator.py` | `teaching` 决定图像在课程中的教学用途 |
+| 动画生成（后续） | `shared/infra/skills` | `teaching` 决定哪些章节值得做动画说明 |
+
+---
+
+## 7.8 LangSmith 元数据建议
+
+教学能力新增 tracing 时，至少要带这些字段：
+
+- `subject`
+- `workflow`
+- `scene`
+- `digest_mode`
+- `chapter_index`
+- `teaching_action`
+- `planner_session_id`
+- `confirmed_plan_id`
+
+其中：
+
+- `scene` 例如 `digest_doc` / `interact_chat` / `examine_feedback`
+- `teaching_action` 用来标识具体教学动作
+
+---
+
+## 7.9 对 Digest 的具体意义
+
+如果 `teaching` 层落稳，Digest 后续就能做到：
+
+- `writer` 只负责把材料写成草稿
+- `teaching/documents` 负责把草稿变成更像讲义的教学结构
+- `inject_examine` 注入的内容不再只是“题”，而是“题 + 教学反馈接口”
+- `profile` 输出的薄弱点可以被翻译成章节中的针对性提醒
+
+这会让知识文档从“研究整理稿”进一步升级为“课程产品”。
+
+---
+
+## 7.10 一句话结论
+
+`infra` 放接口、抽象、策略和统一 runtime，`teaching` 放 AITeachMe 的任务适配和教学表达，这个方向完全正确。
+真正需要防止的是：在 `teaching` 里再复制一份 memory、tool、path、runtime 逻辑。
+Teaching 层应该成为“会教”的地方，而不是“第二个基础设施层”。
