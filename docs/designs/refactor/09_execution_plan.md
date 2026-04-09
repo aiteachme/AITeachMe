@@ -1,6 +1,6 @@
 ## 九、分阶段重构执行计划
 
-> **最后更新**：2026-04-08 — 反映 Phase 0 / 1 / 2 已完成，Phase 3 部分完成的实际状态
+> **最后更新**：2026-04-09 — 反映前端 Mermaid 渲染与知识文档阅读器升级后的实际状态
 
 ### 9.1 总体原则（不变）
 
@@ -70,9 +70,9 @@
 |:---|:---|:---|:---|
 | 1. `ImageGenerator` | `shared/infra/skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入（通义万相 / DALL-E） |
 | 2. `MermaidGenerator` | `shared/infra/skills/mermaid_generator.py` | ✅ 已完成 | mindmap 生成 + 关键词回退 |
-| 3. 前端 Mermaid 渲染组件 | `frontend/src/components/` | ⬜ 待实现 | 需要前端 Mermaid.js 集成 |
-| 4. 前端 KaTeX 公式渲染优化 | `frontend/src/components/` | ⬜ 待评估 | 需确认当前渲染是否支持复杂公式 |
-| 5. 前端文档阅读页面改版 | `frontend/src/pages/` | ⬜ 待实现 | 支持富媒体文档展示（Mermaid SVG + 公式 + 图片） |
+| 3. 前端 Mermaid 渲染组件 | `frontend/src/components/ui/` | ✅ 已完成 | 已集成 `mermaid` 真渲染，失败时自动回退源码视图 |
+| 4. 前端 KaTeX 公式渲染优化 | `frontend/src/components/ui/MarkdownViewer.tsx` | 🟡 部分完成 | 已统一 Markdown 渲染链路并强化 document 版式，复杂公式仍需人工验收 |
+| 5. 前端文档阅读页面改版 | `frontend/src/pages/KnowledgeDocsPage.tsx` | ✅ 已完成 | 已支持 Mermaid SVG + 公式 + 资产图片 + 统一知识讲义样式 |
 
 ### 9.6 Phase 4：教育资源库 + 高级功能 — ⬜ 未开始
 

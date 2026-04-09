@@ -3,7 +3,7 @@
 > **文档定位**：本文档是执行层面的顶层设计，同时作为实施进度的实时追踪。  
 > **涵盖范围**：① 工具体系重构（Skills / Actions / Retrievers） ② Digest DocGen 流程重建 ③ 富媒体文档生成策略 ④ LangSmith 全链路可观测性  
 > **核心原则**：抽取 gpt-researcher 的灵魂（Plan-Execute-Write 范式、三级 LLM、Skill 组合、上下文压缩），融入我们已有的 LangGraph + LiteLLM + Instructor 技术栈，绝不照搬皮囊。  
-> **最后更新**：2026-04-08
+> **最后更新**：2026-04-09
 
 ---
 
@@ -14,7 +14,7 @@
 | Phase 0：基础设施层 | ✅ 已完成 | fallback.py + 检索器工厂 + Scraper |
 | Phase 1：Skills + Actions | ✅ 已完成 | 6 个业务 Skill + 7 个 builtin Action |
 | Phase 2：DocGen 流程重建 | ✅ 已完成 | 8 节点 LangGraph 新拓扑 |
-| Phase 3：富媒体增强 | 🟡 部分完成 | MermaidGenerator ✅ / ImageGenerator 框架就绪 / 前端待实现 |
+| Phase 3：富媒体增强 | 🟡 部分完成 | MermaidGenerator ✅ / ImageGenerator 框架就绪 / 前端 Mermaid 与文档阅读器已落地，图片生成仍待接入 |
 | Phase 4：教育资源库 | ⬜ 未开始 | 本地语料库 + Teaching Skills |
 | Phase 5：质量调优 | ⬜ 未开始 | Prompt 精调 + 端到端验证 + LangSmith Dashboard |
 
