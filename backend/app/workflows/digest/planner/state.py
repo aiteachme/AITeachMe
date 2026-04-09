@@ -17,6 +17,11 @@ class BuildPlannerState(TypedDict, total=False):
     message_history: list[str]
     latest_plan: dict[str, Any] | None
     shared_inputs: SharedInputs
+    concept_queries: list[str]
+    concept_briefing: str
+    concept_topic_hints: list[str]
+    concept_local_hit_count: int
+    concept_web_hit_count: int
     plan: dict[str, Any]
     plan_summary: str
     workflow_elapsed_ms: int

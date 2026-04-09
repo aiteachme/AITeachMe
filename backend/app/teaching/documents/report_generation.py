@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from app.teaching.documents.content_blocks import (
+    build_glossary_section,
+    build_learning_objectives_section,
+)
+
 
 def build_document_overview(
     *,
@@ -74,6 +79,7 @@ def ensure_chapter_learning_scaffold(
     cleaned = (markdown or "").strip()
     if not cleaned.startswith("#"):
         cleaned = f"# {title}\n\n{cleaned}".strip()
+    analysis_source = cleaned
 
     guide_block = build_chapter_guide(
         title=title,
@@ -85,6 +91,19 @@ def ensure_chapter_learning_scaffold(
     missing_blocks: list[str] = []
     if not _contains_heading(cleaned, "## 本章导读"):
         missing_blocks.append(guide_block.strip())
+    glossary_block = build_glossary_section(
+        analysis_source,
+        required_elements=required_elements,
+    )
+    if glossary_block and not _contains_heading(cleaned, "## 术语速览"):
+        missing_blocks.append(glossary_block.strip())
+    objectives_block = build_learning_objectives_section(
+        analysis_source,
+        objective=objective,
+        required_elements=required_elements,
+    )
+    if objectives_block and not _contains_heading(cleaned, "## 学习目标对照"):
+        missing_blocks.append(objectives_block.strip())
 
     for heading, block in _build_mode_sections(
         title=title,

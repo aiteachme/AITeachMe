@@ -1,6 +1,6 @@
 ## 八、要删除 / 废弃的旧文件清单
 
-> **最后更新**：2026-04-08 — 反映 Phase 2 已完成后的实际文件状态
+> **最后更新**：2026-04-09 — 反映检索层第一阶段重构后的实际文件状态
 
 ### 8.1 Docs Lane 废弃文件 — ✅ 已清理完毕
 
@@ -50,7 +50,8 @@
 | `shared/infra/search/retrievers/base.py` | BaseRetriever 抽象基类（含 LangSmith tracing） | ✅ |
 | `shared/infra/search/retrievers/bing.py` | Bing Search API 检索器 | ✅ |
 | `shared/infra/search/retrievers/duckduckgo.py` | DuckDuckGo 检索器 | ✅ |
-| `shared/infra/search/retrievers/bocha.py` | 博查搜索检索器 | ✅ |
+| `shared/infra/search/retrievers/bocha.py` | 博查搜索检索器 | 🟡 文件已建，真实 API 待接入 |
+| `shared/infra/search/retrievers/tavily.py` | Tavily research 检索器 | ✅ |
 | `shared/infra/search/retrievers/local_rag.py` | 本地 RAG 检索器（向量 + section fallback） | ✅ |
 | `shared/infra/search/scraper/base.py` | BaseScraper 抽象基类 | ✅ |
 | `shared/infra/search/scraper/bs4_scraper.py` | BeautifulSoup HTML 抓取 | ✅ |

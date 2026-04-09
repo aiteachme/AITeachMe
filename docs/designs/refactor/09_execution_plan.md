@@ -1,6 +1,6 @@
 ## 九、分阶段重构执行计划
 
-> **最后更新**：2026-04-08 — 反映 Phase 0 / 1 / 2 已完成，Phase 3 部分完成的实际状态
+> **最后更新**：2026-04-09 — 反映前端 Mermaid 渲染升级、Planner 概念预检索、检索层第一阶段重构和教学脚手架增强后的实际状态
 
 ### 9.1 总体原则（不变）
 
@@ -19,13 +19,15 @@
 | 2. `model_overrides` 差异化配置 | `shared/infra/config.py` | ✅ 已有机制 |
 | 3. `.env` 差异化模型配置 | `.env` | ✅ 可选配置 |
 | 4. `observability.py` 自动记录 `task_type` | `shared/infra/llm_support/observability.py` | ✅ LangSmith payload 已含 task_type |
-| 5. `BaseRetriever` + `factory.py` | `shared/infra/search/retrievers/base.py` + `search/factory.py` | ✅ 工厂模式 + `get_retrievers_for_subject()` |
+| 5. `BaseRetriever` + `factory.py` | `shared/infra/search/retrievers/base.py` + `search/factory.py` | ✅ 工厂模式 + `get_retrievers_for_subject()` + 多检索器 list/profile 配置解析 |
 | 6. Bing 检索器 | `shared/infra/search/retrievers/bing.py` | ✅ 已实现 |
 | 7. DuckDuckGo 检索器 | `shared/infra/search/retrievers/duckduckgo.py` | ✅ 已实现 |
 | 8. LocalRAG 检索器 | `shared/infra/search/retrievers/local_rag.py` | ✅ 已实现（向量 + section fallback） |
-| 9. Scraper (BS4 + PDF) | `shared/infra/search/scraper/` | ✅ `BaseScraper` + BS4 + PyMuPDF |
+| 9. Tavily 检索器 | `shared/infra/search/retrievers/tavily.py` | ✅ 已实现 |
+| 10. arXiv / Semantic Scholar 检索器 | `shared/infra/search/retrievers/arxiv.py` + `semantic_scholar.py` | ✅ 已实现 |
+| 11. Scraper (BS4 + PDF) | `shared/infra/search/scraper/` | ✅ `BaseScraper` + BS4 + PyMuPDF |
 
-**额外完成**：Bocha 检索器（`retrievers/bocha.py`）也已实现。
+**额外说明**：`Bocha` 检索器文件已建好，但当前仍是 placeholder，尚未接入真实 API。
 
 ### 9.3 Phase 1：Skills + Actions 层 — ✅ 已完成
 
@@ -37,7 +39,8 @@
 | 4. `query_processing.py` | `shared/infra/tools/builtin/query_processing.py` | ✅ `generate_sub_queries()` + `enrich_queries_for_education()` + `dedupe_queries()` |
 | 5. `web_scraping.py` | `shared/infra/tools/builtin/web_scraping.py` | ✅ `scrape_urls()` 并行抓取 |
 | 6. `markdown_processing.py` | `shared/infra/tools/builtin/markdown_processing.py` | ✅ TOC / headers / references / word_count |
-| 7. `latex_processing.py` | `shared/infra/tools/builtin/latex_processing.py` | ✅ 数学分隔符规范化 |
+| 7. `content_analysis.py` | `shared/infra/tools/builtin/content_analysis.py` | ✅ 术语抽取 / 片段定位 / 覆盖检测 |
+| 8. `latex_processing.py` | `shared/infra/tools/builtin/latex_processing.py` | ✅ 数学分隔符规范化 |
 
 **额外完成**：
 - `SourceCurator`（`skills/source_curator.py`）— 域名可信度 + 词法重叠 + 本地源优先
@@ -70,9 +73,9 @@
 |:---|:---|:---|:---|
 | 1. `ImageGenerator` | `shared/infra/skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入（通义万相 / DALL-E） |
 | 2. `MermaidGenerator` | `shared/infra/skills/mermaid_generator.py` | ✅ 已完成 | mindmap 生成 + 关键词回退 |
-| 3. 前端 Mermaid 渲染组件 | `frontend/src/components/` | ⬜ 待实现 | 需要前端 Mermaid.js 集成 |
-| 4. 前端 KaTeX 公式渲染优化 | `frontend/src/components/` | ⬜ 待评估 | 需确认当前渲染是否支持复杂公式 |
-| 5. 前端文档阅读页面改版 | `frontend/src/pages/` | ⬜ 待实现 | 支持富媒体文档展示（Mermaid SVG + 公式 + 图片） |
+| 3. 前端 Mermaid 渲染组件 | `frontend/src/components/ui/` | ✅ 已完成 | 已集成 `mermaid` 真渲染，失败时自动回退源码视图 |
+| 4. 前端 KaTeX 公式渲染优化 | `frontend/src/components/ui/MarkdownViewer.tsx` | 🟡 部分完成 | 已统一 Markdown 渲染链路并强化 document 版式，复杂公式仍需人工验收 |
+| 5. 前端文档阅读页面改版 | `frontend/src/pages/KnowledgeDocsPage.tsx` | ✅ 已完成 | 已支持 Mermaid SVG + 公式 + 资产图片 + 统一知识讲义样式 |
 
 ### 9.6 Phase 4：教育资源库 + 高级功能 — ⬜ 未开始
 
@@ -83,17 +86,34 @@
 | 3. 交互式 HTML 支持 | `shared/infra/skills/interactive_builder.py` | ⬜ V2 预留 | iframe 沙箱 + Desmos / GeoGebra |
 | 4. Anki 导出 | `shared/infra/tools/builtin/` | ⬜ V2 预留 | 接口定义 + stub |
 
-### 9.7 Phase 5（新增）：文档质量调优 + 端到端验证
+### 9.7 Phase 5（新增）：文档质量调优 + 端到端验证 — 🟡 已启动
 
 > 这是 Phase 0-2 完成后最关键的阶段——基础设施已就绪，现在需要确保**生成的文档质量真正超越 PPT**。
+
+**已落地的第一步**：
+
+- Planner 已从“直接让 LLM 生成研究任务”升级为 `load_context → ground_concepts → draft_plan`
+- `ground_concepts` 会先做轻量概念预检索：
+  - 优先使用 `local_rag`
+  - 可选补充外部百科/定义类检索
+  - 产出 `concept_briefing` + `concept_topic_hints`
+- `draft_plan` Prompt 已强制要求参考概念锚点再生成研究任务，避免裸生成
+- 前端 Planner 运行态已显示 `概念预检索` 节点，便于用户和 LangSmith 对齐排查
+- 检索层第一阶段已落地：
+  - `config.py` 支持 `web_search_retrievers` / `web_search_retriever_profile`
+  - `factory.py` 支持多检索器组合、去重和 DuckDuckGo 兜底
+  - `TavilyRetriever` / `ArxivRetriever` / `SemanticScholarRetriever` 已接入，可作为 `docgen_balanced` / `docgen_academic` 组合的一部分
+- `infra -> teaching` 的第一批分层复用已落地：
+  - `content_analysis.py` 提供通用术语抽取与覆盖检测
+  - `teaching/documents` 开始基于它生成 `术语速览` 和 `学习目标对照` 教学块
 
 | 任务 | 涉及文件 | 验证方式 |
 |:---|:---|:---|
 | 1. 速成课 Prompt 精调 | `prompts/archetype_prompts.py` + `docgen_prompts.py` | 生成"偏导数"速成课，人工评审 4 节结构是否符合 05 文档规范 |
 | 2. 系统课 Prompt 精调 | 同上 | 生成"线性代数"系统课，验证字数 ≥ 10000 + 知识脉络完整 |
-| 3. `edu_planner` 章节规划质量 | `planner/` + `planner_prompts.py` | 验证速成课锁死 4 节、系统课 6-10 节自适应 |
+| 3. `edu_planner` 章节规划质量 | `planner/` + `planner_prompts.py` | 验证 grounding 后的研究任务能稳定覆盖核心概念；速成课 3-6 节、系统课 5-12 节自适应 |
 | 4. `tone` 参数效果验证 | `docgen_prompts.py` | 对比 casual / professional / encouraging / concise 四种风格输出 |
-| 5. 检索命中率分析 | LangSmith Dashboard | 建立 retriever_name 分组视图，分析 local_rag vs web 命中比 |
+| 5. 检索命中率分析 | LangSmith Dashboard | 建立 retriever_name 分组视图，分析 Planner grounding 与 DocGen research 的 local_rag vs web 命中比 |
 | 6. 端到端性能基线 | LangSmith + 手动计时 | 速成课 < 2min，系统课 < 5min |
 | 7. LangSmith 自定义 Dashboard | LangSmith UI | 建立 10 文档中定义的 8 个 Dashboard |
 
@@ -101,7 +121,7 @@
 
 | 节点 | 目标延迟 | 并发度 | Token 预算 |
 |:---|:---|:---|:---|
-| `edu_planner`（Planner 阶段） | < 15s | 1（串行） | REASONING: 4000 |
+| `edu_planner`（Planner 阶段） | < 15s | 1（串行，含 `ground_concepts`） | REASONING: 4000 |
 | `targeted_research` × N | < 20s（含搜索+抓取+压缩） | N=章节数，受 `docgen_max_parallel_chapters` 控制 | DOCGEN_LIGHT: 3000/章 |
 | `pedagogy_craft` × N | < 30s/章 | 同上 | DOCGEN: 8000/章 |
 | `enrich_document` | < 15s | 图片并行生成（max 3） | DOCGEN_LIGHT: 1000 |
@@ -115,13 +135,14 @@
 
 | 缓存对象 | Key | TTL | 后端 |
 |:---|:---|:---|:---|
-| `edu_planner` 输出 | `(subject, digest_mode, tone)` | 24h | 内存 dict（MVP），后续切 Redis |
+| `edu_planner` 输出 | `(subject, digest_mode, tone, file_ids_hash, user_goal_hash)` | 24h | 内存 dict（MVP），后续切 Redis |
+| `ground_concepts` 结果 | `(subject, file_ids_hash, topic_hints_hash, user_goal_hash)` | 6h | 内存 dict |
 | 检索结果 | `(query, retriever_name)` | 1h | 内存 dict |
 | 网页抓取结果 | URL | 24h | 内存 dict |
 | Embedding 向量 | `(text_hash, model)` | 永久 | sqlite-vec（已有） |
 
 **缓存失效策略**：
-- 用户上传新文件后，该 subject 的 `edu_planner` 缓存立即失效
+- 用户上传新文件后，该 subject 的 `edu_planner` 与 `ground_concepts` 缓存立即失效
 - 超过 TTL 的缓存惰性清理（下次访问时检查）
 
 ### 9.10 回滚策略（已简化）

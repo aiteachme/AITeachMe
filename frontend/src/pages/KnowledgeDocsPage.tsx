@@ -28,7 +28,7 @@ import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
 import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
-import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
+import { MarkdownViewer, preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/pages/KnowledgeGraphSidePanel").then((module) => ({
@@ -50,8 +50,6 @@ interface TocTreeNode {
   item: TocItem;
   children: TocTreeNode[];
 }
-
-type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface Comment {
   id: string;
@@ -150,6 +148,7 @@ interface DocGenBuildStatus {
   stage?: string | null;
   error_message?: string | null;
   draft_available?: boolean;
+  digest_mode?: string | null;
 }
 
 interface BuildSampleCard {
@@ -190,6 +189,7 @@ interface KnowledgeBuildPreview {
   current_stage_description?: string | null;
   digest_mode?: string | null;
   mode_reason?: string | null;
+  plan_summary?: string | null;
   processed_chunks?: number;
   total_chunks?: number;
   discovered_node_count?: number;
@@ -258,23 +258,6 @@ const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function textToId(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fff]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function createHeadingIdFactory() {
-  const counts = new Map<string, number>();
-  return (text: string) => {
-    const base = textToId(text) || "section";
-    const next = (counts.get(base) ?? 0) + 1;
-    counts.set(base, next);
-    return next === 1 ? base : `${base}-${next}`;
-  };
-}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -405,18 +388,6 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
     }
   }
   return true;
-}
-
-/** Recursively extract plain text from React children */
-function extractText(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (!node) return "";
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  if (typeof node === "object" && "props" in node) {
-    return extractText((node as React.ReactElement).props.children);
-  }
-  return "";
 }
 
 /** Build a hierarchical tree from a flat TocItem list (Feishu-style) */
@@ -564,107 +535,6 @@ function buildCommentThreadLayout(
     totalHeight: totalHeight + 2,
   };
 }
-
-/* ------------------------------------------------------------------ */
-/*  DocMarkdown                                                        */
-/* ------------------------------------------------------------------ */
-
-const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) {
-  const nextHeadingId = useMemo(() => createHeadingIdFactory(), [content]);
-  const makeHeading = (level: HeadingLevel) => {
-    const Tag = `h${level}` as const;
-    const styles: Record<number, string> = {
-      1: "text-[28px] font-bold text-slate-900 mt-10 mb-5 pb-3.5 border-b border-slate-200/80",
-      2: "text-[24px] font-semibold text-slate-800 mt-9 mb-4",
-      3: "text-[20px] font-semibold text-slate-800 mt-7 mb-3",
-      4: "text-[17px] font-semibold text-slate-700 mt-5 mb-2.5",
-      5: "text-[15px] font-semibold text-slate-700 mt-4 mb-2",
-      6: "text-sm font-semibold uppercase tracking-wide text-slate-500 mt-3.5 mb-1.5",
-    };
-    return ({ children }: { children?: React.ReactNode }) => {
-      const text = extractText(children);
-      const id = nextHeadingId(text);
-      return (
-        <Tag id={id} data-heading-id={id} className={styles[level]}>
-          {children}
-        </Tag>
-      );
-    };
-  };
-
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex, rehypeHighlight]}
-      components={{
-        h1: makeHeading(1),
-        h2: makeHeading(2),
-        h3: makeHeading(3),
-        h4: makeHeading(4),
-        h5: makeHeading(5),
-        h6: makeHeading(6),
-        p: ({ children }) => (
-          <p className="text-[15px] text-slate-700 leading-[2] mb-4">{children}</p>
-        ),
-        ul: ({ children }) => (
-          <ul className="list-disc text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="list-decimal text-[15px] text-slate-700 mb-5 space-y-2 pl-6">{children}</ol>
-        ),
-        li: ({ children }) => (
-          <li className="leading-[2] [&>p]:inline [&>p]:mb-0">{children}</li>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-[3px] border-blue-300/70 bg-blue-50/30 pl-4 pr-3 py-2.5 text-slate-600 my-5 rounded-r-lg">
-            {children}
-          </blockquote>
-        ),
-        code: ({ className, children }) => {
-          const codeText = String(children);
-          const isBlock = Boolean(className) || codeText.includes("\n");
-          if (isBlock) {
-            return <code className={cn("font-mono text-[13px]", className)}>{children}</code>;
-          }
-          return (
-            <code className={cn("bg-slate-100/80 text-slate-800 rounded-md px-1.5 py-0.5 text-sm font-mono", className)}>
-              {children}
-            </code>
-          );
-        },
-        pre: ({ children }) => (
-          <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 overflow-x-auto text-sm my-5 leading-relaxed">
-            {children}
-          </pre>
-        ),
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-5 rounded-xl border border-slate-200">
-            <table className="min-w-full text-sm">{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => (
-          <thead className="bg-slate-50/80 border-b border-slate-200">{children}</thead>
-        ),
-        th: ({ children }) => (
-          <th className="px-4 py-3 text-left font-semibold text-slate-700">{children}</th>
-        ),
-        td: ({ children }) => (
-          <td className="px-4 py-3 text-slate-600 border-t border-slate-100">{children}</td>
-        ),
-        hr: () => <hr className="my-8 border-slate-200/60" />,
-        a: ({ href, children }) => (
-          <a href={href} className="text-blue-600 hover:text-blue-700 hover:underline underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
-        strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
-        em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
-      }}
-    >
-      {preprocessLaTeX(content)}
-    </ReactMarkdown>
-  );
-});
 
 const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: string }) {
   return (
@@ -1399,6 +1269,18 @@ export function KnowledgeDocsPage() {
         : "live";
   const renderedMarkdown = effectiveDocViewMode === "draft" ? draftMarkdown : liveMarkdown;
   const hasRenderedMarkdown = Boolean(renderedMarkdown.trim());
+  const renderedDocUpdatedLabel = formatDocTimestamp(
+    effectiveDocViewMode === "draft" ? draftUpdatedAt : liveUpdatedAt,
+  );
+  const renderedDigestMode = buildMeta?.digest_mode ?? buildPreview?.digest_mode ?? null;
+  const renderedDigestModeLabel =
+    renderedDigestMode === "systematic"
+      ? "系统课"
+      : renderedDigestMode === "sprint"
+        ? "速成课"
+        : "知识文档";
+  const renderedChapterHighlights = (buildPreview?.latest_chapter_titles ?? []).slice(0, 4);
+  const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&
@@ -3294,7 +3176,88 @@ export function KnowledgeDocsPage() {
                           onViewModeChange={setDocViewMode}
                         />
                       )}
-                      <DocMarkdown content={renderedMarkdown} />
+                      <div className="overflow-hidden rounded-[32px] border border-stone-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#fffdf8_38%,#ffffff_100%)] shadow-[0_40px_100px_-76px_rgba(41,37,36,0.58)]">
+                        <div className="border-b border-stone-200/80 bg-[radial-gradient(circle_at_top_left,#e0f2fe_0%,#ffffff_42%,#fef3c7_100%)] px-6 py-6 md:px-8">
+                          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+                            <div className="space-y-4">
+                              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600">
+                                <span className="rounded-full border border-stone-200 bg-white/90 px-3 py-1">
+                                  {effectiveDocViewMode === "draft" ? "构建草稿" : "正式讲义"}
+                                </span>
+                                <span className="rounded-full border border-sky-200 bg-sky-50/90 px-3 py-1 text-sky-700">
+                                  {renderedDigestModeLabel}
+                                </span>
+                                {renderedDocUpdatedLabel ? (
+                                  <span className="rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1 text-amber-700">
+                                    更新于 {renderedDocUpdatedLabel}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">
+                                  Knowledge Canvas
+                                </p>
+                                <h1 className="mt-2 font-serif text-[2.2rem] font-semibold tracking-[-0.03em] text-stone-900">
+                                  {renderedSubjectLabel}
+                                </h1>
+                                <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-600">
+                                  {buildPreview?.plan_summary?.trim() || buildStatusText}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[22rem]">
+                              <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                                  章节亮点
+                                </p>
+                                <p className="mt-2 text-2xl font-semibold text-stone-900">
+                                  {renderedChapterHighlights.length || "—"}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-stone-500">
+                                  当前页面已提炼的重点章节与知识组织线索
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                                  模型调度
+                                </p>
+                                <p className="mt-2 text-2xl font-semibold text-stone-900">
+                                  {buildMetrics?.llm_total_calls ?? "—"}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-stone-500">
+                                  {buildMetrics?.llm_avg_latency_ms
+                                    ? `平均延迟 ${Math.round(buildMetrics.llm_avg_latency_ms)} ms`
+                                    : "构建完成后可在这里看到本轮 LLM 调度强度"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {renderedChapterHighlights.length > 0 ? (
+                            <div className="mt-5 flex flex-wrap gap-2">
+                              {renderedChapterHighlights.map((title) => (
+                                <span
+                                  key={title}
+                                  className="rounded-full border border-stone-200 bg-white/90 px-3 py-1.5 text-xs text-stone-600 shadow-sm"
+                                >
+                                  {title}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="px-6 py-8 md:px-10 md:py-10">
+                          <MarkdownViewer
+                            content={renderedMarkdown}
+                            variant="document"
+                            headingAnchors
+                            assetSubject={subjectId ?? undefined}
+                          />
+                        </div>
+                      </div>
                     </>
                   )}
                 </article>

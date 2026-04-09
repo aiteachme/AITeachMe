@@ -1,13 +1,13 @@
 ## 一、两个项目的架构对齐 — "我有什么 / 他有什么 / 我缺什么"
 
-> **最后更新**：2026-04-08 — 反映 Phase 0 / 1 / 2 实际落地后的状态
+> **最后更新**：2026-04-09 — 反映检索层第一阶段重构后的实际状态
 
 ### 1.1 能力矩阵对照
 
 | 能力维度 | gpt-researcher 实现 | AITeachMe 现状 | 状态 | 后续方向 |
 |:---|:---|:---|:---|:---|
 | **LLM 调用** | `GenericLLMProvider` → 20+ provider, 三级模型 (fast/smart/strategic) | `llm_support/fallback.py` → `acompletion_with_fallback()` 已实现 tier 路由 (strategic→smart→fast)，基于 `TaskType` 降级链 | ✅ 已完成 | 调优各 tier 默认模型配置，收集 LangSmith 数据验证降级频率 |
-| **搜索引擎** | `retrievers/` → 14 种 (Tavily / Bing / DuckDuckGo / arXiv / MCP ...) | `search/retrievers/` → 工厂模式已落地，含 `BaseRetriever` + Bing / DuckDuckGo / Bocha / LocalRAG 四种实现，`factory.py` 按 subject 自动组装 | ✅ 已完成 | 可扩展 Tavily / arXiv 等学术检索器 |
+| **搜索引擎** | `retrievers/` → 14 种 (Tavily / Bing / DuckDuckGo / arXiv / MCP ...) | `search/retrievers/` → 工厂模式已落地，含 `BaseRetriever` + Bing / DuckDuckGo / LocalRAG / Tavily，`Bocha` 当前仍是 placeholder；`factory.py` 已支持多检索器列表 / profile 解析与按 subject 自动组装 | 🟡 部分完成 | 下一步优先补 `Bocha` 真实现与 arXiv / Semantic Scholar 等学术检索器 |
 | **网页抓取** | `scraper/` → 8 种 (BS4 / PyMuPDF / Selenium / Firecrawl ...) + URL 去重 + 并行 | `search/scraper/` → `BaseScraper` + BS4 + PyMuPDF 两种实现，`web_scraping.py` 支持并行抓取 + URL 去重 | ✅ 已完成 | 可按需扩展 Selenium / Firecrawl |
 | **上下文压缩** | `context/compression.py` → `ContextCompressor` + 小文档快速路径 | `skills/context_manager.py` → `ContextManager` 已实现语义+词法相似度评分、段落去重、字符限制压缩 | ✅ 已完成 | 可引入 Embedding 向量过滤提升精度 |
 | **Skills（技能层）** | `skills/` → 6 个 Skill 类 | `skills/` → `BaseSkill` + `SkillContext` + `SkillResult` 已落地，已实现 ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator 共 6 个业务 Skill | ✅ 已完成 | 扩展教育专属 Teaching Skills（solve_step_by_step 等） |
@@ -39,7 +39,7 @@
 | 2 | **Skill 组合模式** | `shared/infra/skills/` | ✅ 已完成 | `BaseSkill` + `@skill` 双模式共存，6 个业务 Skill 已实现 |
 | 3 | **Plan-Execute-Write 范式** | `workflows/digest/docgen/` | ✅ 已完成 | 8 节点 LangGraph 拓扑：load_context → targeted_research → collect_materials → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble |
 | 4 | **上下文压缩管道** | `skills/context_manager.py` | ✅ 已完成 | 语义+词法双通道评分，段落去重，字符限制 |
-| 5 | **检索器工厂** | `search/retrievers/` + `search/factory.py` | ✅ 已完成 | `BaseRetriever` + 4 种实现 + `get_retrievers_for_subject()` 工厂 |
+| 5 | **检索器工厂** | `search/retrievers/` + `search/factory.py` | ✅ 已完成 | `BaseRetriever` + 多检索器列表 / profile 解析 + 5 种实现（含 Tavily，Bocha 仍待补真实 API） |
 | 6 | **Scraper 调度器** | `search/scraper/` + `tools/builtin/web_scraping.py` | ✅ 已完成 | BS4 + PyMuPDF + 并行抓取 + URL 去重 |
 | 7 | **文生图两阶段** | `skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入 |
 
@@ -55,7 +55,7 @@
 | P1 | **DocGen 事件 → WebSocket** | 打通 DocGen 进度事件到前端实时展示 |
 | P1 | **教育 Teaching Skills** | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` |
 | P2 | **本地教育语料库** | `data/edu_corpus/` 预置高数/线代/概率论知识条目 |
-| P2 | **学术检索器扩展** | Tavily / arXiv / PubMed 等学术检索器 |
+| P2 | **学术检索器扩展** | arXiv / Semantic Scholar / PubMed 等学术检索器 |
 | P3 | **交互式 HTML** | iframe 沙箱 + Desmos / GeoGebra 嵌入 |
 | P3 | **MCP 协议扩展** | MCPRetriever + MCPToolSelector |
 
