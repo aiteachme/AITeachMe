@@ -54,6 +54,41 @@ Phase 3: ENRICH (enrich_document + inject_examine + finalize)
 - 原设计有独立的 `edu_planner` 节点在 DocGen graph 内部，实际实现中 Planner 是独立的 workflow（`planner/graph.py`），其输出 `confirmed_plan` 通过 `DocGenState.confirmed_plan` 传入
 - 因此实际 DocGen graph 是 8 节点而非 9 节点（Planner 在上游已完成）
 
+#### 4.2.1 从 GPT-Researcher `_easy_` 继续吸收的关键约束（新增）
+
+重新对照 `_easy_` 后，DocGen 还有一个必须继续强化的方向：**不是“先让 LLM 出一个看起来像样的大纲”，而是“先建立证据约束，再让 LLM 组织章节”。**
+
+这对 AITeachMe 的具体含义是：
+
+- Planner 阶段的 `ground_concepts` 只是第一层证据锚点，还不够
+- `targeted_research` 的输出不应长期停留在 `dense_context: str`，而应升级为结构化 `ChapterEvidencePack`
+- `pedagogy_craft` 应消费的是“章节证据包”，而不是散装 research 文本
+
+建议的 `ChapterEvidencePack` 最低字段：
+
+```python
+{
+    "chapter_index": 1,
+    "title": "偏导数的定义与几何意义",
+    "objective": "...",
+    "must_cover_terms": ["偏导数", "多元函数", "切平面"],
+    "core_facts": [...],              # 章节最关键的事实或定义
+    "source_blocks": [...],           # 结构化来源片段
+    "coverage_gaps": [...],           # 仍未覆盖到的要点
+    "formula_candidates": [...],      # 值得单独渲染/讲解的公式
+    "example_candidates": [...],      # 值得展开的例题或变式
+    "media_hints": [...],             # mermaid / image / html 插槽提示
+    "citations": [...],               # 引用来源
+}
+```
+
+**为什么这一步很关键**：
+
+- 这样 `pedagogy_craft` 才能真正做到“按证据写章节”，而不是拿一坨大文本去自由发挥
+- `coverage_gaps` 可以驱动二次补检索，而不是写完后才发现漏掉核心概念
+- `formula_candidates` / `media_hints` 能把“文档比 PPT 更强”的目标前置到 research 阶段，而不是写完正文再被动补媒体
+- LangSmith 也更容易对齐：后续可以直接统计每章 evidence pack 的大小、覆盖率、引用数、媒体建议数
+
 ### 4.3 当前 LangGraph 拓扑（✅ 已实现）
 
 ```mermaid
@@ -162,6 +197,11 @@ class DocGenState(TypedDict, total=False):
 | **输出** | `chapter_materials` (accumulated via operator.add) |
 | **核心逻辑** | 1. 构建 SkillContext（含 chapter_index / digest_mode 等追踪字段）<br/>2. 调用 ResearchConductor.execute()（子查询规划 → 多检索器并行 → 抓取 → SourceCurator → ContextManager → purify）<br/>3. 构建 chapter_material dict（dense_context / sources / local_hits / web_hits / query_count）<br/>4. 发布 research_progress 事件 |
 | **LangSmith** | 节点级 wrap + Skill 内部每个 LLM 调用自带 trace_metadata |
+
+**下一步升级目标**：
+- 从当前 `chapter_material` 里的 `dense_context + sources`，升级到 `ChapterEvidencePack`
+- 将 `content_analysis.py` 的术语覆盖、片段摘录结果直接并入 evidence pack
+- 为数学/理工类章节额外补 `formula_candidates` 和 `proof_hints`
 
 #### ② `collect_materials` — 汇总素材（✅ 已实现）
 

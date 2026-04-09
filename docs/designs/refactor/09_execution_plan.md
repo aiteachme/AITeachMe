@@ -107,6 +107,19 @@
   - `content_analysis.py` 提供通用术语抽取与覆盖检测
   - `teaching/documents` 开始基于它生成 `术语速览` 和 `学习目标对照` 教学块
 
+**从 GPT-Researcher `_easy_` 继续提炼出的下一批高优先级工作**：
+
+- 给检索链补齐 **缓存 + 限流 + profile 路由**
+  - 不是单纯再加 3 个 retriever，而是把 `search / read / compress` 的执行成本先收住
+- 把 `targeted_research` 的产物从 `dense_context` 升级为 **`ChapterEvidencePack`**
+  - 让写作、媒体增强、质量评估都消费同一份结构化证据
+- 把“比 PPT 更强”的能力前置到 research 阶段
+  - 不是写完正文后再补 Mermaid / 图片，而是在 evidence pack 里提前产出 `formula_candidates` / `media_hints` / `example_candidates`
+- 把 LangSmith 追踪升级到“证据质量”层
+  - 除了耗时和 token，还要记录 `coverage_gap_count` / `citation_count` / `media_hint_count`
+- 把工具扩展方向从“更多搜索引擎”升级为“更完整的工具能力图谱”
+  - 检索、读取、证据组织、教学增强、富媒体、交互、评估都要补齐
+
 | 任务 | 涉及文件 | 验证方式 |
 |:---|:---|:---|
 | 1. 速成课 Prompt 精调 | `prompts/archetype_prompts.py` + `docgen_prompts.py` | 生成"偏导数"速成课，人工评审 4 节结构是否符合 05 文档规范 |
@@ -116,6 +129,65 @@
 | 5. 检索命中率分析 | LangSmith Dashboard | 建立 retriever_name 分组视图，分析 Planner grounding 与 DocGen research 的 local_rag vs web 命中比 |
 | 6. 端到端性能基线 | LangSmith + 手动计时 | 速成课 < 2min，系统课 < 5min |
 | 7. LangSmith 自定义 Dashboard | LangSmith UI | 建立 10 文档中定义的 8 个 Dashboard |
+| 8. `ChapterEvidencePack` 定型 | `docgen/state.py` + `targeted_research_node.py` + `teaching/documents/` | 至少包含 must_cover_terms / source_blocks / coverage_gaps / citations |
+| 9. 检索 profile 调用侧落地 | `planner/` + `ResearchConductor` + `search/factory.py` | Planner 默认 `planner_fast`，DocGen 默认 `docgen_balanced`，学术主题切 `docgen_academic` |
+| 10. Search/Scrape Cache | `shared/infra/search/` | 重复运行同主题时外部请求数显著下降 |
+| 11. RateLimit / WorkerPool | `shared/infra/search/` | 高并发章节场景下不再频繁触发外部 API 限流 |
+| 12. 文档富媒体前置规划 | `targeted_research` + `enrich_document` | 每章都能稳定产出 media hints，而不是依赖写作 prompt 碰运气 |
+| 13. 统一 Planner/DocGen 进度协议 | `workflows/common/events.py` + 前端 flow hooks | 前端不再靠 ad-hoc payload 猜字段，SSE/WebSocket 事件有稳定 schema |
+| 14. 证据引用质量评估 | `tests/` + `evals/`（新增） | 能自动检查章节是否有引用、引用是否被正文真正消费、coverage gap 是否下降 |
+| 15. ReaderAdapter 层 | `shared/infra/search/reader/` 或扩展 `scraper/` | 能按 URL/来源类型稳定切换 bs4/pdf/browser/jina/firecrawl |
+| 16. WrittenContentDeduper | `shared/infra/skills/` + `docgen/` | 系统课章节间重复率明显下降 |
+| 17. DocumentManifest | `teaching/documents/` + 前端 renderer | 前端不再只依赖 Markdown，可消费 manifest 渲染富媒体块 |
+| 18. Teaching Tool Pack | `app/teaching/` | 至少补齐误区、公式拆解、变式题、记忆钩子四类工具 |
+
+### 9.7.1 若目标是“工具覆盖面超过 GPT-Researcher”，推荐的实施顺序（新增）
+
+不要按“先把所有工具都接进来”的顺序做，建议按下面路线推进：
+
+1. `Bocha / Custom / ReaderAdapter`
+   - 先把来源面和读取稳定性补上
+2. `SearchCache / ScrapeCache / RateLimit / Fallback`
+   - 先把运行护栏补上
+3. `ChapterEvidencePack / WrittenContentDeduper`
+   - 先把中间产物和章节质量补上
+4. `DocumentManifest / Progress Schema`
+   - 先把前端消费层补上
+5. `Teaching Tool Pack`
+   - 再补误区、公式、例题、记忆法等教学增强
+6. `Interactive Tool Pack / Eval Tool Pack`
+   - 最后做真正拉开差距的高级能力
+
+这个顺序的原因很简单：
+
+- 如果没有前 3 步，工具越多，系统越乱
+- 如果没有第 4 步，前端吃不到新增能力
+- 如果没有第 6 步，就很难证明“我们真的比它更强”
+
+### 9.7.2 外部搜索与 Reader 接入优先级（新增）
+
+结合这轮对类似开源项目工具栈的调研，建议外部工具按下面顺序推进：
+
+| 阶段 | 建议接入 | 角色 |
+|:---|:---|:---|
+| **Wave 1** | `Bocha`, `Readability/BS4 Reader`, `PDFReader` | 先补中文互联网和基础读取层 |
+| **Wave 2** | `Tavily`, `JinaReader`, `Wikipedia/Baike Retriever` | 提升 research 质量和 planner grounding |
+| **Wave 3** | `arXiv`, `Semantic Scholar`, `CustomRetriever` | 提升系统课可信度和私有化能力 |
+| **Wave 4** | `FirecrawlReader`, `PlaywrightReader`, `PubMedRetriever` | 补复杂网页和垂直学科 |
+| **Wave 5** | `Exa`, `Serper`, `SerpAPI`（按需） | 做英文 research 增强，不必一开始全接 |
+
+**为什么这样排**：
+
+- 中文教育场景的最大缺口不是“没有 Google 包装 API”
+- 而是“中文来源不够强 + reader 不够稳 + 证据组织不够结构化”
+
+所以真正该优先补的是：
+
+1. `Bocha`
+2. `ReaderAdapter`
+3. `PDF / MinerU` 类高保真读取
+4. `Tavily / Jina`
+5. 学术与私有源
 
 ### 9.8 性能目标（不变，待实测验证）
 
@@ -131,19 +203,26 @@
 > [!TIP]
 > 性能对标参考：gpt-researcher 标准研究流程 1-3 分钟（3 个子查询）。我们的速成课 4 章并发等效于 4 个子查询，性能预期应与其相当。
 
-### 9.9 缓存策略（不变）
+### 9.9 缓存与限流策略（更新）
 
 | 缓存对象 | Key | TTL | 后端 |
 |:---|:---|:---|:---|
 | `edu_planner` 输出 | `(subject, digest_mode, tone, file_ids_hash, user_goal_hash)` | 24h | 内存 dict（MVP），后续切 Redis |
 | `ground_concepts` 结果 | `(subject, file_ids_hash, topic_hints_hash, user_goal_hash)` | 6h | 内存 dict |
-| 检索结果 | `(query, retriever_name)` | 1h | 内存 dict |
-| 网页抓取结果 | URL | 24h | 内存 dict |
+| 检索结果 | `(query, retriever_name, profile)` | 1h | 内存 dict，后续切 Redis |
+| 网页抓取结果 | `(url, reader_kind)` | 24h | 内存 dict，后续切 Redis |
 | Embedding 向量 | `(text_hash, model)` | 永久 | sqlite-vec（已有） |
+| `ChapterEvidencePack` | `(chapter_fingerprint, retriever_profile)` | 6h | 内存 dict（命中时直接跳过 research） |
 
 **缓存失效策略**：
 - 用户上传新文件后，该 subject 的 `edu_planner` 与 `ground_concepts` 缓存立即失效
+- 章节标题、required_elements、retriever_profile 发生变化时，对应 `ChapterEvidencePack` 缓存失效
 - 超过 TTL 的缓存惰性清理（下次访问时检查）
+
+**限流策略**：
+- Search API 与 Reader API 分开限流，避免某一类外部服务拖垮整条链
+- `planner_fast` 的并发预算应明显高于 `docgen_balanced`
+- 学术检索器默认低并发运行，避免被 arXiv / Semantic Scholar 限速
 
 ### 9.10 回滚策略（已简化）
 
@@ -162,6 +241,7 @@ Phase 0-2 已完成并稳定运行，旧版 graph 已移除。后续阶段回滚
 | **单元测试** | 每个节点 mock LLM 调用，验证输入输出格式 | pytest + unittest.mock |
 | **集成测试** | 用 `langgraph dev` 跑完整流程，验证 trace 树 | langgraph dev + LangSmith |
 | **质量测试** | 生成 "偏导数" 速成课 + 系统课各一份，人工评审 | 人工评审 checklist |
+| **证据评估** | 检查章节引用率、coverage gap、source block 使用率 | pytest + 自定义 eval fixtures |
 | **性能测试** | 计时端到端延迟，对比 9.8 性能目标 | pytest-benchmark / 手动 |
 | **回归测试** | 确认其他四大引擎（ingest/interact/examine/profile）不受影响 | pytest |
 

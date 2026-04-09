@@ -160,6 +160,233 @@ Layer 3: 通用 Web 搜索兜底             ← Bing/DuckDuckGo
 - 私有知识库接入能力
 - 全链路 LangSmith 可观测
 
+### 6.1.2 除了 retriever，还应继续吸收的检索工程能力（新增）
+
+重新看 `_easy_` 后，一个很明确的结论是：**真正决定质量和稳定性的，不只是“搜哪里”，还包括“怎么读、怎么缓存、怎么限流、怎么降级”。**
+
+这几项目前在 AITeachMe 里还没完全补齐：
+
+| 能力 | GPT-Researcher 启发 | AITeachMe 建议落点 |
+|:---|:---|:---|
+| Reader/Scraper 分离 | 搜索结果和正文抽取明确分层 | `shared/infra/search/reader/` 或继续扩展 `scraper/` 为 reader adapter |
+| Search Cache | 同 query 不重复搜 | `shared/infra/search/cache.py` |
+| Scrape Cache | 同 URL 不重复抓正文 | `shared/infra/search/cache.py` |
+| WorkerPool / RateLimit | 控制并发与站点限速 | `shared/infra/search/runtime.py` |
+| Retriever Profile 路由 | 不同任务使用不同检索组合 | `search/factory.py` + workflow 调用侧 |
+| Fallback Policy | 某检索器失败不拖垮整轮 research | `search/web.py` + `ResearchConductor` |
+
+**建议的 profile 映射**：
+
+- `planner_fast`
+  - `local_rag + bocha + duckduckgo`
+  - 只拿标题/snippet，不做 scraper
+- `docgen_balanced`
+  - `local_rag + tavily + bocha`
+  - 允许 scraper，优先拿教学解释和高质量摘要
+- `docgen_academic`
+  - `local_rag + tavily + arxiv + semantic_scholar`
+  - 主要服务 AI / CS / 理工 / 医学方向的系统课
+- `private_first`
+  - `custom + local_rag + duckduckgo`
+  - 面向企业内训和私有资料库
+
+**优先级建议**：
+
+1. 先补 `bocha` 真实现 + `custom`
+2. 再补 `SearchCache / ScrapeCache`
+3. 再补 `WorkerPool / RateLimit`
+4. 最后再考虑 `browser_reader` / `jina_reader` / `firecrawl_reader`
+
+原因很简单：当前瓶颈首先是“来源组合不够稳”和“重复调用外部搜索成本过高”，还不是“缺少第 7 个网页抓取器”。
+
+### 6.1.3 类似大型开源项目的检索链路对照（新增）
+
+从这一轮对类似项目和相关工具栈的调研来看，真正常见的不是“某一个神奇搜索 API”，而是一条分层链路：
+
+```
+Search API
+  -> Reader / Scraper / Extractor
+  -> Rerank / Compress / Curate
+  -> Cache / RateLimit / Fallback
+  -> Writer / Report / UI
+```
+
+不同项目的差异，主要体现在**搜索源组合**和**读取层能力**。
+
+#### A. 开源项目里的常见组合模式
+
+| 组合模式 | 常见项目/形态 | 典型链路 | 特点 |
+|:---|:---|:---|:---|
+| `Search-first` | GPT-Researcher、Open Deep Research 类 | `Tavily/Serper/Exa -> BS4/Firecrawl -> 压缩写作` | research 速度快，适合报告型任务 |
+| `KB-first` | RAGFlow、AnythingLLM、知识库助手类 | `Local KB -> rerank -> web fallback` | 贴近私有资料，适合企业/教育资料场景 |
+| `Tool-market` | Flowise、LibreChat、Dify 类 | `用户选搜索工具 -> reader -> agent/tool-call` | 扩展面广，但体验依赖工具编排质量 |
+| `Academic-first` | STORM、论文研究类 | `Scholar search -> paper/pdf reader -> outline/citation` | 学术质量高，但覆盖通用中文互联网较弱 |
+
+#### B. 高频出现的搜索源组合
+
+**1. Tavily / Exa**
+
+- 在 research/report agent 里出现频率很高
+- 原因不是“结果最多”，而是：
+  - 返回结果对 LLM 友好
+  - 通常带摘要/内容提取能力
+  - 适合直接进后续压缩和写作链路
+
+**2. Serper / SerpAPI / Bing**
+
+- 更像“通用搜索供应商”
+- 在 Flowise / LibreChat / Dify 这类工具市场型项目里常见
+- 优点：
+  - 通用覆盖广
+  - 对 Google/Bing 生态兼容好
+- 缺点：
+  - 结果更偏“搜索引擎输出”，还需要 reader 层再加工
+
+**3. DuckDuckGo**
+
+- 几乎所有项目都会留一个免费兜底
+- 作用不是拉满质量，而是：
+  - 无 key 可跑
+  - 本地开发方便
+  - 作为 fallback 合理
+
+**4. arXiv / Semantic Scholar / PubMed**
+
+- 论文研究和系统性知识整理里非常常见
+- 与通用搜索最大的不同是：
+  - 结果更可信
+  - 更适合生成“延伸阅读”“论文脉络”“进阶章节”
+
+**5. 中文互联网补充源**
+
+- 英文开源项目里普遍偏弱
+- 对 AITeachMe 来说反而是差异化重点：
+  - `Bocha`
+  - 百度百科 / 维基百科
+  - 中文教育站点定向检索
+
+#### C. 高频出现的 reader / extractor 组合
+
+| Reader 类型 | 常见工具 | 常见用途 | 建议角色 |
+|:---|:---|:---|:---|
+| 轻量 HTML 读取 | `BS4` / `Readability` | 普通网页正文提取 | 默认第一层 |
+| PDF 读取 | `PyMuPDF` / `MinerU` | 论文、讲义、教材、扫描 PDF | 学术/教育刚需 |
+| Reader API | `Jina Reader` | 把 URL 快速转可读正文 | 中层增强 |
+| Crawl API | `Firecrawl` | 更稳的网页抓取、站点抓取、清洗 | 重型增强 |
+| Browser 自动化 | `Playwright` | JS 重网站、登录后页面、复杂渲染 | 最后兜底 |
+
+这里最重要的工程结论是：
+
+- **搜索源和读取器必须分层**
+- 很多项目不是因为“搜索差”，而是因为“reader 太弱，搜到了也读不出来”
+
+#### D. AITeachMe 应该优先超过它们的地方
+
+如果按“工具覆盖面 + 实用价值”来定，我们不该去卷“再多接几个 Google 包装 API”，而应该在这 4 个方向明显超过它们：
+
+**1. 中文教育互联网**
+
+- `Bocha`
+- 中文教育垂直站点过滤
+- 百度百科 / 维基百科双路 grounding
+
+**2. 教育资料读取**
+
+- 本地文件优先
+- `PDFReader + MinerUReader`
+- PPT / 扫描件 / 公式密集材料的高保真提取
+
+**3. 学术可信来源**
+
+- `arXiv`
+- `Semantic Scholar`
+- `PubMed`（按学科开关）
+
+**4. 结构化证据组织**
+
+- 不是只拿网页文本
+- 要产出 `ChapterEvidencePack`
+- 后续再接 `DocumentManifest`
+
+#### E. 对中文教育场景的最优优先级
+
+下面这张表比“大家都接什么”更重要，因为它直接回答“我们该先接什么”：
+
+| 优先级 | 工具 | 角色 | 原因 |
+|:---|:---|:---|:---|
+| P0 | `local_rag` | 本地资料主引擎 | 教育场景第一信源 |
+| P0 | `Bocha` | 中文互联网补充搜索 | 对中文学习资料最有价值 |
+| P0 | `BS4/Readability Reader` | 默认轻量 reader | 成本低、覆盖面大 |
+| P0 | `PDFReader` | 论文/讲义/教材读取 | 教育和学术必需 |
+| P1 | `Tavily` | 高质量 research 搜索 | 信息密度高 |
+| P1 | `JinaReader` | 快速正文抽取增强 | 适合作为 reader 中层 |
+| P1 | `arXiv + Semantic Scholar` | 学术补强 | 理工/AI/医学系统课价值高 |
+| P2 | `FirecrawlReader` | 重型网页抓取增强 | 质量更稳，但成本更高 |
+| P2 | `Wikipedia/Baike Retriever` | Planner grounding 定义源 | 提升大纲锚点质量 |
+| P2 | `CustomRetriever` | 私有资料库接入 | 企业/内训/私有题库必要 |
+| P3 | `PlaywrightReader` | 重 JS 最后兜底 | 复杂但必要性低于前几项 |
+| P3 | `Serper/SerpAPI/Exa` | 通用或英文增强搜索 | 可选，不必一开始全接 |
+| P3 | `PubMedRetriever` | 医学增强 | 按学科启用 |
+
+#### F. 推荐的链路模板
+
+**1. Planner grounding 快速链**
+
+```
+local_rag
+  -> wikipedia/baike
+  -> bocha snippet
+  -> 不抓全文，只抽定义与主题提示
+```
+
+**2. DocGen 平衡链**
+
+```
+local_rag
+  -> tavily + bocha
+  -> bs4/readability
+  -> pdf reader
+  -> source curator
+  -> context manager
+  -> chapter evidence pack
+```
+
+**3. 重网页兜底链**
+
+```
+search result
+  -> bs4/readability
+  -> jina reader
+  -> firecrawl
+  -> playwright
+```
+
+**4. 学术系统课链**
+
+```
+local_rag
+  -> arxiv + semantic scholar (+ pubmed)
+  -> pdf reader
+  -> citation linker
+  -> evidence pack
+```
+
+#### G. 结论
+
+如果目标是“工具一定要比别人更全更丰富”，正确路线不是：
+
+- 把市面上每个搜索 API 都接一遍
+
+而是：
+
+- 搜索源更全：中文 + 英文 + 学术 + 私有
+- 读取器更强：html + pdf + reader api + crawl api + browser
+- 证据组织更强：`ChapterEvidencePack`
+- 教学工具更深：公式、误区、变式、记忆法
+- 验收更硬：coverage / citation / repetition / evidence usage
+
+这才是真正意义上的“覆盖面更广，而且质量更高”。
+
 ### 6.2 Layer 1：本地教育资源库设计
 
 **目标**：预置一批高质量教育素材，作为 RAG 的"底仓"，即使用户没上传任何文件也能生成有质量的文档。

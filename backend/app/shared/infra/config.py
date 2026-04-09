@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     ocr_api_key: str | None = None
     ocr_base_url: str | None = None
     embedding_model: str = "text-embedding-v3"
+
+    # MinerU Cloud
+    # For centralized deployment: configure one token on the server and let users upload without local token.
+    mineru_api_token: str | None = None
+
     data_dir: str = "./data"
     max_upload_size_mb: int = 50
     ingest_parse_concurrency: int = 5

@@ -55,4 +55,83 @@ async def compare_concepts(concept_a: str, concept_b: str) -> str:
 
 这些 Skill 可以在 `pedagogy_craft` 节点的写作过程中被 LLM 通过 tool_call 调用，也可以在 `enrich_document` 阶段独立调用。
 
+### 7.4 真正需要补齐的 Teaching Tool 分层（新增）
+
+如果目标是“工具覆盖面要比 GPT-Researcher 更多更好”，教学工具不能只停留在 4 个示例函数，至少应分成下面 5 组：
+
+| 分组 | 目标 | 示例工具 |
+|:---|:---|:---|
+| 概念教学 | 讲清楚“是什么” | `explain_formula` / `compare_concepts` / `build_glossary_section` |
+| 方法教学 | 讲清楚“怎么做” | `solve_step_by_step` / `method_selector` / `proof_outline_builder` |
+| 练习生成 | 讲清楚“怎么练” | `generate_similar_problems` / `difficulty_ladder_builder` / `distractor_builder` |
+| 纠错诊断 | 讲清楚“哪里容易错” | `misconception_detector` / `error_pattern_explainer` |
+| 记忆迁移 | 讲清楚“怎么记、怎么迁移” | `memory_hooks_builder` / `analogy_builder` / `transfer_question_builder` |
+
+#### 7.4.1 推荐优先补齐的 Teaching Tools
+
+**P1：必须优先做**
+
+- `build_misconception_section`
+  - 生成“易错点 / 常见误区”
+- `build_formula_walkthrough_section`
+  - 对关键公式做逐项解释
+- `build_example_variations_section`
+  - 同一例题的 2-3 个变式
+- `difficulty_ladder_builder`
+  - 基础 -> 中档 -> 综合 的题目梯度
+- `memory_hooks_builder`
+  - 秒杀口诀 / 类比 / 记忆钩子
+
+**P2：对理工科非常有价值**
+
+- `proof_outline_builder`
+  - 证明题思路骨架
+- `graph_scene_builder`
+  - 函数图像/几何场景说明
+- `unit_conversion_checker`
+  - 物理/工程单位一致性检查
+- `symbolic_math_checker`
+  - 接 Wolfram / SymPy 的数学验证工具
+
+**P3：系统课质量增强**
+
+- `dependency_explainer`
+  - 解释知识前置依赖
+- `concept_transfer_builder`
+  - 构造跨章节迁移题
+- `oral_quiz_builder`
+  - 生成口头提问卡片
+- `anki_export_builder`
+  - 闪卡导出
+
+### 7.5 一个关键判断：AITeachMe 不该只比它“工具更多”，而要比它“教学链更完整”（新增）
+
+GPT-Researcher 的强项是：
+
+- 找资料
+- 读资料
+- 写报告
+
+AITeachMe 该强于它的地方是：
+
+- 找资料
+- 读资料
+- 组织证据
+- 写讲义
+- 插图和交互演示
+- 出题
+- 诊断误区
+- 量化学习状态
+
+所以“工具更多更好”的真正定义应该是：
+
+- 检索更广
+- 读取更稳
+- 证据更结构化
+- 教学工具更深
+- 富媒体更强
+- 验收更可量化
+
+而不是简单比较“总共有多少个 retriever”。
+
 ---

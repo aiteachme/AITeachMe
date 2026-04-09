@@ -8,8 +8,8 @@
 - `shared/infra/skills/base.py` — `BaseSkill` 抽象基类 + `SkillContext` + `SkillResult` + `@skill` 装饰器 + `SkillRegistry`，**双模式共存**。
 - `shared/infra/skills/` — 已实现 6 个业务 Skill：ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator。
 - `shared/infra/tools/builtin/` — 已实现 query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops，并新增 `content_analysis.py` 作为教学块复用的通用分析工具。
-- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / LocalRAG / Tavily / arXiv / Semantic Scholar，`Bocha` 当前仍是占位实现。
-- `shared/infra/search/scraper/` — BaseScraper + BS4 + PyMuPDF 两种实现。
+- `shared/infra/search/retrievers/` — 工厂模式已落地，且已升级为**注册式工厂**：`BaseRetriever` 子类自动注册，后续新增 retriever 不再需要手改 `factory.py` 映射表。
+- `shared/infra/search/scraper/` — 已从单纯 `BaseScraper` 升级为 **`BaseReader + BaseScraper` 双层抽象**，当前内置 BS4 + PyMuPDF 两种 reader，并通过 URL 路由自动选择。
 
 **gpt-researcher 的工具体系**：
 - `skills/` — 6 个重量级 Skill 类（ResearchConductor / ReportGenerator / ContextManager / BrowserManager / SourceCurator / ImageGenerator），每个类持有 `researcher` 引用，内部编排多个 Action。
@@ -17,7 +17,38 @@
 - `retrievers/` — 14 种检索器 + 工厂函数 `get_retriever(name)`。
 - `scraper/` — 8 种抓取器 + 统一调度器 `Scraper` 类（URL 去重 + 类型路由 + 并行抓取）。
 
-**当前状态**：核心融合已完成，检索层第一阶段也已落地。当前已经具备**多检索器 list/profile 配置 + Tavily / arXiv / Semantic Scholar 接入**，并开始补 `infra -> teaching` 的分层复用：先在 `infra` 提供 `content_analysis` 这类通用分析能力，再在 `teaching/documents` 里生成 glossary / coverage 等教学块。后续重点转向剩余扩展项（`bocha` 真实 API、`custom` 私有检索器、实际图片生成 API 接入）。
+**当前状态**：核心融合已完成，检索层第一阶段也已落地。当前已经具备**多检索器 list/profile 配置 + Tavily / arXiv / Semantic Scholar 接入 + 注册式 retriever 工厂 + ReaderAdapter 骨架**，并开始补 `infra -> teaching` 的分层复用：先在 `infra` 提供 `content_analysis` 这类通用分析能力，再在 `teaching/documents` 里生成 glossary / coverage 等教学块。后续重点转向剩余扩展项（`bocha` 真实 API、`custom` 私有检索器、`browser/jina/firecrawl` reader、实际图片生成 API 接入）。
+
+#### 3.1.1 GPT-Researcher 思想移植完成度评估（新增）
+
+如果按“思想”而不是“文件数量”来评估，目前完成度大致如下：
+
+| 思想 | GPT-Researcher 核心价值 | AITeachMe 当前状态 | 完成度 |
+|:---|:---|:---|:---|
+| `Plan -> Search -> Compress -> Write` | 固定链路、减少幻觉 | Planner + DocGen 已基本对齐 | **85%** |
+| 分层模型策略 | Fast / Smart / Strategic 分工 | 已通过 `fallback.py` + `TaskType` 落地 | **80%** |
+| 工厂化可插拔 | retriever / scraper / llm / prompt 可切换 | retriever 已较完整，reader 仍偏弱 | **70%** |
+| 流式进度协议 | 用户看到研究全过程 | 已有 planner/docgen 事件，但 schema 还不够稳 | **60%** |
+| 结构化中间产物 | search result / scraped data / context 分层 | `SearchResult` / `ScrapedPage` 有了，`ChapterEvidencePack` 还没正式落地 | **55%** |
+| 运行护栏 | cache / rate limit / worker pool / fallback | 方向已明确，代码尚未补齐 | **40%** |
+| 章节去重 | 避免多章节内容重复 | 只在 `ContextManager` 有部分能力，未成体系 | **35%** |
+| 质量评估闭环 | 不只跑通，还要看报告质量 | 尚未形成自动 eval 指标 | **25%** |
+
+**核心判断**：
+
+- 现在不是“没学到位”，而是**最容易先做出来的 70% 已经吃掉了**
+- 剩下最难但也最值钱的 30%，集中在：
+  - `ChapterEvidencePack`
+  - `ReaderAdapter`
+  - `Cache / RateLimit / Fallback`
+  - `WrittenContentDeduper`
+  - `DocumentManifest`
+  - `Eval / Quality Score`
+
+所以答案不是“已经完美移植”，而是：
+
+- **核心方法论已经基本对齐**
+- **真正决定系统上限的工程骨架还没完全到位**
 
 ### 3.2 Skills 层 — BaseSkill 抽象类（✅ 已实现）
 
@@ -247,7 +278,7 @@ shared/infra/search/
 ├── api.py                     # ✅ search_knowledge + web_search
 ├── types.py                   # ✅ SearchResult / ScrapedPage / WebSearchResult
 ├── web.py                     # ✅ 多检索器聚合 + 去重
-├── factory.py                 # ✅ get_retrievers_for_subject() 工厂 + 多检索器 list/profile 解析
+├── factory.py                 # ✅ 注册式工厂：retriever + reader 路由，多检索器 list/profile 解析
 ├── retrievers/
 │   ├── __init__.py
 │   ├── base.py                # ✅ BaseRetriever（含 LangSmith tracing）
@@ -260,16 +291,17 @@ shared/infra/search/
 │   └── local_rag.py           # ✅ 本地 RAG（向量 + section fallback）
 └── scraper/
     ├── __init__.py
-    ├── base.py                # ✅ BaseScraper（含 LangSmith tracing）
-    ├── bs4_scraper.py         # ✅ BeautifulSoup HTML 抓取
-    └── pdf_scraper.py         # ✅ PyMuPDF PDF 提取
+    ├── base.py                # ✅ BaseReader + BaseScraper（自动注册 + URL 匹配 + LangSmith tracing）
+    ├── bs4_scraper.py         # ✅ BeautifulSoup HTML reader
+    └── pdf_scraper.py         # ✅ PyMuPDF PDF reader
 ```
 
 **与原设计的差异**：
-- `BaseRetriever` 实际接口使用 `search(query, max_results)` / `traced_search(...)`，保持简单明确的统一抽象
+- `BaseRetriever` 已升级为注册式抽象：子类自动注册到 factory，避免每次新增 retriever 都要手改 `_RETRIEVER_TYPES`
 - `factory.py` 的 `get_retrievers_for_subject()` 接受 `local_sections` 参数，支持将用户上传文件的 section 直接注入 LocalRAG
 - `config.py` + `factory.py` 已支持 `web_search_retrievers` / `web_search_retriever_profile`，可配置多检索器组合并保持对旧 `web_search_retriever` 的兼容
 - `LocalRAGRetriever` 实现了向量检索 + section fallback 双通道，比原设计更健壮
+- `BaseReader` 已落地，并保留 `BaseScraper` 兼容层；后续新增 reader 只需要实现 `supports_url()` + `read()`
 - `TavilyRetriever` / `ArxivRetriever` / `SemanticScholarRetriever` 已实现；`Bocha` / `CustomRetriever` 仍待实现
 
 **检索优先级策略（建议升级）**：
@@ -286,6 +318,202 @@ shared/infra/search/
 - `CustomRetriever`
 - 多检索器 profile 的调用侧落地（Planner / DocGen 分场景启用不同 profile）
 - 教育垂直站点定向检索（见 06 文档）
+
+#### 3.5.1 从 GPT-Researcher `_easy_` 继续吸收的工程要点（新增）
+
+这次重新对照 `_easy_` 后，确认还有 4 类高价值能力值得继续吸收，但都应按 AITeachMe 的分层方式落地，而不是直接照搬原仓库结构：
+
+**1. 检索层不只要“更多 retriever”，还要有完整的执行护栏**
+
+- `gpt-researcher` 真正值得学的不是“有很多检索器”，而是 **query budget + worker pool + graceful fallback** 这一整套工程约束
+- AITeachMe 下一步应在 `shared/infra/search/` 补齐：
+  - `SearchCache`：缓存 `(query, retriever_name, profile)` 的 search result
+  - `ScrapeCache`：缓存 `(url, reader_kind)` 的正文抽取结果
+  - `RateLimiter / WorkerPool`：限制外部 API 并发，避免 Tavily / 博查 / 学术源被打爆
+  - `FallbackPolicy`：profile 中前置 retriever 失败时自动切到次优组合，而不是整章 research 失败
+
+**2. `Scraper` 应进一步演进成 `ReaderAdapter` 层**
+
+- `_easy_` 里的经验说明，单纯的 HTML scraper 不够，真正需要的是“按来源类型选择最合适的读取器”
+- 对 AITeachMe 更合适的抽象是：
+  - `bs4_reader`：静态 HTML
+  - `pdf_reader`：PDF / 讲义
+  - `browser_reader`：重 JS 站点
+  - `jina_reader` / `firecrawl_reader`：正文抽取增强（后续按成本开关）
+- 这样做的好处是：Retriever 仍然只负责“找来源”，Reader 只负责“把来源读成正文”，职责会比现在更清晰
+
+**3. 需要一层稳定的数据契约，而不是在 workflow 里传散装 dict**
+
+- `_easy_` 的文档把 `search_results` / `scraped_data` / `context` 这几个核心数据结构讲得很透，这一点非常值得借鉴
+- AITeachMe 后续应在 `shared/infra/search/types.py` 与 `teaching/documents/` 之间进一步收敛出稳定契约：
+  - `SearchResult`
+  - `ScrapedPage`
+  - `ContextBlock`
+  - `ChapterEvidencePack`
+- 其中 `ChapterEvidencePack` 应成为 `targeted_research -> pedagogy_craft` 的标准输出，而不是只传 `dense_context` 字符串
+
+**4. 工具分层要继续坚持：通用能力在 infra，教学语义在 teaching**
+
+- `_easy_` 再次验证了“核心引擎只负责编排，业务含义在外围模块表达”这个方向是对的
+- 对 AITeachMe 来说：
+  - 检索、抓取、缓存、限流、内容分析，这些都应留在 `shared/infra`
+  - 术语速览、学习目标、误区提醒、公式拆解、例题变式，这些都应放在 `app/teaching`
+- 这会让我们后面给 `interact` / `examine` / `profile` 复用基础能力时，不会再次被 digest 的教学语义绑死
+
+#### 3.5.2 如果目标是“工具覆盖面比 GPT-Researcher 更广更强”，正确扩展方向（新增）
+
+这里最重要的一点是：**不是继续横向堆更多同质搜索引擎，而是把工具矩阵补成完整能力图谱。**
+
+建议把工具能力分成 8 大类，而不是只盯着 retriever：
+
+| 工具大类 | GPT-Researcher 覆盖 | AITeachMe 当前状态 | 建议目标 |
+|:---|:---|:---|:---|
+| 检索器 `Retrievers` | 强 | 中强 | 超过它，但只补高价值源 |
+| 读取器 `Readers` | 中 | 弱 | 明显超过它 |
+| 压缩/重排 `Compression/Rerank` | 中 | 中 | 做得更教学化 |
+| 事实/证据组织 `Evidence Builders` | 弱 | 弱 | 这是我们要反超的重点 |
+| 教学增强 `Teaching Tools` | 弱 | 初步有 | 明显超过它 |
+| 富媒体生成 `Media Tools` | 中 | 初步有 | 做得更强 |
+| 交互组件生成 `Interactive Tools` | 很弱 | 预留 | 明显超过它 |
+| 评估/验收 `Eval Tools` | 弱 | 弱 | 明显超过它 |
+
+也就是说，真正的超越路线不是：
+
+- “它 16 个 retriever，我们做 20 个 retriever”
+
+而是：
+
+- “它主要强在 research toolset，我们要把 `research + teaching + media + interactive + eval` 这五层都补齐”
+
+#### 3.5.3 推荐新增工具矩阵（新增）
+
+下面这些工具比“再补 5 个通用搜索 API”更值得优先做：
+
+**A. 检索与读取层**
+
+放在 `shared/infra/search/`：
+
+- `BochaRetriever`
+  - 中文互联网补强
+- `CustomRetriever`
+  - 企业内训 / 私有知识库 / 自建检索 API
+- `PubMedRetriever`
+  - 医学/生命科学方向专用
+- `WikipediaRetriever` / `BaiduBaikeRetriever`
+  - Planner grounding 的轻定义源
+- `BrowserReader`
+  - JS 站点读取
+- `JinaReader`
+  - 快速正文抽取
+- `FirecrawlReader`
+  - 高质量 reader fallback
+- `SearchCache`
+- `ScrapeCache`
+- `RateLimiter`
+- `WorkerPool`
+- `FallbackPolicy`
+
+**B. 证据与组织层**
+
+放在 `shared/infra/tools/builtin/` 或 `shared/infra/skills/`：
+
+- `build_evidence_pack`
+  - 将 search/scrape/context 组织成 `ChapterEvidencePack`
+- `written_content_dedupe`
+  - 多章节内容去重
+- `citation_linker`
+  - 将正文段落和来源片段绑定
+- `coverage_scorer`
+  - 评估 required elements 的覆盖率
+- `formula_extractor`
+  - 从原文/网页中抽公式候选
+- `example_miner`
+  - 挖掘可展开的例题/变式/案例
+- `misconception_detector`
+  - 挖掘易错点和误区
+
+**C. 教学增强层**
+
+放在 `app/teaching/`：
+
+- `solve_step_by_step`
+- `generate_similar_problems`
+- `explain_formula`
+- `compare_concepts`
+- `build_glossary_section`
+- `build_learning_objectives_section`
+- `build_misconception_section`
+- `build_formula_walkthrough_section`
+- `build_example_variations_section`
+- `build_memory_hooks_section`
+  - 口诀 / 记忆法 / 类比
+
+**D. 富媒体与交互层**
+
+放在 `shared/infra/skills/` + `app/teaching/`：
+
+- `ImageGenerator`
+  - 真图生图 API 接入
+- `MermaidGenerator`
+  - 已有，后续补 flowchart / sequence / quadrant
+- `InteractiveHTMLBuilder`
+  - 输出独立 HTML 资产
+- `DesmosEmbedBuilder`
+  - 函数图像
+- `GeoGebraEmbedBuilder`
+  - 几何/线代/曲面演示
+- `ExcalidrawStyleDiagramBuilder`
+  - 手绘风关系图
+- `QuizCardBuilder`
+  - 将知识点转交互式卡片
+
+**E. 评估与验收层**
+
+放在 `tests/` / `evals/` / `shared/infra/`：
+
+- `evidence_usage_eval`
+  - 来源是否真的被正文消费
+- `citation_density_eval`
+  - 引用密度是否足够
+- `coverage_gap_eval`
+  - 章节覆盖缺口是否下降
+- `repetition_eval`
+  - 章节间是否复读
+- `media_usefulness_eval`
+  - 媒体块是否真的支撑理解
+- `document_bundle_validator`
+  - 校验 `document.md + manifest.json + assets/`
+
+#### 3.5.4 真正应该超越 GPT-Researcher 的 3 个点（新增）
+
+如果只挑 3 个方向来做出明显差异化，应该是这三个：
+
+**1. 证据包 `ChapterEvidencePack`**
+
+它决定：
+
+- 写作是不是按证据来
+- 富媒体是不是前置规划
+- LangSmith 能不能追“质量”而不是只追“耗时”
+
+**2. 产物清单 `DocumentManifest`**
+
+它决定：
+
+- 前端能不能做比 PPT 更强的呈现
+- 文档能不能变成“正文 + 侧栏 + 资产 + 引用 + 交互块”
+
+**3. 教学工具层 `Teaching Tools`**
+
+这是 GPT-Researcher 最弱、而 AITeachMe 最该强的地方。
+
+我们真正要超过它的不是：
+
+- “更像一个通用 research agent”
+
+而是：
+
+- “更像一个会研究、会组织、会讲解、会出题、会显影的 AI 教学系统”
 
 ### 3.6 LangSmith 全链路追踪 — ✅ 已实现
 
