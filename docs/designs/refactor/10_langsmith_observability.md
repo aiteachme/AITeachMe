@@ -1,116 +1,306 @@
-## 十、LangSmith 全链路可观测性设计
+## 十、LangSmith 全链路可观测性
 
-> **最后更新**：2026-04-08 — 反映实际实现状态，追踪维度已通过 SkillContext.trace_metadata() 落地
-
-### 10.1 设计原则（不变）
-
-**每个模块从第一天就接入 LangSmith，不留"后补"的债。**
-
-当前项目已有的 LangSmith 基础设施非常扎实（`tracing.py` 的 `llm_trace_scope` + `langsmith_tracing_scope` + `LLMCallTracker` + `wrap_workflow_node`），重构的目标是**扩展而非替换**。
-
-### 10.2 追踪维度 — ✅ 已通过 SkillContext.trace_metadata() 落地
-
-| 维度 | 字段名 | 注入方式 | 状态 |
-|:---|:---|:---|:---|
-| LLM 分级 | `llm_tier` | `acompletion_with_fallback()` 的 tier 参数 | ✅ fallback.py 已实现 |
-| 降级事件 | `llm_fallback_from` / `llm_fallback_to` | 降级容错链触发时自动记录 | ✅ fallback.py 已实现 |
-| Skill 名称 | `skill_name` | `SkillContext.trace_metadata(skill_name=self.name)` | ✅ ResearchConductor 等 Skill 内部已注入 |
-| Retriever 名称 | `retriever_name` | `BaseRetriever` 基类内置 tracing | ✅ 每个 retriever 自动记录 |
-| 文档模式 | `digest_mode` | `SkillContext.digest_mode` → `trace_metadata()` 自动注入 | ✅ |
-| 章节索引 | `chapter_index` | `SkillContext.chapter_index` → `trace_metadata()` 自动注入 | ✅ |
-| Planner 会话 | `planner_session_id` | `SkillContext.planner_session_id` → `trace_metadata()` 自动注入 | ✅ |
-| 确认方案 | `confirmed_plan_id` | `SkillContext.confirmed_plan_id` → `trace_metadata()` 自动注入 | ✅ |
-| 研究阶段 | `research_stage` | ResearchConductor 内部各步骤标记（plan_sub_queries / curate_sources / build_context / purify_context） | ✅ |
-
-**实际注入机制**：
-
-```python
-# SkillContext.trace_metadata() 自动构建追踪元数据
-# Skill 内部 LLM 调用示例：
-result = await self.context.resolve_llm_caller()(
-    messages,
-    task_type=TaskType.DOCGEN,
-    tier="smart",
-    extra_metadata=self.context.trace_metadata(
-        skill_name=self.name,
-        research_stage="purify_context",
-    ),
-)
-# → LangSmith metadata 自动包含：
-# {planner_session_id, confirmed_plan_id, digest_mode, chapter_index, skill_name, research_stage}
-```
-
-### 10.3 metadata 注入点（已实现）
-
-```python
-# 实际 LLM 调用中的 metadata 示例
-
-{
-    # 现有字段（不变）
-    "subject": "偏导数",
-    "build_session_id": "abc123",
-    "workflow": "digest.docgen",
-    "lane": "docs",
-    "node": "targeted_research",
-
-    # 已实现的新增字段
-    "planner_session_id": "ps_xxx",        # ✅
-    "confirmed_plan_id": "cp_xxx",         # ✅
-    "digest_mode": "sprint",               # ✅
-    "chapter_index": 1,                    # ✅
-    "skill_name": "ResearchConductor",     # ✅
-    "research_stage": "curate_sources",    # ✅
-    "retriever_name": "bing",              # ✅（BaseRetriever 内置）
-}
-```
-
-### 10.4 SkillResult metadata 提取（✅ 已实现）
-
-`extract_skill_result_metadata()` 函数从 SkillResult 中提取关键追踪字段：
-
-```python
-# 自动提取的字段（用于日志和 LangSmith outputs）
-{
-    "candidate_count": 15,          # 检索候选数
-    "filtered_count": 8,            # 过滤后数量
-    "curated_source_count": 5,      # 质量评估后数量
-    "local_source_count": 2,        # 本地源数量
-    "web_source_count": 3,          # 外网源数量
-    "unique_domain_count": 4,       # 唯一域名数
-    "fallback_used": False,         # 是否触发降级
-    "purify_used": True,            # 是否使用 LLM 提纯
-    "compression_mode": "semantic",  # 压缩模式
-    "retriever_names": ["bing", "local_rag"],  # 使用的检索器
-    "retriever_call_count": 6,      # 检索器调用总次数
-}
-```
-
-### 10.5 自定义 LangSmith Dashboard 建议（⬜ 待建立）
-
-以下 Dashboard 建议在 Phase 5（质量调优）阶段建立：
-
-| Dashboard 名称 | 筛选条件 | 关注指标 |
-|:---|:---|:---|
-| **Tier 成本分析** | `metadata.llm_tier` 分组 | 各 tier 的 token 消耗、平均延迟、调用次数 |
-| **降级事件监控** | `metadata.llm_fallback_from` 非空 | 降级频率、降级原因、降级后延迟 |
-| **DocGen 端到端** | `workflow=digest.docgen` | 总耗时、各节点耗时占比、章节数 |
-| **检索器命中率** | `metadata.retriever_name` 分组 | 各检索器的结果数、延迟、被采用率 |
-| **速成 vs 系统** | `metadata.digest_mode` 分组 | 两种模式的耗时、token、章节数对比 |
-| **章节耗时分布** | `metadata.chapter_index` 分组 | 按章节看 `targeted_research` + `pedagogy_craft` 耗时 |
-| **富媒体成功率** | `node=enrich_document` | image/mermaid 生成的成功/失败比 |
-| **研究阶段分析** | `metadata.research_stage` 分组 | ResearchConductor 各阶段耗时占比（plan_sub_queries / curate / compress / purify） |
-
-### 10.6 各节点追踪规范（✅ 已实现）
-
-| 节点 | 已实现的 metadata 字段 | 说明 |
-|:---|:---|:---|
-| `load_context` | `chapter_count`, `has_shared_inputs`, `has_confirmed_plan` | 输入规模和状态 |
-| `targeted_research` | `chapter_index`, `query_count`, `candidate_count`, `curated_source_count`, `local_hits`, `web_hits`, `purify_used`, `retriever_stats` | 完整的研究过程追踪 |
-| `collect_materials` | `total_chapters`, `total_materials` | 汇聚统计 |
-| `pedagogy_craft` | `chapter_index`, `word_count`, `placeholder_count`, `source_count` | 写作产出统计 |
-| `collect_drafts` | `total_chapters`, `total_word_count` | 草稿汇聚统计 |
-| `enrich_document` | `mermaid_count`, `image_count`, `latex_normalized` | 富媒体处理统计 |
-| `inject_examine` | `question_count`, `practice_chapter_added` | 出题统计 |
-| `finalize_assemble` | `doc_ids`, `built_paths`, `standalone_published` | 入库结果 |
+> 目标：保证后续所有重构都不是“黑盒升级”，而是每一步都能被看见、被比较、被定位。  
+> 最后更新：2026-04-09
 
 ---
+
+## 10.1 观测目标
+
+后续 Digest 重构一定要满足下面三个目标：
+
+1. 能看清 Planner 如何决定课程合同。
+2. 能看清每章 research / write / enrich / examine 的耗时和质量差异。
+3. 能把不同课程模式、不同检索 profile、不同媒体策略拉出来比较。
+
+如果做不到这三点，后续调优会非常低效。
+
+---
+
+## 10.2 必须保持的 trace 层次
+
+推荐统一成下面这棵树：
+
+```text
+API / service request
+└── workflow root span
+    ├── node span
+    │   ├── skill span
+    │   │   ├── retriever span
+    │   │   ├── scraper span
+    │   │   └── llm span
+    │   └── direct llm span
+    └── publish / asset / eval span
+```
+
+### 关键要求
+
+- graph 拓扑清楚
+- node 粒度清楚
+- skill / retriever / scraper / llm 都能下钻
+
+### 禁止事项
+
+- 新增第二套 tracing 系统
+- workflow runtime 和 node wrapper 之外自行乱开根 span
+- 在关键动作里完全不打 metadata
+
+---
+
+## 10.3 关键关联 ID
+
+所有 Docs Lane 相关 trace，建议最少统一带以下字段：
+
+| 字段 | 作用 |
+| --- | --- |
+| `subject` | 学科或主题 |
+| `user_id` | 用户定位 |
+| `build_session_id` | 本次构建主链路 ID |
+| `planner_session_id` | Planner 会话关联 |
+| `confirmed_plan_id` | 已确认方案关联 |
+| `digest_mode` | `sprint` / `systematic` |
+| `course_type` | 与 `digest_mode` 同语义或保留扩展 |
+| `chapter_index` | 章节 fan-out 追踪 |
+| `retrieval_profile` | 检索策略标识 |
+| `asset_kind` | `mermaid` / `image` / `interactive_html` |
+| `teaching_action` | 教学动作标识 |
+
+其中最重要的是：
+
+- `build_session_id`
+- `planner_session_id`
+- `confirmed_plan_id`
+- `chapter_index`
+
+这四个字段决定你能不能跨 graph 把一条链拉通。
+
+---
+
+## 10.4 Planner 与 DocGen 的跨图关联
+
+这是当前后续调优最关键的一条链。
+
+### 推荐关系
+
+```text
+planner session
+→ confirmed plan
+→ docgen build
+→ practice injection
+→ publish result
+```
+
+### 必须做到
+
+- Planner graph 的输出 trace 能定位到 `confirmed_plan_id`
+- DocGen graph 的每章 trace 能带上 `planner_session_id` 和 `confirmed_plan_id`
+- 如果后续 `inject_examine` 生成练习，也应沿用同一主链路 ID
+
+这样打开 LangSmith 时，才能从“用户如何下需求”一路看到“文档为何长成这样”。
+
+---
+
+## 10.5 Docs Lane 重点节点应该记录什么
+
+### `load_context`
+
+- `chapter_count`
+- `has_confirmed_plan`
+- `digest_mode`
+- `retrieval_profile`
+
+### `targeted_research`
+
+- `chapter_index`
+- `query_count`
+- `local_hits`
+- `web_hits`
+- `academic_hits`
+- `curated_source_count`
+- `retriever_names`
+- `compression_mode`
+- `gap_fill_rounds`
+
+### `pedagogy_craft`
+
+- `chapter_index`
+- `word_count`
+- `required_elements_coverage`
+- `placeholder_count`
+- `teaching_block_count`
+
+### `enrich_document`
+
+- `mermaid_count`
+- `image_count`
+- `interactive_block_count`
+- `latex_normalized`
+- `asset_failures`
+
+### `inject_examine`
+
+- `question_count`
+- `practice_block_count`
+- `practice_mode`
+
+### `finalize_assemble`
+
+- `doc_ids`
+- `built_paths`
+- `staged_chapter_count`
+- `published_doc_count`
+
+---
+
+## 10.6 Skill / Retriever / Scraper 必须补充的 metadata
+
+### Skill
+
+建议所有组合 Skill 至少带：
+
+- `skill_name`
+- `research_stage`
+- `chapter_index`
+- `digest_mode`
+- `retrieval_profile`
+
+### Retriever
+
+建议至少带：
+
+- `retriever_name`
+- `source_class`
+- `query`
+- `result_count`
+- `latency_ms`
+
+其中 `source_class` 推荐统一成：
+
+- `local_user_material`
+- `local_edu_corpus`
+- `edu_web`
+- `academic_web`
+- `general_web`
+
+### Scraper
+
+建议至少带：
+
+- `scraper_name`
+- `url`
+- `content_kind`
+- `success`
+- `content_length`
+
+---
+
+## 10.7 课程模式对比视图
+
+LangSmith 后续应该重点支持下面几类对比：
+
+### `sprint` vs `systematic`
+
+比较：
+
+- 总时延
+- 总 token
+- research 阶段耗时占比
+- 每章字数
+- 例题 / 练习块数量
+- 媒体生成成功率
+
+### 检索 profile 对比
+
+比较：
+
+- `planner_grounding` 命中率
+- `docgen_sprint` 命中率
+- `docgen_systematic` 命中率
+- 本地命中与外部命中的占比
+
+### asset 策略对比
+
+比较：
+
+- 仅 Mermaid
+- Mermaid + image
+- Mermaid + image + interactive
+
+---
+
+## 10.8 推荐 Dashboard
+
+### Dashboard 1：Docs Lane 总览
+
+看：
+
+- build 总耗时
+- 节点耗时占比
+- 失败率
+
+### Dashboard 2：课程模式对比
+
+看：
+
+- `sprint` / `systematic` 的平均耗时、字数、token
+
+### Dashboard 3：Research 质量
+
+看：
+
+- retriever 命中数
+- curated source 数
+- 本地/外部来源占比
+
+### Dashboard 4：媒体生成
+
+看：
+
+- Mermaid 成功率
+- image 成功率
+- interactive block 占比
+
+### Dashboard 5：Fallback 与 rate limit
+
+看：
+
+- LLM fallback 频率
+- retriever 失败率
+- scraper 失败率
+- 并发压力下的异常分布
+
+---
+
+## 10.9 前端事件与 LangSmith 对齐
+
+建议前端实时事件不要再使用完全独立的一套命名，而应尽量和 LangSmith node 语义贴近。
+
+### 推荐事件语义
+
+- `planner_grounding`
+- `plan_confirmed`
+- `chapter_research_progress`
+- `chapter_draft_progress`
+- `asset_generation_progress`
+- `practice_injected`
+- `publish_completed`
+
+这样用户界面、日志和 LangSmith 三套视角会更容易相互对照。
+
+---
+
+## 10.10 验收标准
+
+以下四条至少要全部满足：
+
+1. 打开 LangSmith，能一眼看出主流程、章节 fan-out、失败位置。
+2. 任意一章的 research 和 writing 都能单独追踪。
+3. 能把 Planner 决策和最终文档结果串起来。
+4. 能比较不同课程模式、不同检索 profile、不同媒体策略的效果。
+
+---
+
+## 10.11 一句话结论
+
+LangSmith 在这个项目里不是“埋点系统”，而是后续所有重构的操作台。  
+如果 trace 树不清楚，后面越做越复杂时，整个系统会很难继续优化。

@@ -2,30 +2,40 @@
 
 `app.shared.infra` 是 AITeachMe 的基础设施层。
 
-它不直接表达某一个业务流程，而是为 `workflows/`、`services/`、`teaching/` 提供统一的底层能力，包括：
+它不直接表达某一个教学任务，也不直接定义“什么叫好的教学内容”。  
+它更适合承载两类东西：
 
-- 模型调用与路由
-- LangSmith 可观测性
-- 搜索、抓取、工具、技能
-- 存储、缓存、运行时路径
-- 记忆、护栏、安全与沙箱
+- 接口与抽象：统一能力边界、输入输出、失败语义、trace 入口
+- runtime 思想与策略：模型分层、检索 profile、缓存、容错、存储和 tracing 规则
 
-这层的目标不是“写业务”，而是把可复用、可观测、可替换的能力沉到底座里。
+一句话：
+
+- `infra` 解决“能力从哪里来、怎样抽象、怎样统一接入、怎样观测”。
+- `teaching` 解决“这些能力如何被适配成 AITeachMe 的教学任务与教学表达”。
+- `workflows` 解决“这些能力按什么顺序运行”。
+
+---
 
 ## 1. 定位
 
-可以把 `shared/infra` 理解为“AI Runtime + Integration Layer”：
+可以把 `shared/infra` 理解为 “AI Runtime + Interface Layer”：
 
-- `shared/kernel/` 放纯内核概念，尽量无外部依赖。
-- `shared/infra/` 放会连接模型、数据库、存储、搜索、外部工具的基础设施。
-- `teaching/` 放教学语义和教学领域复用逻辑。
-- `workflows/` 放五大引擎的 LangGraph 编排与状态流转。
+- `shared/kernel/` 放纯内核概念，尽量无外部依赖
+- `shared/infra/` 放会连接模型、数据库、存储、搜索、外部工具的基础设施
+- `teaching/` 放教学语义和教学任务适配逻辑
+- `workflows/` 放五大引擎的 LangGraph 编排与状态流转
 
-一句话边界：
+当前代码里已经有两条很有代表性的事实：
 
-- `infra` 解决“能力从哪里来、怎么接、怎么观测”。
-- `teaching` 解决“教学语义怎么组织”。
-- `workflows` 解决“这些能力按什么顺序运行”。
+- `app.teaching.context` 直接依赖 `app.shared.infra.memory` 的 `get_user_profile` / `recall`
+- `app.shared.infra.skills.writer` 在生成草稿后调用 `app.teaching.documents.ensure_chapter_learning_scaffold`
+
+这两点说明合理方向不是“infra 自己包办所有教学细节”，而是：
+
+- `infra` 先把能力接口和执行骨架建好
+- `teaching` 再把执行结果翻译成教学表达
+
+---
 
 ## 2. 依赖边界
 
@@ -43,14 +53,23 @@ workflows / api
 
 应遵循的规则：
 
-- `infra` 可以依赖 `shared/kernel`，但不要反向依赖业务模块。
-- `workflows` 应优先通过 `app.shared.infra.*` 调用底层能力，而不是散落地直接连第三方 SDK。
-- 教学语义、章节脚手架、判卷策略，优先放在 `app.teaching`，不要塞回 `infra`。
-- 面向 LangGraph 的状态对象、节点路由、事件编排，不要写进 `infra`。
+- `infra` 可以依赖 `shared/kernel`，目标态不要普遍反向依赖业务模块
+- `infra` 优先提供 ports、策略、基类、统一 helper，不写 AITeachMe 的教学成功标准
+- `workflows` 应优先通过 `app.shared.infra.*` 调用底层能力，而不是散落地直接连第三方 SDK
+- 教学语义、章节脚手架、教学反馈模板，优先放在 `app.teaching`
+- LangGraph 的 state、节点路由、事件编排，不要写进 `infra`
+
+当前需要额外说明一个过渡现实：
+
+- `app.shared.infra.skills.writer` 会调用 `app.teaching.documents` 补教学脚手架
+
+这类调用暂时可以存在，但必须被视为显式教学 hook，而不是说明 `infra` 可以随意回流承载教学语义。目标态仍应尽量收敛为稳定的 adapter / contract。
+
+---
 
 ## 3. 目录地图
 
-### 3.1 运行时基础
+## 3.1 运行时基础
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -64,7 +83,7 @@ workflows / api
 
 这组模块主要解决“系统怎么跑起来”。
 
-### 3.2 LLM 与调用封装
+## 3.2 LLM 与调用封装
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -77,75 +96,62 @@ workflows / api
 | `reasoning.py` | 推理策略辅助 | 放模型调用侧的策略工具，而不是业务编排 |
 | `llm_support/` | `llm.py` 的内部实现细分 | 处理 text / stream / structured / tool-calls / fallback / observability |
 
-`llm_support/` 是目前最关键的子目录之一：
+这一层体现的就是“runtime 思想”：
 
-- `text.py` / `stream.py`：处理普通文本与流式响应。
-- `structured.py` / `structured_calls.py`：处理结构化输出。
-- `tool_calls.py`：处理 tool-calling 模式。
-- `fallback.py`：负责 tier 降级与统一兜底。
-- `observability.py`：构造 LangSmith 兼容的输入输出与 metadata。
+- 哪些任务该走什么模型
+- 出错后怎样降级
+- token 怎样预算
+- tracing 怎样统一
 
-如果后续继续融合 `gpt-researcher` 的 provider/tier 思路，这一层是第一落点，不是直接改 workflow 节点。
-
-### 3.3 可观测性与 LangSmith
+## 3.3 可观测性与 LangSmith
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
 | `tracing.py` | LangSmith tracing 基础设施 | 构造 trace scope、metadata、tags、嵌套 run |
 | `llm_support/observability.py` | LLM 粒度 payload 清洗 | 控制输入输出截断、敏感字段、tool calls 展示 |
 
-当前 LangSmith 相关配置主要在 `config.py`：
-
-- `langsmith_tracing`
-- `langsmith_project`
-- `langsmith_capture_inputs`
-- `langsmith_capture_outputs`
-- `langsmith_max_text_chars`
-
 后续所有新增 AI 能力都应优先遵循这条规则：
 
-1. 先决定 trace 边界。
-2. 再决定调用实现。
-3. 不要等功能写完了再“补埋点”。
+1. 先决定接口和 trace 边界
+2. 再决定调用实现
+3. 不要等功能写完了再补埋点
 
-推荐的 trace 粒度：
-
-- 单次 LLM 调用：由 `llm.py` / `llm_support/*` 自动记录。
-- Skill/Tool/Retriever：在各自基类里记录。
-- Workflow 节点：由 `workflows/common/observability.py` 或节点侧封装负责。
+---
 
 ## 4. 搜索、抓取与检索
 
-### 4.1 Search 子系统
+## 4.1 Search 子系统
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
 | `search/api.py` | 对外搜索入口 | 给外层统一调用 |
 | `search/factory.py` | 检索器装配 | 根据配置组合 retriever |
 | `search/types.py` | 搜索结果类型 | 统一 Web / local result 结构 |
-| `search/retrievers/` | 检索器实现 | `bing` / `bocha` / `duckduckgo` / `local_rag` |
+| `search/retrievers/` | 检索器实现 | `bing` / `bocha` / `duckduckgo` / `local_rag` 等 |
 | `search/scraper/` | 网页/PDF 抓取 | 把 URL 变成可消费文本 |
 | `search/web.py` | Web 搜索辅助封装 | 给上层一个简化入口 |
 
-### 4.2 检索相关辅助
+这里更像“检索接口层”和“检索策略层”，而不是教学层。
+
+## 4.2 检索相关辅助
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
 | `retrievers.py` | 检索管线封装 | 聚合多种检索来源 |
 | `reranker.py` | 重排逻辑 | 对候选片段二次排序 |
 
-这部分是未来继续吸收 `gpt-researcher` 的主要接口层：
+如果后续继续吸收 `gpt-researcher`，高价值落点也优先在这里：
 
-- 多 retriever 并行
-- 抓取与净化
-- Source curation
+- 多 retriever profile
+- 高质量抓取
+- source curation
 - 本地 RAG + Web research 混合策略
 
-都应该先落到这里，再由 `skills/researcher.py` 或 workflow 节点编排。
+---
 
 ## 5. Tools、Skills、Agent Loop
 
-### 5.1 Tools
+## 5.1 Tools
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -161,7 +167,7 @@ workflows / api
 - 可独立测试
 - 不负责复杂多步编排
 
-### 5.2 Skills
+## 5.2 Skills
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -169,7 +175,7 @@ workflows / api
 | `skills/api.py` | `run_skill()` / `list_skills()` | 对外统一入口 |
 | `skills/loader.py` | 加载项目内置与用户自定义 skill | 读取 `backend/skills/` 和用户目录 |
 | `skills/researcher.py` | ResearchConductor | 检索、抓取、压缩的组合技能 |
-| `skills/writer.py` | PedagogyWriter | 教学化写作 |
+| `skills/writer.py` | PedagogyWriter | 写作执行骨架，最终教学脚手架由 `teaching` 补齐 |
 | `skills/source_curator.py` | 来源筛选/质量控制 | 研究资料质量管理 |
 | `skills/context_manager.py` | 上下文压缩与净化 | 防止材料过长、重复 |
 | `skills/mermaid_generator.py` | Mermaid 生成 | 用于文档富媒体 |
@@ -181,7 +187,12 @@ workflows / api
 - 需要 trace metadata
 - 需要被 workflow 节点直接复用
 
-### 5.3 Agent Loop 与策略
+但这里要额外强调：
+
+- `skills` 更偏“能力组合与执行策略”
+- “这章该怎么讲、什么样才像 AITeachMe 的知识文档”仍应由 `teaching` 定义
+
+## 5.3 Agent Loop 与策略
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -190,9 +201,11 @@ workflows / api
 
 当前 digest 主流程更多走 LangGraph 显式编排，但交互式、多工具的开放任务仍然可以复用这一层。
 
+---
+
 ## 6. 记忆、护栏与外部工具
 
-### 6.1 Memory
+## 6.1 Memory
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -202,7 +215,10 @@ workflows / api
 | `memory/learner_doc.py` | Learner 文档管理 | 长期学习档案 |
 | `memory/types.py` | 记忆类型定义 | tag、entry 等 |
 
-### 6.2 Guardrails 与 Security
+这里的 `memory/` 应视为 **canonical memory runtime**。
+如果教学层需要“更像老师视角的记忆表达”，应该在 `teaching/` 中包装它，而不是复制第二套存储与路径语义。
+
+## 6.2 Guardrails 与 Security
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
@@ -210,13 +226,15 @@ workflows / api
 | `security.py` | 操作安全控制 | 面向危险工具或高风险动作 |
 | `exceptions.py` | infra 领域异常 | 给上层统一抛出稳定错误 |
 
-### 6.3 MCP / Sandbox / Events
+## 6.3 MCP / Sandbox / Events
 
 | 文件/目录 | 作用 | 备注 |
 | --- | --- | --- |
 | `mcp.py` | MCP 集成入口 | 让模型接外部 tool server |
 | `sandbox.py` | 沙箱抽象 | 预留代码/终端/训练环境能力 |
 | `events.py` | 基础事件能力 | 统一事件记录接口 |
+
+---
 
 ## 7. Storage 约定
 
@@ -240,9 +258,11 @@ workflows / api
 
 这层对 ingest、digest、export/import 都很关键。后续若要上云或支持多环境，这里必须保持稳定。
 
+---
+
 ## 8. 与 workflows 的关系
 
-可以把 `workflows/` 理解为 orchestration layer，而 `infra/` 是 capability layer。
+可以把 `workflows/` 理解为 orchestration layer，而 `infra/` 是 capability layer + interface layer。
 
 典型关系如下：
 
@@ -267,9 +287,11 @@ workflows/profile
 
 1. 它是否可以被多个 workflow 复用？
 2. 它是否主要在解决“连接外部系统/模型/工具”的问题？
-3. 它是否不依赖某个具体 workflow 的 state？
+3. 它是否更像一组接口、策略、运行规则，而不是 AITeachMe 的教学任务语义？
 
 如果三者都成立，优先放 `infra`。
+
+---
 
 ## 9. 哪些内容不应该放在 infra
 
@@ -278,6 +300,8 @@ workflows/profile
 - LangGraph 的 state schema
 - workflow 节点的路由判断
 - 教学章节结构设计、教学话术模板
+- AITeachMe 特有的“速成课 / 系统课”教学契约
+- 错因解释、学习建议、章节 recap 这类教学呈现规则
 - 学科领域专属规则
 - API request/response schema
 - repository/service 的业务组合逻辑
@@ -289,36 +313,42 @@ workflows/profile
 - `schemas/`
 - `services/`
 
+---
+
 ## 10. 后续重构建议
 
-结合当前 refactor 文档，`infra` 后续重点不是“大改目录”，而是继续做厚底座、薄流程：
+结合当前 refactor 文档，`infra` 后续重点不是大改目录，而是继续做厚底座、薄流程：
 
 ### 10.1 工具体系
 
-- 新增教育域原子工具时，优先放 `tools/builtin/`。
-- 需要多步组合和上下文压缩的能力，优先放 `skills/`。
-- `gpt-researcher` 的 action 思路继续映射到 `tools/`，而不是直接写死在 docgen 节点里。
+- 新增教育域原子工具时，优先放 `tools/builtin/`
+- 需要多步组合和上下文压缩的能力，优先放 `skills/`
+- `gpt-researcher` 的 action 思路继续映射到 `tools/`，而不是直接写死在 docgen 节点里
 
 ### 10.2 LangSmith
 
-- 每个新 Skill、Retriever、Scraper 默认要带 trace metadata。
-- 新增 build lane 时，要能按 `subject`、`planner_session_id`、`confirmed_plan_id`、`chapter_index` 检索 trace。
-- 输入输出采样和截断规则，应继续统一收敛在 `llm_support/observability.py`。
+- 每个新 Skill、Retriever、Scraper 默认要带 trace metadata
+- 新增 build lane 时，要能按 `subject`、`planner_session_id`、`confirmed_plan_id`、`chapter_index` 检索 trace
+- 输入输出采样和截断规则，应继续统一收敛在 `llm_support/observability.py`
 
 ### 10.3 富媒体文档支持
 
-- Mermaid、图片、交互 HTML 的生成能力，优先建设在 `skills/`。
-- workflow 只负责决定“何时生成”，不负责关心“生成细节如何实现”。
+- Mermaid、图片、交互 HTML 的生成能力，优先建设在 `skills/`
+- workflow 只负责决定“何时生成”
+- teaching 决定“生成出来怎样更像教学内容”
+
+---
 
 ## 11. 给开发者的落地建议
 
 新增一个底层 AI 能力时，建议按这个顺序做：
 
-1. 明确它是 Tool、Skill、Retriever、Scraper 还是纯 helper。
-2. 明确它的 trace 入口和 metadata。
-3. 明确它的输入输出类型和失败语义。
-4. 先写最小可用实现，再接入 workflow。
-5. 不要把临时业务判断偷偷塞进 `infra`。
+1. 明确它是 Tool、Skill、Retriever、Scraper 还是纯 helper
+2. 明确它是“通用能力接口/策略”，还是“教学任务适配”
+3. 明确它的 trace 入口和 metadata
+4. 明确它的输入输出类型和失败语义
+5. 先写最小可用实现，再接入 workflow
+6. 不要把临时业务判断偷偷塞进 `infra`
 
 ---
 
