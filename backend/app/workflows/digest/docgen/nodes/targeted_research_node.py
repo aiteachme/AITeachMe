@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from urllib.parse import urlparse
 from time import perf_counter
 
 from app.shared.infra.config import get_settings
@@ -13,6 +14,43 @@ from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
 from app.workflows.digest.docgen.state import DocGenState
+
+
+def _extract_external_source_preview(source_details: list[dict[str, object]]) -> tuple[list[str], list[str]]:
+    source_titles: list[str] = []
+    source_urls: list[str] = []
+    seen: set[str] = set()
+    for item in source_details:
+        url = str(item.get("url") or "").strip()
+        if not url or url.startswith("local://") or url in seen:
+            continue
+        seen.add(url)
+        title = str(item.get("title") or "").strip() or url
+        source_titles.append(title)
+        source_urls.append(url)
+        if len(source_urls) >= 4:
+            break
+    return source_titles, source_urls
+
+
+def _extract_top_domains(result_metadata: dict[str, object], source_urls: list[str]) -> list[str]:
+    top_domains = result_metadata.get("top_domains")
+    if isinstance(top_domains, dict):
+        domains = [str(domain).strip() for domain in top_domains.keys() if str(domain).strip()]
+        if domains:
+            return domains[:4]
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for url in source_urls:
+        domain = urlparse(url).netloc.strip().lower()
+        if not domain or domain in seen:
+            continue
+        seen.add(domain)
+        normalized.append(domain)
+        if len(normalized) >= 4:
+            break
+    return normalized
 
 
 def build_targeted_research_node(*, context: WorkflowContext):
@@ -73,11 +111,14 @@ def build_targeted_research_node(*, context: WorkflowContext):
         )
         dense_context = result.content.strip()
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        source_details = list(result.metadata.get("source_details", []))
+        source_titles, source_urls = _extract_external_source_preview(source_details)
+        domains = _extract_top_domains(dict(result.metadata), source_urls)
         chapter_material = {
             **assignment,
             "dense_context": dense_context,
             "sources": list(result.sources),
-            "source_details": list(result.metadata.get("source_details", [])),
+            "source_details": source_details,
             "research_summary": build_draft_excerpt(dense_context, max_chars=320) if dense_context else "",
             "research_ms": elapsed_ms,
             "local_hits": int(result.metadata.get("local_hits", 0)),
@@ -123,6 +164,9 @@ def build_targeted_research_node(*, context: WorkflowContext):
                 "title": chapter_title,
                 "summary": f"{chapter_title} 研究完成，本地命中 {chapter_material['local_hits']}，外部命中 {chapter_material['web_hits']}，整理来源 {len(chapter_material['sources'])}。",  # noqa: E501
                 "created_at": utcnow(),
+                "domains": domains,
+                "source_titles": source_titles,
+                "source_urls": source_urls,
             },
         )
         await publish_docgen_progress(

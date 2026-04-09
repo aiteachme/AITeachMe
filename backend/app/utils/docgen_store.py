@@ -171,6 +171,25 @@ def _normalize_chapter_progress_entry(entry: dict[str, object]) -> dict[str, obj
     }
 
 
+def _normalize_compact_string_list(value: object, *, limit: int = 5) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(text)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
 def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]:
     created_at = entry.get("created_at")
     if not isinstance(created_at, datetime):
@@ -184,6 +203,9 @@ def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]
         "title": title,
         "summary": str(entry.get("summary") or "").strip(),
         "created_at": created_at,
+        "domains": _normalize_compact_string_list(entry.get("domains"), limit=4),
+        "source_titles": _normalize_compact_string_list(entry.get("source_titles"), limit=4),
+        "source_urls": _normalize_compact_string_list(entry.get("source_urls"), limit=4),
     }
 
 

@@ -15,4 +15,10 @@ export interface BuildPreviewRecentEventResponse {
   title?: string | null;
   summary: string;
   created_at?: string | null;
+  /** Top domains touched by this event, when applicable. */
+  domains?: string[];
+  /** Short source titles surfaced for this event. */
+  source_titles?: string[];
+  /** Representative URLs surfaced for this event. */
+  source_urls?: string[];
 }

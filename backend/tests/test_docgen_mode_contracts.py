@@ -34,7 +34,7 @@ def _build_shared_inputs() -> SharedInputs:
     )
 
 
-def test_sprint_fallback_plan_uses_fixed_four_chapters() -> None:
+def test_sprint_fallback_plan_uses_dynamic_topic_structure() -> None:
     plan = build_fallback_plan(
         subject="高等数学",
         user_goal="考前冲刺偏导数",
@@ -44,15 +44,16 @@ def test_sprint_fallback_plan_uses_fixed_four_chapters() -> None:
     )
 
     assert plan.digest_mode == "sprint"
-    assert len(plan.chapter_plan) == 4
-    assert plan.chapter_plan[0].title.startswith("偏导数：")
-    assert plan.chapter_plan[1].title.startswith("梯度：")
-    assert plan.chapter_plan[2].title.startswith("方向导数：")
-    assert plan.build_constraints["fixed_chapter_count"] == 4
+    assert 3 <= len(plan.chapter_plan) <= 6
+    assert plan.chapter_plan[0].title.startswith("偏导数")
+    assert plan.chapter_plan[1].title.startswith("梯度")
+    assert plan.chapter_plan[2].title.startswith("方向导数")
+    assert plan.build_constraints["target_chapter_count"] == len(plan.chapter_plan)
+    assert "fixed_chapter_count" not in plan.build_constraints
     assert "冲刺型知识文档" in plan.plan_summary
 
 
-def test_systematic_fallback_plan_uses_guided_structure() -> None:
+def test_systematic_fallback_plan_uses_dynamic_topic_structure() -> None:
     plan = build_fallback_plan(
         subject="高等数学",
         user_goal="系统学习偏导数",
@@ -62,11 +63,12 @@ def test_systematic_fallback_plan_uses_guided_structure() -> None:
     )
 
     assert plan.digest_mode == "systematic"
-    assert 6 <= len(plan.chapter_plan) <= 10
-    assert plan.chapter_plan[0].title == "全景导论"
-    assert plan.chapter_plan[-1].title == "总结与延展"
-    assert plan.build_constraints["min_chapters"] == 6
-    assert plan.build_constraints["max_chapters"] == 10
+    assert 5 <= len(plan.chapter_plan) <= 12
+    assert plan.chapter_plan[0].title.startswith("偏导数")
+    assert plan.chapter_plan[1].title.startswith("梯度")
+    assert plan.chapter_plan[2].title.startswith("方向导数")
+    assert plan.build_constraints["min_chapters"] == 5
+    assert plan.build_constraints["max_chapters"] == 12
 
 
 def test_learning_scaffold_enforces_sprint_sections() -> None:

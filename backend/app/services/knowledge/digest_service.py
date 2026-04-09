@@ -79,7 +79,13 @@ def _resolve_requested_raw_files(session: Session, *, subject: str, file_uids: l
     return sorted(items, key=lambda item: order[require_uid(item.uid, "RawFile.uid")])
 
 
-def _select_ready_docgen_files(session: Session, *, subject: str, file_uids: list[str] | None) -> tuple[list[RawFile], int]:
+def _select_ready_docgen_files(
+    session: Session,
+    *,
+    subject: str,
+    file_uids: list[str] | None,
+    allow_empty: bool = False,
+) -> tuple[list[RawFile], int]:
     all_files = list_all_raw_files_by_subject(session, subject)
     ready_files = [item for item in all_files if item.id is not None and _markdown_ready(item)]
     ready_file_count = len(ready_files)
@@ -89,18 +95,24 @@ def _select_ready_docgen_files(session: Session, *, subject: str, file_uids: lis
         accepted = [item for item in requested if item.id is not None and require_id(item.id, "RawFile.id") in ready_ids]
     else:
         accepted = ready_files
-    if not accepted:
+    if not accepted and not allow_empty:
         raise NoReadyFilesForDocGenError(subject)
     return accepted, ready_file_count
 
 
-def _select_ready_docgen_files_by_ids(session: Session, *, subject: str, file_ids: list[int]) -> tuple[list[RawFile], int]:
+def _select_ready_docgen_files_by_ids(
+    session: Session,
+    *,
+    subject: str,
+    file_ids: list[int],
+    allow_empty: bool = False,
+) -> tuple[list[RawFile], int]:
     all_files = list_all_raw_files_by_subject(session, subject)
     ready_files = [item for item in all_files if item.id is not None and _markdown_ready(item)]
     ready_ids = {require_id(item.id, "RawFile.id") for item in ready_files}
     requested = {require_id(item.id, "RawFile.id"): item for item in list_raw_files_by_ids(session, subject, file_ids) if item.id is not None}
     accepted = [requested[file_id] for file_id in file_ids if file_id in requested and file_id in ready_ids]
-    if not accepted:
+    if not accepted and not allow_empty:
         raise NoReadyFilesForDocGenError(subject)
     return accepted, len(ready_files)
 
@@ -279,6 +291,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
     chapter_progress: list[dict[str, object]] = []
     recent_events: list[dict[str, object]] = []
     cleaned_prompt = _clean_prompt(prompt)
+    allow_search_only = build_type == "docs"
     if build_type != "graph" and not confirmed_plan_id:
         raise ConfirmedBuildPlanRequiredError(build_type)
     if confirmed_plan_id:
@@ -298,7 +311,12 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
                 "created_at": utcnow(),
             }
         ]
-        accepted_files, ready_file_count = _select_ready_docgen_files_by_ids(session, subject=subject.slug, file_ids=list(plan.selected_file_ids_json))
+        accepted_files, ready_file_count = _select_ready_docgen_files_by_ids(
+            session,
+            subject=subject.slug,
+            file_ids=list(plan.selected_file_ids_json),
+            allow_empty=allow_search_only,
+        )
         plan_prompt = _clean_prompt(plan.user_goal) or _clean_prompt(plan.plan_summary)
         if file_uids:
             logger.warning(
@@ -318,12 +336,55 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
         accepted_files, ready_file_count = _select_ready_docgen_files(session, subject=subject.slug, file_uids=file_uids)
     accepted_file_ids = _resolve_file_ids(accepted_files)
     accepted_file_uids = _resolve_file_uids(accepted_files)
+    search_only_mode = allow_search_only and not accepted_file_ids
+    if search_only_mode:
+        recent_events.append(
+            {
+                "stage": "search_only_mode",
+                "chapter_index": None,
+                "title": None,
+                "summary": "当前没有已解析资料，本轮将以外部检索为主生成知识文档。",
+                "created_at": utcnow(),
+            }
+        )
     requested_at = utcnow()
     if not acquire_knowledge_build_lock(subject.slug, KnowledgeBuildLock(requested_at=requested_at, source_file_ids=accepted_file_ids, prompt=cleaned_prompt)):
         raise SubjectBuildLockConflictError(subject.slug)
     clear_docgen_staging(subject.slug)
-    _write_build_status(subject.slug, requested_at=requested_at, status="accepted", stage="build_accepted", error_message=None, draft_available=False, source_file_ids=accepted_file_ids, prompt=cleaned_prompt, staged_chapter_count=0, published_doc_count=0, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode, plan_summary=plan_summary, chapter_progress=chapter_progress, recent_events=recent_events, current_stage_description=("方案已确认，正在排队启动构建。" if confirmed_plan_id else None))
-    logger.info("knowledge_build_requested", subject=subject.slug, requested_at=requested_at.isoformat(), file_count=len(accepted_file_ids), force_full_rebuild=force_full_rebuild, vector_mode=vector_status.mode, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id)
+    _write_build_status(
+        subject.slug,
+        requested_at=requested_at,
+        status="accepted",
+        stage="build_accepted",
+        error_message=None,
+        draft_available=False,
+        source_file_ids=accepted_file_ids,
+        prompt=cleaned_prompt,
+        staged_chapter_count=0,
+        published_doc_count=0,
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
+        digest_mode=digest_mode,
+        plan_summary=plan_summary,
+        chapter_progress=chapter_progress,
+        recent_events=recent_events,
+        current_stage_description=(
+            "方案已确认，当前没有本地资料，将优先执行联网研究。"
+            if search_only_mode
+            else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
+        ),
+    )
+    logger.info(
+        "knowledge_build_requested",
+        subject=subject.slug,
+        requested_at=requested_at.isoformat(),
+        file_count=len(accepted_file_ids),
+        force_full_rebuild=force_full_rebuild,
+        vector_mode=vector_status.mode,
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
+        search_only_mode=search_only_mode,
+    )
     return DocGenBuildData(accepted_file_uids=accepted_file_uids, ready_file_count=ready_file_count, prompt=cleaned_prompt, requested_at=requested_at, vector_status=vector_status, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=digest_mode), accepted_file_ids
 
 async def run_graph_digest_background(*, subject: str, file_ids: list[int]) -> None:

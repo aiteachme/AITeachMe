@@ -190,6 +190,31 @@ class Settings(BaseSettings):
 
         return not self.is_cloud_mode
 
+    def _resolve_langsmith_capture_flag(self, *, env_key: str, configured: bool) -> bool:
+        """Resolve LangSmith text capture with safe environment-aware defaults."""
+
+        if os.getenv(env_key) is not None:
+            return configured
+        return self.is_local_mode
+
+    @property
+    def resolved_langsmith_capture_inputs(self) -> bool:
+        """Return whether LangSmith should capture prompt text."""
+
+        return self._resolve_langsmith_capture_flag(
+            env_key="LANGSMITH_CAPTURE_INPUTS",
+            configured=self.langsmith_capture_inputs,
+        )
+
+    @property
+    def resolved_langsmith_capture_outputs(self) -> bool:
+        """Return whether LangSmith should capture response text."""
+
+        return self._resolve_langsmith_capture_flag(
+            env_key="LANGSMITH_CAPTURE_OUTPUTS",
+            configured=self.langsmith_capture_outputs,
+        )
+
     @property
     def storage_is_s3(self) -> bool:
         """Return whether object storage uses an S3-compatible backend."""
@@ -305,4 +330,3 @@ def get_settings() -> Settings:
     """Return the cached settings instance."""
 
     return Settings()
-

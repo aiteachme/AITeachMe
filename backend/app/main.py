@@ -171,10 +171,15 @@ def _register_middlewares(app: FastAPI) -> None:
         "https://www.aiteachme.cn",
         "https://aiteachme.pages.dev",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ]
     configured = settings.cors_allowed_origins
     origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
+    logger.info("cors_configured", allow_origins=origins)
 
     app.add_middleware(
         CORSMiddleware,

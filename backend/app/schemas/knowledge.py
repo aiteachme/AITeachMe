@@ -172,6 +172,9 @@ class BuildPreviewRecentEventResponse(BaseModel):
     title: str | None = None
     summary: str
     created_at: datetime | None = None
+    domains: list[str] = Field(default_factory=list, description="Top domains touched by this event, when applicable.")
+    source_titles: list[str] = Field(default_factory=list, description="Short source titles surfaced for this event.")
+    source_urls: list[str] = Field(default_factory=list, description="Representative URLs surfaced for this event.")
 
 
 class KnowledgeBuildPreviewResponse(BaseModel):
@@ -650,4 +653,3 @@ class BuildPlannerConfirmResponse(BaseModel):
     session_id: str
     plan_id: str
     plan: BuildPlannerPlanResponse
-

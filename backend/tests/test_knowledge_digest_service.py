@@ -258,6 +258,54 @@ def test_trigger_docgen_build_uses_confirmed_plan_selection_and_prompt(session: 
     assert first_file.uid not in data.accepted_file_uids
 
 
+def test_trigger_docgen_build_allows_search_only_docs_for_confirmed_plan(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_digest_search_only")
+    plan = _seed_confirmed_plan(
+        session,
+        plan_id="plan-docgen-search-only",
+        subject_slug=subject.slug,
+        selected_file_ids=[],
+        planner_session_id="planner-docgen-search-only",
+        user_goal="系统整理微积分核心知识",
+        plan_summary="按章节检索并生成系统讲义",
+        digest_mode="systematic",
+        tone="encouraging",
+    )
+
+    with patch(
+        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        return_value=None,
+    ), patch(
+        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        return_value=_vector_status(),
+    ), patch(
+        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        return_value=True,
+    ), patch(
+        "app.services.knowledge.digest_service.clear_docgen_staging",
+    ), patch(
+        "app.services.knowledge.digest_service.update_knowledge_build_status",
+    ):
+        data, accepted_file_ids = trigger_docgen_build(
+            session,
+            subject=subject,
+            user_id="local",
+            file_uids=None,
+            prompt=None,
+            embedding_resolution=None,
+            confirmed_plan_id=plan.id,
+            build_type="docs",
+        )
+
+    assert accepted_file_ids == []
+    assert data.accepted_file_uids == []
+    assert data.ready_file_count == 0
+    assert data.prompt == "系统整理微积分核心知识"
+    assert data.planner_session_id == "planner-docgen-search-only"
+    assert data.confirmed_plan_id == plan.id
+    assert data.digest_mode == "systematic"
+
+
 def test_trigger_docgen_build_rejects_building_confirmed_plan(session: Session) -> None:
     subject = _seed_subject(session, subject_slug="subj_digest_building_plan")
     ready_file = _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_digest_locked")

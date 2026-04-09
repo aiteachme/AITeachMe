@@ -163,6 +163,29 @@ interface BuildPreviewNode {
   node_type: string;
 }
 
+interface BuildPreviewChapterProgress {
+  chapter_index: number;
+  title: string;
+  status: string;
+  source_count?: number;
+  local_hits?: number;
+  web_hits?: number;
+  query_count?: number;
+  word_count?: number;
+  fallback_used?: boolean;
+}
+
+interface BuildPreviewRecentEvent {
+  stage: string;
+  chapter_index?: number | null;
+  title?: string | null;
+  summary: string;
+  created_at?: string | null;
+  domains?: string[];
+  source_titles?: string[];
+  source_urls?: string[];
+}
+
 interface KnowledgeBuildPreview {
   current_stage_description?: string | null;
   digest_mode?: string | null;
@@ -173,6 +196,8 @@ interface KnowledgeBuildPreview {
   discovered_node_types?: Record<string, number>;
   sample_nodes?: BuildPreviewNode[];
   sample_cards?: BuildSampleCard[];
+  chapter_progress?: BuildPreviewChapterProgress[];
+  recent_events?: BuildPreviewRecentEvent[];
   latest_chapter_titles?: string[];
   draft_excerpt?: string;
 }
@@ -679,6 +704,169 @@ function DocBuildProgress({
   );
 }
 
+function buildChapterStatusLabel(status: string | undefined): string {
+  switch ((status ?? "").trim()) {
+    case "planned":
+      return "待执行";
+    case "researching":
+      return "检索中";
+    case "researched":
+      return "研究完成";
+    case "drafting":
+      return "写作中";
+    case "drafted":
+      return "草稿完成";
+    case "completed":
+      return "已完成";
+    default:
+      return status?.trim() || "进行中";
+  }
+}
+
+function formatBuildEventTime(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) {
+    return null;
+  }
+  return time.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function BuildLiveActivity({
+  buildPreview,
+  compact = false,
+}: {
+  buildPreview?: KnowledgeBuildPreview | null;
+  compact?: boolean;
+}) {
+  const chapterProgress = buildPreview?.chapter_progress ?? [];
+  const recentEvents = buildPreview?.recent_events ?? [];
+  const visibleChapters = chapterProgress.slice(0, compact ? 3 : 6);
+  const visibleEvents = recentEvents.slice(0, compact ? 4 : 8);
+
+  if (visibleChapters.length === 0 && visibleEvents.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-5 space-y-4">
+      {visibleChapters.length > 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">章节进度</p>
+            <span className="text-[11px] text-slate-400">{chapterProgress.length} 章</span>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {visibleChapters.map((chapter) => (
+              <article
+                key={`${chapter.chapter_index}-${chapter.title}`}
+                className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-900">
+                    {chapter.chapter_index}. {chapter.title}
+                  </p>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">
+                    {buildChapterStatusLabel(chapter.status)}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                  {(chapter.query_count ?? 0) > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5">queries {chapter.query_count}</span>
+                  ) : null}
+                  {(chapter.source_count ?? 0) > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5">sources {chapter.source_count}</span>
+                  ) : null}
+                  {(chapter.local_hits ?? 0) > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5">local {chapter.local_hits}</span>
+                  ) : null}
+                  {(chapter.web_hits ?? 0) > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5">web {chapter.web_hits}</span>
+                  ) : null}
+                  {(chapter.word_count ?? 0) > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5">{chapter.word_count} 字</span>
+                  ) : null}
+                  {chapter.fallback_used ? (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">已走外部补检</span>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {visibleEvents.length > 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">实时过程</p>
+            <span className="text-[11px] text-slate-400">持续刷新</span>
+          </div>
+          <div className="mt-3 space-y-3">
+            {visibleEvents.map((event, index) => {
+              const eventTime = formatBuildEventTime(event.created_at);
+              return (
+                <article
+                  key={`${event.stage}-${event.chapter_index ?? "na"}-${index}`}
+                  className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                          {event.stage}
+                        </span>
+                        {event.title ? <span className="text-sm font-medium text-slate-900">{event.title}</span> : null}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">{event.summary}</p>
+                    </div>
+                    {eventTime ? <span className="shrink-0 text-[11px] text-slate-400">{eventTime}</span> : null}
+                  </div>
+
+                  {event.source_urls?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {event.source_urls.map((url, sourceIndex) => (
+                        <a
+                          key={`${url}-${sourceIndex}`}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                        >
+                          <span className="max-w-[220px] truncate">
+                            {event.source_titles?.[sourceIndex] || url}
+                          </span>
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                      ))}
+                    </div>
+                  ) : event.domains?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {event.domains.map((domain) => (
+                        <span
+                          key={domain}
+                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600"
+                        >
+                          {domain}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DocGeneratingState({
   isFetching,
   progress,
@@ -740,6 +928,8 @@ function DocGeneratingState({
           {avgLatency ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {avgLatency}</span> : null}
         </div>
       ) : null}
+
+      <BuildLiveActivity buildPreview={buildPreview} />
 
       {sampleCards.length > 0 ? (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -804,6 +994,7 @@ function DocUpdatingBanner({
   hasDraftVersion,
   liveUpdatedAt,
   draftUpdatedAt,
+  buildPreview,
   onViewModeChange,
 }: {
   progress: number;
@@ -814,6 +1005,7 @@ function DocUpdatingBanner({
   hasDraftVersion: boolean;
   liveUpdatedAt?: string | null;
   draftUpdatedAt?: string | null;
+  buildPreview?: KnowledgeBuildPreview | null;
   onViewModeChange: (mode: DocViewMode) => void;
 }) {
   const title =
@@ -888,6 +1080,7 @@ function DocUpdatingBanner({
           isFetching={isFetching}
         />
       </div>
+      <BuildLiveActivity buildPreview={buildPreview} compact />
     </section>
   );
 }
@@ -3097,6 +3290,7 @@ export function KnowledgeDocsPage() {
                           hasDraftVersion={hasDraftDocMarkdown}
                           liveUpdatedAt={liveUpdatedAt}
                           draftUpdatedAt={draftUpdatedAt}
+                          buildPreview={buildPreview}
                           onViewModeChange={setDocViewMode}
                         />
                       )}
