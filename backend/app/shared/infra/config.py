@@ -23,6 +23,27 @@ _EMBEDDING_DIM_MAP: dict[str, int] = {
 }
 
 _DEFAULT_EMBEDDING_DIM = 1536
+_DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
+_RETRIEVER_ALIASES: dict[str, str] = {
+    "ddg": "duckduckgo",
+    "rag": "local_rag",
+}
+_RETRIEVER_PROFILES: dict[str, list[str]] = {
+    "planner_fast": ["local_rag", "bocha", "duckduckgo"],
+    "docgen_balanced": ["local_rag", "tavily", "bocha"],
+    "docgen_academic": ["local_rag", "tavily", "arxiv", "semantic_scholar"],
+}
+
+
+def _split_csv_names(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item and item.strip()]
+
+
+def _normalize_retriever_name(name: str) -> str:
+    normalized = (name or "").strip().lower()
+    return _RETRIEVER_ALIASES.get(normalized, normalized)
 
 
 class Settings(BaseSettings):
@@ -118,8 +139,11 @@ class Settings(BaseSettings):
     docgen_max_parallel_chapters: int = 20
     docgen_io_parallelism: int = 20
     web_search_retriever: str = "duckduckgo"
+    web_search_retrievers: str = ""
+    web_search_retriever_profile: str = ""
     bing_api_key: str | None = None
     bocha_api_key: str | None = None
+    tavily_api_key: str | None = None
     local_rag_priority: bool = True
     local_rag_min_results: int = 2
     search_max_results_per_query: int = 5
@@ -323,6 +347,62 @@ class Settings(BaseSettings):
         if not self.ocr_model:
             return False  # OCR stays disabled unless OCR_MODEL is set explicitly.
         return True
+
+    def parse_retrievers(
+        self,
+        *,
+        profile: str | None = None,
+        include_local_rag: bool | None = None,
+        include_fallback: bool = True,
+        fallback_retriever: str = _DEFAULT_RETRIEVER_FALLBACK,
+    ) -> list[str]:
+        """Resolve retriever names from explicit list, profile, or legacy single setting."""
+
+        explicit_names = [
+            _normalize_retriever_name(item)
+            for item in _split_csv_names(self.web_search_retrievers)
+        ]
+        resolved_profile = _normalize_retriever_name(profile or self.web_search_retriever_profile)
+        profile_names = [
+            _normalize_retriever_name(item)
+            for item in _RETRIEVER_PROFILES.get(resolved_profile, [])
+        ]
+        legacy_names = [
+            _normalize_retriever_name(item)
+            for item in _split_csv_names(self.web_search_retriever)
+        ]
+
+        if explicit_names:
+            candidate_names = explicit_names
+        elif profile_names:
+            candidate_names = profile_names
+        elif legacy_names:
+            candidate_names = legacy_names
+        else:
+            candidate_names = [_DEFAULT_RETRIEVER_FALLBACK]
+
+        should_include_local_rag = self.local_rag_priority if include_local_rag is None else include_local_rag
+        normalized: list[str] = []
+        seen: set[str] = set()
+
+        def _append(name: str) -> None:
+            if not name or name in seen:
+                return
+            seen.add(name)
+            normalized.append(name)
+
+        if should_include_local_rag:
+            _append("local_rag")
+        for item in candidate_names:
+            if include_local_rag is False and item in {"local_rag", "rag"}:
+                continue
+            _append(item)
+
+        fallback_name = _normalize_retriever_name(fallback_retriever)
+        if include_fallback and fallback_name and any(name != "local_rag" for name in normalized):
+            _append(fallback_name)
+
+        return normalized
 
 
 @lru_cache

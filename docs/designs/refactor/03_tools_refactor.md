@@ -1,6 +1,6 @@
 ## 三、工具体系重构 — Skills + Actions + Retrievers + Scraper
 
-> **最后更新**：2026-04-08 — 反映 Phase 0/1 实际落地后的状态，所有核心 Skill/Action/Retriever/Scraper 已实现
+> **最后更新**：2026-04-09 — 反映检索层第一阶段重构后的实际实现状态
 
 ### 3.1 现状分析（已更新）
 
@@ -8,7 +8,7 @@
 - `shared/infra/skills/base.py` — `BaseSkill` 抽象基类 + `SkillContext` + `SkillResult` + `@skill` 装饰器 + `SkillRegistry`，**双模式共存**。
 - `shared/infra/skills/` — 已实现 6 个业务 Skill：ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator。
 - `shared/infra/tools/builtin/` — 已实现 7 个原子操作：query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops。
-- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / Bocha / LocalRAG 四种实现。
+- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / LocalRAG / Tavily，`Bocha` 当前仍是占位实现。
 - `shared/infra/search/scraper/` — BaseScraper + BS4 + PyMuPDF 两种实现。
 
 **gpt-researcher 的工具体系**：
@@ -17,7 +17,7 @@
 - `retrievers/` — 14 种检索器 + 工厂函数 `get_retriever(name)`。
 - `scraper/` — 8 种抓取器 + 统一调度器 `Scraper` 类（URL 去重 + 类型路由 + 并行抓取）。
 
-**当前状态**：核心融合已完成。gpt-researcher 的业务逻辑已灌入我们的框架骨架。后续重点是**质量调优和功能扩展**（教育 Teaching Skills、学术检索器、实际图片生成 API 接入）。
+**当前状态**：核心融合已完成，检索层第一阶段也已落地。当前已经具备**多检索器 list/profile 配置 + Tavily 接入**，后续重点转向剩余扩展项（`bocha` 真实 API、学术检索器、`custom` 私有检索器、实际图片生成 API 接入）。
 
 ### 3.2 Skills 层 — BaseSkill 抽象类（✅ 已实现）
 
@@ -112,7 +112,7 @@ execute()
 
 **后续优化方向**：
 - 引入检索结果缓存（同一 query 短时间内不重复搜索）
-- 扩展学术检索器（Tavily / arXiv）
+- 扩展学术检索器（arXiv / Semantic Scholar）
 - 教育域 site filter 更精细化
 
 #### 3.3.2 ContextManager（✅ 已实现）
@@ -120,12 +120,11 @@ execute()
 **实际实现文件**：`shared/infra/skills/context_manager.py`
 
 **与原设计的差异**：
-- 原设计基于 Embedding 向量余弦相似度过滤，实际实现采用**语义+词法双通道评分**（无需额外 embedding 调用，更快）
-- 实际实现包含：段落级去重（基于文本哈希）、字符限制截断、相似度阈值过滤
-- `build_dense_context()` 方法接受 `chapter_title` / `objective` / `required_elements` / `digest_mode` 参数，上下文压缩更精准
+- 原设计基于 Embedding 向量余弦相似度过滤，实际实现采用**词法快速路径 + Embedding 过滤 + 词法兜底**三段式压缩
+- 实际实现包含：段落级去重（基于文本哈希）、字符限制截断、相似度阈值过滤、超短上下文 fast path
+- `ContextManager.execute()` / `run()` 接受 `query`、`focus_terms`、`documents` 等参数，可由上游用章节目标和必备要点构造压缩焦点
 
 **后续优化方向**：
-- 可引入 Embedding 向量过滤作为可选的高精度模式（当前词法模式已够用）
 - 考虑引入 gpt-researcher 的 `WrittenContentCompressor` 去重逻辑（多章节写作时避免重复）
 
 #### 3.3.3 ImageGenerator（🟡 框架就绪，生成 API 待接入）
@@ -246,13 +245,14 @@ shared/infra/search/
 ├── api.py                     # ✅ search_knowledge + web_search
 ├── types.py                   # ✅ SearchResult / ScrapedPage / WebSearchResult
 ├── web.py                     # ✅ 多检索器聚合 + 去重
-├── factory.py                 # ✅ get_retrievers_for_subject() 工厂
+├── factory.py                 # ✅ get_retrievers_for_subject() 工厂 + 多检索器 list/profile 解析
 ├── retrievers/
 │   ├── __init__.py
 │   ├── base.py                # ✅ BaseRetriever（含 LangSmith tracing）
 │   ├── bing.py                # ✅ Bing Search API
-│   ├── bocha.py               # ✅ 博查搜索
+│   ├── bocha.py               # 🟡 博查搜索（当前仍为 placeholder，待接入真实 API）
 │   ├── duckduckgo.py          # ✅ DuckDuckGo（免费兜底）
+│   ├── tavily.py              # ✅ Tavily（高质量 research 检索）
 │   └── local_rag.py           # ✅ 本地 RAG（向量 + section fallback）
 └── scraper/
     ├── __init__.py
@@ -262,21 +262,27 @@ shared/infra/search/
 ```
 
 **与原设计的差异**：
-- `BaseRetriever` 实际接口使用 `retrieve(query, top_k)` 而非 `search(query, max_results)`，与 LangChain retriever 命名习惯一致
+- `BaseRetriever` 实际接口使用 `search(query, max_results)` / `traced_search(...)`，保持简单明确的统一抽象
 - `factory.py` 的 `get_retrievers_for_subject()` 接受 `local_sections` 参数，支持将用户上传文件的 section 直接注入 LocalRAG
+- `config.py` + `factory.py` 已支持 `web_search_retrievers` / `web_search_retriever_profile`，可配置多检索器组合并保持对旧 `web_search_retriever` 的兼容
 - `LocalRAGRetriever` 实现了向量检索 + section fallback 双通道，比原设计更健壮
-- Tavily 检索器尚未实现（当前 4 种检索器已满足需求）
+- `TavilyRetriever` 已实现；`Bocha` / `ArxivRetriever` / `SemanticScholarRetriever` / `CustomRetriever` 仍待实现
 
-**检索优先级策略（不变）**：
-```
+**检索优先级策略（建议升级）**：
+``` 
 1. 本地 RAG (local_rag)        ← 用户上传的教材，最高质量，零成本
-2. Bing / 博查搜索             ← 中文互联网（知乎、CSDN、考研论坛）
-3. DuckDuckGo                  ← 免费兜底，无需 API Key
-```
+2. Tavily / 博查搜索            ← 高质量摘要检索 + 中文互联网补充
+3. Bing                        ← 稳定通用搜索
+4. DuckDuckGo                  ← 免费兜底，无需 API Key
+5. arXiv / Semantic Scholar    ← 学术主题增强（按学科启用）
+``` 
 
 **后续扩展方向**：
-- Tavily 检索器（英文学术搜索）
-- arXiv 检索器（论文搜索）
+- `bocha` 真实 API 接入
+- `ArxivRetriever`
+- `SemanticScholarRetriever`
+- `CustomRetriever`
+- 多检索器 profile 的调用侧落地（Planner / DocGen 分场景启用不同 profile）
 - 教育垂直站点定向检索（见 06 文档）
 
 ### 3.6 LangSmith 全链路追踪 — ✅ 已实现

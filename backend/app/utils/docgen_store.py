@@ -15,7 +15,7 @@ from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,
     build_knowledge_build_lock_path,
 )
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 
 STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
 
@@ -210,6 +210,7 @@ def _normalize_recent_event_entry(entry: dict[str, object]) -> dict[str, object]
 
 
 def _hydrate_runtime_status(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
+    status.requested_at = ensure_utc_datetime(status.requested_at) or utcnow()
     if not status.current_stage_description:
         status.current_stage_description = _STAGE_DESCRIPTION.get(status.stage, "知识文档构建进行中。")
 

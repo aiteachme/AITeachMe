@@ -166,6 +166,8 @@ function formatPlannerNodeLabel(nodeName: string): string {
   switch (nodeName) {
     case "load_context":
       return "读取上下文";
+    case "ground_concepts":
+      return "概念预检索";
     case "draft_plan":
       return "生成方案";
     default:
