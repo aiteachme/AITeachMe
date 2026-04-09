@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     web_search_retriever_profile: str = ""
     bing_api_key: str | None = None
     bocha_api_key: str | None = None
+    semantic_scholar_api_key: str | None = None
     tavily_api_key: str | None = None
     local_rag_priority: bool = True
     local_rag_min_results: int = 2

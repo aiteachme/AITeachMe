@@ -7,8 +7,8 @@
 **当前 AITeachMe 的工具体系**（Phase 0/1 完成后）：
 - `shared/infra/skills/base.py` — `BaseSkill` 抽象基类 + `SkillContext` + `SkillResult` + `@skill` 装饰器 + `SkillRegistry`，**双模式共存**。
 - `shared/infra/skills/` — 已实现 6 个业务 Skill：ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator。
-- `shared/infra/tools/builtin/` — 已实现 7 个原子操作：query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops。
-- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / LocalRAG / Tavily，`Bocha` 当前仍是占位实现。
+- `shared/infra/tools/builtin/` — 已实现 query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops，并新增 `content_analysis.py` 作为教学块复用的通用分析工具。
+- `shared/infra/search/retrievers/` — 工厂模式已落地，含 BaseRetriever + Bing / DuckDuckGo / LocalRAG / Tavily / arXiv / Semantic Scholar，`Bocha` 当前仍是占位实现。
 - `shared/infra/search/scraper/` — BaseScraper + BS4 + PyMuPDF 两种实现。
 
 **gpt-researcher 的工具体系**：
@@ -17,7 +17,7 @@
 - `retrievers/` — 14 种检索器 + 工厂函数 `get_retriever(name)`。
 - `scraper/` — 8 种抓取器 + 统一调度器 `Scraper` 类（URL 去重 + 类型路由 + 并行抓取）。
 
-**当前状态**：核心融合已完成，检索层第一阶段也已落地。当前已经具备**多检索器 list/profile 配置 + Tavily 接入**，后续重点转向剩余扩展项（`bocha` 真实 API、学术检索器、`custom` 私有检索器、实际图片生成 API 接入）。
+**当前状态**：核心融合已完成，检索层第一阶段也已落地。当前已经具备**多检索器 list/profile 配置 + Tavily / arXiv / Semantic Scholar 接入**，并开始补 `infra -> teaching` 的分层复用：先在 `infra` 提供 `content_analysis` 这类通用分析能力，再在 `teaching/documents` 里生成 glossary / coverage 等教学块。后续重点转向剩余扩展项（`bocha` 真实 API、`custom` 私有检索器、实际图片生成 API 接入）。
 
 ### 3.2 Skills 层 — BaseSkill 抽象类（✅ 已实现）
 
@@ -160,6 +160,7 @@ shared/infra/tools/builtin/
 ├── web_search.py              # ✅ web_search tool（@tool 注册）
 ├── search_kb.py               # ✅ search_knowledge tool（@tool 注册）
 ├── markdown_processing.py     # ✅ build_toc() / extract_headers() / add_references() / count_words()
+├── content_analysis.py        # ✅ extract_key_terms() / build_term_coverage() / extract_term_excerpts()
 ├── latex_processing.py        # ✅ normalize_math_delimiters()（数学分隔符规范化）
 └── memory_ops.py              # ✅ remember / recall tools
 ```
@@ -167,6 +168,7 @@ shared/infra/tools/builtin/
 **与原设计的差异**：
 - `query_processing.py` 比原设计更丰富：新增 `enrich_queries_for_education()` 教育域搜索增强 + `build_research_focus_text()` 研究焦点构建
 - `web_scraping.py` 已实现完整的 URL 去重 + 类型路由（.pdf → PyMuPDF, 其他 → BS4）+ Semaphore 并发控制
+- `content_analysis.py` 是按新分层思路补的通用基础件：不直接表达教学话术，而是提供术语抽取、术语片段定位、必备要点覆盖检测，供 `teaching/documents` 复用
 - 原设计中的 `context_compression.py` 和 `report_generation.py` 功能已分别由 `ContextManager` Skill 和 `PedagogyWriter` Skill 承担，无需独立 Action
 
 #### 3.4.1 query_processing.py（P0）
@@ -252,6 +254,8 @@ shared/infra/search/
 │   ├── bing.py                # ✅ Bing Search API
 │   ├── bocha.py               # 🟡 博查搜索（当前仍为 placeholder，待接入真实 API）
 │   ├── duckduckgo.py          # ✅ DuckDuckGo（免费兜底）
+│   ├── arxiv.py               # ✅ arXiv 学术检索
+│   ├── semantic_scholar.py    # ✅ Semantic Scholar 学术检索
 │   ├── tavily.py              # ✅ Tavily（高质量 research 检索）
 │   └── local_rag.py           # ✅ 本地 RAG（向量 + section fallback）
 └── scraper/
@@ -266,7 +270,7 @@ shared/infra/search/
 - `factory.py` 的 `get_retrievers_for_subject()` 接受 `local_sections` 参数，支持将用户上传文件的 section 直接注入 LocalRAG
 - `config.py` + `factory.py` 已支持 `web_search_retrievers` / `web_search_retriever_profile`，可配置多检索器组合并保持对旧 `web_search_retriever` 的兼容
 - `LocalRAGRetriever` 实现了向量检索 + section fallback 双通道，比原设计更健壮
-- `TavilyRetriever` 已实现；`Bocha` / `ArxivRetriever` / `SemanticScholarRetriever` / `CustomRetriever` 仍待实现
+- `TavilyRetriever` / `ArxivRetriever` / `SemanticScholarRetriever` 已实现；`Bocha` / `CustomRetriever` 仍待实现
 
 **检索优先级策略（建议升级）**：
 ``` 
@@ -279,8 +283,6 @@ shared/infra/search/
 
 **后续扩展方向**：
 - `bocha` 真实 API 接入
-- `ArxivRetriever`
-- `SemanticScholarRetriever`
 - `CustomRetriever`
 - 多检索器 profile 的调用侧落地（Planner / DocGen 分场景启用不同 profile）
 - 教育垂直站点定向检索（见 06 文档）

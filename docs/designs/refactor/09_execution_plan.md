@@ -1,6 +1,6 @@
 ## 九、分阶段重构执行计划
 
-> **最后更新**：2026-04-09 — 反映前端 Mermaid 渲染升级、Planner 概念预检索和检索层第一阶段重构后的实际状态
+> **最后更新**：2026-04-09 — 反映前端 Mermaid 渲染升级、Planner 概念预检索、检索层第一阶段重构和教学脚手架增强后的实际状态
 
 ### 9.1 总体原则（不变）
 
@@ -24,7 +24,8 @@
 | 7. DuckDuckGo 检索器 | `shared/infra/search/retrievers/duckduckgo.py` | ✅ 已实现 |
 | 8. LocalRAG 检索器 | `shared/infra/search/retrievers/local_rag.py` | ✅ 已实现（向量 + section fallback） |
 | 9. Tavily 检索器 | `shared/infra/search/retrievers/tavily.py` | ✅ 已实现 |
-| 10. Scraper (BS4 + PDF) | `shared/infra/search/scraper/` | ✅ `BaseScraper` + BS4 + PyMuPDF |
+| 10. arXiv / Semantic Scholar 检索器 | `shared/infra/search/retrievers/arxiv.py` + `semantic_scholar.py` | ✅ 已实现 |
+| 11. Scraper (BS4 + PDF) | `shared/infra/search/scraper/` | ✅ `BaseScraper` + BS4 + PyMuPDF |
 
 **额外说明**：`Bocha` 检索器文件已建好，但当前仍是 placeholder，尚未接入真实 API。
 
@@ -38,7 +39,8 @@
 | 4. `query_processing.py` | `shared/infra/tools/builtin/query_processing.py` | ✅ `generate_sub_queries()` + `enrich_queries_for_education()` + `dedupe_queries()` |
 | 5. `web_scraping.py` | `shared/infra/tools/builtin/web_scraping.py` | ✅ `scrape_urls()` 并行抓取 |
 | 6. `markdown_processing.py` | `shared/infra/tools/builtin/markdown_processing.py` | ✅ TOC / headers / references / word_count |
-| 7. `latex_processing.py` | `shared/infra/tools/builtin/latex_processing.py` | ✅ 数学分隔符规范化 |
+| 7. `content_analysis.py` | `shared/infra/tools/builtin/content_analysis.py` | ✅ 术语抽取 / 片段定位 / 覆盖检测 |
+| 8. `latex_processing.py` | `shared/infra/tools/builtin/latex_processing.py` | ✅ 数学分隔符规范化 |
 
 **额外完成**：
 - `SourceCurator`（`skills/source_curator.py`）— 域名可信度 + 词法重叠 + 本地源优先
@@ -100,7 +102,10 @@
 - 检索层第一阶段已落地：
   - `config.py` 支持 `web_search_retrievers` / `web_search_retriever_profile`
   - `factory.py` 支持多检索器组合、去重和 DuckDuckGo 兜底
-  - `TavilyRetriever` 已接入，可作为 `docgen_balanced` / `docgen_academic` 组合的一部分
+  - `TavilyRetriever` / `ArxivRetriever` / `SemanticScholarRetriever` 已接入，可作为 `docgen_balanced` / `docgen_academic` 组合的一部分
+- `infra -> teaching` 的第一批分层复用已落地：
+  - `content_analysis.py` 提供通用术语抽取与覆盖检测
+  - `teaching/documents` 开始基于它生成 `术语速览` 和 `学习目标对照` 教学块
 
 | 任务 | 涉及文件 | 验证方式 |
 |:---|:---|:---|

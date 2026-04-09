@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.search.retrievers.arxiv import ArxivRetriever
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.bing import BingRetriever
 from app.shared.infra.search.retrievers.bocha import BochaRetriever
 from app.shared.infra.search.retrievers.duckduckgo import DuckDuckGoRetriever
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
+from app.shared.infra.search.retrievers.semantic_scholar import SemanticScholarRetriever
 from app.shared.infra.search.retrievers.tavily import TavilyRetriever
 from app.shared.infra.search.scraper.bs4_scraper import BS4Scraper
 from app.shared.infra.search.scraper.pdf_scraper import PDFScraper
@@ -20,6 +22,8 @@ _RETRIEVER_TYPES: dict[str, type[BaseRetriever]] = {
     "bing": BingRetriever,
     "bocha": BochaRetriever,
     "tavily": TavilyRetriever,
+    "arxiv": ArxivRetriever,
+    "semantic_scholar": SemanticScholarRetriever,
 }
 
 
