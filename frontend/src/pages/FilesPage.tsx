@@ -10,6 +10,7 @@ import {
   FileText,
   FileType,
   Loader2,
+  Network,
   Paperclip,
   Plus,
   RefreshCw,
@@ -29,6 +30,7 @@ import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuil
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
 import { useSettings } from "../hooks/useSettings";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
@@ -565,6 +567,21 @@ export function FilesPage() {
     [],
   );
 
+  const handleOpenKnowledgeGraph = useCallback(() => {
+    if (!subjectId) {
+      return;
+    }
+
+    navigate(`/subject/${subjectId}/knowledge-graph`, {
+      state: createGraphDebugBuildLocationState(
+        readyFiles.map((file) => ({
+          uid: file.uid,
+          filename: file.filename,
+        })),
+      ),
+    });
+  }, [navigate, readyFiles, subjectId]);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || isPlannerPending || isBuilding) {
@@ -1066,6 +1083,26 @@ export function FilesPage() {
         onClose={knowledgeBuild.closePrecheckConflict}
         onResolve={knowledgeBuild.resolvePrecheckConflict}
       />
+
+      <button
+        type="button"
+        onClick={handleOpenKnowledgeGraph}
+        className="fixed bottom-24 right-4 z-20 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#082f49_0%,#0f766e_100%)] px-4 py-3 text-left text-white shadow-[0_18px_40px_-18px_rgba(8,47,73,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_-18px_rgba(8,47,73,0.6)] md:bottom-24 md:right-8"
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/14">
+          <Network className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">构建知识图谱</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-sky-50/85">
+            {readyFiles.length > 0
+              ? `基于 ${readyFiles.length} 份已解析资料直达图谱调试`
+              : files.length > 0
+                ? "文件还在解析中，可先进入图谱页调试入口"
+                : "上传资料后可直接跳转图谱页调试构建"}
+          </div>
+        </div>
+      </button>
     </>
   );
 }
