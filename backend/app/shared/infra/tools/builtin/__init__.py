@@ -5,5 +5,8 @@
 """
 
 from app.shared.infra.tools.builtin import memory_ops  # noqa: F401
+from app.shared.infra.tools.builtin import content_analysis  # noqa: F401
+from app.shared.infra.tools.builtin import query_processing  # noqa: F401
 from app.shared.infra.tools.builtin import search_kb  # noqa: F401
+from app.shared.infra.tools.builtin import web_scraping  # noqa: F401
 from app.shared.infra.tools.builtin import web_search  # noqa: F401

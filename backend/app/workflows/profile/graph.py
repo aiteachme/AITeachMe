@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from langgraph.graph import END, StateGraph
+from contextlib import contextmanager
+from typing import Generator
 
+from langgraph.graph import END, StateGraph
+from sqlmodel import Session
+
+from app.models import ExamPaper
+from app.shared.infra.database import managed_session
+from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.profile.mastery_updater import MasteryUpdateResult, update_mastery_from_exam
+from app.workflows.profile.review_scheduler import schedule_reviews
 from app.workflows.profile.state import ProfileWorkflowState
+from app.workflows.profile.subject_profile import refresh_subject_profile_summary
+from app.workflows.profile.user_profile import refresh_user_profile_summary
+from app.workflows.profile.weakness_analyzer import WeaknessItem, analyze_weakness
 
 
 def _mastery_updated_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
@@ -39,4 +51,369 @@ def build_profile_workflow_graph() -> StateGraph:
     return workflow
 
 
-__all__ = ["ProfileWorkflowState", "build_profile_workflow_graph"]
+@contextmanager
+def _node_session(session_override: Session | None) -> Generator[Session, None, None]:
+    if session_override is not None:
+        yield session_override
+        return
+    with managed_session() as session:
+        yield session
+
+
+def _serialize_mastery_result(result: MasteryUpdateResult) -> dict[str, object]:
+    return {
+        "exam_paper_id": result.exam_paper_id,
+        "states_updated": result.states_updated,
+        "updated_state_ids": result.updated_state_ids,
+        "already_consumed": result.already_consumed,
+    }
+
+
+def _serialize_weaknesses(items: list[WeaknessItem]) -> list[dict[str, object]]:
+    return [
+        {
+            "teaching_unit_id": item.teaching_unit_id,
+            "priority": item.priority,
+            "reason": item.reason,
+            "mastery_score": item.mastery_score,
+            "recent_wrong_rate": item.recent_wrong_rate,
+            "exam_weight": item.exam_weight,
+        }
+        for item in items
+    ]
+
+
+def _route_after_step(state: ProfileWorkflowState) -> str:
+    return "fail" if state.get("error") else "continue"
+
+
+def _resolve_profile_context_node(*, session: Session | None = None):
+    def resolve_profile_context(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        try:
+            with _node_session(session) as db_session:
+                paper = db_session.get(ExamPaper, state["exam_paper_id"])
+                if paper is None:
+                    return {
+                        **state,
+                        "error": f"exam_paper_not_found:{state['exam_paper_id']}",
+                    }
+
+                requested_subject = state.get("subject")
+                if requested_subject and requested_subject != paper.subject:
+                    return {
+                        **state,
+                        "error": f"exam_paper_subject_mismatch:{requested_subject}!={paper.subject}",
+                    }
+
+                requested_user_id = state.get("user_id")
+                if requested_user_id and requested_user_id != paper.user_id:
+                    return {
+                        **state,
+                        "error": f"exam_paper_user_mismatch:{requested_user_id}!={paper.user_id}",
+                    }
+
+                return {
+                    **state,
+                    "subject": paper.subject,
+                    "user_id": paper.user_id,
+                    "error": None,
+                }
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"resolve_profile_context_failed:{exc}",
+            }
+
+    return resolve_profile_context
+
+
+def _update_mastery_node(*, session: Session | None = None):
+    def update_mastery_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        try:
+            with _node_session(session) as db_session:
+                result = update_mastery_from_exam(
+                    db_session,
+                    state["exam_paper_id"],
+                    auto_commit=False,
+                )
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"update_mastery_failed:{exc}",
+            }
+        return {
+            **state,
+            "mastery_result": _serialize_mastery_result(result),
+            "updated_state_ids": list(result.updated_state_ids),
+            "mastery_updated": True,
+            "error": None,
+        }
+
+    return update_mastery_node
+
+
+def _schedule_reviews_node(*, session: Session | None = None):
+    def schedule_reviews_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        subject = state.get("subject")
+        user_id = state.get("user_id")
+        if not subject or not user_id:
+            return {
+                **state,
+                "error": "profile_context_missing",
+            }
+
+        try:
+            with _node_session(session) as db_session:
+                review_tasks = schedule_reviews(
+                    db_session,
+                    user_id=user_id,
+                    subject=subject,
+                    updated_state_ids=list(state.get("updated_state_ids", [])),
+                    auto_commit=False,
+                )
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"schedule_reviews_failed:{exc}",
+            }
+        return {
+            **state,
+            "review_task_ids": [int(task.id) for task in review_tasks if task.id is not None],
+            "review_scheduled": True,
+            "error": None,
+        }
+
+    return schedule_reviews_node
+
+
+def _analyze_weakness_node(*, session: Session | None = None):
+    def analyze_weakness_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        subject = state.get("subject")
+        user_id = state.get("user_id")
+        if not subject or not user_id:
+            return {
+                **state,
+                "error": "profile_context_missing",
+            }
+
+        try:
+            with _node_session(session) as db_session:
+                weaknesses = analyze_weakness(
+                    db_session,
+                    user_id=user_id,
+                    subject=subject,
+                    top_n=int(state.get("top_n") or 20),
+                )
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"analyze_weakness_failed:{exc}",
+            }
+        return {
+            **state,
+            "weaknesses": _serialize_weaknesses(weaknesses),
+            "weaknesses_ranked": True,
+            "error": None,
+        }
+
+    return analyze_weakness_node
+
+
+def _refresh_subject_profile_node(*, session: Session | None = None):
+    def refresh_subject_profile_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        subject = state.get("subject")
+        if not subject:
+            return {
+                **state,
+                "error": "profile_subject_missing",
+            }
+
+        try:
+            with _node_session(session) as db_session:
+                summary = refresh_subject_profile_summary(
+                    db_session,
+                    subject=subject,
+                    auto_commit=False,
+                )
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"refresh_subject_profile_failed:{exc}",
+            }
+        return {
+            **state,
+            "subject_profile": summary.model_dump(mode="json"),
+            "error": None,
+        }
+
+    return refresh_subject_profile_node
+
+
+def _refresh_user_profile_node(*, session: Session | None = None):
+    def refresh_user_profile_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        user_id = state.get("user_id")
+        if not user_id:
+            return {
+                **state,
+                "error": "profile_user_missing",
+            }
+
+        try:
+            with _node_session(session) as db_session:
+                summary = refresh_user_profile_summary(
+                    db_session,
+                    user_id=user_id,
+                    auto_commit=False,
+                )
+        except Exception as exc:
+            return {
+                **state,
+                "error": f"refresh_user_profile_failed:{exc}",
+            }
+        return {
+            **state,
+            "user_profile": summary.model_dump(mode="json"),
+            "report_generated": True,
+            "error": None,
+        }
+
+    return refresh_user_profile_node
+
+
+def _fail_profile_pipeline_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+    return state
+
+
+def build_profile_pipeline_graph(*, session: Session | None = None) -> StateGraph:
+    """Build an executable profile pipeline graph for local debugging."""
+
+    workflow = StateGraph(ProfileWorkflowState)
+    workflow.add_node(
+        "resolve_profile_context",
+        wrap_workflow_node(
+            _resolve_profile_context_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="resolve_profile_context",
+        ),
+    )
+    workflow.add_node(
+        "update_mastery",
+        wrap_workflow_node(
+            _update_mastery_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="update_mastery",
+        ),
+    )
+    workflow.add_node(
+        "schedule_reviews",
+        wrap_workflow_node(
+            _schedule_reviews_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="schedule_reviews",
+        ),
+    )
+    workflow.add_node(
+        "analyze_weakness",
+        wrap_workflow_node(
+            _analyze_weakness_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="analyze_weakness",
+        ),
+    )
+    workflow.add_node(
+        "refresh_subject_profile",
+        wrap_workflow_node(
+            _refresh_subject_profile_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="refresh_subject_profile",
+        ),
+    )
+    workflow.add_node(
+        "refresh_user_profile",
+        wrap_workflow_node(
+            _refresh_user_profile_node(session=session),
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="refresh_user_profile",
+        ),
+    )
+    workflow.add_node(
+        "fail_profile_pipeline",
+        wrap_workflow_node(
+            _fail_profile_pipeline_node,
+            workflow_name="profile.pipeline",
+            lane="profile",
+            node_name="fail_profile_pipeline",
+        ),
+    )
+
+    workflow.set_entry_point("resolve_profile_context")
+    workflow.add_conditional_edges(
+        "resolve_profile_context",
+        _route_after_step,
+        {"continue": "update_mastery", "fail": "fail_profile_pipeline"},
+    )
+    workflow.add_conditional_edges(
+        "update_mastery",
+        _route_after_step,
+        {"continue": "schedule_reviews", "fail": "fail_profile_pipeline"},
+    )
+    workflow.add_conditional_edges(
+        "schedule_reviews",
+        _route_after_step,
+        {"continue": "analyze_weakness", "fail": "fail_profile_pipeline"},
+    )
+    workflow.add_conditional_edges(
+        "analyze_weakness",
+        _route_after_step,
+        {"continue": "refresh_subject_profile", "fail": "fail_profile_pipeline"},
+    )
+    workflow.add_conditional_edges(
+        "refresh_subject_profile",
+        _route_after_step,
+        {"continue": "refresh_user_profile", "fail": "fail_profile_pipeline"},
+    )
+    workflow.add_edge("refresh_user_profile", END)
+    workflow.add_edge("fail_profile_pipeline", END)
+    return workflow
+
+
+def create_profile_initial_state(
+    *,
+    exam_paper_id: int,
+    subject: str | None = None,
+    user_id: str | None = None,
+    top_n: int = 20,
+) -> ProfileWorkflowState:
+    """Create initial state for the executable profile pipeline."""
+
+    return {
+        "exam_paper_id": exam_paper_id,
+        "subject": subject or "",
+        "user_id": user_id or "",
+        "top_n": top_n,
+        "updated_state_ids": [],
+        "review_task_ids": [],
+        "weaknesses": [],
+        "mastery_result": None,
+        "subject_profile": None,
+        "user_profile": None,
+        "mastery_updated": False,
+        "review_scheduled": False,
+        "weaknesses_ranked": False,
+        "report_generated": False,
+        "error": None,
+    }
+
+
+__all__ = [
+    "ProfileWorkflowState",
+    "build_profile_pipeline_graph",
+    "build_profile_workflow_graph",
+    "create_profile_initial_state",
+]

@@ -1,5 +1,4 @@
-"""试卷判卷工作流：判卷 → 掌握度更新 → 复习调度。
-
+"""Exam grading workflow orchestration.
 Reads DB: ``exam_paper*`` and downstream profile state tables.
 Writes DB: ``exam_paper.status``, graded attempts,
 ``user_knowledge_state`` and ``review_task`` via delegated profile steps.
@@ -20,6 +19,8 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
+from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
@@ -32,6 +33,7 @@ def _workflow_logger(state: ExamGradeState) -> structlog.stdlib.BoundLogger:
     return logger.bind(
         exam_paper_id=state["exam_paper_id"],
         job_id=state["job_id"],
+        subject=state.get("subject", ""),
     )
 
 
@@ -44,12 +46,24 @@ def _node_session(session_override: Session | None) -> Generator[Session, None, 
         yield session
 
 
+def _resolve_exam_subject(
+    exam_paper_id: int,
+    *,
+    session_override: Session | None = None,
+) -> str:
+    try:
+        with _node_session(session_override) as session:
+            paper = session.get(ExamPaper, exam_paper_id)
+            return paper.subject if paper is not None else ""
+    except Exception:
+        return ""
+
 async def grade_answers_node(
     state: ExamGradeState,
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """执行判卷，并将 ExamPaper 迁移到 grading。"""
+    """Load the paper, switch it into grading, and persist answer grading."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -86,7 +100,7 @@ async def update_mastery_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """根据判卷结果更新掌握度。"""
+    """Apply mastery updates derived from the graded exam paper."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -108,7 +122,7 @@ async def schedule_reviews_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """根据更新后的状态调度复习任务（并写入 forgetting_due_at）。"""
+    """Schedule follow-up review tasks for the updated knowledge states."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -139,7 +153,7 @@ async def finalize_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """完成判卷流程，回填 score/states_updated/tasks_created。"""
+    """Mark the paper graded and log the final grading summary."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -178,7 +192,7 @@ async def fail_grade_node(
     *,
     session_override: Session | None = None,
 ) -> ExamGradeState:
-    """失败处理：回滚试卷状态并记录错误。"""
+    """Rollback the paper status when grading fails."""
 
     with _node_session(session_override) as session:
         workflow_logger = _workflow_logger(state)
@@ -206,11 +220,51 @@ def _route_after_step(state: ExamGradeState) -> str:
 
 def build_exam_grade_graph(*, session: Session | None = None) -> StateGraph:
     workflow = StateGraph(ExamGradeState)
-    workflow.add_node("grade_answers", partial(grade_answers_node, session_override=session))
-    workflow.add_node("update_mastery", partial(update_mastery_node, session_override=session))
-    workflow.add_node("schedule_reviews", partial(schedule_reviews_node, session_override=session))
-    workflow.add_node("finalize_grade", partial(finalize_grade_node, session_override=session))
-    workflow.add_node("fail_grade", partial(fail_grade_node, session_override=session))
+    workflow.add_node(
+        "grade_answers",
+        wrap_workflow_node(
+            partial(grade_answers_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="grade_answers",
+        ),
+    )
+    workflow.add_node(
+        "update_mastery",
+        wrap_workflow_node(
+            partial(update_mastery_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="update_mastery",
+        ),
+    )
+    workflow.add_node(
+        "schedule_reviews",
+        wrap_workflow_node(
+            partial(schedule_reviews_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="schedule_reviews",
+        ),
+    )
+    workflow.add_node(
+        "finalize_grade",
+        wrap_workflow_node(
+            partial(finalize_grade_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="finalize_grade",
+        ),
+    )
+    workflow.add_node(
+        "fail_grade",
+        wrap_workflow_node(
+            partial(fail_grade_node, session_override=session),
+            workflow_name="examine.exam_grade",
+            lane="exam_grade",
+            node_name="fail_grade",
+        ),
+    )
 
     workflow.set_entry_point("grade_answers")
     workflow.add_conditional_edges(
@@ -239,22 +293,32 @@ async def run_exam_grade_workflow(
     job_id: int,
     session: Session | None = None,
 ) -> ExamGradeState:
-    graph = build_exam_grade_graph(session=session)
-    app = graph.compile()
+    subject = _resolve_exam_subject(exam_paper_id, session_override=session)
     initial_state: ExamGradeState = {
         "exam_paper_id": exam_paper_id,
         "job_id": job_id,
+        "subject": subject,
         "grade_result": None,
         "mastery_result": None,
         "review_tasks": [],
         "error": None,
     }
-    result = await app.ainvoke(initial_state)
-    return result
+    return await invoke_state_graph(
+        workflow_name="examine.exam_grade",
+        graph_builder=lambda: build_exam_grade_graph(session=session),
+        initial_state=initial_state,
+        subject=subject,
+        build_session_id=str(job_id),
+        lane="exam_grade",
+        extra_metadata={
+            "job_id": job_id,
+            "exam_paper_id": exam_paper_id,
+        },
+    )
 
 
 class ExamGradeWorkflow:
-    """供服务层调用的轻量包装。"""
+    """Thin wrapper around the exam grading workflow."""
 
     @staticmethod
     def build_graph(*, session: Session | None = None) -> StateGraph:

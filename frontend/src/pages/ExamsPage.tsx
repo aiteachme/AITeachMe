@@ -42,6 +42,7 @@ import {
   CardTitle,
 } from "../components/ui/Card";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
+import { getStoredAppSettings } from "../hooks/useSettings";
 import { buildSubjectPath } from "../lib/subjectNavigation";
 import type { FileRecord, FilesUploadData } from "../types/files";
 
@@ -455,6 +456,21 @@ async function uploadSampleFiles(
   const subjectId = requireSubjectId(subject);
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
+
+  // 参考样卷也走同一套解析引擎选择逻辑。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    formData.append("parser_provider", "mineru");
+    if (token) {
+      formData.append("mineru_api_token", token);
+    }
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
+  }
+
   const res = await apiClient<ApiResponse<FilesUploadData>>(
     {
       method: "POST",

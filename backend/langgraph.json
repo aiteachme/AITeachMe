@@ -1,0 +1,53 @@
+{
+  "python_version": "3.11",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "ingest_fast_parse": {
+      "path": "./app/workflows/ingest/graph.py:get_langgraph_dev_fast_parse_graph",
+      "description": "Ingest Phase 1 fast-parse workflow."
+    },
+    "ingest_deep_enhance": {
+      "path": "./app/workflows/ingest/graph.py:build_deep_enhance_graph",
+      "description": "Ingest Phase 2 deep-enhance workflow."
+    },
+    "digest_kg": {
+      "path": "./app/workflows/digest/kg/graph.py:build_kg_digest_graph",
+      "description": "Digest knowledge-graph lane."
+    },
+    "digest_curriculum": {
+      "path": "./app/workflows/digest/curriculum/graph.py:build_curriculum_derive_graph",
+      "description": "Digest curriculum derivation lane."
+    },
+    "digest_docgen": {
+      "path": "./app/workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
+      "description": "Digest doc generation lane."
+    },
+    "digest_planner": {
+      "path": "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph",
+      "description": "Digest planner workflow for confirmed build plans."
+    },
+    "digest_unified": {
+      "path": "./app/workflows/digest/unified/graph.py:get_langgraph_dev_unified_graph",
+      "description": "Digest unified build workflow."
+    },
+    "interact_chat": {
+      "path": "./app/workflows/interact/graph.py:get_langgraph_dev_interact_graph",
+      "description": "Interact chat workflow without the production SSE shell."
+    },
+    "examine_question_build": {
+      "path": "./app/workflows/examine/question_build_workflow.py:build_question_build_graph",
+      "description": "Examine question template build workflow."
+    },
+    "examine_exam_grade": {
+      "path": "./app/workflows/examine/exam_grade_workflow.py:build_exam_grade_graph",
+      "description": "Examine exam grading workflow."
+    },
+    "profile_pipeline": {
+      "path": "./app/workflows/profile/graph.py:build_profile_pipeline_graph",
+      "description": "Executable profile pipeline for mastery, review, weakness, and summary refresh."
+    }
+  },
+  "env": "../.env"
+}

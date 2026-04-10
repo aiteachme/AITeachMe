@@ -36,4 +36,10 @@ export interface DocGenGetResponse {
   build_metrics?: KnowledgeBuildMetricsResponse | null;
   /** Current subject-level vector capability status. */
   vector_status?: SubjectVectorStatusResponse;
+  /** Planner session id bound to this build. */
+  planner_session_id?: string | null;
+  /** Confirmed build plan id bound to this build. */
+  confirmed_plan_id?: string | null;
+  /** Digest mode frozen in the confirmed build plan. */
+  digest_mode?: string | null;
 }

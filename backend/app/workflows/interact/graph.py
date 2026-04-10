@@ -6,7 +6,8 @@ from fastapi import Request
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
+from app.workflows.common.observability import wrap_workflow_node
 from app.workflows.interact.nodes import (
     build_load_history_state_node,
     build_persist_turn_node,
@@ -28,34 +29,65 @@ def build_interact_workflow_graph(
 ) -> StateGraph:
     """Build the interact workflow graph."""
 
+    workflow_name = context.workflow_name if context is not None else "interact.chat"
     workflow = StateGraph(InteractWorkflowState)
     workflow.add_node(
         "load_history_state",
-        _resolve_history_node(context=context, session=session),
+        wrap_workflow_node(
+            _resolve_history_node(context=context, session=session),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="load_history_state",
+        ),
     )
     workflow.add_node(
         "retrieve_context",
-        _resolve_retrieval_node(context=context, session=session),
+        wrap_workflow_node(
+            _resolve_retrieval_node(context=context, session=session),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="retrieve_context",
+        ),
     )
     workflow.add_node(
         "select_teaching_strategy",
-        _resolve_strategy_node(context=context),
+        wrap_workflow_node(
+            _resolve_strategy_node(context=context),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="select_teaching_strategy",
+        ),
     )
     workflow.add_node(
         "build_prompt",
-        _resolve_prompt_node(context=context),
+        wrap_workflow_node(
+            _resolve_prompt_node(context=context),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="build_prompt",
+        ),
     )
     workflow.add_node(
         "stream_answer",
-        _resolve_stream_node(
-            context=context,
-            request=request,
-            emitter=emitter,
+        wrap_workflow_node(
+            _resolve_stream_node(
+                context=context,
+                request=request,
+                emitter=emitter,
+            ),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="stream_answer",
         ),
     )
     workflow.add_node(
         "persist_turn",
-        _resolve_persist_node(context=context, session=session),
+        wrap_workflow_node(
+            _resolve_persist_node(context=context, session=session),
+            workflow_name=workflow_name,
+            lane="chat",
+            node_name="persist_turn",
+        ),
     )
 
     workflow.set_entry_point("load_history_state")
@@ -118,7 +150,7 @@ def _resolve_history_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_load_history_state_node(context=context, session=session)
 
@@ -128,7 +160,7 @@ def _resolve_retrieval_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_retrieve_context_node(context=context, session=session)
 
@@ -151,7 +183,7 @@ def _resolve_stream_node(
     request: Request | None,
     emitter: SSEEventEmitter | None,
 ):
-    if context is None or request is None or emitter is None:
+    if context is None:
         return _noop_node
     return build_stream_answer_node(context=context, request=request, emitter=emitter)
 
@@ -161,7 +193,7 @@ def _resolve_persist_node(
     context: WorkflowContext | None,
     session: Session | None,
 ):
-    if context is None or session is None:
+    if context is None:
         return _noop_node
     return build_persist_turn_node(context=context, session=session)
 
@@ -170,4 +202,16 @@ def _noop_node(state: InteractWorkflowState) -> InteractWorkflowState:
     return state
 
 
-__all__ = ["InteractWorkflowState", "build_interact_workflow_graph"]
+def get_langgraph_dev_interact_graph() -> StateGraph:
+    """Create the interact graph used by ``langgraph dev``."""
+
+    return build_interact_workflow_graph(
+        context=create_langgraph_dev_context("interact.chat.langgraph_dev"),
+    )
+
+
+__all__ = [
+    "InteractWorkflowState",
+    "build_interact_workflow_graph",
+    "get_langgraph_dev_interact_graph",
+]

@@ -16,10 +16,7 @@ from app.workflows.digest.unified.events import (
     UnifiedBuildFailedEvent,
     UnifiedBuildStartedEvent,
 )
-from app.workflows.digest.unified.graph import (
-    build_unified_digest_graph,
-    create_unified_initial_state,
-)
+from app.workflows.digest.unified.graph import build_unified_digest_graph, create_unified_initial_state
 from app.workflows.digest.unified.state import UnifiedBuildResult
 
 logger = structlog.get_logger()
@@ -33,6 +30,11 @@ async def run_unified_digest_build(
     requested_at: datetime | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
+    confirmed_plan: dict | None = None,
+    planner_session_id: str | None = None,
+    confirmed_plan_id: str | None = None,
+    digest_mode: str | None = None,
+    tone: str | None = None,
 ) -> UnifiedBuildResult:
     """Run the top-level unified digest build."""
 
@@ -47,13 +49,24 @@ async def run_unified_digest_build(
         user_prompt=user_prompt,
         requested_at=requested_at,
         build_session_id=build_session_id,
+        confirmed_plan=confirmed_plan,
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
+        digest_mode=digest_mode,
+        tone=tone,
     )
     build_session_id = initial_state["build_session_id"]
     context = WorkflowContext(
         workflow_name="digest.unified",
         subject=subject,
         event_bus=bus,
-        metadata={"requested_at": requested_at.isoformat(), "build_session_id": build_session_id},
+        metadata={
+            "requested_at": requested_at.isoformat(),
+            "build_session_id": build_session_id,
+            "planner_session_id": planner_session_id or "",
+            "confirmed_plan_id": confirmed_plan_id or "",
+            "digest_mode": digest_mode or "",
+        },
     )
     result = await run_state_graph(
         workflow_name="digest.unified",
@@ -66,7 +79,11 @@ async def run_unified_digest_build(
         error_message = result.error.detail
         token_summary = build_token_summary(build_session_id=build_session_id or None)
         timing_report = build_unified_timing_report(
-            final_state={"build_session_id": build_session_id},
+            final_state={
+                "build_session_id": build_session_id,
+                "planner_session_id": planner_session_id or "",
+                "confirmed_plan_id": confirmed_plan_id or "",
+            },
             status="failed",
             elapsed_ms=int((perf_counter() - started_at) * 1000),
             llm_summary=token_summary,
@@ -82,6 +99,8 @@ async def run_unified_digest_build(
         return UnifiedBuildResult(
             subject=subject,
             build_session_id=build_session_id,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
             success=False,
             error=error_message,
             elapsed_ms=int((perf_counter() - started_at) * 1000),
@@ -91,6 +110,8 @@ async def run_unified_digest_build(
 
     final_state = result.require_value()
     build_session_id = final_state.get("build_session_id", "")
+    planner_session_id = final_state.get("planner_session_id") or planner_session_id
+    confirmed_plan_id = final_state.get("confirmed_plan_id") or confirmed_plan_id
     unified_token_summary = build_token_summary(build_session_id=build_session_id or None)
     error_message = final_state.get("error")
     if error_message:
@@ -111,13 +132,14 @@ async def run_unified_digest_build(
         return UnifiedBuildResult(
             subject=subject,
             build_session_id=build_session_id,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
             success=False,
             error=error_message,
             elapsed_ms=int((perf_counter() - started_at) * 1000),
             shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
             doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
             kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-            repair_ms=int(final_state.get("repair_ms", 0)),
             curriculum_ms=int(final_state.get("curriculum_ms", 0)),
             timing_report=timing_report.model_dump(mode="json"),
             token_summary=unified_token_summary.model_dump(mode="json"),
@@ -126,70 +148,8 @@ async def run_unified_digest_build(
     doc_state = final_state.get("doc_state", {})
     kg_state = final_state.get("kg_state", {})
     curriculum_state = final_state.get("curriculum_state", {})
-    graph_ready = bool(final_state.get("graph_ready") or kg_state.get("graph_ready"))
     curriculum_ready = bool(curriculum_state.get("curriculum_ready")) and curriculum_state.get("snapshot_id") is not None
-    if not graph_ready:
-        error_message = "Unified digest completed without a usable graph output."
-        timing_report = build_unified_timing_report(
-            final_state=final_state,
-            status="failed",
-            elapsed_ms=int((perf_counter() - started_at) * 1000),
-            llm_summary=unified_token_summary,
-        )
-        logger.info("unified_digest_timing_summary", **timing_report.model_dump(mode="json"))
-        await bus.publish(
-            UnifiedBuildFailedEvent(
-                subject=subject,
-                build_session_id=build_session_id,
-                error_message=error_message,
-            )
-        )
-        return UnifiedBuildResult(
-            subject=subject,
-            build_session_id=build_session_id,
-            success=False,
-            error=error_message,
-            elapsed_ms=int((perf_counter() - started_at) * 1000),
-            shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
-            doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
-            kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-            repair_ms=int(final_state.get("repair_ms", 0)),
-            curriculum_ms=int(final_state.get("curriculum_ms", 0)),
-            timing_report=timing_report.model_dump(mode="json"),
-            token_summary=unified_token_summary.model_dump(mode="json"),
-        )
-    if not curriculum_ready:
-        error_message = "Unified digest completed without a usable curriculum snapshot."
-        timing_report = build_unified_timing_report(
-            final_state=final_state,
-            status="failed",
-            elapsed_ms=int((perf_counter() - started_at) * 1000),
-            llm_summary=unified_token_summary,
-        )
-        logger.info("unified_digest_timing_summary", **timing_report.model_dump(mode="json"))
-        await bus.publish(
-            UnifiedBuildFailedEvent(
-                subject=subject,
-                build_session_id=build_session_id,
-                error_message=error_message,
-            )
-        )
-        return UnifiedBuildResult(
-            subject=subject,
-            build_session_id=build_session_id,
-            success=False,
-            error=error_message,
-            elapsed_ms=int((perf_counter() - started_at) * 1000),
-            shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
-            doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
-            kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-            repair_ms=int(final_state.get("repair_ms", 0)),
-            curriculum_ms=int(final_state.get("curriculum_ms", 0)),
-            timing_report=timing_report.model_dump(mode="json"),
-            token_summary=unified_token_summary.model_dump(mode="json"),
-        )
-    coverage_report = final_state.get("coverage_report")
-    repair_result = final_state.get("repair_result")
+
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     timing_report = build_unified_timing_report(
         final_state=final_state,
@@ -202,6 +162,8 @@ async def run_unified_digest_build(
     unified_result = UnifiedBuildResult(
         subject=subject,
         build_session_id=build_session_id,
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
         success=True,
         doc_count=len(doc_state.get("doc_ids", [])),
         doc_ids=list(doc_state.get("doc_ids", [])),
@@ -209,13 +171,10 @@ async def run_unified_digest_build(
         new_node_count=len(kg_state.get("new_node_ids", [])),
         new_edge_count=len(kg_state.get("new_edge_ids", [])),
         curriculum_ready=curriculum_ready,
-        coverage_report=coverage_report,
-        repair_applied=bool(repair_result and repair_result.llm_calls_used > 0),
         elapsed_ms=elapsed_ms,
         shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
         doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
         kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-        repair_ms=int(final_state.get("repair_ms", 0)),
         curriculum_ms=int(final_state.get("curriculum_ms", 0)),
         timing_report=timing_report.model_dump(mode="json"),
         token_summary=unified_token_summary.model_dump(mode="json"),
@@ -237,6 +196,8 @@ async def run_unified_digest_build(
         "unified_digest_build_completed",
         subject=subject,
         build_session_id=unified_result.build_session_id,
+        planner_session_id=planner_session_id,
+        confirmed_plan_id=confirmed_plan_id,
         doc_count=unified_result.doc_count,
         chunk_count=unified_result.chunk_count,
         new_node_count=unified_result.new_node_count,

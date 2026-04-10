@@ -41,6 +41,9 @@ backend/uploads/
 backend/data/*.db
 backend/data/*.sqlite
 backend/data/**
+backend/app/data/*.db
+backend/app/data/*.sqlite
+backend/app/data/**
 data/*.db
 data/*.sqlite
 data/**
@@ -53,3 +56,6 @@ data/**
 
 
 .history
+
+# langgraph
+.langgraph_api/

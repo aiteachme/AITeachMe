@@ -22,7 +22,7 @@ from app.shared.infra.exceptions import (
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
-from app.shared.infra.storage import get_artifact_store
+from app.shared.infra.storage import get_artifact_store, get_content_store, run_store_sync
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
     create_raw_file,
@@ -57,8 +57,20 @@ from app.workflows.ingest import run_parse_file_workflow
 logger = structlog.get_logger()
 
 
-def _path_exists(path_value: str | None) -> bool:
-    return bool(path_value and Path(path_value).exists())
+def _is_markdown_ready(raw_file: RawFile) -> bool:
+    """Return whether a raw file has finished parsing and has usable markdown."""
+
+    return (
+        raw_file.status == TaskStatus.COMPLETED.value
+        and raw_file.ingest_status
+        in {
+            IngestStatus.FAST_PARSED.value,
+            IngestStatus.ENHANCING.value,
+            IngestStatus.READY_FOR_DIGEST.value,
+            IngestStatus.ENHANCE_FAILED.value,
+        }
+        and bool((raw_file.parsed_markdown or "").strip())
+    )
 
 
 def _build_asset_name_prefix_for_raw_file(raw_file: RawFile) -> str:
@@ -122,7 +134,6 @@ def _read_markdown(markdown_path_value: str | None) -> str:
     if not markdown_path_value:
         return ""
 
-    from app.shared.infra.storage import get_content_store, run_store_sync
 
     cs = get_content_store()
     return run_store_sync(cs.read_text, markdown_path_value, default="") or ""
@@ -146,10 +157,18 @@ async def _save_uploaded_raw_files(
     *,
     subject: str,
     files: list[UploadFile],
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> list[RawFile]:
     saved: list[RawFile] = []
     for file in files:
-        saved.append(await save_uploaded_file(session, subject=subject, file=file))
+        saved.append(
+            await save_uploaded_file(
+                session,
+                subject=subject,
+                file=file,
+                parse_request_metadata=parse_request_metadata,
+            )
+        )
     return saved
 
 
@@ -157,6 +176,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     """Serialize a raw file into the unified file record."""
 
     file_uid = require_uid(raw_file.uid, "RawFile.uid")
+    markdown_ready = _is_markdown_ready(raw_file)
     asset_name_prefix = _build_asset_name_prefix_for_raw_file(raw_file)
     asset_dir_value = raw_file.asset_dir
     if not asset_dir_value and raw_file.id is not None:
@@ -172,7 +192,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         filetype=raw_file.filetype,
         status=raw_file.status,
         ingest_status=raw_file.ingest_status,
-        markdown_ready=_path_exists(raw_file.markdown_path),
+        markdown_ready=markdown_ready,
         asset_ready=bool(assets),
         error_message=raw_file.error_message,
         file_size_bytes=raw_file.file_size_bytes,
@@ -197,6 +217,7 @@ async def save_uploaded_file(
     *,
     subject: str,
     file: UploadFile,
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> RawFile:
     """Save a single uploaded raw file."""
 
@@ -216,6 +237,14 @@ async def save_uploaded_file(
     temp_path.write_bytes(content)
 
     storage_backend = "s3" if settings.is_cloud_mode else "local"
+    # 注意：这里把“本次解析请求参数”暂存到 parse_metadata_json。
+    # ingest runtime 会在真正解析时读取这些参数，并在写入最终 parse_metadata_json 时决定是否保留敏感字段。
+    parse_request_json = None
+    if parse_request_metadata:
+        try:
+            parse_request_json = json.dumps(parse_request_metadata, ensure_ascii=False)
+        except Exception:
+            parse_request_json = None
     raw_file = create_raw_file(
         session,
         RawFile(
@@ -230,11 +259,12 @@ async def save_uploaded_file(
             content_hash=content_hash,
             file_size_bytes=len(content),
             ingest_status=IngestStatus.PENDING.value,
+            parse_metadata_json=parse_request_json or "{}",
         ),
     )
     raw_file_id = require_id(raw_file.id, "RawFile.id")
 
-    from app.shared.infra.storage import get_content_store
+
     cs = get_content_store()
     if settings.is_cloud_mode:
         # cloud: 上传到 OSS，file_path 存 storage_key
@@ -282,7 +312,12 @@ async def save_uploaded_files(
 ) -> FilesUploadData:
     """Save multiple uploaded raw files."""
 
-    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    saved = await _save_uploaded_raw_files(
+        session,
+        subject=subject,
+        files=files,
+        parse_request_metadata=None,
+    )
     return _build_upload_data(subject=subject, raw_files=saved, started_parse_count=0)
 
 
@@ -291,10 +326,16 @@ async def save_uploaded_files_and_request_parse(
     *,
     subject: str,
     files: list[UploadFile],
+    parse_request_metadata: dict[str, object] | None = None,
 ) -> tuple[FilesUploadData, list[int]]:
     """Save files and immediately enqueue ingest parsing in the same request."""
 
-    saved = await _save_uploaded_raw_files(session, subject=subject, files=files)
+    saved = await _save_uploaded_raw_files(
+        session,
+        subject=subject,
+        files=files,
+        parse_request_metadata=parse_request_metadata,
+    )
     file_ids = [require_id(item.id, "RawFile.id") for item in saved]
     refreshed_items = _start_parse_for_files(session, subject=subject, file_ids=file_ids)
     return _build_upload_data(
@@ -484,23 +525,20 @@ async def delete_files(
 ) -> FileDeleteData:
     """Delete files and artifacts (local or OSS)."""
 
-    settings = get_settings()
-    store = get_artifact_store()
     raw_files = get_subject_files_by_uid_or_raise(session, subject=subject, file_uids=file_uids)
     deleted_uids: list[str] = []
+    content_store = get_content_store()
 
     for raw_file in raw_files:
         raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
         raw_file_id = require_id(raw_file.id, "RawFile.id")
 
         # 统一通过 ContentStore 删除文件和资产
-        from app.shared.infra.storage import get_content_store as _get_cs
-        _cs = _get_cs()
         if raw_file.file_path:
-            await _cs.delete(raw_file.file_path)
+            await content_store.delete(raw_file.file_path)
         if raw_file.markdown_path:
-            await _cs.delete(raw_file.markdown_path)
-        await _cs.delete_prefix(f"{subject}/assets/{raw_file_id}/")
+            await content_store.delete(raw_file.markdown_path)
+        await content_store.delete_prefix(f"{subject}/assets/{raw_file_id}/")
 
         delete_raw_file(session, raw_file)
         deleted_uids.append(raw_file_uid)

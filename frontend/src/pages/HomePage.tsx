@@ -38,9 +38,11 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { fetchKnowledgeDocState, buildKnowledgeDocStateQueryKey } from "../lib/knowledgeDocs";
+import { formatMinerUErrorForUser } from "../lib/mineruErrors";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import { getStoredAppSettings } from "../hooks/useSettings";
 
-/* ── API helpers (same as FilesPage) ── */
+/* ── API helpers (same as BuildPlanPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
 
@@ -55,6 +57,22 @@ async function fetchFiles(subject: string): Promise<FilesData> {
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
+
+  // 当用户在设置中选择 MinerU 时，把 Token 与参数随上传请求一并传给后端。
+  // 这样后端后台 ingest 任务无需依赖浏览器 localStorage，就能按本次设置走 MinerU。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    formData.append("parser_provider", "mineru");
+    if (token) {
+      formData.append("mineru_api_token", token);
+    }
+    formData.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    formData.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    formData.append("mineru_enable_table", String(settings.mineruEnableTable));
+    formData.append("mineru_is_ocr", String(settings.mineruIsOcr));
+  }
+
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,
@@ -106,7 +124,6 @@ interface ImportResultData {
 interface CoursePackageItem {
   filename: string;
   subject_name: string;
-  description: string;
   file_size_bytes: number;
   exported_at: string | null;
   stats: Record<string, number>;
@@ -553,7 +570,7 @@ function RenameModal({
       await apiClient({
         method: "POST",
         url: `/api/v1/subjects/update`,
-        data: { subject_id: subjectId, name: name.trim(), description: "" },
+        data: { subject_id: subjectId, name: name.trim() },
       });
     },
     onSuccess: () => { onSuccess(); onClose(); },
@@ -615,6 +632,13 @@ function RenameModal({
 
 function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDelete: () => void; isDeleting: boolean }) {
   const meta = getFileStatusMeta(file);
+  const failureReason = useMemo(() => {
+    if (file.status !== "failed" || !file.error_message) return null;
+    const mapped = formatMinerUErrorForUser(file.error_message);
+    if (mapped) return mapped;
+    if (/mineru/i.test(file.error_message)) return "MinerU 解析失败。建议：请稍后重试，或在调试模式查看详细错误。";
+    return file.error_message;
+  }, [file.error_message, file.status]);
   return (
     <motion.div
       layout
@@ -640,6 +664,11 @@ function HomeFileCard({ file, onDelete, isDeleting }: { file: FileRecord; onDele
           <span>{formatFileSize(file.file_size_bytes)}</span>
           {file.estimated_pages != null && (<><span>·</span><span>{file.estimated_pages} 页</span></>)}
         </div>
+        {failureReason ? (
+          <p className="mt-1 truncate text-xs text-red-600" title={failureReason}>
+            失败原因：{failureReason}
+          </p>
+        ) : null}
       </div>
       <button
         type="button"
@@ -662,7 +691,10 @@ export function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
+  // activeSubjectId powers the "Phase 2" inline file list on HomePage.
+  // After createMutation we now navigate to BuildPlanPage, so the setter
+  // is not called; prefix with underscore to satisfy noUnusedLocals.
+  const [activeSubjectId, _setActiveSubjectId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
@@ -749,9 +781,9 @@ export function HomePage() {
 
   // ── Mutations ──
   const createMutation = useMutation({
-    mutationFn: async ({ name, description }: { name: string; description: string }) => {
+    mutationFn: async ({ name }: { name: string }) => {
       const created = unwrapOrvalResponse(
-        await createSubjectApiApiV1SubjectsAddPost({ name, description })
+        await createSubjectApiApiV1SubjectsAddPost({ name })
       );
       if (!created) throw new Error("创建学科失败");
       return created;
@@ -759,16 +791,25 @@ export function HomePage() {
     onSuccess: async (created) => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       setError(null);
-      setActiveSubjectId(created.subject_id);
+
+      // Upload pending files before navigating
       if (pendingFiles.length > 0) {
         try {
           await uploadFiles(created.subject_id, pendingFiles);
           setPendingFiles([]);
-          queryClient.invalidateQueries({ queryKey: ["files", created.subject_id] });
         } catch (e) {
           setError(getApiErrorMessage(e, "文件上传失败"));
+          return;
         }
       }
+
+      // Navigate to BuildPlanPage — same planner flow as clicking "开始" there
+      const userGoal = prompt.trim();
+      navigate(`/subject/${created.subject_id}/build`, {
+        state: userGoal
+          ? { initialPrompt: userGoal, autoStart: true }
+          : undefined,
+      });
     },
     onError: (err: unknown) => {
       setError(getApiErrorMessage(err, "创建失败，请重试"));
@@ -799,11 +840,27 @@ export function HomePage() {
   // ── Handlers ──
   const canGenerate = prompt.trim().length > 0 || pendingFiles.length > 0;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
-    const name = generateSubjectName(pendingFiles, prompt);
-    createMutation.mutate({ name, description: prompt.trim() });
+
+    // Try AI name suggestion first
+    let name: string;
+    try {
+      const suggestResponse = await apiClient<{ data: { name: string } }>({
+        method: "POST",
+        url: "/api/v1/subjects/suggest-name",
+        data: {
+          prompt: prompt.trim() || undefined,
+          filenames: pendingFiles.length > 0 ? pendingFiles.map((f) => f.name) : undefined,
+        },
+      });
+      name = suggestResponse.data?.name || generateSubjectName(pendingFiles, prompt);
+    } catch {
+      name = generateSubjectName(pendingFiles, prompt);
+    }
+
+    createMutation.mutate({ name });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -976,7 +1033,7 @@ export function HomePage() {
                   </button>
                 ) : (
                   <button
-                    onClick={knowledgeBuild.submitBuild}
+                    onClick={() => knowledgeBuild.submitBuild()}
                     disabled={readyFiles.length === 0 || knowledgeBuild.isPending}
                     className={cn(
                       "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-5 transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
@@ -1186,12 +1243,12 @@ export function HomePage() {
                                   onExport={(id: string) => setExportSubjectId(id)}
                                   onRename={(id: string, name: string) => setRenameTarget({ id, name })}
                                 />
-                                <Link to={`/subject/${subject.subject_id}/files`} className="rounded-lg bg-zinc-50 p-2 transition-colors group-hover/card:bg-zinc-100/80">
+                                <Link to={`/subject/${subject.subject_id}/build`} className="rounded-lg bg-zinc-50 p-2 transition-colors group-hover/card:bg-zinc-100/80">
                                   <BookOpen className="h-[18px] w-[18px] text-zinc-400 transition-colors group-hover/card:text-zinc-700" />
                                 </Link>
                               </div>
                             </div>
-                            <Link to={`/subject/${subject.subject_id}/files`} className="relative z-10 mt-auto flex items-center gap-2.5 border-t border-zinc-100 pt-4">
+                            <Link to={`/subject/${subject.subject_id}/build`} className="relative z-10 mt-auto flex items-center gap-2.5 border-t border-zinc-100 pt-4">
                               <span className="flex items-center rounded-md bg-zinc-100/80 px-2 py-1 text-[11px] font-semibold text-zinc-500">
                                 <MessageSquare className="mr-1 h-3.5 w-3.5" /> 会话
                               </span>
@@ -1247,9 +1304,6 @@ export function HomePage() {
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
                                   <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
-                                  {course.description && (
-                                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{course.description}</p>
-                                  )}
                                 </div>
                                 <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
                                   <Package className="w-5 h-5 text-emerald-500" />

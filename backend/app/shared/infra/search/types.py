@@ -1,19 +1,40 @@
-"""搜索类型定义。"""
+﻿"""Typed search results used by planner and docgen tooling."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
-@dataclass
-class WebSearchResult:
-    """Web 搜索结果。"""
-
-    title: str
+@dataclass(slots=True)
+class SearchResult:
     url: str
+    title: str
     snippet: str
     score: float = 0.0
+    source: str = ""
 
     def to_text(self) -> str:
-        """格式化为可读文本（适合注入 LLM 上下文）。"""
-        return f"[{self.title}]({self.url})\n{self.snippet}"
+        title = self.title.strip() or self.url.strip() or "Untitled source"
+        snippet = self.snippet.strip()
+        if snippet:
+            return f"[{title}]({self.url})\n{snippet}"
+        return f"[{title}]({self.url})"
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class ScrapedPage:
+    url: str
+    title: str = ""
+    content: str = ""
+    content_type: str = "text/html"
+    reader_name: str = ""
+    success: bool = True
+    error: str | None = None
+
+
+WebSearchResult = SearchResult
+
+__all__ = ["ScrapedPage", "SearchResult", "WebSearchResult"]

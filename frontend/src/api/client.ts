@@ -136,11 +136,20 @@ export interface SseErrorPayload {
   error_code?: string;
 }
 
+export interface SseStatusPayload {
+  stage?: string;
+  detail?: string;
+  node_name?: string;
+  elapsed_ms?: number;
+  workflow_elapsed_ms?: number;
+}
+
 export interface PostSseJsonOptions {
   signal?: AbortSignal;
   onToken?: (payload: SseTokenPayload) => void;
   onDone?: (payload: SseDonePayload | unknown) => void;
   onError?: (payload: SseErrorPayload | unknown) => void;
+  onStatus?: (payload: SseStatusPayload | unknown) => void;
   onAbort?: () => void;
 }
 
@@ -166,8 +175,8 @@ function parseSseData(rawData: string): unknown {
 function normalizeSseEvent(
   eventName: string,
   payload: unknown,
-): "token" | "done" | "error" | "ignore" {
-  if (eventName === "token" || eventName === "done" || eventName === "error") {
+): "token" | "done" | "error" | "status" | "ignore" {
+  if (eventName === "token" || eventName === "done" || eventName === "error" || eventName === "status") {
     return eventName;
   }
   if (!isRecord(payload)) {
@@ -178,6 +187,14 @@ function normalizeSseEvent(
   }
   if (typeof payload.detail === "string" || typeof payload.error_code === "string") {
     return "error";
+  }
+  if (
+    typeof payload.stage === "string" ||
+    typeof payload.node_name === "string" ||
+    typeof payload.elapsed_ms === "number" ||
+    typeof payload.workflow_elapsed_ms === "number"
+  ) {
+    return "status";
   }
   if ("turn_id" in payload || "contexts" in payload) {
     return "done";
@@ -271,6 +288,9 @@ export async function postSseJson<TBody>(
         case "error":
           errorPayload = payload;
           options.onError?.(payload);
+          break;
+        case "status":
+          options.onStatus?.(payload);
           break;
         default:
           break;

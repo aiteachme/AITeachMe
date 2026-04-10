@@ -11,6 +11,7 @@ __all__ = [
     "WorkflowGraphExport",
     "WorkflowEvent",
     "WorkflowResult",
+    "wrap_workflow_node",
     "err_result",
     "ok_result",
 ]
@@ -22,6 +23,7 @@ _ATTR_TO_MODULE = {
     "WorkflowGraphExport": "app.workflows.common.graph_export",
     "WorkflowEvent": "app.workflows.common.events",
     "WorkflowResult": "app.workflows.common.result",
+    "wrap_workflow_node": "app.workflows.common.observability",
     "err_result": "app.workflows.common.result",
     "ok_result": "app.workflows.common.result",
 }

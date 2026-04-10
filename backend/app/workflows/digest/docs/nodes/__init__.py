@@ -1,1 +1,0 @@
-"""DocGen nodes package."""

@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { SubjectAiAssistantProvider } from "../ai/SubjectAiAssistant";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
+import { SettingsModal } from "../settings/SettingsModal";
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -10,10 +12,12 @@ export function Layout() {
   const isHome = pathname === "/";
   const subjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   return (
     <SubjectAiAssistantProvider subjectId={subjectId}>
       <div className="flex h-screen bg-slate-50 overflow-hidden">
-        <Sidebar />
+        <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
         <div className="flex-1 flex flex-col min-w-0 relative">
           {/* Top Bar — ALWAYS SHOW on all tabs to ensure User / Github buttons are visible */}
           <header className="absolute top-0 left-0 right-0 h-16 px-4 md:px-6 flex items-center justify-end z-40 pointer-events-none">
@@ -36,6 +40,8 @@ export function Layout() {
           </main>
         </div>
       </div>
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </SubjectAiAssistantProvider>
   );
 }

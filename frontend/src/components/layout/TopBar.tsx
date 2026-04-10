@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   CreditCard,
@@ -6,11 +6,9 @@ import {
   LogIn,
   LogOut,
   MessageCircle,
-  Settings,
   User,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { SettingsModal } from "../settings/SettingsModal";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { Modal } from "../ui/Modal";
 
@@ -90,7 +88,7 @@ export function TopBar({ className }: TopBarProps) {
   const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -195,11 +193,6 @@ export function TopBar({ className }: TopBarProps) {
   const closeMenus = () => {
     setIsDropdownOpen(false);
     setIsMobileMenuOpen(false);
-  };
-
-  const openSettings = () => {
-    closeMenus();
-    setIsSettingsModalOpen(true);
   };
 
   const openAuthEntry = (mode: "login" | "register") => {
@@ -429,13 +422,6 @@ export function TopBar({ className }: TopBarProps) {
                   </>
                 )}
 
-                <button
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                  onClick={openSettings}
-                >
-                  <Settings className="w-4 h-4 text-slate-400" />
-                  <span>设置</span>
-                </button>
               </div>
 
               {isLoggedIn && (
@@ -528,13 +514,6 @@ export function TopBar({ className }: TopBarProps) {
                 </>
               )}
 
-              <button
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                onClick={openSettings}
-              >
-                <Settings className="w-4 h-4 text-slate-400" />
-                <span>设置</span>
-              </button>
             </div>
 
             <div className="border-t border-slate-100 my-1" />
@@ -691,10 +670,6 @@ export function TopBar({ className }: TopBarProps) {
         </form>
       </Modal>
 
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
     </div>
   );
 }

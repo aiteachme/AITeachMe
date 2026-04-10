@@ -1,619 +1,495 @@
-﻿# 08. Profile 引擎
+# 08. Profile 引擎 — 画像引擎技术文档
 
-## 1. 文档定位
-
-Profile 负责把学习过程沉淀成可被其他引擎直接消费的状态层，同时定义运行时学习记忆该如何与结构化画像协同。
-
-它需要同时回答四类问题：
-
-- 这个用户在这门课里哪些地方已经掌握、哪些地方薄弱
-- 这门课下一步更适合怎么练、怎么测、怎么复习
-- 这个用户跨学科更稳定的学习偏好是什么
-- 这些状态如何进一步沉淀成可读、可编辑、可被 Interact 消费的运行时档案
-
-从本版开始，本文档同时描述两件事，但会明确分开：
-
-- 当前代码已经落地的真相源与闭环
-- 下一阶段推荐落地的 runtime memory / markdown 档案设计
-
-这样后续改 Interact、Examine、memory、runtime file layout 时，可以围绕同一份文档持续收敛，而不是把“现状”和“目标态”混在一句话里。
+> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/profile/` 代码实现
 
 ---
 
-## 2. 当前已落地的真相源与闭环
+## 1. 引擎定位与职责
 
-### 2.1 当前已经真正闭环的主线
+Profile（画像引擎）是 AITeachMe 的**学习状态中枢**，负责把考试结果转化为可量化的掌握度分数，并驱动个性化的复习调度和薄弱点诊断。
 
-当前已经跑通的 Profile 主线是：
+**Profile 做四件事：**
+1. **掌握度更新** — 把判卷结果转化为节点/单元级 mastery_score
+2. **复习调度** — 基于 SM-2 算法和遗忘曲线安排复习时间
+3. **薄弱点分析** — 多因子加权排序，识别用户最薄弱的教学单元
+4. **画像聚合** — 构建学科画像 (SubjectProfileSummary) 和用户画像 (UserProfileSummary)
 
-1. 判卷完成，回写 `exam_paper` / `exam_paper_item`
-2. `workflows/profile/mastery_updater.py` 基于答题结果更新 `user_knowledge_state`
-3. `workflows/profile/review_scheduler.py` 基于掌握度和复习状态安排复习任务
-4. 同一轮判卷事务里刷新 `subject.profile_json`
-5. 同一轮判卷事务里刷新 `user.profile_json`
-6. `/api/v1/subjects/{subject}/profile/mastery` 返回细粒度状态 + 学科级画像 + 用户级画像
-
-也就是说，当前真正稳定的闭环是：
-
-`做题 -> 判卷 -> mastery state -> review -> subject/user summary -> 再影响下一轮出题`
-
-### 2.2 当前正式入口
-
-- 前端页面：`frontend/src/pages/ProfilePage.tsx`
-- 后端资源组：`profile`
-- API：
-  - `GET /api/v1/subjects/{subject}/profile/mastery`
-  - `GET /api/v1/subjects/{subject}/profile/mastery/unit/{teaching_unit_id}`
-  - `GET /api/v1/subjects/{subject}/profile/mastery/node/{knowledge_node_id}`
-  - `GET /api/v1/subjects/{subject}/profile/review/tasks`
-  - `POST /api/v1/subjects/{subject}/profile/review/tasks/{task_id}/complete`
-- 业务入口：`backend/app/services/profile_service.py`
-- 工作流：`backend/app/workflows/profile/*`
-
-当前没有额外新增 `profile/summary` 之类的接口，摘要层继续并入现有 `mastery` 读模型返回，保持 API 面简单。
-
-### 2.3 当前真实真相源
-
-当前需要明确区分“真相源”和“派生摘要”：
-
-#### A. 结构化真相源
-
-- `exam_paper_item`
-  承载题目作答、对错、错因、题型、难度、命中的 node refs 等原始学习行为。
-- `user_knowledge_state`
-  承载按 `teaching_unit_id` 或 `knowledge_node_id` 聚合后的掌握状态与复习状态。
-- `chat_message`
-  承载聊天历史、引用上下文、滑选来源等对话事实。
-
-#### B. 聚合摘要层
-
-- `subject.profile_json`
-  学科级学习/出题先验。
-- `user.profile_json`
-  跨学科轻量用户画像。
-
-#### C. 运行时伴生层
-
-- `learning_logs`
-  事件型学习日志。
-- `LEARNER.md`
-  当前已经存在的人类可读运行时档案。
-
-其中 A 是业务真相源，B 是缓存式聚合摘要，C 是运行时伴生信息，不应反向篡改 A。
+**Profile 不做：**
+- ❌ 不出题、不组卷（Examine 的事）
+- ❌ 不与用户对话（Interact 的事）
+- ❌ 不构建知识图谱（Digest 的事）
 
 ---
 
-## 3. 当前已确认的问题
+## 2. 代码落点速查
 
-这部分不是否定现有实现，而是明确接下来需要修的设计缝隙。
-
-### 3.1 Interact 文档描述超前于当前代码
-
-当前 `docs/designs/06_interact_engine.md` 和旧的 profile 描述中，容易给人一种“Interact 已经稳定读取 `user.profile_json`、`subject.profile_json`、`LEARNER.md`、memory store”的印象。
-
-但按当前代码核对，Interact 主 workflow 实际稳定消费的是：
-
-- 最近聊天历史
-- 薄弱点摘要
-- 近期错题摘要
-- RAG 检索片段
-- `selected_context`
-
-也就是说，`Profile -> Interact` 的主消费链还没有真正完整打通；当前最强闭环仍然是 `Examine -> Profile -> Examine`。
-
-### 3.2 `shared/infra/context.py` 已有能力，但还没成为主路径
-
-仓库里已经有通用的教学上下文组装器，能够统一读取：
-
-- memory store 聚合画像
-- `LEARNER.md`
-- 相关 recall 结果
-- 知识检索结果
-
-但 Interact 主 workflow 目前没有直接复用这套能力，而是维持了自己的一套 prompt 组装逻辑。
-
-这意味着当前存在两个事实：
-
-- AI 平台底座能力已经具备
-- 主业务流程还没有完全接上
-
-### 3.3 `LEARNER.md` 目前不是 Profile 真状态的稳定镜像
-
-当前判卷后会：
-
-- 写 learning log
-- 同步 memory store 聚合画像到 `LEARNER.md`
-- 追加少量“最近学习主题 / 教学备注”
-
-但它还不是以下对象的稳定镜像：
-
-- `subject.profile_json`
-- `user.profile_json`
-- `user_knowledge_state`
-
-所以现在的 `LEARNER.md` 更接近“运行时补充文档”，而不是“结构化画像的可读投影”。
-
-### 3.4 `app.shared.*` 才是规范入口，`app.teaching.*` 应视为兼容层
-
-当前仓库已经明确：
-
-- `app/shared/*` 是新的 canonical import path
-- `app/teaching/*` 仍有一整套兼容副本
-
-新设计应统一以 `app.shared.*` 为准，不再让 `app.teaching.*` 反向驱动 Profile / Memory 方案。
-
-### 3.5 滑选上下文属于 profile memory 的输入事实，但还没有完全持久化到主链路
-
-`selected_context` 和 `source_chunk_id` 已经进入请求模型和 prompt 组装，但主 workflow 持久化路径仍存在缺口。
-
-这意味着：
-
-- “滑选了什么” 已经是对话输入事实
-- 但它还没有稳定成为后续 runtime memory 提炼的输入事实
-
-这一点必须在后续 Interact / Memory 联动里补齐。
+| 层 | 模块路径 | 职责 |
+|---|---|---|
+| Workflow Graph | `backend/app/workflows/profile/graph.py` | LangGraph 概览图定义 |
+| Workflow State | `backend/app/workflows/profile/state.py` | 状态类型 |
+| Workflow Runtime | `backend/app/workflows/profile/runtime.py` | 运行入口 |
+| 掌握度更新 | `backend/app/workflows/profile/mastery_updater.py` | 核心掌握度计算引擎 |
+| 复习调度 | `backend/app/workflows/profile/review_scheduler.py` | SM-2 复习间隔 + 遗忘曲线 |
+| 薄弱点分析 | `backend/app/workflows/profile/weakness_analyzer.py` | 多因子薄弱点排序 |
+| 学科画像 | `backend/app/workflows/profile/subject_profile.py` | 学科级聚合与推荐 |
+| 用户画像 | `backend/app/workflows/profile/user_profile.py` | 用户级跨学科聚合 |
+| 事件定义 | `backend/app/workflows/profile/events.py` | 画像事件 |
+| Prompt 模板 | `backend/app/workflows/profile/prompts/` | 分析类 prompt |
 
 ---
 
-## 4. 推荐的 Profile 分层模型
+## 3. LangGraph 流程图
 
-推荐把 Profile 看成“结构化三层 + 运行时记忆侧链”，而不是只看数据库里的三张摘要。
-
-### 4.1 L0 学习事实层
-
-这一层记录原始行为和上下文事实：
-
-- `exam_paper_item`
-- `chat_message`
-- `chat_message.contexts_json`
-- `chat_message.selected_text`
-- `chat_message.source_chunk_id`
-- `learning_logs`
-
-这一层的目标不是做推荐，而是给后续聚合、诊断和回放提供可追溯事实。
-
-### 4.2 L1 细粒度掌握层：`user_knowledge_state`
-
-这是当前最稳定、也是最应该继续坚持的结构化真相源，直接绑定：
-
-- `teaching_unit_id`
-- `knowledge_node_id`
-
-并保存：
-
-- `mastery_score`
-- `confidence_score`
-- `stability_score`
-- `forgetting_due_at`
-- `review_*` 复习调度字段
-- `stats_json` 行为统计摘要
-
-### 4.3 L2 学科级画像：`subject.profile_json`
-
-这是 owner-scoped 的 `user + subject` 学科画像摘要，用来表达：
-
-- 这门课当前更适合怎么练
-- 这门课当前更适合怎么考
-- 当前应优先聚焦哪些 unit / node
-
-当前实现中主要包括：
-
-- `avg_unit_mastery`
-- `avg_node_mastery`
-- `weak_unit_count`
-- `weak_node_count`
-- `pending_review_count`
-- `due_review_count`
-- `preferred_question_types`
-- `recommended_question_types`
-- `recommended_exam_mode`
-- `recommended_question_count`
-- `difficulty_focus`
-- `focus_teaching_unit_ids`
-- `focus_node_ids`
-- `question_type_accuracy`
-- `difficulty_accuracy`
-- `notes`
-
-### 4.4 L3 用户级画像：`user.profile_json`
-
-这是跨学科的轻量画像摘要，当前用于表达更稳定的学习偏好，不承载细粒度知识状态。
-
-当前实现中主要包括：
-
-- `preferred_question_types`
-- `preferred_exam_modes`
-- `dominant_exam_mode`
-- `explanation_style`
-- `pace_preference`
-- `consistency_level`
-- `pending_review_count`
-- `due_review_count`
-- `notes`
-
-### 4.5 L4 运行时记忆文档层
-
-这一层不是数据库真相源，而是给 Interact 和人工查看服务的可读档案层。
-
-推荐目标态统一为两份主文档：
-
-- `LEARNING_PROFILE.md`
-  用户级、跨学科、偏稳定。
-- `LEARNING_SUBJECT_PROFILE.md`
-  学科级、依赖当前用户和当前 subject、偏动态。
-
-同时保留一份兼容视图：
-
-- `LEARNER.md`
-
-推荐语义：
-
-- `user.profile_json / subject.profile_json / user_knowledge_state` 负责结构化真相
-- `LEARNING_PROFILE.md / LEARNING_SUBJECT_PROFILE.md` 负责可读投影与运行时教学备注
-- `LEARNER.md` 负责兼容旧 prompt / 旧工具 / 旧脚本，不再作为未来唯一主文件名
-
----
-
-## 5. 运行时文件设计
-
-### 5.1 推荐目录布局
-
-在不改变当前 runtime root 的前提下，推荐后续统一落在：
-
-```text
-backend/data/users/<user_id>/
-├─ profile/
-│  ├─ LEARNING_PROFILE.md
-│  ├─ LEARNER.md
-│  └─ subjects/
-│     └─ <subject>/
-│        └─ LEARNING_SUBJECT_PROFILE.md
-└─ logs/
-   └─ learning_events.jsonl        # 可选未来增强
+```mermaid
+graph TD
+    START([START]) --> mastery_updated
+    mastery_updated --> review_scheduled
+    review_scheduled --> weaknesses_ranked
+    weaknesses_ranked --> report_generated
+    report_generated --> END_NODE([END])
 ```
 
-### 5.2 为什么默认仍放 `backend/data/`，而不是直接切到 `.atm/`
-
-你当前设想里提到了 `.atm/`。从产品角度这是合理的，但本仓库当前已经统一通过 runtime data root 管理运行时文件，默认语义仍是 `backend/data/`。
-
-因此本设计文档先给出一个更稳的约束：
-
-- 先统一“文件名和语义”
-- 暂不在 Profile 设计层直接切换“运行时根目录”
-
-如果未来真的要切到 `.atm/`，应该通过 runtime root 配置迁移完成，而不是在各业务模块里写死一套新的 home-dir 路径语义。
-
-### 5.3 各文件负责什么
-
-#### `LEARNING_PROFILE.md`
-
-适合放：
-
-- 长期学习目标
-- 跨学科稳定偏好
-- 更稳定的表达风格与节奏偏好
-- 跨学科反复出现的学习障碍
-- 对老师有价值的长期教学备注
-
-不适合放：
-
-- 每个知识点的精确掌握度
-- 高频变动的 review task 列表
-- 可由数据库直接重建的大量明细
-
-#### `LEARNING_SUBJECT_PROFILE.md`
-
-适合放：
-
-- 当前学科阶段总结
-- 当前聚焦单元 / 聚焦知识点
-- 高频错因模式
-- 当前推荐练习方式 / 题型 / 难度
-- 当前复习与教学策略建议
-
-不适合放：
-
-- 整张知识图谱逐点镜像
-- 所有历史试卷明细
-- 所有聊天原文
-
-#### `LEARNER.md`
-
-建议定位为兼容层：
-
-- 可由 `LEARNING_PROFILE.md` 派生
-- 可继续被旧 prompt / 旧工具读取
-- 但新设计不再把它当作唯一主档案
+**架构特点**: Profile 的 LangGraph 定义是一个**概览级编排图**，四个节点串行。实际的核心计算逻辑封装在各自的独立模块中（mastery_updater、review_scheduler、weakness_analyzer），由 Examine 的判卷流程直接调用，而非通过 Graph 运行时触发。
 
 ---
 
-## 6. 目标态读写责任边界
+## 4. State 类型定义
 
-### 6.1 Profile 的职责
+### `ProfileWorkflowState`
 
-Profile 负责：
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `mastery_updated` | `bool` | 掌握度是否已更新 |
+| `review_scheduled` | `bool` | 复习是否已安排 |
+| `weaknesses_ranked` | `bool` | 薄弱点是否已排序 |
+| `report_generated` | `bool` | 报告是否已生成 |
 
-- 更新 `user_knowledge_state`
-- 调度 review
-- 刷新 `subject.profile_json`
-- 刷新 `user.profile_json`
-- 生成或刷新用户级 / 学科级运行时画像文档
+### `UserKnowledgeState` 核心字段（DB 模型）
 
-Profile 不负责：
+> Profile 的所有计算结果最终持久化到 `user_knowledge_state` 表。
 
-- 直接生成整段自由教学对话
-- 持有完整聊天历史
-- 替代知识库检索
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `user_id` | `str` | 用户 ID |
+| `subject` | `str` | 学科 slug |
+| `teaching_unit_id` | `int \| None` | 教学单元 ID (unit 级状态) |
+| `knowledge_node_id` | `int \| None` | 知识节点 ID (node 级状态) |
+| `mastery_score` | `float` | 掌握度分数 [0.0, 1.0] |
+| `confidence_score` | `float` | 置信度 = min(1.0, total_attempts / 10) |
+| `stability_score` | `float` | 稳定度 = min(1.0, consecutive_correct / 5) |
+| `total_attempts` | `int` | 累计答题次数 |
+| `correct_attempts` | `int` | 累计正确次数 |
+| `last_attempt_at` | `datetime` | 最后答题时间 |
+| `forgetting_due_at` | `datetime \| None` | 预测遗忘时间点 |
+| `review_priority` | `float` | 复习优先级 = 1.0 - mastery_score |
+| `review_status` | `str` | "idle" / "pending" / "expired" |
+| `scheduled_review_at` | `datetime \| None` | 下次复习时间 |
+| `review_interval_days` | `int` | SM-2 当前间隔天数 |
+| `review_ease_factor` | `float` | SM-2 难度系数 [1.3, 2.5] |
+| `review_repetition_count` | `int` | SM-2 复习轮次 |
+| `review_reason` | `str \| None` | 复习原因标签 |
+| `source_exam_paper_id` | `int \| None` | 来源试卷 |
+| `state_version` | `int` | 状态版本号 (乐观锁) |
+| `stats_json` | `str` | 扩展统计 JSON |
 
-### 6.2 Interact 的职责
-
-Interact 应该读取：
-
-- 最近聊天历史
-- `selected_context`
-- RAG citations
-- 薄弱点摘要
-- 近期错题摘要
-- `subject.profile_json`
-- `user.profile_json`
-- `LEARNING_SUBJECT_PROFILE.md`
-- `LEARNING_PROFILE.md`
-- recall 出来的高价值 memory entries
-
-Interact 应该写入：
-
-- `chat_session`
-- `chat_message`
-- 与本轮对话相关的 learning log
-- 经过提炼的 memory entries
-
-Interact 不应做的事：
-
-- 直接把原始整段聊天无脑 append 到 markdown 画像文件
-- 绕过 Profile 自己维护另一套“掌握度真相”
-
-### 6.3 Examine 的职责
-
-Examine 应该读取：
-
-- `user_knowledge_state`
-- `subject.profile_json`
-- `user.profile_json`
-- 当前学科运行时画像文档
-
-Examine 应该写入：
-
-- `exam_paper` / `exam_paper_item`
-- 判卷结果
-- mastery / review / summary
-- learning log
-- 触发 profile runtime docs 刷新
-
-### 6.4 Markdown 文档的写入策略
-
-推荐统一采用：
-
-`结构化真相先落库 -> Profile 聚合 -> Profile 生成 markdown 文档`
-
-而不是：
-
-`Interact / Examine 各自直接 append 各自理解的一段文字`
-
-原因：
-
-- 保证文档内容和结构化真相源一致
-- 减少多处 prompt / 多处服务对同一文件争写
-- 避免把偶发、低置信度的单轮对话误写成长期画像
+**关键约束**: `teaching_unit_id` 和 `knowledge_node_id` 互斥——每条 state 记录要么追踪一个 unit，要么追踪一个 node。
 
 ---
 
-## 7. 当前主 Pipeline 与目标补强点
+## 5. 核心模块详解
 
-### 7.1 当前已经稳定的 pipeline
+### 5.1 掌握度更新器 `mastery_updater.py`
 
-| 步骤 | 当前主模块 | 输入 | 输出 |
-| --- | --- | --- | --- |
-| 1. 判卷完成 | `workflows/examine/answer_grader.py` | `exam_paper_item.answer_content` + 知识上下文 | `exam_paper_item.is_correct / feedback / error_cause` |
-| 2. 掌握度更新 | `workflows/profile/mastery_updater.py` | 判卷后的 `exam_paper_item` | `user_knowledge_state` |
-| 3. 复习调度 | `workflows/profile/review_scheduler.py` | 更新后的 state | pending review 状态 |
-| 4. 学科画像聚合 | `workflows/profile/subject_profile.py` | state + 最近答题快照 | `subject.profile_json` |
-| 5. 用户画像聚合 | `workflows/profile/user_profile.py` | 各学科摘要 + 最近答题快照 | `user.profile_json` |
-| 6. 画像读取 | `profile_service` | 当前学科 state + 两层摘要 | `/profile/mastery` 返回值 |
+#### 入口函数: `update_mastery_from_exam(session, exam_paper_id)`
 
-补充说明：
+```
+输入: exam_paper_id
+操作:
 
-- `complete_review_task()` 也会在同一轮服务事务里刷新 `subject.profile_json` 与 `user.profile_json`
-- 当前不单独起持久化 job 表，仍优先用现有服务入口 + workflow 组织
+1. 加载 exam_paper + exam_paper_item (已判分的)
+2. 拆分答题记录为两个维度:
 
-### 7.2 下一阶段建议补强的 pipeline
+   ┌─ unit 维度: 每个 item 直接归属 teaching_unit_id
+   │  → unit_attempts[unit_id].append(WeightedAttempt)
+   │
+   └─ node 维度: 解析 item.node_refs_json
+      → 每个 {knowledge_node_id, coverage_weight} 对
+      → coverage_weight 归一化 (各 node 权重之和 = 1.0)
+      → node_attempts[node_id].append(WeightedAttempt)
 
-推荐补成：
+3. 对每组 attempts 调用 _upsert_state_from_attempts():
+   a. 加载已有 UserKnowledgeState (如有)
+   b. 计算本次考试加权掌握度 (current_exam_score)
+   c. 与历史掌握度合并 (merged mastery)
+   d. 更新辅助指标 (confidence, stability, stats)
+   e. upsert 到 DB
 
-`聊天 / 做题 -> learning fact -> mastery / summary -> runtime docs refresh -> Interact 再读入`
+输出: MasteryUpdateResult { exam_paper_id, states_updated, updated_state_ids }
+```
 
-更具体一点：
+#### 掌握度计算公式
 
-1. 聊天或判卷产生学习事实
-2. 结构化事实先写 `chat_message / exam_paper_item / learning_logs`
-3. Profile 刷新 `user_knowledge_state / subject.profile_json / user.profile_json`
-4. Profile 统一生成 `LEARNING_PROFILE.md / LEARNING_SUBJECT_PROFILE.md / LEARNER.md`
-5. Interact 新一轮上下文读取这三层结构化摘要与 markdown 档案
+**Step 1: 加权正确率 (current_exam_score)**
 
----
+```python
+weighted_mastery = Σ(weight_i × is_correct_i) / Σ(weight_i)
 
-## 8. 画像如何影响其他引擎
+其中每个 attempt 的权重 weight_i = difficulty_weight × time_decay_weight × coverage_weight
 
-### 8.1 对 Examine 的影响
+difficulty_weight:
+  easy   → 0.8
+  medium → 1.0
+  hard   → 1.2
 
-当前 `build_exam_style_profile()` 已经会综合：
+time_decay_weight:
+  exp(-age_days / half_life_days)  # half_life_days = 30
+  → 越久远的答题记录权重越低
+```
 
-- 样卷 markdown
-- `style_prompt` / `focus_prompt` / `user_prompt`
-- `subject.profile_json`
-- `user.profile_json`
+**Step 2: 历史合并 (merged mastery)**
 
-并产出 `ExamStyleProfile`，其中当前已会影响：
+```python
+alpha = fresh_weight / (history_weight + fresh_weight)
+alpha = clamp(alpha, 0.25, 0.85)
 
-- `preferred_question_types`
-- `recommended_question_count`
-- `difficulty_focus`
-- `focus_teaching_unit_ids`
-- `focus_node_ids`
-- `notes`
+merged = existing_mastery × (1 - alpha) + current_exam_score × alpha
 
-`question_builder.py` 的确定性回退模板也会读取 `difficulty_focus`，因此即使 LLM 回退，Profile 对出题仍然有效。
+其中:
+  history_weight = max(1, existing.total_attempts)
+  fresh_weight   = max(1.0, current_exam_weight × 1.5)
+```
 
-另外，`exams/generate.difficulty` 现在支持显式覆盖：
+> **设计意图**: alpha 在 [0.25, 0.85] 范围内自适应——历史数据少时新数据占主导 (alpha→0.85)，历史数据多时更稳定 (alpha→0.25)。
 
-- 传 `easy / medium / hard / mixed` 时，优先覆盖 profile 自动推断
-- 不传时，继续使用 `subject.profile_json.difficulty_focus`
+**Step 3: 辅助指标**
 
-### 8.2 对 Interact 的影响
+```
+confidence_score = min(1.0, total_attempts / 10)
+  → 答题次数越多，对掌握度的置信越高
 
-当前已经稳定生效的输入是：
+stability_score = min(1.0, consecutive_correct / 5)
+  → 连续答对越多，掌握越稳定
 
-- 薄弱点摘要
-- 近期错题摘要
-- 最近聊天历史
-- RAG citations
-- `selected_context`
+review_priority = 1.0 - mastery_score
+  → 掌握度越低，复习优先级越高
+```
 
-下一阶段目标应补上：
+#### 扩展统计 `stats_json`
 
-- `subject.profile_json`
-- `user.profile_json`
-- `LEARNING_SUBJECT_PROFILE.md`
-- `LEARNING_PROFILE.md`
-- recall memory entries
+每次更新时追加到 `stats_json` 的统计字段:
 
-这里要特别强调：
-
-- 当前 Interact 还没有稳定完整消费这些 profile memory 层
-- 文档目标态必须和代码分开描述，避免误导后续实现
-
-### 8.3 对 Digest 的影响
-
-当前 Digest 侧主要还停留在“可读取这些摘要层”的设计空间，尚未像 Examine 一样形成稳定消费逻辑。
-
-因此目前 Profile 和其他引擎的最强闭环，优先还是 Examine。
-
----
-
-## 9. 数据与字段约定
-
-### 9.1 `user.profile_json`
-
-当前把它当成轻量聚合缓存，而不是强 schema 的大对象中心。
-
-约定：
-
-- 只放跨学科稳定摘要
-- 不放 unit/node 级细粒度状态
-- 不承担历史版本职责
-
-### 9.2 `subject.profile_json`
-
-当前把它当成学科内的学习/出题先验缓存。
-
-约定：
-
-- 以当前用户在该学科下的状态为准
-- `focus_teaching_unit_ids / focus_node_ids` 只引用当前稳定主对象
-- 不额外拆 history/version 表
-
-### 9.3 `user_knowledge_state.stats_json`
-
-当前用于承载轻量行为统计摘要，主要包括：
-
-- `question_type_counts`
-- `difficulty_counts`
-- `error_cause_counts`
-- `hint_used_count`
-- `avg_time_spent_seconds`
-- `avg_confidence_self_report`
-- `last_question_type`
-- `last_difficulty`
-- `last_error_cause_label`
-
-注意：
-
-- 它当前是行为摘要字段，不是新的真相源表
-- 是否写入这些统计，取决于答题链路是否采集到了对应字段
-
-### 9.4 Markdown 画像文件
-
-约定：
-
-- 它们是运行时伴生文档，不是数据库主表
-- 它们必须可由结构化真相源重建
-- 它们可以承载“教学备注”和“人类可读组织”，但不承载强事务语义
+| 统计项 | 说明 |
+|---|---|
+| `question_type_counts` | {单选: N, 填空: M, ...} |
+| `difficulty_counts` | {easy: N, medium: M, hard: K} |
+| `error_cause_counts` | {concept_error: N, calculation_error: M, ...} |
+| `hint_used_count` | 使用提示的次数 |
+| `timed_attempt_count` | 有计时的答题次数 |
+| `total_time_spent_seconds` | 总用时 |
+| `avg_time_spent_seconds` | 平均用时 |
+| `confidence_self_report_count` | 自我评估次数 |
+| `avg_confidence_self_report` | 平均自我评估分 |
+| `last_question_type` | 最后一次的题型 |
+| `last_difficulty` | 最后一次的难度 |
+| `last_error_cause_label` | 最后一次的错误原因 |
 
 ---
 
-## 10. 边界与迁移建议
+### 5.2 复习调度器 `review_scheduler.py`
 
-### 10.1 当前阶段不新增额外 profile API 面
+#### 入口函数: `schedule_reviews(session, user_id, subject, updated_state_ids)`
 
-当前继续坚持：
+```
+输入: user_id, subject, updated_state_ids (来自 mastery_updater)
+操作:
 
-- 不新增 `/profile/summary`
-- 不新增 `/profile/runtime-docs`
-- 前端继续以 `/profile/mastery` 为主读模型入口
+1. 过期清理:
+   遍历该用户的所有 pending review
+   → scheduled_review_at + 7天 < now → status = "expired"
 
-后续 runtime docs 若要暴露给前端，也应该优先作为现有接口的附属字段或内部消费，不宜过早扩 API 面。
+2. 对每个 updated state:
+   a. 计算遗忘预测:
+      forgetting_due_days = 1 + mastery × 11 + stability × 18
+      forgetting_due_at = now + forgetting_due_days (上限 30 天)
 
-### 10.2 当前阶段不新增新的 profile summary 主表
+   b. 判断是否需要复习:
+      ├─ mastery ≥ 0.8 → review_status = "idle" (不需要复习)
+      └─ mastery < 0.8 → 安排复习
 
-在现有实现基础上，继续坚持：
+   c. 如需复习 → SM-2 算法计算下次间隔:
+      if accuracy > 0.8:  ease_factor += 0.15
+      if accuracy < 0.6:  ease_factor -= 0.20
+      ease_factor = clamp(ease_factor, 1.3, 2.5)
 
-- `user.profile_json`
-- `subject.profile_json`
-- `user_knowledge_state`
+      if repetition = 0: interval = 1 天
+      if repetition = 1: interval = 6 天
+      if repetition ≥ 2: interval = round(current_interval × ease_factor)
 
-这三层已经足够作为结构化主干，不必再为 markdown 文档新增一套 profile 主表。
+   d. 如果已经过了遗忘时间 → scheduled_review_at = now (立即复习)
 
-### 10.3 新代码统一走 `app.shared.*`
+   e. 计算复习优先级:
+      priority = (1-mastery)×0.5 + (1-stability)×0.25 + incorrect_rate×0.25 + due_bonus×0.3
 
-后续无论是：
+   f. 推断复习原因:
+      ├─ forgetting_due_at ≤ now → "forgetting_due"
+      ├─ total_attempts ≤ 2 → "newly_learned"
+      └─ else → "repeated_wrong"
 
-- memory store
-- learner docs
-- context builder
-- teaching functions
+输出: list[UserKnowledgeState] (已更新的状态)
+```
 
-都应以 `app.shared.*` 为规范入口。
+#### SM-2 间隔示例
 
-### 10.4 对 `.atm/` 的处理
-
-如果未来确实希望：
-
-- CLI 模式
-- 桌面本地单用户模式
-- 家目录级长期陪伴档案
-
-都共享同一套运行时目录，那么推荐通过 runtime root 配置切换到 `.atm/`，而不是在 Profile 文档层提前把业务语义绑死在 `.atm/`。
+| 轮次 | 间隔 | 说明 |
+|---|---|---|
+| 0 | 1 天 | 首次复习 |
+| 1 | 6 天 | 第二次复习 |
+| 2 | 6 × EF = 15 天 | EF=2.5 时 |
+| 3 | 15 × EF = 38 天 | 逐渐拉长 |
 
 ---
 
-## 11. 一句话结论
+### 5.3 薄弱点分析器 `weakness_analyzer.py`
 
-当前 Profile 最稳的部分仍然是：
+#### 入口函数: `analyze_weakness(session, user_id, subject, top_n=20)`
 
-- `user_knowledge_state`
-- `subject.profile_json`
-- `user.profile_json`
+```
+输入: user_id, subject
+操作:
 
-下一阶段最值得推进的不是再造一套新表，而是把这三层结构化状态，稳定投影到两份 runtime markdown 档案中：
+1. 加载所有 unit 级 UserKnowledgeState
+2. 加载近 30 天错题统计 (per unit)
+3. 加载课程主题树中各 unit 的考试权重
+4. 检测前置依赖缺口 (prerequisite gap)
 
-- `LEARNING_PROFILE.md`
-- `LEARNING_SUBJECT_PROFILE.md`
+5. 对每个 unit 计算加权优先级:
 
-并让 Interact / Examine 都围绕这套“结构化真相 + 可读档案”的组合来读写，而不是各自维护一套零散记忆逻辑。
+   priority = mastery_component     (45%)
+            + wrong_component       (20%)
+            + prereq_component      (20%)
+            + forgetting_component  (10%)
+            + exam_weight_component (5%)
 
-## 0. 2026-04 Profile 闭环修正
+   其中:
+   mastery_component     = (1.0 - mastery_score) × 0.45
+   wrong_component       = recent_wrong_rate × 0.20
+   prereq_component      = 0.20 if unit 有未掌握的前置依赖 else 0.0
+   forgetting_component  = forgetting_risk × 0.10
+   exam_weight_component = exam_weight × 0.05
 
-- 本批没有新增 schema，也没有新增 profile summary 主表，仍保持 `user.profile_json / subject.profile_json / user_knowledge_state` 三层结构。
-- `update_mastery_from_exam()` 的核心收益来自更精确的 `exam_paper_item.node_refs_json`：node mastery 现在只会由真正命中的节点回写，不再把同单元其它 membership 节点一起拉动。
-- unit mastery 仍按 `exam_paper_item.teaching_unit_id` 聚合，node mastery 按精确 `node_refs_json` 聚合；这一点是 Examine/Profile 闭环信号纯度的关键约束。
-- `subject.profile_json.focus_teaching_unit_ids / focus_node_ids` 仍继续作为 Examine 的出题先验，但本批没有改动对外 API，也没有新增额外画像读取接口。
+6. 按 priority DESC 排序，取 top_n
 
+输出: list[WeaknessItem]
+```
+
+#### 薄弱原因分类 `WeaknessReason`
+
+| 原因 | 说明 | 触发条件 |
+|---|---|---|
+| `prereq_gap` | 前置依赖缺口 | 前置 unit mastery < 0.6 |
+| `forgetting_due` | 遗忘到期 | forgetting_due_at ≤ now |
+| `repeated_wrong` | 反复犯错 | 近期错误率 ≥ 50% 且答题 ≥ 2 次 |
+| `newly_learned` | 新学知识 | 总答题 ≤ 2 次 |
+
+#### 遗忘风险计算
+
+```python
+if forgetting_due_at ≤ now:
+    forgetting_risk = 1.0  # 已过期
+else:
+    days_left = (due_at - now).days
+    forgetting_risk = max(0, 1.0 - days_left / 30.0)  # 线性衰减
+```
+
+---
+
+### 5.4 学科画像 `subject_profile.py`
+
+#### `SubjectProfileSummary` 产出字段
+
+| 字段 | 类型 | 计算方式 |
+|---|---|---|
+| `avg_unit_mastery` | `float \| None` | 所有 unit state 的 mastery_score 均值 |
+| `avg_node_mastery` | `float \| None` | 所有 node state 的 mastery_score 均值 |
+| `weak_unit_count` | `int` | mastery < 0.8 的 unit 数 |
+| `weak_node_count` | `int` | mastery < 0.8 的 node 数 |
+| `pending_review_count` | `int` | review_status = "pending" 的数量 |
+| `due_review_count` | `int` | 已到期待复习的数量 |
+| `preferred_question_types` | `list[str]` | 按答题频率 TOP 3 |
+| `recommended_question_types` | `list[str]` | 按正确率 ASC 排序 TOP 2（薄弱优先） |
+| `recommended_exam_mode` | `str` | 规则推断 (见下) |
+| `recommended_question_count` | `int` | 推荐出题数 |
+| `difficulty_focus` | `str` | "easy" / "medium" / "hard" / "mixed" |
+| `focus_teaching_unit_ids` | `list[int]` | mastery ASC 排序 TOP 6 unit |
+| `focus_node_ids` | `list[int]` | mastery ASC 排序 TOP 8 node |
+| `question_type_accuracy` | `dict` | 各题型正确率 |
+| `difficulty_accuracy` | `dict` | 各难度正确率 |
+
+#### 考试模式推荐规则
+
+```
+if due_review_count ≥ 2         → web_practice  (有到期复习，赶紧练)
+if avg_mastery < 0.35           → web_practice  (基础太差，不适合考试)
+if weak_units ≥ 3 or weak_nodes ≥ 6 → web_practice  (薄弱点太多)
+if avg_mastery ≥ 0.72 and weak_units ≤ 1 and weak_nodes ≤ 2
+                                → paper_exam    (可以挑战模拟考)
+else                            → web_practice
+```
+
+#### 推荐题数规则
+
+```
+paper_exam 模式         → 24 题
+due_review ≥ 2          → max(8, min(14, due_count × 2))
+else                    → max(10, min(16, weak_units × 2 or 10))
+```
+
+#### 难度焦点规则
+
+```
+avg_mastery < 0.35          → "easy"
+hard 正确率 < 0.5           → "medium"
+avg_mastery ≥ 0.75          → "mixed"
+else                        → "medium"
+```
+
+---
+
+### 5.5 用户画像 `user_profile.py`
+
+#### `UserProfileSummary` 产出字段
+
+| 字段 | 类型 | 计算方式 |
+|---|---|---|
+| `active_subject_count` | `int` | 活跃学科数 |
+| `active_subject_ids` | `list[str]` | 活跃学科 slug 列表 |
+| `recent_subject_ids` | `list[str]` | 近期考试涉及学科 TOP 5 |
+| `preferred_question_types` | `list[str]` | 跨学科合并答题频率 TOP 3 |
+| `preferred_exam_modes` | `list[str]` | 偏好考试模式 |
+| `dominant_exam_mode` | `str` | 最常用的考试模式 |
+| `explanation_style` | `str` | 解释风格偏好 (见下) |
+| `pace_preference` | `str` | 学习节奏偏好 (见下) |
+| `consistency_level` | `str` | 学习一致性 (见下) |
+| `pending_review_count` | `int` | 跨学科待复习数 |
+| `due_review_count` | `int` | 跨学科到期数 |
+
+#### 解释风格推断
+
+```
+short_answer_total > max(choice_total, blank_total) → "guided"    (喜欢详细解析)
+choice + blank ≥ max(2, short_answer × 2)           → "concise"   (喜欢简洁)
+else                                                → "balanced"
+```
+
+#### 学习节奏推断
+
+```
+近 14 天考试 ≥ 6 次     → "quick_cycle"  (快速循环)
+平均用时 ≥ 40 分钟      → "deep_dive"    (深入钻研)
+else                    → "steady"       (稳步推进)
+```
+
+#### 学习一致性推断
+
+```
+近 30 天活跃天数 ≥ 10   → "high"      (高频学习)
+近 30 天活跃天数 ≥ 4    → "steady"    (稳定学习)
+else                    → "building"  (正在养成习惯)
+```
+
+---
+
+## 6. 数据流总览
+
+```
+                     Examine 判卷完成
+                           │
+                           ▼
+    ┌──────────────────────────────────────────────────────────────┐
+    │ mastery_updater.update_mastery_from_exam()                    │
+    │                                                              │
+    │  exam_paper_item                                             │
+    │   ├─ per unit_id → weighted_attempts → unit mastery          │
+    │   └─ per node_id → weighted_attempts → node mastery          │
+    │                                                              │
+    │  → upsert user_knowledge_state (unit 级 + node 级)           │
+    ├──────────────────────────────────────────────────────────────┤
+    │ review_scheduler.schedule_reviews()                           │
+    │                                                              │
+    │  对每个 updated state:                                       │
+    │   ├─ mastery ≥ 0.8 → idle (不安排复习)                       │
+    │   └─ mastery < 0.8 → SM-2 → scheduled_review_at             │
+    │                                                              │
+    │  → update user_knowledge_state (review 字段)                 │
+    ├──────────────────────────────────────────────────────────────┤
+    │ weakness_analyzer.analyze_weakness() [按需调用]                │
+    │                                                              │
+    │  → 多因子排序 → top_n WeaknessItem                           │
+    ├──────────────────────────────────────────────────────────────┤
+    │ subject_profile.build_subject_profile_summary() [按需调用]     │
+    │                                                              │
+    │  → 聚合 unit/node states + exam items → SubjectProfileSummary│
+    │  → 持久化到 subject.profile_json                              │
+    ├──────────────────────────────────────────────────────────────┤
+    │ user_profile.build_user_profile_summary() [按需调用]           │
+    │                                                              │
+    │  → 聚合跨学科 profiles + exam papers → UserProfileSummary    │
+    │  → 持久化到 user.profile_json                                 │
+    └──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                Examine (组卷时消费画像)
+                Interact (伴读时消费薄弱点)
+```
+
+---
+
+## 7. 与其他引擎的接口关系
+
+### Examine → Profile (触发方)
+
+| 触发点 | 调用 | 产出 |
+|---|---|---|
+| 判卷完成 | `update_mastery_from_exam()` | `MasteryUpdateResult` |
+| 判卷完成 | `schedule_reviews()` | 更新 review 字段 |
+
+### Profile → Examine (消费方)
+
+| 数据 | 消费场景 |
+|---|---|
+| `user_knowledge_state` | 组卷策略: 薄弱 unit 优先选题 |
+| `SubjectProfileSummary` | 构建 ExamStyleProfile: 推荐模式/难度/题数 |
+| `UserProfileSummary` | 构建 ExamStyleProfile: 解释风格/题型偏好 |
+| `review_task (due)` | web_practice 模式: 到期复习 unit 优先 |
+
+### Profile → Interact (消费方)
+
+| 数据 | 消费场景 |
+|---|---|
+| `user_knowledge_state.mastery_score` | 加载薄弱知识点列表 |
+| `exam_question_result` | 加载近期错题列表 |
+
+### Digest → Profile (间接)
+
+- Profile 通过 `knowledge_node_id` 关联 Digest 产出的知识图谱节点
+- Profile 通过 `teaching_unit_id` 关联 Digest 产出的教学单元
+
+---
+
+## 8. 已知边界与演进方向
+
+### 当前边界
+
+1. SM-2 参数 (half_life_days=30, ease_factor 范围 1.3~2.5) 均为硬编码常量
+2. 薄弱点分析的权重分配 (mastery 45% + wrong 20% + prereq 20% + forgetting 10% + exam 5%) 是固定值
+3. SubjectProfileSummary 和 UserProfileSummary 以 JSON 形式存储在 subject/user 表中，写入时机为按需触发
+4. 掌握度的 `alpha` 自适应范围 [0.25, 0.85] 覆盖了从冷启动到成熟状态的过渡
+5. Profile 的 LangGraph 图是概览级定义，实际计算逻辑通过函数调用而非 Graph Runtime 执行
+
+### 演进方向
+
+1. SM-2 参数个性化: 根据用户学习风格和学科特点动态调整 ease_factor 范围
+2. 遗忘曲线优化: 从固定线性模型升级为基于实际复习数据的拟合模型
+3. 跨学科知识迁移: 识别不同学科间的共通概念，关联掌握度
+4. 实时画像更新: 每次 Interact 会话后也触发轻量级画像更新（当前仅 Examine 触发）
+5. 学习效率分析: 基于 `avg_time_spent_seconds` 和准确率结合评估学习效率

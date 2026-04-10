@@ -10,25 +10,18 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common.context import WorkflowContext
+from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common.result import WorkflowResult
-from app.workflows.digest.docs.publish import (
-    publish_staged_knowledge_docs,
-    stage_knowledge_docs,
-)
-from app.workflows.digest.docs.services.curriculum_book import (
-    build_curriculum_aligned_book,
-)
+from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs
+from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.runtime import (
     run_curriculum_derive_workflow,
     run_docgen_workflow,
     run_graph_digest_workflow,
 )
-from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
-from app.workflows.digest.unified.consistency import bounded_repair, check_consistency
+from app.workflows.digest.shared.primitives import DigestMode
 from app.workflows.digest.unified.materialize import materialize_shared_inputs
-from app.workflows.digest.unified.models import RepairBudget, RepairResult
 from app.workflows.digest.unified.session import (
     create_unified_build_session,
     pop_unified_build_session,
@@ -60,41 +53,12 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
-        "consistency_gate",
-        wrap_digest_node(
-            build_consistency_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="consistency_gate",
-            timing_field="consistency_ms",
-        ),
-    )
-    workflow.add_node(
-        "bounded_repair",
-        wrap_digest_node(
-            build_repair_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified_repair",
-            node_name="bounded_repair",
-        ),
-    )
-    workflow.add_node(
         "derive_curriculum",
         wrap_digest_node(
             build_derive_curriculum_node(context=context),
             workflow_name=context.workflow_name,
             lane="unified",
             node_name="derive_curriculum",
-        ),
-    )
-    workflow.add_node(
-        "rebuild_docs",
-        wrap_digest_node(
-            build_rebuild_docs_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="rebuild_docs",
-            timing_field="rebuild_docs_ms",
         ),
     )
     workflow.add_node(
@@ -135,26 +99,11 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "run_parallel_lanes",
-        route_after_step,
-        {"continue": "consistency_gate", "fail": "fail"},
-    )
-    workflow.add_conditional_edges(
-        "consistency_gate",
-        route_after_step,
-        {"continue": "bounded_repair", "fail": "fail"},
-    )
-    workflow.add_conditional_edges(
-        "bounded_repair",
-        route_after_step,
-        {"continue": "derive_curriculum", "fail": "fail"},
+        route_after_parallel_lanes,
+        {"continue": "derive_curriculum", "publish_only": "publish_outputs", "fail": "fail"},
     )
     workflow.add_conditional_edges(
         "derive_curriculum",
-        route_after_step,
-        {"continue": "rebuild_docs", "fail": "fail"},
-    )
-    workflow.add_conditional_edges(
-        "rebuild_docs",
         route_after_step,
         {"continue": "publish_outputs", "fail": "fail"},
     )
@@ -175,6 +124,11 @@ def create_unified_initial_state(
     user_prompt: str | None,
     requested_at,
     build_session_id: str | None = None,
+    confirmed_plan: dict | None = None,
+    planner_session_id: str | None = None,
+    confirmed_plan_id: str | None = None,
+    digest_mode: str | None = None,
+    tone: str | None = None,
 ) -> UnifiedDigestState:
     """Create initial state for the unified digest graph."""
 
@@ -184,6 +138,11 @@ def create_unified_initial_state(
         "user_prompt": user_prompt,
         "requested_at": requested_at,
         "build_session_id": build_session_id or uuid4().hex,
+        "planner_session_id": planner_session_id or "",
+        "confirmed_plan_id": confirmed_plan_id or "",
+        "confirmed_plan": confirmed_plan,
+        "digest_mode": digest_mode or "",
+        "tone": tone or "",
         "graph_job_id": _new_runtime_job_id(),
         "curriculum_job_id": _new_runtime_job_id(),
         "error": None,
@@ -191,34 +150,22 @@ def create_unified_initial_state(
 
 
 def route_after_step(state: UnifiedDigestState) -> str:
-    """Route to the next node or fail."""
-
     return "fail" if state.get("error") else "continue"
 
 
-def _topic_anchor_count(kg_state: dict | None) -> int:
-    if not kg_state:
-        return 0
-    snapshot = kg_state.get("topic_anchor_snapshot")
-    anchors = getattr(snapshot, "anchors", None)
-    return len(anchors or [])
+def route_after_parallel_lanes(state: UnifiedDigestState) -> str:
+    if state.get("error"):
+        return "fail"
+    if not _graph_is_ready(state.get("kg_state")):
+        return "publish_only"
+    return "continue"
 
 
 def _graph_is_ready(kg_state: dict | None) -> bool:
-    if not kg_state:
-        return False
-    return bool(kg_state.get("graph_ready")) and _topic_anchor_count(kg_state) > 0
-
-
-def _curriculum_is_ready(curriculum_state: dict | None) -> bool:
-    if not curriculum_state:
-        return False
-    return bool(curriculum_state.get("curriculum_ready")) and curriculum_state.get("snapshot_id") is not None
+    return bool(kg_state and kg_state.get("graph_ready"))
 
 
 def build_prepare_shared_node(*, context: WorkflowContext):
-    """Prepare shared inputs and canonical chunks."""
-
     async def prepare_shared_node(state: UnifiedDigestState) -> UnifiedDigestState:
         started_at = perf_counter()
         logger = context.get_logger().bind(node="prepare_shared")
@@ -231,6 +178,8 @@ def build_prepare_shared_node(*, context: WorkflowContext):
             status="running",
             stage="prepare_shared",
             build_session_id=state["build_session_id"],
+            planner_session_id=state.get("planner_session_id") or None,
+            confirmed_plan_id=state.get("confirmed_plan_id") or None,
             error_message=None,
         )
         shared_inputs = await prepare_shared_inputs(
@@ -240,14 +189,28 @@ def build_prepare_shared_node(*, context: WorkflowContext):
         )
         if not shared_inputs.source_packets or not shared_inputs.section_packets:
             return {**state, "error": "No shared digest inputs were produced."}
+
+        digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
+        if digest_mode:
+            try:
+                shared_inputs.digest_mode_decision.mode = DigestMode(digest_mode)
+            except ValueError:
+                digest_mode = shared_inputs.digest_mode_decision.mode.value
+            else:
+                shared_inputs.digest_mode_decision.reason = "confirmed_build_plan"
+                shared_inputs.digest_mode_decision.user_override = True
+        tone = state.get("tone") or "encouraging"
+
         update_knowledge_build_status(
             subject,
             requested_at=state["requested_at"],
             status="running",
             stage="prepare_shared",
             build_session_id=state["build_session_id"],
+            planner_session_id=state.get("planner_session_id") or None,
+            confirmed_plan_id=state.get("confirmed_plan_id") or None,
             error_message=None,
-            digest_mode=shared_inputs.digest_mode_decision.mode.value,
+            digest_mode=digest_mode,
             mode_reason=shared_inputs.digest_mode_decision.reason,
             total_chunks=len(shared_inputs.section_packets),
             processed_chunks=0,
@@ -279,6 +242,8 @@ def build_prepare_shared_node(*, context: WorkflowContext):
             "build_session_id": session.build_session_id,
             "shared_inputs": shared_inputs,
             "materialized": materialized,
+            "digest_mode": digest_mode,
+            "tone": tone,
             "shared_prepare_ms": elapsed_ms,
         }
 
@@ -286,8 +251,6 @@ def build_prepare_shared_node(*, context: WorkflowContext):
 
 
 def build_parallel_lanes_node(*, context: WorkflowContext):
-    """Run docs and graph lanes concurrently."""
-
     async def parallel_lanes_node(state: UnifiedDigestState) -> UnifiedDigestState:
         logger = context.get_logger().bind(node="run_parallel_lanes")
         subject = state["subject"]
@@ -315,9 +278,14 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
                 requested_at=requested_at,
                 event_bus=context.event_bus,
                 build_session_id=build_session_id,
+                shared_inputs=state.get("shared_inputs"),
+                confirmed_plan=state.get("confirmed_plan"),
+                planner_session_id=state.get("planner_session_id"),
+                confirmed_plan_id=state.get("confirmed_plan_id"),
+                digest_mode=state.get("digest_mode"),
+                tone=state.get("tone"),
             )
-            elapsed_ms = int((perf_counter() - started_at) * 1000)
-            return result, elapsed_ms
+            return result, int((perf_counter() - started_at) * 1000)
 
         async def run_graph_lane() -> tuple[WorkflowResult[dict], int]:
             started_at = perf_counter()
@@ -329,25 +297,37 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
                 build_session_id=build_session_id,
                 trigger_curriculum_after_finalize=False,
             )
-            elapsed_ms = int((perf_counter() - started_at) * 1000)
-            return result, elapsed_ms
+            return result, int((perf_counter() - started_at) * 1000)
 
         (doc_result, doc_lane_ms), (kg_result, kg_lane_ms) = await asyncio.gather(
             run_doc_lane(),
             run_graph_lane(),
         )
-        if doc_result.failed:
-            return {**state, "error": f"Doc lane failed: {doc_result.error.detail}"}
-        if kg_result.failed:
-            return {**state, "error": f"Graph lane failed: {kg_result.error.detail}"}
 
-        doc_state = doc_result.require_value()
-        kg_state = kg_result.require_value()
+        doc_state: dict = {}
+        kg_state: dict = {}
+        errors: list[str] = []
+
+        if doc_result.failed:
+            errors.append(f"Doc lane failed: {doc_result.error.detail}")
+        else:
+            doc_state = doc_result.require_value()
+
+        if kg_result.failed:
+            errors.append(f"Graph lane failed: {kg_result.error.detail}")
+        else:
+            kg_state = kg_result.require_value()
+
+        if doc_result.failed and kg_result.failed:
+            return {**state, "error": " | ".join(errors)}
+
         logger.info(
             "unified_parallel_lanes_completed",
             build_session_id=build_session_id,
             doc_lane_ms=doc_lane_ms,
             kg_lane_ms=kg_lane_ms,
+            doc_lane_ok=not doc_result.failed,
+            kg_lane_ok=not kg_result.failed,
             staged_chapter_count=len(doc_state.get("chapter_metadatas", [])),
             draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
             published_doc_count=len(doc_state.get("doc_ids", [])),
@@ -359,6 +339,9 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
                 requested_at=requested_at,
                 status="running",
                 stage="graph_ready",
+                planner_session_id=state.get("planner_session_id") or None,
+                confirmed_plan_id=state.get("confirmed_plan_id") or None,
+                digest_mode=state.get("digest_mode") or None,
                 error_message=None,
                 draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
                 staged_chapter_count=len(doc_state.get("chapter_metadatas", [])),
@@ -371,71 +354,14 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             "lane_ms": max(doc_lane_ms, kg_lane_ms),
             "doc_lane_ms": doc_lane_ms,
             "kg_lane_ms": kg_lane_ms,
+            "doc_lane_error": doc_result.error.detail if doc_result.failed else None,
+            "kg_lane_error": kg_result.error.detail if kg_result.failed else None,
         }
 
     return parallel_lanes_node
 
 
-def build_consistency_node(*, context: WorkflowContext):
-    """Run cross-lane consistency checks."""
-
-    async def consistency_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        logger = context.get_logger().bind(node="consistency_gate")
-        doc_state = state.get("doc_state")
-        kg_state = state.get("kg_state")
-        if doc_state is None or kg_state is None:
-            return {**state, "error": "Unified consistency missing lane results."}
-        if not _graph_is_ready(kg_state):
-            return {
-                **state,
-                "error": (
-                    "Unified consistency failed: graph lane completed without a usable graph. "
-                    f"topic_anchor_count={_topic_anchor_count(kg_state)}"
-                ),
-            }
-        coverage_report = await check_consistency(doc_state, kg_state)
-        logger.info(
-            "unified_consistency_gate_completed",
-            gap_count=coverage_report.gap_count(),
-        )
-        return {**state, "coverage_report": coverage_report}
-
-    return consistency_node
-
-
-def build_repair_node(*, context: WorkflowContext):
-    """Run bounded repair selection."""
-
-    async def repair_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        started_at = perf_counter()
-        logger = context.get_logger().bind(node="bounded_repair")
-        coverage_report = state.get("coverage_report")
-        if coverage_report is None:
-            return {**state, "error": "Unified repair missing coverage report."}
-        repair_result = (
-            await bounded_repair(coverage_report, RepairBudget())
-            if coverage_report.has_gaps()
-            else RepairResult()
-        )
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        logger.info(
-            "unified_repair_completed",
-            repaired_chapter_count=len(repair_result.repaired_chapters),
-            reextract_chunk_count=len(repair_result.reextracted_chunks),
-            elapsed_ms=elapsed_ms,
-        )
-        return {
-            **state,
-            "repair_result": repair_result,
-            "repair_ms": elapsed_ms,
-        }
-
-    return repair_node
-
-
 def build_derive_curriculum_node(*, context: WorkflowContext):
-    """Run curriculum derivation after both lanes finish."""
-
     async def derive_curriculum_node(state: UnifiedDigestState) -> UnifiedDigestState:
         started_at = perf_counter()
         logger = context.get_logger().bind(node="derive_curriculum")
@@ -455,6 +381,9 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
             requested_at=state["requested_at"],
             status="running",
             stage="curriculum_deriving",
+            planner_session_id=state.get("planner_session_id") or None,
+            confirmed_plan_id=state.get("confirmed_plan_id") or None,
+            digest_mode=state.get("digest_mode") or None,
             error_message=None,
         )
         curriculum_result = await run_curriculum_derive_workflow(
@@ -466,18 +395,14 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
             build_session_id=state.get("build_session_id"),
         )
         if curriculum_result.failed:
+            logger.warning("unified_curriculum_failed_non_fatal", error=curriculum_result.error.detail)
             return {
                 **state,
-                "error": f"Curriculum derive failed: {curriculum_result.error.detail}",
+                "curriculum_state": {},
+                "curriculum_ms": int((perf_counter() - started_at) * 1000),
             }
 
         curriculum_state = curriculum_result.require_value()
-        if not _curriculum_is_ready(curriculum_state):
-            return {
-                **state,
-                "error": "Curriculum derive completed without a usable curriculum snapshot.",
-            }
-
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.info(
             "unified_curriculum_completed",
@@ -494,114 +419,32 @@ def build_derive_curriculum_node(*, context: WorkflowContext):
     return derive_curriculum_node
 
 
-def build_rebuild_docs_node(*, context: WorkflowContext):
-    """Rebuild final docs from the published curriculum structure."""
-
-    async def rebuild_docs_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        started_at = perf_counter()
-        logger = context.get_logger().bind(node="rebuild_docs")
-        doc_state = state.get("doc_state")
-        curriculum_state = state.get("curriculum_state")
-        shared_inputs = state.get("shared_inputs")
-        materialized = state.get("materialized")
-        if doc_state is None:
-            return {**state, "error": "Unified rebuild missing docs state."}
-        if not _curriculum_is_ready(curriculum_state) or curriculum_state.get("theme_tree_version_id") is None:
-            return {**state, "error": "Unified rebuild missing a usable curriculum theme tree."}
-        if shared_inputs is None or materialized is None:
-            return {**state, "error": "Unified rebuild missing shared inputs."}
-
-        theme_tree_version_id = int(curriculum_state["theme_tree_version_id"])
-        logger.info(
-            "unified_curriculum_book_rebuild_started",
-            theme_tree_version_id=theme_tree_version_id,
-        )
-        chapter_metadatas, chapter_assignments = build_curriculum_aligned_book(
-            subject=state["subject"],
-            theme_tree_version_id=theme_tree_version_id,
-            shared_inputs=shared_inputs,
-            materialized=materialized,
-        )
-        if not chapter_metadatas:
-            logger.warning("unified_curriculum_book_rebuild_empty")
-            return {**state, "error": "Unified rebuild produced no curriculum-aligned chapters."}
-
-        existing_chapters = list(doc_state.get("chapter_metadatas", []))
-        if existing_chapters and len(chapter_metadatas) < len(existing_chapters):
-            logger.warning(
-                "unified_curriculum_book_rebuild_skipped",
-                reason="fewer_chapters_than_doc_lane",
-                rebuilt_chapter_count=len(chapter_metadatas),
-                doc_lane_chapter_count=len(existing_chapters),
-            )
-            return state
-
-        staged_docs = await stage_knowledge_docs(
-            subject=state["subject"],
-            chapter_metadatas=chapter_metadatas,
-        )
-        existing_merged_markdown = str(doc_state.get("merged_markdown", ""))
-        if existing_merged_markdown and len(staged_docs.merged_markdown) < int(len(existing_merged_markdown) * 0.6):
-            logger.warning(
-                "unified_curriculum_book_rebuild_skipped",
-                reason="rebuilt_markdown_too_small",
-                rebuilt_chars=len(staged_docs.merged_markdown),
-                doc_lane_chars=len(existing_merged_markdown),
-            )
-            return state
-
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        logger.info(
-            "unified_curriculum_book_rebuild_completed",
-            chapter_count=len(chapter_metadatas),
-            merged_chars=len(staged_docs.merged_markdown),
-            elapsed_ms=elapsed_ms,
-        )
-        return {
-            **state,
-            "doc_state": {
-                **doc_state,
-                "chapter_metadatas": chapter_metadatas,
-                "chapter_assignments": chapter_assignments,
-                "merged_markdown": staged_docs.merged_markdown,
-                "built_paths": staged_docs.built_paths,
-            },
-        }
-
-    return rebuild_docs_node
-
-
 def build_publish_outputs_node(*, context: WorkflowContext):
-    """Publish staged docs after graph and curriculum have both succeeded."""
-
     async def publish_outputs_node(state: UnifiedDigestState) -> UnifiedDigestState:
         started_at = perf_counter()
         logger = context.get_logger().bind(node="publish_outputs")
-        doc_state = state.get("doc_state")
-        curriculum_state = state.get("curriculum_state")
-        kg_state = state.get("kg_state")
-        if doc_state is None:
-            return {**state, "error": "Unified publish missing docs state."}
-        if not _graph_is_ready(kg_state):
-            return {**state, "error": "Unified publish blocked: graph output is empty."}
-        if not _curriculum_is_ready(curriculum_state):
-            return {**state, "error": "Unified publish missing a usable curriculum snapshot."}
+        doc_state = state.get("doc_state", {})
+        curriculum_state = state.get("curriculum_state", {})
 
         chapter_metadatas = list(doc_state.get("chapter_metadatas", []))
         if not chapter_metadatas:
-            return {**state, "error": "Unified publish missing chapter metadata."}
+            logger.warning("unified_publish_no_docs_to_publish")
+            return state
 
+        version_no = int(curriculum_state.get("curriculum_version_no") or 1)
         logger.info(
             "unified_publish_started",
             chapter_count=len(chapter_metadatas),
-            snapshot_id=curriculum_state.get("snapshot_id"),
-            curriculum_version_no=curriculum_state.get("curriculum_version_no"),
+            curriculum_version_no=version_no,
         )
         update_knowledge_build_status(
             state["subject"],
             requested_at=state["requested_at"],
             status="running",
             stage="publishing",
+            planner_session_id=state.get("planner_session_id") or None,
+            confirmed_plan_id=state.get("confirmed_plan_id") or None,
+            digest_mode=state.get("digest_mode") or None,
             error_message=None,
             draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
             staged_chapter_count=len(chapter_metadatas),
@@ -612,50 +455,47 @@ def build_publish_outputs_node(*, context: WorkflowContext):
             chapter_assignments=list(doc_state.get("chapter_assignments", [])),
             user_prompt=state.get("user_prompt"),
             requested_at=state["requested_at"],
-            version_no=int(curriculum_state.get("curriculum_version_no") or 1),
+            version_no=version_no,
             build_session_id=state.get("build_session_id"),
         )
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.info(
             "unified_publish_completed",
             chapter_count=len(chapter_metadatas),
             doc_count=len(doc_ids),
-            elapsed_ms=elapsed_ms,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
         )
         return {
             **state,
-            "doc_state": {
-                **doc_state,
-                "doc_ids": doc_ids,
-            },
+            "doc_state": {**doc_state, "doc_ids": doc_ids},
         }
 
     return publish_outputs_node
 
 
 def build_cleanup_node(*, context: WorkflowContext):
-    """Drop the in-memory build session after success."""
-
     async def cleanup_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        logger = context.get_logger().bind(node="cleanup")
         build_session_id = state.get("build_session_id", "")
         if build_session_id:
             pop_unified_build_session(build_session_id)
-            logger.info("unified_session_cleanup_completed", build_session_id=build_session_id)
+            context.get_logger().bind(node="cleanup").info(
+                "unified_session_cleanup_completed",
+                build_session_id=build_session_id,
+            )
         return state
 
     return cleanup_node
 
 
 def build_fail_node(*, context: WorkflowContext):
-    """Drop the in-memory build session after failure."""
-
     async def fail_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        logger = context.get_logger().bind(node="fail")
         build_session_id = state.get("build_session_id", "")
         if build_session_id:
             pop_unified_build_session(build_session_id)
-        logger.error("unified_build_failed_state", error=state.get("error"), build_session_id=build_session_id)
+        context.get_logger().bind(node="fail").error(
+            "unified_build_failed_state",
+            error=state.get("error"),
+            build_session_id=build_session_id,
+        )
         return state
 
     return fail_node
@@ -663,3 +503,11 @@ def build_fail_node(*, context: WorkflowContext):
 
 def _new_runtime_job_id() -> int:
     return (uuid4().int % 2_000_000_000) + 1
+
+
+def get_langgraph_dev_unified_graph() -> StateGraph:
+    """Create the unified digest graph used by ``langgraph dev``."""
+
+    return build_unified_digest_graph(
+        context=create_langgraph_dev_context("digest.unified.langgraph_dev"),
+    )

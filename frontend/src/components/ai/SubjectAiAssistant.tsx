@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import { useLocation } from "react-router-dom";
 import type {
   ApiResponseChatSessionCreateData,
   ApiResponsePaginatedDataChatSessionItem,
@@ -57,6 +58,8 @@ export function useSubjectAiAssistant(): SubjectAiAssistantContextValue {
 }
 
 export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAssistantProviderProps) {
+  const { pathname } = useLocation();
+  const isBuildPage = /\/subject\/[^/]+\/build\b/.test(pathname);
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
@@ -250,7 +253,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
           {children}
         </div>
 
-      {hasSubject ? (
+      {hasSubject && !isBuildPage ? (
         <button
           type="button"
           onClick={() => openAssistant()}
@@ -268,7 +271,7 @@ export function SubjectAiAssistantProvider({ subjectId, children }: SubjectAiAss
       <div
         className={cn(
           "h-full shrink-0 border-l border-zinc-200/80 bg-white transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-40 relative",
-          isOpen && hasSubject ? "w-[420px]" : "w-0 border-transparent"
+          isOpen && hasSubject && !isBuildPage ? "w-[420px]" : "w-0 border-transparent"
         )}
       >
         <div className="w-[420px] h-full relative flex flex-col bg-white overflow-hidden">

@@ -1,4 +1,4 @@
-﻿"""Database bootstrap and session helpers."""
+"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 
@@ -23,10 +23,12 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.shared.infra.config import get_settings
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
-from app.shared.infra.subject_embeddings import (
+from app.shared.infra.subject_settings import (
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
+    get_postgres_vector_ref,
 )
+from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
 from app.models.curriculum import (
     Curriculum,
@@ -63,6 +65,9 @@ _SCHEMA_MODELS = (
     EmailVerificationCode,
     Subject,
     RawFile,
+    BuildPlannerSession,
+    BuildPlannerTurn,
+    ConfirmedBuildPlan,
     RetrievalChunk,
     KnowledgeDocument,
     KnowledgeNode,
@@ -181,6 +186,7 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
         and not _is_allowed_runtime_table(table_name)
     )
     missing_columns: dict[str, list[str]] = {}
+    unexpected_columns: dict[str, list[str]] = {}
     for table_name, expected_columns in _EXPECTED_SCHEMA_COLUMNS.items():
         if table_name not in existing_tables:
             continue
@@ -189,15 +195,19 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
             for column in inspector.get_columns(table_name)
         }
         missing = sorted(expected_columns - existing_columns)
+        unexpected = sorted(existing_columns - expected_columns)
         if missing:
             missing_columns[table_name] = missing
+        if unexpected:
+            unexpected_columns[table_name] = unexpected
 
-    if not unexpected_tables and not missing_columns:
+    if not unexpected_tables and not missing_columns and not unexpected_columns:
         return None
 
     return {
         "unexpected_tables": unexpected_tables,
         "missing_columns": missing_columns,
+        "unexpected_columns": unexpected_columns,
     }
 
 
@@ -220,7 +230,8 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         raise RuntimeError(
             "Database schema drift detected for non-local mode. "
             f"db_path={db_path}, unexpected_tables={drift['unexpected_tables']}, "
-            f"missing_columns={drift['missing_columns']}"
+            f"missing_columns={drift['missing_columns']}, "
+            f"unexpected_columns={drift['unexpected_columns']}"
         )
 
     logger.warning(
@@ -228,6 +239,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         db_path=str(db_path),
         unexpected_tables=drift["unexpected_tables"],
         missing_columns=drift["missing_columns"],
+        unexpected_columns=drift["unexpected_columns"],
     )
     reset_runtime_state()
     _remove_sqlite_files(db_path)
@@ -314,8 +326,141 @@ def quote_sqlite_identifier(identifier: str) -> str:
     return f'"{escaped}"'
 
 
+def _normalize_postgres_vector_target(table_name: str) -> str:
+    if table_name == get_postgres_vector_ref():
+        return table_name
+    if table_name == get_legacy_vector_table_name():
+        return table_name
+    if table_name.startswith("chunk_embeddings_"):
+        return get_postgres_vector_ref()
+    return table_name
+
+
+def _postgres_column_exists(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).first()
+    return row is not None
+
+
+def _postgres_table_exists(connection: sa.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
+def _postgres_vector_dim(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    column_name: str,
+) -> int | None:
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) AS formatted_type
+            FROM pg_catalog.pg_attribute AS a
+            JOIN pg_catalog.pg_class AS c
+              ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace AS n
+              ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema()
+              AND c.relname = :table_name
+              AND a.attname = :column_name
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).first()
+    if row is None or row[0] is None:
+        return None
+
+    match = re.search(r"vector\((\d+)\)", str(row[0]))
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _ensure_postgres_embedding_column(
+    connection: sa.Connection,
+    *,
+    embedding_dim: int,
+    reset: bool = False,
+) -> None:
+    current_dim = _postgres_vector_dim(
+        connection,
+        table_name="retrieval_chunk",
+        column_name="embedding",
+    )
+
+    if current_dim is None:
+        connection.execute(
+            sa.text(
+                f"ALTER TABLE retrieval_chunk "
+                f"ADD COLUMN IF NOT EXISTS embedding vector({embedding_dim})"
+            )
+        )
+    elif current_dim != embedding_dim:
+        connection.execute(sa.text("DROP INDEX IF EXISTS idx_retrieval_chunk_embedding"))
+        connection.execute(sa.text("ALTER TABLE retrieval_chunk DROP COLUMN IF EXISTS embedding"))
+        connection.execute(
+            sa.text(
+                f"ALTER TABLE retrieval_chunk "
+                f"ADD COLUMN embedding vector({embedding_dim})"
+            )
+        )
+    elif reset:
+        logger.info(
+            "postgres_embedding_column_reset_skipped",
+            reason="dimension_unchanged",
+            embedding_dim=embedding_dim,
+        )
+
+    connection.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS idx_retrieval_chunk_embedding "
+            "ON retrieval_chunk "
+            "USING hnsw (embedding vector_cosine_ops)"
+        )
+    )
+
+
 def vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
     """Check whether one vector table exists."""
+
+    if connection.dialect.name == "postgresql":
+        normalized = _normalize_postgres_vector_target(table_name)
+        if normalized == get_postgres_vector_ref():
+            return _postgres_table_exists(connection, "retrieval_chunk") and _postgres_column_exists(
+                connection,
+                table_name="retrieval_chunk",
+                column_name="embedding",
+            )
+        return _postgres_table_exists(connection, normalized)
 
     row = connection.execute(
         sa.text("SELECT name FROM sqlite_master WHERE name = :table_name"),
@@ -326,6 +471,16 @@ def vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
 
 def get_vector_table_dim(connection: sa.Connection, table_name: str) -> int | None:
     """Parse the configured vector dimension for one table."""
+
+    if connection.dialect.name == "postgresql":
+        normalized = _normalize_postgres_vector_target(table_name)
+        if normalized == get_postgres_vector_ref():
+            return _postgres_vector_dim(
+                connection,
+                table_name="retrieval_chunk",
+                column_name="embedding",
+            )
+        return None
 
     row = connection.execute(
         sa.text("SELECT sql FROM sqlite_master WHERE name = :table_name"),
@@ -343,7 +498,16 @@ def get_vector_table_dim(connection: sa.Connection, table_name: str) -> int | No
 def ensure_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
     """Ensure one subject-scoped sqlite-vec table exists with the requested dimension."""
 
-    table_name = build_subject_vector_table_name(subject)
+    table_name = (
+        get_postgres_vector_ref()
+        if engine.dialect.name == "postgresql"
+        else build_subject_vector_table_name(subject)
+    )
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            _ensure_postgres_embedding_column(connection, embedding_dim=embedding_dim)
+        return table_name
+
     if not is_vec_ready():
         logger.warning(
             "database_vec_table_unavailable",
@@ -371,7 +535,20 @@ def ensure_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: 
 def reset_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: int) -> str:
     """Drop and recreate the subject-scoped vector table."""
 
-    table_name = build_subject_vector_table_name(subject)
+    table_name = (
+        get_postgres_vector_ref()
+        if engine.dialect.name == "postgresql"
+        else build_subject_vector_table_name(subject)
+    )
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            _ensure_postgres_embedding_column(
+                connection,
+                embedding_dim=embedding_dim,
+                reset=True,
+            )
+        return table_name
+
     if not is_vec_ready():
         logger.warning(
             "database_vec_table_reset_skipped",
@@ -462,15 +639,7 @@ def _init_postgres_db(settings) -> None:
     dim = settings.embedding_dim
     if dim:
         with engine.begin() as conn:
-            conn.execute(sa.text(
-                f"ALTER TABLE retrieval_chunk "
-                f"ADD COLUMN IF NOT EXISTS embedding vector({dim})"
-            ))
-            conn.execute(sa.text(
-                "CREATE INDEX IF NOT EXISTS idx_retrieval_chunk_embedding "
-                "ON retrieval_chunk "
-                "USING hnsw (embedding vector_cosine_ops)"
-            ))
+            _ensure_postgres_embedding_column(conn, embedding_dim=dim)
 
     logger.info(
         "database_initialized",

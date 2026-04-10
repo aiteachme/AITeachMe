@@ -73,12 +73,10 @@ class ImportResultData(BaseModel):
 
 
 class CoursePackageItem(BaseModel):
-    """共享课程目录中的一个 .atmx 文件。"""
+    """共享课程目录中的一个 `.atmx` 文件。"""
 
     filename: str = Field(description="文件名。")
     subject_name: str = Field(description="学科名称（从 manifest 读取）。")
-    description: str = Field(default="", description="学科描述。")
     file_size_bytes: int = Field(default=0)
     exported_at: datetime | None = Field(default=None)
     stats: dict[str, int] = Field(default_factory=dict)
-

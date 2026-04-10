@@ -12,16 +12,47 @@ from fastapi import Request
 
 from app.shared.infra.llm import acompletion_stream
 from app.shared.infra.model_router import TaskType
+from app.shared.infra.tracing import llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.streaming import SSEEventEmitter
 
 
+async def _is_disconnected(request: Request | None) -> bool:
+    if request is None:
+        return False
+    return await request.is_disconnected()
+
+
+async def _emit_token(emitter: SSEEventEmitter | None, token: str) -> None:
+    if emitter is None:
+        return
+    await emitter.emit_token(token)
+
+
+def _build_stream_state(
+    state: InteractWorkflowState,
+    collected_tokens: list[str],
+    *,
+    stream_interrupted: bool | None = None,
+    error: str | None = None,
+) -> InteractWorkflowState:
+    next_state: InteractWorkflowState = {
+        **state,
+        "assistant_response": "".join(collected_tokens),
+    }
+    if stream_interrupted is not None:
+        next_state["stream_interrupted"] = stream_interrupted
+    if error is not None:
+        next_state["error"] = error
+    return next_state
+
+
 def build_stream_answer_node(
     *,
     context: WorkflowContext,
-    request: Request,
-    emitter: SSEEventEmitter,
+    request: Request | None = None,
+    emitter: SSEEventEmitter | None = None,
 ):
     """Build the node that streams assistant tokens to the client."""
 
@@ -32,39 +63,49 @@ def build_stream_answer_node(
             return state
 
         collected_tokens: list[str] = []
-        stream = acompletion_stream(
-            state["messages"],
-            task_type=TaskType.CHAT,
-        )
-        try:
-            async for token in stream:
-                if await request.is_disconnected():
-                    await stream.aclose()
-                    workflow_logger.info("interact_stream_disconnected")
-                    return {
-                        **state,
-                        "assistant_response": "".join(collected_tokens),
-                        "stream_interrupted": True,
-                    }
-                collected_tokens.append(token)
-                await emitter.emit_token(token)
-        except Exception as exc:
-            workflow_logger.exception("interact_stream_failed")
-            return {
-                **state,
-                "assistant_response": "".join(collected_tokens),
-                "error": str(exc),
-            }
+        subject = str(state.get("subject") or context.subject or "")
+        build_session_id = str(state.get("session_id") or "")
+        with llm_trace_scope(
+            subject=subject,
+            build_session_id=build_session_id,
+            workflow=context.workflow_name,
+            lane="chat",
+            node="stream_answer",
+        ):
+            stream = acompletion_stream(
+                state["messages"],
+                task_type=TaskType.CHAT,
+            )
+            try:
+                async for token in stream:
+                    if await _is_disconnected(request):
+                        await stream.aclose()
+                        workflow_logger.info("interact_stream_disconnected")
+                        return _build_stream_state(
+                            state,
+                            collected_tokens,
+                            stream_interrupted=True,
+                        )
+                    collected_tokens.append(token)
+                    await _emit_token(emitter, token)
+            except Exception as exc:
+                workflow_logger.exception("interact_stream_failed")
+                return _build_stream_state(
+                    state,
+                    collected_tokens,
+                    error=str(exc),
+                )
 
         assistant_response = "".join(collected_tokens)
         workflow_logger.info(
             "interact_stream_completed",
             response_chars=len(assistant_response),
+            streaming_enabled=emitter is not None,
         )
-        return {
-            **state,
-            "assistant_response": assistant_response,
-            "stream_interrupted": False,
-        }
+        return _build_stream_state(
+            state,
+            collected_tokens,
+            stream_interrupted=False,
+        )
 
     return stream_answer

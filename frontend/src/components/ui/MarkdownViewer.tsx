@@ -1,3 +1,4 @@
+import { Children, useMemo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -6,29 +7,247 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
 import { cn } from "../../lib/utils";
+import { MermaidBlock } from "./MermaidBlock";
+
+type MarkdownViewerVariant = "default" | "document";
+type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
 
 interface MarkdownViewerProps {
   content: string;
   assetBaseUrl?: string;
+  assetSubject?: string;
+  variant?: MarkdownViewerVariant;
+  headingAnchors?: boolean;
 }
+
+interface ViewerStyles {
+  heading: Record<number, string>;
+  paragraph: string;
+  list: string;
+  orderedList: string;
+  listItem: string;
+  blockquote: string;
+  codeInline: string;
+  codeShell: string;
+  codeLanguageBadge: string;
+  codePre: string;
+  tableShell: string;
+  table: string;
+  thead: string;
+  th: string;
+  td: string;
+  hr: string;
+  link: string;
+  strong: string;
+  em: string;
+  imageShell: string;
+  imageFrame: string;
+  image: string;
+  imageCaption: string;
+}
+
+const CALLOUT_LABELS: Record<CalloutKind, string> = {
+  note: "提示",
+  tip: "诀窍",
+  important: "重点",
+  warning: "注意",
+  caution: "警告",
+};
+
+const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
+  default: {
+    note: {
+      shell: "my-4 rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-slate-700",
+      badge: "bg-sky-100 text-sky-700",
+    },
+    tip: {
+      shell: "my-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-slate-700",
+      badge: "bg-emerald-100 text-emerald-700",
+    },
+    important: {
+      shell: "my-4 rounded-2xl border border-violet-200 bg-violet-50/80 px-4 py-3 text-slate-700",
+      badge: "bg-violet-100 text-violet-700",
+    },
+    warning: {
+      shell: "my-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-slate-700",
+      badge: "bg-amber-100 text-amber-700",
+    },
+    caution: {
+      shell: "my-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-slate-700",
+      badge: "bg-rose-100 text-rose-700",
+    },
+  },
+  document: {
+    note: {
+      shell: "my-5 rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-[#1F2329]",
+      badge: "bg-sky-100 text-sky-700",
+    },
+    tip: {
+      shell: "my-5 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-[#1F2329]",
+      badge: "bg-emerald-100 text-emerald-700",
+    },
+    important: {
+      shell: "my-5 rounded-lg border border-violet-200 bg-violet-50/70 px-4 py-3 text-[#1F2329]",
+      badge: "bg-violet-100 text-violet-700",
+    },
+    warning: {
+      shell: "my-5 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-[#1F2329]",
+      badge: "bg-amber-100 text-amber-700",
+    },
+    caution: {
+      shell: "my-5 rounded-lg border border-rose-200 bg-rose-50/70 px-4 py-3 text-[#1F2329]",
+      badge: "bg-rose-100 text-rose-700",
+    },
+  },
+};
+
+const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
+  default: {
+    heading: {
+      1: "mb-3 mt-6 border-b border-slate-200 pb-2 text-2xl font-bold text-slate-900",
+      2: "mb-2 mt-5 text-xl font-semibold text-slate-800",
+      3: "mb-2 mt-4 text-lg font-semibold text-slate-800",
+      4: "mb-1 mt-3 text-base font-semibold text-slate-700",
+      5: "mb-1 mt-3 text-sm font-semibold text-slate-700",
+      6: "mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+    },
+    paragraph: "mb-3 text-sm leading-relaxed text-slate-700",
+    list: "mb-3 list-inside list-disc space-y-1 pl-2 text-sm text-slate-700",
+    orderedList: "mb-3 list-inside list-decimal space-y-1 pl-2 text-sm text-slate-700",
+    listItem: "leading-relaxed [&>p]:mb-0 [&>p]:inline",
+    blockquote: "my-3 rounded-r-xl border-l-4 border-slate-300 bg-slate-50/70 pl-4 pr-3 py-2.5 italic text-slate-600",
+    codeInline: "rounded bg-slate-100 px-1.5 py-0.5 text-sm font-mono text-slate-800",
+    codeShell: "my-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm",
+    codeLanguageBadge: "border-b border-slate-800/80 bg-slate-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400",
+    codePre: "overflow-x-auto p-4 text-sm leading-6 text-slate-100",
+    tableShell: "my-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm",
+    table: "min-w-full text-sm",
+    thead: "border-b border-slate-200 bg-slate-50",
+    th: "px-3 py-2 text-left font-semibold text-slate-700",
+    td: "border-t border-slate-100 px-3 py-2 text-slate-600",
+    hr: "my-5 border-slate-200",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline",
+    strong: "font-semibold text-slate-900",
+    em: "italic text-slate-600",
+    imageShell: "my-5",
+    imageFrame: "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm",
+    image: "max-h-[32rem] w-full object-contain bg-white",
+    imageCaption: "mt-2 px-1 text-center text-xs text-slate-500",
+  },
+  document: {
+    heading: {
+      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#1F2329]",
+      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#1F2329]",
+      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329]",
+      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1F2329]",
+      5: "mt-4 mb-1.5 text-[14px] font-semibold text-[#646A73]",
+      6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73]",
+    },
+    paragraph: "mb-3.5 text-[15px] leading-[1.75] text-[#1F2329]",
+    list: "mb-4 list-disc space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329]",
+    orderedList: "mb-4 list-decimal space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329]",
+    listItem: "leading-[1.75] [&>p]:mb-0 [&>p]:inline",
+    blockquote: "my-4 border-l-[3px] border-[#DEE0E3] pl-4 pr-3 py-2 text-[#646A73]",
+    codeInline: "rounded bg-[#F5F6F7] px-1.5 py-0.5 font-mono text-[0.9em] text-[#1F2329]",
+    codeShell: "my-5 overflow-hidden rounded-lg border border-[#DEE0E3] bg-[#1E1E1E]",
+    codeLanguageBadge: "border-b border-[#333] bg-[#252525] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.15em] text-[#999]",
+    codePre: "overflow-x-auto p-4 text-[13px] leading-7 text-[#D4D4D4] font-mono",
+    tableShell: "my-5 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white",
+    table: "min-w-full text-[14px]",
+    thead: "border-b border-[#DEE0E3] bg-[#F5F6F7]",
+    th: "px-3 py-2 text-left text-[13px] font-semibold text-[#1F2329]",
+    td: "border-t border-[#F0F0F0] px-3 py-2.5 text-[#1F2329]",
+    hr: "my-7 border-[#DEE0E3]",
+    link: "text-[#3370FF] transition-colors hover:text-[#245BDB] hover:underline underline-offset-2",
+    strong: "font-semibold text-[#1F2329]",
+    em: "italic text-[#646A73]",
+    imageShell: "my-6",
+    imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white shadow-sm",
+    image: "max-h-[32rem] w-full object-contain bg-white",
+    imageCaption: "mt-2 px-1 text-center text-[13px] text-[#646A73]",
+  },
+};
 
 export function preprocessLaTeX(content: string): string {
   if (!content) return content;
   let processed = typeof content === "string" ? content : String(content);
-  // Replace block LaTeX \[ ... \] with $$ ... $$
-  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
-  // Replace inline LaTeX \( ... \) with $ ... $
-  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, "$$$$$1$$$$");
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, "$$$1$$");
   return processed;
+}
+
+function textToId(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fff]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function extractText(node: ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (!node) return "";
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (typeof node === "object" && "props" in node) {
+    return extractText((node as { props?: { children?: ReactNode } }).props?.children);
+  }
+  return "";
+}
+
+function createHeadingIdFactory() {
+  const counts = new Map<string, number>();
+  return (text: string) => {
+    const base = textToId(text) || "section";
+    const next = (counts.get(base) ?? 0) + 1;
+    counts.set(base, next);
+    return next === 1 ? base : `${base}-${next}`;
+  };
 }
 
 function isAbsoluteAssetUrl(value: string): boolean {
   return /^(https?:)?\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:");
 }
 
-function resolveMarkdownImageSrc(src: string | undefined, assetBaseUrl?: string): string | undefined {
+function encodePathSegments(path: string): string {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function extractSubjectAssetPath(src: string): string | null {
+  const normalized = src.split("#")[0]?.split("?")[0]?.replace(/\\/g, "/").trim() ?? "";
+  if (!normalized || isAbsoluteAssetUrl(normalized)) {
+    return null;
+  }
+
+  const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
+  if (!assetMatch?.[1]) {
+    return null;
+  }
+
+  return assetMatch[1].replace(/^\/+/, "");
+}
+
+function resolveMarkdownImageSrc(
+  src: string | undefined,
+  {
+    assetBaseUrl,
+    assetSubject,
+  }: {
+  assetBaseUrl?: string;
+  assetSubject?: string;
+}): string | undefined {
   if (!src) {
     return src;
+  }
+
+  if (assetSubject) {
+    const assetPath = extractSubjectAssetPath(src);
+    if (assetPath) {
+      return `/api/v1/subjects/${encodeURIComponent(assetSubject)}/files/assets/${encodePathSegments(assetPath)}`;
+    }
   }
 
   if (!assetBaseUrl || isAbsoluteAssetUrl(src)) {
@@ -58,91 +277,144 @@ function resolveMarkdownImageSrc(src: string | undefined, assetBaseUrl?: string)
   return `${assetBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(filename)}`;
 }
 
-export function MarkdownViewer({ content, assetBaseUrl }: MarkdownViewerProps) {
+function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode[] } | null {
+  const nodes = Children.toArray(children).filter((item) => item !== "\n");
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const firstText = extractText(nodes[0]).trim();
+  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    kind: match[1].toLowerCase() as CalloutKind,
+    body: nodes.slice(1),
+  };
+}
+
+export function MarkdownViewer({
+  content,
+  assetBaseUrl,
+  assetSubject,
+  variant = "default",
+  headingAnchors = false,
+}: MarkdownViewerProps) {
   const processedContent = preprocessLaTeX(content);
+  const styles = VIEWER_STYLES[variant];
+  const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
+
+  const makeHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
+    const Tag = `h${level}` as const;
+    return ({ children }: { children?: ReactNode }) => {
+      const text = extractText(children);
+      const id = headingAnchors ? nextHeadingId(text) : undefined;
+      return (
+        <Tag
+          id={id}
+          data-heading-id={id}
+          className={styles.heading[level]}
+        >
+          {children}
+        </Tag>
+      );
+    };
+  };
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeKatex, rehypeHighlight]}
       components={{
-        h1: ({ children }) => (
-          <h1 className="mb-3 mt-6 border-b border-slate-200 pb-2 text-2xl font-bold text-slate-900">
-            {children}
-          </h1>
-        ),
-        h2: ({ children }) => (
-          <h2 className="mb-2 mt-5 text-xl font-semibold text-slate-800">{children}</h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="mb-2 mt-4 text-lg font-semibold text-slate-800">{children}</h3>
-        ),
-        h4: ({ children }) => (
-          <h4 className="mb-1 mt-3 text-base font-semibold text-slate-700">{children}</h4>
-        ),
-        p: ({ children }) => <p className="mb-3 text-sm leading-relaxed text-slate-700">{children}</p>,
-        ul: ({ children }) => (
-          <ul className="mb-3 list-inside list-disc space-y-1 pl-2 text-sm text-slate-700">
-            {children}
-          </ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="mb-3 list-inside list-decimal space-y-1 pl-2 text-sm text-slate-700">
-            {children}
-          </ol>
-        ),
-        li: ({ children }) => <li className="leading-relaxed [&>p]:mb-0 [&>p]:inline">{children}</li>,
-        blockquote: ({ children }) => (
-          <blockquote className="my-3 border-l-4 border-slate-300 pl-4 italic text-slate-600">
-            {children}
-          </blockquote>
-        ),
-        code: ({ className, children }) => {
-          const codeText = String(children);
-          const isBlock = Boolean(className) || codeText.includes("\n");
-          if (isBlock) {
-            return <code className={cn("font-mono text-[13px]", className)}>{children}</code>;
+        h1: makeHeading(1),
+        h2: makeHeading(2),
+        h3: makeHeading(3),
+        h4: makeHeading(4),
+        h5: makeHeading(5),
+        h6: makeHeading(6),
+        p: ({ children }) => <p className={styles.paragraph}>{children}</p>,
+        ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
+        ol: ({ children }) => <ol className={styles.orderedList}>{children}</ol>,
+        li: ({ children }) => <li className={styles.listItem}>{children}</li>,
+        blockquote: ({ children }) => {
+          const callout = parseCallout(children);
+          if (!callout) {
+            return <blockquote className={styles.blockquote}>{children}</blockquote>;
           }
+
+          const tone = CALLOUT_STYLES[variant][callout.kind];
           return (
-            <code
-              className={cn(
-                "rounded bg-slate-100 px-1.5 py-0.5 text-sm font-mono text-slate-800",
-                className,
-              )}
-            >
-              {children}
-            </code>
+            <aside className={tone.shell}>
+              <div className="mb-3 flex items-center gap-2">
+                <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]", tone.badge)}>
+                  {CALLOUT_LABELS[callout.kind]}
+                </span>
+              </div>
+              <div className="[&>*:last-child]:mb-0">{callout.body}</div>
+            </aside>
           );
         },
-        pre: ({ children }) => (
-          <pre className="my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm text-slate-100">
-            {children}
-          </pre>
-        ),
+        code: ({ className, children }) => {
+          const codeText = extractText(children).replace(/\n$/, "");
+          const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
+          const isBlock = Boolean(className) || codeText.includes("\n");
+
+          if (language === "mermaid") {
+            return <MermaidBlock chart={codeText} variant={variant} />;
+          }
+
+          if (isBlock) {
+            return (
+              <div className={styles.codeShell}>
+                {language ? (
+                  <div className={styles.codeLanguageBadge}>{language}</div>
+                ) : null}
+                <pre className={styles.codePre}>
+                  <code className={cn("font-mono", className)}>{children}</code>
+                </pre>
+              </div>
+            );
+          }
+
+          return <code className={cn(styles.codeInline, className)}>{children}</code>;
+        },
+        pre: ({ children }) => <>{children}</>,
         table: ({ children }) => (
-          <div className="my-3 overflow-x-auto">
-            <table className="min-w-full rounded-lg border border-slate-200 text-sm">{children}</table>
+          <div className={styles.tableShell}>
+            <table className={styles.table}>{children}</table>
           </div>
         ),
-        thead: ({ children }) => <thead className="border-b border-slate-200 bg-slate-50">{children}</thead>,
-        th: ({ children }) => <th className="px-3 py-2 text-left font-semibold text-slate-700">{children}</th>,
-        td: ({ children }) => <td className="border-t border-slate-100 px-3 py-2 text-slate-600">{children}</td>,
-        hr: () => <hr className="my-4 border-slate-200" />,
+        thead: ({ children }) => <thead className={styles.thead}>{children}</thead>,
+        th: ({ children }) => <th className={styles.th}>{children}</th>,
+        td: ({ children }) => <td className={styles.td}>{children}</td>,
+        hr: () => <hr className={styles.hr} />,
         a: ({ href, children }) => (
-          <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+          <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
             {children}
           </a>
         ),
-        strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
-        em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
+        strong: ({ children }) => <strong className={styles.strong}>{children}</strong>,
+        em: ({ children }) => <em className={styles.em}>{children}</em>,
         img: ({ src, alt }) => {
-          const resolvedSrc = resolveMarkdownImageSrc(src, assetBaseUrl);
+          const resolvedSrc = resolveMarkdownImageSrc(src, {
+            assetBaseUrl,
+            assetSubject,
+          });
+
           return (
-            <img
-              src={resolvedSrc}
-              alt={alt ?? ""}
-              className="my-4 max-h-[32rem] w-auto max-w-full rounded-xl border border-slate-200 bg-white shadow-sm"
-              loading="lazy"
-            />
+            <figure className={styles.imageShell}>
+              <div className={styles.imageFrame}>
+                <img
+                  src={resolvedSrc}
+                  alt={alt ?? ""}
+                  className={styles.image}
+                  loading="lazy"
+                />
+              </div>
+              {alt ? <figcaption className={styles.imageCaption}>{alt}</figcaption> : null}
+            </figure>
           );
         },
       }}
@@ -151,3 +423,5 @@ export function MarkdownViewer({ content, assetBaseUrl }: MarkdownViewerProps) {
     </ReactMarkdown>
   );
 }
+
+export type { MarkdownViewerProps, MarkdownViewerVariant };

@@ -9,6 +9,8 @@ from app.workflows.profile.mastery_updater import MasteryUpdateResult
 
 
 class ExamineWorkflowState(TypedDict, total=False):
+    """High-level completion flags for the composite examine workflow."""
+
     question_templates_ready: bool
     exam_paper_ready: bool
     exam_graded: bool
@@ -17,6 +19,8 @@ class ExamineWorkflowState(TypedDict, total=False):
 
 
 class QuestionBuildState(TypedDict, total=False):
+    """State carried through question template generation."""
+
     subject: str
     user_id: str
     unit_ids: list[int]
@@ -40,6 +44,9 @@ class QuestionBuildState(TypedDict, total=False):
 
 
 class ExamGradeState(TypedDict, total=False):
+    """State carried through exam grading and profile updates."""
+
+    subject: str
     exam_paper_id: int
     job_id: int
     grade_result: GradeResult | None

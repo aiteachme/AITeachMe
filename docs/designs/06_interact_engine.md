@@ -1,296 +1,338 @@
-﻿# 06. Interact 引擎
+# 06. Interact 引擎 — 伴读引擎技术文档
 
-## 1. 目标与职责
-
-Interact 负责把知识材料、学习者状态和教学策略组合成“可持续伴读”的对话体验。
-它不是通用闲聊层，而是围绕当前学科与资料的教学型问答引擎。
-
-当前目标：
-
-- 基于 `retrieval_chunk` 做证据化检索回答
-- 结合聊天历史、画像、掌握状态构造教学上下文
-- 通过 `POST + SSE` 主通道进行流式输出
-- 在完成后落库可追踪的会话与消息记录
-
-从本版开始，本文档区分两件事：
-
-- 当前 workflow 已经稳定落地的输入与输出
-- 下一阶段应与 Profile / runtime memory 打通的目标设计
+> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/interact/` 代码实现
 
 ---
 
-## 2. 当前实现落点
+## 1. 引擎定位与职责
 
-- 前端页面：`frontend/src/pages/ChatPage.tsx`
-- API：`backend/app/api/chats.py`
-- Service：`backend/app/services/chats_service.py`
-- Workflow Runtime：`backend/app/workflows/interact/runtime.py`
-- Workflow Nodes：`backend/app/workflows/interact/nodes/*`
-- 关键模型：`chat_session`、`chat_message`
+Interact（伴读引擎）是 AITeachMe 的**实时教学交互核心**，负责为用户提供基于知识库的 AI 辅导对话。
 
----
+**Interact 做一件事：**
+- ✅ 接收用户问题 → 检索相关知识 → 选择教学策略 → 用 LLM 生成启发式教学回复 → SSE 流式推送
 
-## 3. 当前主链路
-
-### 3.1 请求入口
-
-主入口是：
-
-- `POST /api/v1/subjects/{subject}/chats/send`（SSE）
-
-支持输入：
-
-- `question`
-- `session_id`（可选）
-- `selected_context`（可选）
-- `source_chunk_id`（可选）
-
-### 3.2 Workflow 主 Pipeline
-
-当前编排在 `build_interact_workflow_graph()`，主步骤：
-
-1. `history`：加载近期会话、薄弱点、近期错题。
-2. `retrieval`：按 subject 检索相关 chunk。
-3. `strategy`：决定回答策略与讲解力度。
-4. `prompt`：组装 messages。
-5. `stream`：流式生成 token。
-6. `persist`：持久化 user / assistant turn 与 contexts。
-
-### 3.3 事件输出
-
-SSE 事件主语义：
-
-- `token`
-- `done`（含 `turn_id` 和 `contexts`）
-- `error`
+**Interact 不做：**
+- ❌ 不出题、不判卷（Examine 的事）
+- ❌ 不构建知识图谱（Digest 的事）
+- ❌ 不更新掌握度/画像（Profile 的事）
 
 ---
 
-## 4. 上下文组装原则
+## 2. 代码落点速查
 
-### 4.1 资料绑定优先
-
-回答优先基于当前 `Subject` 的资料证据，不鼓励脱离资料自由发挥。
-
-### 4.2 当前已经稳定注入的上下文
-
-按当前代码核对，Interact 主 workflow 里已经稳定进入 prompt 的输入主要是：
-
-- 最近聊天历史
-- 薄弱点摘要
-- 近期错题摘要
-- RAG 检索片段
-- 用户选中的片段（`selected_context`）
-
-其中：
-
-- 薄弱点和近期错题来自 profile / exam 派生状态
-- 检索引用会保存到 assistant 消息的 `contexts_json`
-- `selected_context` 会影响教学策略和 prompt 构造
-
-### 4.3 下一阶段应补齐的 Profile / Memory 上下文
-
-当前文档不再假定这些内容已经稳定接入主 workflow，但下一阶段推荐明确补上：
-
-- 用户级画像（`user.profile_json`）
-- 学科级画像（`subject.profile_json`）
-- `LEARNING_PROFILE.md`
-- `LEARNING_SUBJECT_PROFILE.md`
-- recall 出来的高价值 memory entries
-
-推荐做法不是再造第三套 prompt builder，而是让 Interact 统一复用 shared profile-memory context provider，避免：
-
-- 一处读 `user.profile_json`
-- 一处读 `LEARNER.md`
-- 一处读 memory store
-- 最后彼此描述还不一致
-
-### 4.4 引用可追溯
-
-assistant 消息保存结构化 `contexts_json`，支持前端展示来源卡片与原文跳转。
+| 层 | 模块路径 | 职责 |
+|---|---|---|
+| API | `backend/app/api/interact.py` | 对话 SSE 端点 |
+| Service | `backend/app/services/interact_service.py` | 会话管理、调度 |
+| Workflow Graph | `backend/app/workflows/interact/graph.py` | LangGraph 图定义 |
+| Workflow Runtime | `backend/app/workflows/interact/runtime.py` | 运行入口 |
+| Workflow State | `backend/app/workflows/interact/state.py` | 状态类型 |
+| Node: History | `backend/app/workflows/interact/nodes/history.py` | 加载历史 |
+| Node: Retrieval | `backend/app/workflows/interact/nodes/retrieval.py` | RAG 检索 |
+| Node: Strategy | `backend/app/workflows/interact/nodes/strategy.py` | 策略选择 |
+| Node: Prompt | `backend/app/workflows/interact/nodes/prompt.py` | 消息组装 |
+| Node: Stream | `backend/app/workflows/interact/nodes/stream.py` | LLM 流式调用 |
+| Node: Persist | `backend/app/workflows/interact/nodes/persist.py` | 结果持久化 |
+| Prompt 模板 | `backend/app/workflows/interact/prompts/prompts.py` | System prompt |
 
 ---
 
-## 5. 数据落点与事务边界
+## 3. LangGraph 流程图
 
-### 5.1 当前已经稳定落库的事实
+```mermaid
+graph TD
+    START([START]) --> load_history_state
+    load_history_state --> retrieve_context
+    retrieve_context --> select_teaching_strategy
+    select_teaching_strategy --> build_prompt
+    build_prompt --> stream_answer
+    stream_answer --> persist_turn
+    persist_turn --> END_NODE([END])
+```
 
-当前对话主链路稳定落库的对象是：
-
-- `chat_session`
-- `chat_message`
-- assistant 引用来源对应的 `contexts_json`
-
-这些对象共同构成了 Interact 当前最可靠的事实层。
-
-### 5.2 当前仍需补强的事实
-
-以下输入虽然已经出现在请求或 prompt 侧，但还不应被文档描述成“完整闭环”：
-
-- `selected_context` 的全链路持久化与回放
-- `source_chunk_id` 的稳定回写与再利用
-- 对话后提炼出的 memory entry
-- runtime markdown 档案的统一刷新
-
-也就是说，当前已经有“学习事实进入对话”的入口，但还没有把这些事实稳定地沉淀回 Profile / Memory 全链路。
-
-### 5.3 持久化原则
-
-Interact 后续补强时，应坚持以下顺序：
-
-1. 先把原始事实写入结构化对象
-2. 再由 Profile / Memory 聚合层提炼长期状态
-3. 最后再刷新 runtime markdown 档案
-
-不推荐：
-
-- 直接把整轮聊天原文 append 到画像 markdown
-- 由 Interact 自己维护另一套长期掌握度状态
+**关键特征**: 六节点串行链路，无条件分支（每一步都不可跳过）。
 
 ---
 
-## 6. 与其他引擎的关系
+## 4. State 类型定义
 
-### 6.1 与 Ingest / Digest 的关系
+> 文件: `backend/app/workflows/interact/state.py`
 
-Interact 的资料基础来自：
+### `InteractWorkflowState` 主要字段
 
-- Ingest 产出的材料层 markdown
-- Digest 发布后的知识文档与检索索引
-
-没有这些知识底座时，Interact 可以回答，但不应被视为完整教学模式。
-
-### 6.2 与 Profile 的关系
-
-当前 Interact 已经稳定读取 Profile 派生出来的两类摘要：
-
-- 薄弱点
-- 近期错题
-
-但它还没有稳定完整读取：
-
-- `user.profile_json`
-- `subject.profile_json`
-- runtime markdown 学习档案
-- memory recall 结果
-
-因此当前最准确的说法是：
-
-- Interact 已经“部分消费 Profile”
-- 但还没有形成完整的 `Profile -> Interact -> Memory -> Profile` 闭环
-
-### 6.3 与 Examine 的关系
-
-Examine 会产出更强结构化学习信号：
-
-- 对错
-- 错因
-- 命中的 unit / node
-- 判卷反馈
-
-这些信号经由 Profile 聚合后，会间接影响 Interact 的后续教学策略。
-
-所以从当前工程现实看：
-
-- `Examine -> Profile` 是最稳定的强闭环
-- `Profile -> Interact` 是已经起步但仍需补强的链路
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `subject` | `str` | 学科 slug |
+| `user_id` | `int` | 用户 ID |
+| `session_id` | `int` | 会话 ID |
+| `question` | `str` | 用户本轮提问 |
+| `chat_history` | `list[dict]` | 历史对话记录 |
+| `weak_points` | `list[str]` | 用户薄弱知识点列表 |
+| `recent_mistakes` | `list[str]` | 用户近期错误列表 |
+| `retrieved_chunks` | `list[str]` | RAG 检索到的知识片段 |
+| `search_notice` | `str \| None` | 检索降级提示 |
+| `strategy` | `str` | 教学策略 |
+| `strategy_mode` | `str` | 策略模式标识 |
+| `prompt_messages` | `list[dict]` | 组装好的 LLM 消息列表 |
+| `answer` | `str` | LLM 生成的完整回答 |
+| `sse_queue` | `object` | SSE 推送队列引用 |
+| `error` | `str \| None` | 错误信息 |
 
 ---
 
-## 7. 当前边界
+## 5. 节点详解
 
-### 7.1 Interact 不是通用聊天 SDK
+### Node 1: `load_history_state`
 
-它的定位始终是教学对话，而不是一个无边界的闲聊代理层。
+> 文件: `backend/app/workflows/interact/nodes/history.py`
 
-### 7.2 Interact 不拥有知识真相源
+```
+输入: subject, user_id, session_id
+操作:
+  1. 从 chat_message 表加载最近 N 轮对话历史
+     → 转换为 [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+  2. 从 user_knowledge_state 表加载用户薄弱知识点
+     → 按 mastery_score ASC 排序，取 TOP K
+     → 转换为 [node_name, ...] 字符串列表
+  3. 从 exam_question_result 表加载用户近期错误
+     → 最近 M 次考试中答错的题目
+     → 转换为 ["错题简述1", ...]
+输出:
+  chat_history: list[dict]
+  weak_points: list[str]
+  recent_mistakes: list[str]
+读 DB: chat_message, user_knowledge_state, exam_question_result
+```
 
-知识真相来自：
+### Node 2: `retrieve_context`
 
-- 学科资料
-- 检索片段
-- `user_knowledge_state`
-- `exam_paper_item`
-- `chat_message`
+> 文件: `backend/app/workflows/interact/nodes/retrieval.py`
 
-Interact 负责消费这些事实，而不是重新定义这些事实。
+```
+输入: subject, question, search_notice (可选)
+操作:
+  1. 判断检索降级:
+     ├─ search_notice 非空 → 跳过检索，使用 notice 作为上下文提示
+     └─ search_notice 空 → 执行 RAG 检索
+  2. RAG 检索流程:
+     a. 对 question 做 embedding
+     b. 在 retrieval_chunk 表中做向量相似度搜索
+        → WHERE subject = <subject> AND similarity >= threshold
+        → ORDER BY similarity DESC LIMIT K
+     c. 返回 top-K 个 chunk.content 作为 retrieved_chunks
+  3. 检索结果为空时: 设 search_notice = "未找到相关知识库内容"
+输出:
+  retrieved_chunks: list[str]  (或空列表)
+  search_notice: str | None
+读 DB: retrieval_chunk (向量检索)
+```
 
-### 7.3 Interact 不应自己维护长期画像真相
+### Node 3: `select_teaching_strategy`
 
-长期画像应继续由：
+> 文件: `backend/app/workflows/interact/nodes/strategy.py`
 
-- `user.profile_json`
-- `subject.profile_json`
-- `user_knowledge_state`
-- runtime memory docs
+```
+输入: question, retrieved_chunks, weak_points
+操作:
+  基于问题类型和上下文选择教学策略:
+  ├─ 问题明确指向某知识点 + 有检索结果 → "guided_explanation" (引导式讲解)
+  ├─ 问题是开放性/探索性的 → "socratic" (苏格拉底式提问)
+  ├─ 问题涉及用户薄弱知识点 → "remedial" (补救教学)
+  ├─ 没有检索到上下文 → "general" (通用回答)
+  └─ 其它 → "adaptive" (自适应)
+输出:
+  strategy: str
+  strategy_mode: str
+```
 
-共同承载。
+### Node 4: `build_prompt`
 
-Interact 可以写学习事件，但不应自己变成新的画像中心。
+> 文件: `backend/app/workflows/interact/nodes/prompt.py`
 
-### 7.4 shared 上下文底座已存在，但还没成为主路径
+```
+输入: subject, question, chat_history, retrieved_chunks, weak_points,
+      recent_mistakes, strategy, search_notice
+操作:
+  1. 构建 system message:
+     使用 TUTOR_SYSTEM_PROMPT 模板 (见第 6 节)
+     注入: subject, strategy, weak_points, recent_mistakes
+  2. 构建 context message (如有检索结果):
+     "以下是与问题相关的知识库内容:\n{retrieved_chunks}"
+  3. 组装最终 messages 列表:
+     [system, ...chat_history, context (可选), user_question]
+输出:
+  prompt_messages: list[dict]  → 直接传给 LLM
+```
 
-仓库里已经存在 `app.shared.infra.context` 这类更通用的上下文组装能力，可以统一读取：
+### Node 5: `stream_answer`
 
-- 用户画像
-- `LEARNER.md`
-- recall memory
-- 知识检索结果
+> 文件: `backend/app/workflows/interact/nodes/stream.py`
 
-但当前 Interact 主 workflow 还没有完全收敛到这条 shared 路径。
+```
+输入: prompt_messages, sse_queue
+操作:
+  1. 调用 LLM (streaming=True):
+     → 使用 prompt_messages 作为完整消息列表
+     → 逐 token 生成
+  2. 每收到一个 token chunk:
+     a. 累积到 answer 缓冲区
+     b. 推送到 sse_queue → 经由 SSE 端点实时推给前端
+  3. 流结束:
+     a. 推送 [DONE] 信号
+     b. 记录 total_tokens, elapsed_time
+  4. 异常处理:
+     ├─ LLM 调用失败 → answer = "[错误] 生成回复时出现问题"
+     └─ 客户端断连 → 提前终止流，保存已有 answer
+输出:
+  answer: str  (完整回复文本)
+LLM 调用: ✅ chat streaming
+```
 
-这意味着：
+### Node 6: `persist_turn`
 
-- 底层能力不是没有
-- 主链路只是还没有完全接过去
+> 文件: `backend/app/workflows/interact/nodes/persist.py`
+
+```
+输入: subject, user_id, session_id, question, answer
+操作:
+  1. 创建 user message 记录:
+     chat_message(role="user", content=question, session_id, ...)
+  2. 创建 assistant message 记录:
+     chat_message(role="assistant", content=answer, session_id, ...)
+  3. 更新 session 最后活跃时间:
+     chat_session.last_active_at = now()
+写 DB: chat_message (×2), chat_session
+```
 
 ---
 
-## 8. 下一步演进建议
+## 6. Prompt 模板全文
 
-### 8.1 统一 profile-memory context provider
+> 文件: `backend/app/workflows/interact/prompts/prompts.py`
 
-优先目标不是继续扩 prompt 文本，而是把当前分散在 shared / interact / memory 的上下文读取逻辑，统一成一个规范 provider。
+### `TUTOR_SYSTEM_PROMPT`
 
-### 8.2 补齐 `selected_context` 的事实沉淀
+```
+你是 AITeachMe 的学科私教，目前负责辅导的学科是：{subject}。
 
-需要把：
+## 你的身份
+- 你是一位耐心、专业、善于启发思考的 AI 教师
+- 你的目标是帮助学生真正理解知识，而不仅仅是给出答案
+- 你应该激发学生的好奇心和批判性思维
 
-- 用户滑选了什么
-- 选中内容来自哪个 chunk
-- 这轮回答如何引用这段上下文
+## 教学策略
+当前教学策略: {strategy}
 
-稳定写回结构化事实层，保证后续可以用于 memory 提炼、教学回放与画像更新。
+## 学生画像
+{weak_points_section}
+{recent_mistakes_section}
 
-### 8.3 runtime markdown 文档应由 Profile 统一刷新
+## 教学原则
+1. **启发式教学**：不直接给答案，用问题引导学生思考
+2. **层层递进**：从学生已有知识出发，逐步引导到新知识
+3. **具体举例**：用生活化、直觉化的例子解释抽象概念
+4. **及时纠正**：发现学生理解偏差时，温和地纠正并解释
+5. **鼓励为主**：肯定学生的思考过程，即使答案不完全正确
 
-推荐继续坚持：
+## 格式要求
+- 回复使用 Markdown 格式
+- 数学公式使用 LaTeX：行内 $...$，独立公式 $$...$$
+- 适当使用列表、标题等结构化元素提高可读性
+- 回复长度适中，不要过长或过短
+```
 
-- Interact 写对话事实
-- Profile 聚合长期状态
-- Profile 统一刷新 `LEARNING_PROFILE.md` / `LEARNING_SUBJECT_PROFILE.md` / `LEARNER.md`
-
-而不是让 Interact 在每轮对话结束后直接向这些文档追加自然语言段落。
-
-### 8.4 新实现统一走 `app.shared.*`
-
-后续若补：
-
-- 画像读取
-- memory recall
-- learner docs
-- context assembly
-
-都应以 `app.shared.*` 为规范入口，`app.teaching.*` 保持兼容语义，不再反向定义主设计。
+**变量注入说明**：
+- `{subject}`: 当前学科名
+- `{strategy}`: Node 3 选择的教学策略
+- `{weak_points_section}`: 如果有薄弱点则生成 "学生的薄弱知识点：..." 段落
+- `{recent_mistakes_section}`: 如果有近期错误则生成 "学生最近的错题：..." 段落
 
 ---
 
-## 9. 一句话结论
+## 7. 数据流总览
 
-当前 Interact 最稳定的现实能力是：
+```
+用户发送消息 (POST /api/interact/chat)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ Node 1: load_history_state                                          │
+│ 读: chat_message → chat_history                                     │
+│ 读: user_knowledge_state → weak_points                              │
+│ 读: exam_question_result → recent_mistakes                          │
+├─────────────────────────────────────────────────────────────────────┤
+│ Node 2: retrieve_context                                            │
+│ 读: retrieval_chunk (向量检索) → retrieved_chunks                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ Node 3: select_teaching_strategy                                    │
+│ 纯逻辑: question + context + weak_points → strategy                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ Node 4: build_prompt                                                │
+│ 组装: system + history + context + question → prompt_messages        │
+├─────────────────────────────────────────────────────────────────────┤
+│ Node 5: stream_answer                                               │
+│ LLM: prompt_messages → answer (streaming via SSE)                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ Node 6: persist_turn                                                │
+│ 写: chat_message ×2 (user + assistant)                              │
+│ 写: chat_session.last_active_at                                     │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+前端收到完整回复
+```
 
-- 基于资料检索回答
-- 读取近期聊天、薄弱点、近期错题
-- 流式输出并持久化会话消息
+---
 
-下一阶段真正值得做的，不是再写一版更长的 prompt，而是把 `subject / user profile + runtime markdown + memory recall` 这套上下文，稳定接进主 workflow，并把 `selected_context` 沉淀回可追溯的学习事实。
+## 8. SSE 流式输出机制
+
+```
+前端                          后端 (FastAPI)
+  │                             │
+  ├── POST /chat ──────────────→│ 创建 asyncio.Queue
+  │                             │ asyncio.create_task(run_interact_workflow)
+  │                             │
+  │←── SSE: data: {"token":"你"}│ ← stream_answer 每 token 推送
+  │←── SSE: data: {"token":"好"}│
+  │←── SSE: data: {"token":"..."}│
+  │←── SSE: data: [DONE]       │ ← 流结束信号
+  │                             │
+  └── 连接关闭 ────────────────→│ persist_turn 已在后台完成
+```
+
+**技术要点**:
+- SSE 端点使用 `StreamingResponse(media_type="text/event-stream")`
+- Queue 由 runtime 创建，传入 state，stream_answer 节点生产，API 端点消费
+- 客户端断连时 stream_answer 检测到 `sse_queue` 不可写，提前终止
+
+---
+
+## 9. 与其他引擎的接口关系
+
+### Digest → Interact
+- `retrieval_chunk` 提供 RAG 知识库（Node 2 消费）
+- `knowledge_document` 作为知识文档上下文
+
+### Profile → Interact
+- `user_knowledge_state` 提供薄弱知识点（Node 1 消费）
+- `exam_question_result` 提供近期错题（Node 1 消费）
+
+### Interact → Profile
+- 当前 Interact **不直接更新** Profile 或掌握度
+- 未来考虑在 persist_turn 后触发轻量级画像更新
+
+---
+
+## 10. 已知边界与演进方向
+
+### 当前边界
+1. 策略选择 (Node 3) 是基于规则的简单路由，不涉及 LLM
+2. 检索管道使用单一向量相似度，不支持混合检索 (hybrid search)
+3. 聊天历史窗口是固定滑动窗口，不做 summarization
+4. 不支持多模态（图片/语音）输入
+
+### 演进方向
+1. 集成统一 `app.shared.infra.context` provider（上下文提供者迁移中）
+2. 增加 Profile-aware 教学：根据用户画像动态调整教学深度和节奏
+3. 支持会话级记忆摘要（长对话场景）
+4. 混合检索：向量 + 关键词 + 知识图谱路径

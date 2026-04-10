@@ -6,7 +6,7 @@ import re
 
 import structlog
 
-from app.workflows.digest.docs.state import DocGenState
+from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.unified.models import (
     CoverageReport,

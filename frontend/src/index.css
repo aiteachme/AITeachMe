@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,6 +10,17 @@
     --foreground: 222.2 84% 4.9%;
     --border: 214.3 31.8% 91.4%;
     --radius: 0.5rem;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    --font-serif: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+    /* Feishu design tokens */
+    --feishu-text: #1F2329;
+    --feishu-text-secondary: #646A73;
+    --feishu-text-placeholder: #8F959E;
+    --feishu-blue: #3370FF;
+    --feishu-blue-hover: #245BDB;
+    --feishu-border: #DEE0E3;
+    --feishu-bg-secondary: #F5F6F7;
+    --feishu-hover: #EFF1F3;
   }
 
   * {
@@ -16,7 +29,10 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -109,12 +125,12 @@
 
   /* ----------- Feishu-style text selection ----------- */
   .feishu-doc-content ::selection {
-    background-color: rgba(59, 130, 246, 0.16);
+    background-color: rgba(51, 112, 255, 0.15);
     color: inherit;
   }
 
   .feishu-doc-content ::-moz-selection {
-    background-color: rgba(59, 130, 246, 0.16);
+    background-color: rgba(51, 112, 255, 0.15);
     color: inherit;
   }
 
@@ -141,6 +157,16 @@
   }
 
   .feishu-doc-content table tbody tr:hover {
-    background-color: rgba(241, 245, 249, 0.7);
+    background-color: #F5F6F7;
   }
+}
+
+/* ----------- Typewriter blink cursor ----------- */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
 }

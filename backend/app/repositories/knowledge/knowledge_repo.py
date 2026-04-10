@@ -1,4 +1,4 @@
-﻿"""Repository helpers for retrieval chunks and embeddings."""
+"""Repository helpers for retrieval chunks and embeddings."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.shared.infra.database import (
     quote_sqlite_identifier,
     vector_table_exists,
 )
-from app.shared.infra.subject_embeddings import (
+from app.shared.infra.subject_settings import (
     SubjectEmbeddingMode,
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
@@ -381,6 +381,42 @@ def update_chunk_vector_metadata(
     session.commit()
 
 
+def clear_chunk_vector_metadata(
+    session: Session,
+    *,
+    subject: str,
+) -> int:
+    """Clear one subject's chunk-level vector metadata and backing embeddings."""
+
+    chunk_ids = [
+        chunk_id
+        for chunk_id in session.exec(
+            select(RetrievalChunk.id).where(RetrievalChunk.subject == subject)
+        ).all()
+        if chunk_id is not None
+    ]
+    if not chunk_ids:
+        return 0
+
+    delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
+
+    chunks = list(
+        session.exec(
+            select(RetrievalChunk).where(
+                RetrievalChunk.subject == subject,
+                RetrievalChunk.id.in_(chunk_ids),
+            )
+        ).all()
+    )
+    for chunk in chunks:
+        chunk.embedding_model = None
+        chunk.vector_ref = None
+        chunk.updated_at = utcnow()
+        session.add(chunk)
+    session.commit()
+    return len(chunks)
+
+
 def bulk_insert_embeddings(
     session: Session,
     *,
@@ -674,3 +710,4 @@ def _sqlite_vector_search(
         score = 1.0 / (1.0 + distance) if distance >= 0 else 0.0
         results.append(ChunkSearchResult(chunk=chunk, score=score))
     return results
+

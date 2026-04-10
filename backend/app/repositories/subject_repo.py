@@ -51,10 +51,8 @@ def update_subject(
     subject: Subject,
     *,
     name: str,
-    description: str,
 ) -> Subject:
     subject.name = name
-    subject.description = description
     subject.updated_at = utcnow()
     session.add(subject)
     session.commit()
@@ -73,4 +71,3 @@ def save_subject(session: Session, subject: Subject) -> Subject:
 def delete_subject(session: Session, subject: Subject) -> None:
     session.delete(subject)
     session.commit()
-

@@ -1,5 +1,5 @@
-import { Suspense, lazy, useMemo, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -15,19 +15,21 @@ import {
 import { knowledgeClearApiV1SubjectsSubjectKnowledgeClearPost } from "../api/generated/knowledge";
 import { getApiErrorMessage } from "../api/client";
 import {
-  DigestBuildButton,
   DigestBuildProgress,
   DigestBuildProvider,
 } from "../components/pages/DigestBuildPanel";
+import { GraphBuildButton } from "../components/pages/GraphBuildButton";
 import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
+import { useToast } from "../components/ui/Toast";
 import {
   OVERVIEW_INCLUDE_PRESETS,
   buildKnowledgeOverviewQueryKey,
   fetchKnowledgeOverview,
 } from "../lib/knowledgeOverview";
+import { readGraphDebugBuildIntent } from "../lib/knowledgeBuildNavigation";
 
 const SemanticUniverse = lazy(() =>
   import("../components/pages/SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
@@ -82,9 +84,32 @@ function TabFallback({ message }: { message: string }) {
 
 export function KnowledgeGraphPage() {
   const { subjectId = "" } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
+  const { toast } = useToast();
+  const graphDebugIntentRef = useRef(readGraphDebugBuildIntent(location.state));
+  const graphDebugIntent = graphDebugIntentRef.current;
+  const [activeTab, setActiveTab] = useState<KnowledgeViewTab>(
+    graphDebugIntent ? "knowledge-graph" : "semantic-universe",
+  );
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!graphDebugIntent) {
+      return;
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+    toast({
+      title: "已进入知识图谱调试模式",
+      description:
+        graphDebugIntent.fileUids.length > 0
+          ? `将使用 ${graphDebugIntent.fileUids.length} 份已解析资料直接触发 graph build。`
+          : "当前没有已解析完成的资料，你可以先查看图谱页，待解析完成后再手动触发构建。",
+      variant: graphDebugIntent.fileUids.length > 0 ? "info" : "warning",
+    });
+  }, [graphDebugIntent, location.pathname, navigate, toast]);
 
   const overviewInclude = useMemo(() => {
     switch (activeTab) {
@@ -141,7 +166,19 @@ export function KnowledgeGraphPage() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <DigestBuildButton />
+            <GraphBuildButton
+              subject={subjectId}
+              autoLaunch={
+                graphDebugIntent
+                  ? {
+                      requestKey: graphDebugIntent.requestKey,
+                      fileUids: graphDebugIntent.fileUids,
+                      autoStart: true,
+                      sourceLabel: "上传页",
+                    }
+                  : null
+              }
+            />
             <Button
               variant="outline"
               size="sm"

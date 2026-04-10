@@ -12,13 +12,11 @@ class SubjectCreateRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "name": "高等数学",
-                "description": "用于手动联调的学科空间。",
             }
         }
     )
 
     name: str = Field(min_length=1, description="展示名称。")
-    description: str = Field(default="", description="学科描述。")
 
 
 class SubjectDetailRequest(BaseModel):
@@ -28,7 +26,6 @@ class SubjectDetailRequest(BaseModel):
 class SubjectUpdateRequest(BaseModel):
     subject_id: str = Field(description="学科外部标识。")
     name: str = Field(min_length=1, description="展示名称。")
-    description: str = Field(default="", description="学科描述。")
 
 
 class SubjectDeleteRequest(SubjectDetailRequest):
@@ -47,7 +44,6 @@ class SubjectItem(BaseModel):
     id: int = Field(description="学科 ID。")
     subject_id: str = Field(description="学科外部标识。")
     name: str = Field(description="展示名称。")
-    description: str = Field(description="学科描述。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="更新时间。")
 
@@ -75,3 +71,12 @@ class SubjectDeletePreviewData(BaseModel):
         description="用户可读的删除影响列表。",
     )
     detail_counts: dict[str, int] = Field(default_factory=dict, description="内部明细统计。")
+
+
+class SubjectNameSuggestionRequest(BaseModel):
+    prompt: str | None = Field(default=None, description="用户输入的学习目标。")
+    filenames: list[str] | None = Field(default=None, description="上传的文件名列表。")
+
+
+class SubjectNameSuggestionResponse(BaseModel):
+    name: str = Field(description="AI 生成的学科名称。")

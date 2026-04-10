@@ -1,7 +1,7 @@
 [project]
 name = "aiteachme-backend"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
@@ -12,6 +12,8 @@ dependencies = [
     "litellm>=1.40.0",
     "instructor>=1.3.0",
     "langgraph>=0.1.0",
+    "langgraph-cli[inmem]>=0.4.19",
+    "langsmith>=0.7.0",
     "Jinja2>=3.1.0",
     "markitdown[all]>=0.0.1",
     "pymupdf4llm>=0.0.5",
@@ -22,6 +24,7 @@ dependencies = [
     "psycopg[binary]>=3.1.0",
     "pgvector>=0.3.0",
     "boto3>=1.34.0",
+    "requests>=2.32.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,4 +33,3 @@ include = ["app*"]
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
-

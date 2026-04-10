@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 
-from fastapi import APIRouter, Body, Depends, File, Path, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlmodel import Session
 
@@ -12,7 +12,7 @@ from app.api.deps import CurrentUserContext, get_current_user_context, get_db, n
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.storage import get_content_store
 from app.services.file_service import (
     delete_files,
     list_subject_files,
@@ -34,15 +34,37 @@ async def upload_files(
     request: Request,
     subject: str = Path(...),
     files: list[UploadFile] = File(...),
+    parser_provider: str | None = Form(default=None),
+    mineru_api_token: str | None = Form(default=None),
+    mineru_model_version: str | None = Form(default=None),
+    mineru_enable_formula: bool | None = Form(default=None),
+    mineru_enable_table: bool | None = Form(default=None),
+    mineru_is_ocr: bool | None = Form(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesUploadData]:
     normalized_subject = normalize_subject_slug(subject)
     get_subject_record(session, normalized_subject, owner_user_id=user.user_id)
+
+    parse_request_metadata: dict[str, object] | None = None
+    if parser_provider:
+        parse_request_metadata = {
+            "requested_parser_provider": parser_provider,
+        }
+        if parser_provider == "mineru":
+            parse_request_metadata["mineru"] = {
+                "api_token": mineru_api_token,
+                "model_version": mineru_model_version,
+                "enable_formula": mineru_enable_formula,
+                "enable_table": mineru_enable_table,
+                "is_ocr": mineru_is_ocr,
+            }
+
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
         subject=normalized_subject,
         files=files,
+        parse_request_metadata=parse_request_metadata,
     )
     if parse_file_ids:
         request.app.state.background_task_registry.spawn(
@@ -123,15 +145,12 @@ async def serve_file_asset(
     storage_key = f"{normalized_subject}/{asset_path}"
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
 
-    # 优先 CDN 公共 URL 302 重定向
     public_url = cs.public_url(storage_key)
     if public_url:
         return RedirectResponse(public_url)
 
-    # 否则通过 ContentStore 读取并流式返回
     try:
         data = await cs.read_bytes(storage_key)
         return Response(content=data, media_type=media_type)
     except Exception:
         return Response(status_code=404, content=b"Not found")
-

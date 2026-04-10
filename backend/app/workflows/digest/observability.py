@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from time import perf_counter
 from typing import Any
 
 from pydantic import BaseModel, Field
 import structlog
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.tracing import get_tracker, llm_trace_scope
+from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.shared.infra.tracing import get_tracker
+from app.workflows.common.observability import wrap_workflow_node
 
 logger = structlog.get_logger(__name__)
 
@@ -72,7 +73,7 @@ class DigestTimingReport(BaseModel):
     status: str = "completed"
     elapsed_ms: int = 0
     unified: dict[str, Any] = Field(default_factory=dict)
-    docs: dict[str, Any] = Field(default_factory=dict)
+    docgen: dict[str, Any] = Field(default_factory=dict)
     kg: dict[str, Any] = Field(default_factory=dict)
     curriculum: dict[str, Any] = Field(default_factory=dict)
     llm: DigestTokenSummary = Field(default_factory=DigestTokenSummary)
@@ -166,21 +167,35 @@ def step_slow_items(step_map: Mapping[str, int], *, top_k: int | None = None) ->
     )
 
 
-def build_docs_lane_summary(
+def build_docgen_lane_summary(
     state: Mapping[str, Any],
     *,
     token_summary: DigestTokenSummary,
     status: str | None = None,
     error_message: str | None = None,
 ) -> dict[str, Any]:
-    """Create a docs lane summary payload."""
+    """Create a DocGen lane summary payload."""
 
     resolved_status = _resolve_status(state, status=status, error_message=error_message)
     resolved_error = _resolve_error_message(state, error_message=error_message)
-    chapter_count = max(
-        len(state.get("chapter_metadatas", [])),
-        len(state.get("chapter_reviews", [])),
-        len(state.get("chapter_drafts", [])),
+    chapter_materials = list(state.get("chapter_materials", []))
+    chapter_drafts = list(state.get("chapter_drafts", []))
+    chapter_metadatas = list(state.get("chapter_metadatas", []))
+    document_context = dict(state.get("document_context", {}) or {})
+    chapter_count = max(len(chapter_metadatas), len(chapter_drafts), len(chapter_materials))
+    research_items = build_slow_items(
+        state.get("slowest_research_chapters")
+        or [
+            {
+                "item_id": f"chapter_{material.get('chapter_index', index)}",
+                "title": str(material.get("title", "")),
+                "elapsed_ms": int(material.get("research_ms", 0)),
+                "source_count": len(material.get("sources", [])),
+                "local_hits": int(material.get("local_hits", 0)),
+                "web_hits": int(material.get("web_hits", 0)),
+            }
+            for index, material in enumerate(chapter_materials, start=1)
+        ]
     )
     draft_items = build_slow_items(
         state.get("slowest_draft_chapters")
@@ -189,46 +204,109 @@ def build_docs_lane_summary(
                 "item_id": f"chapter_{draft.get('chapter_index', index)}",
                 "title": str(draft.get("title", "")),
                 "elapsed_ms": int(draft.get("draft_ms", 0)),
+                "word_count": int(draft.get("word_count", 0)),
+                "placeholder_count": int(draft.get("placeholder_count", 0)),
             }
-            for index, draft in enumerate(state.get("chapter_drafts", []), start=1)
+            for index, draft in enumerate(chapter_drafts, start=1)
         ]
     )
-    review_items = build_slow_items(
-        state.get("slowest_review_chapters")
-        or [
-            {
-                "item_id": f"chapter_{review.get('chapter_index', index)}",
-                "title": str(review.get("title", "")),
-                "elapsed_ms": int(review.get("review_ms", 0)),
-            }
-            for index, review in enumerate(state.get("chapter_reviews", []), start=1)
-        ]
+    final_markdown = str(state.get("enriched_markdown") or state.get("merged_markdown") or "")
+    source_urls = [
+        str(url)
+        for url in [*state.get("research_sources", []), *[source for chapter in chapter_metadatas for source in chapter.get("sources", [])]]
+        if str(url).strip()
+    ]
+    total_sources = len(dict.fromkeys(source_urls))
+    placeholder_count = sum(int(chapter.get("placeholder_count", 0)) for chapter in chapter_drafts)
+    local_hit_count = sum(int(chapter.get("local_hits", 0) or 0) for chapter in chapter_materials)
+    web_hit_count = sum(int(chapter.get("web_hits", 0) or 0) for chapter in chapter_materials)
+    fallback_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False)))
+    curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
+    trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in chapter_materials)
+    retrieval_profiles = sorted(
+        {
+            str(chapter.get("retrieval_profile") or "").strip()
+            for chapter in chapter_materials
+            if str(chapter.get("retrieval_profile") or "").strip()
+        }
+    )
+    if not retrieval_profiles and str(state.get("retrieval_profile") or "").strip():
+        retrieval_profiles = [str(state.get("retrieval_profile") or "").strip()]
+    teaching_actions = sorted(
+        {
+            str(item.get("teaching_action") or "").strip()
+            for item in [*chapter_materials, *chapter_drafts]
+            if str(item.get("teaching_action") or "").strip()
+        }
+    )
+    if not teaching_actions and str(state.get("teaching_action") or "").strip():
+        teaching_actions = [str(state.get("teaching_action") or "").strip()]
+    planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
+    executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
+    scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
+    research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
+    purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
+    retriever_names = sorted(
+        {
+            str(retriever_name)
+            for chapter in chapter_materials
+            for retriever_name in dict(chapter.get("retriever_stats", {}) or {}).keys()
+            if str(retriever_name).strip()
+        }
     )
     return {
         "status": resolved_status,
         "error_message": resolved_error,
+        "planner_session_id": str(state.get("planner_session_id", "") or ""),
+        "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
+        "digest_mode": str(state.get("digest_mode", "") or ""),
+        "course_type": str(
+            state.get("course_type", "")
+            or document_context.get("course_type", "")
+            or state.get("digest_mode", "")
+            or ""
+        ),
+        "source_strategy": str(document_context.get("source_strategy", "") or ""),
+        "retrieval_profiles": retrieval_profiles,
+        "teaching_actions": teaching_actions,
         "chapter_count": chapter_count,
         "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
         "load_ms": int(state.get("load_ms", 0)),
-        "cleanse_ms": int(state.get("cleanse_ms", 0)),
-        "outline_ms": int(state.get("outline_ms", 0)),
+        "planner_ms": int(state.get("planner_ms", 0)),
+        "research_ms": int(state.get("research_ms", 0)),
         "draft_ms": int(state.get("draft_ms", 0)),
-        "review_ms": int(state.get("review_ms", 0)),
-        "metadata_ms": int(state.get("metadata_ms", 0)),
+        "enrich_ms": int(state.get("enrich_ms", 0)),
+        "examine_ms": int(state.get("examine_ms", 0)),
         "finalize_ms": int(state.get("finalize_ms", 0)),
+        "research_avg_ms": round(int(state.get("research_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
         "draft_avg_ms": round(int(state.get("draft_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
-        "review_avg_ms": round(int(state.get("review_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
         "llm_calls_total": int(state.get("llm_calls_total", 0)),
         "llm_calls_skipped": int(state.get("llm_calls_skipped", 0)),
-        "draft_available": bool(str(state.get("merged_markdown", "")).strip()),
-        "staged_chapter_count": len(state.get("chapter_metadatas", [])),
+        "draft_available": bool(final_markdown.strip()),
+        "staged_chapter_count": len(chapter_metadatas),
         "published_doc_count": len(state.get("doc_ids", [])),
-        "docs_total_tokens": token_summary.total_tokens,
-        "docs_tokens_by_task_type": token_summary.tokens_by_task_type,
-        "docs_tokens_by_model": token_summary.tokens_by_model,
+        "research_source_count": total_sources,
+        "exam_question_count": len(state.get("exam_questions", [])),
+        "local_hit_count": local_hit_count,
+        "web_hit_count": web_hit_count,
+        "fallback_chapter_count": fallback_chapter_count,
+        "curated_source_count": curated_source_count,
+        "trusted_source_count": trusted_source_count,
+        "retriever_names": retriever_names,
+        "retriever_count": len(retriever_names),
+        "planned_query_count": planned_query_count,
+        "executed_query_count": executed_query_count,
+        "scraped_url_count": scraped_url_count,
+        "research_document_count": research_document_count,
+        "purify_chapter_count": purify_chapter_count,
+        "placeholder_count": placeholder_count,
+        "final_word_count": count_words(final_markdown),
+        "docgen_total_tokens": token_summary.total_tokens,
+        "docgen_tokens_by_task_type": token_summary.tokens_by_task_type,
+        "docgen_tokens_by_model": token_summary.tokens_by_model,
         **_lane_llm_rollup(token_summary),
+        "slowest_research_chapters_top_k": [item.model_dump() for item in research_items],
         "slowest_draft_chapters_top_k": [item.model_dump() for item in draft_items],
-        "slowest_review_chapters_top_k": [item.model_dump() for item in review_items],
     }
 
 
@@ -337,20 +415,17 @@ def build_unified_timing_report(
     unified_steps = {
         "prepare_shared": int(final_state.get("shared_prepare_ms", 0)),
         "parallel_lanes": int(final_state.get("parallel_lanes_ms", 0)),
-        "consistency_gate": int(final_state.get("consistency_ms", 0)),
-        "bounded_repair": int(final_state.get("repair_ms", 0)),
         "derive_curriculum": int(final_state.get("curriculum_ms", 0)),
-        "rebuild_docs": int(final_state.get("rebuild_docs_ms", 0)),
         "publish_outputs": int(final_state.get("publish_ms", 0)),
         "cleanup": int(final_state.get("cleanup_ms", 0)),
     }
     build_session_id = str(final_state.get("build_session_id", "")) or None
-    docs_token_summary = build_token_summary(build_session_id=build_session_id, lane="docs")
+    docgen_token_summary = build_token_summary(build_session_id=build_session_id, lane="docgen")
     kg_token_summary = build_token_summary(build_session_id=build_session_id, lane="kg")
     curriculum_token_summary = build_token_summary(build_session_id=build_session_id, lane="curriculum")
-    docs_summary = build_docs_lane_summary(
+    docgen_summary = build_docgen_lane_summary(
         doc_state,
-        token_summary=docs_token_summary,
+        token_summary=docgen_token_summary,
         status=_default_lane_status(doc_state, final_status=status),
     )
     kg_summary = build_kg_lane_summary(
@@ -366,16 +441,16 @@ def build_unified_timing_report(
     top_slowest_steps = build_slow_items(
         [
             *_lane_step_items("unified", unified_steps),
-            *_lane_step_items(
-                "docs",
+                        *_lane_step_items(
+                "docgen",
                 {
-                    "load": docs_summary.get("load_ms", 0),
-                    "cleanse": docs_summary.get("cleanse_ms", 0),
-                    "outline": docs_summary.get("outline_ms", 0),
-                    "draft": docs_summary.get("draft_ms", 0),
-                    "review": docs_summary.get("review_ms", 0),
-                    "metadata": docs_summary.get("metadata_ms", 0),
-                    "finalize": docs_summary.get("finalize_ms", 0),
+                    "load": docgen_summary.get("load_ms", 0),
+                    "planner": docgen_summary.get("planner_ms", 0),
+                    "research": docgen_summary.get("research_ms", 0),
+                    "draft": docgen_summary.get("draft_ms", 0),
+                    "enrich": docgen_summary.get("enrich_ms", 0),
+                    "examine": docgen_summary.get("examine_ms", 0),
+                    "finalize": docgen_summary.get("finalize_ms", 0),
                 },
             ),
             *_lane_step_items(
@@ -411,14 +486,11 @@ def build_unified_timing_report(
             "parallel_lanes_ms": unified_steps["parallel_lanes"],
             "doc_lane_ms": int(final_state.get("doc_lane_ms", 0)),
             "kg_lane_ms": int(final_state.get("kg_lane_ms", 0)),
-            "consistency_ms": unified_steps["consistency_gate"],
-            "repair_ms": unified_steps["bounded_repair"],
             "curriculum_ms": unified_steps["derive_curriculum"],
-            "rebuild_docs_ms": unified_steps["rebuild_docs"],
             "publish_ms": unified_steps["publish_outputs"],
             "cleanup_ms": unified_steps["cleanup"],
             "lane_total_tokens": {
-                "docs": docs_token_summary.total_tokens,
+                "docgen": docgen_token_summary.total_tokens,
                 "kg": kg_token_summary.total_tokens,
                 "curriculum": curriculum_token_summary.total_tokens,
                 "unified_repair": int(llm_summary.tokens_by_lane.get("unified_repair", 0)),
@@ -438,7 +510,7 @@ def build_unified_timing_report(
                 "heavy_task_total_tokens": llm_summary.heavy_task_total_tokens,
             },
         },
-        docs=docs_summary,
+        docgen=docgen_summary,
         kg=kg_summary,
         curriculum=curriculum_summary,
         llm=llm_summary,
@@ -454,44 +526,15 @@ def wrap_digest_node(
     node_name: str,
     timing_field: str | None = None,
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Wrap a workflow node with trace context and generic timing logs."""
+    """Wrap a digest node with the shared lightweight LangSmith wrapper."""
 
-    async def wrapped(state: Any) -> dict[str, Any]:
-        subject = str(state.get("subject", ""))
-        build_session_id = str(state.get("build_session_id", ""))
-        node_logger = logger.bind(
-            workflow=workflow_name,
-            lane=lane,
-            node=node_name,
-            subject=subject,
-            build_session_id=build_session_id,
-        )
-        started_at = perf_counter()
-        try:
-            with llm_trace_scope(
-                subject=subject,
-                build_session_id=build_session_id,
-                workflow=workflow_name,
-                lane=lane,
-                node=node_name,
-            ):
-                result = await handler(state)
-        except Exception:
-            elapsed_ms = int((perf_counter() - started_at) * 1000)
-            node_logger.exception("digest_node_failed", elapsed_ms=elapsed_ms)
-            raise
-
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        if timing_field:
-            result = {**result, timing_field: elapsed_ms}
-        node_logger.info(
-            "digest_node_completed",
-            elapsed_ms=elapsed_ms,
-            status="failed" if result.get("error") else "ok",
-        )
-        return result
-
-    return wrapped
+    return wrap_workflow_node(
+        handler,
+        workflow_name=workflow_name,
+        lane=lane,
+        node_name=node_name,
+        timing_field=timing_field,
+    )
 
 
 def _top_k(value: int | None = None) -> int:

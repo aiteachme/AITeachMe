@@ -15,7 +15,7 @@ from app.shared.infra.database import (
     vector_table_exists,
 )
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
-from app.shared.infra.subject_embeddings import (
+from app.shared.infra.subject_settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
     build_disabled_binding,

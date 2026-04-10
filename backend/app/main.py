@@ -45,9 +45,11 @@ def _log_infra_diagnostics(settings) -> None:
 
     import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite, is_vec_ready
+    from app.teaching.runtime_config import get_teaching_runtime_config_path
 
     engine = get_engine()
     dialect = engine.dialect.name
+    project_config_path = get_teaching_runtime_config_path()
 
     lines = [
         "",
@@ -60,6 +62,7 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {settings.resolved_app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
+        f"    PROJECT_CONFIG_PATH    : {project_config_path}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         "",
         "  [DATABASE]",
@@ -81,6 +84,15 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    S3 Bucket              : {settings.s3_bucket or '!! NOT_SET !!'}")
         lines.append(f"    S3 Endpoint            : {settings.s3_endpoint or '!! NOT_SET !!'}")
         lines.append(f"    S3 CDN                 : {settings.s3_public_base_url or 'none'}")
+        lines.append(f"    S3 Addressing Style    : {settings.resolved_s3_addressing_style}")
+        lines.append(f"    S3 Credential Mode     : {settings.resolved_s3_credential_mode}")
+        lines.append(
+            f"    S3 Session Token       : {'SET' if settings.s3_session_token or settings.s3_uses_dogecloud_tmp_token else 'not used'}"
+        )
+        if settings.s3_uses_dogecloud_tmp_token:
+            lines.append(
+                f"    DogeCloud Space Name   : {settings.resolved_dogecloud_space_name or '!! NOT_SET !!'}"
+            )
         # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
             from app.shared.infra.storage import get_artifact_store, run_store_sync
@@ -106,6 +118,23 @@ def _log_infra_diagnostics(settings) -> None:
     else:
         from app.shared.infra.runtime_paths import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
+
+    lines.append("")
+    lines.append("  [TEACHING]")
+    lines.append(f"    Primary Model          : {settings.llm_model}")
+    lines.append(f"    Light Model            : {settings.llm_model_light or settings.llm_model}")
+    lines.append(f"    Extract Model          : {settings.llm_model_extract or settings.llm_model}")
+    lines.append(f"    Embedding Model        : {settings.embedding_model}")
+    lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
+    lines.append(
+        f"    MinerU Server Token    : {'SET' if settings.mineru_api_token else 'not set'}"
+    )
+    lines.append(
+        f"    Mermaid Model          : {settings.mermaid_generation_model or 'disabled'}"
+    )
+    lines.append(
+        f"    Image Model            : {settings.image_generation_model or 'disabled'}"
+    )
 
     lines.append("")
     lines.append("  [AUTH]")
@@ -162,10 +191,15 @@ def _register_middlewares(app: FastAPI) -> None:
         "https://www.aiteachme.cn",
         "https://aiteachme.pages.dev",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ]
     configured = settings.cors_allowed_origins
     origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
+    logger.info("cors_configured", allow_origins=origins)
 
     app.add_middleware(
         CORSMiddleware,

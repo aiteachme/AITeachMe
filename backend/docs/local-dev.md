@@ -30,16 +30,25 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-可选配置：
+创建 repo-root `config.yaml`：
 
-- `LLM_BASE_URL`
-- `LLM_MODEL`
-- `EMBEDDING_MODEL`
-- `DATA_DIR`
-- `MAX_UPLOAD_SIZE_MB`
-- `RAG_TOP_K`
-- `RAG_SIMILARITY_THRESHOLD`
-- `CHAT_HISTORY_TURNS`
+```yaml
+models:
+  primary: qwen-plus-latest
+  embedding: text-embedding-v3
+
+planner:
+  default_digest_mode: systematic
+
+docgen:
+  max_parallel_chapters: 20
+```
+
+约定：
+
+- `.env` 放密钥、部署和外部接入参数
+- `config.yaml` 放模型名、planner/docgen/search 等运行默认值
+- 页面 UI 只做用户级或当前请求级覆盖
 
 ## 启动
 

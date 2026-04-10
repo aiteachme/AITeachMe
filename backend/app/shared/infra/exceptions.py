@@ -258,6 +258,18 @@ class NoReadyFilesForDocGenError(AITeachMeError):
         super().__init__(detail=f"学科 `{subject}` 暂无可用的已解析文件，无法开始知识构建。")
 
 
+class ConfirmedBuildPlanRequiredError(AITeachMeError):
+    error_code = "CONFIRMED_BUILD_PLAN_REQUIRED"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, build_type: str) -> None:
+        build_label = {
+            "docs": "知识文档构建",
+            "all": "统一知识构建",
+        }.get(build_type, "当前构建")
+        super().__init__(detail=f"{build_label}必须基于已确认的构建方案执行，请先完成 planner 确认。")
+
+
 class SubjectBuildLockConflictError(AITeachMeError):
     error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT
@@ -297,3 +309,26 @@ class EvidenceNotFoundError(AITeachMeError):
     def __init__(self, evidence_id: int) -> None:
         super().__init__(detail=f"证据 #{evidence_id} 不存在。")
 
+
+class BuildPlannerSessionNotFoundError(AITeachMeError):
+    error_code = "BUILD_PLANNER_SESSION_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(detail=f"构建方案会话 `{session_id}` 不存在。")
+
+
+class ConfirmedBuildPlanNotFoundError(AITeachMeError):
+    error_code = "CONFIRMED_BUILD_PLAN_NOT_FOUND"
+    status_code = HTTPStatus.NOT_FOUND
+
+    def __init__(self, plan_id: str) -> None:
+        super().__init__(detail=f"已确认构建方案 `{plan_id}` 不存在。")
+
+
+class BuildPlannerEmptyPlanError(AITeachMeError):
+    error_code = "BUILD_PLANNER_EMPTY_PLAN"
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(detail=f"构建方案会话 `{session_id}` 当前没有可确认的方案草稿。")

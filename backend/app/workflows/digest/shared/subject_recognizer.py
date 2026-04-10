@@ -90,13 +90,11 @@ def recognize_subject_profile(
 
     # 1. Load subject metadata from DB
     subject_name = ""
-    subject_description = ""
     try:
         with managed_session() as session:
             subject_row = session.query(Subject).filter(Subject.slug == subject_slug).first()
             if subject_row:
                 subject_name = subject_row.name or ""
-                subject_description = subject_row.description or ""
     except Exception:
         logger.warning("subject_profile_db_lookup_failed", subject=subject_slug)
 
@@ -107,7 +105,6 @@ def recognize_subject_profile(
     discipline, sub_discipline = _detect_discipline(
         content_sample=content_sample,
         subject_name=subject_name,
-        subject_description=subject_description,
         fast_hints=fast_hints,
     )
 
@@ -136,7 +133,6 @@ def recognize_subject_profile(
     profile = SubjectProfile(
         subject_slug=subject_slug,
         subject_name=subject_name,
-        subject_description=subject_description,
         discipline=discipline,
         sub_discipline=sub_discipline,
         content_type=content_type,
@@ -179,13 +175,12 @@ def _detect_discipline(
     *,
     content_sample: str,
     subject_name: str,
-    subject_description: str,
     fast_hints: FastTopicHints,
 ) -> tuple[str, str]:
     """Detect primary discipline and sub-discipline."""
 
     # Combine all text signals
-    combined = f"{subject_name} {subject_description} {content_sample}".lower()
+    combined = f"{subject_name} {content_sample}".lower()
     for term, _ in fast_hints.high_freq_terms[:20]:
         combined += f" {term.lower()}"
 
