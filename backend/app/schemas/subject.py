@@ -71,3 +71,12 @@ class SubjectDeletePreviewData(BaseModel):
         description="用户可读的删除影响列表。",
     )
     detail_counts: dict[str, int] = Field(default_factory=dict, description="内部明细统计。")
+
+
+class SubjectNameSuggestionRequest(BaseModel):
+    prompt: str | None = Field(default=None, description="用户输入的学习目标。")
+    filenames: list[str] | None = Field(default=None, description="上传的文件名列表。")
+
+
+class SubjectNameSuggestionResponse(BaseModel):
+    name: str = Field(description="AI 生成的学科名称。")
