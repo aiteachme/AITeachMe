@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 
@@ -7,10 +7,11 @@ import pytest
 from app.shared.infra import llm as llm_module
 from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support import observability as llm_observability_module
-from app.shared.infra.model_router import TaskType
-from app.shared.infra.skills.base import BaseSkill, SkillContext, SkillResult
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trace_context
 from app.shared.infra import tracing as tracing_module
+from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
 from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
 
 
@@ -117,14 +118,24 @@ def test_langsmith_value_redacts_data_urls() -> None:
 
 
 def test_langsmith_capture_defaults_to_enabled_in_local_mode() -> None:
-    settings = Settings(_env_file=None, app_mode="local")
+    settings = Settings(
+        _env_file=None,
+        app_mode="local",
+        langsmith_capture_inputs=None,
+        langsmith_capture_outputs=None,
+    )
 
     assert settings.resolved_langsmith_capture_inputs is True
     assert settings.resolved_langsmith_capture_outputs is True
 
 
 def test_langsmith_capture_defaults_to_disabled_in_cloud_mode() -> None:
-    settings = Settings(_env_file=None, app_mode="cloud")
+    settings = Settings(
+        _env_file=None,
+        app_mode="cloud",
+        langsmith_capture_inputs=None,
+        langsmith_capture_outputs=None,
+    )
 
     assert settings.resolved_langsmith_capture_inputs is False
     assert settings.resolved_langsmith_capture_outputs is False
@@ -173,12 +184,12 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     assert tracing_module.langsmith_tracing_enabled() is True
 
 
-def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
-    class DummySkill(BaseSkill):
-        async def execute(self, **kwargs) -> SkillResult:
+def test_base_runtime_run_sets_nested_llm_trace_scope() -> None:
+    class DummyTracedExecution(BaseTracedExecution):
+        async def execute(self, **kwargs) -> TracedExecutionResult:
             del kwargs
             trace = get_llm_trace_context()
-            return SkillResult(
+            return TracedExecutionResult(
                 metadata={
                     "trace_workflow": trace.workflow,
                     "trace_lane": trace.lane,
@@ -186,7 +197,7 @@ def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
                 }
             )
 
-    context = SkillContext(
+    context = TracedExecutionContext(
         subject="demo",
         build_session_id="build-1",
         workflow_context=WorkflowContext(
@@ -197,8 +208,45 @@ def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
         digest_mode="sprint",
         chapter_index=2,
     )
-    result = asyncio.run(DummySkill(context).run())
+    result = asyncio.run(DummyTracedExecution(context).run())
 
     assert result.metadata["trace_workflow"] == "digest.docgen.test"
     assert result.metadata["trace_lane"] == "docgen"
-    assert result.metadata["trace_node"] == "skill.DummySkill"
+    assert result.metadata["trace_node"] == "traced_execution.DummyTracedExecution"
+
+
+def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_llm(*_args, **_kwargs) -> str:
+        trace = get_llm_trace_context()
+        captured["workflow"] = trace.workflow
+        captured["lane"] = trace.lane
+        captured["node"] = trace.node
+        return "# 偏导数\n\n正文"
+
+    context = TracedExecutionContext(
+        subject="demo",
+        build_session_id="build-2",
+        workflow_context=WorkflowContext(
+            workflow_name="digest.docgen.test",
+            subject=LANGGRAPH_DEV_SUBJECT,
+            metadata={"lane": "docgen"},
+        ),
+        chapter_index=1,
+        llm_caller=fake_llm,
+    )
+    asyncio.run(
+        DocGenWriterRuntime(context).run(
+            chapter_plan={"chapter_index": 1, "title": "偏导数"},
+            dense_context="偏导数是多元函数沿坐标方向的变化率。",
+            tone="encouraging",
+            digest_mode="systematic",
+        )
+    )
+
+    assert captured["workflow"] == "digest.docgen.test"
+    assert captured["lane"] == "docgen"
+    assert captured["node"] == "workflow_runtime.docgen.writer"
+
+

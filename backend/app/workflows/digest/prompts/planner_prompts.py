@@ -88,8 +88,20 @@ def build_planner_prompt(
     message_history: list[str],
     latest_plan: dict | None,
     concept_briefing: str = "",
+    skillpack_guidance: str = "",
+    recommended_tool_tags: list[str] | None = None,
 ) -> str:
     compact_goal = user_goal.strip() or f"围绕 {subject} 生成知识文档"
+    skillpack_section = (
+        f"策略包约束：\n{skillpack_guidance.strip()}\n\n"
+        if skillpack_guidance.strip()
+        else ""
+    )
+    toolset_section = (
+        f"推荐工具标签：{', '.join(recommended_tool_tags or [])}\n\n"
+        if recommended_tool_tags
+        else ""
+    )
     return (
         "你是 AITeachMe 的构建方案规划助手。\n"
         "你的任务不是写文档正文，而是像 Deep Research 的前置规划阶段一样，"
@@ -110,6 +122,8 @@ def build_planner_prompt(
         f"{_compact_latest_plan(latest_plan)}\n\n"
         "快速概念锚点：\n"
         f"{concept_briefing.strip() or '暂无额外概念检索结果，可先依据资料主题与用户目标规划。'}\n\n"
+        f"{skillpack_section}"
+        f"{toolset_section}"
         f"{_mode_contract(digest_mode)}\n\n"
         "输出目标：\n"
         "1. 研究任务必须是中文自然语言。\n"

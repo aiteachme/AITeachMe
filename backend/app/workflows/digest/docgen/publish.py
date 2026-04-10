@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
-from app.shared.infra.skills.teaching_hooks import build_learning_document_overview
 from app.teaching.documents import resolve_effective_chapter_title
+from app.teaching.documents import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_source_details
 from app.utils.docgen_store import (
@@ -333,3 +333,4 @@ def publish_staged_knowledge_docs(
             created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]
+

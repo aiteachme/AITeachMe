@@ -17,13 +17,16 @@ class ToolRegistry:
 
     def register(self, td: ToolDefinition) -> None:
         self._tools[td.name] = td
-        logger.info("tool_registered", name=td.name)
+        logger.info("tool_registered", name=td.name, tags=td.tags, source=td.source)
 
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
     def to_openai_format(self) -> list[dict]:
         return [t.to_openai_format() for t in self._tools.values()]
+
+    def list_all(self) -> list[ToolDefinition]:
+        return list(self._tools.values())
 
     async def execute(self, name: str, **kwargs: Any) -> Any:
         td = self._tools.get(name)

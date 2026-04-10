@@ -15,6 +15,7 @@ from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_e
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
 from app.workflows.digest.docgen.publish import build_merged_markdown, publish_staged_knowledge_docs
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
+from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 
 
@@ -76,11 +77,12 @@ def test_load_context_allows_search_only_docgen() -> None:
                 "digest_mode": "systematic",
                 "tone": "encouraging",
                 "confirmed_plan": {
-                    "digest_mode": "systematic",
-                    "tone": "encouraging",
-                    "user_goal": "系统整理偏导数与梯度",
-                    "plan_summary": "按章节联网检索并整理成系统讲义",
-                    "chapter_plan": [
+                "digest_mode": "systematic",
+                "tone": "encouraging",
+                "user_goal": "系统整理偏导数与梯度",
+                "selected_skillpacks": ["find_resources", "explain_with_analogy"],
+                "plan_summary": "按章节联网检索并整理成系统讲义",
+                "chapter_plan": [
                         {
                             "chapter_index": 1,
                             "title": "偏导数的直觉与定义",
@@ -100,8 +102,48 @@ def test_load_context_allows_search_only_docgen() -> None:
     assert result["document_context"]["source_strategy"] == "web_first"
     assert result["document_context"]["course_type"] == "systematic"
     assert result["document_context"]["retrieval_profile"] == "docgen_systematic"
+    assert result["selected_skillpacks"] == ["find_resources", "explain_with_analogy"]
+    assert result["document_context"]["selected_skillpacks"] == ["find_resources", "explain_with_analogy"]
+    assert result["confirmed_plan"]["course_type"] == "systematic"
+    assert result["confirmed_plan"]["retrieval_profile"] == "docgen_systematic"
+    assert result["confirmed_plan"]["selected_skillpacks"] == ["find_resources", "explain_with_analogy"]
     assert result["chapter_assignments"][0]["title"] == "偏导数的直觉与定义"
     assert result["raw_chunks"] == []
+
+
+def test_confirmed_plan_contract_applies_assignment_defaults() -> None:
+    contract = parse_digest_confirmed_plan_contract(
+        {
+            "subject": "demo",
+            "digest_mode": "systematic",
+            "chapter_plan": [
+                {
+                    "chapter_index": 1,
+                    "search_queries": ["偏导数 定义", "偏导数 定义", ""],
+                }
+            ],
+            "selected_file_ids": ["1", "1", "invalid", 2],
+            "selected_skillpacks": ["find_resources", "find_resources", "", "explain_with_analogy"],
+        }
+    )
+
+    assignments = contract.to_chapter_assignments(default_source_file_ids=[7, 8])
+
+    assert contract.selected_file_ids == [1, 2]
+    assert contract.selected_skillpacks == ["find_resources", "explain_with_analogy"]
+    assert assignments == [
+        {
+            "chapter_index": 1,
+            "title": "第 1 章",
+            "resolved_title": "",
+            "objective": "",
+            "required_elements": [],
+            "search_queries": ["偏导数 定义"],
+            "writing_instructions": "",
+            "media_hints": {"images": [], "mermaid": [], "interactive": []},
+            "source_file_ids": [7, 8],
+        }
+    ]
 
 
 def test_docgen_lane_summary_counts_chinese_markdown() -> None:
@@ -125,6 +167,9 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
                     "document_count": 2,
                     "purify_used": True,
                     "retrieval_profile": "docgen_systematic",
+                    "applied_retrieval_profile": "docgen_systematic",
+                    "configured_retrievers": ["local_rag", "tavily", "arxiv"],
+                    "active_retrievers": ["local_rag", "tavily"],
                     "teaching_action": "chapter_research",
                     "research_ms": 120,
                 }
@@ -162,7 +207,10 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
     assert summary["course_type"] == "systematic"
     assert summary["source_strategy"] == "local_first"
     assert summary["retrieval_profiles"] == ["docgen_systematic"]
+    assert summary["applied_retrieval_profiles"] == ["docgen_systematic"]
     assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
+    assert summary["configured_retriever_names"] == ["arxiv", "local_rag", "tavily"]
+    assert summary["active_retriever_names"] == ["local_rag", "tavily"]
     assert summary["final_word_count"] == count_words(final_markdown)
 
 

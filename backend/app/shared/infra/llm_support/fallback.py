@@ -8,7 +8,7 @@ from typing import Any, Literal, TypeVar
 import structlog
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import get_llm_trace_context, langsmith_tracing_scope
 
 from .structured_calls import acompletion_structured

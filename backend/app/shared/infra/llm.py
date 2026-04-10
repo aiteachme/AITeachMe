@@ -1,4 +1,7 @@
-﻿"""Public LiteLLM helpers re-exported from the internal support package."""
+"""Compatibility shim for the old flat LLM helper import path.
+
+New code should import from `app.shared.infra.llm_support`.
+"""
 
 from app.shared.infra.llm_support import (
     _langsmith_inputs,

@@ -6,6 +6,14 @@ tags:
   - 教学
   - 诊断
   - 错题
+prompt_scope:
+  - examine
+  - interact
+recommended_tool_tags:
+  - teaching
+  - practice
+defaults:
+  days: 7
 parameters:
   subject:
     type: string

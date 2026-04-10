@@ -1,0 +1,3 @@
+name: broken_pack
+entrypoint: handler.py:register_toolpack
+enabled: true

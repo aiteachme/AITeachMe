@@ -1,0 +1,4 @@
+name: disabled_pack
+description: disabled
+entrypoint: handler.py:register_toolpack
+enabled: false

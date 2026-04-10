@@ -1,112 +1,147 @@
-## 附录 A：关键数据结构定义
+﻿## 附录 A：目标数据结构
 
-### A.1 ChapterPlan（edu_planner 输出）
+> 说明：以下结构分为“当前代码已存在的核心字段”和“本轮建议新增的字段”。
+
+### A.1 `BuildContract`（目标）
 
 ```python
-class ChapterPlan(TypedDict):
-    chapter_index: int
-    title: str
-    required_elements: list[str]      # 该章节必须包含的内容类型
-    search_queries: list[str]         # 供 targeted_research 使用的搜索词
-    writing_instructions: str         # 给 pedagogy_craft 的写作指令
-    media_hints: MediaHints           # 富媒体提示
-    estimated_words: int              # 预估字数（系统课用于控制总字数）
-
-class MediaHints(TypedDict):
-    images: list[str]                 # 需要生成的图片描述
-    mermaid: list[str]                # 需要生成的思维导图描述
-    interactive: list[str]            # 需要生成的交互 HTML 描述（V2）
+class BuildContract(BaseModel):
+    course_type: Literal["sprint", "systematic"]
+    learning_goal: str
+    tone: Literal["casual", "professional", "encouraging", "concise"]
+    target_word_count: int
+    formula_depth: Literal["light", "standard", "full_derivation"]
+    example_density: Literal["low", "medium", "high"]
+    retrieval_profile: str
+    media_preferences: dict[str, bool]
+    chapter_contracts: list["ChapterContract"]
 ```
 
-### A.2 ChapterMaterial（targeted_research 输出）
+### A.2 `ChapterContract`（目标）
+
+```python
+class ChapterContract(BaseModel):
+    chapter_index: int
+    title: str
+    objective: str
+    required_elements: list[str]
+    search_queries: list[str]
+    writing_instructions: str
+    media_hints: dict[str, list[str]]
+    source_file_ids: list[int]
+```
+
+### A.3 `ChapterMaterial`（当前已有基础，建议扩展）
 
 ```python
 class ChapterMaterial(TypedDict):
     chapter_index: int
-    dense_context: str                # 高浓度精华文本
-    sources: list[str]                # 引用来源 URL
-    local_rag_hits: int               # 本地 RAG 命中数
-    web_search_hits: int              # 外网搜索命中数
+    dense_context: str
+    sources: list[str]
+    source_details: list[dict[str, object]]
+    local_hits: int
+    web_hits: int
+    query_count: int
+    fallback_used: bool
+    requested_profile: str              # 新增
+    applied_profile: str                # 新增
+    research_rounds: int                # 新增
+    gaps_remaining: list[str]           # 新增
+    confidence_level: str               # 新增
 ```
 
-### A.3 ChapterDraft（pedagogy_craft 输出）
+### A.4 `ChapterDraft`（目标）
 
 ```python
-class ChapterDraft(TypedDict):
+class ChapterDraft(BaseModel):
     chapter_index: int
     title: str
-    markdown_content: str             # 带占位符的 Markdown
-    image_placeholders: list[str]     # [IMAGE: ...] 占位符列表
-    mermaid_placeholders: list[str]   # [MERMAID: ...] 占位符列表
-    word_count: int                   # 实际字数
+    markdown: str
+    word_count: int
+    required_elements_coverage: dict[str, bool]
+    question_hooks: list[str]
+    asset_hints: dict[str, list[str]]
+    quality_flags: list[str]
 ```
 
-### A.4 ScrapedPage（web_scraping 输出）
+### A.5 `AssetPlan`（目标）
 
 ```python
-@dataclass(slots=True)
-class ScrapedPage:
-    url: str
-    content: str
-    success: bool
-    error: str | None = None
-    content_type: str = "html"        # "html" | "pdf"
-    title: str = ""
+class AssetPlan(BaseModel):
+    chapter_index: int
+    mermaid: list[str] = []
+    image: list[str] = []
+    interactive_html: list[str] = []
+    animation: list[str] = []
+    formula_cards: list[str] = []
+    summary_cards: list[str] = []
 ```
 
 ---
 
-## 附录 B：Prompt 模板索引
+## 附录 B：当前关键实现位置
 
-| Prompt 名称 | 用途 | 模型层级 | 所在文件 |
-|:---|:---|:---|:---|
-| `sprint_planner` | 速成课大纲规划 | Strategic | `prompts/sprint_prompts.py` |
-| `systematic_planner` | 系统课大纲规划 | Strategic | `prompts/systematic_prompts.py` |
-| `generate_sub_queries` | 子查询生成 | Strategic | `tools/builtin/query_processing.py` |
-| `purify_material` | 素材提纯 | Fast | `nodes/targeted_research_node.py` |
-| `sprint_writer` | 速成课章节写作 | Smart | `prompts/sprint_prompts.py` |
-| `systematic_writer` | 系统课章节写作 | Smart | `prompts/systematic_prompts.py` |
-| `generate_mermaid` | Mermaid 思维导图生成 | Fast | `skills/mermaid_generator.py` |
-| `plan_image_concepts` | 图片规划 | Fast | `skills/image_generator.py` |
-| `inject_exam_questions` | 趁热打铁出题 | Smart | `nodes/inject_examine_node.py` |
+| 能力 | 当前文件 |
+| --- | --- |
+| course type / retrieval profile helper | `backend/app/workflows/digest/shared/contracts.py` |
+| docgen writer prompt | `backend/app/workflows/digest/prompts/docgen_prompts.py` |
+| research runtime | `backend/app/workflows/digest/docgen/runtime/research.py` |
+| context compression | `backend/app/shared/infra/search/context_compression.py` |
+| source curation | `backend/app/shared/infra/search/source_curation.py` |
+| teaching scaffold | `backend/app/teaching/documents/report_generation.py` |
+| teaching content blocks | `backend/app/teaching/documents/content_blocks.py` |
+| docgen load/research/write nodes | `backend/app/workflows/digest/docgen/nodes/*.py` |
+| LLM fallback / tier | `backend/app/shared/infra/llm_support/fallback.py` |
+| LLM routing | `backend/app/shared/infra/llm_support/routing.py` |
 
 ---
 
-## 附录 C：环境变量完整清单（新增部分）
+## 附录 C：最值得迁移的参考算法
+
+### 来自 `gpt-researcher`
+
+| 参考点 | 借法 |
+| --- | --- |
+| `skills/deep_research.py` | 借“补检索”的思路，不照搬递归实现 |
+| `skills/researcher.py` | 借 query planning 与多 retriever 调度思路 |
+| `context/compression.py` | 借快慢路径压缩思路 |
+| `DetailedReport` | 借子话题展开与章节差异化研究思路 |
+
+### 来自 `DeepTutor`
+
+| 参考点 | 借法 |
+| --- | --- |
+| `agents/research/mode_strategy.py` | 借模式策略表，把 `sprint/systematic` 收敛成可执行参数集 |
+| `agents/research/research_pipeline.py` | 借动态 topic queue 与 progress event 思路 |
+| `agents/guide/guide_manager.py` | 借课程产物的“设计 -> 页面 -> 追问 -> 总结”形态 |
+| `agents/math_animator/pipeline.py` | 借富媒体 sidecar 的分析/设计/生成/重试/总结链 |
+
+---
+
+## 附录 D：建议新增的算法参数
+
+> 这些是建议新增或显式化的配置项，不代表当前仓库已经全部实现。
 
 ```env
-# ══════════════════════════════════════════════
-# 三级模型分层（可选，不配则 fallback 到 LLM_MODEL）
-# ══════════════════════════════════════════════
-STRATEGIC_LLM=qwq-32b
-SMART_LLM=qwen-max
-FAST_LLM=qwen-turbo
-STRATEGIC_TOKEN_LIMIT=4000
-SMART_TOKEN_LIMIT=8000
-FAST_TOKEN_LIMIT=3000
-
-# ══════════════════════════════════════════════
-# 检索器配置
-# ══════════════════════════════════════════════
-WEB_SEARCH_RETRIEVER=bing
-BING_API_KEY=
-BOCHA_API_KEY=
-LOCAL_RAG_PRIORITY=true
-LOCAL_RAG_MIN_RESULTS=3
-
-# ══════════════════════════════════════════════
-# 文生图配置（可选）
-# ══════════════════════════════════════════════
-IMAGE_GENERATION_ENABLED=false
-IMAGE_GENERATION_MODEL=wanxiang-v2
-IMAGE_GENERATION_MAX_IMAGES=3
-
-# ══════════════════════════════════════════════
-# DocGen 模式默认值
-# ══════════════════════════════════════════════
-DOCGEN_DEFAULT_MODE=sprint
-DOCGEN_DEFAULT_TONE=casual
-DOCGEN_SYSTEMATIC_MIN_WORDS=10000
-DOCGEN_SPRINT_MAX_CHAPTERS=4
-DOCGEN_SYSTEMATIC_MAX_CHAPTERS=10
+DOCGEN_SPRINT_TARGET_WORDS=6000
+DOCGEN_SYSTEMATIC_TARGET_WORDS=12000
+DOCGEN_SPRINT_MAX_RESEARCH_ROUNDS=1
+DOCGEN_SYSTEMATIC_MAX_RESEARCH_ROUNDS=2
+DOCGEN_SPRINT_SUB_QUERY_COUNT=3
+DOCGEN_SYSTEMATIC_SUB_QUERY_COUNT=5
+DOCGEN_ENABLE_ASSET_SIDECAR=true
+DOCGEN_ENABLE_INTERACTIVE_HTML=false
+DOCGEN_ENABLE_ANIMATION=false
 ```
+
+---
+
+## 附录 E：最小质量检查表
+
+- `BuildContract` 是否完成校验
+- `retrieval_profile` 是否真正影响 retriever 组合
+- `ChapterMaterial` 是否含 coverage / gaps / confidence
+- `ChapterDraft` 是否含 question hooks / asset hints
+- `sprint / systematic` 是否体现出明显产物差异
+- LangSmith 是否能看到 rounds / assets / fallback
+

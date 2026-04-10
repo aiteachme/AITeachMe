@@ -254,6 +254,44 @@ def build_docgen_lane_summary(
             if str(retriever_name).strip()
         }
     )
+    active_retriever_names = sorted(
+        {
+            str(retriever_name).strip()
+            for chapter in chapter_materials
+            for retriever_name in list(chapter.get("active_retrievers", []) or [])
+            if str(retriever_name).strip()
+        }
+    )
+    configured_retriever_names = sorted(
+        {
+            str(retriever_name).strip()
+            for chapter in chapter_materials
+            for retriever_name in list(chapter.get("configured_retrievers", []) or [])
+            if str(retriever_name).strip()
+        }
+    )
+    applied_retrieval_profiles = sorted(
+        {
+            str(chapter.get("applied_retrieval_profile") or "").strip()
+            for chapter in chapter_materials
+            if str(chapter.get("applied_retrieval_profile") or "").strip()
+        }
+    )
+    selected_skillpacks = sorted(
+        {
+            str(item).strip()
+            for item in (
+                list(state.get("selected_skillpacks", []) or [])
+                + list(document_context.get("selected_skillpacks", []) or [])
+                + [
+                    skill
+                    for chapter in [*chapter_materials, *chapter_drafts]
+                    for skill in list(chapter.get("selected_skillpacks", []) or [])
+                ]
+            )
+            if str(item).strip()
+        }
+    )
     return {
         "status": resolved_status,
         "error_message": resolved_error,
@@ -267,6 +305,7 @@ def build_docgen_lane_summary(
             or ""
         ),
         "source_strategy": str(document_context.get("source_strategy", "") or ""),
+        "selected_skillpacks": selected_skillpacks,
         "retrieval_profiles": retrieval_profiles,
         "teaching_actions": teaching_actions,
         "chapter_count": chapter_count,
@@ -294,6 +333,11 @@ def build_docgen_lane_summary(
         "trusted_source_count": trusted_source_count,
         "retriever_names": retriever_names,
         "retriever_count": len(retriever_names),
+        "active_retriever_names": active_retriever_names,
+        "active_retriever_count": len(active_retriever_names),
+        "configured_retriever_names": configured_retriever_names,
+        "configured_retriever_count": len(configured_retriever_names),
+        "applied_retrieval_profiles": applied_retrieval_profiles,
         "planned_query_count": planned_query_count,
         "executed_query_count": executed_query_count,
         "scraped_url_count": scraped_url_count,

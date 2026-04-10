@@ -213,7 +213,7 @@ class MCPManager:
 
             registry = get_tool_registry()
             for tool in server.tools:
-                async def _make_handler(tn=tool.name):
+                def _make_handler(tn=tool.name):
                     async def handler(**kwargs):
                         return await self.call_tool(tn, **kwargs)
                     return handler
@@ -222,7 +222,7 @@ class MCPManager:
                     name=f"mcp_{tool.name}",
                     description=f"[MCP:{server.name}] {tool.description}",
                     parameters=tool.parameters,
-                    handler=None,  # MCP 工具通过 call_tool 调用
+                    handler=_make_handler(),
                     is_async=True,
                 )
                 registry.register(td)

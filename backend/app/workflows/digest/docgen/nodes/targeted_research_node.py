@@ -1,17 +1,18 @@
-"""Targeted research node for the DocGen lane."""
+﻿"""Targeted research node for the DocGen lane."""
 
 from __future__ import annotations
 
 from copy import deepcopy
-from urllib.parse import urlparse
 from time import perf_counter
+from urllib.parse import urlparse
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.skills import ResearchConductor, SkillContext
+from app.shared.infra.traced_execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.docgen.runtime import DocGenResearchRuntime as ResearchConductor
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     publish_docgen_progress,
@@ -86,7 +87,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
             },
         )
 
-        skill_context = SkillContext(
+        traced_context = TracedExecutionContext(
             subject=state["subject"],
             build_session_id=state.get("build_session_id", ""),
             workflow_context=context,
@@ -98,8 +99,8 @@ def build_targeted_research_node(*, context: WorkflowContext):
             teaching_action=str(state.get("teaching_action") or "chapter_research"),
             chapter_index=chapter_index,
         )
-        researcher_cls = resolve_docgen_dependency("ResearchConductor", ResearchConductor)
-        researcher = researcher_cls(skill_context)
+        researcher_cls = resolve_docgen_dependency("ResearchConductor", ResearchConductor, owner_module=__name__)
+        researcher = researcher_cls(traced_context)
         shared_inputs = state.get("shared_inputs")
         section_packets = list(getattr(shared_inputs, "section_packets", []) or [])
         queries = [
@@ -117,6 +118,9 @@ def build_targeted_research_node(*, context: WorkflowContext):
             objective=str(assignment.get("objective") or ""),
             required_elements=list(assignment.get("required_elements") or []),
             digest_mode=state.get("digest_mode") or "",
+            retrieval_profile=traced_context.retrieval_profile,
+            selected_skillpacks=list(state.get("selected_skillpacks") or []),
+            user_goal=str((state.get("document_context") or {}).get("user_goal") or ""),
         )
         dense_context = result.content.strip()
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -125,9 +129,9 @@ def build_targeted_research_node(*, context: WorkflowContext):
         domains = _extract_top_domains(dict(result.metadata), source_urls)
         chapter_material = {
             **assignment,
-            "course_type": skill_context.course_type,
-            "retrieval_profile": skill_context.retrieval_profile,
-            "teaching_action": skill_context.teaching_action,
+            "course_type": traced_context.course_type,
+            "retrieval_profile": traced_context.retrieval_profile,
+            "teaching_action": traced_context.teaching_action,
             "dense_context": dense_context,
             "sources": list(result.sources),
             "source_details": source_details,
@@ -139,6 +143,10 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "web_hits": int(result.metadata.get("web_hits", 0)),
             "fallback_used": bool(result.metadata.get("fallback_used", False)),
             "compression_mode": str(result.metadata.get("compression_mode", "")),
+            "requested_retrieval_profile": str(result.metadata.get("requested_retrieval_profile") or traced_context.retrieval_profile),
+            "applied_retrieval_profile": str(result.metadata.get("applied_retrieval_profile") or traced_context.retrieval_profile),
+            "configured_retrievers": list(result.metadata.get("configured_retrievers", [])),
+            "active_retrievers": list(result.metadata.get("active_retrievers", [])),
             "executed_queries": list(result.metadata.get("executed_queries", [])),
             "base_queries": list(result.metadata.get("base_queries", [])),
             "planned_queries": list(result.metadata.get("planned_queries", [])),
@@ -154,6 +162,8 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "unique_domain_count": int(result.metadata.get("unique_domain_count", 0) or 0),
             "top_domains": dict(result.metadata.get("top_domains", {}) or {}),
             "retriever_stats": dict(result.metadata.get("retriever_stats", {}) or {}),
+            "selected_skillpacks": list(result.metadata.get("selected_skillpacks", []) or []),
+            "recommended_tool_tags": list(result.metadata.get("recommended_tool_tags", []) or []),
         }
         upsert_knowledge_build_chapter_progress(
             state["subject"],
@@ -209,3 +219,4 @@ def build_targeted_research_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_targeted_research_node"]
+

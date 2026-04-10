@@ -1,16 +1,17 @@
-"""Enrich document node for the DocGen lane."""
+﻿"""Enrich document node for the DocGen lane."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.skills import ImageGenerator, MermaidGenerator, SkillContext
+from app.shared.infra.traced_execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, build_draft_excerpt, prepend_table_of_contents
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.docgen.runtime import DocGenAssetRuntime
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type, resolve_docgen_dependency
 from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
@@ -34,8 +35,8 @@ def build_enrich_document_node(*, context: WorkflowContext):
             mermaid_count += markdown.count("[MERMAID:")
             image_count += markdown.count("[IMAGE:")
             if "[MERMAID:" in markdown and settings.mermaid_generation_enabled:
-                markdown = await MermaidGenerator(
-                    SkillContext(
+                markdown = await DocGenAssetRuntime(
+                    TracedExecutionContext(
                         subject=state["subject"],
                         build_session_id=state.get("build_session_id", ""),
                         workflow_context=context,
@@ -47,10 +48,10 @@ def build_enrich_document_node(*, context: WorkflowContext):
                         asset_kind="mermaid",
                         chapter_index=int(chapter.get("chapter_index", 0) or 0),
                     )
-                ).process_placeholders(markdown)
+                ).process_mermaid_placeholders(markdown)
             if "[IMAGE:" in markdown:
-                markdown = await ImageGenerator(
-                    SkillContext(
+                markdown = await DocGenAssetRuntime(
+                    TracedExecutionContext(
                         subject=state["subject"],
                         build_session_id=state.get("build_session_id", ""),
                         workflow_context=context,
@@ -62,7 +63,7 @@ def build_enrich_document_node(*, context: WorkflowContext):
                         asset_kind="image",
                         chapter_index=int(chapter.get("chapter_index", 0) or 0),
                     )
-                ).process_placeholders(markdown)
+                ).process_image_placeholders(markdown)
             markdown = normalize_math_delimiters(markdown)
             markdown = validate_latex(markdown)
             if include_sources:
@@ -78,7 +79,7 @@ def build_enrich_document_node(*, context: WorkflowContext):
             min_level=2,
             max_level=4,
         )
-        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status)
+        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status, owner_module=__name__)
         update_status(
             state["subject"],
             requested_at=state["requested_at"],
@@ -117,3 +118,4 @@ def build_enrich_document_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_enrich_document_node"]
+

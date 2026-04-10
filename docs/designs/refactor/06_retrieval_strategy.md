@@ -1,359 +1,343 @@
-## 六、检索策略与教育资源库
+﻿## 六、检索策略与教育资源库
 
 > 目标：让检索真正服务“教育型文档生产”，而不是简单堆更多搜索引擎。
-> 最后更新：2026-04-09
+> 最后更新：2026-04-10
 
 ---
 
-## 6.1 设计目标
+## 6.1 当前真实基线
 
-教育场景下的检索和通用 deep research 有三个明显不同：
+当前仓库已经具备：
+
+- `search/factory.py` 的 profile 化 retriever 工厂
+- `local_rag + bing + duckduckgo + tavily + bocha + arxiv + semantic_scholar`
+- `SourceCurator` 的规则过滤 + 词法/可信度评分
+- `ContextManager` 的快慢路径压缩
+
+但当前最关键的真实差距是：
+
+> `retrieval_profile` 已经存在于 state 和 trace 中，但 `ResearchConductor` 还没有把 `profile` 传进 `get_retrievers_for_subject()`，因此课程模式对检索执行的影响还不够硬。
+
+这意味着，后续优化重点不是“再接几个搜索 API”，而是先把已有 profile 真的打通。
+
+---
+
+## 6.2 参考项目里真正值得借的算法思想
+
+### 来自 `gpt-researcher`
+
+- 查询规划和检索执行分离
+- research 先压缩，再写作
+- 对不同 research 深度使用不同查询数和并发策略
+- 小文档走快路径，大文档再走 embedding/compression
+
+### 来自 `DeepTutor`
+
+- `ModeStrategy` 把模式差异收敛成单一策略表
+- `ResearchPipeline` 用动态 topic queue 管理并发研究任务
+- 工具调用有 timeout / retry / progress event
+- 输出质量有轻量 post-check，而不是完全相信生成结果
+
+---
+
+## 6.3 AITeachMe 的检索目标
+
+教育场景下，检索和通用 deep research 不一样：
 
 1. 最新不一定最重要，可信、可教、可解释更重要。
 2. 用户上传资料通常比公网更贴题。
-3. 不同课程模式需要不同检索 profile。
-
-因此检索体系必须同时优化：
-
-- 相关性
-- 可信度
-- 速度
-- 版权与合规
-- 可观测性
+3. `sprint` 和 `systematic` 需要不同的检索深度和来源结构。
+4. 需要为后续文档写作、练习生成、媒体规划提供不同类型的证据。
 
 ---
 
-## 6.2 检索层级
+## 6.4 建议的检索层级
 
 ### Layer 0：用户上传资料
 
-这是最高优先级来源：
-
-- 零额外版权风险
-- 最贴用户目标
-- 与考试、课程、老师讲义最对口
-
-典型来源：
+最高优先级：
 
 - PDF / PPT / DOCX / Markdown
-- 上传资料解析后的 section / chunk
+- ingest 结构化后的 section / chunk
 
-### Layer 1：本地教育语料库
+### Layer 1：系统本地教育语料库
 
-这是系统自己的“底仓”，用于补足用户没上传资料时的质量。
-
-典型来源：
+用于补齐用户没上传、但课程必须有的基础知识：
 
 - 开放教材
 - 公开课讲义
-- CC 协议内容
 - 自建知识条目
 
 ### Layer 2：教育垂直 Web
 
-用于找：
+用于补：
 
-- 概念解释
-- 典型题型
 - 高校课程页
-- MOOC 说明
-- 数学/理工学科百科资料
+- 公开课平台
+- 学科知识站
+- 公开题型解析站
 
 ### Layer 3：学术来源
 
-用于 `systematic` 或高可信主题：
+主要服务 `systematic`：
 
 - arXiv
 - Semantic Scholar
-- 未来按学科接入 PubMed Central 等
+- 后续可按学科接 PubMed 等
 
 ### Layer 4：通用 Web 兜底
 
-用于补召回、补广度：
+用于补广度和补召回：
 
 - Bing
 - DuckDuckGo
-- Tavily / Bocha 等高质量通用检索
+- Tavily
+- Bocha
 
 ---
 
-## 6.3 关键原则
+## 6.5 建议的 research request 类型
 
-### 原则 1：不是“所有查询都全网搜”
+不要把所有查询都当成一种 research。
+至少区分：
 
-检索要区分场景：
-
-- Planner grounding
-- 章节 research
-- 例题搜集
-- 媒体素材搜集
-
-每类场景的 profile 应不同。
-
-### 原则 2：先定 profile，再调 retriever
-
-真正高价值的是 profile，而不是 retriever 数量。
-
-推荐优先做：
-
-- `planner_grounding`
-- `docgen_sprint`
-- `docgen_systematic`
-- `media_hunting`
-
-### 原则 3：优先追踪来源类型
-
-每次 research 都要能看清：
-
-- 本地命中多少
-- 教育 Web 命中多少
-- 学术源命中多少
-- 通用 Web 命中多少
-
-否则后续无法调优质量。
+| 请求类型 | 目标 | 推荐来源 |
+| --- | --- | --- |
+| `planner_grounding` | 给 Planner 建立主题锚点 | local_rag + 本地语料 + 少量教育 Web |
+| `concept_grounding` | 定义、概念边界、前置知识 | local_rag + 教育语料 + 高校课程页 |
+| `exam_pattern_mining` | 高频题型、易错点、得分路径 | local_rag + 中文教育站点 + 通用 Web |
+| `derivation_support` | 公式推导、适用条件、定理解释 | 本地资料 + 教材/课程页 + 学术源 |
+| `worked_examples` | 典型例题和变式 | 本地资料 + 教育题解站点 |
+| `media_hunting` | Mermaid / image / interactive 素材想法 | 高质量教育页和结构图站点 |
 
 ---
 
-## 6.4 推荐检索 profile
+## 6.6 课程模式对应的检索 profile
 
-### 6.4.1 `planner_grounding`
+### `planner_grounding`
 
-用途：
+- 目标：快，轻，给 Planner 定方向
+- 默认来源：
+  - `local_rag`
+  - 本地语料
+  - 少量教育 Web snippet
 
-- 只给 Planner 提供概念锚点，不做重研究
+### `docgen_sprint`
 
-特点：
+- 目标：抓高频考点、题型、误区、速记点
+- 默认来源：
+  - `local_rag`
+  - `bocha/tavily`
+  - `bing`
+  - `duckduckgo`
 
-- 快
-- 轻
-- 不抓长网页
+### `docgen_systematic`
 
-推荐来源：
+- 目标：抓定义、结构、推导、联系、应用
+- 默认来源：
+  - `local_rag`
+  - 本地语料
+  - `tavily`
+  - `arxiv`
+  - `semantic_scholar`
 
-1. `local_rag`
-2. 本地教育语料库
-3. 少量教育 Web snippet
+### `media_hunting`
 
-### 6.4.2 `docgen_sprint`
-
-用途：
-
-- 考前冲刺 / 题型讲义
-
-优先检索：
-
-- 用户资料
-- 考点、题型、典型例题
-- 中文教育网站 / 考试站点
-
-推荐来源组合：
-
-1. `local_rag`
-2. `bocha` 或 `tavily`
-3. `bing`
-4. `duckduckgo` 兜底
-
-### 6.4.3 `docgen_systematic`
-
-用途：
-
-- 学科型系统课程
-
-优先检索：
-
-- 用户资料
-- 本地教育语料库
-- 大学课程页面
-- 学术源
-- 结构化百科资料
-
-推荐来源组合：
-
-1. `local_rag`
-2. 本地教育语料库
-3. `tavily`
-4. `arxiv`
-5. `semantic_scholar`
-
-### 6.4.4 `media_hunting`
-
-用途：
-
-- 为文档找配图、结构图灵感、交互素材
-
-优先检索：
-
-- 高质量页面图示
-- 公开可引用图片
-- 适合再生成的结构素材
-
-这里不应和正文 research 混用，否则会拖慢整条主链路。
+- 目标：找适合改写成图示、交互页或动画的结构素材
+- 默认来源：
+  - 高质量课程页
+  - 可公开引用的结构图页面
+  - 学科知识站
 
 ---
 
-## 6.5 教育垂直检索路径
+## 6.7 需要迁移的具体算法
 
-### 大学与公开课来源
+### 算法 1：模式策略表
+
+借 `DeepTutor` 的 `ModeStrategy` 思想，把 `sprint/systematic` 的检索策略集中到一个表，而不是散在多个 node 和 prompt 中。
+
+每个策略至少定义：
+
+- `sub_query_count`
+- `max_research_rounds`
+- `max_results_per_query`
+- `preferred_source_classes`
+- `fallback_source_classes`
+- `min_section_length`
+- `enable_academic`
+- `enable_exam_sites`
+
+### 算法 2：research 微队列，而不是一次性 query list
+
+当前 `ResearchConductor` 是：
+
+- 生成 `research_queries`
+- 顺序执行
+
+建议迁移成轻量 topic queue：
+
+```text
+seed_queries
+→ retrieve
+→ assess coverage
+→ if gap: enqueue gap_queries
+→ until queue empty or round limit reached
+```
+
+这不是把 `DeepTutor` 的整条队列系统搬过来，而是在单章 research 中借它的动态任务思想。
+
+### 算法 3：压缩快慢路径继续保留，但要加“写作可用性”校验
+
+当前 `ContextManager` 已有：
+
+- 小材料快路径
+- embedding filter
+- lexical fallback
+
+建议新增：
+
+- `coverage_score`
+- `concept_density`
+- `example_density`
+- `formula_presence`
+
+否则压缩后虽然“相关”，未必“可写”。
+
+### 算法 4：来源排序要按教育场景调权
+
+当前 `SourceCurator` 已有：
+
+- 可信度评分
+- query overlap
+- local source 加权
+
+建议继续增强：
+
+- `source_class` 权重
+- 课程模式权重
+- 例题型请求优先题解/讲义
+- 系统课请求优先高校/教材/学术
+
+---
+
+## 6.8 推荐的来源分类
+
+后续检索与 LangSmith 统一使用：
+
+- `local_user_material`
+- `local_edu_corpus`
+- `edu_web`
+- `academic_web`
+- `general_web`
+
+这五类来源要同时用于：
+
+- curator 排序
+- trace metadata
+- dashboard 统计
+- 质量分析
+
+---
+
+## 6.9 教育垂直检索路径建议
+
+### 高校与公开课
 
 - `ocw.mit.edu`
-- `coursera.org`
 - `edx.org`
+- `coursera.org`
 - `xuetangx.com`
 - `icourse163.org`
+- 高校课程主页和讲义页
 
-### 数学 / 理工知识来源
+### 学科知识站
 
 - `mathworld.wolfram.com`
 - `wikipedia.org`
-- `baike.baidu.com`
-- 各高校课程讲义页
+- 公开百科资料
+- 学科型知识博客和教学站
 
-### 中文教育与考试来源
+### 中文考试与题解站
 
-- `zhihu.com`
-- `csdn.net`（偏编程/工程类）
-- 公开考试解析站点
-- 可公开访问的高校课程资料页
+- 公开考试解析站
+- 高校公开试题/讲义
+- 高质量中文题解社区
 
 注意：
 
-> 这些站点不是“全盘信任”，而是作为候选来源进入 SourceCurator 和后续质量过滤。
+- 这些来源只是候选，不是默认信任
+- 最终仍要经过 curator 过滤和来源分类
 
 ---
 
-## 6.6 `gpt-researcher` 的经验应该怎么学
-
-### 值得直接吸收的经验
-
-- 用 profile 决定检索器组合
-- 支持“高级搜索 + 选择性高质量抓取”
-- 不把所有 URL 都当成同等质量
-- 让研究阶段先做压缩，再写作
-
-### 不应直接复制的部分
-
-- 为了“看起来强”接入一大堆功能重叠的搜索 API
-- 把检索器、工具、MCP、抓取器混成一层
-- 对所有模式都使用同一套 research 深度和抓取策略
-
----
-
-## 6.7 本地教育语料库设计
+## 6.10 本地教育语料库策略
 
 ### 语料目标
 
-本地教育语料库不是“盗版资料仓库”，而是：
+不是盗版资料仓库，而是：
 
 - 系统级知识底仓
-- 可追溯来源的知识条目集
-- 适合 RAG 和教学构建的中间语料
+- 带来源与授权的衍生知识条目
+- 可被 RAG 和教学工作流稳定消费的中间语料
 
-### 建议组织方式
-
-```text
-backend/data/edu_corpus/
-├── math/
-├── physics/
-├── cs/
-├── exam/
-└── index/
-```
-
-### 每条语料至少携带
+### 建议最小字段
 
 - `subject`
 - `topic`
 - `source_url`
 - `source_kind`
+- `source_class`
 - `license_tag`
 - `rights_note`
 - `derived_summary`
 - `keywords`
 
----
+### 合规红线
 
-## 6.8 合规策略
-
-### 可以做的
-
-- 使用开放授权资料
-- 提取公开内容中的知识点并重写成知识条目
-- 保留来源和授权标记
-- 对商业资料只存衍生总结，不存原文整段复制
-
-### 不应该做的
-
-- 直接堆商业教材、蜂考笔记、机构内部资料原文
-- 把外部 PDF / PPT 原样入库作为“系统语料”
-- 在没有来源标记和权利标记的情况下进入长期语料库
-
-### 默认策略
-
-> 用户上传资料可参与当前 subject 构建；系统长期语料库只收“授权明确或自建衍生条目”。
+- 不把商业教材和机构资料原文长期入库
+- 用户上传资料可以参与当前构建，但不默认沉淀为系统底仓
+- 系统长期语料库只收授权明确或自建衍生条目
 
 ---
 
-## 6.9 质量评估与缓存
+## 6.11 缓存与性能
 
-### 检索结果质量评估建议
+至少缓存三类对象：
 
-先规则过滤，再做少量模型辅助评估：
-
-- 域名可信度
-- 内容重叠度
-- 是否有明显广告/低质聚合迹象
-- 是否与课程模式匹配
-
-### 缓存建议
-
-至少缓存两类对象：
-
-- 检索结果：`(query, profile, retriever)`
-- 抓取结果：`(url, scraper_kind)`
+- `(query, profile, retriever)` 的检索结果
+- `(url, scraper_kind)` 的抓取结果
+- `(query, focus_terms, compression_budget)` 的压缩结果
 
 原因：
 
-- Planner grounding 和 DocGen 很容易重复打同类查询
-- 不缓存会让系统课的构建时延明显失控
+- Planner、Research、Asset 很容易重复查询相近内容
+- `systematic` 模式如果不缓存，时延会迅速失控
 
 ---
 
-## 6.10 与课程模式联动
+## 6.12 关键实现顺序
 
-### `sprint`
+### Phase 2 必做
 
-优先搜：
+1. 把 `profile` 真正传入 `ResearchConductor`
+2. 统一 `requested_profile / applied_profile`
+3. 在 trace 中区分 profile 与 source_class
+4. 为章节 research 增加 queue 化补检索
 
-- 高频考点
-- 题型解法
-- 易错点
-- 记忆技巧
+### Phase 3 以后再做
 
-弱化搜：
-
-- 过深的学术拓展
-- 过长的理论说明
-
-### `systematic`
-
-优先搜：
-
-- 定义与定理
-- 推导路径
-- 学科结构
-- 经典应用
-- 学术补充源
-
-弱化搜：
-
-- 只给结论的碎片化应试内容
+- 更细粒度的学科特定 profile
+- 本地教育语料库首批建设
+- 交互与动画素材检索
 
 ---
 
-## 6.11 一句话结论
+## 6.13 一句话结论
 
-对 AITeachMe 来说，真正重要的不是“再接几个搜索 API”，而是：
+对 AITeachMe 来说，检索优化的重点不是“再接几个 API”，而是：
 
-- 让不同课程模式拥有不同检索 profile
-- 让本地资料和教育语料优先于通用 Web
-- 让每条 research 都有清晰来源分类和 LangSmith 可观测性
+- 让 `retrieval_profile` 真正影响执行
+- 让章节 research 从 query list 升级成轻量 topic queue
+- 让压缩结果不仅相关，而且可写、可教、可做题
+

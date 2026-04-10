@@ -1,37 +1,36 @@
-﻿"""Skill definitions and registration helpers."""
+"""Shared traced execution contract for workflow-owned run units.
+
+This module is infrastructure because it only standardizes tracing, metadata,
+and LLM caller resolution. It is not a workflow runtime module. Business steps
+such as DocGen research or writing must still live in `workflows/.../runtime`
+or a LangGraph subgraph.
+"""
 
 from __future__ import annotations
 
-import asyncio
-import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, get_type_hints
+from typing import Any, Protocol
 
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.tracing import langsmith_trace, llm_trace_scope
-from app.workflows.common.context import WorkflowContext
 
 logger = structlog.get_logger(__name__)
 
-_TYPE_MAP = {
-    str: "string",
-    int: "integer",
-    float: "number",
-    bool: "boolean",
-    list: "array",
-    dict: "object",
-}
+
+class WorkflowTraceContext(Protocol):
+    workflow_name: str
+    metadata: Mapping[str, Any]
 
 
 @dataclass(slots=True)
-class SkillContext:
+class TracedExecutionContext:
     subject: str
     build_session_id: str = ""
-    workflow_context: WorkflowContext | None = None
+    workflow_context: WorkflowTraceContext | None = None
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
     digest_mode: str = ""
@@ -69,7 +68,7 @@ class SkillContext:
 
 
 @dataclass(slots=True)
-class SkillResult:
+class TracedExecutionResult:
     content: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
@@ -77,11 +76,11 @@ class SkillResult:
     cost_tokens: int = 0
 
 
-class BaseSkill(ABC):
-    def __init__(self, context: SkillContext) -> None:
+class BaseTracedExecution(ABC):
+    def __init__(self, context: TracedExecutionContext) -> None:
         self.context = context
         self.logger = structlog.get_logger(__name__).bind(
-            skill_name=self.name,
+            traced_unit=self.trace_node,
             subject=context.subject,
             build_session_id=context.build_session_id,
         )
@@ -90,12 +89,28 @@ class BaseSkill(ABC):
     def name(self) -> str:
         return self.__class__.__name__
 
-    async def run(self, **kwargs: Any) -> SkillResult:
+    @property
+    def trace_namespace(self) -> str:
+        return "traced_execution"
+
+    @property
+    def trace_name(self) -> str:
+        return self.name
+
+    @property
+    def trace_node(self) -> str:
+        namespace = str(self.trace_namespace or "").strip(". ")
+        name = str(self.trace_name or self.name).strip(". ")
+        return f"{namespace}.{name}" if namespace else name
+
+    async def run(self, **kwargs: Any) -> TracedExecutionResult:
         workflow_context = self.context.workflow_context
-        workflow_name = workflow_context.workflow_name if workflow_context is not None else ""
-        lane = str(workflow_context.metadata.get("lane", "")) if workflow_context is not None else ""
-        node = f"skill.{self.name}"
-        extra_tags = [f"skill:{self.name}"]
+        workflow_name = getattr(workflow_context, "workflow_name", "") if workflow_context is not None else ""
+        metadata = getattr(workflow_context, "metadata", {}) if workflow_context is not None else {}
+        lane = str(metadata.get("lane", "")) if isinstance(metadata, Mapping) else ""
+        node = self.trace_node
+        tag_namespace = str(self.trace_namespace or "traced_execution").strip(". ")
+        extra_tags = [f"{tag_namespace}:{self.trace_name}"]
         if self.context.digest_mode:
             extra_tags.append(f"mode:{self.context.digest_mode}")
         if self.context.course_type:
@@ -117,7 +132,11 @@ class BaseSkill(ABC):
             workflow=workflow_name,
             lane=lane,
             node=node,
-            extra_metadata=self.context.trace_metadata(skill_name=self.name),
+            extra_metadata=self.context.trace_metadata(
+                traced_unit_name=self.name,
+                trace_namespace=self.trace_namespace,
+                trace_name=self.trace_name,
+            ),
             extra_tags=extra_tags,
         ) as run:
             with llm_trace_scope(
@@ -129,100 +148,15 @@ class BaseSkill(ABC):
             ):
                 result = await self.execute(**kwargs)
             if run is not None:
-                run.end(outputs=_skill_trace_outputs(result))
+                run.end(outputs=_traced_execution_outputs(result))
             return result
 
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> SkillResult:
+    async def execute(self, **kwargs: Any) -> TracedExecutionResult:
         raise NotImplementedError
 
 
-@dataclass
-class SkillDefinition:
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    handler: Callable[..., Any]
-    is_async: bool = False
-    tags: list[str] = field(default_factory=list)
-
-    def to_tool_definition(self):
-        from app.shared.infra.tools.definition import ToolDefinition
-
-        return ToolDefinition(
-            name=self.name,
-            description=self.description,
-            parameters=self.parameters,
-            handler=self.handler,
-            is_async=self.is_async,
-        )
-
-
-class SkillRegistry:
-    def __init__(self) -> None:
-        self._skills: dict[str, SkillDefinition] = {}
-
-    def register(self, definition: SkillDefinition) -> None:
-        self._skills[definition.name] = definition
-        logger.info("skill_registered", name=definition.name, tags=definition.tags)
-        from app.shared.infra.tools.registry import get_tool_registry
-
-        get_tool_registry().register(definition.to_tool_definition())
-
-    def get(self, name: str) -> SkillDefinition | None:
-        return self._skills.get(name)
-
-    def list_all(self) -> list[SkillDefinition]:
-        return list(self._skills.values())
-
-
-_registry: SkillRegistry | None = None
-
-
-def get_skill_registry() -> SkillRegistry:
-    global _registry
-    if _registry is None:
-        _registry = SkillRegistry()
-    return _registry
-
-
-def _build_schema(func: Callable[..., Any]) -> dict[str, Any]:
-    sig = inspect.signature(func)
-    hints = get_type_hints(func)
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-
-    for name, param in sig.parameters.items():
-        if name in {"self", "cls"}:
-            continue
-        annotation = hints.get(name, str)
-        properties[name] = {
-            "type": _TYPE_MAP.get(annotation, "string"),
-            "description": f"Parameter {name}",
-        }
-        if param.default is inspect.Parameter.empty:
-            required.append(name)
-
-    return {"type": "object", "properties": properties, "required": required}
-
-
-def skill(name: str, description: str, *, tags: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        definition = SkillDefinition(
-            name=name,
-            description=description,
-            parameters=_build_schema(func),
-            handler=func,
-            is_async=asyncio.iscoroutinefunction(func),
-            tags=tags or [],
-        )
-        get_skill_registry().register(definition)
-        return func
-
-    return decorator
-
-
-def _skill_trace_outputs(result: SkillResult) -> dict[str, Any]:
+def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
     outputs: dict[str, Any] = {
         "content_length": len(result.content),
         "source_count": len(result.sources),
@@ -254,6 +188,9 @@ def _skill_trace_outputs(result: SkillResult) -> dict[str, Any]:
     compression_mode = str(result.metadata.get("compression_mode") or "").strip()
     if compression_mode:
         outputs["compression_mode"] = compression_mode
+    applied_retrieval_profile = str(result.metadata.get("applied_retrieval_profile") or "").strip()
+    if applied_retrieval_profile:
+        outputs["applied_retrieval_profile"] = applied_retrieval_profile
     retriever_stats = result.metadata.get("retriever_stats")
     if isinstance(retriever_stats, Mapping) and retriever_stats:
         outputs["retriever_names"] = sorted(str(name) for name in retriever_stats.keys())
@@ -262,15 +199,20 @@ def _skill_trace_outputs(result: SkillResult) -> dict[str, Any]:
             for stats in retriever_stats.values()
             if isinstance(stats, Mapping)
         )
+    configured_retrievers = result.metadata.get("configured_retrievers")
+    if isinstance(configured_retrievers, list):
+        outputs["configured_retriever_count"] = len(
+            [name for name in configured_retrievers if str(name).strip()]
+        )
+    active_retrievers = result.metadata.get("active_retrievers")
+    if isinstance(active_retrievers, list):
+        outputs["active_retriever_count"] = len(
+            [name for name in active_retrievers if str(name).strip()]
+        )
     return outputs
 
-
 __all__ = [
-    "BaseSkill",
-    "SkillContext",
-    "SkillDefinition",
-    "SkillRegistry",
-    "SkillResult",
-    "get_skill_registry",
-    "skill",
+    "BaseTracedExecution",
+    "TracedExecutionContext",
+    "TracedExecutionResult",
 ]

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.shared.infra.skills import list_skills
+from app.shared.infra.skills import (
+    collect_recommended_tool_tags,
+    collect_skillpack_defaults,
+    list_skills,
+    render_prompt_scoped_skillpacks,
+    render_skill,
+)
+from app.shared.infra.tools import list_agent_tools
 from app.teaching.documents import ensure_chapter_learning_scaffold
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.planner.models import build_fallback_plan
@@ -189,9 +196,57 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert "metadata_ms" not in summary
 
 
-def test_teaching_skills_are_registered() -> None:
+def test_builtin_skillpacks_are_discoverable() -> None:
     skill_names = {item["name"] for item in list_skills()}
-    assert "solve_step_by_step" in skill_names
-    assert "generate_similar_problems" in skill_names
-    assert "explain_formula" in skill_names
-    assert "compare_concepts" in skill_names
+    assert "find_resources" in skill_names
+    assert "explain_with_analogy" in skill_names
+    assert "review_mistakes" in skill_names
+
+
+def test_skillpack_render_binds_parameters() -> None:
+    rendered = render_skill("find_resources", topic="linear algebra", difficulty="intro")
+
+    assert "# Skill: find_resources" in rendered
+    assert "- topic: linear algebra" in rendered
+    assert "- difficulty: intro" in rendered
+    assert "linear algebra" in rendered
+
+
+def test_skillpack_scope_defaults_and_tool_tags_are_exposed() -> None:
+    rendered = render_prompt_scoped_skillpacks(
+        ["find_resources", "explain_with_analogy"],
+        prompt_scope="digest.docgen.writer",
+        bindings={"topic": "偏导数", "concept": "偏导数"},
+    )
+
+    assert "explain_with_analogy" in rendered
+    assert "find_resources" not in rendered
+    assert collect_skillpack_defaults(["find_resources"], prompt_scope="digest.docgen.research") == {
+        "difficulty": "入门"
+    }
+    assert collect_recommended_tool_tags(["find_resources"], prompt_scope="digest.docgen.research") == [
+        "retrieval",
+        "web_search",
+        "knowledge_lookup",
+    ]
+
+
+def test_fallback_plan_preserves_selected_skillpacks() -> None:
+    plan = build_fallback_plan(
+        subject="高等数学",
+        user_goal="系统整理偏导数",
+        digest_mode="systematic",
+        tone="encouraging",
+        selected_skillpacks=["find_resources", "explain_with_analogy", "find_resources"],
+        shared_inputs=_build_shared_inputs(),
+    )
+
+    assert plan.selected_skillpacks == ["find_resources", "explain_with_analogy"]
+
+
+def test_teaching_tools_are_registered_as_agent_tools() -> None:
+    tool_names = {item["name"] for item in list_agent_tools()}
+    assert "solve_step_by_step" in tool_names
+    assert "generate_similar_problems" in tool_names
+    assert "explain_formula" in tool_names
+    assert "compare_concepts" in tool_names

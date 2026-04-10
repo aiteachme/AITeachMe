@@ -1,4 +1,4 @@
-"""Skill 加载器 — 支持多路径扫描 + OpenClaw 风格 SKILL.md 文件。
+"""Skillpack loader for OpenClaw / Claude Code style ``SKILL.md`` assets.
 
 扫描路径（按优先级）：
 1. 项目内置: ``backend/skills/``
@@ -28,22 +28,21 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+from collections.abc import Mapping
 from pathlib import Path
 
 import structlog
 
+from app.shared.infra.skills.models import SkillpackDefinition, SkillpackParameter
+
 logger = structlog.get_logger()
-_PROJECT_SKILL_MODULES = (
-    "app.teaching.skill_tools",
-)
-_project_skill_modules_loaded = False
 
 # ── 默认扫描路径 ──────────────────────────────────────────────
 
 def _get_project_skills_dir() -> Path:
     """项目内置 skills 目录: backend/skills/"""
     # 从 core/skills/loader.py 往上走到 backend/
-    return Path(__file__).parent.parent.parent.parent / "skills"
+    return Path(__file__).parent.parent.parent.parent.parent / "skills"
 
 
 def _get_user_skills_dir() -> Path:
@@ -68,7 +67,65 @@ def get_all_skill_dirs() -> list[Path]:
 # ── SKILL.md 解析 ─────────────────────────────────────────────
 
 
-def _parse_skill_md(path: Path) -> dict | None:
+def _as_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, (list, tuple, set)) else [value]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
+
+
+def _as_mapping(value: object) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        return {str(key): raw for key, raw in value.items()}
+    return {}
+
+
+def _build_skillpack_definition(path: Path, parsed: dict) -> SkillpackDefinition | None:
+    name = str(parsed.get("name") or "").strip()
+    if not name:
+        return None
+
+    raw_parameters = parsed.get("parameters") or {}
+    parameters: list[SkillpackParameter] = []
+    if isinstance(raw_parameters, dict):
+        for parameter_name, raw_meta in raw_parameters.items():
+            metadata = raw_meta if isinstance(raw_meta, dict) else {}
+            parameters.append(
+                SkillpackParameter(
+                    name=str(parameter_name).strip(),
+                    type=str(metadata.get("type") or "string").strip() or "string",
+                    description=str(metadata.get("description") or "").strip(),
+                    required=bool(metadata.get("required", False)),
+                    default=metadata.get("default"),
+                )
+            )
+
+    return SkillpackDefinition(
+        name=name,
+        description=str(parsed.get("description") or "").strip(),
+        version=str(parsed.get("version") or "").strip(),
+        tags=_as_string_list(parsed.get("tags")),
+        prompt_scope=_as_string_list(parsed.get("prompt_scope")),
+        recommended_tool_tags=_as_string_list(parsed.get("recommended_tool_tags")),
+        defaults={key: value for key, value in _as_mapping(parsed.get("defaults")).items()},
+        parameters=parameters,
+        instructions=str(parsed.get("instructions") or "").strip(),
+        source_path=str(path),
+    )
+
+
+def _parse_skill_md(path: Path) -> SkillpackDefinition | None:
     """解析 SKILL.md 文件，提取 YAML frontmatter 和 markdown 正文。"""
 
     try:
@@ -93,7 +150,7 @@ def _parse_skill_md(path: Path) -> dict | None:
     body = parts[2].strip()
     frontmatter["instructions"] = body
     frontmatter["_source_path"] = str(path)
-    return frontmatter
+    return _build_skillpack_definition(path, frontmatter)
 
 
 def _parse_yaml(text: str) -> dict:
@@ -166,7 +223,7 @@ def _parse_yaml(text: str) -> dict:
 
 def load_all_skill_definitions(
     extra_dirs: list[Path] | None = None,
-) -> list[dict]:
+) -> list[SkillpackDefinition]:
     """扫描所有路径，加载全部 SKILL.md 文件。
 
     扫描顺序：
@@ -184,7 +241,7 @@ def load_all_skill_definitions(
     if extra_dirs:
         all_dirs.extend(d for d in extra_dirs if d.exists())
 
-    loaded: dict[str, dict] = {}  # name → definition（后加载覆盖）
+    loaded: dict[str, SkillpackDefinition] = {}
 
     for skill_dir in all_dirs:
         for subdir in sorted(skill_dir.iterdir()):
@@ -195,10 +252,10 @@ def load_all_skill_definitions(
                 continue
 
             parsed = _parse_skill_md(skill_md)
-            if parsed and "name" in parsed:
-                loaded[parsed["name"]] = parsed
+            if parsed is not None:
+                loaded[parsed.name] = parsed
                 logger.info("skill_md_loaded",
-                            name=parsed["name"],
+                            name=parsed.name,
                             source=str(skill_md))
 
     return list(loaded.values())
@@ -222,17 +279,9 @@ def auto_discover_python_skills() -> None:
 
 
 def ensure_project_skill_modules_loaded() -> None:
-    """Load project-owned Python skill modules through an explicit entrypoint."""
+    """Compatibility no-op.
 
-    global _project_skill_modules_loaded
-    if _project_skill_modules_loaded:
-        return
+    `skills` ?????? `SKILL.md` skillpack????????????????
+    """
 
-    for module_name in _PROJECT_SKILL_MODULES:
-        try:
-            importlib.import_module(module_name)
-            logger.debug("project_skill_module_imported", module=module_name)
-        except Exception as exc:
-            logger.warning("project_skill_module_import_failed", module=module_name, error=str(exc))
-
-    _project_skill_modules_loaded = True
+    return None

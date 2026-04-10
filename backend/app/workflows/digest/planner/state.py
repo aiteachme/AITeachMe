@@ -16,6 +16,7 @@ class BuildPlannerState(TypedDict, total=False):
     retrieval_profile: str
     teaching_action: str
     tone: str
+    selected_skillpacks: list[str]
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None

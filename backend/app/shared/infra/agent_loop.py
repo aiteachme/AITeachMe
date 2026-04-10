@@ -19,7 +19,7 @@ from typing import Any, AsyncGenerator
 
 import structlog
 
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import get_tracer
 
 logger = structlog.get_logger()
@@ -102,7 +102,7 @@ async def run_agent_loop(
         print(result.final_answer)
     """
 
-    from app.shared.infra.llm import acompletion, acompletion_with_tools
+    from app.shared.infra.llm_support import acompletion, acompletion_with_tools
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
@@ -195,7 +195,7 @@ async def run_agent_loop_stream(
             print(chunk, end="")
     """
 
-    from app.shared.infra.llm import acompletion_stream, acompletion_with_tools
+    from app.shared.infra.llm_support import acompletion_stream, acompletion_with_tools
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()

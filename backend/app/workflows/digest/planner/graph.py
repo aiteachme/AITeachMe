@@ -15,7 +15,8 @@ from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.planner.concept_grounding import collect_planner_concept_briefing
@@ -507,6 +508,20 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
                 concept_briefing=state.get("concept_briefing") or "",
+                skillpack_guidance=render_prompt_scoped_skillpacks(
+                    state.get("selected_skillpacks") or [],
+                    prompt_scope="digest.planner",
+                    bindings={
+                        "subject": display_subject,
+                        "user_goal": state.get("user_goal") or "",
+                        "topic": display_subject,
+                        "concept": display_subject,
+                    },
+                ),
+                recommended_tool_tags=collect_recommended_tool_tags(
+                    state.get("selected_skillpacks") or [],
+                    prompt_scope="digest.planner",
+                ),
             )
         )
         await _emit_planner_status(
@@ -564,6 +579,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
             user_goal=state.get("user_goal") or "",
             requested_digest_mode=digest_mode,
             requested_tone=tone,
+            selected_skillpacks=list(state.get("selected_skillpacks") or []),
             shared_inputs=shared_inputs,
             latest_plan=state.get("latest_plan"),
         )
@@ -581,6 +597,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
             "retrieval_profile": resolve_planner_retrieval_profile(),
             "teaching_action": teaching_action,
             "tone": draft.tone,
+            "selected_skillpacks": list(draft.selected_skillpacks),
             "fallback_used": fallback_used,
             "planner_generation_mode": generation_mode,
         }
@@ -595,6 +612,7 @@ def create_planner_initial_state(
     user_goal: str,
     digest_mode: str,
     tone: str,
+    selected_skillpacks: list[str],
     planner_session_id: str,
     message_history: list[str],
     latest_plan: dict | None = None,
@@ -611,6 +629,7 @@ def create_planner_initial_state(
         "retrieval_profile": resolve_planner_retrieval_profile(),
         "teaching_action": "plan_course",
         "tone": tone,
+        "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,
         "message_history": message_history,
         "latest_plan": latest_plan,

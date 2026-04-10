@@ -1,11 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from datetime import datetime
 from unittest.mock import patch
 
+from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.skills import SkillContext, SkillResult, SourceCurator
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import (
@@ -17,7 +18,7 @@ from app.workflows.digest.docgen.publish import _build_chapter_manifest, _build_
 
 
 def test_source_curator_prioritizes_local_and_trusted_sources() -> None:
-    curator = SourceCurator(SkillContext(subject="demo"))
+    curator = SourceCurator(TracedExecutionContext(subject="demo"))
     curated, metadata = asyncio.run(
         curator.curate_sources(
             query="partial derivative geometric meaning examples",
@@ -97,7 +98,7 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
 
         async def run(self, **kwargs):
             captured["kwargs"] = kwargs
-            return SkillResult(content="# Example Chapter\n\n## Core Idea\n\nOne clean explanation.")
+            return TracedExecutionResult(content="# Example Chapter\n\n## Core Idea\n\nOne clean explanation.")
 
     requested_at = datetime.utcnow()
     context = create_langgraph_dev_context("digest.docgen.source_test")
@@ -135,8 +136,8 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
         },
     }
 
-    with patch("app.workflows.digest.docgen.graph.PedagogyWriter", new=FakePedagogyWriter), patch(
-        "app.workflows.digest.docgen.graph.update_knowledge_build_status"
+    with patch("app.workflows.digest.docgen.nodes.pedagogy_craft_node.PedagogyWriter", new=FakePedagogyWriter), patch(
+        "app.workflows.digest.docgen.nodes.collect_drafts_node.update_knowledge_build_status"
     ):
         craft_result = asyncio.run(craft_node(craft_state))
         collect_result = asyncio.run(
@@ -206,3 +207,4 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
     assert source_scope["local_source_count"] == 1
     assert source_scope["external_source_count"] == 1
     assert source_scope["domains"] == ["example.edu"]
+

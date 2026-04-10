@@ -1,1 +1,1 @@
-"""Infra package for runtime, AI, and orchestration helpers."""
+"""Shared infrastructure primitives: LLM, tracing, tools, skills, search, storage, and memory."""

@@ -1,4 +1,4 @@
-﻿"""Context compression skill."""
+"""Context compression helpers shared across retrieval-heavy workflows."""
 
 from __future__ import annotations
 
@@ -7,12 +7,11 @@ import re
 from collections import Counter
 
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.skills.base import BaseSkill, SkillResult
+from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
 
 _FAST_PATH_CHAR_LIMIT = 2400
 _DEFAULT_PASSAGE_MAX_CHARS = 900
 _DEFAULT_MAX_TOTAL_CHARS = 4800
-
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -26,11 +25,9 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-
 def _tokenize(text: str) -> list[str]:
     normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
     return [token for token in normalized.split() if len(token) > 1]
-
 
 
 def _lexical_overlap_score(query_tokens: Counter[str], passage: str) -> float:
@@ -43,10 +40,8 @@ def _lexical_overlap_score(query_tokens: Counter[str], passage: str) -> float:
     return overlap / max(1, sum(query_tokens.values()))
 
 
-
 def _normalize_for_dedupe(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
-
 
 
 def _split_large_block(block: str, *, max_chars: int) -> list[str]:
@@ -75,7 +70,6 @@ def _split_large_block(block: str, *, max_chars: int) -> list[str]:
     return [chunk for chunk in chunks if chunk]
 
 
-
 def _document_to_passages(document: str, *, max_chars: int) -> list[str]:
     blocks = [block.strip() for block in re.split(r"\n\s*\n+", document) if block.strip()]
     if not blocks:
@@ -100,7 +94,6 @@ def _document_to_passages(document: str, *, max_chars: int) -> list[str]:
     return [passage for passage in passages if passage]
 
 
-
 def _dedupe_passages(passages: list[str]) -> list[str]:
     deduped: list[str] = []
     seen: list[str] = []
@@ -120,7 +113,6 @@ def _dedupe_passages(passages: list[str]) -> list[str]:
     return deduped
 
 
-
 def _limit_by_total_chars(passages: list[str], *, max_total_chars: int) -> list[str]:
     selected: list[str] = []
     total = 0
@@ -135,7 +127,7 @@ def _limit_by_total_chars(passages: list[str], *, max_total_chars: int) -> list[
     return selected or passages[:1]
 
 
-class ContextManager(BaseSkill):
+class ContextCompressor(BaseTracedExecution):
     async def execute(
         self,
         *,
@@ -147,10 +139,10 @@ class ContextManager(BaseSkill):
         max_results: int = 8,
         max_total_chars: int = _DEFAULT_MAX_TOTAL_CHARS,
         passage_max_chars: int = _DEFAULT_PASSAGE_MAX_CHARS,
-    ) -> SkillResult:
+    ) -> TracedExecutionResult:
         cleaned_documents = [doc.strip() for doc in documents if str(doc).strip()]
         if not cleaned_documents:
-            return SkillResult(metadata={"compression_mode": "empty"})
+            return TracedExecutionResult(metadata={"compression_mode": "empty"})
 
         normalized_focus_terms = [str(item).strip() for item in focus_terms or [] if str(item).strip()]
         passages = _dedupe_passages(
@@ -161,7 +153,7 @@ class ContextManager(BaseSkill):
             ]
         )
         if not passages:
-            return SkillResult(metadata={"compression_mode": "empty"})
+            return TracedExecutionResult(metadata={"compression_mode": "empty"})
 
         focus_query = " ".join([query.strip(), *normalized_focus_terms]).strip()
         query_tokens = Counter(_tokenize(focus_query))
@@ -173,7 +165,7 @@ class ContextManager(BaseSkill):
                 key=lambda item: (-_lexical_overlap_score(query_tokens, item), -len(item)),
             )
             selected = _limit_by_total_chars(ranked[:max_results], max_total_chars=max_total_chars)
-            return SkillResult(
+            return TracedExecutionResult(
                 content="\n\n".join(selected),
                 metadata={
                     "compression_mode": "fast_path",
@@ -198,7 +190,7 @@ class ContextManager(BaseSkill):
                 scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -len(item[3])))
                 ranked_passages = [passage for _, _, _, passage in scored[:max_results]]
                 selected = _limit_by_total_chars(ranked_passages, max_total_chars=max_total_chars)
-                return SkillResult(
+                return TracedExecutionResult(
                     content="\n\n".join(selected),
                     metadata={
                         "compression_mode": "embedding_filter",
@@ -216,7 +208,7 @@ class ContextManager(BaseSkill):
             key=lambda item: (-_lexical_overlap_score(query_tokens, item), -len(item)),
         )
         selected = _limit_by_total_chars(ranked[:max_results], max_total_chars=max_total_chars)
-        return SkillResult(
+        return TracedExecutionResult(
             content="\n\n".join(selected),
             metadata={
                 "compression_mode": "lexical_fallback",
@@ -252,4 +244,6 @@ class ContextManager(BaseSkill):
         return result.content
 
 
-__all__ = ["ContextManager"]
+ContextManager = ContextCompressor
+
+__all__ = ["ContextCompressor", "ContextManager"]

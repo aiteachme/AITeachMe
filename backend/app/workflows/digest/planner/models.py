@@ -40,6 +40,7 @@ class BuildPlannerDraft(BaseModel):
     user_goal: str
     digest_mode: str = "systematic"
     tone: str = "encouraging"
+    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -176,6 +177,13 @@ def _normalize_digest_mode(value: Any) -> str:
 def _normalize_tone(value: Any) -> str:
     text = _clean_text(value)
     return text or get_teaching_runtime_config().planner.default_tone
+
+
+def _normalize_selected_skillpacks(value: Any) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, (list, tuple, set)) else [value]
+    return _dedupe_strings(items, limit=16)
 
 
 def _clean_text(value: Any) -> str:
@@ -530,6 +538,7 @@ def build_fallback_plan(
     digest_mode: str,
     tone: str,
     shared_inputs: SharedInputs,
+    selected_skillpacks: list[str] | None = None,
     target_count: int | None = None,
 ) -> BuildPlannerDraft:
     normalized_mode = _normalize_digest_mode(digest_mode)
@@ -558,6 +567,7 @@ def build_fallback_plan(
         user_goal=user_goal,
         digest_mode=normalized_mode,
         tone=normalized_tone,
+        selected_skillpacks=_normalize_selected_skillpacks(selected_skillpacks),
         chapter_plan=chapter_plan,
         research_queries=research_queries,
         media_plan={
@@ -687,6 +697,7 @@ def normalize_planner_draft(
     user_goal: str,
     requested_digest_mode: str,
     requested_tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
@@ -697,6 +708,11 @@ def normalize_planner_draft(
         requested_digest_mode or current_raw.get("digest_mode") or previous_raw.get("digest_mode")
     )
     tone = _normalize_tone(requested_tone or current_raw.get("tone") or previous_raw.get("tone"))
+    resolved_skillpacks = _normalize_selected_skillpacks(
+        selected_skillpacks
+        if selected_skillpacks is not None
+        else current_raw.get("selected_skillpacks") or previous_raw.get("selected_skillpacks")
+    )
     subject_display_name = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
     target_count = _resolve_requested_count(
         digest_mode=digest_mode,
@@ -711,6 +727,7 @@ def normalize_planner_draft(
         digest_mode=digest_mode,
         tone=tone,
         shared_inputs=shared,
+        selected_skillpacks=resolved_skillpacks,
         target_count=target_count,
     )
     current_chapters = _coerce_chapter_mappings(current_raw.get("chapter_plan"))
@@ -743,6 +760,7 @@ def normalize_planner_draft(
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=resolved_skillpacks,
         chapter_plan=chapter_plan,
         research_queries=research_queries or fallback_research_queries,
         media_plan=_normalize_media_plan(
@@ -769,6 +787,7 @@ def normalize_planner_payload(
     user_goal: str,
     requested_digest_mode: str,
     requested_tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -778,6 +797,7 @@ def normalize_planner_payload(
         user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
         requested_tone=requested_tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     ).model_dump(mode="json")

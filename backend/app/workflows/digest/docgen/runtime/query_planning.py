@@ -1,4 +1,4 @@
-"""Query helpers for docgen research planning and retrieval."""
+"""Workflow-local query planning helpers for DocGen research."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.prompts import build_docgen_sub_query_messages
 
 EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
@@ -145,6 +145,8 @@ async def generate_sub_queries(
     domain: str = "education",
     llm_caller: Callable[..., Awaitable[Any]] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
+    skillpack_guidance: str = "",
+    recommended_tool_tags: list[str] | None = None,
 ) -> list[str]:
     """Generate research sub-queries with an LLM and a deterministic fallback."""
 
@@ -169,6 +171,8 @@ async def generate_sub_queries(
                 max_queries=safe_max_queries,
                 domain=domain,
                 fallback_queries=fallback_queries,
+                skillpack_guidance=skillpack_guidance,
+                recommended_tool_tags=recommended_tool_tags or [],
             ),
             task_type=TaskType.REASONING,
             response_model=ResearchSubQueryPlan,

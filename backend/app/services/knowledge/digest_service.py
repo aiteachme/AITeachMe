@@ -34,6 +34,7 @@ from app.utils.path_helpers import build_merged_knowledge_base_build_path, build
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.observability import build_token_summary
+from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
@@ -270,7 +271,7 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
     payload["selected_file_ids"] = list(plan.selected_file_ids_json)
     payload["planner_session_id"] = plan.planner_session_id
     payload["confirmed_plan_id"] = plan.id
-    return payload
+    return normalize_digest_confirmed_plan_payload(payload)
 
 
 def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_id: str) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:

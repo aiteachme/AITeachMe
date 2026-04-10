@@ -7,6 +7,9 @@ from typing import Any
 
 from app.teaching.documents import resolve_effective_chapter_title
 from app.workflows.digest.shared.contracts import (
+    DigestChapterContract,
+    DigestConfirmedPlanContract,
+    parse_digest_confirmed_plan_contract,
     resolve_digest_course_type,
     resolve_digest_retrieval_profile,
 )
@@ -36,38 +39,36 @@ async def publish_docgen_progress(
     )
 
 
-def normalize_chapter_assignments(chapters: list[dict[str, Any]], *, default_source_file_ids: list[int]) -> list[dict[str, Any]]:
-    normalized: list[dict[str, Any]] = []
-    for index, chapter in enumerate(chapters, start=1):
-        chapter_index = int(chapter.get("chapter_index", index) or index)
-        normalized.append(
-            {
-                "chapter_index": chapter_index,
-                "title": str(chapter.get("title") or f"第 {chapter_index} 章"),
-                "resolved_title": str(chapter.get("resolved_title") or "").strip(),
-                "objective": str(chapter.get("objective") or ""),
-                "required_elements": [str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
-                "search_queries": [str(item) for item in chapter.get("search_queries", []) if str(item).strip()],
-                "writing_instructions": str(chapter.get("writing_instructions") or ""),
-                "media_hints": dict(chapter.get("media_hints") or {"images": [], "mermaid": [], "interactive": []}),
-                "source_file_ids": list(chapter.get("source_file_ids") or default_source_file_ids),
-            }
+def normalize_chapter_assignments(
+    chapters: list[dict[str, Any]],
+    *,
+    default_source_file_ids: list[int],
+) -> list[dict[str, Any]]:
+    return [
+        DigestChapterContract.model_validate(chapter).to_assignment(
+            default_source_file_ids=default_source_file_ids
         )
-    return normalized
+        for chapter in chapters
+    ]
+
+
+def normalize_confirmed_plan_contract(plan_payload: dict[str, Any]) -> DigestConfirmedPlanContract:
+    return parse_digest_confirmed_plan_contract(plan_payload)
 
 
 def get_effective_chapter_title(chapter: dict[str, Any], *, fallback_index: int | None = None) -> str:
     return resolve_effective_chapter_title(chapter, chapter_index=fallback_index)
 
 
-def resolve_docgen_dependency(name: str, default: Any) -> Any:
-    """Honor graph-level overrides used by tests and debug entrypoints."""
+def resolve_docgen_dependency(name: str, default: Any, *, owner_module: str | None = None) -> Any:
+    """Resolve debug or test overrides from the owning module instead of graph globals."""
 
+    module_name = owner_module or "app.workflows.digest.docgen.graph"
     try:
-        graph_module = import_module("app.workflows.digest.docgen.graph")
+        module = import_module(module_name)
     except Exception:
         return default
-    return getattr(graph_module, name, default)
+    return getattr(module, name, default)
 
 
 def resolve_docgen_course_type(digest_mode: str | None) -> str:
@@ -113,6 +114,7 @@ __all__ = [
     "ensure_chapter_heading",
     "get_effective_chapter_title",
     "normalize_chapter_assignments",
+    "normalize_confirmed_plan_contract",
     "publish_docgen_progress",
     "resolve_docgen_dependency",
     "resolve_docgen_course_type",

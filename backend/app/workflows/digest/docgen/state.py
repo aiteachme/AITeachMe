@@ -23,6 +23,7 @@ class DocGenState(TypedDict, total=False):
     retrieval_profile: str
     teaching_action: str
     tone: str
+    selected_skillpacks: list[str]
     shared_inputs: Any
     document_context: dict[str, Any] | None
 

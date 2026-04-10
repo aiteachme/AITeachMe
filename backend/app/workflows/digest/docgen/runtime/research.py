@@ -1,4 +1,4 @@
-﻿"""Research conductor skill."""
+"""Workflow-local research runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -6,20 +6,20 @@ from collections.abc import Iterable
 from typing import Any
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.model_router import TaskType
-from app.shared.infra.search.factory import get_retrievers_for_subject
+from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.search import ContextCompressor, SourceCurator
+from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.skills.base import BaseSkill, SkillResult
-from app.shared.infra.skills.context_manager import ContextManager
-from app.shared.infra.skills.source_curator import SourceCurator
-from app.shared.infra.tools.builtin.query_processing import (
+from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
+from app.shared.infra.tools.builtin.web_scraping import scrape_urls
+from app.workflows.digest.docgen.runtime.query_planning import (
     build_research_focus_text,
     dedupe_queries,
     enrich_queries_for_education,
     generate_sub_queries,
 )
-from app.shared.infra.tools.builtin.web_scraping import scrape_urls
 from app.workflows.digest.prompts import build_docgen_research_purify_messages
 
 _LOW_VALUE_SOURCE_MARKERS = (
@@ -29,7 +29,15 @@ _LOW_VALUE_SOURCE_MARKERS = (
 )
 
 
-class ResearchConductor(BaseSkill):
+class DocGenResearchRuntime(BaseTracedExecution):
+    @property
+    def trace_namespace(self) -> str:
+        return "workflow_runtime.docgen"
+
+    @property
+    def trace_name(self) -> str:
+        return "research"
+
     async def execute(
         self,
         *,
@@ -40,9 +48,12 @@ class ResearchConductor(BaseSkill):
         objective: str = "",
         required_elements: list[str] | None = None,
         digest_mode: str = "",
+        retrieval_profile: str | None = None,
+        selected_skillpacks: list[str] | None = None,
+        user_goal: str = "",
         search_domain: str = "zh",
         max_results_per_query: int | None = None,
-    ) -> SkillResult:
+    ) -> TracedExecutionResult:
         settings = get_settings()
         query_limit = max_results_per_query or settings.search_max_results_per_query
         base_queries = dedupe_queries(
@@ -52,13 +63,28 @@ class ResearchConductor(BaseSkill):
         if not base_queries and str(chapter_title).strip():
             base_queries = [str(chapter_title).strip()]
         if not base_queries:
-            return SkillResult(metadata={"local_hits": 0, "web_hits": 0, "query_count": 0})
+            return TracedExecutionResult(metadata={"local_hits": 0, "web_hits": 0, "query_count": 0})
 
         focus_text = build_research_focus_text(
             title=chapter_title or base_queries[0],
             objective=objective,
             required_elements=required_elements,
             digest_mode=digest_mode,
+        )
+        skillpack_guidance = render_prompt_scoped_skillpacks(
+            selected_skillpacks,
+            prompt_scope="digest.docgen.research",
+            bindings={
+                "subject": self.context.subject,
+                "user_goal": user_goal,
+                "chapter_title": chapter_title or base_queries[0],
+                "topic": chapter_title or base_queries[0],
+                "concept": chapter_title or base_queries[0],
+            },
+        )
+        recommended_tool_tags = collect_recommended_tool_tags(
+            selected_skillpacks,
+            prompt_scope="digest.docgen.research",
         )
         planned_queries = await generate_sub_queries(
             focus_text or base_queries[0],
@@ -75,21 +101,33 @@ class ResearchConductor(BaseSkill):
             domain=search_domain,
             llm_caller=self.context.resolve_llm_caller(),
             extra_metadata=self.context.trace_metadata(
-                skill_name=self.name,
+                runtime_name=self.name,
                 research_stage="plan_sub_queries",
             ),
+            skillpack_guidance=skillpack_guidance,
+            recommended_tool_tags=recommended_tool_tags,
         )
         research_queries = dedupe_queries(
             [*base_queries, *planned_queries],
             limit=max(1, int(settings.docgen_max_research_queries)),
         )
+        resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
         local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
         other_retrievers = [
             retriever
-            for retriever in get_retrievers_for_subject(subject=local_rag_subject, local_sections=local_sections)
+            for retriever in get_retrievers_for_subject(
+                subject=local_rag_subject,
+                local_sections=local_sections,
+                profile=resolved_retrieval_profile or None,
+            )
             if retriever.name != local_retriever.name
         ]
-        compressor = ContextManager(self.context)
+        configured_retrievers = get_configured_retriever_names(
+            profile=resolved_retrieval_profile or None,
+            include_local_rag=bool(local_rag_subject or local_sections),
+            include_fallback=True,
+        )
+        compressor = ContextCompressor(self.context)
         curator = SourceCurator(self.context)
 
         all_results: list[SearchResult] = []
@@ -164,10 +202,12 @@ class ResearchConductor(BaseSkill):
                 objective=objective,
                 required_elements=list(required_elements or []),
                 digest_mode=digest_mode,
+                skillpack_guidance=skillpack_guidance,
+                recommended_tool_tags=recommended_tool_tags,
             )
             dense_context = purified_context.strip() or dense_context
 
-        return SkillResult(
+        return TracedExecutionResult(
             content=dense_context,
             sources=list(dict.fromkeys(item.url for item in curated_results if item.url)),
             metadata={
@@ -181,6 +221,10 @@ class ResearchConductor(BaseSkill):
                 "executed_queries": research_queries,
                 "scraped_url_count": scraped_url_count,
                 "document_count": len(documents),
+                "requested_retrieval_profile": resolved_retrieval_profile,
+                "applied_retrieval_profile": resolved_retrieval_profile or "default",
+                "configured_retrievers": configured_retrievers,
+                "active_retrievers": [local_retriever.name, *[retriever.name for retriever in other_retrievers]],
                 "compression_mode": compression_result.metadata.get("compression_mode", "empty"),
                 "purify_used": purify_used,
                 "curated_source_count": curator_metadata.get("selected_count", len(curated_results)),
@@ -191,6 +235,8 @@ class ResearchConductor(BaseSkill):
                 "top_domains": curator_metadata.get("top_domains", {}),
                 "retriever_stats": retriever_stats,
                 "source_details": [item.to_dict() for item in curated_results],
+                "selected_skillpacks": list(selected_skillpacks or []),
+                "recommended_tool_tags": recommended_tool_tags,
             },
         )
 
@@ -233,6 +279,8 @@ class ResearchConductor(BaseSkill):
         objective: str,
         required_elements: list[str],
         digest_mode: str,
+        skillpack_guidance: str = "",
+        recommended_tool_tags: list[str] | None = None,
     ) -> tuple[str, bool]:
         if not dense_context.strip():
             return "", False
@@ -248,10 +296,12 @@ class ResearchConductor(BaseSkill):
                     objective=objective,
                     required_elements=required_elements,
                     digest_mode=digest_mode,
+                    skillpack_guidance=skillpack_guidance,
+                    recommended_tool_tags=recommended_tool_tags or [],
                 ),
                 task_type=TaskType.DOCGEN_LIGHT,
                 extra_metadata=self.context.trace_metadata(
-                    skill_name=self.name,
+                    runtime_name=self.name,
                     research_stage="purify_material",
                 ),
             )
@@ -319,4 +369,4 @@ class ResearchConductor(BaseSkill):
         entry["queries"] = queries[:8]
 
 
-__all__ = ["ResearchConductor"]
+__all__ = ["DocGenResearchRuntime"]

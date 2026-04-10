@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.config import get_settings
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import get_llm_trace_context
 
 _SAFE_LANGSMITH_FIELDS = {

@@ -1,4 +1,4 @@
-"""DocGen LangGraph definition."""
+﻿"""DocGen LangGraph definition."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
-from app.shared.infra.skills import PedagogyWriter, ResearchConductor
 from app.utils.docgen_store import update_knowledge_build_status
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
@@ -142,6 +141,7 @@ def create_docgen_initial_state(
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
     tone: str | None = None,
+    selected_skillpacks: list[str] | None = None,
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
 
@@ -161,6 +161,7 @@ def create_docgen_initial_state(
         "retrieval_profile": resolve_docgen_retrieval_profile(course_type),
         "teaching_action": "docgen_build",
         "tone": tone or "",
+        "selected_skillpacks": list(selected_skillpacks or []),
         "document_context": None,
         "error": None,
     }
@@ -196,7 +197,9 @@ def build_research_sends(state: DocGenState) -> list[Send]:
                 "retrieval_profile": state.get("retrieval_profile", ""),
                 "teaching_action": "chapter_research",
                 "tone": state.get("tone", ""),
+                "selected_skillpacks": list(state.get("selected_skillpacks", []) or []),
                 "shared_inputs": state.get("shared_inputs"),
+                "document_context": state.get("document_context"),
                 "chapter_assignment": chapter,
                 "total_chapters": total,
             },
@@ -225,6 +228,8 @@ def build_craft_sends(state: DocGenState) -> list[Send]:
                 "retrieval_profile": state.get("retrieval_profile", ""),
                 "teaching_action": "chapter_write",
                 "tone": state.get("tone", ""),
+                "selected_skillpacks": list(state.get("selected_skillpacks", []) or []),
+                "document_context": state.get("document_context"),
                 "chapter_material": material,
                 "total_chapters": total,
             },
@@ -253,9 +258,8 @@ __all__ = [
     "build_targeted_research_node",
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
-    "PedagogyWriter",
-    "ResearchConductor",
     "route_after_load_context",
     "route_after_step",
     "update_knowledge_build_status",
 ]
+

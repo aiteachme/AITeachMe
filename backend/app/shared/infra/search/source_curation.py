@@ -1,12 +1,12 @@
-﻿"""Source curation skill for DocGen research."""
+"""Source ranking and filtering helpers for retrieval-heavy workflows."""
 
 from __future__ import annotations
 
 from collections import Counter
 from urllib.parse import urlparse
 
+from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.skills.base import BaseSkill, SkillResult
 
 _TRUSTED_DOMAIN_KEYWORDS = (
     ".edu",
@@ -28,11 +28,9 @@ _BLACKLISTED_DOMAIN_MARKERS = (
 )
 
 
-
 def _tokenize(text: str) -> list[str]:
     normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
     return [token for token in normalized.split() if len(token) > 1]
-
 
 
 def _domain_from_url(url: str) -> str:
@@ -40,23 +38,25 @@ def _domain_from_url(url: str) -> str:
     return parsed.netloc.lower().strip()
 
 
-class SourceCurator(BaseSkill):
+class SourceCurator(BaseTracedExecution):
     async def execute(
         self,
         *,
         query: str,
         sources: list[SearchResult],
         max_results: int = 10,
-    ) -> SkillResult:
+    ) -> TracedExecutionResult:
         filtered = self._filter_sources(sources)
         ranked = self._rank_sources(query=query, sources=filtered)
         curated = ranked[:max_results]
         curated_domains = [_domain_from_url(item.url) for item in curated if not item.url.startswith("local://")]
         domain_counts = Counter(domain for domain in curated_domains if domain)
-        trusted_source_count = sum(1 for item in curated if self._credibility_score(item.url, domain=_domain_from_url(item.url)) >= 0.8)
+        trusted_source_count = sum(
+            1 for item in curated if self._credibility_score(item.url, domain=_domain_from_url(item.url)) >= 0.8
+        )
         local_source_count = sum(1 for item in curated if item.url.startswith("local://"))
         web_source_count = max(0, len(curated) - local_source_count)
-        return SkillResult(
+        return TracedExecutionResult(
             metadata={
                 "curated_sources": [item.to_dict() for item in curated],
                 "candidate_count": len(sources),

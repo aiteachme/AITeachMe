@@ -64,7 +64,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
             if chapter_metadatas
             else ""
         )
-        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status)
+        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status, owner_module=__name__)
         update_status(
             state["subject"],
             requested_at=state["requested_at"],
