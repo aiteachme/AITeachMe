@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-09T18:28:59.079056",
-  "total_commits_analyzed": 481,
+  "generated_at": "2026-04-09T18:31:33.951726",
+  "total_commits_analyzed": 485,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3849,6 +3849,38 @@
       "code_lines": 99568,
       "other_lines": 31298,
       "message": "style: 优化前端"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "0a2411a",
+      "total_lines": 130512,
+      "code_lines": 99607,
+      "other_lines": 30905,
+      "message": "refactor: 将 shared 配置入口重构为独立包"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "938a120",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "301793e",
+      "total_lines": 130866,
+      "code_lines": 99568,
+      "other_lines": 31298,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "2ebf0e8",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
