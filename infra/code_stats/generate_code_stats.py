@@ -369,7 +369,7 @@ def generate_quickchart_url(data: Dict) -> str:
         'options': {
             'title': {
                 'display': True,
-                'text': 'FluxHive 代码量变化趋势',
+                'text': '代码量变化趋势',
                 'fontSize': 16
             },
             'scales': {
@@ -410,7 +410,7 @@ def generate_quickchart_url(data: Dict) -> str:
 
 def main():
     """主函数"""
-    print("🚀 FluxHive 代码统计工具\n")
+    print("🚀 代码统计工具\n")
     
     # 检查是否在 Git 仓库中
     try:
