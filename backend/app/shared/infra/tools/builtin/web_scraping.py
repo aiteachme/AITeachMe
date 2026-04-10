@@ -14,6 +14,7 @@ async def scrape_urls(
     urls: list[str],
     *,
     max_workers: int | None = None,
+    preferred_reader: str | None = None,
 ) -> list[ScrapedPage]:
     """Scrape URLs concurrently with stable ordering and URL deduplication."""
 
@@ -28,7 +29,10 @@ async def scrape_urls(
 
     async def _scrape_one(url: str) -> ScrapedPage:
         async with semaphore:
-            scraper = get_scraper_for_url(url)
+            if preferred_reader:
+                scraper = get_scraper_for_url(url, preferred=preferred_reader)
+            else:
+                scraper = get_scraper_for_url(url)
             try:
                 return await scraper.traced_scrape(url)
             except Exception as exc:  # pragma: no cover - scraper backends are integration-heavy
@@ -37,7 +41,11 @@ async def scrape_urls(
     with langsmith_trace(
         name="tool.scrape_urls",
         run_type="tool",
-        inputs={"url_count": len(ordered_urls), "max_workers": worker_count},
+        inputs={
+            "url_count": len(ordered_urls),
+            "max_workers": worker_count,
+            "preferred_reader": preferred_reader or "",
+        },
         subject=trace.subject,
         build_session_id=trace.build_session_id,
         workflow=trace.workflow,

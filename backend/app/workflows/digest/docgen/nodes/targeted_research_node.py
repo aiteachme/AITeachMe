@@ -12,7 +12,13 @@ from app.shared.infra.tools.builtin.markdown_processing import build_draft_excer
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
+from app.workflows.digest.docgen.nodes.common import (
+    get_effective_chapter_title,
+    publish_docgen_progress,
+    resolve_docgen_course_type,
+    resolve_docgen_dependency,
+    resolve_docgen_retrieval_profile,
+)
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -58,7 +64,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
         started_at = perf_counter()
         assignment = deepcopy(state["chapter_assignment"])
         chapter_index = int(assignment.get("chapter_index", 0) or 0)
-        chapter_title = str(assignment.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章"
+        chapter_title = get_effective_chapter_title(assignment, fallback_index=chapter_index)
         upsert_knowledge_build_chapter_progress(
             state["subject"],
             requested_at=state["requested_at"],
@@ -87,6 +93,9 @@ def build_targeted_research_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             confirmed_plan_id=state.get("confirmed_plan_id", ""),
             digest_mode=state.get("digest_mode", ""),
+            course_type=resolve_docgen_course_type(state.get("course_type") or state.get("digest_mode")),
+            retrieval_profile=str(state.get("retrieval_profile") or resolve_docgen_retrieval_profile(state.get("digest_mode"))),
+            teaching_action=str(state.get("teaching_action") or "chapter_research"),
             chapter_index=chapter_index,
         )
         researcher_cls = resolve_docgen_dependency("ResearchConductor", ResearchConductor)
@@ -116,9 +125,14 @@ def build_targeted_research_node(*, context: WorkflowContext):
         domains = _extract_top_domains(dict(result.metadata), source_urls)
         chapter_material = {
             **assignment,
+            "course_type": skill_context.course_type,
+            "retrieval_profile": skill_context.retrieval_profile,
+            "teaching_action": skill_context.teaching_action,
             "dense_context": dense_context,
             "sources": list(result.sources),
             "source_details": source_details,
+            "source_titles": source_titles,
+            "source_urls": source_urls,
             "research_summary": build_draft_excerpt(dense_context, max_chars=320) if dense_context else "",
             "research_ms": elapsed_ms,
             "local_hits": int(result.metadata.get("local_hits", 0)),
@@ -175,7 +189,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
             stage="research_chapter_completed",
             payload={
                 "chapter_index": chapter_material["chapter_index"],
-                "title": chapter_material["title"],
+                "title": get_effective_chapter_title(chapter_material, fallback_index=chapter_index),
                 "source_count": len(chapter_material["sources"]),
                 "local_hits": chapter_material["local_hits"],
                 "web_hits": chapter_material["web_hits"],

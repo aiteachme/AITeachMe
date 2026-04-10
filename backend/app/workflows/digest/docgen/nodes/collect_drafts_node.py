@@ -6,7 +6,11 @@ from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_dependency
+from app.workflows.digest.docgen.nodes.common import (
+    get_effective_chapter_title,
+    publish_docgen_progress,
+    resolve_docgen_dependency,
+)
 from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -22,6 +26,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
                 **draft,
                 "chapter_index": int(draft.get("chapter_index", index)),
                 "title": str(draft.get("title") or f"第 {index} 章"),
+                "resolved_title": str(draft.get("resolved_title") or "").strip(),
                 "markdown": str(draft.get("markdown") or ""),
                 "summary": str(draft.get("summary") or ""),
                 "tags": list(draft.get("tags") or []),
@@ -84,6 +89,10 @@ def build_collect_drafts_node(*, context: WorkflowContext):
             stage="draft_collection_completed",
             payload={
                 "chapter_count": len(chapter_metadatas),
+                "chapter_titles": [
+                    get_effective_chapter_title(item, fallback_index=int(item.get("chapter_index", 0) or 0) or None)
+                    for item in chapter_metadatas[:3]
+                ],
                 "placeholder_count": sum(int(item.get("placeholder_count", 0) or 0) for item in chapter_metadatas),
                 "word_count": sum(int(item.get("word_count", 0) or 0) for item in chapter_metadatas),
             },

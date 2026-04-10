@@ -1,6 +1,6 @@
 ## 一、两个项目的架构对齐 — "我有什么 / 他有什么 / 我缺什么"
 
-> **最后更新**：2026-04-09 — 反映检索层第一阶段重构后的实际状态
+> **最后更新**：2026-04-10 — 校准代码实际状态，修正过度乐观的"已完成"标记
 
 ### 1.1 能力矩阵对照
 
@@ -37,26 +37,28 @@
 |:---|:---|:---|:---|:---|
 | 1 | **三级 LLM 策略** | `llm_support/fallback.py` | ✅ 已完成 | `acompletion_with_fallback()` 支持 tier 参数 + TaskType 降级链 |
 | 2 | **Skill 组合模式** | `shared/infra/skills/` | ✅ 已完成 | `BaseSkill` + `@skill` 双模式共存，6 个业务 Skill 已实现 |
-| 3 | **Plan-Execute-Write 范式** | `workflows/digest/docgen/` | ✅ 已完成 | 8 节点 LangGraph 拓扑：load_context → targeted_research → collect_materials → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble |
+| 3 | **Plan-Execute-Write 范式** | `workflows/digest/docgen/` | ✅ 已完成 | **9 节点** LangGraph 拓扑：load_context → targeted_research → collect_materials → **resolve_titles** → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble |
 | 4 | **上下文压缩管道** | `skills/context_manager.py` | ✅ 已完成 | 语义+词法双通道评分，段落去重，字符限制 |
 | 5 | **检索器工厂** | `search/retrievers/` + `search/factory.py` | ✅ 已完成 | `BaseRetriever` + 多检索器列表 / profile 解析 + 5 种实现（含 Tavily，Bocha 仍待补真实 API） |
 | 6 | **Scraper 调度器** | `search/scraper/` + `tools/builtin/web_scraping.py` | ✅ 已完成 | BS4 + PyMuPDF + 并行抓取 + URL 去重 |
 | 7 | **文生图两阶段** | `skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入 |
 
-### 1.4 下一阶段重点（Phase 3+）
+### 1.4 下一阶段重点（2026-04-10 更新）
 
-核心移植已完成，后续聚焦于**质量提升和功能扩展**：
+核心移植骨架已完成，但多数模块仍处于"接口就绪、实现待深化"阶段。后续聚焦于**质量深化和真实能力补齐**：
 
-| 优先级 | 方向 | 具体内容 |
-|:---|:---|:---|
-| P0 | **文档质量调优** | 速成课/系统课 Prompt 精调，确保章节结构符合 05 文档规范，系统课字数达标 ≥10000 |
-| P0 | **LangSmith Dashboard** | 建立 tier 成本分析、降级监控、DocGen 端到端、检索器命中率等自定义视图 |
-| P1 | **文生图实际接入** | 通义万相 / DALL-E API 接入，替换当前的文字建议占位 |
-| P1 | **DocGen 事件 → WebSocket** | 打通 DocGen 进度事件到前端实时展示 |
-| P1 | **教育 Teaching Skills** | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` |
-| P2 | **本地教育语料库** | `data/edu_corpus/` 预置高数/线代/概率论知识条目 |
-| P2 | **学术检索器扩展** | arXiv / Semantic Scholar / PubMed 等学术检索器 |
-| P3 | **交互式 HTML** | iframe 沙箱 + Desmos / GeoGebra 嵌入 |
-| P3 | **MCP 协议扩展** | MCPRetriever + MCPToolSelector |
+| 优先级 | 方向 | 具体内容 | 当前差距 |
+|:---|:---|:---|:---|
+| P0 | **Build Contract 收紧** | 定义 `BuildContract` Pydantic model，替代当前松散的 `confirmed_plan` dict | `load_context_node` 从 dict 取值无 schema 校验，字段缺失时 fallback 逻辑分散 |
+| P0 | **章节研究微循环** | `ResearchConductor` 内部增加 assess-gaps → 补检索 → 再压缩 的质量驱动循环 | 当前 `targeted_research_node` 只调一次 `researcher.run()`，无缺口识别 |
+| P0 | **课程模式硬约束** | `sprint` / `systematic` 的章节结构、字数下限、必备区块写入 writer prompt 和 enrich 逻辑 | `course_type` 已在 state 流转，但 writer 和 enrich 节点未做差异化处理 |
+| P0 | **LangSmith Dashboard** | 建立 tier 成本分析、降级监控、DocGen 端到端、检索器命中率等自定义视图 | trace metadata 基础已有，但缺少 `course_type` / `retrieval_profile` 等业务维度 |
+| P1 | **文生图实际接入** | 通义万相 / DALL-E API 接入，替换当前的文字建议占位 | `ImageGenerator` 框架就绪，`run()` 返回文字建议而非真实图片 |
+| P1 | **DocGen 事件 → 前端实时** | 打通 DocGen 进度事件到前端 SSE/WebSocket | 后端事件已发布，前端 `DigestBuildPanel` 通过轮询获取状态 |
+| P1 | **教育 Teaching Skills** | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` | `teaching/skill_tools.py` 仅有 4 个示例函数 |
+| P2 | **本地教育语料库** | `data/edu_corpus/` 预置高数/线代/概率论知识条目 | 尚未开始 |
+| P2 | **学术检索器扩展** | arXiv / Semantic Scholar / PubMed 等学术检索器 | `Bocha` 仍是 placeholder |
+| P3 | **交互式 HTML** | iframe 沙箱 + Desmos / GeoGebra 嵌入 | 仅预留接口 |
+| P3 | **MCP 协议扩展** | MCPRetriever + MCPToolSelector | `shared/infra/mcp.py` 仅有骨架 |
 
 ---

@@ -8,8 +8,11 @@ from app.utils.docgen_store import append_knowledge_build_recent_event, update_k
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import (
+    get_effective_chapter_title,
     normalize_chapter_assignments,
     publish_docgen_progress,
+    resolve_docgen_course_type,
+    resolve_docgen_retrieval_profile,
     serialize_section,
 )
 from app.workflows.digest.docgen.state import DocGenState
@@ -44,6 +47,8 @@ def build_load_context_node(*, context: WorkflowContext):
             return {"error": "已确认的构建方案缺少章节规划，无法继续生成知识文档。"}
 
         digest_mode = str(plan_payload.get("digest_mode") or digest_mode)
+        course_type = resolve_docgen_course_type(digest_mode)
+        retrieval_profile = resolve_docgen_retrieval_profile(course_type)
         tone = str(plan_payload.get("tone") or tone)
         assignments = normalize_chapter_assignments(
             plan_payload.get("chapter_plan") or [],
@@ -56,6 +61,9 @@ def build_load_context_node(*, context: WorkflowContext):
         document_context = {
             "subject": state["subject"],
             "digest_mode": digest_mode,
+            "course_type": course_type,
+            "retrieval_profile": retrieval_profile,
+            "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "tone": tone,
             "user_goal": str(plan_payload.get("user_goal") or state.get("user_prompt") or ""),
             "plan_summary": str(plan_payload.get("plan_summary") or ""),
@@ -83,7 +91,10 @@ def build_load_context_node(*, context: WorkflowContext):
             chapter_progress=[
                 {
                     "chapter_index": int(item.get("chapter_index", index + 1) or (index + 1)),
-                    "title": str(item.get("title") or f"第 {index + 1} 章").strip() or f"第 {index + 1} 章",
+                    "title": get_effective_chapter_title(
+                        item,
+                        fallback_index=int(item.get("chapter_index", index + 1) or (index + 1)),
+                    ),
                     "status": "planned",
                     "source_count": 0,
                     "local_hits": 0,
@@ -114,6 +125,8 @@ def build_load_context_node(*, context: WorkflowContext):
             stage="plan_ready",
             payload={
                 "digest_mode": digest_mode,
+                "course_type": course_type,
+                "retrieval_profile": retrieval_profile,
                 "chapter_count": len(assignments),
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
@@ -127,6 +140,9 @@ def build_load_context_node(*, context: WorkflowContext):
             "chapter_assignments": assignments,
             "confirmed_plan": plan_payload,
             "digest_mode": digest_mode,
+            "course_type": course_type,
+            "retrieval_profile": retrieval_profile,
+            "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "tone": tone,
             "document_context": document_context,
             "planner_ms": 0,

@@ -8,7 +8,11 @@ from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import build_examine_markdown, publish_docgen_progress
+from app.workflows.digest.docgen.nodes.common import (
+    build_examine_markdown,
+    get_effective_chapter_title,
+    publish_docgen_progress,
+)
 from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -23,9 +27,15 @@ def build_inject_examine_node(*, context: WorkflowContext):
             return {"error": "当前没有可用于注入练习内容的章节。"}
 
         question_titles = [
-            str(chapter.get("title") or "").strip()
+            get_effective_chapter_title(
+                chapter,
+                fallback_index=int(chapter.get("chapter_index", 0) or 0) or None,
+            )
             for chapter in chapter_metadatas[:3]
-            if str(chapter.get("title") or "").strip()
+            if get_effective_chapter_title(
+                chapter,
+                fallback_index=int(chapter.get("chapter_index", 0) or 0) or None,
+            )
         ]
         exam_questions = [
             {

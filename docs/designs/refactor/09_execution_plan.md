@@ -1,177 +1,167 @@
-## 九、分阶段重构执行计划
+## 九、分阶段执行计划
 
-> **最后更新**：2026-04-09 — 反映前端 Mermaid 渲染升级、Planner 概念预检索、检索层第一阶段重构和教学脚手架增强后的实际状态
-
-### 9.1 总体原则（不变）
-
-- **渐进式重构**：每个阶段都能独立运行和测试，不会出现"改了一半跑不起来"的情况
-- **向后兼容**：旧 API 接口不变，前端无感知
-- **LangSmith 先行**：每个新模块第一天就接入 LangSmith，不留"后补"的债
-- **测试驱动**：每个节点都有独立的单元测试（mock LLM 调用）
+> 目标：把重构拆成可以逐阶段上线、逐阶段验证、逐阶段回滚的计划，而不是一次性大改。
+> 最后更新：2026-04-10
 
 ---
 
-### 9.2 Phase 0：基础设施层 — ✅ 已完成
+## 9.1 总体策略
 
-| 任务 | 涉及文件 | 状态 |
-|:---|:---|:---|
-| 1. `acompletion_with_fallback()` 降级容错链 | `shared/infra/llm_support/fallback.py` | ✅ 已实现 tier 路由 + TaskType 降级链 |
-| 2. `model_overrides` 差异化配置 | `shared/infra/config.py` | ✅ 已有机制 |
-| 3. `.env` 差异化模型配置 | `.env` | ✅ 可选配置 |
-| 4. `observability.py` 自动记录 `task_type` | `shared/infra/llm_support/observability.py` | ✅ LangSmith payload 已含 task_type |
-| 5. `BaseRetriever` + `factory.py` | `shared/infra/search/retrievers/base.py` + `search/factory.py` | ✅ 工厂模式 + `get_retrievers_for_subject()` + 多检索器 list/profile 配置解析 |
-| 6. Bing 检索器 | `shared/infra/search/retrievers/bing.py` | ✅ 已实现 |
-| 7. DuckDuckGo 检索器 | `shared/infra/search/retrievers/duckduckgo.py` | ✅ 已实现 |
-| 8. LocalRAG 检索器 | `shared/infra/search/retrievers/local_rag.py` | ✅ 已实现（向量 + section fallback） |
-| 9. Tavily 检索器 | `shared/infra/search/retrievers/tavily.py` | ✅ 已实现 |
-| 10. arXiv / Semantic Scholar 检索器 | `shared/infra/search/retrievers/arxiv.py` + `semantic_scholar.py` | ✅ 已实现 |
-| 11. Scraper (BS4 + PDF) | `shared/infra/search/scraper/` | ✅ `BaseScraper` + BS4 + PyMuPDF |
+### 先做什么
 
-**额外说明**：`Bocha` 检索器文件已建好，但当前仍是 placeholder，尚未接入真实 API。
+- 先冻结分层边界与观测契约
+- 再升级 Docs Lane 的 research 和写作质量
+- 最后再补富媒体、教学工具、教育语料库
 
-### 9.3 Phase 1：Skills + Actions 层 — ✅ 已完成
+### 明确不做什么
 
-| 任务 | 涉及文件 | 状态 |
-|:---|:---|:---|
-| 1. `BaseSkill` + `SkillContext` + `SkillResult` | `shared/infra/skills/base.py` | ✅ 含 `SkillRegistry` + `@skill` 装饰器 + `extract_skill_result_metadata()` |
-| 2. `ContextManager` | `shared/infra/skills/context_manager.py` | ✅ 语义+词法双通道评分 + 段落去重 + 字符限制 |
-| 3. `ResearchConductor` | `shared/infra/skills/researcher.py` | ✅ 子查询规划 → 多检索器并行 → 抓取 → SourceCurator → ContextManager → purify |
-| 4. `query_processing.py` | `shared/infra/tools/builtin/query_processing.py` | ✅ `generate_sub_queries()` + `enrich_queries_for_education()` + `dedupe_queries()` |
-| 5. `web_scraping.py` | `shared/infra/tools/builtin/web_scraping.py` | ✅ `scrape_urls()` 并行抓取 |
-| 6. `markdown_processing.py` | `shared/infra/tools/builtin/markdown_processing.py` | ✅ TOC / headers / references / word_count |
-| 7. `content_analysis.py` | `shared/infra/tools/builtin/content_analysis.py` | ✅ 术语抽取 / 片段定位 / 覆盖检测 |
-| 8. `latex_processing.py` | `shared/infra/tools/builtin/latex_processing.py` | ✅ 数学分隔符规范化 |
+- 不同步重写五大引擎
+- 不为了迁移 `gpt-researcher` 而复制目录树
+- 不在没有 LangSmith 可视化的前提下盲改主流程
 
-**额外完成**：
-- `SourceCurator`（`skills/source_curator.py`）— 域名可信度 + 词法重叠 + 本地源优先
-- `PedagogyWriter`（`skills/writer.py`）— 教学化写作 Skill
-- `web_search.py` / `search_kb.py` / `memory_ops.py` — 额外 builtin 工具
+### 总原则
 
-### 9.4 Phase 2：DocGen 流程重建 — ✅ 已完成
-
-| 任务 | 涉及文件 | 状态 |
-|:---|:---|:---|
-| 1. `DocGenState` 重写 | `workflows/digest/docgen/state.py` | ✅ 含 chapter_assignments / materials / drafts / metadatas + operator.add 累加 |
-| 2. `load_context_node.py` | `workflows/digest/docgen/nodes/` | ✅ 加载 shared_inputs + 验证 confirmed_plan + 规范化 chapter_assignments |
-| 3. `targeted_research_node.py` | `workflows/digest/docgen/nodes/` | ✅ 调用 ResearchConductor + 构建 chapter_material |
-| 4. `pedagogy_craft_node.py` | `workflows/digest/docgen/nodes/` | ✅ 调用 PedagogyWriter + 构建 chapter_draft |
-| 5. `enrich_document_node.py` | `workflows/digest/docgen/nodes/` | ✅ Mermaid 占位符 + Image 占位符 + LaTeX 规范化 + 引用附录 |
-| 6. `inject_examine_node.py` | `workflows/digest/docgen/nodes/` | ✅ 提取题目 + 生成练习章节 + 重建 TOC |
-| 7. `collect_materials_node.py` | `workflows/digest/docgen/nodes/` | ✅ 聚合研究结果 + 发布进度事件 |
-| 8. `collect_drafts_node.py` | `workflows/digest/docgen/nodes/` | ✅ 合并草稿 + 构建 chapter_metadatas + TOC |
-| 9. `finalize_node.py` | `workflows/digest/docgen/nodes/` | ✅ stage_knowledge_docs + standalone 发布 |
-| 10. `docgen/graph.py` 新拓扑 | `workflows/digest/docgen/graph.py` | ✅ 8 节点 LangGraph：load_context → targeted_research(fan-out) → collect_materials → pedagogy_craft(fan-out) → collect_drafts → enrich_document → inject_examine → finalize_assemble |
-| 11. Prompts 重写 | `workflows/digest/prompts/` | ✅ `docgen_prompts.py` + `archetype_prompts.py` + `planner_prompts.py` |
-| 12. `observability.py` 适配 | `workflows/digest/observability.py` | ✅ docs lane summary 已适配新节点名 |
-| 13. `runtime.py` 入口适配 | `workflows/digest/runtime.py` | ✅ `run_docgen_workflow()` 已对接新 graph |
-
-**关键里程碑已达成**：新版 DocGen 流程已替代旧版，无需 feature flag 切换。
-
-### 9.5 Phase 3：富媒体增强 — 🟡 部分完成
-
-| 任务 | 涉及文件 | 状态 | 备注 |
-|:---|:---|:---|:---|
-| 1. `ImageGenerator` | `shared/infra/skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入（通义万相 / DALL-E） |
-| 2. `MermaidGenerator` | `shared/infra/skills/mermaid_generator.py` | ✅ 已完成 | mindmap 生成 + 关键词回退 |
-| 3. 前端 Mermaid 渲染组件 | `frontend/src/components/ui/` | ✅ 已完成 | 已集成 `mermaid` 真渲染，失败时自动回退源码视图 |
-| 4. 前端 KaTeX 公式渲染优化 | `frontend/src/components/ui/MarkdownViewer.tsx` | 🟡 部分完成 | 已统一 Markdown 渲染链路并强化 document 版式，复杂公式仍需人工验收 |
-| 5. 前端文档阅读页面改版 | `frontend/src/pages/KnowledgeDocsPage.tsx` | ✅ 已完成 | 已支持 Mermaid SVG + 公式 + 资产图片 + 统一知识讲义样式 |
-
-### 9.6 Phase 4：教育资源库 + 高级功能 — ⬜ 未开始
-
-| 任务 | 涉及文件 | 状态 | 备注 |
-|:---|:---|:---|:---|
-| 1. 本地教育语料库 | `data/edu_corpus/` | ⬜ 待实现 | 先覆盖高数（微积分/线代/概率论） |
-| 2. 教育 Teaching Skills | `shared/infra/skills/` 或 `teaching/` | ⬜ 待实现 | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` |
-| 3. 交互式 HTML 支持 | `shared/infra/skills/interactive_builder.py` | ⬜ V2 预留 | iframe 沙箱 + Desmos / GeoGebra |
-| 4. Anki 导出 | `shared/infra/tools/builtin/` | ⬜ V2 预留 | 接口定义 + stub |
-
-### 9.7 Phase 5（新增）：文档质量调优 + 端到端验证 — 🟡 已启动
-
-> 这是 Phase 0-2 完成后最关键的阶段——基础设施已就绪，现在需要确保**生成的文档质量真正超越 PPT**。
-
-**已落地的第一步**：
-
-- Planner 已从“直接让 LLM 生成研究任务”升级为 `load_context → ground_concepts → draft_plan`
-- `ground_concepts` 会先做轻量概念预检索：
-  - 优先使用 `local_rag`
-  - 可选补充外部百科/定义类检索
-  - 产出 `concept_briefing` + `concept_topic_hints`
-- `draft_plan` Prompt 已强制要求参考概念锚点再生成研究任务，避免裸生成
-- 前端 Planner 运行态已显示 `概念预检索` 节点，便于用户和 LangSmith 对齐排查
-- 检索层第一阶段已落地：
-  - `config.py` 支持 `web_search_retrievers` / `web_search_retriever_profile`
-  - `factory.py` 支持多检索器组合、去重和 DuckDuckGo 兜底
-  - `TavilyRetriever` / `ArxivRetriever` / `SemanticScholarRetriever` 已接入，可作为 `docgen_balanced` / `docgen_academic` 组合的一部分
-- `infra -> teaching` 的第一批分层复用已落地：
-  - `content_analysis.py` 提供通用术语抽取与覆盖检测
-  - `teaching/documents` 开始基于它生成 `术语速览` 和 `学习目标对照` 教学块
-
-| 任务 | 涉及文件 | 验证方式 |
-|:---|:---|:---|
-| 1. 速成课 Prompt 精调 | `prompts/archetype_prompts.py` + `docgen_prompts.py` | 生成"偏导数"速成课，人工评审 4 节结构是否符合 05 文档规范 |
-| 2. 系统课 Prompt 精调 | 同上 | 生成"线性代数"系统课，验证字数 ≥ 10000 + 知识脉络完整 |
-| 3. `edu_planner` 章节规划质量 | `planner/` + `planner_prompts.py` | 验证 grounding 后的研究任务能稳定覆盖核心概念；速成课 3-6 节、系统课 5-12 节自适应 |
-| 4. `tone` 参数效果验证 | `docgen_prompts.py` | 对比 casual / professional / encouraging / concise 四种风格输出 |
-| 5. 检索命中率分析 | LangSmith Dashboard | 建立 retriever_name 分组视图，分析 Planner grounding 与 DocGen research 的 local_rag vs web 命中比 |
-| 6. 端到端性能基线 | LangSmith + 手动计时 | 速成课 < 2min，系统课 < 5min |
-| 7. LangSmith 自定义 Dashboard | LangSmith UI | 建立 10 文档中定义的 8 个 Dashboard |
-
-### 9.8 性能目标（不变，待实测验证）
-
-| 节点 | 目标延迟 | 并发度 | Token 预算 |
-|:---|:---|:---|:---|
-| `edu_planner`（Planner 阶段） | < 15s | 1（串行，含 `ground_concepts`） | REASONING: 4000 |
-| `targeted_research` × N | < 20s（含搜索+抓取+压缩） | N=章节数，受 `docgen_max_parallel_chapters` 控制 | DOCGEN_LIGHT: 3000/章 |
-| `pedagogy_craft` × N | < 30s/章 | 同上 | DOCGEN: 8000/章 |
-| `enrich_document` | < 15s | 图片并行生成（max 3） | DOCGEN_LIGHT: 1000 |
-| 端到端（速成课 4 章） | **< 2 分钟** | — | — |
-| 端到端（系统课 8 章） | **< 5 分钟** | — | — |
-
-> [!TIP]
-> 性能对标参考：gpt-researcher 标准研究流程 1-3 分钟（3 个子查询）。我们的速成课 4 章并发等效于 4 个子查询，性能预期应与其相当。
-
-### 9.9 缓存策略（不变）
-
-| 缓存对象 | Key | TTL | 后端 |
-|:---|:---|:---|:---|
-| `edu_planner` 输出 | `(subject, digest_mode, tone, file_ids_hash, user_goal_hash)` | 24h | 内存 dict（MVP），后续切 Redis |
-| `ground_concepts` 结果 | `(subject, file_ids_hash, topic_hints_hash, user_goal_hash)` | 6h | 内存 dict |
-| 检索结果 | `(query, retriever_name)` | 1h | 内存 dict |
-| 网页抓取结果 | URL | 24h | 内存 dict |
-| Embedding 向量 | `(text_hash, model)` | 永久 | sqlite-vec（已有） |
-
-**缓存失效策略**：
-- 用户上传新文件后，该 subject 的 `edu_planner` 与 `ground_concepts` 缓存立即失效
-- 超过 TTL 的缓存惰性清理（下次访问时检查）
-
-### 9.10 回滚策略（已简化）
-
-Phase 0-2 已完成并稳定运行，旧版 graph 已移除。后续阶段回滚策略：
-
-| 阶段 | 回滚机制 |
-|:---|:---|
-| Phase 3 (富媒体) | 纯新增 → 删除即回滚；ImageGenerator 当前已有 fallback（返回文字建议） |
-| Phase 4 (教育资源库) | 纯新增 → 删除即回滚 |
-| Phase 5 (质量调优) | Prompt 修改通过 git 版本控制回滚 |
-
-### 9.11 测试策略（不变）
-
-| 测试类型 | 范围 | 工具/方法 |
-|:---|:---|:---|
-| **单元测试** | 每个节点 mock LLM 调用，验证输入输出格式 | pytest + unittest.mock |
-| **集成测试** | 用 `langgraph dev` 跑完整流程，验证 trace 树 | langgraph dev + LangSmith |
-| **质量测试** | 生成 "偏导数" 速成课 + 系统课各一份，人工评审 | 人工评审 checklist |
-| **性能测试** | 计时端到端延迟，对比 9.8 性能目标 | pytest-benchmark / 手动 |
-| **回归测试** | 确认其他四大引擎（ingest/interact/examine/profile）不受影响 | pytest |
-
-**质量评审 checklist**：
-- [ ] 章节结构符合 05_document_modes.md 定义
-- [ ] LaTeX 公式正确渲染（前端 KaTeX）
-- [ ] Mermaid 思维导图语法合法（前端 Mermaid.js）
-- [ ] 速成课包含秒杀口诀 + 范例题（≥ 2 道/节）
-- [ ] 系统课字数 ≥ 10000
-- [ ] 所有引用有来源 URL
-- [ ] LangSmith trace 树结构清晰，每个节点输入输出可查
+1. 只要一个阶段结束，就应该是”可运行、可观测、可回退”的。
+2. 所有实质性行为改动优先限制在 `planner/docgen`。
+3. 所有阶段都要验证不会破坏 KG Lane 和其他四个引擎。
 
 ---
+
+## 9.2 Phase 0：边界冻结与文档对齐 ✅ 已完成
+
+### 目标
+
+先把未来所有改动的设计地基打稳。
+
+### 已完成的事
+
+- ✅ 明确 `shared/infra`、`teaching`、`workflows` 三层职责（03 文档）
+- ✅ 明确 canonical memory 在 `shared/infra/memory`，`teaching/memory` 仅为过渡层
+- ✅ 明确 `sprint` / `systematic` 的输出契约（05 文档）
+- ✅ 明确 LangSmith 命名与 metadata 口径（10 文档）
+- ✅ refactor 系列 11 份文档初版完成
+
+### 验收结果
+
+- 后续新代码能够根据文档直接判断放哪层
+- 分层边界已在代码中初步体现（`teaching/context.py` 依赖 `shared/infra/memory`，`skills/writer.py` 调用 `teaching/documents`）
+
+---
+
+## 9.3 Phase 1：Build Contract 收紧与 LangSmith 契约加固
+
+### 目标
+
+让 Planner 输出有 schema 约束，让 DocGen 全链路在 LangSmith 里可串联、可比较。
+
+### 具体改动清单
+
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| 定义 `BuildContract` model | `workflows/digest/shared/contracts.py`（新增） | Pydantic model，含 `course_type` / `target_word_count` / `formula_depth` / `example_density` / `chapter_contracts` 等 |
+| `load_context_node` 改用 model_validate | `docgen/nodes/load_context_node.py` | 替代当前的 `.get()` + fallback 散逻辑 |
+| 补充 trace metadata | `docgen/nodes/*.py` | 每个节点的 `wrap_digest_node` 调用补充 `course_type` / `retrieval_profile` / `chapter_index` |
+| 统一进度事件语义 | `docgen/nodes/common.py` | `publish_docgen_progress()` 补充业务维度字段 |
+| Planner 输出端对齐 | `services/knowledge/build_planner_service.py` | Planner confirm 时输出符合 `BuildContract` schema 的 dict |
+
+### 只允许改动
+
+- `workflows/digest/shared/contracts.py`（新增）
+- `workflows/digest/docgen/nodes/`
+- `workflows/digest/observability.py`
+- `services/knowledge/build_planner_service.py`
+- `workflows/common/` 的 event 定义
+
+### 不允许改动
+
+- `digest/kg/` 任何文件
+- `digest/curriculum/` 任何文件
+- `ingest/` / `interact/` / `examine/` / `profile/`
+- `unified/graph.py` 的节点拓扑
+
+### 验收标准
+
+- `BuildContract.model_validate(confirmed_plan)` 在 `load_context_node` 中一次性校验通过
+- 打开 LangSmith 后，能通过 `build_session_id` 一眼看到 Planner → DocGen 的关联
+- 每章 research / writing / enrich / examine 都能通过 `chapter_index` + `course_type` 单独定位
+- 现有测试和前端流程不受影响
+
+---
+
+## 9.4 Phase 2：章节研究微循环与检索 profile
+
+### 目标
+
+让章节 research 从”一次性搜一轮”升级为”轻量质量驱动研究”，同时让检索策略按课程模式差异化。
+
+### 具体改动清单
+
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| `ResearchConductor.run()` 增加微循环 | `shared/infra/skills/researcher.py` | 增加 `assess_gaps()` → `generate_gap_queries()` → 补检索 的内部循环 |
+| 新增 `assess_gaps()` 方法 | `shared/infra/skills/researcher.py` | 用 Fast LLM 判断 `required_elements` 覆盖情况 |
+| 检索 profile 显式化 | `shared/infra/search/factory.py` | `docgen_sprint` / `docgen_systematic` profile 控制检索器组合和优先级 |
+| 检索结果缓存 | `shared/infra/search/cache.py`（新增或扩展） | 同一 `build_session_id` 内相同 query 不重复搜索 |
+| `SkillResult` 扩展 | `shared/infra/skills/base.py` | 增加 `rounds_executed` / `gaps_remaining` / `confidence_level` 字段 |
+
+### 只允许改动
+
+- `shared/infra/skills/researcher.py`
+- `shared/infra/search/`
+- `shared/infra/skills/base.py`（SkillResult 扩展）
+
+### 关键约束
+
+- 微循环在 `ResearchConductor` 内部实现，不改 docgen graph 的 9 节点拓扑
+- `sprint` 最多 1 轮补研究，`systematic` 最多 2 轮
+- 每轮补检索作为独立 LangSmith span
+
+### 验收标准
+
+- `systematic` 模式下，章节研究能自动识别缺口并补检索
+- LangSmith 中能看到 `research_round_1` / `research_round_2` / `assess_gaps` 等 span
+- 同一 query 在同一 build session 内不重复搜索
+- `sprint` 模式下研究速度不明显退化
+
+---
+
+## 9.5 Phase 3：课程模式硬约束与 Writer 升级
+
+### 目标
+
+让 `sprint` / `systematic` 的差异从”prompt 暗示”变成”结构性硬约束”。
+
+### 具体改动清单
+
+| 改动 | 文件 | 说明 |
+|:---|:---|:---|
+| 课程模式 prompt 模板 | `workflows/digest/prompts/`（新增或扩展） | `sprint_chapter_prompt` / `systematic_chapter_prompt` 分别定义章节必备区块 |
+| `PedagogyWriter` 按模式分支 | `shared/infra/skills/writer.py` | 根据 `course_type` 选择不同的 prompt 模板和字数目标 |
+| `ChapterDraft` 结构化 | `workflows/digest/shared/contracts.py` | 定义 `ChapterDraft` model，含 `markdown` / `word_count` / `required_elements_coverage` / `asset_hints` |
+| `enrich_document_node` 按模式增强 | `docgen/nodes/enrich_document_node.py` | `sprint` 补速记卡/错因卡，`systematic` 补脉络图/推导说明 |
+| `inject_examine_node` 按模式差异化 | `docgen/nodes/inject_examine_node.py` | `sprint` 注入真题范例/速测，`systematic` 注入形成性检查/延展问题 |
+| 教学块定义 | `teaching/documents/content_blocks.py` | 扩展 `recap_block` / `formula_card_block` / `misconception_block` 等 |
+
+### 验收标准
+
+- `sprint` 文档每章必含：导读 + 核心概念 + 范例题 + 易错点 + 快速回顾
+- `systematic` 文档每章必含：导读 + 概念体系 + 推导/论证 + 应用案例 + 章节总结 + 延展思考
+- `systematic` 文档总字数稳定 ≥ 10000 字
+- `sprint` 文档总字数在 4000-8000 字范围
+- 前端渲染无异常
+
+---
+
+## 9.10 每个阶段都要验证的四件事
+
+1. 不影响 `ingest / interact / examine / profile` 的主流程。
+2. 不破坏 `digest/kg` 与 `digest/curriculum`。
+3. LangSmith 图是否仍然一眼能看懂。
+4. 前端是否还能稳定展示当前文档产物。
+
+---
+
+## 9.11 一句话结论
+
+这轮重构最怕的不是“做得慢”，而是“边界没立住就乱改”。
+正确路径是：先冻结边界，再升级 research，再升级呈现，最后接教学闭环与语料库。

@@ -17,6 +17,8 @@ def _tokenize(text: str) -> list[str]:
 
 
 class LocalRAGRetriever(BaseRetriever):
+    aliases = ("rag",)
+
     def __init__(self, *, subject: str | None = None, local_sections: list[Any] | None = None) -> None:
         self.subject = (subject or "").strip()
         self.local_sections = list(local_sections or [])

@@ -9,15 +9,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
+from app.teaching.documents import looks_like_legacy_template_title
+from app.teaching.runtime_config import (
+    get_planner_mode_runtime_config,
+    get_teaching_runtime_config,
+)
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SubjectProfile
 
-DEFAULT_DIGEST_MODE = "systematic"
-DEFAULT_TONE = "encouraging"
 MEDIA_HINT_KEYS = ("images", "mermaid", "interactive")
-SPRINT_MIN_CHAPTERS = 3
-SPRINT_MAX_CHAPTERS = 6
-SYSTEMATIC_MIN_CHAPTERS = 5
-SYSTEMATIC_MAX_CHAPTERS = 12
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
@@ -39,8 +38,8 @@ class PlannerChapterPlan(BaseModel):
 class BuildPlannerDraft(BaseModel):
     subject: str
     user_goal: str
-    digest_mode: str = DEFAULT_DIGEST_MODE
-    tone: str = DEFAULT_TONE
+    digest_mode: str = "systematic"
+    tone: str = "encouraging"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -169,13 +168,14 @@ def _minimal_shared_inputs(subject: str) -> SharedInputs:
 
 
 def _normalize_digest_mode(value: Any) -> str:
-    normalized = str(value or DEFAULT_DIGEST_MODE).strip().lower()
-    return "sprint" if normalized == "sprint" else DEFAULT_DIGEST_MODE
+    default_mode = get_teaching_runtime_config().planner.default_digest_mode
+    normalized = str(value or default_mode).strip().lower()
+    return "sprint" if normalized == "sprint" else "systematic"
 
 
 def _normalize_tone(value: Any) -> str:
     text = _clean_text(value)
-    return text or DEFAULT_TONE
+    return text or get_teaching_runtime_config().planner.default_tone
 
 
 def _clean_text(value: Any) -> str:
@@ -268,9 +268,10 @@ def _normalize_build_constraints(value: Any, fallback: dict[str, Any], *, digest
     raw = _coerce_mapping(value)
     merged = dict(fallback)
     merged.update(raw)
-    min_chapters = SPRINT_MIN_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
-    max_chapters = SPRINT_MAX_CHAPTERS if digest_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
-    default_length = "3000-5000字" if digest_mode == "sprint" else "10000-15000字"
+    mode_config = get_planner_mode_runtime_config(digest_mode)
+    min_chapters = mode_config.min_chapters
+    max_chapters = mode_config.max_chapters
+    default_length = mode_config.target_length
     merged["include_exercises"] = bool(merged.get("include_exercises", True))
     merged["include_sources"] = bool(merged.get("include_sources", True))
     merged["math_mode"] = bool(merged.get("math_mode", False))
@@ -303,8 +304,9 @@ def _estimate_target_chapter_count(
     requested_count: int | None = None,
 ) -> int:
     normalized_mode = _normalize_digest_mode(digest_mode)
-    min_chapters = SPRINT_MIN_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MIN_CHAPTERS
-    max_chapters = SPRINT_MAX_CHAPTERS if normalized_mode == "sprint" else SYSTEMATIC_MAX_CHAPTERS
+    mode_config = get_planner_mode_runtime_config(normalized_mode)
+    min_chapters = mode_config.min_chapters
+    max_chapters = mode_config.max_chapters
     if requested_count is not None and requested_count > 0:
         return min(max_chapters, max(min_chapters, requested_count))
 
@@ -317,12 +319,12 @@ def _estimate_target_chapter_count(
     )
 
     if normalized_mode == "sprint":
-        estimated = topic_count if topic_count > 0 else SPRINT_MIN_CHAPTERS
+        estimated = topic_count if topic_count > 0 else min_chapters
         if goal_weight >= 2:
             estimated += 1
-        return min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, estimated))
+        return min(max_chapters, max(min_chapters, estimated))
 
-    estimated = topic_count if topic_count > 0 else SYSTEMATIC_MIN_CHAPTERS
+    estimated = topic_count if topic_count > 0 else min_chapters
     if shared_inputs.subject_profile.has_heavy_formulas:
         estimated += 1
     if shared_inputs.subject_profile.has_heavy_questions:
@@ -331,7 +333,7 @@ def _estimate_target_chapter_count(
         estimated += 1
     if goal_weight >= 4:
         estimated += 1
-    return min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, estimated))
+    return min(max_chapters, max(min_chapters, estimated))
 
 
 def _looks_like_subject_slug(value: Any) -> bool:
@@ -417,28 +419,6 @@ def _build_topic_sequence(topics: list[str], *, display_subject: str, target_cou
     ]
 
 
-def _build_chapter_title(
-    *,
-    topic: str,
-    angle: ChapterAngleSpec,
-    repeated_topic: bool,
-    used_titles: set[str],
-) -> str:
-    cleaned_topic = _clean_text(topic) or "当前主题"
-    title = cleaned_topic if not repeated_topic else f"{cleaned_topic}：{angle.label}"
-    if title in used_titles:
-        title = f"{cleaned_topic}：{angle.label}"
-    if title in used_titles:
-        suffix = 2
-        candidate = f"{cleaned_topic}：{angle.label}{suffix}"
-        while candidate in used_titles:
-            suffix += 1
-            candidate = f"{cleaned_topic}：{angle.label}{suffix}"
-        title = candidate
-    used_titles.add(title)
-    return title
-
-
 def _build_search_queries(
     *,
     subject: str,
@@ -479,20 +459,14 @@ def _build_fallback_chapter_plan(
         target_count=target_count,
     )
     angle_specs = _angle_specs_for_mode(digest_mode)
-    used_titles: set[str] = set()
     chapter_plan: list[PlannerChapterPlan] = []
 
-    for index, (topic, repeated_topic) in enumerate(topic_sequence, start=1):
+    for index, (topic, _repeated_topic) in enumerate(topic_sequence, start=1):
         angle = angle_specs[(index - 1) % len(angle_specs)]
         chapter_plan.append(
             PlannerChapterPlan(
                 chapter_index=index,
-                title=_build_chapter_title(
-                    topic=topic,
-                    angle=angle,
-                    repeated_topic=repeated_topic,
-                    used_titles=used_titles,
-                ),
+                title=f"第 {index} 章",
                 objective=angle.objective_template.format(topic=topic or display_subject),
                 required_elements=list(angle.required_elements),
                 search_queries=_build_search_queries(
@@ -514,24 +488,26 @@ def _build_build_constraints(
     target_count: int,
     shared_inputs: SharedInputs,
 ) -> dict[str, Any]:
-    if _normalize_digest_mode(digest_mode) == "sprint":
+    normalized_mode = _normalize_digest_mode(digest_mode)
+    mode_config = get_planner_mode_runtime_config(normalized_mode)
+    if normalized_mode == "sprint":
         return {
-            "min_chapters": SPRINT_MIN_CHAPTERS,
-            "max_chapters": SPRINT_MAX_CHAPTERS,
-            "target_chapter_count": min(SPRINT_MAX_CHAPTERS, max(SPRINT_MIN_CHAPTERS, target_count)),
+            "min_chapters": mode_config.min_chapters,
+            "max_chapters": mode_config.max_chapters,
+            "target_chapter_count": min(mode_config.max_chapters, max(mode_config.min_chapters, target_count)),
             "include_exercises": True,
             "include_sources": True,
             "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
-            "target_length": "3000-5000字",
+            "target_length": mode_config.target_length,
         }
     return {
-        "min_chapters": SYSTEMATIC_MIN_CHAPTERS,
-        "max_chapters": SYSTEMATIC_MAX_CHAPTERS,
-        "target_chapter_count": min(SYSTEMATIC_MAX_CHAPTERS, max(SYSTEMATIC_MIN_CHAPTERS, target_count)),
+        "min_chapters": mode_config.min_chapters,
+        "max_chapters": mode_config.max_chapters,
+        "target_chapter_count": min(mode_config.max_chapters, max(mode_config.min_chapters, target_count)),
         "include_exercises": True,
         "include_sources": True,
         "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
-        "target_length": "10000-15000字",
+        "target_length": mode_config.target_length,
     }
 
 
@@ -585,8 +561,8 @@ def build_fallback_plan(
         chapter_plan=chapter_plan,
         research_queries=research_queries,
         media_plan={
-            "enable_mermaid": settings.enable_mermaid_generation,
-            "enable_images": settings.enable_image_generation,
+            "enable_mermaid": settings.mermaid_generation_enabled,
+            "enable_images": settings.image_generation_enabled,
             "enable_interactive_html": False,
         },
         build_constraints=_build_build_constraints(
@@ -608,6 +584,11 @@ def _merge_raw_candidates(current: Any, previous: Any) -> dict[str, Any]:
     return merged
 
 
+def _is_usable_provisional_title(value: Any) -> bool:
+    text = _clean_text(value)
+    return _is_usable_cn_text(text) and not looks_like_legacy_template_title(text)
+
+
 def _merge_chapter(
     *,
     current: Any,
@@ -626,9 +607,9 @@ def _merge_chapter(
     previous_writing = _replace_subject_slug_text(previous_raw.get("writing_instructions"), subject_display_name)
     title = (
         _clean_text(current_title)
-        if _is_usable_cn_text(current_title)
+        if _is_usable_provisional_title(current_title)
         else _clean_text(previous_title)
-        if _is_usable_cn_text(previous_title)
+        if _is_usable_provisional_title(previous_title)
         else fallback.title
     )
     objective = (
@@ -662,95 +643,6 @@ def _merge_chapter(
         writing_instructions=writing_instructions,
         media_hints=_normalize_media_hints(merged.get("media_hints"), fallback.media_hints),
     )
-
-
-def _normalize_sprint_chapters(
-    *,
-    current_chapters: list[dict[str, Any]],
-    previous_chapters: list[dict[str, Any]],
-    fallback_plan: BuildPlannerDraft,
-    subject_display_name: str,
-) -> list[PlannerChapterPlan]:
-    normalized: list[PlannerChapterPlan] = []
-    for index, fallback in enumerate(fallback_plan.chapter_plan):
-        current = current_chapters[index] if index < len(current_chapters) else {}
-        previous = previous_chapters[index] if index < len(previous_chapters) else {}
-        normalized.append(
-            _merge_chapter(
-                current=current,
-                previous=previous,
-                fallback=fallback,
-                subject_display_name=subject_display_name,
-            )
-        )
-    return normalized
-
-
-def _normalize_middle_title(raw_title: Any, fallback_title: str) -> str:
-    text = _clean_text(raw_title)
-    if _is_usable_cn_text(text) and text not in {SYSTEMATIC_FIRST_TITLE, SYSTEMATIC_LAST_TITLE}:
-        return text
-    return fallback_title
-
-
-def _normalize_systematic_chapters(
-    *,
-    subject: str,
-    user_goal: str,
-    tone: str,
-    shared_inputs: SharedInputs,
-    current_chapters: list[dict[str, Any]],
-    previous_chapters: list[dict[str, Any]],
-    subject_display_name: str,
-) -> list[PlannerChapterPlan]:
-    raw_count = len(current_chapters) or len(previous_chapters) or 0
-    target_count = min(10, max(6, raw_count or 6))
-    fallback_plan = build_fallback_plan(
-        subject=subject,
-        user_goal=user_goal,
-        digest_mode="systematic",
-        tone=tone,
-        shared_inputs=shared_inputs,
-        target_count=target_count,
-    )
-    normalized: list[PlannerChapterPlan] = []
-    middle_current = current_chapters[1:-1] if len(current_chapters) >= 2 else []
-    middle_previous = previous_chapters[1:-1] if len(previous_chapters) >= 2 else []
-
-    normalized.append(
-        _merge_chapter(
-            current=current_chapters[0] if current_chapters else {},
-            previous=previous_chapters[0] if previous_chapters else {},
-            fallback=fallback_plan.chapter_plan[0],
-            subject_display_name=subject_display_name,
-            forced_title=SYSTEMATIC_FIRST_TITLE,
-        )
-    )
-
-    for offset, fallback in enumerate(fallback_plan.chapter_plan[1:-1]):
-        current = middle_current[offset] if offset < len(middle_current) else {}
-        previous = middle_previous[offset] if offset < len(middle_previous) else {}
-        merged_raw = _merge_raw_candidates(current, previous)
-        normalized.append(
-            _merge_chapter(
-                current=current,
-                previous=previous,
-                fallback=fallback,
-                subject_display_name=subject_display_name,
-                forced_title=_normalize_middle_title(merged_raw.get("title"), fallback.title),
-            )
-        )
-
-    normalized.append(
-        _merge_chapter(
-            current=current_chapters[-1] if len(current_chapters) >= 2 else {},
-            previous=previous_chapters[-1] if len(previous_chapters) >= 2 else {},
-            fallback=fallback_plan.chapter_plan[-1],
-            subject_display_name=subject_display_name,
-            forced_title=SYSTEMATIC_LAST_TITLE,
-        )
-    )
-    return normalized
 
 
 def _resolve_requested_count(

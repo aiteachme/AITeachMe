@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills import ContextManager, ResearchConductor, SkillContext, SkillResult
 from app.shared.infra.tools.builtin.query_processing import ResearchSubQueryPlan, generate_sub_queries
 from app.shared.infra.tools.builtin.web_scraping import scrape_urls
 from app.workflows.common.context import create_langgraph_dev_context
-from app.workflows.digest.docgen.graph import build_targeted_research_node
+from app.workflows.digest.docgen.graph import build_resolve_titles_node, build_targeted_research_node
 
 
 class FakeRetriever:
@@ -291,7 +291,7 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
         "shared_inputs": None,
         "chapter_assignment": {
             "chapter_index": 1,
-            "title": "Geometric meaning of partial derivatives",
+            "title": "第 1 章",
             "objective": "Help the learner understand the link between surface slices and partial derivatives.",
             "required_elements": ["geometric meaning", "surface slice"],
             "search_queries": ["partial derivative geometric meaning"],
@@ -303,13 +303,63 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
         result = asyncio.run(node(state))
 
     kwargs = captured["kwargs"]
-    assert kwargs["chapter_title"] == "Geometric meaning of partial derivatives"
+    context = captured["context"]
+    assert kwargs["queries"] == ["partial derivative geometric meaning"]
+    assert kwargs["chapter_title"] == "第 1 章"
     assert kwargs["objective"] == "Help the learner understand the link between surface slices and partial derivatives."
     assert kwargs["required_elements"] == ["geometric meaning", "surface slice"]
     assert kwargs["digest_mode"] == "sprint"
+    assert context.course_type == "sprint"
+    assert context.retrieval_profile == "docgen_sprint"
+    assert context.teaching_action == "chapter_research"
     assert result["chapter_materials"][0]["fallback_used"] is True
     assert result["chapter_materials"][0]["compression_mode"] == "embedding_filter"
     assert result["chapter_materials"][0]["curated_source_count"] == 3
     assert result["chapter_materials"][0]["trusted_source_count"] == 2
+    assert result["chapter_materials"][0]["retrieval_profile"] == "docgen_sprint"
+    assert result["chapter_materials"][0]["teaching_action"] == "chapter_research"
     assert result["chapter_materials"][0]["retriever_stats"]["local_rag"]["query_count"] == 1
     assert result["llm_calls_total"] == 1
+
+
+def test_resolve_titles_node_generates_resolved_title_from_research_context() -> None:
+    node = build_resolve_titles_node(context=create_langgraph_dev_context("digest.docgen.title_test"))
+    state = {
+        "subject": "demo",
+        "requested_at": datetime.utcnow(),
+        "build_session_id": "build-1",
+        "planner_session_id": "planner-1",
+        "confirmed_plan_id": "plan-1",
+        "digest_mode": "systematic",
+        "course_type": "systematic",
+        "retrieval_profile": "docgen_systematic",
+        "chapter_materials": [
+            {
+                "chapter_index": 1,
+                "title": "第 1 章",
+                "objective": "帮助学习者先建立偏导数的几何直觉，再连接到定义。",
+                "required_elements": ["几何直觉", "偏导数定义", "曲面切片"],
+                "search_queries": ["偏导数 几何意义", "偏导数 曲面切片"],
+                "writing_instructions": "先讲直观图景，再进入定义和例子。",
+                "dense_context": "偏导数可以理解为多元函数在某个坐标方向上的局部变化率。通过曲面切片和切线斜率，学生更容易建立几何直觉。",
+                "source_titles": ["MIT OCW Partial Derivatives"],
+                "local_hits": 1,
+                "web_hits": 1,
+                "sources": ["local://chunk/1", "https://example.edu/math"],
+            }
+        ],
+    }
+
+    with patch(
+        "app.workflows.digest.docgen.nodes.resolve_titles_node.acompletion_with_fallback",
+        new=AsyncMock(return_value="多元函数的变化率直觉"),
+    ), patch(
+        "app.workflows.digest.docgen.nodes.resolve_titles_node.update_knowledge_build_status",
+    ), patch(
+        "app.workflows.digest.docgen.nodes.resolve_titles_node.append_knowledge_build_recent_event",
+    ), patch(
+        "app.workflows.digest.docgen.nodes.resolve_titles_node.upsert_knowledge_build_chapter_progress",
+    ):
+        result = asyncio.run(node(state))
+
+    assert result["chapter_materials"][0]["resolved_title"] == "多元函数的变化率直觉"

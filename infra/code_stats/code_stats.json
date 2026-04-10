@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-09T05:48:19.492319",
-  "total_commits_analyzed": 466,
+  "generated_at": "2026-04-09T18:31:33.951726",
+  "total_commits_analyzed": 485,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3729,6 +3729,158 @@
       "code_lines": 97141,
       "other_lines": 29910,
       "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-08",
+      "commit": "c1ec124",
+      "total_lines": 117911,
+      "code_lines": 89664,
+      "other_lines": 28247,
+      "message": "feat(mineru): support env api token"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "3338d47",
+      "total_lines": 127051,
+      "code_lines": 97141,
+      "other_lines": 29910,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "b44a2f6",
+      "total_lines": 127497,
+      "code_lines": 97551,
+      "other_lines": 29946,
+      "message": "  feat: 增强知识文档前端渲染与 Mermaid 展示"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "64a7795",
+      "total_lines": 128642,
+      "code_lines": 98460,
+      "other_lines": 30182,
+      "message": "  refactor: 完善 digest 检索配置与多检索器工厂"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "70eff9e",
+      "total_lines": 129293,
+      "code_lines": 98994,
+      "other_lines": 30299,
+      "message": "  feat: 补齐基础内容分析工具并增强教学文档脚手架"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "3ced3f1",
+      "total_lines": 129293,
+      "code_lines": 98994,
+      "other_lines": 30299,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "c1e1bed",
+      "total_lines": 129293,
+      "code_lines": 98994,
+      "other_lines": 30299,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "88efa66",
+      "total_lines": 129869,
+      "code_lines": 99539,
+      "other_lines": 30330,
+      "message": "  feat: 优化知识文档加载页的过程可视化反馈"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "eabffe5",
+      "total_lines": 130167,
+      "code_lines": 99160,
+      "other_lines": 31007,
+      "message": "  docs: 细化 infra 与 teaching 分层设计"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "18d39e2",
+      "total_lines": 130234,
+      "code_lines": 99663,
+      "other_lines": 30571,
+      "message": "Merge branch 'dev_cy' into dev_ywl"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "ee27b9d",
+      "total_lines": 130533,
+      "code_lines": 99442,
+      "other_lines": 31091,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "09ca0d2",
+      "total_lines": 131109,
+      "code_lines": 99987,
+      "other_lines": 31122,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "e5fd39f",
+      "total_lines": 129887,
+      "code_lines": 99029,
+      "other_lines": 30858,
+      "message": "refactor: 收口 digest 标题链路并精简低价值测试"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "57564e5",
+      "total_lines": 130463,
+      "code_lines": 99574,
+      "other_lines": 30889,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "eca6135",
+      "total_lines": 130866,
+      "code_lines": 99568,
+      "other_lines": 31298,
+      "message": "style: 优化前端"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "0a2411a",
+      "total_lines": 130512,
+      "code_lines": 99607,
+      "other_lines": 30905,
+      "message": "refactor: 将 shared 配置入口重构为独立包"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "938a120",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "301793e",
+      "total_lines": 130866,
+      "code_lines": 99568,
+      "other_lines": 31298,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "2ebf0e8",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }

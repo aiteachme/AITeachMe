@@ -18,18 +18,19 @@ def _tone_hint(tone: str) -> str:
     return "表达要温和、鼓励式、陪伴式，帮助学生建立理解信心。"
 
 
-def _build_mode_contract(*, title: str, digest_mode: str) -> str:
+def _build_mode_contract(
+    *,
+    digest_mode: str,
+    chapter_index: int | None = None,
+    chapter_count: int | None = None,
+) -> str:
     normalized_mode = _normalize_mode(digest_mode)
     if normalized_mode == "sprint":
         chapter_specific = ""
-        if title == "概念破冰":
-            chapter_specific = "本章必须先用生活化例子或考场场景破题，再建立概念直觉。"
-        elif title == "公式武器库":
-            chapter_specific = "本章必须整理公式、适用条件和大白话翻译，避免只堆公式。"
-        elif title == "真题实战":
-            chapter_specific = "本章必须至少包含 2 个步骤化例题，并突出变式提醒。"
-        elif title == "防坑指南":
-            chapter_specific = "本章必须总结常见错误、混淆点和考前检查清单。"
+        if chapter_index == 1:
+            chapter_specific = "如果这是课程开篇，本章必须先用直观场景、常见题型或学习动机破题，再建立概念直觉。"
+        elif chapter_count and chapter_index == chapter_count:
+            chapter_specific = "如果这是课程收束章，本章必须回收高频题型、易错点和最后复盘抓手。"
         return (
             "文档模式契约：这是冲刺型知识文档。"
             "必须写得抓重点、抓题型、抓易错点。"
@@ -39,10 +40,10 @@ def _build_mode_contract(*, title: str, digest_mode: str) -> str:
             f"{chapter_specific}"
         )
     extra = ""
-    if title == "全景导论":
-        extra = "本章必须给出整体知识脉络，并插入 `<!-- [MERMAID: ...] -->` 占位符。"
-    elif title == "总结与延展":
-        extra = "本章必须回收全文主线，并给出进一步深入学习的建议。"
+    if chapter_index == 1:
+        extra = "如果这是课程开篇，本章必须给出整体知识脉络，并插入 `<!-- [MERMAID: ...] -->` 占位符。"
+    elif chapter_count and chapter_index == chapter_count:
+        extra = "如果这是课程收束章，本章必须回收全文主线，并给出进一步深入学习的建议。"
     return (
         "文档模式契约：这是系统型知识文档。"
         "必须重视定义、定理、推导、应用与章节之间的结构关系。"
@@ -63,6 +64,8 @@ def build_docgen_writer_messages(
     writing_instructions: str,
     source_count: int,
     dense_context: str,
+    chapter_index: int | None = None,
+    chapter_count: int | None = None,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
@@ -86,7 +89,7 @@ def build_docgen_writer_messages(
 额外写作要求：{writing_instructions or "保持教学导向，强调理解路径与复习价值。"}
 
 模式契约：
-{_build_mode_contract(title=title, digest_mode=normalized_mode)}
+{_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
 
 风格提醒：
 {tone_hint}

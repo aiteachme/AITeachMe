@@ -35,6 +35,10 @@ class SkillContext:
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
     digest_mode: str = ""
+    course_type: str = ""
+    retrieval_profile: str = ""
+    teaching_action: str = ""
+    asset_kind: str = ""
     chapter_index: int | None = None
     llm_caller: Callable[..., Awaitable[Any]] | None = None
     extra_metadata: dict[str, Any] = field(default_factory=dict)
@@ -50,6 +54,14 @@ class SkillContext:
             metadata.setdefault("confirmed_plan_id", self.confirmed_plan_id)
         if self.digest_mode:
             metadata.setdefault("digest_mode", self.digest_mode)
+        if self.course_type:
+            metadata.setdefault("course_type", self.course_type)
+        if self.retrieval_profile:
+            metadata.setdefault("retrieval_profile", self.retrieval_profile)
+        if self.teaching_action:
+            metadata.setdefault("teaching_action", self.teaching_action)
+        if self.asset_kind:
+            metadata.setdefault("asset_kind", self.asset_kind)
         if self.chapter_index is not None:
             metadata.setdefault("chapter_index", self.chapter_index)
         metadata.update({key: value for key, value in extra.items() if value not in (None, "", [], {})})
@@ -86,6 +98,14 @@ class BaseSkill(ABC):
         extra_tags = [f"skill:{self.name}"]
         if self.context.digest_mode:
             extra_tags.append(f"mode:{self.context.digest_mode}")
+        if self.context.course_type:
+            extra_tags.append(f"course:{self.context.course_type}")
+        if self.context.retrieval_profile:
+            extra_tags.append(f"retrieval:{self.context.retrieval_profile}")
+        if self.context.teaching_action:
+            extra_tags.append(f"teaching:{self.context.teaching_action}")
+        if self.context.asset_kind:
+            extra_tags.append(f"asset:{self.context.asset_kind}")
         if self.context.chapter_index is not None:
             extra_tags.append(f"chapter:{self.context.chapter_index}")
         with langsmith_trace(

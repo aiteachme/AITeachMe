@@ -37,13 +37,13 @@ from app.schemas.knowledge import (
     BuildPlannerSessionResponse,
     BuildPlannerTurnResponse,
 )
-from app.shared.infra.config import get_settings
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
 )
+from app.teaching.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.planner.models import normalize_planner_payload
@@ -231,13 +231,13 @@ async def create_build_planner_session_service(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerSessionResponse:
-    settings = get_settings()
+    planner_defaults = get_teaching_runtime_config().planner
     planner_files = _select_planner_files(session, subject=subject.slug, file_uids=payload.file_uids)
     file_ids = [require_id(item.id, "RawFile.id") for item in planner_files]
     file_uids = [require_uid(item.uid, "RawFile.uid") for item in planner_files]
     session_id = uuid.uuid4().hex
-    tone = (payload.tone or settings.planner_default_tone).strip() or settings.planner_default_tone
-    digest_mode = (payload.digest_mode or settings.planner_default_digest_mode).strip() or settings.planner_default_digest_mode
+    tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
+    digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     user_goal = payload.user_goal.strip()
 
     record = create_planner_session(
@@ -522,11 +522,51 @@ def mark_confirmed_build_plan_status(
             update_planner_session(session, planner_session)
 
 
+def get_latest_planner_session_service(
+    session: Session,
+    *,
+    subject: Subject,
+    user_id: str,
+) -> BuildPlannerSessionResponse | None:
+    """Return the most recent planner session with its turns for a subject.
+
+    Returns None if no planner session exists (i.e. the user has never
+    triggered a build plan for this subject).
+    """
+    from app.repositories.build_planner_repo import get_latest_planner_session
+
+    record = get_latest_planner_session(session, subject=subject.slug, user_id=user_id)
+    if record is None:
+        return None
+
+    turns = list_planner_turns(session, session_id=record.id)
+    plan_payload = dict(record.latest_plan_json or {})
+    file_uids = _file_uids_from_ids(
+        session, subject=subject.slug, file_ids=list(record.selected_file_ids_json or [])
+    )
+
+    return BuildPlannerSessionResponse(
+        session_id=record.id,
+        title=record.title,
+        status=record.status,
+        plan=_plan_response(
+            subject=subject.slug,
+            selected_file_uids=file_uids,
+            session_id=record.id,
+            confirmed_plan_id=record.confirmed_plan_id,
+            status=record.status,
+            plan=plan_payload,
+        ),
+        turns=[_turn_response(turn) for turn in turns],
+        runtime_stats=None,
+    )
+
+
 __all__ = [
     "append_build_planner_message_service",
     "confirm_build_planner_session_service",
     "create_build_planner_session_service",
     "get_confirmed_build_plan_service",
+    "get_latest_planner_session_service",
     "mark_confirmed_build_plan_status",
 ]
-

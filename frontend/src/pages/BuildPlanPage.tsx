@@ -31,8 +31,8 @@ import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import { createGraphDebugBuildLocationState } from "../lib/knowledgeBuildNavigation";
-import { useSettings } from "../hooks/useSettings";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { getStoredAppSettings, useSettings } from "../hooks/useSettings";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -291,6 +291,22 @@ async function fetchFiles(subject: string): Promise<FilesData> {
 async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
+
+  // 当用户选择 MinerU 解析时，将前端设置随上传请求一并提交给后端。
+  // Token 可留空，此时后端可继续使用环境变量中的默认凭据。
+  const settings = getStoredAppSettings();
+  if (settings.parserProvider === "mineru") {
+    const token = settings.mineruApiToken?.trim();
+    data.append("parser_provider", "mineru");
+    if (token) {
+      data.append("mineru_api_token", token);
+    }
+    data.append("mineru_model_version", settings.mineruModelVersion ?? "vlm");
+    data.append("mineru_enable_formula", String(settings.mineruEnableFormula));
+    data.append("mineru_enable_table", String(settings.mineruEnableTable));
+    data.append("mineru_is_ocr", String(settings.mineruIsOcr));
+  }
+
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/upload`,
@@ -402,20 +418,21 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
   return assistantTurn?.content.trim() || response.plan.plan_summary || fallbackContent;
 }
 
-export function FilesPage() {
+export function BuildPlanPage() {
   const { subjectId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   useSettings();
 
-  const navState = location.state as { initialFiles?: File[]; initialPrompt?: string } | null;
+  const navState = location.state as { initialFiles?: File[]; initialPrompt?: string; autoStart?: boolean } | null;
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
   const loadedSubjectRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
+  const autoStartFiredRef = useRef(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([createWelcomeMessage()]);
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
@@ -456,16 +473,80 @@ export function FilesPage() {
     if (!subjectId) {
       return;
     }
+    let cancelled = false;
+
+    // First try localStorage — only trust it if it has a real planner session
     const persisted = readPersistedPlannerState(subjectId);
-    setMessages(persisted?.messages?.length ? persisted.messages : [createWelcomeMessage()]);
-    setPlannerSessionId(persisted?.plannerSessionId ?? null);
-    setCurrentPlan(persisted?.currentPlan ?? null);
-    setInputValue(persisted?.inputValue ?? navState?.initialPrompt ?? "");
-    setPlannerNeedsRefresh(Boolean(persisted?.plannerNeedsRefresh));
-    setHasAutoUploaded(false);
-    setIsRevisingPlan(false);
-    loadedSubjectRef.current = subjectId;
-  }, [subjectId, navState?.initialPrompt]);
+    if (persisted?.plannerSessionId && persisted.messages?.length) {
+      setMessages(persisted.messages);
+      setPlannerSessionId(persisted.plannerSessionId);
+      setCurrentPlan(persisted.currentPlan ?? null);
+      setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
+      setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
+      setHasAutoUploaded(false);
+      setIsRevisingPlan(false);
+      loadedSubjectRef.current = subjectId;
+      return;
+    }
+
+    // No localStorage — try server
+    async function restoreFromServer() {
+      try {
+        const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
+          method: "POST",
+          url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
+        });
+        if (cancelled) return;
+        const session = response.data;
+        if (!session || !session.turns?.length) {
+          // No server history either — fresh start
+          setMessages([createWelcomeMessage()]);
+          setPlannerSessionId(null);
+          setCurrentPlan(null);
+          setInputValue(navState?.initialPrompt ?? "");
+          setPlannerNeedsRefresh(false);
+          setHasAutoUploaded(false);
+          setIsRevisingPlan(false);
+          loadedSubjectRef.current = subjectId;
+          return;
+        }
+
+        // Reconstruct chat messages from server turns
+        const restored: ChatMessage[] = [createWelcomeMessage()];
+        for (const turn of session.turns) {
+          restored.push(createMessage(
+            turn.role as ChatRole,
+            turn.content,
+            turn.role === "assistant" ? session.plan : null,
+          ));
+        }
+
+        setPlannerSessionId(session.session_id);
+        setCurrentPlan(session.plan);
+        setMessages(restored);
+        setInputValue(navState?.initialPrompt ?? "");
+        setPlannerNeedsRefresh(false);
+        setHasAutoUploaded(false);
+        setIsRevisingPlan(false);
+        loadedSubjectRef.current = subjectId;
+      } catch {
+        // Server error — fresh start
+        if (cancelled) return;
+        setMessages([createWelcomeMessage()]);
+        setPlannerSessionId(null);
+        setCurrentPlan(null);
+        setInputValue(navState?.initialPrompt ?? "");
+        setPlannerNeedsRefresh(false);
+        setHasAutoUploaded(false);
+        setIsRevisingPlan(false);
+        loadedSubjectRef.current = subjectId;
+      }
+    }
+
+    void restoreFromServer();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectId]);
 
   useEffect(() => {
     plannerSessionIdRef.current = plannerSessionId;
@@ -496,6 +577,67 @@ export function FilesPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-start planner when navigated from HomePage with autoStart flag
+  useEffect(() => {
+    if (
+      !navState?.autoStart ||
+      autoStartFiredRef.current ||
+      !subjectId ||
+      plannerSessionId ||
+      plannerStreaming
+    ) {
+      return;
+    }
+    const prompt = navState.initialPrompt?.trim();
+    if (!prompt) {
+      return;
+    }
+    autoStartFiredRef.current = true;
+
+    // Fire the planner immediately — capture the prompt before clearing navState
+    setMessages((prev) => [...prev, createMessage("user", prompt)]);
+    setInputValue("");
+    setPlannerStreaming(true);
+    plannerStreamingRawRef.current = "";
+    setPlannerStreamingPreview("");
+    setPlannerStreamingStatus("正在读取目标与资料，生成构建方案...");
+
+    // Clear autoStart from navigation state
+    navigate(location.pathname, { replace: true, state: null });
+
+    void (async () => {
+      try {
+        const response = await createPlannerSessionStream(
+          subjectId,
+          { file_uids: plannerFileUids, user_goal: prompt },
+          {
+            onStatus: setPlannerStreamingStatus,
+            onToken: (token) => {
+              plannerStreamingRawRef.current += token;
+              setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
+            },
+          },
+        );
+        appendPlannerResponse(
+          response,
+          "我已经根据当前目标和资料重新整理了一版构建方案。",
+          extractPlannerPreviewText(plannerStreamingRawRef.current),
+        );
+      } catch (error) {
+        setMessages((prev) => [
+          ...prev,
+          createMessage("system", getApiErrorMessage(error, "规划方案失败，请稍后重试。")),
+        ]);
+      } finally {
+        setPlannerStreaming(false);
+        plannerStreamingRawRef.current = "";
+        setPlannerStreamingPreview("");
+        setPlannerStreamingStatus("正在生成构建方案...");
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectId, navState?.autoStart, plannerSessionId, plannerStreaming]);
 
   const uploadMutation = useMutation({
     mutationFn: (selected: File[]) => uploadFiles(subjectId, selected),

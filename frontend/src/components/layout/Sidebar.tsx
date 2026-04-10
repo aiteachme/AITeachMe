@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -12,8 +12,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Settings,
+  Sparkles,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,7 +33,7 @@ import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
 import { Button } from "../ui/Button";
 
 const MODULES = [
-  { id: "files", name: "文件", icon: Upload },
+  { id: "build", name: "构建", icon: Sparkles },
   { id: "knowledge-docs", name: "知识库", icon: BookOpen },
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
@@ -168,7 +169,7 @@ function RenameSubjectModal({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -235,7 +236,7 @@ export function Sidebar() {
       setShowNewForm(false);
       setCreateError(undefined);
       setSubjectActionError(undefined);
-      navigate(`/subject/${created.subject_id}/files`);
+      navigate(`/subject/${created.subject_id}/build`);
     },
     onError: (error) => {
       setCreateError(getApiErrorMessage(error, "创建失败，请重试"));
@@ -481,6 +482,22 @@ export function Sidebar() {
               </div>
             );
           })}
+        </div>
+
+        {/* Bottom settings button */}
+        <div className="border-t border-slate-100 p-2.5">
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className={cn(
+              "flex w-full items-center rounded-lg py-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700",
+              effectiveCollapsed ? "justify-center px-0" : "gap-2.5 px-3",
+            )}
+            title="设置"
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            {!effectiveCollapsed ? <span className="text-sm">设置</span> : null}
+          </button>
         </div>
       </aside>
 

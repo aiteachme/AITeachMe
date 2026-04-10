@@ -101,6 +101,19 @@ def _compute_quality_score(*, markdown: str, image_count: int, classification: d
     return max(0.0, min(round(score, 3), 1.0))
 
 
+def _resolve_mineru_token_source(*, requested_parser_provider: str | None, mineru_token: str | None) -> str:
+    """Label the effective MinerU token source for safe diagnostics.
+
+    We only expose the source label in logs; the token value itself must never be logged.
+    """
+
+    if requested_parser_provider != "mineru":
+        return "not_requested"
+    if mineru_token and mineru_token.strip():
+        return "request_or_env"
+    return "missing"
+
+
 def _read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
     if Image is None:
         return None, None
@@ -388,6 +401,7 @@ async def run_parse_file_workflow(
     try:
         requested_parser_provider: str | None = None
         mineru_token: str | None = None
+        mineru_token_source: str = "not_requested"
         mineru_model_version: str = "vlm"
         mineru_enable_formula: bool = True
         mineru_enable_table: bool = True
@@ -455,6 +469,8 @@ async def run_parse_file_workflow(
                 if isinstance(mineru_block, dict):
                     token_value = mineru_block.get("api_token")
                     mineru_token = str(token_value).strip() if token_value else None
+                    if mineru_token:
+                        mineru_token_source = "request"
 
                     model_version_value = mineru_block.get("model_version")
                     if isinstance(model_version_value, str):
@@ -482,6 +498,27 @@ async def run_parse_file_workflow(
                     )
                 else:
                     mineru_token = None
+
+            # Fallback: allow centralized deployment to provide MinerU token via env.
+            if requested_parser_provider == "mineru" and not (mineru_token and mineru_token.strip()):
+                env_token = (settings.mineru_api_token or "").strip()
+                if env_token:
+                    mineru_token = env_token
+                    mineru_token_source = "server_env"
+                else:
+                    mineru_token_source = "missing"
+
+            if requested_parser_provider == "mineru":
+                logger.info(
+                    "mineru_request_config_resolved",
+                    subject=subject,
+                    file_id=file_id,
+                    token_source=mineru_token_source,
+                    model_version=mineru_model_version,
+                    enable_formula=mineru_enable_formula,
+                    enable_table=mineru_enable_table,
+                    is_ocr=mineru_is_ocr,
+                )
 
             # ── Fast Path: text/markdown/code files skip classify+plan entirely ──
             # (改进 2: RAGFlow Naive + LangChain 直通思路)
@@ -626,46 +663,75 @@ async def run_parse_file_workflow(
         # When MinerU is explicitly selected, bypass the local parser chain.
         if requested_parser_provider == "mineru":
             mineru_started_at = time.monotonic()
-            with tempfile.TemporaryDirectory(prefix="aiteachme_mineru_") as tmp_dir_str:
-                tmp_dir = Path(tmp_dir_str)
-                extracted = await asyncio.to_thread(
-                    parse_file_to_dir,
-                    file_path=file_path,
-                    options=MinerURequestOptions(
-                        api_token=mineru_token or "",
-                        model_version=mineru_model_version,
-                        enable_formula=mineru_enable_formula,
-                        enable_table=mineru_enable_table,
-                        is_ocr=mineru_is_ocr,
-                    ),
-                    output_dir=tmp_dir,
+            logger.info(
+                "mineru_parse_started",
+                subject=subject,
+                file_id=file_id,
+                token_source=mineru_token_source,
+                model_version=mineru_model_version,
+                enable_formula=mineru_enable_formula,
+                enable_table=mineru_enable_table,
+                is_ocr=mineru_is_ocr,
+            )
+            try:
+                with tempfile.TemporaryDirectory(prefix="aiteachme_mineru_") as tmp_dir_str:
+                    tmp_dir = Path(tmp_dir_str)
+                    extracted = await asyncio.to_thread(
+                        parse_file_to_dir,
+                        file_path=file_path,
+                        options=MinerURequestOptions(
+                            api_token=mineru_token or "",
+                            model_version=mineru_model_version,
+                            enable_formula=mineru_enable_formula,
+                            enable_table=mineru_enable_table,
+                            is_ocr=mineru_is_ocr,
+                        ),
+                        output_dir=tmp_dir,
+                    )
+
+                    mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
+
+                    # Copy assets into the canonical per-file asset directory.
+                    # Important: prefix filenames so existing asset listing (prefix filter) keeps working.
+                    copied_assets = 0
+                    if extracted.images_dir and extracted.images_dir.exists():
+                        for src in sorted(extracted.images_dir.iterdir()):
+                            if not src.is_file():
+                                continue
+                            dest = asset_dir / f"{asset_name_prefix}{src.name}"
+                            shutil.copy2(src, dest)
+                            copied_assets += 1
+
+                    # Canonicalize: rewrite image refs to ../assets/<file_id>/... and normalize markdown.
+                    from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
+
+                    canonical_result = canonicalize_markdown(
+                        mineru_markdown_raw,
+                        asset_dir=asset_dir,
+                        asset_link_prefix=f"../assets/{file_id}",
+                        asset_name_prefix=asset_name_prefix,
+                        asset_gallery_limit=parse_plan.options.asset_gallery_limit,
+                    )
+            except Exception:
+                logger.exception(
+                    "mineru_parse_failed",
+                    subject=subject,
+                    file_id=file_id,
+                    token_source=mineru_token_source,
+                    model_version=mineru_model_version,
                 )
-
-                mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
-
-                # Copy assets into the canonical per-file asset directory.
-                # Important: prefix filenames so existing asset listing (prefix filter) keeps working.
-                copied_assets = 0
-                if extracted.images_dir and extracted.images_dir.exists():
-                    for src in sorted(extracted.images_dir.iterdir()):
-                        if not src.is_file():
-                            continue
-                        dest = asset_dir / f"{asset_name_prefix}{src.name}"
-                        shutil.copy2(src, dest)
-                        copied_assets += 1
-
-                # Canonicalize: rewrite image refs to ../assets/<file_id>/... and normalize markdown.
-                from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
-
-                canonical_result = canonicalize_markdown(
-                    mineru_markdown_raw,
-                    asset_dir=asset_dir,
-                    asset_link_prefix=f"../assets/{file_id}",
-                    asset_name_prefix=asset_name_prefix,
-                    asset_gallery_limit=parse_plan.options.asset_gallery_limit,
-                )
+                raise
 
             mineru_elapsed_s = round(time.monotonic() - mineru_started_at, 2)
+            logger.info(
+                "mineru_parse_completed",
+                subject=subject,
+                file_id=file_id,
+                token_source=mineru_token_source,
+                batch_id=extracted.batch_id,
+                copied_assets=copied_assets,
+                elapsed_s=mineru_elapsed_s,
+            )
 
             # Build a FastParseResult-compatible payload for the rest of the pipeline.
             # We keep the same shape so downstream metadata/status logic stays unchanged.
@@ -688,6 +754,7 @@ async def run_parse_file_workflow(
                 "batch_id": extracted.batch_id,
                 "file_name": extracted.file_name,
                 "copied_assets": copied_assets,
+                "token_source": mineru_token_source,
             }
         else:
             parse_result = await fast_parse_file(
@@ -727,6 +794,7 @@ async def run_parse_file_workflow(
             "provider_failure_reason": None,
             "requested_parser_provider": requested_parser_provider,
             "mineru": {
+                "token_source": mineru_token_source,
                 "model_version": mineru_model_version,
                 "enable_formula": mineru_enable_formula,
                 "enable_table": mineru_enable_table,

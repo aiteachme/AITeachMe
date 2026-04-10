@@ -9,7 +9,7 @@ import structlog
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
+from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs, stage_knowledge_docs
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -79,7 +79,10 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 
         for chapter in chapter_metadatas:
-            title = str(chapter.get("title") or "").strip()
+            title = get_effective_chapter_title(
+                chapter,
+                fallback_index=int(chapter.get("chapter_index", 0) or 0) or None,
+            )
             if title == "练习与自检":
                 continue
             upsert_knowledge_build_chapter_progress(

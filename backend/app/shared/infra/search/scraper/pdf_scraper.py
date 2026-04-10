@@ -13,9 +13,18 @@ logger = structlog.get_logger(__name__)
 
 
 class PDFScraper(BaseScraper):
+    priority = 100
+
     @property
     def name(self) -> str:
         return "pdf"
+
+    @classmethod
+    def supports_url(cls, url: str) -> bool:
+        normalized = str(url or "").strip().lower()
+        if not normalized.startswith(("http://", "https://")):
+            return False
+        return normalized.endswith(".pdf") or ".pdf?" in normalized
 
     async def scrape(self, url: str) -> ScrapedPage:
         settings = get_settings()
@@ -26,7 +35,13 @@ class PDFScraper(BaseScraper):
                 payload = response.content
         except Exception as exc:  # pragma: no cover - network/provider behavior
             logger.warning("pdf_scrape_failed", url=url, error=str(exc))
-            return ScrapedPage(url=url, success=False, error=str(exc), content_type="application/pdf")
+            return ScrapedPage(
+                url=url,
+                success=False,
+                error=str(exc),
+                content_type="application/pdf",
+                reader_name=self.name,
+            )
 
         try:
             import fitz
@@ -37,8 +52,20 @@ class PDFScraper(BaseScraper):
             title = document.metadata.get("title") or ""
         except Exception as exc:  # pragma: no cover - optional dependency
             logger.warning("pdf_parse_failed", url=url, error=str(exc))
-            return ScrapedPage(url=url, success=False, error=str(exc), content_type="application/pdf")
-        return ScrapedPage(url=url, title=title, content=content[:12000], content_type="application/pdf")
+            return ScrapedPage(
+                url=url,
+                success=False,
+                error=str(exc),
+                content_type="application/pdf",
+                reader_name=self.name,
+            )
+        return ScrapedPage(
+            url=url,
+            title=title,
+            content=content[:12000],
+            content_type="application/pdf",
+            reader_name=self.name,
+        )
 
 
 __all__ = ["PDFScraper"]

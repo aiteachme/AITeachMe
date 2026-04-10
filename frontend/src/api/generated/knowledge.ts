@@ -28,6 +28,7 @@ import type {
   ApiResponseListTaxonomyAnchorResponse,
   ApiResponseStudyPlanResponse,
   ApiResponseTeachingUnitDetailResponse,
+  ApiResponseUnionBuildPlannerSessionResponseNoneType,
   BuildPlannerCreateRequest,
   BuildPlannerMessageRequest,
   ChunkContextRequest,
@@ -152,6 +153,109 @@ export const useKnowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansP
         TContext
       > => {
       return useMutation(getKnowledgeBuildPlanCreateApiV1SubjectsSubjectKnowledgeBuildPlansPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Get the latest build planner session for this subject
+ */
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse200 = {
+  data: ApiResponseUnionBuildPlannerSessionResponseNoneType
+  status: 200
+}
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponseSuccess = (knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponseError = (knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse400 | knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse404 | knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse422 | knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse = (knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponseSuccess | knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponseError)
+
+export const getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/build/plans/latest`
+}
+
+export const knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost = async (subject: string, options?: RequestInit): Promise<knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse> => {
+  
+  return orvalApiClient<knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostResponse>(getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostUrl(subject),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+  
+
+
+
+export const getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>, TError,{subject: string}, TContext> => {
+
+const mutationKey = ['knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>, {subject: string}> = (props) => {
+          const {subject} = props ?? {};
+
+          return  knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost(subject,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>>
+    
+    export type KnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Get the latest build planner session for this subject
+ */
+export const useKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPost>>,
+        TError,
+        {subject: string},
+        TContext
+      > => {
+      return useMutation(getKnowledgeBuildPlanLatestApiV1SubjectsSubjectKnowledgeBuildPlansLatestPostMutationOptions(options), queryClient);
     }
     /**
  * @summary Create a build planner session with SSE progress

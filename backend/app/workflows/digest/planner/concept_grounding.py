@@ -12,6 +12,7 @@ import structlog
 from app.shared.infra.config import get_settings
 from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import SearchResult
+from app.teaching.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.models import _resolve_subject_display_name
 from app.workflows.digest.shared.models import SharedInputs
 
@@ -154,7 +155,7 @@ def _clean_and_filter_topics(items: list[Any]) -> list[str]:
 
 def _resolve_external_retriever_names() -> list[str]:
     settings = get_settings()
-    if not settings.planner_allow_external_search:
+    if not get_teaching_runtime_config().planner.allow_external_search:
         return []
     parse_retrievers = getattr(settings, "parse_retrievers", None)
     if callable(parse_retrievers):

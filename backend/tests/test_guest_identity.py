@@ -171,7 +171,7 @@ def test_cloud_guest_cookie_defaults_support_cross_site_requests() -> None:
 def test_auto_app_mode_defaults_to_cloud_on_render(monkeypatch) -> None:
     monkeypatch.setenv("RENDER", "true")
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.resolved_app_mode == "cloud"
     assert settings.resolved_guest_cookie_samesite == "none"

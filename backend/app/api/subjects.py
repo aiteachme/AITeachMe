@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends
 from sqlmodel import Session
@@ -14,6 +14,8 @@ from app.schemas.subject import (
     SubjectDeleteRequest,
     SubjectItem,
     SubjectListRequest,
+    SubjectNameSuggestionRequest,
+    SubjectNameSuggestionResponse,
     SubjectUpdateRequest,
 )
 from app.services.subject_service import (
@@ -128,3 +130,49 @@ async def update_subject_api(
             name=body.name,
         )
     )
+
+
+@router.post(
+    "/suggest-name",
+    response_model=ApiResponse[SubjectNameSuggestionResponse],
+    summary="根据用户输入快速生成学科名称",
+    responses=build_error_responses([400, 500]),
+)
+async def suggest_subject_name(
+    body: SubjectNameSuggestionRequest = Body(...),
+) -> ApiResponse[SubjectNameSuggestionResponse]:
+    from app.shared.infra.llm_support.text import acompletion
+    from app.schemas.llm import ChatMessage
+
+    prompt_text = (body.prompt or "").strip()
+    filenames = body.filenames or []
+
+    # Build a minimal LLM prompt
+    hints = []
+    if prompt_text:
+        hints.append(f"用户输入：{prompt_text}")
+    if filenames:
+        hints.append(f"文件名：{', '.join(filenames[:5])}")
+
+    if not hints:
+        return ok_response(SubjectNameSuggestionResponse(name="新学科"))
+
+    messages: list[ChatMessage] = [
+        {"role": "system", "content": (
+            "你是一个学科名称生成器。根据用户输入的学习目标和文件名，生成一个简短的学科名称（2-8个字）。"
+            "只输出名称，不要其他内容。例如：高等数学、Python编程、机器学习、电路分析、英语写作。"
+        )},
+        {"role": "user", "content": "\n".join(hints)},
+    ]
+
+    try:
+        result = await acompletion(messages, max_tokens=30, temperature=0.3)
+        name = result.strip().strip('"\'').strip()
+        # Ensure reasonable length
+        if not name or len(name) > 20:
+            name = prompt_text[:20] if prompt_text else "新学科"
+    except Exception:
+        # Fallback: truncate prompt
+        name = prompt_text[:20] if prompt_text else "新学科"
+
+    return ok_response(SubjectNameSuggestionResponse(name=name))

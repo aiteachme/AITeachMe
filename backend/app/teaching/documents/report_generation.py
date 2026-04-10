@@ -2,12 +2,151 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from app.teaching.documents.content_blocks import (
     build_glossary_section,
     build_learning_objectives_section,
 )
+
+_TITLE_PREFIX_RE = re.compile(r"^\s*(?:第\s*\d+\s*章[\s：:、.-]*)?(?:\d+[\).、：:\-\s]+)?(.+?)\s*$")
+_LEGACY_TEMPLATE_SUFFIX_RE = re.compile(
+    r"[:：]\s*(核心概念|公式方法|题型突破|易错辨析|综合迁移|考前速查|主题导入|概念定义|结构公式|方法推理|例题应用|边界辨析|总结延伸)\s*$"
+)
+_LEGACY_TEMPLATE_TITLES = {
+    "全景导论",
+    "总结与延展",
+    "主题导入",
+    "概念定义",
+    "结构公式",
+    "方法推理",
+    "例题应用",
+    "边界辨析",
+    "综合迁移",
+    "总结延伸",
+    "核心概念",
+    "公式方法",
+    "题型突破",
+    "易错辨析",
+    "考前速查",
+}
+_STATIC_TITLES = {"练习与自检", "知识文档总览"}
+
+
+def clean_generated_chapter_title(raw_title: str) -> str:
+    cleaned = _TITLE_PREFIX_RE.sub(r"\1", str(raw_title or "").strip())
+    cleaned = cleaned.strip().strip("“”\"'`")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip("：:，,。；; ")
+
+
+def looks_like_legacy_template_title(title: str) -> bool:
+    cleaned = clean_generated_chapter_title(title)
+    if not cleaned:
+        return False
+    if cleaned in _LEGACY_TEMPLATE_TITLES:
+        return True
+    return bool(_LEGACY_TEMPLATE_SUFFIX_RE.search(cleaned))
+
+
+def is_usable_resolved_chapter_title(title: str) -> bool:
+    cleaned = clean_generated_chapter_title(title)
+    if cleaned in _STATIC_TITLES:
+        return True
+    if len(cleaned) < 3 or len(cleaned) > 28:
+        return False
+    if looks_like_legacy_template_title(cleaned):
+        return False
+    if re.fullmatch(r"第\s*\d+\s*章", cleaned):
+        return False
+    return True
+
+
+def resolve_effective_chapter_title(
+    chapter: Mapping[str, object] | None = None,
+    *,
+    chapter_index: int | None = None,
+    fallback_title: str | None = None,
+) -> str:
+    chapter_data = chapter or {}
+    resolved_title = clean_generated_chapter_title(str(chapter_data.get("resolved_title") or ""))
+    if is_usable_resolved_chapter_title(resolved_title):
+        return resolved_title
+
+    provisional_title = clean_generated_chapter_title(str(chapter_data.get("title") or ""))
+    if provisional_title and not looks_like_legacy_template_title(provisional_title):
+        return provisional_title
+
+    cleaned_fallback = clean_generated_chapter_title(str(fallback_title or ""))
+    if cleaned_fallback and not looks_like_legacy_template_title(cleaned_fallback):
+        return cleaned_fallback
+
+    if chapter_index is None:
+        chapter_index = int(chapter_data.get("chapter_index", 0) or 0) or None
+    return f"第 {chapter_index} 章" if chapter_index else "未命名章节"
+
+
+def coerce_resolved_chapter_title(
+    raw_title: str,
+    *,
+    chapter: Mapping[str, object] | None = None,
+    chapter_index: int | None = None,
+) -> str:
+    cleaned = clean_generated_chapter_title(raw_title)
+    if is_usable_resolved_chapter_title(cleaned):
+        return cleaned
+    return resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+
+
+def build_chapter_title_resolution_messages(
+    *,
+    subject: str,
+    digest_mode: str,
+    objective: str,
+    required_elements: list[str],
+    search_queries: list[str],
+    writing_instructions: str,
+    dense_context: str,
+    source_titles: list[str],
+    local_hits: int,
+    web_hits: int,
+) -> list[dict[str, str]]:
+    normalized_mode = _normalize_mode(digest_mode)
+    mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
+    required_text = "、".join(item for item in required_elements if item.strip()) or "核心概念、推理路径、典型例子"
+    query_text = "；".join(item for item in search_queries if item.strip()) or "无明确检索词"
+    source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 当前没有明确来源标题"
+    user_prompt = f"""
+请为下面这一章生成一个新的中文章节标题。
+
+主题：{subject}
+课程模式：{mode_label}
+学习目标：{objective or "把本章最核心的知识主线讲清楚。"}
+必须覆盖：{required_text}
+检索重点：{query_text}
+写作要求：{writing_instructions or "保持教学导向，体现知识脉络。"}
+证据概况：本地命中 {local_hits} 条，外部命中 {web_hits} 条。
+
+来源线索：
+{source_text}
+
+研究笔记：
+{dense_context[:5000] or "暂无研究笔记，请根据章节合同稳健命名。"}
+
+输出要求：
+1. 只输出一个中文标题。
+2. 不要出现“全景导论”“总结与延展”“主题导入”“概念定义”等模板化命名。
+3. 标题要像真实讲义章节名，体现知识主线或问题意识。
+4. 不要输出编号，不要输出解释，不要输出 Markdown。
+""".strip()
+    return [
+        {
+            "role": "system",
+            "content": "你是 AITeachMe 的课程命名助手，负责根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。",
+        },
+        {"role": "user", "content": user_prompt},
+    ]
 
 
 def build_document_overview(
@@ -17,6 +156,7 @@ def build_document_overview(
     tone: str,
     user_goal: str,
     plan_summary: str,
+    source_strategy: str = "",
     chapters: list[Mapping[str, object]],
 ) -> str:
     """构建知识文档开头的总览页。"""
@@ -40,10 +180,11 @@ def build_document_overview(
         f"> 风格：{tone or 'encouraging'}",
         f"> 目标：{goal_line}",
         f"> 方案摘要：{summary_line}",
-        "",
-        "## 如何使用这份文档",
-        "",
     ]
+    source_strategy_label = _source_strategy_label(source_strategy)
+    if source_strategy_label:
+        lines.append(f"> 资料策略：{source_strategy_label}")
+    lines.extend(["", "## 如何使用这份文档", ""])
     lines.extend(f"- {item}" for item in _reading_guidance(normalized_mode))
     lines.extend(
         [
@@ -57,7 +198,7 @@ def build_document_overview(
 
     for chapter in chapters:
         chapter_index = int(chapter.get("chapter_index", 0) or 0)
-        title = str(chapter.get("title") or f"第 {chapter_index or '?'} 章").strip()
+        title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         focus = _chapter_focus(chapter)
         evidence = _chapter_evidence(chapter)
         lines.append(f"| {chapter_index or '-'} | {title} | {focus} | {evidence} |")
@@ -73,6 +214,8 @@ def ensure_chapter_learning_scaffold(
     required_elements: list[str],
     digest_mode: str,
     source_count: int = 0,
+    chapter_index: int | None = None,
+    chapter_count: int | None = None,
 ) -> str:
     """为单章内容补齐稳定的教学脚手架。"""
 
@@ -110,6 +253,8 @@ def ensure_chapter_learning_scaffold(
         objective=objective,
         required_elements=required_elements,
         digest_mode=digest_mode,
+        chapter_index=chapter_index,
+        chapter_count=chapter_count,
     ):
         if not _contains_heading(cleaned, heading):
             missing_blocks.append(block.strip())
@@ -188,6 +333,8 @@ def _build_mode_sections(
     objective: str,
     required_elements: list[str],
     digest_mode: str,
+    chapter_index: int | None = None,
+    chapter_count: int | None = None,
 ) -> list[tuple[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     focus_items = required_elements[:4] or _default_required_elements(normalized_mode)
@@ -289,7 +436,7 @@ def _build_mode_sections(
         ),
     ]
 
-    if title == "全景导论":
+    if chapter_index == 1:
         sections.append(
             (
                 "## 全局脉络图",
@@ -302,7 +449,7 @@ def _build_mode_sections(
                 ).strip(),
             )
         )
-    if title == "总结与延展":
+    if chapter_count and chapter_index == chapter_count:
         sections.append(
             (
                 "## 延伸学习",
@@ -371,6 +518,15 @@ def _default_plan_summary(*, subject: str, digest_mode: str, chapters: list[Mapp
     return f"围绕 {subject} 设计的一条 {mode_label} 学习路径，共 {len(chapters)} 章。"
 
 
+def _source_strategy_label(source_strategy: str) -> str:
+    normalized = str(source_strategy or "").strip().lower()
+    if normalized == "local_first":
+        return "优先基于上传资料整理，再按需补充外部研究。"
+    if normalized == "web_first":
+        return "当前缺少本地资料，优先执行联网研究与来源筛选。"
+    return ""
+
+
 def _normalize_mode(digest_mode: str) -> str:
     return (digest_mode or "systematic").strip().lower()
 
@@ -397,8 +553,14 @@ def _insert_after_first_heading(markdown: str, block: str) -> str:
 
 
 __all__ = [
+    "build_chapter_title_resolution_messages",
     "build_chapter_guide",
     "build_chapter_recap",
+    "clean_generated_chapter_title",
+    "coerce_resolved_chapter_title",
     "build_document_overview",
     "ensure_chapter_learning_scaffold",
+    "is_usable_resolved_chapter_title",
+    "looks_like_legacy_template_title",
+    "resolve_effective_chapter_title",
 ]

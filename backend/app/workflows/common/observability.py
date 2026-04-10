@@ -20,6 +20,10 @@ _TRACE_INPUT_FIELDS = (
     "planner_session_id",
     "confirmed_plan_id",
     "digest_mode",
+    "course_type",
+    "retrieval_profile",
+    "teaching_action",
+    "asset_kind",
     "tone",
     "session_id",
     "job_id",
@@ -32,6 +36,10 @@ _TRACE_METADATA_FIELDS = (
     "planner_session_id",
     "confirmed_plan_id",
     "digest_mode",
+    "course_type",
+    "retrieval_profile",
+    "teaching_action",
+    "asset_kind",
     "session_id",
     "job_id",
     "user_id",
@@ -382,9 +390,21 @@ def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[s
 def _node_trace_tags(metadata: Mapping[str, Any]) -> list[str]:
     tags: list[str] = []
     digest_mode = str(metadata.get("digest_mode", "") or "")
+    course_type = str(metadata.get("course_type", "") or "")
+    retrieval_profile = str(metadata.get("retrieval_profile", "") or "")
+    teaching_action = str(metadata.get("teaching_action", "") or "")
+    asset_kind = str(metadata.get("asset_kind", "") or "")
     chapter_index = metadata.get("chapter_index")
     if digest_mode:
         tags.append(f"mode:{digest_mode}")
+    if course_type:
+        tags.append(f"course:{course_type}")
+    if retrieval_profile:
+        tags.append(f"retrieval:{retrieval_profile}")
+    if teaching_action:
+        tags.append(f"teaching:{teaching_action}")
+    if asset_kind:
+        tags.append(f"asset:{asset_kind}")
     if chapter_index is not None:
         tags.append(f"chapter:{chapter_index}")
     return tags
