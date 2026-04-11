@@ -2,7 +2,7 @@
 
 `search` in this project is broader than classic RAG:
 - web retrievers discover candidate URLs and snippets
-- scrapers/readers extract page content from URLs
+- readers extract page content from URLs
 - knowledge retrieval searches the local subject corpus
 
 This module groups the local knowledge retrieval contracts so we do not keep

@@ -1,8 +1,4 @@
-﻿"""Reader and scraper abstractions with URL-based factory registration.
-
-`BaseReader` is the generic internal abstraction for "load content from a URL".
-`BaseScraper` is the common specialization used by HTML/PDF fetchers.
-"""
+"""Reader abstractions with URL-based factory registration."""
 
 from __future__ import annotations
 
@@ -98,9 +94,6 @@ class BaseReader(ABC):
     async def read(self, url: str) -> ScrapedPage:
         raise NotImplementedError
 
-    async def scrape(self, url: str) -> ScrapedPage:
-        return await self.read(url)
-
     async def traced_read(self, url: str) -> ScrapedPage:
         trace = get_llm_trace_context()
         with langsmith_trace(
@@ -112,8 +105,8 @@ class BaseReader(ABC):
             workflow=trace.workflow,
             lane=trace.lane,
             node=trace.node,
-            extra_metadata={"reader_name": self.name, "scraper_name": self.name},
-            extra_tags=[f"reader:{self.name}", f"scraper:{self.name}"],
+            extra_metadata={"reader_name": self.name},
+            extra_tags=[f"reader:{self.name}"],
         ) as run:
             result = await self.read(url)
             result.reader_name = result.reader_name or self.name
@@ -129,28 +122,10 @@ class BaseReader(ABC):
                 )
             return result
 
-    async def traced_scrape(self, url: str) -> ScrapedPage:
-        return await self.traced_read(url)
-
-
-class BaseScraper(BaseReader):
-    """URL scraper specialization kept for clearer caller semantics."""
-
-    @abstractmethod
-    async def scrape(self, url: str) -> ScrapedPage:
-        raise NotImplementedError
-
-    async def read(self, url: str) -> ScrapedPage:
-        return await self.scrape(url)
-
 
 __all__ = [
     "BaseReader",
-    "BaseScraper",
     "get_registered_reader_names",
     "get_registered_reader_types",
     "register_reader_type",
 ]
-
-
-

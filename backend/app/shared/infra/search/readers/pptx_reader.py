@@ -1,17 +1,18 @@
-﻿"""PPTX reader using ZIP/XML parsing from the remote payload."""
+"""PPTX reader using ZIP/XML parsing from the remote payload."""
 
 from __future__ import annotations
 
 import re
+
 import structlog
 
-from app.shared.infra.search.readers.base import BaseScraper
+from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.readers.common import (
     build_error_page,
     extract_core_title,
     extract_paragraphs_from_xml,
     fetch_url,
-    normalize_scraped_text,
+    normalize_read_text,
     open_zip_archive,
 )
 from app.shared.infra.search.types import ScrapedPage
@@ -41,16 +42,13 @@ def extract_pptx_text(payload: bytes) -> tuple[str, str]:
             if not paragraphs:
                 continue
             slide_blocks.append(f"Slide {slide_index}\n" + "\n".join(paragraphs))
-        return title, normalize_scraped_text("\n\n".join(slide_blocks))
+        return title, normalize_read_text("\n\n".join(slide_blocks))
 
 
-class PPTXScraper(BaseScraper):
-    aliases = ("pptx",)
+class PPTXReader(BaseReader):
+    canonical_name = "pptx"
+    aliases = ("slides",)
     priority = 94
-
-    @property
-    def name(self) -> str:
-        return "pptx"
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
@@ -59,12 +57,12 @@ class PPTXScraper(BaseScraper):
             return False
         return normalized.endswith(".pptx") or ".pptx?" in normalized
 
-    async def scrape(self, url: str) -> ScrapedPage:
+    async def read(self, url: str) -> ScrapedPage:
         content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         try:
             response = await fetch_url(url)
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("pptx_scrape_failed", url=url, error=str(exc))
+            logger.warning("pptx_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type=content_type, reader_name=self.name)
 
         try:
@@ -82,7 +80,4 @@ class PPTXScraper(BaseScraper):
         )
 
 
-__all__ = ["PPTXScraper", "extract_pptx_text"]
-
-
-
+__all__ = ["PPTXReader", "extract_pptx_text"]

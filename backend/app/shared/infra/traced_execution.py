@@ -167,11 +167,16 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "local_hits",
         "web_hits",
         "query_count",
+        "read_url_count",
+        "research_round_count",
         "document_count",
         "candidate_count",
         "selected_count",
         "curated_source_count",
         "trusted_source_count",
+        "local_source_count",
+        "web_source_count",
+        "unique_domain_count",
     ):
         value = result.metadata.get(field_name)
         if value not in (None, "", [], {}):
@@ -196,6 +201,30 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
     quality_score = result.metadata.get("quality_score")
     if quality_score not in (None, ""):
         outputs["quality_score"] = float(quality_score)
+    gaps_remaining = result.metadata.get("gaps_remaining")
+    if isinstance(gaps_remaining, list):
+        outputs["gap_count"] = len([item for item in gaps_remaining if str(item).strip()])
+    source_class_breakdown = result.metadata.get("source_class_breakdown")
+    if isinstance(source_class_breakdown, Mapping) and source_class_breakdown:
+        outputs["source_class_breakdown"] = dict(source_class_breakdown)
+    retriever_stats = result.metadata.get("retriever_stats")
+    if isinstance(retriever_stats, Mapping) and retriever_stats:
+        outputs["retriever_names"] = sorted(str(name) for name in retriever_stats.keys())
+        outputs["retriever_call_count"] = sum(
+            int((stats or {}).get("query_count", 0) or 0)
+            for stats in retriever_stats.values()
+            if isinstance(stats, Mapping)
+        )
+    configured_retrievers = result.metadata.get("configured_retrievers")
+    if isinstance(configured_retrievers, list):
+        outputs["configured_retriever_count"] = len(
+            [name for name in configured_retrievers if str(name).strip()]
+        )
+    active_retrievers = result.metadata.get("active_retrievers")
+    if isinstance(active_retrievers, list):
+        outputs["active_retriever_count"] = len(
+            [name for name in active_retrievers if str(name).strip()]
+        )
     return outputs
 
 

@@ -121,6 +121,11 @@ AITeachMe 的借法：
 - metadata: `chapter_index`、`asset_kind`、`success`
 - 失败时记录 `asset_failures` 和降级策略
 
+当前 backend-first 落地状态：
+- `enrich_document` 已返回 `mermaid_block_count / image_block_count / interactive_block_count / asset_count / asset_summary`
+- lane summary 已可直接统计文档级资产数量，不需要再从 markdown 文本二次猜测
+- `animation` 仍保持 `contract + trace` 预留位，未进入执行链
+
 ## 8. LangSmith 要求
 
 > 详细实现参考 `backend/app/workflows/LANGSMITH.md`

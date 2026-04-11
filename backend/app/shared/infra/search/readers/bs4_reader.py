@@ -1,4 +1,4 @@
-﻿"""HTML reader using httpx and BeautifulSoup when available."""
+"""HTML reader using httpx and BeautifulSoup when available."""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ import re
 
 import structlog
 
-from app.shared.infra.search.readers.base import BaseScraper
-from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_scraped_text
+from app.shared.infra.search.readers.base import BaseReader
+from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_read_text
 from app.shared.infra.search.types import ScrapedPage
 
 logger = structlog.get_logger(__name__)
 
 
-class BS4Scraper(BaseScraper):
+class BS4Reader(BaseReader):
+    canonical_name = "bs4"
     aliases = ("html", "web")
     priority = 10
-
-    @property
-    def name(self) -> str:
-        return "bs4"
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
@@ -34,12 +31,12 @@ class BS4Scraper(BaseScraper):
             for marker in (".pdf?", ".docx?", ".pptx?", ".md?", ".markdown?", ".txt?", ".text?", ".rst?")
         )
 
-    async def scrape(self, url: str) -> ScrapedPage:
+    async def read(self, url: str) -> ScrapedPage:
         try:
             response = await fetch_url(url)
             html = response.text
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("bs4_scrape_failed", url=url, error=str(exc))
+            logger.warning("bs4_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type="text/html", reader_name=self.name)
 
         title = ""
@@ -60,13 +57,10 @@ class BS4Scraper(BaseScraper):
         return ScrapedPage(
             url=url,
             title=title,
-            content=normalize_scraped_text(content),
+            content=normalize_read_text(content),
             content_type="text/html",
             reader_name=self.name,
         )
 
 
-__all__ = ["BS4Scraper"]
-
-
-
+__all__ = ["BS4Reader"]

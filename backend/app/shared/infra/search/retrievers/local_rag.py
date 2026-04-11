@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from typing import Any
+import structlog
 
 from app.shared.infra.search.knowledge import RetrievedChunk
-from app.shared.infra.search.api import search_knowledge
+from app.shared.infra.search.api import get_knowledge_search_notice, search_knowledge
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
+
+logger = structlog.get_logger(__name__)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -22,6 +25,9 @@ class LocalRAGRetriever(BaseRetriever):
     def __init__(self, *, subject: str | None = None, local_sections: list[Any] | None = None) -> None:
         self.subject = (subject or "").strip()
         self.local_sections = list(local_sections or [])
+        self._vector_search_available: bool | None = None
+        self._vector_search_notice: str | None = None
+        self._vector_notice_logged = False
 
     @property
     def name(self) -> str:
@@ -29,7 +35,10 @@ class LocalRAGRetriever(BaseRetriever):
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         results: list[SearchResult] = []
-        if self.subject:
+        should_try_vector = bool(self.subject)
+        if should_try_vector and self.local_sections:
+            should_try_vector = await self._refresh_vector_search_availability()
+        if should_try_vector and self.subject:
             try:
                 vector_results = await search_knowledge(query, self.subject, top_k=max_results)
             except Exception:
@@ -48,6 +57,23 @@ class LocalRAGRetriever(BaseRetriever):
             if len(results) >= max_results:
                 break
         return results[:max_results]
+
+    async def _refresh_vector_search_availability(self) -> bool:
+        if self._vector_search_available is not None:
+            return self._vector_search_available
+
+        notice = await get_knowledge_search_notice(self.subject)
+        self._vector_search_notice = notice
+        self._vector_search_available = notice is None
+        if notice and not self._vector_notice_logged:
+            logger.info(
+                "local_rag_vector_search_bypassed",
+                subject=self.subject,
+                reason=notice,
+                fallback="section_fallback",
+            )
+            self._vector_notice_logged = True
+        return self._vector_search_available
 
     def _from_chunks(self, chunks: list[RetrievedChunk]) -> list[SearchResult]:
         results: list[SearchResult] = []

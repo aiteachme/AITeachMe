@@ -1,4 +1,4 @@
-﻿# Infra 分层说明
+# Infra 分层说明
 
 `app.shared.infra` 只放基础设施、跨引擎基础能力、以及少量兼容 shim。
 
@@ -25,7 +25,7 @@
 
 - 配置、数据库、存储、缓存、日志、追踪、LangSmith/LangGraph 接缝。
 - LLM 调用、模型路由、fallback、structured output、tool calling。
-- 检索与资料获取基础设施：retriever factory、reader、legacy scraper shim、knowledge retrieval、reranker、search helper。
+- 检索与资料获取基础设施：retriever factory、reader、knowledge retrieval、reranker、search helper。
 - canonical tool registry、tool decorator、toolpack loader。
 - skillpack loader 与渲染器。
 - 通用 memory、search support、可跨引擎复用的 helper。
@@ -92,5 +92,3 @@ shared/infra/
 - LangSmith 兼容代码：
   provider/调用级追踪放 `shared/infra/tracing.py` 与 `shared/infra/llm_support/observability.py`；
   workflow 级观测结构放 `workflows/common/observability.py` 与各 workflow 自己的 observability 文件。
-
-

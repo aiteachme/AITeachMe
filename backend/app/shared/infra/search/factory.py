@@ -1,19 +1,19 @@
-﻿"""Factory helpers for the shared search stack.
+"""Factory helpers for the shared search stack.
 
 - retrievers: find candidate sources/snippets
-- readers: load content from a concrete URL (with legacy scraper aliases)
+- readers: load content from a concrete URL
 """
 
 from __future__ import annotations
 
-import app.shared.infra.search.retrievers as _retriever_registry
 import app.shared.infra.search.readers as _reader_registry
+import app.shared.infra.search.retrievers as _retriever_registry
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.search.readers import BS4Reader
+from app.shared.infra.search.readers.base import BaseReader, get_registered_reader_types
 from app.shared.infra.search.retrievers import LocalRAGRetriever
 from app.shared.infra.search.retrievers.base import BaseRetriever, get_registered_retriever_types
-from app.shared.infra.search.readers import BS4Scraper
-from app.shared.infra.search.readers.base import BaseReader, get_registered_reader_types
 
 
 def get_retriever(
@@ -93,11 +93,7 @@ def get_retrievers_for_subject(
 
 
 def get_reader_for_url(url: str, *, preferred: str | None = None) -> BaseReader:
-    """Resolve the best URL reader.
-
-    `reader` is the slightly broader internal term. Callers that think in
-    scraping semantics can keep using `get_scraper_for_url`, which is an alias.
-    """
+    """Resolve the best URL reader."""
 
     registered = get_registered_reader_types()
     if preferred:
@@ -122,16 +118,10 @@ def get_reader_for_url(url: str, *, preferred: str | None = None) -> BaseReader:
         ranked.append((score, reader_type.factory_names()[0], reader_type))
 
     if not ranked:
-        return BS4Scraper()
+        return BS4Reader()
 
     ranked.sort(key=lambda item: (-item[0], item[1]))
     return ranked[0][2]()
-
-
-def get_scraper_for_url(url: str, *, preferred: str | None = None) -> BaseReader:
-    """Compatibility alias for callers that prefer the `scraper` term."""
-
-    return get_reader_for_url(url, preferred=preferred)
 
 
 __all__ = [
@@ -140,8 +130,4 @@ __all__ = [
     "get_reader_for_url",
     "get_retriever",
     "get_retrievers_for_subject",
-    "get_scraper_for_url",
 ]
-
-
-

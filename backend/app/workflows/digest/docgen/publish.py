@@ -135,7 +135,7 @@ def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
         "planned_queries": list(chapter.get("planned_queries") or []),
         "fallback_queries": list(chapter.get("fallback_queries") or []),
         "query_count": int(chapter.get("query_count", 0) or 0),
-        "scraped_url_count": int(chapter.get("scraped_url_count", 0) or 0),
+        "read_url_count": int(chapter.get("read_url_count", 0) or 0),
         "document_count": int(chapter.get("document_count", 0) or 0),
         "purify_used": bool(chapter.get("purify_used", False)),
     }

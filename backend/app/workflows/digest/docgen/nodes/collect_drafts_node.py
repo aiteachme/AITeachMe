@@ -45,7 +45,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
                 "planned_queries": list(draft.get("planned_queries") or []),
                 "fallback_queries": list(draft.get("fallback_queries") or []),
                 "query_count": int(draft.get("query_count", 0) or 0),
-                "scraped_url_count": int(draft.get("scraped_url_count", 0) or 0),
+                "read_url_count": int(draft.get("read_url_count", 0) or 0),
                 "document_count": int(draft.get("document_count", 0) or 0),
                 "purify_used": bool(draft.get("purify_used", False)),
                 "curated_source_count": int(draft.get("curated_source_count", 0) or 0),

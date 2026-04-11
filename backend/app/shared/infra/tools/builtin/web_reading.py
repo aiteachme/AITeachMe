@@ -1,4 +1,4 @@
-﻿"""Reusable URL reading helpers for research-oriented workflows."""
+"""Reusable URL reading helpers for research-oriented workflows."""
 
 from __future__ import annotations
 
@@ -9,11 +9,8 @@ from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
 from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
 
-# Keep the legacy module attribute so existing patches and callers still work.
-get_scraper_for_url = get_reader_for_url
 
-
-async def scrape_urls(
+async def read_urls(
     urls: list[str],
     *,
     max_workers: int | None = None,
@@ -30,21 +27,16 @@ async def scrape_urls(
     semaphore = asyncio.Semaphore(worker_count)
     trace = get_llm_trace_context()
 
-    async def _scrape_one(url: str) -> ScrapedPage:
+    async def _read_one(url: str) -> ScrapedPage:
         async with semaphore:
-            if preferred_reader:
-                reader = get_scraper_for_url(url, preferred=preferred_reader)
-            else:
-                reader = get_scraper_for_url(url)
+            reader = get_reader_for_url(url, preferred=preferred_reader) if preferred_reader else get_reader_for_url(url)
             try:
-                if hasattr(reader, "traced_read"):
-                    return await reader.traced_read(url)
-                return await reader.traced_scrape(url)
+                return await reader.traced_read(url)
             except Exception as exc:  # pragma: no cover - reader backends are integration-heavy
                 return ScrapedPage(url=url, success=False, error=str(exc))
 
     with langsmith_trace(
-        name="tool.scrape_urls",
+        name="tool.read_urls",
         run_type="tool",
         inputs={
             "url_count": len(ordered_urls),
@@ -56,10 +48,10 @@ async def scrape_urls(
         workflow=trace.workflow,
         lane=trace.lane,
         node=trace.node,
-        extra_metadata={"tool_name": "scrape_urls"},
-        extra_tags=["tool:scrape_urls"],
+        extra_metadata={"tool_name": "read_urls"},
+        extra_tags=["tool:read_urls"],
     ) as run:
-        pages = await asyncio.gather(*[_scrape_one(url) for url in ordered_urls])
+        pages = await asyncio.gather(*[_read_one(url) for url in ordered_urls])
         if run is not None:
             run.end(
                 outputs={
@@ -70,4 +62,4 @@ async def scrape_urls(
         return pages
 
 
-__all__ = ["get_scraper_for_url", "scrape_urls"]
+__all__ = ["read_urls"]

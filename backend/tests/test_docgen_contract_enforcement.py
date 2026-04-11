@@ -28,19 +28,19 @@ def _build_shared_inputs() -> SharedInputs:
                 filetype="markdown",
                 markdown_path="demo.md",
                 asset_dir="assets",
-                normalized_content="偏导数、梯度和方向导数的概念整理。",
+                normalized_content="Partial derivatives, gradients, and directional derivatives.",
                 char_count=120,
                 has_formulas=True,
                 has_tables=False,
                 has_images=False,
             )
         ],
-        fast_hints=FastTopicHints(chapter_candidates=["偏导数", "梯度", "方向导数"]),
+        fast_hints=FastTopicHints(chapter_candidates=["Partial Derivative", "Gradient", "Directional Derivative"]),
         subject_profile=SubjectProfile(
-            subject_name="高等数学",
-            discipline="数学",
-            sub_discipline="多元微积分",
-            key_topics=["偏导数", "梯度", "方向导数"],
+            subject_name="Advanced Mathematics",
+            discipline="Mathematics",
+            sub_discipline="Multivariable Calculus",
+            key_topics=["Partial Derivative", "Gradient", "Directional Derivative"],
             has_heavy_formulas=True,
         ),
     )
@@ -62,7 +62,7 @@ def test_load_context_requires_confirmed_plan() -> None:
         )
     )
 
-    assert "缺少已确认的构建方案" in result["error"]
+    assert "DocGen" in result["error"]
 
 
 def test_load_context_allows_search_only_docgen() -> None:
@@ -77,17 +77,17 @@ def test_load_context_allows_search_only_docgen() -> None:
                 "digest_mode": "systematic",
                 "tone": "encouraging",
                 "confirmed_plan": {
-                "digest_mode": "systematic",
-                "tone": "encouraging",
-                "user_goal": "系统整理偏导数与梯度",
-                "selected_skillpacks": ["find_resources", "explain_with_analogy"],
-                "plan_summary": "按章节联网检索并整理成系统讲义",
-                "chapter_plan": [
+                    "digest_mode": "systematic",
+                    "tone": "encouraging",
+                    "user_goal": "Build a systematic note set for partial derivatives and gradients.",
+                    "selected_skillpacks": ["find_resources", "explain_with_analogy"],
+                    "plan_summary": "Search the web and build a chaptered study note.",
+                    "chapter_plan": [
                         {
                             "chapter_index": 1,
-                            "title": "偏导数的直觉与定义",
-                            "objective": "建立偏导数的基础认知",
-                            "search_queries": ["偏导数 几何意义", "偏导数 定义"],
+                            "title": "Intuition and Definition",
+                            "objective": "Build the first-layer understanding of partial derivatives.",
+                            "search_queries": ["partial derivative geometric meaning", "partial derivative definition"],
                         }
                     ],
                 },
@@ -107,7 +107,7 @@ def test_load_context_allows_search_only_docgen() -> None:
     assert result["confirmed_plan"]["course_type"] == "systematic"
     assert result["confirmed_plan"]["retrieval_profile"] == "docgen_systematic"
     assert result["confirmed_plan"]["selected_skillpacks"] == ["find_resources", "explain_with_analogy"]
-    assert result["chapter_assignments"][0]["title"] == "偏导数的直觉与定义"
+    assert result["chapter_assignments"][0]["title"] == "Intuition and Definition"
     assert result["raw_chunks"] == []
 
 
@@ -119,7 +119,7 @@ def test_confirmed_plan_contract_applies_assignment_defaults() -> None:
             "chapter_plan": [
                 {
                     "chapter_index": 1,
-                    "search_queries": ["偏导数 定义", "偏导数 定义", ""],
+                    "search_queries": ["partial derivative definition", "partial derivative definition", ""],
                 }
             ],
             "selected_file_ids": ["1", "1", "invalid", 2],
@@ -131,23 +131,23 @@ def test_confirmed_plan_contract_applies_assignment_defaults() -> None:
 
     assert contract.selected_file_ids == [1, 2]
     assert contract.selected_skillpacks == ["find_resources", "explain_with_analogy"]
-    assert assignments == [
-        {
-            "chapter_index": 1,
-            "title": "第 1 章",
-            "resolved_title": "",
-            "objective": "",
-            "required_elements": [],
-            "search_queries": ["偏导数 定义"],
-            "writing_instructions": "",
-            "media_hints": {"images": [], "mermaid": [], "interactive": []},
-            "source_file_ids": [7, 8],
-        }
-    ]
+    assert len(assignments) == 1
+    assignment = assignments[0]
+    assert assignment["chapter_index"] == 1
+    assert assignment["resolved_title"] == ""
+    assert assignment["objective"] == ""
+    assert assignment["required_elements"] == []
+    assert assignment["search_queries"] == ["partial derivative definition"]
+    assert assignment["writing_instructions"] == ""
+    assert assignment["media_hints"] == {"images": [], "mermaid": [], "interactive": []}
+    assert assignment["source_file_ids"] == [7, 8]
+    assert assignment["execution_contract"]["target_word_count"] >= 10000
+    assert assignment["execution_contract"]["min_word_count"] >= 6800
+    assert assignment["execution_contract"]["repair_enabled"] is True
 
 
-def test_docgen_lane_summary_counts_chinese_markdown() -> None:
-    final_markdown = "# 知识文档\n\n偏导数帮助我们观察多元函数在某一方向上的变化。"
+def test_docgen_lane_summary_counts_markdown() -> None:
+    final_markdown = "# Knowledge Notes\n\nPartial derivatives describe local change along one axis."
     summary = build_docgen_lane_summary(
         {
             "digest_mode": "systematic",
@@ -155,15 +155,15 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
             "chapter_materials": [
                 {
                     "chapter_index": 1,
-                    "title": "多元函数变化图景",
+                    "title": "Rate of Change Intuition",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                     "local_hits": 2,
                     "web_hits": 1,
                     "fallback_used": True,
                     "curated_source_count": 2,
-                    "planned_queries": ["偏导数 几何意义"],
-                    "executed_queries": ["偏导数 几何意义", "偏导数 例题"],
-                    "scraped_url_count": 1,
+                    "planned_queries": ["partial derivative geometric meaning"],
+                    "executed_queries": ["partial derivative geometric meaning", "partial derivative worked example"],
+                    "read_url_count": 1,
                     "document_count": 2,
                     "purify_used": True,
                     "retrieval_profile": "docgen_systematic",
@@ -177,7 +177,7 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
             "chapter_drafts": [
                 {
                     "chapter_index": 1,
-                    "title": "多元函数变化图景",
+                    "title": "Rate of Change Intuition",
                     "draft_ms": 80,
                     "word_count": count_words(final_markdown),
                     "placeholder_count": 1,
@@ -187,10 +187,14 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
             "chapter_metadatas": [
                 {
                     "chapter_index": 1,
-                    "title": "多元函数变化图景",
+                    "title": "Rate of Change Intuition",
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
+            "mermaid_block_count": 1,
+            "image_block_count": 0,
+            "asset_count": 1,
+            "asset_summary": {"mermaid": 1, "image": 0, "interactive_html": 0, "animation": 0},
             "document_context": {"source_strategy": "local_first"},
             "merged_markdown": final_markdown,
             "exam_questions": [{"question_index": 1}],
@@ -201,7 +205,7 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
 
     assert summary["planned_query_count"] == 1
     assert summary["executed_query_count"] == 2
-    assert summary["scraped_url_count"] == 1
+    assert summary["read_url_count"] == 1
     assert summary["research_document_count"] == 2
     assert summary["purify_chapter_count"] == 1
     assert summary["course_type"] == "systematic"
@@ -211,6 +215,10 @@ def test_docgen_lane_summary_counts_chinese_markdown() -> None:
     assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["configured_retriever_names"] == ["arxiv", "local_rag", "tavily"]
     assert summary["active_retriever_names"] == ["local_rag", "tavily"]
+    assert summary["mermaid_count"] == 1
+    assert summary["image_count"] == 0
+    assert summary["asset_count"] == 1
+    assert summary["asset_summary"] == {"mermaid": 1, "image": 0, "interactive_html": 0, "animation": 0}
     assert summary["final_word_count"] == count_words(final_markdown)
 
 
@@ -226,16 +234,16 @@ def test_build_merged_markdown_uses_explicit_teaching_hook() -> None:
             [
                 {
                     "chapter_index": 1,
-                    "title": "偏导数的直觉与定义",
-                    "markdown": "# 偏导数的直觉与定义\n\n正文",
+                    "title": "Intuition and Definition",
+                    "markdown": "# Intuition and Definition\n\nBody",
                 }
             ],
             document_context={
                 "subject": "demo",
                 "digest_mode": "systematic",
                 "tone": "encouraging",
-                "user_goal": "系统整理偏导数",
-                "plan_summary": "先讲直觉，再讲定义",
+                "user_goal": "Build a systematic note for partial derivatives.",
+                "plan_summary": "Explain intuition first, then formal definition.",
                 "source_strategy": "web_first",
             },
         )
@@ -250,10 +258,10 @@ def test_inject_examine_and_overview_prefer_resolved_title() -> None:
     chapter_metadatas = [
         {
             "chapter_index": 1,
-            "title": "第 1 章",
-            "resolved_title": "多元函数的变化率直觉",
-            "markdown": "# 多元函数的变化率直觉\n\n正文",
-            "summary": "先建立几何直觉。",
+            "title": "Chapter 1",
+            "resolved_title": "Rate of Change Intuition",
+            "markdown": "# Rate of Change Intuition\n\nBody",
+            "summary": "Build intuition first.",
             "source_file_ids": [1],
             "source_details": [],
             "sources": [],
@@ -266,8 +274,8 @@ def test_inject_examine_and_overview_prefer_resolved_title() -> None:
             "subject": "demo",
             "digest_mode": "systematic",
             "tone": "encouraging",
-            "user_goal": "系统整理偏导数",
-            "plan_summary": "按章节整理成讲义",
+            "user_goal": "Build a systematic note for partial derivatives.",
+            "plan_summary": "Organize the material by chapters.",
             "source_strategy": "local_first",
         },
     )
@@ -285,8 +293,8 @@ def test_inject_examine_and_overview_prefer_resolved_title() -> None:
                         "subject": "demo",
                         "digest_mode": "systematic",
                         "tone": "encouraging",
-                        "user_goal": "系统整理偏导数",
-                        "plan_summary": "按章节整理成讲义",
+                        "user_goal": "Build a systematic note for partial derivatives.",
+                        "plan_summary": "Organize the material by chapters.",
                         "source_strategy": "local_first",
                     },
                     "chapter_metadatas": chapter_metadatas,
@@ -294,16 +302,16 @@ def test_inject_examine_and_overview_prefer_resolved_title() -> None:
             )
         )
 
-    assert "多元函数的变化率直觉" in merged
-    assert result["exam_questions"][0]["question"].startswith("请解释《多元函数的变化率直觉》")
+    assert "Rate of Change Intuition" in merged
+    assert "Rate of Change Intuition" in result["exam_questions"][0]["question"]
 
 
 def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(session, monkeypatch) -> None:
     class FakeContentStore:
         def __init__(self) -> None:
             self.text: dict[str, str] = {
-                "demo/knowledge_markdowns/chapter_01_old.md": "旧内容",
-                "demo/knowledge_markdowns/merged_knowledge_base.md": "旧合并文档",
+                "demo/knowledge_markdowns/chapter_01_old.md": "old chapter",
+                "demo/knowledge_markdowns/merged_knowledge_base.md": "old merged file",
             }
 
         async def write_text(self, key: str, content: str) -> None:
@@ -351,8 +359,8 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
         KnowledgeDoc(
             subject="demo",
             chapter_index=1,
-            title="旧章节",
-            markdown_content="旧内容",
+            title="Old Chapter",
+            markdown_content="old content",
             markdown_path="demo/knowledge_markdowns/chapter_01_old.md",
             version=1,
             version_no=1,
@@ -380,17 +388,17 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
         chapter_metadatas=[
             {
                 "chapter_index": 1,
-                "title": "第 1 章",
-                "resolved_title": "多元函数的变化率直觉",
-                "markdown": "# 多元函数的变化率直觉\n\n新的知识整理",
-                "summary": "新摘要",
+                "title": "Chapter 1",
+                "resolved_title": "Rate of Change Intuition",
+                "markdown": "# Rate of Change Intuition\n\nFresh knowledge note",
+                "summary": "Fresh summary",
                 "source_file_ids": [1],
                 "digest_mode": "systematic",
             }
         ],
         chapter_assignments=[{"chapter_index": 1, "source_file_ids": [1]}],
         document_context={"subject": "demo", "digest_mode": "systematic", "tone": "encouraging"},
-        user_prompt="生成新版本",
+        user_prompt="Generate a refreshed version",
         requested_at=datetime.utcnow(),
         version_no=1,
         build_session_id="build-1",
@@ -409,11 +417,11 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
     assert docs[0].status == "superseded"
     assert docs[0].superseded_at is not None
     assert docs[1].is_current is True
-    assert docs[1].title == "多元函数的变化率直觉"
+    assert docs[1].title == "Rate of Change Intuition"
     assert docs[1].version_no == 2
     assert "versions/v0002/" in str(docs[1].markdown_path)
-    assert "chapter_01_多元函数的变化率直觉.md" in str(docs[1].markdown_path)
+    assert "chapter_01_Rate of Change Intuition.md" in str(docs[1].markdown_path)
     assert "demo/knowledge_markdowns/versions/v0002/merged_knowledge_base.md" in fake_store.text
     assert "demo/knowledge_markdowns/merged_knowledge_base.md" in fake_store.text
     assert captured_manifest["demo"].version_no == 2
-    assert captured_manifest["demo"].chapter_titles == ["多元函数的变化率直觉"]
+    assert captured_manifest["demo"].chapter_titles == ["Rate of Change Intuition"]

@@ -243,7 +243,7 @@ def build_docgen_lane_summary(
         teaching_actions = [str(state.get("teaching_action") or "").strip()]
     planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
     executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
-    scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
+    read_url_count = sum(int(chapter.get("read_url_count", 0) or 0) for chapter in chapter_materials)
     research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
     purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
     retriever_names = sorted(
@@ -314,6 +314,26 @@ def build_docgen_lane_summary(
         int(chapter.get("interactive_block_count", 0) or 0)
         for chapter in [*chapter_drafts, *chapter_metadatas]
     )
+    mermaid_block_count = int(state.get("mermaid_block_count", 0) or 0)
+    if mermaid_block_count <= 0:
+        mermaid_block_count = sum(
+            int(str(chapter.get("markdown") or "").count("```mermaid"))
+            for chapter in chapter_metadatas
+        )
+    image_block_count = int(state.get("image_block_count", 0) or 0)
+    if image_block_count <= 0:
+        image_block_count = sum(
+            int(str(chapter.get("markdown") or "").count("建议配图："))
+            + int(str(chapter.get("markdown") or "").count("配图建议占位："))
+            for chapter in chapter_metadatas
+        )
+    asset_summary = {
+        "mermaid": mermaid_block_count,
+        "image": image_block_count,
+        "interactive_html": interactive_block_count,
+        "animation": int(((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get("animation", 0) or 0),
+    }
+    asset_count = int(state.get("asset_count", 0) or 0) or sum(asset_summary.values())
     practice_count = int(state.get("practice_count", 0) or 0) or sum(
         int(chapter.get("practice_count", 0) or 0)
         for chapter in chapter_metadatas
@@ -396,7 +416,7 @@ def build_docgen_lane_summary(
         "applied_retrieval_profiles": applied_retrieval_profiles,
         "planned_query_count": planned_query_count,
         "executed_query_count": executed_query_count,
-        "scraped_url_count": scraped_url_count,
+        "read_url_count": read_url_count,
         "research_document_count": research_document_count,
         "purify_chapter_count": purify_chapter_count,
         "research_rounds": research_rounds,
@@ -405,14 +425,21 @@ def build_docgen_lane_summary(
         "gaps_remaining": gaps_remaining,
         "source_class_breakdown": source_class_breakdown,
         "placeholder_count": placeholder_count,
+        "mermaid_count": mermaid_block_count,
+        "image_count": image_block_count,
         "interactive_block_count": interactive_block_count,
+        "asset_count": asset_count,
+        "asset_summary": asset_summary,
         "practice_count": practice_count,
         "coverage_score": round(sum(coverage_scores) / max(1, len(coverage_scores)), 4) if coverage_scores else 0.0,
         "quality_score": round(sum(quality_scores) / max(1, len(quality_scores)), 4) if quality_scores else 0.0,
         "quality_summary": {
             "avg_coverage_score": round(sum(coverage_scores) / max(1, len(coverage_scores)), 4) if coverage_scores else 0.0,
             "avg_quality_score": round(sum(quality_scores) / max(1, len(quality_scores)), 4) if quality_scores else 0.0,
+            "asset_count": asset_count,
             "repaired_chapter_count": repaired_chapter_count,
+            "mermaid_count": mermaid_block_count,
+            "image_count": image_block_count,
             "interactive_block_count": interactive_block_count,
             "practice_count": practice_count,
         },

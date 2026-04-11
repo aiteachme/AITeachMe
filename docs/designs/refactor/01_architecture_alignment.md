@@ -21,7 +21,7 @@
 | --- | --- | --- | --- | --- |
 | 研究范式 | `plan -> search -> compress -> write`，有 `DetailedReport / DeepResearch` | `planning -> researching -> reporting`，有 dynamic topic queue | `ChapterContextRuntime + PedagogyWriter + docgen graph`，但章节上下文构建仍偏单轮 | AITeachMe 需要借这两者的“研究深度控制” |
 | 检索器生态 | 丰富，profile 驱动 | search providers + tool registry | `search/factory.py` 已支持 profile，retrievers 也较全 | 结构已经有，但 `profile` 还未完整打入执行链 |
-| 网页抓取 | 多 scraper + URL 去重 | 较偏 research tool 调度 | `search/scraper` + `web_scraping` 已可用 | 现有方案足够，先不追求更多 provider |
+| URL 读取 | 多 reader + URL 去重 | 较偏 research tool 调度 | `search/readers` + `web_reading` 已可用 | 现有方案足够，先不追求更多 provider |
 | 课程产物 | 通用报告 | guide page / chat / summary / animator | 教学文档已有脚手架，但课程产品感还不够强 | 需要借 `DeepTutor` 的产物链 |
 | 富媒体 | image skill，偏插图 | interactive page、math animator、summary | Mermaid 已较成熟，image 仍偏占位，interactive/animation 还没有 sidecar | 这是重要升级点 |
 | 统一能力入口 | skill/action/retriever 分层 | capability/orchestrator/tool/service 分层 | `workflows + infra skills/tools + teaching` 三层已有雏形 | 当前结构更适合渐进式重构 |

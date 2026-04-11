@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import io
 import re
@@ -31,7 +31,7 @@ def build_error_page(url: str, *, error: Exception | str, content_type: str, rea
     )
 
 
-def normalize_scraped_text(text: str, *, limit: int = 12000) -> str:
+def normalize_read_text(text: str, *, limit: int = 12000) -> str:
     normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     normalized = re.sub(r"[ \t]+\n", "\n", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
@@ -62,4 +62,3 @@ def extract_paragraphs_from_xml(xml_bytes: bytes, *, paragraph_qname: str, text_
         if joined:
             paragraphs.append(joined)
     return paragraphs
-

@@ -185,6 +185,10 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
+            "mermaid_block_count": 1,
+            "image_block_count": 1,
+            "asset_count": 3,
+            "asset_summary": {"mermaid": 1, "image": 1, "interactive_html": 1, "animation": 0},
             "merged_markdown": "# 文档\n\n一些内容",
             "exam_questions": [{"question_index": 1}],
             "practice_count": 4,
@@ -208,11 +212,16 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert summary["research_round_count_total"] == 2
     assert summary["gaps_remaining"] == ["边界条件"]
     assert summary["source_class_breakdown"] == {"academic": 1, "local": 1}
+    assert summary["mermaid_count"] == 1
+    assert summary["image_count"] == 1
+    assert summary["asset_count"] == 3
+    assert summary["asset_summary"] == {"mermaid": 1, "image": 1, "interactive_html": 1, "animation": 0}
     assert summary["interactive_block_count"] == 1
     assert summary["practice_count"] == 4
     assert summary["coverage_score"] == 0.775
     assert summary["quality_score"] == 0.86
     assert summary["quality_summary"]["repaired_chapter_count"] == 1
+    assert summary["quality_summary"]["asset_count"] == 3
     assert "cleanse_ms" not in summary
     assert "outline_ms" not in summary
     assert "review_ms" not in summary

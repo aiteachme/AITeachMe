@@ -192,6 +192,19 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
   return (runtimeStats.steps ?? []).map((step) => [step.name, step.elapsed_ms]);
 }
 
+function getPlannerFallbackNotice(runtimeStats: PlannerRuntimeStats | null | undefined): string {
+  if (!runtimeStats) {
+    return "";
+  }
+  if (runtimeStats.fallback_used) {
+    return "已使用兜底方案，当前结果由本地快速规划补齐。";
+  }
+  if (runtimeStats.generation_mode === "stream_plaintext_partial") {
+    return "模型流式输出中断，当前结果已保留可用内容。";
+  }
+  return "";
+}
+
 function extractPlannerPreviewText(raw: string): string {
   const normalized = raw.replace(/\r/g, "");
   const fenceIndex = normalized.indexOf("```");
@@ -1000,6 +1013,11 @@ export function BuildPlanPage() {
                               <p className="mt-1 whitespace-pre-line text-xs leading-5 text-zinc-500">
                                 {message.plan.plan_summary}
                               </p>
+                              {getPlannerFallbackNotice(message.runtimeStats) ? (
+                                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                                  {getPlannerFallbackNotice(message.runtimeStats)}
+                                </div>
+                              ) : null}
 
                               {message.runtimeStats ? (
                                 <div className="mt-2 flex flex-wrap gap-2">

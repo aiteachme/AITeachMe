@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import threading
 from typing import AsyncGenerator
 
 import structlog
@@ -19,25 +20,48 @@ from app.shared.kernel.exceptions import AITeachMeError
 from app.shared.infra.task_registry import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
+_OPENAPI_EXPORT_LOCK = threading.Lock()
+_OPENAPI_EXPORT_STARTED = False
 
 
 def _maybe_export_openapi_schema(app: FastAPI) -> None:
+    global _OPENAPI_EXPORT_STARTED
+
     settings = get_settings()
     if not settings.export_openapi_on_startup:
         return
 
-    try:
-        import sys
-        from pathlib import Path
+    with _OPENAPI_EXPORT_LOCK:
+        if _OPENAPI_EXPORT_STARTED:
+            logger.info("openapi_export_already_scheduled")
+            return
+        _OPENAPI_EXPORT_STARTED = True
 
-        script_dir = Path(__file__).parent.parent / "scripts"
-        sys.path.insert(0, str(script_dir))
-        import export_api_docs
+    def _run_export() -> None:
+        try:
+            import sys
+            from pathlib import Path
 
-        export_api_docs.export_openapi_schema(app)
-        sys.path.pop(0)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("export_openapi_failed", error=str(exc))
+            script_dir = Path(__file__).parent.parent / "scripts"
+            sys.path.insert(0, str(script_dir))
+            import export_api_docs
+
+            logger.info("openapi_export_started")
+            export_api_docs.export_openapi_schema(app)
+            logger.info("openapi_export_finished")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("export_openapi_failed", error=str(exc))
+        finally:
+            try:
+                sys.path.pop(0)
+            except Exception:  # noqa: BLE001
+                pass
+
+    threading.Thread(
+        target=_run_export,
+        name="openapi-export",
+        daemon=True,
+    ).start()
 
 
 def _log_infra_diagnostics(settings) -> None:
