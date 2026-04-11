@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
-from app.workflows.digest.prompts import build_docgen_sub_query_messages
+from app.workflows.digest.prompts.docgen_prompts import (
+    build_docgen_sub_query_messages,
+    build_docgen_gap_query_messages,
+)
 
 EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
     "zh": [
@@ -202,6 +205,57 @@ async def generate_sub_queries(
     return cleaned or fallback_queries[:safe_max_queries]
 
 
+async def generate_gap_queries(
+    dense_context: str,
+    *,
+    required_elements: list[str] | None = None,
+    max_queries: int = 2,
+    domain: str = "education",
+    llm_caller: Callable[..., Awaitable[Any]] | None = None,
+    extra_metadata: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Analyze the current dense context and generate new queries to fill knowledge gaps."""
+    if not str(dense_context or "").strip():
+        return []
+    
+    caller = llm_caller or acompletion_with_fallback
+    
+    try:
+        response = await caller(
+            build_docgen_gap_query_messages(
+                dense_context=dense_context,
+                required_elements=list(required_elements or []),
+                max_queries=int(max_queries or 2),
+                domain=domain,
+            ),
+            task_type=TaskType.REASONING,
+            response_model=ResearchSubQueryPlan,
+            extra_metadata={
+                "query_tool": "generate_gap_queries",
+                "query_domain": domain,
+                **dict(extra_metadata or {}),
+            },
+        )
+    except Exception:
+        return []
+
+    if isinstance(response, ResearchSubQueryPlan):
+        raw_queries = response.queries
+    elif hasattr(response, "queries"):
+        raw_queries = list(getattr(response, "queries") or [])
+    elif isinstance(response, Mapping):
+        raw_queries = list(response.get("queries") or [])
+    else:
+        raw_queries = []
+
+    cleaned = [
+        item
+        for item in dedupe_queries([str(raw) for raw in raw_queries], limit=int(max_queries or 2))
+        if item
+    ]
+    return cleaned
+
+
 __all__ = [
     "EDUCATION_SITE_FILTERS",
     "ResearchSubQueryPlan",
@@ -209,4 +263,5 @@ __all__ = [
     "dedupe_queries",
     "enrich_queries_for_education",
     "generate_sub_queries",
+    "generate_gap_queries",
 ]

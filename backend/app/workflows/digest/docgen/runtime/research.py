@@ -300,6 +300,14 @@ class DocGenResearchRuntime(BaseTracedExecution):
             previous_score = coverage_score
             previous_curated_count = len(curated_results)
 
+        gap_queries_executed = dedupe_queries(
+            [
+                query
+                for round_item in research_rounds
+                for query in list(round_item.get("enqueued_gap_queries", []) or [])
+            ],
+            limit=query_cap,
+        )
         purify_used = False
         if dense_context:
             purified_context, purify_used = await self._purify_material(
@@ -322,6 +330,7 @@ class DocGenResearchRuntime(BaseTracedExecution):
                 "query_count": len(executed_queries),
                 "base_queries": base_queries,
                 "planned_queries": planned_queries,
+                "gap_queries": gap_queries_executed,
                 "fallback_queries": list(dict.fromkeys(fallback_queries)),
                 "fallback_used": bool(fallback_queries),
                 "executed_queries": executed_queries,

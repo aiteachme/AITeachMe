@@ -97,6 +97,8 @@ export * from './buildPlannerPlanResponseMediaPlan';
 export * from './buildPlannerRuntimeStatsResponse';
 export * from './buildPlannerRuntimeStatsResponseNodeTimingsMs';
 export * from './buildPlannerSessionResponse';
+export * from './buildPlannerStepStatsResponse';
+export * from './buildPlannerStepStatsResponseKind';
 export * from './buildPlannerTurnResponse';
 export * from './buildPreviewChapterProgressResponse';
 export * from './buildPreviewNodeResponse';

@@ -251,9 +251,44 @@ def build_docgen_sub_query_messages(
     ]
 
 
+def build_docgen_gap_query_messages(
+    *,
+    dense_context: str,
+    required_elements: list[str],
+    max_queries: int = 2,
+    domain: str = "education",
+) -> list[dict[str, str]]:
+    must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
+    user_prompt = f"""
+请分析现有的研究素材，找出缺失的关键信息，并生成用于进一步检索的查询语句。
+
+必须覆盖的知识：{must_cover}
+领域：{domain}
+最多生成新查询数：{max_queries}
+
+现有素材摘要：
+{dense_context[:8000]}
+
+输出要求：
+1. 分析现有素材中**没有充分解释**或**完全缺失**的关键概念、推导过程或示例。
+2. 针对这些盲区（gaps），生成适合在搜索引擎上检索的中文查询语句。
+3. 查询语句要足够具体，比如“XXX公式 详细推导过程”或“XXX 在实际工程中的应用案例”。
+4. 只返回查询语句列表（按行分割或JSON均可，系统会自动提取其中有意义的文本），不要解释。
+5. 如果现有素材已经足够完美，无需补充，你可以返回空结果。
+""".strip()
+    return [
+        {
+            "role": "system",
+            "content": "你是 AITeachMe 的研究分析引擎，负责寻找现有资料的盲区，并生成补充检索的查询语句以完善知识闭环。",
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+
+
 __all__ = [
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
     "build_docgen_sub_query_messages",
+    "build_docgen_gap_query_messages",
     "build_docgen_writer_messages",
 ]

@@ -166,8 +166,8 @@ const EXPERIMENTAL_FEATURES: ExperimentalFeatureCard[] = [
     description: "把知识点变成观点攻防，让你在对抗里暴露理解漏洞。",
     badge: "实验中",
     icon: Sparkles,
-    highlight: "当前先借用教学对话承接讨论式练习。",
-    ctaLabel: "去教学对话",
+    highlight: "当前先借用知识库 AI 助手承接讨论式练习。",
+    ctaLabel: "去知识库",
     action: "debate",
   },
   {
@@ -176,7 +176,7 @@ const EXPERIMENTAL_FEATURES: ExperimentalFeatureCard[] = [
     description: "遇到卡点时直接进入问答状态，像老师一样陪你讲清楚。",
     badge: "可体验",
     icon: Bot,
-    highlight: "复用当前已上线的教学对话工作流。",
+    highlight: "复用当前已上线的知识库 AI 助手。",
     ctaLabel: "立即进入",
     action: "chat",
   },
@@ -1026,7 +1026,7 @@ export function ExamsPage() {
     }
 
     if (action === "chat" || action === "debate") {
-      navigate(buildSubjectPath(subjectId, "chat"));
+      navigate(buildSubjectPath(subjectId, "knowledge-docs"));
       return;
     }
 

@@ -134,12 +134,13 @@ export function useDocToc(
       if (!container) return;
       const el = container.querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
       if (!el) return;
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const headingTop = container.scrollTop + (elRect.top - containerRect.top);
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - 8));
-      container.scrollTo({ top: targetTop, behavior: "smooth" });
+
+      // Ensure the element has scroll-margin-top so it doesn't stick directly to the very top edge
+      if (!el.style.scrollMarginTop) {
+        el.style.scrollMarginTop = "24px";
+      }
+
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
       flashHeading(el);
     },
     [flashHeading, scrollRef],

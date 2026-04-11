@@ -83,7 +83,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             markdown = await llm(
                 messages,
                 task_type=TaskType.DOCGEN,
-                tier="smart",
+                tier="advanced" if digest_mode == "systematic" else "smart",
                 extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
             )
         except Exception:

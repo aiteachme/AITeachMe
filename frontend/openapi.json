@@ -6338,39 +6338,6 @@
         "title": "BuildPlannerMessageRequest",
         "description": "Append one planner revision message."
       },
-      "BuildPlannerNodeTimingResponse": {
-        "properties": {
-          "node_name": {
-            "type": "string",
-            "title": "Node Name"
-          },
-          "lane": {
-            "type": "string",
-            "title": "Lane",
-            "default": "planner"
-          },
-          "workflow": {
-            "type": "string",
-            "title": "Workflow",
-            "default": "digest.planner"
-          },
-          "elapsed_ms": {
-            "type": "integer",
-            "title": "Elapsed Ms",
-            "default": 0
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "default": "ok"
-          }
-        },
-        "type": "object",
-        "required": [
-          "node_name"
-        ],
-        "title": "BuildPlannerNodeTimingResponse"
-      },
       "BuildPlannerPlanResponse": {
         "properties": {
           "subject": {
@@ -6471,24 +6438,17 @@
       },
       "BuildPlannerRuntimeStatsResponse": {
         "properties": {
-          "workflow_elapsed_ms": {
+          "elapsed_ms": {
             "type": "integer",
-            "title": "Workflow Elapsed Ms",
+            "title": "Elapsed Ms",
             "default": 0
           },
-          "node_timings_ms": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Node Timings Ms"
-          },
-          "node_events": {
+          "steps": {
             "items": {
-              "$ref": "#/components/schemas/BuildPlannerNodeTimingResponse"
+              "$ref": "#/components/schemas/BuildPlannerStepStatsResponse"
             },
             "type": "array",
-            "title": "Node Events"
+            "title": "Steps"
           },
           "fallback_used": {
             "type": "boolean",
@@ -6553,6 +6513,40 @@
           "plan"
         ],
         "title": "BuildPlannerSessionResponse"
+      },
+      "BuildPlannerStepStatsResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "node",
+              "tool",
+              "substep",
+              "llm"
+            ],
+            "title": "Kind",
+            "default": "substep"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "BuildPlannerStepStatsResponse"
       },
       "BuildPlannerTurnResponse": {
         "properties": {
