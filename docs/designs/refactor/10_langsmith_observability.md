@@ -144,6 +144,8 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `mermaid_count`
 - `image_count`
 - `interactive_block_count`
+- `asset_count`
+- `asset_summary`
 - `formula_block_count`
 
 ### `inject_examine`
@@ -158,6 +160,12 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `built_paths`
 - `asset_summary`
 - `quality_score`
+
+当前已落地补充：
+- node outputs 会聚合 `requested_profiles / applied_profiles`
+- Docs Lane summary 会聚合 `research_round_count_total`
+- Docs Lane summary 会聚合 `mermaid_count / image_count / interactive_block_count / asset_count`
+- Docs Lane summary 会输出结构化 `asset_summary`
 
 ---
 

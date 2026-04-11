@@ -191,6 +191,10 @@ def test_docgen_lane_summary_counts_markdown() -> None:
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
+            "mermaid_block_count": 1,
+            "image_block_count": 0,
+            "asset_count": 1,
+            "asset_summary": {"mermaid": 1, "image": 0, "interactive_html": 0, "animation": 0},
             "document_context": {"source_strategy": "local_first"},
             "merged_markdown": final_markdown,
             "exam_questions": [{"question_index": 1}],
@@ -211,6 +215,10 @@ def test_docgen_lane_summary_counts_markdown() -> None:
     assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["configured_retriever_names"] == ["arxiv", "local_rag", "tavily"]
     assert summary["active_retriever_names"] == ["local_rag", "tavily"]
+    assert summary["mermaid_count"] == 1
+    assert summary["image_count"] == 0
+    assert summary["asset_count"] == 1
+    assert summary["asset_summary"] == {"mermaid": 1, "image": 0, "interactive_html": 0, "animation": 0}
     assert summary["final_word_count"] == count_words(final_markdown)
 
 

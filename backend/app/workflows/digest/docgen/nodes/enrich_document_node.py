@@ -105,11 +105,21 @@ def build_enrich_document_node(*, context: WorkflowContext):
                 "interactive_placeholder_count": interactive_count,
             },
         )
+        asset_summary = {
+            "mermaid": mermaid_count,
+            "image": image_count,
+            "interactive_html": interactive_count,
+            "animation": 0,
+        }
         return {
             "chapter_metadatas": chapter_metadatas,
             "enriched_markdown": merged_markdown,
             "merged_markdown": merged_markdown,
+            "mermaid_block_count": mermaid_count,
+            "image_block_count": image_count,
             "interactive_block_count": sum(int(chapter.get("interactive_block_count", 0) or 0) for chapter in chapter_metadatas),
+            "asset_count": sum(asset_summary.values()),
+            "asset_summary": asset_summary,
         }
 
     return enrich_document_node

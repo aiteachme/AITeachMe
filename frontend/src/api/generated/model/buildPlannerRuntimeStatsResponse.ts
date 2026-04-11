@@ -5,11 +5,13 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { BuildPlannerStepStatsResponse } from './buildPlannerStepStatsResponse';
+import type { BuildPlannerNodeTimingResponse } from './buildPlannerNodeTimingResponse';
+import type { BuildPlannerRuntimeStatsResponseNodeTimingsMs } from './buildPlannerRuntimeStatsResponseNodeTimingsMs';
 
 export interface BuildPlannerRuntimeStatsResponse {
-  elapsed_ms?: number;
-  steps?: BuildPlannerStepStatsResponse[];
+  workflow_elapsed_ms?: number;
+  node_timings_ms?: BuildPlannerRuntimeStatsResponseNodeTimingsMs;
+  node_events?: BuildPlannerNodeTimingResponse[];
   fallback_used?: boolean;
   generation_mode?: string | null;
 }
