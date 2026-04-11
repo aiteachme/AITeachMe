@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from app.shared.infra.retrievers import RetrievedChunk
+from app.shared.infra.search.knowledge import RetrievedChunk
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult

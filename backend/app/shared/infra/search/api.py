@@ -6,13 +6,11 @@ import structlog
 from sqlmodel import Session
 
 from app.repositories.knowledge.knowledge_repo import vector_search
-from app.schemas.llm import ChatMessage
 from app.services.subject_embedding_service import get_subject_vector_search_notice
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import get_engine
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.reranker import rerank_chunks
-from app.shared.infra.retrievers import RetrievedChunk
+from app.shared.infra.search.knowledge import RetrievedChunk, rerank_chunks
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.search.web import dispatch_web_search
 from app.utils.presenters import require_id

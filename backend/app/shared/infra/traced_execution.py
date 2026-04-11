@@ -169,6 +169,7 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "query_count",
         "scraped_url_count",
         "document_count",
+        "research_round_count",
         "candidate_count",
         "filtered_count",
         "selected_count",
@@ -181,16 +182,32 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         value = result.metadata.get(field_name)
         if value not in (None, "", [], {}):
             outputs[field_name] = value
-    for field_name in ("fallback_used", "purify_used"):
+    for field_name in ("fallback_used", "purify_used", "repair_applied"):
         value = result.metadata.get(field_name)
         if value is not None:
             outputs[field_name] = bool(value)
     compression_mode = str(result.metadata.get("compression_mode") or "").strip()
     if compression_mode:
         outputs["compression_mode"] = compression_mode
+    for field_name in ("requested_profile", "applied_profile", "template_kind"):
+        value = str(result.metadata.get(field_name) or "").strip()
+        if value:
+            outputs[field_name] = value
     applied_retrieval_profile = str(result.metadata.get("applied_retrieval_profile") or "").strip()
     if applied_retrieval_profile:
         outputs["applied_retrieval_profile"] = applied_retrieval_profile
+    coverage_score = result.metadata.get("coverage_score")
+    if coverage_score not in (None, ""):
+        outputs["coverage_score"] = float(coverage_score)
+    quality_score = result.metadata.get("quality_score")
+    if quality_score not in (None, ""):
+        outputs["quality_score"] = float(quality_score)
+    gaps_remaining = result.metadata.get("gaps_remaining")
+    if isinstance(gaps_remaining, list):
+        outputs["gap_count"] = len([item for item in gaps_remaining if str(item).strip()])
+    source_class_breakdown = result.metadata.get("source_class_breakdown")
+    if isinstance(source_class_breakdown, Mapping) and source_class_breakdown:
+        outputs["source_class_breakdown"] = dict(source_class_breakdown)
     retriever_stats = result.metadata.get("retriever_stats")
     if isinstance(retriever_stats, Mapping) and retriever_stats:
         outputs["retriever_names"] = sorted(str(name) for name in retriever_stats.keys())

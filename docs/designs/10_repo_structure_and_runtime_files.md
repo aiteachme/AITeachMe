@@ -1,4 +1,4 @@
-# 10. 仓库结构与运行时文件
+﻿# 10. 仓库结构与运行时文件
 
 最后更新：2026-04-10
 
@@ -31,6 +31,11 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - `llm_support/routing.py` 是当前 canonical 模型路由位置。
 - `model_router.py` 只保留兼容 shim。
 - external `toolpack` loader 已进入 `shared/infra/tools/tool_loader.py`。
+- `shared/infra/search/` 已收敛为统一检索层：
+  `retrievers/` 负责候选来源发现，
+  `readers/` 负责 URL 内容读取，
+  `knowledge.py` 负责本地知识检索契约与 rerank。
+- `shared/infra/retrievers.py` 与 `shared/infra/reranker.py` 现在只保留兼容 shim。
 
 ### 2.2 `teaching`
 
@@ -115,3 +120,4 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - `skills` 之前几乎没有进入 planner/docgen 主运行链。
 
 这些问题现在都不再作为“推荐结构”继续扩张。
+

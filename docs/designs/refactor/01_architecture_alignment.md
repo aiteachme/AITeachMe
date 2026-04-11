@@ -1,7 +1,7 @@
 ﻿## 一、三项目架构对齐
 
-> 最后更新：2026-04-10
-> 目标：回答“我有什么 / 他们有什么 / 我真正该借什么 / 当前最大的执行差距是什么”。
+> 最后更新：2026-04-11
+> 目标：回答”我有什么 / 他们有什么 / 我真正该借什么 / 当前最大的执行差距是什么”。
 
 ---
 
@@ -123,7 +123,52 @@ AITeachMe 当前状态：
 
 ---
 
-## 1.5 三个项目的最优借法
+## 1.5 DeepTutor 深度分析（2026-04-11 补充）
+
+### 1.5.1 DeepTutor 的核心架构特征
+
+DeepTutor 采用 **Tool vs Capability** 两层插件模型：
+- **Tool**：原子动作（retrieval、web_search、code_execution）
+- **Capability**：多阶段 agent 流水线（deep_solve、deep_research、guide、question）
+
+其 **统一 Turn Runtime** 是最值得借鉴的工程资产：
+- 一致的请求格式（CLI / WebSocket）
+- session + turn 创建与持久化
+- 带 summarization budget 的 context 构建（长对话不爆上下文）
+- capability 路由
+- 流式事件总线（stage start/end、tool calls/results、partial LLM chunks）
+
+### 1.5.2 DeepTutor 具体可借鉴点
+
+| 特性 | DeepTutor 实现 | AITeachMe 借法 |
+| --- | --- | --- |
+| **Pre-retrieval planning** | DeepSolve planner 先生成多条检索 query → 并行检索 → LLM 聚合 → 再规划 | 借入 research micro-loop 的 query planning 阶段 |
+| **Guided Learning 页面生成** | `InteractiveAgent` 为每个知识点生成交互 HTML（KaTeX 支持） | 借入 sidecar asset pipeline 的产品形态 |
+| **KB 进度追踪** | ready/processing/error + per-stage progress API | 当前 `docgen_store` 已有类似机制，可对齐事件语义 |
+| **Quiz follow-up** | 结构化问题上下文（correctness + explanation + knowledge context） | 借入 examine 引擎的 follow-up 设计 |
+| **Context summarization** | 对话历史压缩到 token budget 内 | 借入 interact 引擎的长对话管理 |
+
+### 1.5.3 DeepTutor 不应借的部分
+
+- 其 RAG 管线较简单（纯 LlamaIndex vector retrieval，无 rerank、无 hybrid）
+- 其 Guide 子系统与主 Turn Runtime 分离（JSON 文件持久化），不如 AITeachMe 的 LangGraph 统一
+- 其 TutorBot 持久化 agent 概念过重，不适合当前阶段
+
+### 1.5.4 与 gpt-researcher 的互补关系
+
+| 维度 | gpt-researcher 更强 | DeepTutor 更强 |
+| --- | --- | --- |
+| 研究深度 | 递归子话题、多轮补检索、详细报告 | — |
+| 检索器生态 | 多 provider、profile 驱动 | — |
+| 教育产品形态 | — | guide page、quiz follow-up、math animator |
+| 交互式学习 | — | 知识点级交互 HTML、进度追踪 |
+| 上下文管理 | — | summarization budget、长对话压缩 |
+
+结论：gpt-researcher 借”研究方法论”，DeepTutor 借”教育产品形态”。
+
+---
+
+## 1.6 三个项目的最优借法
 
 ### 从 `gpt-researcher` 借
 
@@ -136,8 +181,11 @@ AITeachMe 当前状态：
 
 - `BuildContract -> Draft -> AssetPlan -> Publish` 的产品形态
 - sidecar 媒体链，而不是把媒体挤进正文 prompt
-- 课程内容支持“设计 -> 互动 -> 追问 -> 总结”的可能性
+- 课程内容支持”设计 -> 互动 -> 追问 -> 总结”的可能性
 - 面向教育产品的任务目录、输出文件和进度事件语义
+- **Pre-retrieval planning 模式**：先检索再规划，提升 planner 质量
+- **交互 HTML 生成**：为知识点生成 KaTeX 兼容的交互页面
+- **Context summarization**：长对话/长构建的上下文压缩策略
 
 ### AITeachMe 自己必须坚持
 
@@ -148,7 +196,7 @@ AITeachMe 当前状态：
 
 ---
 
-## 1.6 一句话结论
+## 1.7 一句话结论
 
 AITeachMe 不缺骨架，缺的是：
 
@@ -158,4 +206,5 @@ AITeachMe 不缺骨架，缺的是：
 - 让富媒体走独立 sidecar 流程
 
 这正好对应 `gpt-researcher` 和 `DeepTutor` 各自最值得借的部分。
+
 

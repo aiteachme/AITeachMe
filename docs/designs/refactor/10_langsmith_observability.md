@@ -1,7 +1,9 @@
 ﻿## 十、LangSmith 全链路可观测性
 
-> 目标：保证这轮算法升级不是“黑盒优化”，而是每一步都能被看见、被比较、被定位。
-> 最后更新：2026-04-10
+> 目标：保证这轮算法升级不是”黑盒优化”，而是每一步都能被看见、被比较、被定位。
+> 最后更新：2026-04-11
+>
+> **详细实现文档**：`backend/app/workflows/LANGSMITH.md` 包含完整的代码级 trace 结构、每层 span 的 inputs/outputs/metadata/tags 字典、实际使用场景和代码对照表。本文档侧重设计目标和验收标准，具体实现细节请参考 LANGSMITH.md。
 
 ---
 
@@ -61,37 +63,43 @@ API / service request
 
 - `requested_profile`
 - `applied_profile`
-- `research_round`
+- `research_rounds`
 - `gaps_remaining`
-- `build_contract_version`
+- `source_class_breakdown`
 - `quality_score`
 
 ---
 
 ## 10.4 当前最需要补强的观测点
 
-### 问题 1：profile 需要区分“请求的”和“真正执行的”
+### 问题 1：profile 请求值与执行值已经区分，但后续还要继续做学科化对比
 
-当前 state 里已经有 `retrieval_profile`，但执行层还没完全打通。
-因此 trace 后续必须显式区分：
+当前 trace 已经显式区分：
 
 - `requested_profile`
 - `applied_profile`
 
-否则会出现“看上去是 systematic profile，实际上 retriever 组合没变”的假象。
+后续主要是继续对比不同学科、不同 profile 下的 source mix 和 round 收益。
 
-### 问题 2：research 需要 round 级 trace
+### 问题 2：research round 已经进入 runtime metadata，但还可以继续细化分析视图
 
-如果后续引入研究微循环，必须能看清：
+当前 runtime metadata 已经能看清：
 
 - 第 1 轮查了什么
 - 为什么触发第 2 轮
 - 第 2 轮补了哪些 gaps
 - 为什么停止
 
-### 问题 3：asset 需要单独可见
+但后续 dashboard 仍值得补：
 
-Mermaid、image、interactive、animation 必须作为 sidecar span，而不是埋在正文节点输出里。
+- round 收益衰减可视化
+- gap 类型统计
+- 学科/模式维度的 round 深度分布
+
+### 问题 3：asset sidecar 已独立可见，但 animation 仍待真正接入
+
+Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
+`animation` 仍只保留 contract / trace 预留位，尚未进入主线执行链。
 
 ---
 
@@ -112,20 +120,23 @@ Mermaid、image、interactive、animation 必须作为 sidecar span，而不是�
 - `applied_profile`
 - `query_count`
 - `research_rounds`
+- `research_round_count`
 - `local_hits`
 - `web_hits`
-- `academic_hits`
+- `source_class_breakdown`
 - `curated_source_count`
 - `gaps_remaining`
-- `confidence_level`
+- `coverage_score`
+- `stop_reason`
 
 ### `pedagogy_craft`
 
 - `chapter_index`
 - `word_count`
-- `required_elements_coverage`
-- `teaching_block_count`
-- `question_hook_count`
+- `coverage_score`
+- `quality_score`
+- `repair_applied`
+- `repair_actions`
 - `asset_hint_count`
 
 ### `enrich_document`
@@ -134,12 +145,11 @@ Mermaid、image、interactive、animation 必须作为 sidecar span，而不是�
 - `image_count`
 - `interactive_block_count`
 - `formula_block_count`
-- `asset_failures`
 
 ### `inject_examine`
 
 - `question_count`
-- `practice_block_count`
+- `practice_count`
 - `practice_mode`
 
 ### `finalize_assemble`
@@ -162,6 +172,10 @@ Mermaid、image、interactive、animation 必须作为 sidecar span，而不是�
 - `retrieval_profile`
 - `chapter_index`
 - `research_stage`
+- `requested_profile`
+- `applied_profile`
+- `coverage_score`
+- `quality_score`
 
 ### Retriever
 
@@ -267,3 +281,4 @@ Mermaid、image、interactive、animation 必须作为 sidecar span，而不是�
 
 LangSmith 在这轮重构里不是“埋点系统”，而是算法迭代的操作台。
 如果 trace 不能回答“为什么查、为什么写、为什么补、为什么停”，后续优化就会重新变成黑盒。
+

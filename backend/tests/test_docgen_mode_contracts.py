@@ -11,6 +11,7 @@ from app.shared.infra.tools import list_agent_tools
 from app.teaching.documents import ensure_chapter_learning_scaffold
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.planner.models import build_fallback_plan
+from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 
 
@@ -151,8 +152,15 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "curated_source_count": 2,
                     "trusted_source_count": 1,
                     "retrieval_profile": "docgen_systematic",
+                    "requested_profile": "docgen_systematic",
+                    "applied_profile": "docgen_systematic",
                     "teaching_action": "chapter_research",
                     "retriever_stats": {"local_rag": {"query_count": 1}, "bing": {"query_count": 1}},
+                    "research_round_count": 2,
+                    "research_rounds": [{"round_index": 1}, {"round_index": 2}],
+                    "gaps_remaining": ["边界条件"],
+                    "coverage_score": 0.75,
+                    "source_class_breakdown": {"local": 1, "academic": 1},
                     "research_ms": 120,
                 }
             ],
@@ -163,6 +171,10 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "draft_ms": 80,
                     "word_count": 320,
                     "placeholder_count": 1,
+                    "interactive_block_count": 1,
+                    "coverage_score": 0.8,
+                    "quality_score": 0.86,
+                    "repair_applied": True,
                     "teaching_action": "chapter_write",
                 }
             ],
@@ -175,6 +187,7 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
             ],
             "merged_markdown": "# 文档\n\n一些内容",
             "exam_questions": [{"question_index": 1}],
+            "practice_count": 4,
             "doc_ids": [101],
         },
         token_summary=DigestTokenSummary(),
@@ -190,10 +203,53 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["retriever_names"] == ["bing", "local_rag"]
     assert summary["placeholder_count"] == 1
+    assert summary["requested_profiles"] == ["docgen_systematic"]
+    assert summary["applied_profiles"] == ["docgen_systematic"]
+    assert summary["research_round_count_total"] == 2
+    assert summary["gaps_remaining"] == ["边界条件"]
+    assert summary["source_class_breakdown"] == {"academic": 1, "local": 1}
+    assert summary["interactive_block_count"] == 1
+    assert summary["practice_count"] == 4
+    assert summary["coverage_score"] == 0.775
+    assert summary["quality_score"] == 0.86
+    assert summary["quality_summary"]["repaired_chapter_count"] == 1
     assert "cleanse_ms" not in summary
     assert "outline_ms" not in summary
     assert "review_ms" not in summary
     assert "metadata_ms" not in summary
+
+
+def test_confirmed_plan_contract_builds_execution_ready_chapter_contracts() -> None:
+    contract = parse_digest_confirmed_plan_contract(
+        {
+            "subject": "高等数学",
+            "user_goal": "系统整理偏导数",
+            "digest_mode": "systematic",
+            "chapter_plan": [
+                {
+                    "chapter_index": 1,
+                    "title": "第 1 章",
+                    "objective": "建立偏导数的几何直觉，并连接到定义。",
+                    "required_elements": ["几何直觉", "偏导数定义"],
+                    "search_queries": ["偏导数 几何意义"],
+                    "media_hints": {"mermaid": ["偏导数整体关系图"], "interactive": ["偏导数公式推导展开器"]},
+                }
+            ],
+            "media_plan": {"enable_mermaid": True, "enable_interactive_html": True},
+            "build_constraints": {"target_total_words": 12000, "min_coverage_score": 0.8},
+        }
+    )
+
+    assignments = contract.to_chapter_assignments(default_source_file_ids=[1])
+    execution_contract = assignments[0]["execution_contract"]
+
+    assert execution_contract["target_word_count"] >= 1100
+    assert execution_contract["min_word_count"] >= 750
+    assert execution_contract["min_coverage_score"] == 0.8
+    assert execution_contract["media_quota"]["mermaid"] >= 1
+    assert execution_contract["media_quota"]["interactive_html"] >= 1
+    assert execution_contract["practice_quota"]["reasoning"] >= 2
+    assert "几何直觉" in execution_contract["coverage_requirements"]
 
 
 def test_builtin_skillpacks_are_discoverable() -> None:

@@ -41,6 +41,10 @@ def get_registered_retriever_types() -> dict[str, type["BaseRetriever"]]:
     return dict(_REGISTERED_RETRIEVER_TYPES)
 
 
+def get_registered_retriever_names() -> list[str]:
+    return sorted(_REGISTERED_RETRIEVER_TYPES)
+
+
 class BaseRetriever(ABC):
     canonical_name: str = ""
     aliases: tuple[str, ...] = ()
@@ -105,6 +109,7 @@ class BaseRetriever(ABC):
 
 __all__ = [
     "BaseRetriever",
+    "get_registered_retriever_names",
     "get_registered_retriever_types",
     "register_retriever_type",
 ]

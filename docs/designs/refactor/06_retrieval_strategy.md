@@ -1,7 +1,7 @@
 ﻿## 六、检索策略与教育资源库
 
 > 目标：让检索真正服务“教育型文档生产”，而不是简单堆更多搜索引擎。
-> 最后更新：2026-04-10
+> 最后更新：2026-04-11
 
 ---
 
@@ -13,12 +13,15 @@
 - `local_rag + bing + duckduckgo + tavily + bocha + arxiv + semantic_scholar`
 - `SourceCurator` 的规则过滤 + 词法/可信度评分
 - `ContextManager` 的快慢路径压缩
+- `DocGenResearchRuntime` 已把 `retrieval_profile` 实际传入 `get_retrievers_for_subject()`
+- `targeted_research` 已输出 `requested_profile / applied_profile / research_rounds / coverage_score / gaps_remaining / source_class_breakdown`
+- 单章 research 已升级为受控 micro-loop：`seed -> retrieve -> assess coverage -> enqueue gap queries -> stop by round cap / coverage / diminishing returns`
 
 但当前最关键的真实差距是：
 
-> `retrieval_profile` 已经存在于 state 和 trace 中，但 `ResearchConductor` 还没有把 `profile` 传进 `get_retrievers_for_subject()`，因此课程模式对检索执行的影响还不够硬。
+> 现在真正的差距已经不再是“profile 没打通”，而是 profile、gap detection 和 source class 还需要继续做更细的学科调权与缓存优化。
 
-这意味着，后续优化重点不是“再接几个搜索 API”，而是先把已有 profile 真的打通。
+这意味着，后续优化重点不是“再接几个搜索 API”，而是继续提升 micro-loop 的调参质量、source class 的教育场景权重和缓存命中率。
 
 ---
 
@@ -37,6 +40,12 @@
 - `ResearchPipeline` 用动态 topic queue 管理并发研究任务
 - 工具调用有 timeout / retry / progress event
 - 输出质量有轻量 post-check，而不是完全相信生成结果
+- **Pre-retrieval planning**（2026-04-11 补充）：DeepSolve planner 在规划前先执行一轮轻量检索：
+  1. 生成多条多样化检索 query
+  2. 并行检索
+  3. LLM 聚合检索结果（限制字符数）
+  4. 基于聚合结果再做规划
+  这个模式可以显著提升 planner 的主题锚定质量，AITeachMe 的 `planner.ground_concepts` 已有类似思路，但可以进一步强化聚合步骤。
 
 ---
 
@@ -170,12 +179,15 @@
 
 ### 算法 2：research 微队列，而不是一次性 query list
 
-当前 `ResearchConductor` 是：
+当前 `ResearchConductor` 已经具备：
 
-- 生成 `research_queries`
-- 顺序执行
+- seed query + sub query planning
+- per-round retrieve / curate / compress
+- coverage assessment
+- gap query enqueue
+- round cap / diminishing return stop 条件
 
-建议迁移成轻量 topic queue：
+当前实现仍然保持“单章内部轻量 queue”，而不是引入额外 graph 拓扑：
 
 ```text
 seed_queries
@@ -185,7 +197,7 @@ seed_queries
 → until queue empty or round limit reached
 ```
 
-这不是把 `DeepTutor` 的整条队列系统搬过来，而是在单章 research 中借它的动态任务思想。
+这不是把 `DeepTutor` 的整条队列系统搬过来，而是在单章 research runtime 中借它的动态任务思想，同时保持 LangGraph 顶层图不变。
 
 ### 算法 3：压缩快慢路径继续保留，但要加“写作可用性”校验
 
@@ -195,9 +207,15 @@ seed_queries
 - embedding filter
 - lexical fallback
 
-建议新增：
+目前已新增：
 
 - `coverage_score`
+- `gaps_remaining`
+- `source_class_breakdown`
+- `research_rounds`
+
+后续仍建议补：
+
 - `concept_density`
 - `example_density`
 - `formula_presence`
@@ -318,18 +336,21 @@ seed_queries
 
 ## 6.12 关键实现顺序
 
-### Phase 2 必做
+> 注意：这里的"阶段"是检索专项分期，不等同于 `08_migration_plan.md` 的 Phase 编号。
 
-1. 把 `profile` 真正传入 `ResearchConductor`
-2. 统一 `requested_profile / applied_profile`
-3. 在 trace 中区分 profile 与 source_class
-4. 为章节 research 增加 queue 化补检索
+### 当前已落地
 
-### Phase 3 以后再做
+1. `profile` 已真实传入 `DocGenResearchRuntime` → `get_retrievers_for_subject()`
+2. `requested_profile / applied_profile` 已统一输出到 trace metadata
+3. trace 已补 `source_class_breakdown`
+4. 章节 research 已增加 queue 化补检索
+
+### 后续批次再做
 
 - 更细粒度的学科特定 profile
 - 本地教育语料库首批建设
 - 交互与动画素材检索
+- 检索缓存与 profile-specific 调权
 
 ---
 
@@ -337,7 +358,7 @@ seed_queries
 
 对 AITeachMe 来说，检索优化的重点不是“再接几个 API”，而是：
 
-- 让 `retrieval_profile` 真正影响执行
-- 让章节 research 从 query list 升级成轻量 topic queue
+- 继续调优 `retrieval_profile` 对不同来源类型的权重
+- 让章节 research 的轻量 topic queue 更稳、更快、更少无效 round
 - 让压缩结果不仅相关，而且可写、可教、可做题
 
