@@ -13,6 +13,7 @@ from app.shared.infra.tools import (
 )
 
 _CATEGORY_TAG_PREFIX = "teaching_category:"
+_TEACHING_TOOL_CATALOG: dict[str, dict[str, Any]] = {}
 
 
 def teaching_function(
@@ -30,7 +31,34 @@ def teaching_function(
         *(tags or []),
     ]
     deduped_tags = list(dict.fromkeys(tag for tag in resolved_tags if str(tag).strip()))
-    return tool(name=name, description=description, tags=deduped_tags, source="teaching")
+
+    def decorator(func: Callable) -> Callable:
+        registered = tool(name=name, description=description, tags=deduped_tags, source="teaching")(func)
+        _TEACHING_TOOL_CATALOG[name] = {
+            "name": name,
+            "description": description,
+            "tags": deduped_tags,
+            "handler": registered,
+        }
+        return registered
+
+    return decorator
+
+
+def sync_teaching_tool_registry() -> None:
+    """Re-register teaching-owned tools when the shared registry was recreated."""
+
+    registry = get_tool_registry()
+    for item in _TEACHING_TOOL_CATALOG.values():
+        existing = registry.get(str(item["name"]))
+        if existing is not None and (existing.source == "teaching" or "teaching" in existing.tags):
+            continue
+        tool(
+            name=str(item["name"]),
+            description=str(item["description"]),
+            tags=list(item["tags"]),
+            source="teaching",
+        )(item["handler"])
 
 
 def _resolve_category(tags: list[str]) -> str:
@@ -53,6 +81,8 @@ def _iter_teaching_tool_definitions():
 def list_teaching_functions(category: str | None = None) -> list[dict[str, Any]]:
     """Return teaching-owned callable functions grouped by business category."""
 
+    ensure_project_tool_modules_loaded()
+    sync_teaching_tool_registry()
     items: list[dict[str, Any]] = []
     for definition in _iter_teaching_tool_definitions():
         resolved_category = _resolve_category(list(definition.tags))
@@ -74,15 +104,17 @@ async def run_teaching_function(name: str, **kwargs: Any) -> Any:
     """Execute a teaching-owned callable function."""
 
     ensure_project_tool_modules_loaded()
+    sync_teaching_tool_registry()
     definition = get_tool_registry().get(name)
     if definition is None or (definition.source != "teaching" and "teaching" not in definition.tags):
         available = [item["name"] for item in list_teaching_functions()]
-        raise ValueError(f"???? `{name}` ???????{available}")
+        raise ValueError(f"未找到教学函数 `{name}`，当前可用函数有：{available}")
     return await run_agent_tool(name, **kwargs)
 
 
 __all__ = [
     "list_teaching_functions",
     "run_teaching_function",
+    "sync_teaching_tool_registry",
     "teaching_function",
 ]

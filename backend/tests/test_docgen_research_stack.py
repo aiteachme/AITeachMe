@@ -181,6 +181,8 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     assert result.metadata["web_hits"] == 0
     assert result.metadata["fallback_used"] is False
     assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
+    assert result.metadata["research_round_count"] == 1
+    assert result.metadata["coverage_score"] == 1.0
     assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
     assert result.metadata["retriever_stats"]["local_rag"]["result_count"] == 2
     assert web_retriever.calls == []
@@ -295,12 +297,81 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     assert result.metadata["fallback_used"] is True
     assert result.metadata["purify_used"] is True
     assert result.metadata["scraped_url_count"] == 1
-    assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
-    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
+    assert result.metadata["executed_queries"][0] == "partial derivative geometric meaning"
+    assert result.metadata["research_round_count"] >= 1
+    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] >= 1
     assert result.metadata["retriever_stats"]["duckduckgo"]["query_count"] >= 1
     assert result.metadata["trusted_source_count"] >= 1
     assert result.metadata["web_source_count"] >= 1
+    assert "source_class_breakdown" in result.metadata
     assert sorted(result.sources) == ["https://example.com/math", "https://example.com/proof", "local://chunk/1"]
+
+
+def test_research_conductor_enqueues_gap_queries_when_required_elements_are_missing() -> None:
+    local_retriever = FakeRetriever(
+        name="local_rag",
+        results=[
+            SearchResult(
+                url="local://chunk/1",
+                title="Definition",
+                snippet="Partial derivatives describe local rate of change.",
+                source="local_rag",
+            )
+        ],
+    )
+    web_retriever = FakeRetriever(
+        name="duckduckgo",
+        results=[
+            SearchResult(
+                url="https://example.com/math",
+                title="Definition and intuition",
+                snippet="surface slice intuition without worked example",
+                source="duckduckgo",
+            )
+        ],
+    )
+    skill = DocGenResearchRuntime(TracedExecutionContext(subject="demo"))
+
+    async def no_sub_queries(*_args, **_kwargs) -> list[str]:
+        return []
+
+    async def fake_scrape_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+        del max_workers
+        return [
+            ScrapedPage(
+                url=url,
+                title="Definition and intuition",
+                content="This page explains the definition and surface slice intuition only.",
+                success=True,
+            )
+            for url in urls
+        ]
+
+    with patch("app.workflows.digest.docgen.runtime.research.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.runtime.research.get_retrievers_for_subject",
+        new=lambda **_kwargs: [local_retriever, web_retriever],
+    ), patch(
+        "app.workflows.digest.docgen.runtime.research.generate_sub_queries",
+        new=no_sub_queries,
+    ), patch(
+        "app.workflows.digest.docgen.runtime.research.scrape_urls",
+        new=fake_scrape_urls,
+    ):
+        result = asyncio.run(
+            skill.run(
+                queries=["partial derivative geometric meaning"],
+                local_rag_subject="demo",
+                chapter_title="Geometric meaning of partial derivatives",
+                objective="Connect surface slices and worked examples.",
+                required_elements=["surface slice", "worked example"],
+                digest_mode="systematic",
+            )
+        )
+
+    assert result.metadata["research_round_count"] >= 2
+    assert result.metadata["executed_queries"][0] == "partial derivative geometric meaning"
+    assert any("worked example" in query.lower() for query in result.metadata["executed_queries"][1:])
+    assert "worked example" in " ".join(result.metadata["gaps_remaining"]).lower()
 
 
 def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
@@ -420,4 +491,5 @@ def test_resolve_titles_node_generates_resolved_title_from_research_context() ->
         result = asyncio.run(node(state))
 
     assert result["chapter_materials"][0]["resolved_title"] == "多元函数的变化率直觉"
+
 

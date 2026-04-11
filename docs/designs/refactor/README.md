@@ -31,10 +31,15 @@
 
 1. `03_tools_refactor.md`
 2. `04_docgen_pipeline.md`
-3. `07_teaching_tools.md`
-4. `08_migration_plan.md`
-5. `09_execution_plan.md`
-6. `implementation_handoff.md`
+3. `05_document_modes.md`
+4. `06_retrieval_strategy.md`
+5. `07_teaching_tools.md`
+6. `08_migration_plan.md`
+7. `09_execution_plan.md`
+8. `10_langsmith_observability.md`
+9. `implementation_handoff.md`
+
+LangSmith 代码级实现文档：`backend/app/workflows/LANGSMITH.md`
 
 ## 权威性说明
 

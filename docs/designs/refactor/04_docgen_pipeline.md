@@ -87,9 +87,46 @@ load_context
 - 更强的公式、图示、交互 HTML 插槽
 - systematic / sprint 的更严格章节 contract
 
-## 7. LangSmith 要求
+## 7. Asset Sidecar 详细设计（2026-04-11 补充）
+
+> 借鉴 DeepTutor `InteractiveAgent` 和 `GuideManager` 的产品形态。
+
+### 7.1 Sidecar 原则
+
+正文生成和富媒体生成必须解耦：
+- 正文 `pedagogy_craft` 只在 markdown 中留占位符（`<!-- [MERMAID: ...] -->`、`<!-- [IMAGE: ...] -->`、`<!-- [INTERACTIVE: ...] -->`）
+- `enrich_document` 阶段的 `runtime/assets.py` 负责展开占位符
+- 每种资产类型有独立的生成 → 校验 → 重试链
+- 资产失败不阻塞正文发布（降级为文字描述）
+
+### 7.2 交互 HTML 资产（借鉴 DeepTutor InteractiveAgent）
+
+DeepTutor 为每个知识点生成独立的交互 HTML 页面，支持：
+- KaTeX 公式渲染
+- 可折叠的推导步骤
+- 自检小测验
+- fallback 模板（生成失败时使用静态模板）
+
+AITeachMe 的借法：
+- 在 `AssetPlan` 中新增 `interactive_html` 类型
+- `runtime/assets.py` 中新增 `process_interactive_placeholders()`
+- 生成的 HTML 片段嵌入 markdown 的 `<details>` 或 iframe 块
+- MVP 阶段只做公式推导和概念对比两种交互模板
+- 使用 `TaskType.DOCGEN`、`tier=smart`（交互内容需要质量）
+
+### 7.3 资产配额与 LangSmith 追踪
+
+每种资产在 LangSmith 中必须作为独立 span：
+- tag: `asset:mermaid` / `asset:image` / `asset:interactive_html`
+- metadata: `chapter_index`、`asset_kind`、`success`
+- 失败时记录 `asset_failures` 和降级策略
+
+## 8. LangSmith 要求
+
+> 详细实现参考 `backend/app/workflows/LANGSMITH.md`
 
 - workflow node 看主骨架
 - runtime span 看 chapter-level multi-step logic
 - 每步都有 digest mode / course type / retrieval profile / teaching action
 - 输入输出可回放，可定位 research 与 writer 的具体问题
+- asset sidecar 必须有独立 span，不埋在正文节点输出里

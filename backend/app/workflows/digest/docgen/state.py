@@ -35,6 +35,8 @@ class DocGenState(TypedDict, total=False):
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     chapter_metadatas: list[dict[str, Any]]
     exam_questions: list[dict[str, Any]]
+    interactive_block_count: int
+    practice_count: int
 
     merged_markdown: str
     enriched_markdown: str

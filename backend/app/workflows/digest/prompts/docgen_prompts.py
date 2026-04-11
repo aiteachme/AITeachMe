@@ -66,12 +66,24 @@ def build_docgen_writer_messages(
     dense_context: str,
     chapter_index: int | None = None,
     chapter_count: int | None = None,
+    execution_contract: dict[str, object] | None = None,
     skillpack_guidance: str = "",
     recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     tone_hint = _tone_hint(tone)
+    execution_contract = dict(execution_contract or {})
+    media_quota = dict(execution_contract.get("media_quota") or {})
+    practice_quota = dict(execution_contract.get("practice_quota") or {})
+    contract_summary = (
+        f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
+        f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
+        f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
+        f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
+        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)} / 图片 {media_quota.get('images', 0)} / 交互块 {media_quota.get('interactive_html', 0)}\n"
+        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 自检 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}"
+    )
     system_prompt = (
         "你是 AITeachMe 的中文教学文档作者。"
         "你的任务是把研究材料写成可直接给学生阅读的高质量 Markdown 讲义。"
@@ -93,6 +105,9 @@ def build_docgen_writer_messages(
 模式契约：
 {_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
 
+执行合同：
+{contract_summary}
+
 风格提醒：
 {tone_hint}
 
@@ -107,9 +122,10 @@ def build_docgen_writer_messages(
 2. 一级标题必须是 `# {title}`。
 3. 二级标题必须服从模式契约，不能缺关键模块。
 4. 如果需要图示，请使用 `<!-- [MERMAID: 描述] -->` 或 `<!-- [IMAGE: 描述] -->` 占位。
-5. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
-6. 不允许编造引用、文献、实验结果或材料中不存在的事实。
-7. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
+5. 如果执行合同要求交互块，请使用 `<!-- [INTERACTIVE: 描述] -->` 占位。
+6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
+7. 不允许编造引用、文献、实验结果或材料中不存在的事实。
+8. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
 
 研究材料：
 {dense_context[:14000]}

@@ -1,4 +1,4 @@
-# Teaching 分层说明
+﻿# Teaching 分层说明
 
 `app.teaching` 负责教学语义，不负责底层基础设施，也不负责 workflow 编排。
 
@@ -53,3 +53,4 @@ teaching/
 - `teaching` 可以直接调用 `infra`，但不能复制 `infra`。
 - `teaching` 可以被 workflow runtime 调用，但不接管 graph。
 - `PedagogyWriter` 这类 DocGen 业务 runtime 不再待在 teaching，也不再待在 infra，而是回到 workflow-local runtime。
+

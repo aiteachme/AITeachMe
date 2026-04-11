@@ -1,4 +1,4 @@
-# Infra 分层说明
+﻿# Infra 分层说明
 
 `app.shared.infra` 只放基础设施、跨引擎基础能力、以及少量兼容 shim。
 
@@ -25,7 +25,7 @@
 
 - 配置、数据库、存储、缓存、日志、追踪、LangSmith/LangGraph 接缝。
 - LLM 调用、模型路由、fallback、structured output、tool calling。
-- 检索与抓取基础设施：retriever factory、scraper、reranker、search helper。
+- 检索与资料获取基础设施：retriever factory、reader、legacy scraper shim、knowledge retrieval、reranker、search helper。
 - canonical tool registry、tool decorator、toolpack loader。
 - skillpack loader 与渲染器。
 - 通用 memory、search support、可跨引擎复用的 helper。
@@ -49,7 +49,7 @@ shared/infra/
 ├── execution.py          # 兼容 shim
 ├── tools/                # canonical tool registry + toolpack loader
 ├── skills/               # SKILL.md prompt skillpack loader / renderer
-├── search/               # retriever / scraper / curation / compression
+├── search/               # retriever / readers / knowledge / curation / compression
 ├── llm_support/          # LLM 调用、fallback、structured output、routing
 ├── llm.py                # 兼容 shim
 ├── model_router.py       # 兼容 shim
@@ -77,6 +77,12 @@ shared/infra/
 
 ## 额外边界说明
 
+- `search/`
+  这是统一的检索与资料获取层，不是纯 `rag/`。其中：
+  `retrievers/` 负责发现候选来源，
+  `readers/` 负责读取 URL 内容，
+  `knowledge.py` 负责本地知识库检索契约与 rerank。
+  `retrievers.py` 与 `reranker.py` 只保留兼容 shim，不再是新的 canonical 入口。
 - `memory/`
   这里只放通用记忆原语、画像聚合、上下文拼装 helper，不放教学业务判断。
 - `runtime_paths.py`
@@ -86,3 +92,5 @@ shared/infra/
 - LangSmith 兼容代码：
   provider/调用级追踪放 `shared/infra/tracing.py` 与 `shared/infra/llm_support/observability.py`；
   workflow 级观测结构放 `workflows/common/observability.py` 与各 workflow 自己的 observability 文件。
+
+

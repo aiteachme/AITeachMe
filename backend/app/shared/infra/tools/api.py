@@ -18,9 +18,19 @@ _PROJECT_TOOL_MODULES = (
 _project_tool_modules_loaded = False
 
 
+def _sync_project_owned_registrations() -> None:
+    try:
+        from app.teaching.teaching import sync_teaching_tool_registry
+
+        sync_teaching_tool_registry()
+    except Exception as exc:  # pragma: no cover - defensive sync path
+        logger.warning("project_tool_registry_sync_failed", error=str(exc))
+
+
 def ensure_project_tool_modules_loaded() -> None:
     global _project_tool_modules_loaded
     if _project_tool_modules_loaded:
+        _sync_project_owned_registrations()
         return
 
     import importlib
@@ -33,6 +43,7 @@ def ensure_project_tool_modules_loaded() -> None:
             logger.warning("project_tool_module_import_failed", module=module_name, error=str(exc))
     load_external_toolpacks()
     _project_tool_modules_loaded = True
+    _sync_project_owned_registrations()
 
 
 def list_agent_tools() -> list[dict[str, object]]:

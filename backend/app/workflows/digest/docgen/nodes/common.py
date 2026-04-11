@@ -92,18 +92,57 @@ def ensure_chapter_heading(title: str, markdown: str) -> str:
     return cleaned + "\n"
 
 
-def build_examine_markdown(question_titles: list[str]) -> str:
+def build_examine_markdown(
+    question_titles: list[str] | None = None,
+    *,
+    exam_questions: list[dict[str, Any]] | None = None,
+    digest_mode: str = "",
+    review_prompts: list[str] | None = None,
+) -> str:
     prompts = question_titles or ["整份文档"]
-    lines = ["# 练习与自检", "", "## 简答题", ""]
-    for index, title in enumerate(prompts, start=1):
-        lines.append(f"{index}. 请用自己的话解释《{title}》最重要的知识点，并补一个你能想到的例子。")
+    normalized_mode = str(digest_mode or "").strip().lower()
+    questions = list(exam_questions or [])
+    if not questions:
+        questions = [
+            {
+                "question_index": index,
+                "type": "short_answer",
+                "question": f"请用自己的话解释《{title}》最重要的知识点，并补一个你能想到的例子。",
+            }
+            for index, title in enumerate(prompts, start=1)
+        ]
+
+    if normalized_mode == "sprint":
+        lines = ["# 练习与自检", "", "## 高频题型自检", ""]
+        for question in questions:
+            lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
+        lines.extend(
+            [
+                "",
+                "## 易错复盘",
+                "",
+                *[f"- {item}" for item in (review_prompts or [
+                    "哪一道题你是靠感觉做出来的？把它改成可复述的判断步骤。",
+                    "哪一个公式你会背但还不会判断使用条件？",
+                    "如果考试时间很紧，这份文档里你最该先回看哪两章？",
+                ])],
+            ]
+        )
+        return "\n".join(lines).strip() + "\n"
+
+    lines = ["# 练习与自检", "", "## 理解与推理题", ""]
+    for question in questions:
+        lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
     lines.extend(
         [
             "",
-            "## 复盘问题",
+            "## 章节收束与迁移",
             "",
-            "- 现在哪一章你仍然最不确定？原因是什么？",
-            "- 哪个公式、定义或推理步骤最值得你再回头看一遍？",
+            *[f"- {item}" for item in (review_prompts or [
+                "把一章里的核心定义、方法和例子串成一条完整主线。",
+                "指出哪一个概念最容易和邻近概念混淆，并做一次对比辨析。",
+                "尝试把这份文档中的一个方法迁移到一个新问题或新场景中。",
+            ])],
         ]
     )
     return "\n".join(lines).strip() + "\n"

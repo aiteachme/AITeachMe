@@ -1,5 +1,5 @@
 from .arxiv import ArxivRetriever
-from .base import BaseRetriever
+from .base import BaseRetriever, get_registered_retriever_names
 from .bing import BingRetriever
 from .bocha import BochaRetriever
 from .duckduckgo import DuckDuckGoRetriever
@@ -13,6 +13,7 @@ __all__ = [
     "BingRetriever",
     "BochaRetriever",
     "DuckDuckGoRetriever",
+    "get_registered_retriever_names",
     "LocalRAGRetriever",
     "SemanticScholarRetriever",
     "TavilyRetriever",

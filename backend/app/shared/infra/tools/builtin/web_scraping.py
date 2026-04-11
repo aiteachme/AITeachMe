@@ -1,13 +1,16 @@
-"""Reusable web scraping helpers for research-oriented workflows."""
+﻿"""Reusable URL reading helpers for research-oriented workflows."""
 
 from __future__ import annotations
 
 import asyncio
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.search.factory import get_scraper_for_url
+from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
 from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+
+# Keep the legacy module attribute so existing patches and callers still work.
+get_scraper_for_url = get_reader_for_url
 
 
 async def scrape_urls(
@@ -16,7 +19,7 @@ async def scrape_urls(
     max_workers: int | None = None,
     preferred_reader: str | None = None,
 ) -> list[ScrapedPage]:
-    """Scrape URLs concurrently with stable ordering and URL deduplication."""
+    """Read URLs concurrently with stable ordering and URL deduplication."""
 
     ordered_urls = list(dict.fromkeys(str(url or "").strip() for url in urls if str(url or "").strip()))
     if not ordered_urls:
@@ -30,12 +33,14 @@ async def scrape_urls(
     async def _scrape_one(url: str) -> ScrapedPage:
         async with semaphore:
             if preferred_reader:
-                scraper = get_scraper_for_url(url, preferred=preferred_reader)
+                reader = get_scraper_for_url(url, preferred=preferred_reader)
             else:
-                scraper = get_scraper_for_url(url)
+                reader = get_scraper_for_url(url)
             try:
-                return await scraper.traced_scrape(url)
-            except Exception as exc:  # pragma: no cover - scraper backends are integration-heavy
+                if hasattr(reader, "traced_read"):
+                    return await reader.traced_read(url)
+                return await reader.traced_scrape(url)
+            except Exception as exc:  # pragma: no cover - reader backends are integration-heavy
                 return ScrapedPage(url=url, success=False, error=str(exc))
 
     with langsmith_trace(
@@ -65,4 +70,4 @@ async def scrape_urls(
         return pages
 
 
-__all__ = ["scrape_urls"]
+__all__ = ["get_scraper_for_url", "scrape_urls"]

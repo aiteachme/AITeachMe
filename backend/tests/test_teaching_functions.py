@@ -24,4 +24,5 @@ def test_run_teaching_function_executes_registered_teaching_tool() -> None:
 
     assert "??" in result
     assert "??" in result
-    assert "????" in result
+    assert "维度" in result
+    assert "核心定义" in result
