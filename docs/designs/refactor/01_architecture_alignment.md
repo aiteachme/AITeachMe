@@ -19,7 +19,7 @@
 
 | 能力维度 | `gpt-researcher` | `DeepTutor` | AITeachMe 现状 | 当前判断 |
 | --- | --- | --- | --- | --- |
-| 研究范式 | `plan -> search -> compress -> write`，有 `DetailedReport / DeepResearch` | `planning -> researching -> reporting`，有 dynamic topic queue | `ResearchConductor + PedagogyWriter + docgen graph`，但章节 research 仍偏单轮 | AITeachMe 需要借这两者的“研究深度控制” |
+| 研究范式 | `plan -> search -> compress -> write`，有 `DetailedReport / DeepResearch` | `planning -> researching -> reporting`，有 dynamic topic queue | `ChapterContextRuntime + PedagogyWriter + docgen graph`，但章节上下文构建仍偏单轮 | AITeachMe 需要借这两者的“研究深度控制” |
 | 检索器生态 | 丰富，profile 驱动 | search providers + tool registry | `search/factory.py` 已支持 profile，retrievers 也较全 | 结构已经有，但 `profile` 还未完整打入执行链 |
 | 网页抓取 | 多 scraper + URL 去重 | 较偏 research tool 调度 | `search/scraper` + `web_scraping` 已可用 | 现有方案足够，先不追求更多 provider |
 | 课程产物 | 通用报告 | guide page / chat / summary / animator | 教学文档已有脚手架，但课程产品感还不够强 | 需要借 `DeepTutor` 的产物链 |
@@ -57,7 +57,7 @@
 
 - `planner/docgen` state 中已经有 `course_type` 和 `retrieval_profile`
 - `search/factory.py` 已经支持 `profile` 参数
-- 但 `ResearchConductor` 仍直接调用 `get_retrievers_for_subject(subject=..., local_sections=...)`
+- 但 `ChapterContextRuntime` 仍直接调用 `get_retrievers_for_subject(subject=..., local_sections=...)`
 - 也就是说，课程模式下的检索差异，目前主要存在于 state 和 trace，而不是实际 retriever 组合
 
 这是文档和代码之间最需要写实的一个点。
@@ -72,7 +72,7 @@
 - 下一轮查什么
 - 并发/队列/重试
 
-AITeachMe 当前的 `ResearchConductor` 已有：
+AITeachMe 当前的 `ChapterContextRuntime` 已有：
 
 - 子查询规划
 - local + external 检索
@@ -172,7 +172,7 @@ DeepTutor 采用 **Tool vs Capability** 两层插件模型：
 
 ### 从 `gpt-researcher` 借
 
-- `ResearchConductor` 的下一步：加微循环，不改 graph
+- `ChapterContextRuntime` 的下一步：加微循环，不改 graph
 - 检索 profile 明确化
 - query planning / purify / curator 的工程纪律
 - tier fallback 的稳定 trace
@@ -206,5 +206,3 @@ AITeachMe 不缺骨架，缺的是：
 - 让富媒体走独立 sidecar 流程
 
 这正好对应 `gpt-researcher` 和 `DeepTutor` 各自最值得借的部分。
-
-

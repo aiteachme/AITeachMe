@@ -20,7 +20,7 @@ load_context
 
 ### 2.1 Workflow-local runtime
 
-- `workflows/digest/docgen/runtime/research.py`
+- `workflows/digest/docgen/runtime/chapter_context.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 

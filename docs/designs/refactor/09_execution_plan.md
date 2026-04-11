@@ -11,7 +11,7 @@
 
 ### 2. DocGen runtime 迁移
 
-- `workflows/digest/docgen/runtime/research.py`
+- `workflows/digest/docgen/runtime/chapter_context.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 
@@ -36,7 +36,7 @@
 
 ## 当前已知未完成的关键差距
 
-- `retrieval_profile` 已经真正进入 `DocGenResearchRuntime` 的 retriever 工厂，`requested_profile / applied_profile` 也已写入 trace；当前剩余重点变成 micro-loop 调参、学科化 source weight 和缓存。
+- `retrieval_profile` 已经真正进入 `DocGenChapterContextRuntime` 的 retriever 工厂，`requested_profile / applied_profile` 也已写入 trace；当前剩余重点变成 micro-loop 调参、学科化 source weight 和缓存。
 - `systematic / sprint` 的章节执行合同已进入 confirmed plan -> assignment -> writer/runtime，但后续仍可继续细化到更多学科模板。
 - `interactive_html` sidecar 已具备最小执行链，`animation` 仍只保留 contract / trace 预留位，尚未进入首轮主线。
 - `inject_examine` 已升级为 digest-local 的模式感知 practice layer，但还没和独立 Examine 引擎共享更深的题目上下文。

@@ -13,7 +13,7 @@
 - `local_rag + bing + duckduckgo + tavily + bocha + arxiv + semantic_scholar`
 - `SourceCurator` 的规则过滤 + 词法/可信度评分
 - `ContextManager` 的快慢路径压缩
-- `DocGenResearchRuntime` 已把 `retrieval_profile` 实际传入 `get_retrievers_for_subject()`
+- `DocGenChapterContextRuntime` 已把 `retrieval_profile` 实际传入 `get_retrievers_for_subject()`
 - `targeted_research` 已输出 `requested_profile / applied_profile / research_rounds / coverage_score / gaps_remaining / source_class_breakdown`
 - 单章 research 已升级为受控 micro-loop：`seed -> retrieve -> assess coverage -> enqueue gap queries -> stop by round cap / coverage / diminishing returns`
 
@@ -179,7 +179,7 @@
 
 ### 算法 2：research 微队列，而不是一次性 query list
 
-当前 `ResearchConductor` 已经具备：
+当前 `ChapterContextRuntime` 已经具备：
 
 - seed query + sub query planning
 - per-round retrieve / curate / compress
@@ -340,7 +340,7 @@ seed_queries
 
 ### 当前已落地
 
-1. `profile` 已真实传入 `DocGenResearchRuntime` → `get_retrievers_for_subject()`
+1. `profile` 已真实传入 `DocGenChapterContextRuntime` → `get_retrievers_for_subject()`
 2. `requested_profile / applied_profile` 已统一输出到 trace metadata
 3. trace 已补 `source_class_breakdown`
 4. 章节 research 已增加 queue 化补检索
@@ -361,4 +361,3 @@ seed_queries
 - 继续调优 `retrieval_profile` 对不同来源类型的权重
 - 让章节 research 的轻量 topic queue 更稳、更快、更少无效 round
 - 让压缩结果不仅相关，而且可写、可教、可做题
-

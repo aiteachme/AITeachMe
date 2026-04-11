@@ -85,7 +85,7 @@ class AssetPlan(BaseModel):
 | --- | --- |
 | course type / retrieval profile helper | `backend/app/workflows/digest/shared/contracts.py` |
 | docgen writer prompt | `backend/app/workflows/digest/prompts/docgen_prompts.py` |
-| research runtime | `backend/app/workflows/digest/docgen/runtime/research.py` |
+| chapter context runtime | `backend/app/workflows/digest/docgen/runtime/chapter_context.py` |
 | context compression | `backend/app/shared/infra/search/context_compression.py` |
 | source curation | `backend/app/shared/infra/search/source_curation.py` |
 | teaching scaffold | `backend/app/teaching/documents/report_generation.py` |
@@ -155,4 +155,3 @@ DOCGEN_ENABLE_ANIMATION=false
 - `ChapterDraft` 是否含 question hooks / asset hints
 - `sprint / systematic` 是否体现出明显产物差异
 - LangSmith 是否能看到 rounds / assets / fallback
-

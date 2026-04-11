@@ -62,7 +62,7 @@
 
 交付物：
 
-- `workflows/digest/docgen/runtime/research.py`
+- `workflows/digest/docgen/runtime/chapter_context.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 - `shared/infra/traced_execution.py` 成为唯一 traced execution base
