@@ -23,8 +23,6 @@ export {
 export { useDocMarkdown } from "./hooks/useDocMarkdown";
 export { useDocBuildProgress } from "./hooks/useDocBuildProgress";
 export { useDocToc } from "./hooks/useDocToc";
-export { useDocSelection } from "./hooks/useDocSelection";
-export { useDocComments } from "./hooks/useDocComments";
 
 /* Build View Components */
 export { BuildView } from "./BuildView";
@@ -41,5 +39,3 @@ export { DocEmptyState } from "./DocEmptyState";
 export { DocErrorState } from "./DocErrorState";
 export { DocUpdatingBanner } from "./DocUpdatingBanner";
 export { DocTocSidebar } from "./DocTocSidebar";
-export { DocFloatingToolbar } from "./DocFloatingToolbar";
-export { DocHighlightOverlay } from "./DocHighlightOverlay";

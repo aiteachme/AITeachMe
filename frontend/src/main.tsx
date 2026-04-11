@@ -51,7 +51,7 @@ async function waitForBackendReady() {
 
 async function prepare() {
   const shouldUseMock =
-    import.meta.env.VITE_USE_MOCK === "true" || getStoredAppSettings().useMock;
+    import.meta.env.VITE_USE_MOCK === "true" || getStoredAppSettings().useMock || window.location.search.includes("mock=1");
 
   if (shouldUseMock) {
     const { worker } = await import("./mocks/browser");
