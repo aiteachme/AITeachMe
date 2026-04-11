@@ -19,6 +19,7 @@ from app.workflows.digest.docgen.runtime.query_planning import (
     dedupe_queries,
     enrich_queries_for_education,
     generate_sub_queries,
+    generate_gap_queries,
 )
 from app.workflows.digest.prompts import build_docgen_research_purify_messages
 
@@ -194,6 +195,56 @@ class DocGenResearchRuntime(BaseTracedExecution):
             max_total_chars=6000 if digest_mode == "systematic" else 4200,
         )
         dense_context = compression_result.content.strip()
+        gap_queries_executed: list[str] = []
+
+        if digest_mode == "systematic" and dense_context and len(documents) > 0:
+            gap_queries_executed = await generate_gap_queries(
+                dense_context,
+                required_elements=list(required_elements or []),
+                max_queries=2,
+                domain=search_domain,
+                llm_caller=self.context.resolve_llm_caller(),
+                extra_metadata=self.context.trace_metadata(
+                    runtime_name=self.name,
+                    research_stage="plan_gap_queries",
+                )
+            )
+
+            if gap_queries_executed:
+                gap_results: list[SearchResult] = []
+                for query in gap_queries_executed:
+                    for retriever in other_retrievers:
+                        provider_results = self._filter_search_results(
+                            await retriever.traced_search(query, max_results=query_limit)
+                        )
+                        self._record_retriever_call(retriever_stats, retriever_name=retriever.name, query=query, results=provider_results)
+                        if provider_results:
+                            web_hits += len(provider_results)
+                            gap_results.extend(provider_results)
+                            break
+                
+                gap_results = self._dedupe_results(gap_results, max_results=query_limit * len(gap_queries_executed))
+                curated_gap_results, _ = await curator.curate_sources(
+                    query=focus_text or base_queries[0],
+                    sources=gap_results,
+                    max_results=len(gap_queries_executed) * 2,
+                )
+                if curated_gap_results:
+                    gap_documents, gap_scrape_count = await self._collect_documents(curated_gap_results)
+                    # Merge and re-compress
+                    scraped_url_count += gap_scrape_count
+                    curated_results.extend(curated_gap_results)
+                    documents.extend(gap_documents or [item.to_text() for item in curated_gap_results if item.to_text().strip()])
+
+                    compression_result = await compressor.run(
+                        query=focus_text or base_queries[0],
+                        focus_terms=list(required_elements or []),
+                        documents=documents,
+                        max_results=12,
+                        max_total_chars=8500,
+                    )
+                    dense_context = compression_result.content.strip()
+
         purify_used = False
         if dense_context:
             purified_context, purify_used = await self._purify_material(
@@ -213,12 +264,13 @@ class DocGenResearchRuntime(BaseTracedExecution):
             metadata={
                 "local_hits": local_hits,
                 "web_hits": web_hits,
-                "query_count": len(research_queries),
+                "query_count": len(research_queries) + len(gap_queries_executed),
                 "base_queries": base_queries,
                 "planned_queries": planned_queries,
+                "gap_queries": gap_queries_executed,
                 "fallback_queries": list(dict.fromkeys(fallback_queries)),
                 "fallback_used": bool(fallback_queries),
-                "executed_queries": research_queries,
+                "executed_queries": [*research_queries, *gap_queries_executed],
                 "scraped_url_count": scraped_url_count,
                 "document_count": len(documents),
                 "requested_retrieval_profile": resolved_retrieval_profile,

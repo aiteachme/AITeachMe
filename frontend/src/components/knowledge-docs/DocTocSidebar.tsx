@@ -81,10 +81,10 @@ function TocNodes({
             <div
               data-toc-id={item.id}
               className={cn(
-                "group flex items-center rounded-md transition-all duration-150 relative",
+                "group flex items-center rounded-md transition-colors relative",
                 isActive
-                  ? "bg-slate-100 text-slate-900 font-semibold"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800",
+                  ? "bg-[#F0F2F5] text-[#3370FF] font-medium"
+                  : "text-[#646A73] hover:bg-[#F0F2F5] hover:text-[#1F2329]",
               )}
               style={{ paddingLeft: indent + 4 }}
             >
@@ -92,7 +92,7 @@ function TocNodes({
               {isActive && (
                 <motion.span
                   layoutId="toc-indicator"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-full bg-slate-800"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-full bg-[#3370FF]"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -106,21 +106,21 @@ function TocNodes({
                     onToggleCollapse(item.id);
                   }}
                   className={cn(
-                    "w-5 h-5 shrink-0 flex items-center justify-center rounded-md transition-colors",
+                    "w-5 h-5 auto shrink-0 flex items-center justify-center rounded transition-colors mr-0.5",
                     isActive
-                      ? "text-slate-600 hover:bg-slate-200"
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-100",
+                      ? "text-[#3370FF] hover:bg-[#DEE0E3]"
+                      : "text-[#8F959E] hover:text-[#646A73] hover:bg-[#DEE0E3]",
                   )}
                 >
                   <ChevronRight
                     className={cn(
-                      "w-3 h-3 transition-transform duration-200",
+                      "w-3.5 h-3.5 transition-transform duration-200",
                       !isCollapsed && "rotate-90",
                     )}
                   />
                 </button>
               ) : (
-                <span className="w-5 shrink-0" />
+                <span className="w-5 shrink-0 mr-0.5" />
               )}
 
               {/* Title text */}
@@ -128,8 +128,8 @@ function TocNodes({
                 type="button"
                 onClick={() => onTocItemClick(item.id)}
                 className={cn(
-                  "flex-1 min-w-0 text-left py-1.5 pr-2 text-sm truncate transition-colors",
-                  item.level === 1 && "font-medium text-[14px]",
+                  "flex-1 min-w-0 text-left py-1 pr-2 text-[13px] truncate transition-colors",
+                  item.level === 1 && "font-semibold text-[14px] text-[#1F2329]"
                 )}
               >
                 {item.text}
