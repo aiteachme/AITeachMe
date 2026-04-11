@@ -62,16 +62,16 @@ let messageCounter = 0;
 const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
 const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
 
-interface PlannerNodeEvent {
-  node_name: string;
+interface PlannerRuntimeStep {
+  name: string;
+  kind: "node" | "tool" | "substep" | "llm";
   elapsed_ms: number;
   status?: string;
 }
 
 interface PlannerRuntimeStats {
-  workflow_elapsed_ms?: number;
-  node_timings_ms?: Record<string, number>;
-  node_events?: PlannerNodeEvent[];
+  elapsed_ms?: number;
+  steps?: PlannerRuntimeStep[];
   fallback_used?: boolean;
   generation_mode?: string | null;
 }
@@ -162,16 +162,26 @@ function formatElapsedMs(value: number | undefined): string {
   return `${(value / 1000).toFixed(1)} s`;
 }
 
-function formatPlannerNodeLabel(nodeName: string): string {
-  switch (nodeName) {
+function formatPlannerNodeLabel(stepName: string): string {
+  switch (stepName) {
     case "load_context":
       return "读取上下文";
     case "ground_concepts":
       return "概念预检索";
     case "draft_plan":
       return "生成方案";
+    case "prepare_shared_inputs":
+      return "准备资料上下文";
+    case "concept_grounding":
+      return "补充概念锚点";
+    case "plan_prompt_build":
+      return "构建规划提示词";
+    case "planner_stream_generate":
+      return "流式生成草案";
+    case "planner_fallback_build":
+      return "本地兜底补齐";
     default:
-      return nodeName;
+      return stepName;
   }
 }
 
@@ -179,10 +189,7 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
   if (!runtimeStats) {
     return [];
   }
-  if (runtimeStats.node_events?.length) {
-    return runtimeStats.node_events.map((event) => [event.node_name, event.elapsed_ms]);
-  }
-  return Object.entries(runtimeStats.node_timings_ms ?? {});
+  return (runtimeStats.steps ?? []).map((step) => [step.name, step.elapsed_ms]);
 }
 
 function extractPlannerPreviewText(raw: string): string {
@@ -244,11 +251,15 @@ function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在生成构建方案...";
   }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message.trim();
+  }
   if (typeof payload.detail === "string" && payload.detail.trim()) {
     return payload.detail.trim();
   }
-  if (typeof payload.node_name === "string" && typeof payload.elapsed_ms === "number") {
-    return `${payload.node_name} 完成，耗时 ${payload.elapsed_ms} ms。`;
+  if (typeof payload.step === "string" && payload.step.trim()) {
+    const label = formatPlannerNodeLabel(payload.step.trim());
+    return payload.status === "failed" ? `${label} 失败。` : `${label} 进行中...`;
   }
   return "正在生成构建方案...";
 }
@@ -993,7 +1004,7 @@ export function BuildPlanPage() {
                               {message.runtimeStats ? (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
-                                    总耗时 {formatElapsedMs(message.runtimeStats.workflow_elapsed_ms)}
+                                    总耗时 {formatElapsedMs(message.runtimeStats.elapsed_ms)}
                                   </span>
                                   {message.runtimeStats.fallback_used ? (
                                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
