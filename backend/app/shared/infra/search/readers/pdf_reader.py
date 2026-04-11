@@ -1,21 +1,19 @@
-﻿"""PDF reader using PyMuPDF when available."""
+"""PDF reader using PyMuPDF when available."""
 
 from __future__ import annotations
+
 import structlog
 
-from app.shared.infra.search.readers.base import BaseScraper
-from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_scraped_text
+from app.shared.infra.search.readers.base import BaseReader
+from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_read_text
 from app.shared.infra.search.types import ScrapedPage
 
 logger = structlog.get_logger(__name__)
 
 
-class PDFScraper(BaseScraper):
+class PDFReader(BaseReader):
+    canonical_name = "pdf"
     priority = 100
-
-    @property
-    def name(self) -> str:
-        return "pdf"
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
@@ -24,12 +22,12 @@ class PDFScraper(BaseScraper):
             return False
         return normalized.endswith(".pdf") or ".pdf?" in normalized
 
-    async def scrape(self, url: str) -> ScrapedPage:
+    async def read(self, url: str) -> ScrapedPage:
         try:
             response = await fetch_url(url)
             payload = response.content
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("pdf_scrape_failed", url=url, error=str(exc))
+            logger.warning("pdf_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type="application/pdf", reader_name=self.name)
 
         try:
@@ -45,13 +43,10 @@ class PDFScraper(BaseScraper):
         return ScrapedPage(
             url=url,
             title=title,
-            content=normalize_scraped_text(content),
+            content=normalize_read_text(content),
             content_type="application/pdf",
             reader_name=self.name,
         )
 
 
-__all__ = ["PDFScraper"]
-
-
-
+__all__ = ["PDFReader"]

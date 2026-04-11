@@ -109,7 +109,7 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "planned_queries": list(material.get("planned_queries") or []),
             "fallback_queries": list(material.get("fallback_queries") or []),
             "query_count": int(material.get("query_count", 0) or 0),
-            "scraped_url_count": int(material.get("scraped_url_count", 0) or 0),
+            "read_url_count": int(material.get("read_url_count", 0) or 0),
             "document_count": int(material.get("document_count", 0) or 0),
             "purify_used": bool(material.get("purify_used", False)),
             "curated_source_count": int(material.get("curated_source_count", 0) or 0),

@@ -15,7 +15,7 @@ from app.shared.infra.search.factory import get_configured_retriever_names, get_
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
-from app.shared.infra.tools.builtin.web_scraping import scrape_urls
+from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.digest.docgen.runtime.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -168,8 +168,8 @@ class DocGenResearchRuntime(BaseTracedExecution):
         documents: list[str] = []
         dense_context = ""
         compression_mode = "empty"
-        scraped_url_count = 0
-        scraped_cache: dict[str, ScrapedPage] = {}
+        read_url_count = 0
+        page_cache: dict[str, ScrapedPage] = {}
         previous_score = 0.0
         previous_curated_count = 0
 
@@ -236,7 +236,7 @@ class DocGenResearchRuntime(BaseTracedExecution):
                 sources=merged_results,
                 max_results=max(query_limit * 2, len(executed_queries) * 2),
             )
-            documents, scraped_url_count = await self._collect_documents(curated_results, page_cache=scraped_cache)
+            documents, read_url_count = await self._collect_documents(curated_results, page_cache=page_cache)
             if not documents:
                 documents = [item.to_text() for item in curated_results if item.to_text().strip()]
 
@@ -325,7 +325,7 @@ class DocGenResearchRuntime(BaseTracedExecution):
                 "fallback_queries": list(dict.fromkeys(fallback_queries)),
                 "fallback_used": bool(fallback_queries),
                 "executed_queries": executed_queries,
-                "scraped_url_count": scraped_url_count,
+                "read_url_count": read_url_count,
                 "document_count": len(documents),
                 "requested_profile": resolved_retrieval_profile or "default",
                 "applied_profile": resolved_retrieval_profile or "default",
@@ -378,22 +378,22 @@ class DocGenResearchRuntime(BaseTracedExecution):
         cache = page_cache if page_cache is not None else {}
         urls_to_fetch = [item.url for item in external_results if item.url not in cache]
         if urls_to_fetch:
-            pages = await scrape_urls(urls_to_fetch)
+            pages = await read_urls(urls_to_fetch)
             for page in pages:
                 cache[page.url] = page
         page_map = cache
 
-        scraped_url_count = 0
+        read_url_count = 0
         for item in external_results:
-            page = page_map.get(item.url) or ScrapedPage(url=item.url, success=False, error="missing scraped page")
+            page = page_map.get(item.url) or ScrapedPage(url=item.url, success=False, error="missing read page")
             if page.success and page.content.strip():
-                scraped_url_count += 1
+                read_url_count += 1
                 title = page.title.strip() or item.title.strip() or item.url.strip()
                 documents.append(f"# {title}\n\n{page.content.strip()}")
                 continue
             if item.snippet.strip():
                 documents.append(item.to_text())
-        return documents, scraped_url_count
+        return documents, read_url_count
 
     async def _purify_material(
         self,

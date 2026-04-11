@@ -1,6 +1,6 @@
-﻿# 10. 仓库结构与运行时文件
+# 10. 仓库结构与运行时文件
 
-最后更新：2026-04-10
+最后更新：2026-04-11
 
 本文档同时描述两套口径：
 
@@ -120,4 +120,3 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - `skills` 之前几乎没有进入 planner/docgen 主运行链。
 
 这些问题现在都不再作为“推荐结构”继续扩张。
-

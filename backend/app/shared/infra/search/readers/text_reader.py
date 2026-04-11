@@ -1,23 +1,20 @@
-﻿"""Plain text and markdown reader."""
+"""Plain text and markdown reader."""
 
 from __future__ import annotations
 
 import structlog
 
-from app.shared.infra.search.readers.base import BaseScraper
-from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_scraped_text
+from app.shared.infra.search.readers.base import BaseReader
+from app.shared.infra.search.readers.common import build_error_page, fetch_url, normalize_read_text
 from app.shared.infra.search.types import ScrapedPage
 
 logger = structlog.get_logger(__name__)
 
 
-class TextScraper(BaseScraper):
-    aliases = ("txt", "text", "md", "markdown")
+class TextReader(BaseReader):
+    canonical_name = "text"
+    aliases = ("txt", "md", "markdown", "rst")
     priority = 80
-
-    @property
-    def name(self) -> str:
-        return "text"
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
@@ -28,24 +25,21 @@ class TextScraper(BaseScraper):
             return True
         return any(marker in normalized for marker in (".txt?", ".text?", ".md?", ".markdown?", ".rst?"))
 
-    async def scrape(self, url: str) -> ScrapedPage:
+    async def read(self, url: str) -> ScrapedPage:
         try:
             response = await fetch_url(url)
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("text_scrape_failed", url=url, error=str(exc))
+            logger.warning("text_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type="text/plain", reader_name=self.name)
 
         content_type = "text/markdown" if url.lower().endswith((".md", ".markdown", ".rst")) else "text/plain"
         return ScrapedPage(
             url=url,
             title="",
-            content=normalize_scraped_text(response.text),
+            content=normalize_read_text(response.text),
             content_type=content_type,
             reader_name=self.name,
         )
 
 
-__all__ = ["TextScraper"]
-
-
-
+__all__ = ["TextReader"]

@@ -1,16 +1,16 @@
-﻿"""DOCX reader using ZIP/XML parsing from the remote payload."""
+"""DOCX reader using ZIP/XML parsing from the remote payload."""
 
 from __future__ import annotations
 
 import structlog
 
-from app.shared.infra.search.readers.base import BaseScraper
+from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.readers.common import (
     build_error_page,
     extract_core_title,
     extract_paragraphs_from_xml,
     fetch_url,
-    normalize_scraped_text,
+    normalize_read_text,
     open_zip_archive,
 )
 from app.shared.infra.search.types import ScrapedPage
@@ -37,16 +37,13 @@ def extract_docx_text(payload: bytes) -> tuple[str, str]:
                     )
             except KeyError:
                 continue
-        return title, normalize_scraped_text("\n\n".join(paragraphs))
+        return title, normalize_read_text("\n\n".join(paragraphs))
 
 
-class DOCXScraper(BaseScraper):
-    aliases = ("docx",)
+class DOCXReader(BaseReader):
+    canonical_name = "docx"
+    aliases = ("word",)
     priority = 95
-
-    @property
-    def name(self) -> str:
-        return "docx"
 
     @classmethod
     def supports_url(cls, url: str) -> bool:
@@ -55,12 +52,12 @@ class DOCXScraper(BaseScraper):
             return False
         return normalized.endswith(".docx") or ".docx?" in normalized
 
-    async def scrape(self, url: str) -> ScrapedPage:
+    async def read(self, url: str) -> ScrapedPage:
         content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         try:
             response = await fetch_url(url)
         except Exception as exc:  # pragma: no cover - network/provider behavior
-            logger.warning("docx_scrape_failed", url=url, error=str(exc))
+            logger.warning("docx_read_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type=content_type, reader_name=self.name)
 
         try:
@@ -78,7 +75,4 @@ class DOCXScraper(BaseScraper):
         )
 
 
-__all__ = ["DOCXScraper", "extract_docx_text"]
-
-
-
+__all__ = ["DOCXReader", "extract_docx_text"]

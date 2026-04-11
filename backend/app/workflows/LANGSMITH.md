@@ -33,7 +33,7 @@ API / Service 调用
     │   └── [runtime span] workflow_runtime.docgen.research   ← BaseTracedExecution.run
     │       ├── [llm span] generate_sub_queries     ← acompletion_with_fallback
     │       ├── [retriever calls]                   ← 各 retriever 的调用
-    │       ├── [scraper calls]                     ← scrape_urls
+    │       ├── [reader calls]                      ← read_urls
     │       ├── [runtime metadata] research_rounds  ← round/gap/coverage 在 runtime metadata 中展开
     │       └── [llm span] purify_material          ← 可选的 LLM 精炼
     │
@@ -174,7 +174,7 @@ API / Service 调用
 | `metadata_keys` | result.metadata 的所有 key 列表 |
 | `local_hits` / `web_hits` | 本地/外部命中数 |
 | `query_count` | 执行的查询数 |
-| `scraped_url_count` | 抓取的 URL 数 |
+| `read_url_count` | 读取的 URL 数 |
 | `document_count` | 处理的文档数 |
 | `research_round_count` | research 微循环轮次数 |
 | `curated_source_count` | 筛选后的来源数 |
@@ -379,7 +379,7 @@ Research Runtime 的完整 metadata 输出（写入 `TracedExecutionResult.metad
 
 ```
 local_hits, web_hits, query_count, base_queries, planned_queries,
-fallback_queries, fallback_used, executed_queries, scraped_url_count,
+fallback_queries, fallback_used, executed_queries, read_url_count,
 document_count, requested_profile, applied_profile,
 requested_retrieval_profile, applied_retrieval_profile, configured_retrievers,
 active_retrievers, compression_mode, purify_used, curated_source_count,

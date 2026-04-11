@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.tools.builtin.web_scraping import scrape_urls
+from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.runtime import DocGenResearchRuntime
 from app.workflows.digest.docgen.runtime.query_planning import ResearchSubQueryPlan, generate_sub_queries
@@ -25,12 +25,12 @@ class FakeRetriever:
         return list(self.results[:max_results])
 
 
-class FakeScraper:
+class FakeReader:
     def __init__(self, pages: dict[str, ScrapedPage]) -> None:
         self.pages = pages
         self.calls: list[str] = []
 
-    async def traced_scrape(self, url: str) -> ScrapedPage:
+    async def traced_read(self, url: str) -> ScrapedPage:
         self.calls.append(url)
         return self.pages[url]
 
@@ -114,8 +114,8 @@ def test_generate_sub_queries_prefers_structured_result_and_dedupes() -> None:
     ]
 
 
-def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
-    html_scraper = FakeScraper(
+def test_read_urls_dedupes_and_keeps_url_order() -> None:
+    html_reader = FakeReader(
         {
             "https://example.com/a": ScrapedPage(url="https://example.com/a", title="A", content="Alpha", success=True),
             "https://example.com/b": ScrapedPage(url="https://example.com/b", title="B", content="Beta", success=True),
@@ -123,11 +123,11 @@ def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
     )
 
     with patch(
-        "app.shared.infra.tools.builtin.web_scraping.get_scraper_for_url",
-        new=lambda _url: html_scraper,
+        "app.shared.infra.tools.builtin.web_reading.get_reader_for_url",
+        new=lambda _url: html_reader,
     ):
         pages = asyncio.run(
-            scrape_urls(
+            read_urls(
                 [
                     "https://example.com/a",
                     "https://example.com/a",
@@ -141,7 +141,7 @@ def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
         "https://example.com/a",
         "https://example.com/b",
     ]
-    assert html_scraper.calls == [
+    assert html_reader.calls == [
         "https://example.com/a",
         "https://example.com/b",
     ]
@@ -235,7 +235,7 @@ def test_research_conductor_applies_retrieval_profile_to_factory() -> None:
     assert result.metadata["active_retrievers"] == ["local_rag", "semantic_scholar"]
 
 
-def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
+def test_research_conductor_falls_back_to_web_reading_and_purifies() -> None:
     local_retriever = FakeRetriever(
         name="local_rag",
         results=[SearchResult(url="local://chunk/1", title="Definition", snippet="Rate of change along one axis", source="local_rag")],
@@ -248,7 +248,7 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
             SearchResult(url="https://example.com/proof", title="Worked example", snippet="example and solution", source="duckduckgo"),
         ],
     )
-    scraper = FakeScraper(
+    reader = FakeReader(
         {
             "https://example.com/math": ScrapedPage(
                 url="https://example.com/math",
@@ -268,9 +268,9 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    async def fake_scrape_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
         del max_workers
-        return [scraper.pages[url] for url in urls]
+        return [reader.pages[url] for url in urls]
 
     with patch("app.workflows.digest.docgen.runtime.research.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
         "app.workflows.digest.docgen.runtime.research.get_retrievers_for_subject",
@@ -279,8 +279,8 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
         "app.workflows.digest.docgen.runtime.research.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.runtime.research.scrape_urls",
-        new=fake_scrape_urls,
+        "app.workflows.digest.docgen.runtime.research.read_urls",
+        new=fake_read_urls,
     ):
         result = asyncio.run(
             skill.run(
@@ -296,7 +296,7 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     assert result.content == "Purified research notes"
     assert result.metadata["fallback_used"] is True
     assert result.metadata["purify_used"] is True
-    assert result.metadata["scraped_url_count"] == 1
+    assert result.metadata["read_url_count"] == 1
     assert result.metadata["executed_queries"][0] == "partial derivative geometric meaning"
     assert result.metadata["research_round_count"] >= 1
     assert result.metadata["retriever_stats"]["local_rag"]["query_count"] >= 1
@@ -335,7 +335,7 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    async def fake_scrape_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
         del max_workers
         return [
             ScrapedPage(
@@ -354,8 +354,8 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
         "app.workflows.digest.docgen.runtime.research.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.runtime.research.scrape_urls",
-        new=fake_scrape_urls,
+        "app.workflows.digest.docgen.runtime.research.read_urls",
+        new=fake_read_urls,
     ):
         result = asyncio.run(
             skill.run(

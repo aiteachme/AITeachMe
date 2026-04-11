@@ -27,7 +27,7 @@ API / service request
     │   ├── workflow runtime span
     │   │   ├── research_round span
     │   │   ├── retriever span
-    │   │   ├── scraper span
+    │   │   ├── reader span
     │   │   └── llm span
     │   └── direct llm span
     └── publish / asset / eval span
@@ -161,7 +161,7 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 
 ---
 
-## 10.6 Workflow Runtime / Retriever / Scraper 的 metadata
+## 10.6 Workflow Runtime / Retriever / Reader 的 metadata
 
 ### Workflow runtime
 
@@ -187,11 +187,11 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `result_count`
 - `latency_ms`
 
-### Scraper
+### Reader
 
 至少带：
 
-- `scraper_name`
+- `reader_name`
 - `url`
 - `content_kind`
 - `success`

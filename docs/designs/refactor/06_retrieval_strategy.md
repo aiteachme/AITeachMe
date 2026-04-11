@@ -324,7 +324,7 @@ seed_queries
 至少缓存三类对象：
 
 - `(query, profile, retriever)` 的检索结果
-- `(url, scraper_kind)` 的抓取结果
+- `(url, reader_kind)` 的读取结果
 - `(query, focus_terms, compression_budget)` 的压缩结果
 
 原因：

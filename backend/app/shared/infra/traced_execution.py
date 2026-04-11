@@ -167,7 +167,7 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "local_hits",
         "web_hits",
         "query_count",
-        "scraped_url_count",
+        "read_url_count",
         "document_count",
         "research_round_count",
         "candidate_count",

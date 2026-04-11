@@ -243,7 +243,7 @@ def build_docgen_lane_summary(
         teaching_actions = [str(state.get("teaching_action") or "").strip()]
     planned_query_count = sum(len(chapter.get("planned_queries", []) or []) for chapter in chapter_materials)
     executed_query_count = sum(len(chapter.get("executed_queries", []) or []) for chapter in chapter_materials)
-    scraped_url_count = sum(int(chapter.get("scraped_url_count", 0) or 0) for chapter in chapter_materials)
+    read_url_count = sum(int(chapter.get("read_url_count", 0) or 0) for chapter in chapter_materials)
     research_document_count = sum(int(chapter.get("document_count", 0) or 0) for chapter in chapter_materials)
     purify_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("purify_used", False)))
     retriever_names = sorted(
@@ -396,7 +396,7 @@ def build_docgen_lane_summary(
         "applied_retrieval_profiles": applied_retrieval_profiles,
         "planned_query_count": planned_query_count,
         "executed_query_count": executed_query_count,
-        "scraped_url_count": scraped_url_count,
+        "read_url_count": read_url_count,
         "research_document_count": research_document_count,
         "purify_chapter_count": purify_chapter_count,
         "research_rounds": research_rounds,

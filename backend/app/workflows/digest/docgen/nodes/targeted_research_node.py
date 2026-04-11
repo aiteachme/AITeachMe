@@ -154,7 +154,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "planned_queries": list(result.metadata.get("planned_queries", [])),
             "fallback_queries": list(result.metadata.get("fallback_queries", [])),
             "query_count": int(result.metadata.get("query_count", 0) or 0),
-            "scraped_url_count": int(result.metadata.get("scraped_url_count", 0) or 0),
+            "read_url_count": int(result.metadata.get("read_url_count", 0) or 0),
             "document_count": int(result.metadata.get("document_count", 0) or 0),
             "purify_used": bool(result.metadata.get("purify_used", False)),
             "curated_source_count": int(result.metadata.get("curated_source_count", 0)),

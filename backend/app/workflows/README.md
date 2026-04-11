@@ -1,14 +1,13 @@
 # Workflows 分层说明
 
 `backend/app/workflows/` 是业务编排层。
-
-这里既放 LangGraph graph/state/router，也放业务专属的 workflow-local runtime 或 subgraph。长期不再把这类逻辑塞回 `shared/infra` 根目录。
+这里承载 LangGraph 的 graph/state/router，也承载各工作流自己的 workflow-local runtime 与必要的 subgraph。
 
 ## 长期定位
 
 - `workflows` 负责“这轮流程怎么跑”。
-- `workflows/.../runtime` 负责 workflow 专属多步逻辑。
-- `runtime` 这个命名保留给 workflow 业务运行单元，不在 `shared/infra` 里再建同名总入口。
+- `workflows/.../runtime` 负责 workflow 专属的多步执行单元。
+- `runtime` 这个命名只保留给 workflow 业务运行单元，不再回流到 `shared/infra` 根目录。
 - 需要独立状态、可视化、可中断、可持久化的内部流程，优先做成 subgraph。
 
 ## 这一层应该放什么
@@ -26,37 +25,38 @@
 - teaching 章节脚手架本体。
 - 第二套基础设施 helper。
 
-## Digest 的当前基线
+## Digest 当前骨架
 
-DocGen 顶层骨架保持不变：
+DocGen 顶层主链保持清晰稳定：
 
 ```text
 load_context
--> research
--> write
--> enrich
--> examine
+-> targeted_research
+-> resolve_titles
+-> pedagogy_craft
+-> enrich_document
+-> inject_examine
 -> finalize
 ```
 
-但 ownership 已经调整：
+其中：
 
 - `workflows/digest/docgen/runtime/research.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 
-这些是 Digest DocGen 专属 runtime。
+都是 Digest DocGen 的 workflow-local runtime，不应再回流到 `infra` 或 `teaching`。
 
-## LangSmith / LangGraph 约束
+## LangSmith / LangGraph 纪律
 
 - workflow node 名称必须直接表达业务语义。
-- workflow-local runtime 的 trace 命名必须落在 `workflow_runtime.*`，不要继续伪装成 infra orchestration。
-- trace 里必须能看见 planner session、confirmed plan、digest mode、retrieval profile、teaching action。
-- graph 结构要让后续优化人员一眼看懂“主骨架”和“章节并发骨架”。
+- workflow-local runtime 的 trace 命名必须落在 `workflow_runtime.*`，不要伪装成 infra orchestration。
+- trace 中必须能看见 planner session、confirmed plan、digest mode、retrieval profile、teaching action。
+- graph 拓扑要让后续优化人员一眼看懂主骨架和章节并发骨架。
 
 ## 判断标准
 
-- 如果逻辑离开当前 workflow 仍然合理，优先回 `infra`。
-- 如果逻辑是“这轮流程的多步运行单元”，放 `workflows/.../runtime`。
+- 如果逻辑离开当前 workflow 仍然成立，优先回 `infra`。
+- 如果逻辑是“这轮流程里的多步业务执行单元”，放 `workflows/.../runtime`。
 - 如果逻辑是“这一批提示词文本和组装规则”，放 `workflows/.../prompts`。
-- 如果逻辑需要单独图结构和状态可视化，升级成 subgraph。
+- 如果逻辑需要独立图结构和状态可视化，升级成 subgraph。

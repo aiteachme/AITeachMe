@@ -1,9 +1,9 @@
-﻿import io
+import io
 import zipfile
 
-from app.shared.infra.search.readers.common import normalize_scraped_text
-from app.shared.infra.search.readers.docx_scraper import extract_docx_text
-from app.shared.infra.search.readers.pptx_scraper import extract_pptx_text
+from app.shared.infra.search.readers.common import normalize_read_text
+from app.shared.infra.search.readers.docx_reader import extract_docx_text
+from app.shared.infra.search.readers.pptx_reader import extract_pptx_text
 
 
 def _build_docx_payload() -> bytes:
@@ -84,9 +84,9 @@ def _build_pptx_payload() -> bytes:
     return buffer.getvalue()
 
 
-def test_normalize_scraped_text_collapses_whitespace() -> None:
+def test_normalize_read_text_collapses_whitespace() -> None:
     text = "第一行  \r\n\r\n\r\n第二行\t\t内容"
-    assert normalize_scraped_text(text) == "第一行\n\n第二行 内容"
+    assert normalize_read_text(text) == "第一行\n\n第二行 内容"
 
 
 def test_extract_docx_text_reads_core_title_and_paragraphs() -> None:
@@ -104,4 +104,3 @@ def test_extract_pptx_text_reads_slides_in_order() -> None:
     assert "重点题型" in content
     assert "Slide 2" in content
     assert "导数的定义" in content
-

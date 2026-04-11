@@ -308,7 +308,7 @@ def _node_trace_outputs(result: Mapping[str, Any], *, elapsed_ms: int) -> dict[s
         outputs["trusted_source_count"] = sum(int(item.get("trusted_source_count", 0) or 0) for item in chapter_materials)
         outputs["planned_query_count"] = sum(len(item.get("planned_queries", []) or []) for item in chapter_materials)
         outputs["executed_query_count"] = sum(len(item.get("executed_queries", []) or []) for item in chapter_materials)
-        outputs["scraped_url_count"] = sum(int(item.get("scraped_url_count", 0) or 0) for item in chapter_materials)
+        outputs["read_url_count"] = sum(int(item.get("read_url_count", 0) or 0) for item in chapter_materials)
         outputs["document_count"] = sum(int(item.get("document_count", 0) or 0) for item in chapter_materials)
         retriever_names = sorted(
             {
