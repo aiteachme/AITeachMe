@@ -1,4 +1,4 @@
-"""Workflow-local research runtime for digest DocGen."""
+"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -52,14 +52,14 @@ _MODE_RESEARCH_STRATEGIES = {
 }
 
 
-class DocGenResearchRuntime(BaseTracedExecution):
+class DocGenChapterContextRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
         return "workflow_runtime.docgen"
 
     @property
     def trace_name(self) -> str:
-        return "research"
+        return "chapter_context"
 
     async def execute(
         self,
@@ -646,4 +646,4 @@ class DocGenResearchRuntime(BaseTracedExecution):
         return re.sub(r"\s+", "", str(value or "").strip()).casefold()
 
 
-__all__ = ["DocGenResearchRuntime"]
+__all__ = ["DocGenChapterContextRuntime"]

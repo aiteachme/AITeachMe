@@ -63,13 +63,15 @@ router = APIRouter(prefix="/api/v1/subjects/{subject}/knowledge", tags=["knowled
 
 
 def _planner_status_detail(payload: dict[str, object]) -> str:
-    node_name = str(payload.get("node_name") or "").strip()
-    elapsed_ms = int(payload.get("elapsed_ms", 0) or 0)
+    step = str(payload.get("step") or "").strip()
+    message = str(payload.get("message") or "").strip()
     status = str(payload.get("status") or "ok").strip() or "ok"
-    if node_name:
+    if message:
+        return message
+    if step:
         if status == "failed":
-            return f"{node_name} 失败，耗时 {elapsed_ms} ms。"
-        return f"{node_name} 完成，耗时 {elapsed_ms} ms。"
+            return f"{step} 失败。"
+        return f"{step} 已完成。"
     return "正在生成构建方案。"
 
 
@@ -95,8 +97,8 @@ def _planner_stream_response(
                     "status",
                     {
                         **payload,
-                        "stage": str(payload.get("node_name") or "node"),
-                        "detail": str(payload.get("detail") or "").strip() or _planner_status_detail(payload),
+                        "stage": str(payload.get("step") or payload.get("phase") or "planner"),
+                        "detail": _planner_status_detail(payload),
                     },
                 )
 
@@ -110,12 +112,12 @@ def _planner_stream_response(
                 {
                     "stage": "completed",
                     "detail": (
-                        f"方案生成完成，总耗时 {runtime_stats.workflow_elapsed_ms} ms。"
+                        f"方案生成完成，总耗时 {runtime_stats.elapsed_ms} ms。"
                         if runtime_stats is not None
                         else "方案生成完成。"
                     ),
-                    "workflow_elapsed_ms": (
-                        int(runtime_stats.workflow_elapsed_ms)
+                    "elapsed_ms": (
+                        int(runtime_stats.elapsed_ms)
                         if runtime_stats is not None
                         else 0
                     ),

@@ -11,7 +11,7 @@ import structlog
 from app.shared.infra.config import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.tracing import get_tracker
-from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common.observability import traced_workflow_node, wrap_workflow_node
 
 logger = structlog.get_logger(__name__)
 
@@ -641,6 +641,8 @@ def wrap_digest_node(
     workflow_name: str,
     lane: str,
     node_name: str,
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
     timing_field: str | None = None,
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
     """Wrap a digest node with the shared lightweight LangSmith wrapper."""
@@ -650,6 +652,29 @@ def wrap_digest_node(
         workflow_name=workflow_name,
         lane=lane,
         node_name=node_name,
+        input_keys=input_keys,
+        output_keys=output_keys,
+        timing_field=timing_field,
+    )
+
+
+def traced_digest_node(
+    *,
+    workflow_name: str,
+    lane: str,
+    node_name: str,
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+):
+    """Decorator form of ``wrap_digest_node`` for digest LangGraph nodes."""
+
+    return traced_workflow_node(
+        workflow=workflow_name,
+        lane=lane,
+        name=node_name,
+        input_keys=input_keys,
+        output_keys=output_keys,
         timing_field=timing_field,
     )
 

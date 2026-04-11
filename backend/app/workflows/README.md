@@ -41,7 +41,7 @@ load_context
 
 但 ownership 已经调整：
 
-- `workflows/digest/docgen/runtime/research.py`
+- `workflows/digest/docgen/runtime/chapter_context.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 
@@ -53,6 +53,14 @@ load_context
 - workflow-local runtime 的 trace 命名必须落在 `workflow_runtime.*`，不要继续伪装成 infra orchestration。
 - trace 里必须能看见 planner session、confirmed plan、digest mode、retrieval profile、teaching action。
 - graph 结构要让后续优化人员一眼看懂“主骨架”和“章节并发骨架”。
+
+更具体的现行约定见 [`LANGSMITH.md`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/LANGSMITH.md)。
+
+协同开发时可以直接记住这 3 个入口：
+
+- LangGraph 节点: `@traced_workflow_node(...)` / `@traced_digest_node(...)`
+- 节点内部关键步骤: `async with tracked_step(...)`
+- 独立工具或 service: `@traceable`
 
 ## 判断标准
 

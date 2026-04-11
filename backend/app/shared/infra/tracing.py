@@ -536,6 +536,33 @@ def langsmith_trace(
             yield run
 
 
+@contextmanager
+def trace_substep(
+    name: str,
+    *,
+    metadata: Mapping[str, Any] | None = None,
+    tags: list[str] | None = None,
+    run_type: str = "tool",
+    inputs: Mapping[str, Any] | None = None,
+) -> Iterator[Any | None]:
+    """Create one nested substep span from the ambient workflow trace context."""
+
+    context = get_llm_trace_context()
+    with langsmith_trace(
+        name=name,
+        run_type=run_type,
+        inputs=dict(inputs or {}),
+        subject=context.subject,
+        build_session_id=context.build_session_id,
+        workflow=context.workflow,
+        lane=context.lane,
+        node=context.node,
+        extra_metadata={"substep": name, **dict(metadata or {})},
+        extra_tags=[f"substep:{name}", *(tags or [])],
+    ) as run:
+        yield run
+
+
 def get_llm_trace_context() -> LLMTraceContext:
     """Return the current ambient LLM trace context."""
 

@@ -31,10 +31,10 @@ from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
-    BuildPlannerNodeTimingResponse,
     BuildPlannerPlanResponse,
     BuildPlannerRuntimeStatsResponse,
     BuildPlannerSessionResponse,
+    BuildPlannerStepStatsResponse,
     BuildPlannerTurnResponse,
 )
 from app.shared.infra.exceptions import (
@@ -154,31 +154,22 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     if not isinstance(final_state, dict):
         return None
 
-    node_timings_raw = final_state.get("node_timings_ms") or {}
-    node_timings_ms = {
-        str(key): int(value)
-        for key, value in dict(node_timings_raw).items()
-        if value not in (None, "")
-    } if isinstance(node_timings_raw, dict) else {}
-
-    node_events: list[BuildPlannerNodeTimingResponse] = []
-    for item in list(final_state.get("node_events") or []):
+    steps: list[BuildPlannerStepStatsResponse] = []
+    for item in list(final_state.get("runtime_steps") or []):
         if not isinstance(item, dict):
             continue
-        node_events.append(
-            BuildPlannerNodeTimingResponse(
-                node_name=str(item.get("node_name") or ""),
-                lane=str(item.get("lane") or "planner"),
-                workflow=str(item.get("workflow") or "digest.planner"),
+        steps.append(
+            BuildPlannerStepStatsResponse(
+                name=str(item.get("name") or ""),
+                kind=str(item.get("kind") or "substep"),
                 elapsed_ms=int(item.get("elapsed_ms", 0) or 0),
                 status=str(item.get("status") or "ok"),
             )
         )
 
     return BuildPlannerRuntimeStatsResponse(
-        workflow_elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
-        node_timings_ms=node_timings_ms,
-        node_events=node_events,
+        elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
+        steps=steps,
         fallback_used=bool(final_state.get("fallback_used", False)),
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
@@ -196,8 +187,8 @@ def _log_planner_runtime(
         "planner_runtime_summary",
         subject=subject,
         planner_session_id=session_id,
-        workflow_elapsed_ms=runtime_stats.workflow_elapsed_ms,
-        node_timings_ms=runtime_stats.node_timings_ms,
+        elapsed_ms=runtime_stats.elapsed_ms,
+        steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
         fallback_used=runtime_stats.fallback_used,
         generation_mode=runtime_stats.generation_mode,
     )

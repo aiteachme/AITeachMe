@@ -126,7 +126,7 @@ class BaseTracedExecution(ABC):
         with langsmith_trace(
             name=node,
             run_type="chain",
-            inputs=kwargs,
+            inputs=_traced_execution_inputs(kwargs),
             subject=self.context.subject,
             build_session_id=self.context.build_session_id,
             workflow=workflow_name,
@@ -158,26 +158,20 @@ class BaseTracedExecution(ABC):
 
 def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
     outputs: dict[str, Any] = {
+        "status": "ok",
         "content_length": len(result.content),
         "source_count": len(result.sources),
         "image_count": len(result.images),
-        "metadata_keys": sorted(result.metadata.keys()),
     }
     for field_name in (
         "local_hits",
         "web_hits",
         "query_count",
-        "scraped_url_count",
         "document_count",
-        "research_round_count",
         "candidate_count",
-        "filtered_count",
         "selected_count",
         "curated_source_count",
         "trusted_source_count",
-        "local_source_count",
-        "web_source_count",
-        "unique_domain_count",
     ):
         value = result.metadata.get(field_name)
         if value not in (None, "", [], {}):
@@ -202,31 +196,38 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
     quality_score = result.metadata.get("quality_score")
     if quality_score not in (None, ""):
         outputs["quality_score"] = float(quality_score)
-    gaps_remaining = result.metadata.get("gaps_remaining")
-    if isinstance(gaps_remaining, list):
-        outputs["gap_count"] = len([item for item in gaps_remaining if str(item).strip()])
-    source_class_breakdown = result.metadata.get("source_class_breakdown")
-    if isinstance(source_class_breakdown, Mapping) and source_class_breakdown:
-        outputs["source_class_breakdown"] = dict(source_class_breakdown)
-    retriever_stats = result.metadata.get("retriever_stats")
-    if isinstance(retriever_stats, Mapping) and retriever_stats:
-        outputs["retriever_names"] = sorted(str(name) for name in retriever_stats.keys())
-        outputs["retriever_call_count"] = sum(
-            int((stats or {}).get("query_count", 0) or 0)
-            for stats in retriever_stats.values()
-            if isinstance(stats, Mapping)
-        )
-    configured_retrievers = result.metadata.get("configured_retrievers")
-    if isinstance(configured_retrievers, list):
-        outputs["configured_retriever_count"] = len(
-            [name for name in configured_retrievers if str(name).strip()]
-        )
-    active_retrievers = result.metadata.get("active_retrievers")
-    if isinstance(active_retrievers, list):
-        outputs["active_retriever_count"] = len(
-            [name for name in active_retrievers if str(name).strip()]
-        )
     return outputs
+
+
+def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    inputs: dict[str, Any] = {
+        "input_keys": sorted(str(key) for key in kwargs.keys()),
+    }
+
+    chapter_plan = kwargs.get("chapter_plan")
+    if isinstance(chapter_plan, Mapping):
+        chapter_index = chapter_plan.get("chapter_index")
+        title = str(chapter_plan.get("title") or "").strip()
+        if chapter_index not in (None, ""):
+            inputs["chapter_index"] = int(chapter_index)
+        if title:
+            inputs["chapter_title"] = title
+
+    for field_name in ("digest_mode", "tone", "template_kind", "asset_kind"):
+        value = kwargs.get(field_name)
+        if value not in (None, "", [], {}):
+            inputs[field_name] = value
+
+    for field_name, alias in (
+        ("sources", "source_count"),
+        ("images", "image_count"),
+        ("gaps_remaining", "gap_count"),
+    ):
+        value = kwargs.get(field_name)
+        if isinstance(value, list) and value:
+            inputs[alias] = len(value)
+
+    return inputs
 
 __all__ = [
     "BaseTracedExecution",

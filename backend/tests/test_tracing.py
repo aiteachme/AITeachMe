@@ -13,6 +13,9 @@ from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trac
 from app.shared.infra import tracing as tracing_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
 from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
+from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common import runtime_stats as runtime_stats_module
+from app.workflows.common.runtime_stats import emit_progress, record_step_end, record_step_start, tracked_step
 
 
 @pytest.fixture(autouse=True)
@@ -250,3 +253,136 @@ def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
     assert captured["node"] == "workflow_runtime.docgen.writer"
 
 
+def test_wrap_workflow_node_keeps_result_thin() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    wrapped = wrap_workflow_node(
+        handler,
+        workflow_name="digest.planner",
+        lane="planner",
+        node_name="test_node",
+    )
+    result = asyncio.run(
+        wrapped(
+            {
+                "subject": "demo",
+                "node_events": [{"name": "legacy"}],
+                "node_timings_ms": {"legacy": 1},
+            }
+        )
+    )
+
+    assert result == {"ok": True}
+    assert "node_events" not in result
+    assert "node_timings_ms" not in result
+
+
+def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
+    payloads: list[dict[str, str]] = []
+
+    async def callback(payload):
+        payloads.append(payload)
+
+    state = {"progress_callback": callback}
+
+    record_step_start(state, name="load_context", kind="node")
+    elapsed_ms = record_step_end(state, name="load_context", kind="node")
+    asyncio.run(
+        emit_progress(
+            state,
+            phase="planner",
+            step="load_context",
+            status="completed",
+            message="已读取资料。",
+        )
+    )
+
+    assert elapsed_ms >= 0
+    assert state["runtime_steps"] == [
+        {
+            "name": "load_context",
+            "kind": "node",
+            "status": "ok",
+            "elapsed_ms": elapsed_ms,
+        }
+    ]
+    assert payloads == [
+        {
+            "phase": "planner",
+            "step": "load_context",
+            "status": "completed",
+            "message": "已读取资料。",
+        }
+    ]
+
+
+def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
+    payloads: list[dict[str, str]] = []
+    captured: dict[str, object] = {}
+
+    async def callback(payload):
+        payloads.append(payload)
+
+    class DummyRun:
+        def end(self, *, outputs):
+            captured["outputs"] = outputs
+
+    class DummyTraceContext:
+        def __enter__(self):
+            return DummyRun()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_trace_substep(name: str, **kwargs):
+        captured["name"] = name
+        captured["kwargs"] = kwargs
+        return DummyTraceContext()
+
+    monkeypatch.setattr(runtime_stats_module, "trace_substep", fake_trace_substep)
+
+    state = {"progress_callback": callback}
+
+    async def run_step() -> None:
+        async with tracked_step(
+            state,
+            name="prepare_shared_inputs",
+            kind="substep",
+            phase="planner",
+            running_message="开始读取资料",
+            completed_message="资料读取完成",
+            trace_metadata={"file_count": 2},
+            trace_inputs={"user_goal_present": True},
+        ) as step:
+            step.set_outputs(source_packet_count=3)
+
+    asyncio.run(run_step())
+
+    assert state["runtime_steps"][0]["name"] == "prepare_shared_inputs"
+    assert state["runtime_steps"][0]["kind"] == "substep"
+    assert state["runtime_steps"][0]["status"] == "ok"
+    assert captured["name"] == "prepare_shared_inputs"
+    assert captured["kwargs"] == {
+        "metadata": {"file_count": 2},
+        "tags": None,
+        "run_type": "tool",
+        "inputs": {"user_goal_present": True},
+    }
+    assert captured["outputs"]["source_packet_count"] == 3
+    assert captured["outputs"]["status"] == "ok"
+    assert captured["outputs"]["elapsed_ms"] >= 0
+    assert payloads == [
+        {
+            "phase": "planner",
+            "step": "prepare_shared_inputs",
+            "status": "running",
+            "message": "开始读取资料",
+        },
+        {
+            "phase": "planner",
+            "step": "prepare_shared_inputs",
+            "status": "completed",
+            "message": "资料读取完成",
+        },
+    ]

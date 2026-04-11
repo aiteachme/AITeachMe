@@ -288,22 +288,16 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
         "plan": plan,
         "plan_summary": plan["plan_summary"],
         "workflow_elapsed_ms": 345,
-        "node_timings_ms": {
-            "load_context": 32,
-            "draft_plan": 280,
-        },
-        "node_events": [
+        "runtime_steps": [
             {
-                "node_name": "load_context",
-                "lane": "planner",
-                "workflow": "digest.planner",
+                "name": "load_context",
+                "kind": "node",
                 "elapsed_ms": 32,
                 "status": "ok",
             },
             {
-                "node_name": "draft_plan",
-                "lane": "planner",
-                "workflow": "digest.planner",
+                "name": "draft_plan",
+                "kind": "node",
                 "elapsed_ms": 280,
                 "status": "ok",
             },
@@ -326,11 +320,13 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
         )
 
     assert response.runtime_stats is not None
-    assert response.runtime_stats.workflow_elapsed_ms == 345
-    assert response.runtime_stats.node_timings_ms["load_context"] == 32
-    assert response.runtime_stats.node_timings_ms["draft_plan"] == 280
+    assert response.runtime_stats.elapsed_ms == 345
+    assert response.runtime_stats.steps[0].name == "load_context"
+    assert response.runtime_stats.steps[0].elapsed_ms == 32
+    assert response.runtime_stats.steps[1].name == "draft_plan"
+    assert response.runtime_stats.steps[1].elapsed_ms == 280
     assert response.runtime_stats.generation_mode == "stream_plaintext"
-    assert [event.node_name for event in response.runtime_stats.node_events] == [
+    assert [step.name for step in response.runtime_stats.steps] == [
         "load_context",
         "draft_plan",
     ]

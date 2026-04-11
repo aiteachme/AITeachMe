@@ -13,6 +13,7 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import SearchResult
 from app.teaching.runtime_config import get_teaching_runtime_config
+from app.workflows.common.runtime_stats import tracked_step
 from app.workflows.digest.planner.models import _resolve_subject_display_name
 from app.workflows.digest.shared.models import SharedInputs
 
@@ -233,7 +234,6 @@ async def collect_planner_concept_briefing(
     shared_inputs: SharedInputs,
     latest_plan: dict[str, Any] | None = None,
 ) -> PlannerConceptBriefing:
-    settings = get_settings()
     queries = build_planner_concept_queries(
         subject=subject,
         user_goal=user_goal,
@@ -246,35 +246,57 @@ async def collect_planner_concept_briefing(
         )
 
     local_sections = list(shared_inputs.section_packets)
-    local_tasks = [
-        _safe_search(
-            "local_rag",
-            query=query,
-            subject=subject,
-            local_sections=local_sections,
-            max_results=2,
+    async with tracked_step(
+        None,
+        name="local_retrieval",
+        kind="substep",
+        trace_metadata={"retriever": "local_rag"},
+        trace_inputs={"query_count": len(queries)},
+    ) as step:
+        local_tasks = [
+            _safe_search(
+                "local_rag",
+                query=query,
+                subject=subject,
+                local_sections=local_sections,
+                max_results=2,
+            )
+            for query in queries
+        ]
+        local_results = await asyncio.gather(*local_tasks)
+        step.set_outputs(
+            query_count=len(queries),
+            result_count=sum(len(items) for items in local_results),
         )
-        for query in queries
-    ]
-    local_results = await asyncio.gather(*local_tasks)
 
     external_queries = [f"{query} 百科 定义" for query in queries[:2]]
     external_retrievers = _resolve_external_retriever_names()
     external_results: list[list[SearchResult]] = [[] for _ in external_queries]
     if external_queries and external_retrievers:
-        for index, query in enumerate(external_queries):
-            hits: list[SearchResult] = []
-            for retriever_name in external_retrievers:
-                hits = await _safe_search(
-                    retriever_name,
-                    query=query,
-                    subject=subject,
-                    local_sections=local_sections,
-                    max_results=2,
-                )
-                if hits:
-                    break
-            external_results[index] = hits
+        async with tracked_step(
+            None,
+            name="web_retrieval",
+            kind="substep",
+            trace_metadata={"retriever_candidates": external_retrievers},
+            trace_inputs={"query_count": len(external_queries)},
+        ) as step:
+            for index, query in enumerate(external_queries):
+                hits: list[SearchResult] = []
+                for retriever_name in external_retrievers:
+                    hits = await _safe_search(
+                        retriever_name,
+                        query=query,
+                        subject=subject,
+                        local_sections=local_sections,
+                        max_results=2,
+                    )
+                    if hits:
+                        break
+                external_results[index] = hits
+            step.set_outputs(
+                query_count=len(external_queries),
+                result_count=sum(len(items) for items in external_results),
+            )
 
     display_subject = _resolve_subject_display_name(
         subject,
