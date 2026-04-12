@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-09T18:31:33.951726",
-  "total_commits_analyzed": 485,
+  "generated_at": "2026-04-11T10:57:07.380303",
+  "total_commits_analyzed": 493,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3881,6 +3881,70 @@
       "code_lines": 100146,
       "other_lines": 31345,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "57c9e51",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5f70a4e",
+      "total_lines": 129385,
+      "code_lines": 99343,
+      "other_lines": 30042,
+      "message": "refactor: 收口 infra 与 workflow runtime 分层边界"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "6e69f9d",
+      "total_lines": 129390,
+      "code_lines": 99346,
+      "other_lines": 30044,
+      "message": "chore: 添加openai.json"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "b9f470c",
+      "total_lines": 130369,
+      "code_lines": 99885,
+      "other_lines": 30484,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "aa67df4",
+      "total_lines": 130369,
+      "code_lines": 99885,
+      "other_lines": 30484,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "bcb93d5",
+      "total_lines": 129247,
+      "code_lines": 98865,
+      "other_lines": 30382,
+      "message": "feat: 恢复知识文档页完整工作区布局与右侧交互"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "c429c48",
+      "total_lines": 129550,
+      "code_lines": 99122,
+      "other_lines": 30428,
+      "message": "chore: 暂时改动回页面"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "b6ab60d",
+      "total_lines": 132310,
+      "code_lines": 101669,
+      "other_lines": 30641,
+      "message": "chore: 恢复正确的前端"
     }
   ]
 }
