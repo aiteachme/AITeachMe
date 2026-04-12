@@ -10,8 +10,12 @@ from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecuti
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.teaching.documents import ensure_chapter_learning_scaffold, resolve_effective_chapter_title
-from app.workflows.digest.prompts import build_docgen_writer_messages
+from app.teaching.documents import (
+    analyze_chapter_heading_quality,
+    ensure_chapter_learning_scaffold,
+    resolve_effective_chapter_title,
+)
+from app.workflows.digest.prompts import build_docgen_heading_repair_messages, build_docgen_writer_messages
 
 _PLACEHOLDER_TOKEN_MAP = {
     "mermaid": "[MERMAID:",
@@ -87,19 +91,59 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
             )
         except Exception:
-            markdown = self._fallback_markdown(title=title, objective=objective, dense_context=dense_context)
+            markdown = self._fallback_markdown(
+                title=title,
+                objective=objective,
+                dense_context=dense_context,
+                digest_mode=digest_mode,
+            )
 
         markdown = str(markdown).strip()
-        markdown = ensure_chapter_learning_scaffold(
+        heading_quality = analyze_chapter_heading_quality(
             markdown,
-            title=title,
-            objective=objective,
-            required_elements=required_elements,
             digest_mode=digest_mode,
-            source_count=source_count,
-            chapter_index=chapter_index,
-            chapter_count=chapter_count,
         )
+        heading_repair_applied = False
+        if bool(heading_quality.get("needs_agent_repair")):
+            repaired_markdown = await self._repair_heading_structure(
+                title=title,
+                objective=objective,
+                tone=tone,
+                digest_mode=digest_mode,
+                required_elements=required_elements,
+                writing_instructions=writing_instructions,
+                source_count=source_count,
+                markdown=markdown,
+                dense_context=dense_context,
+                chapter_index=chapter_index,
+                chapter_count=chapter_count,
+            )
+            if repaired_markdown:
+                markdown = repaired_markdown
+                heading_repair_applied = True
+                heading_quality = analyze_chapter_heading_quality(
+                    markdown,
+                    digest_mode=digest_mode,
+                )
+
+        scaffold_fallback_applied = False
+        if bool(heading_quality.get("needs_scaffold_fallback")):
+            markdown = ensure_chapter_learning_scaffold(
+                markdown,
+                title=title,
+                objective=objective,
+                required_elements=required_elements,
+                digest_mode=digest_mode,
+                source_count=source_count,
+                chapter_index=chapter_index,
+                chapter_count=chapter_count,
+            )
+            scaffold_fallback_applied = True
+            heading_quality = analyze_chapter_heading_quality(
+                markdown,
+                digest_mode=digest_mode,
+            )
+
         markdown = self._ensure_media_placeholders(
             markdown,
             media_hints=media_hints,
@@ -125,23 +169,76 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "repair_applied": bool(quality_summary.get("repair_applied", False)),
                 "repair_actions": list(quality_summary.get("repair_actions", []) or []),
                 "quality_summary": quality_summary,
+                "heading_repair_applied": heading_repair_applied,
+                "scaffold_fallback_applied": scaffold_fallback_applied,
+                "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
                 "selected_skillpacks": list(selected_skillpacks or []),
                 "recommended_tool_tags": recommended_tool_tags,
             },
         )
 
-    def _fallback_markdown(self, *, title: str, objective: str, dense_context: str) -> str:
+    def _fallback_markdown(self, *, title: str, objective: str, dense_context: str, digest_mode: str) -> str:
         body = dense_context.strip()[:5000] or "当前没有足够的外部研究素材，本章基于已确认的构建方案与现有知识进行整理。"
         summary_line = f"学习目标：{objective}" if objective else "学习目标：先理解本章最核心的知识主线。"
+        normalized_mode = str(digest_mode or "").strip().lower()
+        opening_heading = "## 这章先抓什么" if normalized_mode == "sprint" else "## 先搭好这章的主线"
+        recap_heading = "## 考前最后带走什么" if normalized_mode == "sprint" else "## 这章最终要带走什么"
         return (
             f"# {title}\n\n"
             f"> [!TIP]\n> {summary_line}\n\n"
-            "## 核心内容\n\n"
+            f"{opening_heading}\n\n"
             f"{body}\n\n"
-            "## 快速回顾\n\n"
+            f"{recap_heading}\n\n"
             "- 试着用一句话复述本章最重要的概念。\n"
             "- 把这个概念和一个具体例子或应用场景对应起来。\n"
         )
+
+    async def _repair_heading_structure(
+        self,
+        *,
+        title: str,
+        objective: str,
+        tone: str,
+        digest_mode: str,
+        required_elements: list[str],
+        writing_instructions: str,
+        source_count: int,
+        markdown: str,
+        dense_context: str,
+        chapter_index: int | None,
+        chapter_count: int | None,
+    ) -> str | None:
+        llm = self.context.resolve_llm_caller()
+        messages = build_docgen_heading_repair_messages(
+            title=title,
+            objective=objective,
+            tone=tone,
+            digest_mode=digest_mode,
+            required_elements=required_elements,
+            writing_instructions=writing_instructions,
+            source_count=source_count,
+            markdown=markdown,
+            dense_context=dense_context,
+            chapter_index=chapter_index,
+            chapter_count=chapter_count,
+        )
+        try:
+            repaired = await llm(
+                messages,
+                task_type=TaskType.DOCGEN_LIGHT,
+                tier="fast",
+                extra_metadata=self.context.trace_metadata(
+                    chapter_index=chapter_index,
+                    substep="heading_repair",
+                ),
+            )
+        except Exception:
+            return None
+
+        cleaned = str(repaired).strip()
+        if not cleaned:
+            return None
+        return cleaned
 
     def _ensure_media_placeholders(
         self,

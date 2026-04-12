@@ -34,8 +34,8 @@ def _build_mode_contract(
         return (
             "文档模式契约：这是冲刺型知识文档。"
             "必须写得抓重点、抓题型、抓易错点。"
-            "必须显式出现这些二级标题：`## 本章导读`、`## 核心抓手`、`## 题型拆解`、"
-            "`## 本章速记卡`、`## 易错提醒`、`## 快速回顾`。"
+            "必须覆盖这些教学模块：开篇导入、得分抓手、题型拆解、临考速记、易错辨析、最终回顾。"
+            "二级标题文案可以自行命名，优先写成自然、具体、像真实讲义的小标题，不要机械复用模板词。"
             "结尾不能空泛，必须便于考前快速复盘。"
             f"{chapter_specific}"
         )
@@ -47,8 +47,8 @@ def _build_mode_contract(
     return (
         "文档模式契约：这是系统型知识文档。"
         "必须重视定义、定理、推导、应用与章节之间的结构关系。"
-        "必须显式出现这些二级标题：`## 本章导读`、`## 前置知识`、`## 动机引入`、"
-        "`## 核心定义与定理`、`## 推理与应用`、`## 本章要点`。"
+        "必须覆盖这些教学模块：章节导入、前置知识、学习动机、关键定义/定理、推理到应用、章节回收。"
+        "二级标题文案可以自行命名，优先体现本章主题与知识主线，不要机械复用模板词。"
         "如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。"
         f"{extra}"
     )
@@ -120,7 +120,7 @@ def build_docgen_writer_messages(
 输出硬约束：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 二级标题必须服从模式契约，不能缺关键模块。
+3. 二级标题必须服从模式契约，覆盖关键模块，但标题文案可以自行命名，不要整章复制固定模板标题。
 4. 如果需要图示，请使用 `<!-- [MERMAID: 描述] -->` 或 `<!-- [IMAGE: 描述] -->` 占位。
 5. 如果执行合同要求交互块，请使用 `<!-- [INTERACTIVE: 描述] -->` 占位。
 6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
@@ -129,6 +129,67 @@ def build_docgen_writer_messages(
 
 研究材料：
 {dense_context[:14000]}
+""".strip()
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def build_docgen_heading_repair_messages(
+    *,
+    title: str,
+    objective: str,
+    tone: str,
+    digest_mode: str,
+    required_elements: list[str],
+    writing_instructions: str,
+    source_count: int,
+    markdown: str,
+    dense_context: str,
+    chapter_index: int | None = None,
+    chapter_count: int | None = None,
+) -> list[dict[str, str]]:
+    normalized_mode = _normalize_mode(digest_mode)
+    required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
+    tone_hint = _tone_hint(tone)
+    system_prompt = (
+        "你是 AITeachMe 的教学编辑助手。"
+        "你的任务不是重写整章主题，而是在保留原有内容价值和文风的前提下，修复章节的二级、三级标题与结构组织。"
+        "标题必须自然、具体、像真实中文讲义，不要使用模板化标题。"
+    )
+    user_prompt = f"""
+请把下面这一章 Markdown 修订成“标题和结构更清楚，但仍保持原有教学内容”的版本。
+章节标题：{title}
+学习目标：{objective or "把本章最核心的知识主线讲清楚"}
+文档模式：{normalized_mode}
+表达风格：{tone}
+必须覆盖：{required_text}
+可用来源数量：{source_count}
+额外写作要求：{writing_instructions or "保持教学导向，优先让结构更清楚"}
+章节位置：第 {chapter_index or 1} 章 / 共 {chapter_count or '?'} 章
+
+模式契约：
+{_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
+
+输出硬约束：
+1. 只输出修订后的完整中文 Markdown。
+2. 一级标题必须保持为 `# {title}`。
+3. 二级和三级标题由你重新命名，可以合并重复标题、改掉泛标题、补上缺失教学模块。
+4. 不要使用“本章导读”“快速回顾”“主题导入”“总结提升”“第 N 章”这类模板标题。
+5. 尽量保留已有正文、例子和公式，除非确实重复或跑题，不要大删内容。
+6. 如果结构不完整，可以补少量过渡句、总结句或提示句，但不要凭空编造来源事实。
+7. 如果涉及公式，继续使用 `$...$` 或 `$$...$$`。
+8. 如果需要图示占位，继续保留或补充 `<!-- [MERMAID: 描述] -->`、`<!-- [IMAGE: 描述] -->`、`<!-- [INTERACTIVE: 描述] -->`。
+
+风格提醒：
+{tone_hint}
+
+可参考但不要照抄的研究线索：
+{dense_context[:4000] or "暂无额外研究线索，请主要整理现有正文结构。"}
+
+当前 Markdown：
+{markdown[:14000]}
 """.strip()
     return [
         {"role": "system", "content": system_prompt},
@@ -189,9 +250,11 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 
 要求：
 1. 只返回 Mermaid 代码，不要解释，不要加 Markdown 代码块。
-2. 根节点必须是主题本身。
+2. 必须以 `mindmap` 开头，根节点必须是主题本身。
 3. 最多 3 层结构，保证清晰，不要过密。
-4. 节点文字优先用中文，体现概念关系、步骤关系或结构关系。
+4. 节点文字优先用中文短语，单个节点尽量控制在 4 到 12 个字。
+5. 不要在节点里放公式、HTML、Markdown 链接、代码符号、复杂括号嵌套，也不要混入 `graph/flowchart` 语法。
+6. 如果上下文噪声很多，优先保留最核心的 3 到 6 个概念节点，宁可简洁也不要产出脏 Mermaid。
 
 主题：{topic}
 上下文：{context[:3000]}
@@ -286,6 +349,7 @@ def build_docgen_gap_query_messages(
 
 
 __all__ = [
+    "build_docgen_heading_repair_messages",
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
     "build_docgen_sub_query_messages",

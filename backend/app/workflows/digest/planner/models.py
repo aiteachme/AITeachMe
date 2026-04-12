@@ -24,6 +24,28 @@ _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 _TOPIC_SPLIT_RE = re.compile(r"[，。；：,.!?！？/\n]")
+_GOAL_PREFIX_RE = re.compile(
+    r"^(?:请|请你|帮我|麻烦你|能不能|可以|想让你)?(?:再)?(?:详细)?(?:系统)?(?:完整)?"
+    r"(?:帮我)?(?:整理|梳理|总结|讲解|解释|复习|学习|掌握|冲刺|备考|准备|构建|生成|做|写)"
+    r"(?:一份|一下|下)?",
+)
+_GENERIC_TOPIC_MARKERS = (
+    "相关知识",
+    "知识点",
+    "知识文档",
+    "知识体系",
+    "学习资料",
+    "学习路径",
+    "课程内容",
+    "课程讲义",
+    "系统课",
+    "冲刺课",
+    "复习资料",
+    "整理一下",
+    "帮我整理",
+    "帮我梳理",
+    "总结一下",
+)
 
 
 class PlannerChapterPlan(BaseModel):
@@ -231,6 +253,75 @@ def _build_fallback_chapter_title(
     return clean_generated_chapter_title(f"{fallback_topic}：{angle.label}")
 
 
+def _title_key(value: str) -> str:
+    return clean_generated_chapter_title(value).casefold()
+
+
+def _split_title_components(title: str) -> tuple[str, str]:
+    cleaned = clean_generated_chapter_title(title)
+    for separator in ("：", ":"):
+        if separator in cleaned:
+            left, right = cleaned.split(separator, 1)
+            return left.strip(), right.strip()
+    return cleaned, ""
+
+
+def _chapter_focus_candidates(chapter: PlannerChapterPlan, *, subject_display_name: str) -> list[str]:
+    raw_candidates: list[str] = []
+    raw_candidates.extend(list(chapter.search_queries))
+    raw_candidates.extend(list(chapter.required_elements))
+    raw_candidates.append(chapter.objective)
+    raw_candidates.append(chapter.writing_instructions)
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_candidates:
+        normalized = _normalize_topic_phrase(raw, max_length=18)
+        if not normalized or normalized == subject_display_name or _is_generic_topic_text(normalized):
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(normalized)
+    return candidates
+
+
+def _dedupe_chapter_plan_titles(
+    chapter_plan: list[PlannerChapterPlan],
+    *,
+    subject_display_name: str,
+) -> list[PlannerChapterPlan]:
+    deduped: list[PlannerChapterPlan] = []
+    seen_keys: set[str] = set()
+
+    for chapter in chapter_plan:
+        title = clean_generated_chapter_title(chapter.title) or f"第 {chapter.chapter_index} 章"
+        if _title_key(title) in seen_keys:
+            topic, suffix = _split_title_components(title)
+            for focus in _chapter_focus_candidates(chapter, subject_display_name=subject_display_name):
+                if focus == topic:
+                    continue
+                candidate = clean_generated_chapter_title(f"{focus}：{suffix}" if suffix else focus)
+                if candidate and _title_key(candidate) not in seen_keys and is_usable_resolved_chapter_title(candidate):
+                    title = candidate
+                    break
+            else:
+                fallback_focus = _chapter_focus_candidates(chapter, subject_display_name=subject_display_name)
+                for focus in fallback_focus:
+                    candidate = clean_generated_chapter_title(f"{topic}：{focus}")
+                    if candidate and _title_key(candidate) not in seen_keys and is_usable_resolved_chapter_title(candidate):
+                        title = candidate
+                        break
+                else:
+                    title = clean_generated_chapter_title(f"{topic}：专题 {chapter.chapter_index}")
+
+        seen_keys.add(_title_key(title))
+        deduped.append(chapter.model_copy(update={"title": title}))
+
+    return deduped
+
+
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
@@ -264,6 +355,42 @@ def _clean_text(value: Any) -> str:
 
 def _has_cjk(text: str) -> bool:
     return bool(_CJK_RE.search(text))
+
+
+def _strip_goal_instruction_text(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    stripped = _GOAL_PREFIX_RE.sub("", text).strip(" ：:，,。；;")
+    for marker in _GENERIC_TOPIC_MARKERS:
+        if marker in stripped:
+            stripped = stripped.replace(marker, " ")
+    stripped = re.sub(r"\s+", " ", stripped).strip(" ：:，,。；;")
+    return stripped or text
+
+
+def _normalize_topic_phrase(value: Any, *, max_length: int = 20) -> str:
+    cleaned = _strip_goal_instruction_text(value)
+    if not cleaned:
+        return ""
+    fragments = [
+        _clean_text(fragment).strip(" ：:，,。；;")
+        for fragment in re.split(r"[，。；：,.!?！？/\n()（）]", cleaned)
+        if _clean_text(fragment).strip(" ：:，,。；;")
+    ]
+    for fragment in fragments:
+        if 2 <= len(fragment) <= max_length and _has_cjk(fragment):
+            return fragment
+    if len(cleaned) <= max_length and _has_cjk(cleaned):
+        return cleaned
+    return cleaned[:max_length].rstrip(" ：:，,。；;")
+
+
+def _is_generic_topic_text(value: Any) -> bool:
+    text = _clean_text(value)
+    if not text:
+        return True
+    return any(marker in text for marker in _GENERIC_TOPIC_MARKERS)
 
 
 def _is_usable_cn_text(value: Any, *, min_length: int = 2) -> bool:
@@ -425,7 +552,7 @@ def _resolve_subject_display_name(
     shared_inputs: SharedInputs | None,
     user_goal: str = "",
 ) -> str:
-    profile_name = _clean_text((shared_inputs.subject_profile.subject_name if shared_inputs else ""))
+    profile_name = _normalize_topic_phrase(shared_inputs.subject_profile.subject_name if shared_inputs else "")
     if profile_name and not _looks_like_subject_slug(profile_name):
         return profile_name
 
@@ -434,19 +561,19 @@ def _resolve_subject_display_name(
             *shared_inputs.subject_profile.key_topics,
             *shared_inputs.fast_hints.chapter_candidates,
         ]:
-            cleaned = _clean_text(candidate)
+            cleaned = _normalize_topic_phrase(candidate)
             if cleaned and not _looks_like_subject_slug(cleaned):
                 return cleaned
 
-    goal = _clean_text(user_goal)
+    goal = _normalize_topic_phrase(user_goal)
     if goal and not _looks_like_subject_slug(goal):
-        if len(goal) <= 20:
+        if len(goal) <= 20 and not _is_generic_topic_text(goal):
             return goal
-        goal_head = re.split(r"[，。；：,.!?！？\n]", goal, maxsplit=1)[0].strip()
+        goal_head = _normalize_topic_phrase(re.split(r"[，。；：,.!?！？\n]", goal, maxsplit=1)[0].strip())
         if goal_head and len(goal_head) <= 20:
             return goal_head
 
-    normalized_subject = _clean_text(subject)
+    normalized_subject = _normalize_topic_phrase(subject)
     if normalized_subject and not _looks_like_subject_slug(normalized_subject):
         return normalized_subject
     return "当前主题"
@@ -461,13 +588,19 @@ def _replace_subject_slug_text(value: Any, replacement: str) -> str:
 
 def _extract_goal_topic_hints(user_goal: str, *, display_subject: str) -> list[str]:
     fragments = [
-        fragment.strip()
+        _normalize_topic_phrase(fragment)
         for fragment in _TOPIC_SPLIT_RE.split(_replace_subject_slug_text(user_goal, display_subject))
-        if fragment.strip()
+        if _normalize_topic_phrase(fragment)
     ]
     hints: list[str] = []
     for fragment in fragments:
-        if fragment == display_subject or len(fragment) < 2 or len(fragment) > 20 or not _has_cjk(fragment):
+        if (
+            fragment == display_subject
+            or len(fragment) < 2
+            or len(fragment) > 20
+            or not _has_cjk(fragment)
+            or _is_generic_topic_text(fragment)
+        ):
             continue
         hints.append(fragment)
     return _dedupe_strings(hints, limit=4)
@@ -481,7 +614,7 @@ def _topic_candidates(*, subject: str, shared_inputs: SharedInputs, user_goal: s
     display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
     return _dedupe_strings(
         [
-            *_collect_topic_hints(shared_inputs, limit=12),
+            *[_normalize_topic_phrase(item) for item in _collect_topic_hints(shared_inputs, limit=12)],
             *_extract_goal_topic_hints(user_goal, display_subject=display_subject),
             display_subject,
         ],
@@ -631,6 +764,10 @@ def build_fallback_plan(
         digest_mode=normalized_mode,
         shared_inputs=shared_inputs,
         target_count=resolved_count,
+    )
+    chapter_plan = _dedupe_chapter_plan_titles(
+        chapter_plan,
+        subject_display_name=display_subject,
     )
     research_queries = _dedupe_strings(
         [query for chapter in chapter_plan for query in chapter.search_queries],
@@ -816,6 +953,10 @@ def normalize_planner_draft(
         )
         for index, fallback in enumerate(fallback_plan.chapter_plan)
     ]
+    chapter_plan = _dedupe_chapter_plan_titles(
+        chapter_plan,
+        subject_display_name=subject_display_name,
+    )
 
     chapter_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     research_queries = _dedupe_strings(

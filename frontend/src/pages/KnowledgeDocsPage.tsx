@@ -207,6 +207,22 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
   return true;
 }
 
+function compactTocItems(items: TocItem[]): TocItem[] {
+  const compacted: TocItem[] = [];
+  for (const item of items) {
+    const previous = compacted[compacted.length - 1];
+    if (
+      previous &&
+      previous.text.trim() === item.text.trim() &&
+      item.level === previous.level + 1
+    ) {
+      continue;
+    }
+    compacted.push(item);
+  }
+  return compacted;
+}
+
 /** Recursively extract plain text from React children */
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -1089,7 +1105,7 @@ export function KnowledgeDocsPage() {
       const container = scrollRef.current;
       if (!container) return;
       const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
-      const nextToc: TocItem[] = Array.from(headingNodes)
+      const nextToc = compactTocItems(Array.from(headingNodes)
         .map((node) => {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
@@ -1098,7 +1114,7 @@ export function KnowledgeDocsPage() {
           const text = node.textContent?.trim() || id;
           return { id, text, level };
         })
-        .filter((item): item is TocItem => item !== null);
+        .filter((item): item is TocItem => item !== null));
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
     });
     return () => window.cancelAnimationFrame(rafId);

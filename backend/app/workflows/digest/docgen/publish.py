@@ -52,6 +52,28 @@ def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
     return "\n".join(lines).strip()
 
 
+def _normalize_heading_text(value: str) -> str:
+    return " ".join(str(value or "").split()).strip().casefold()
+
+
+def _dedupe_curriculum_path(curriculum_path: list[str], *, chapter_title: str) -> list[str]:
+    deduped: list[str] = []
+    seen_texts: set[str] = set()
+    normalized_chapter_title = _normalize_heading_text(chapter_title)
+    for item in curriculum_path:
+        cleaned = " ".join(str(item or "").split()).strip()
+        if not cleaned:
+            continue
+        normalized = _normalize_heading_text(cleaned)
+        if normalized in seen_texts:
+            continue
+        deduped.append(cleaned)
+        seen_texts.add(normalized)
+    if deduped and _normalize_heading_text(deduped[-1]) == normalized_chapter_title:
+        deduped.pop()
+    return deduped
+
+
 
 def build_merged_markdown(
     chapters: list[dict],
@@ -73,7 +95,12 @@ def build_merged_markdown(
     body: list[str] = [overview.strip()]
     for chapter in chapters:
         markdown = str(chapter.get("markdown", "")).strip()
-        curriculum_path = [str(item).strip() for item in chapter.get("curriculum_path", []) if str(item).strip()]
+        chapter_index = int(chapter.get("chapter_index", 0) or 0) or None
+        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+        curriculum_path = _dedupe_curriculum_path(
+            [str(item).strip() for item in chapter.get("curriculum_path", []) if str(item).strip()],
+            chapter_title=chapter_title,
+        )
         if curriculum_path:
             body.extend(
                 f"{'#' * min(6, index + 2)} {section}"
@@ -333,4 +360,3 @@ def publish_staged_knowledge_docs(
             created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]
-

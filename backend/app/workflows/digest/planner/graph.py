@@ -10,23 +10,26 @@ from pathlib import Path
 from typing import Any
 
 from langgraph.graph import END, StateGraph
+from pydantic import BaseModel, Field
 
 from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
-from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
+from app.teaching.documents import coerce_resolved_chapter_title
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common.runtime_stats import emit_progress, get_runtime_steps, tracked_step
 from app.workflows.digest.observability import traced_digest_node
 from app.workflows.digest.planner.concept_grounding import collect_planner_concept_briefing
 from app.workflows.digest.planner.models import (
+    _dedupe_chapter_plan_titles,
     _resolve_subject_display_name,
     build_fallback_plan,
     normalize_planner_draft,
 )
-from app.workflows.digest.prompts import build_planner_prompt
+from app.workflows.digest.prompts import build_planner_chapter_title_messages, build_planner_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.shared.contracts import (
     resolve_digest_course_type,
@@ -42,6 +45,15 @@ _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 _TASK_LINE_RE = re.compile(r"^\((\d+)\)\s*(.+)$")
 _HEADER_LINES = {"研究任务", "研究网站", "分析结果", "生成报告"}
 _LEADING_VERB_RE = re.compile(r"^(?:梳理|理解|调研|整理|分析|掌握|比较|构建|明确|总结|回顾|聚焦|说明|建立|打通|认识|学习|覆盖|提炼)")
+
+
+class _PlannerChapterTitleItem(BaseModel):
+    chapter_index: int
+    title: str = ""
+
+
+class _PlannerChapterTitlePayload(BaseModel):
+    chapters: list[_PlannerChapterTitleItem] = Field(default_factory=list)
 
 
 def _guess_topic_hints_from_filenames(filenames: list[str], *, subject: str, user_goal: str | None) -> list[str]:
@@ -232,6 +244,84 @@ def _build_plan_summary(
         f"围绕 {display_subject} 生成一份{plan_kind}知识文档，研究重点包括 {focus}。",
         limit=110,
     )
+
+
+async def _generate_planner_titles(
+    *,
+    subject: str,
+    user_goal: str,
+    digest_mode: str,
+    chapter_plan: list[dict[str, Any]],
+    planner_session_id: str,
+    course_type: str,
+    retrieval_profile: str,
+    teaching_action: str,
+) -> dict[int, str]:
+    if not chapter_plan:
+        return {}
+
+    messages = build_planner_chapter_title_messages(
+        subject=subject,
+        user_goal=user_goal,
+        digest_mode=digest_mode,
+        chapters=chapter_plan,
+    )
+    payload = await acompletion_with_fallback(
+        messages,
+        task_type=TaskType.DOCGEN_LIGHT,
+        tier="fast",
+        response_model=_PlannerChapterTitlePayload,
+        temperature=0.1,
+        max_tokens=240,
+        extra_metadata={
+            "planner_session_id": planner_session_id,
+            "digest_mode": digest_mode,
+            "course_type": course_type,
+            "retrieval_profile": retrieval_profile,
+            "teaching_action": teaching_action,
+            "substep": "planner_title_generate",
+        },
+    )
+    return {
+        int(item.chapter_index): str(item.title).strip()
+        for item in payload.chapters
+        if int(item.chapter_index or 0) > 0 and str(item.title).strip()
+    }
+
+
+def _apply_generated_titles_to_draft(
+    draft,
+    *,
+    generated_titles: dict[int, str],
+    subject_display_name: str,
+):
+    if not generated_titles:
+        return draft
+
+    updated_plan = []
+    changed = False
+    for chapter in draft.chapter_plan:
+        current_title = str(chapter.title or "").strip()
+        candidate_title = generated_titles.get(int(chapter.chapter_index or 0))
+        if candidate_title:
+            resolved_title = coerce_resolved_chapter_title(
+                candidate_title,
+                chapter={"title": current_title},
+                chapter_index=int(chapter.chapter_index or 0),
+            )
+        else:
+            resolved_title = current_title
+        if resolved_title != current_title:
+            changed = True
+        updated_plan.append(chapter.model_copy(update={"title": resolved_title}))
+
+    deduped_plan = _dedupe_chapter_plan_titles(
+        updated_plan,
+        subject_display_name=subject_display_name,
+    )
+    if changed or [chapter.title for chapter in deduped_plan] != [chapter.title for chapter in draft.chapter_plan]:
+        return draft.model_copy(update={"chapter_plan": deduped_plan})
+    return draft
 
 
 def _build_raw_plan_from_preview(
@@ -658,6 +748,40 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 selected_skillpacks=list(state.get("selected_skillpacks") or []),
                 shared_inputs=shared_inputs,
                 latest_plan=state.get("latest_plan"),
+            )
+            generated_titles: dict[int, str] = {}
+            async with tracked_step(
+                state,
+                name="planner_title_generate",
+                kind="substep",
+                trace_metadata={"chapter_count": len(draft.chapter_plan)},
+                trace_inputs={"preview_task_count": len(preview_tasks)},
+            ) as step:
+                try:
+                    generated_titles = await _generate_planner_titles(
+                        subject=display_subject,
+                        user_goal=state.get("user_goal") or "",
+                        digest_mode=digest_mode,
+                        chapter_plan=[
+                            {
+                                **chapter.model_dump(mode="json"),
+                                "task_hint": preview_tasks[index] if index < len(preview_tasks) else "",
+                            }
+                            for index, chapter in enumerate(draft.chapter_plan)
+                        ],
+                        planner_session_id=state.get("planner_session_id") or "",
+                        course_type=course_type,
+                        retrieval_profile=retrieval_profile,
+                        teaching_action=teaching_action,
+                    )
+                except Exception:
+                    generated_titles = {}
+                    step.set_status("failed")
+                step.set_outputs(generated_title_count=len(generated_titles))
+            draft = _apply_generated_titles_to_draft(
+                draft,
+                generated_titles=generated_titles,
+                subject_display_name=display_subject,
             )
             plan = draft.model_dump(mode="json")
             return {

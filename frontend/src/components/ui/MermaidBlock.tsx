@@ -12,6 +12,8 @@ interface MermaidBlockProps {
 }
 
 let mermaidConfigured = false;
+const MINDMAP_ROOT_RE = /^root\(\((.+)\)\)$/i;
+const MINDMAP_MIXED_SYNTAX_RE = /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
 
 function ensureMermaidConfigured() {
   if (mermaidConfigured) {
@@ -60,6 +62,158 @@ function hashChart(chart: string): string {
   return Math.abs(hash).toString(36);
 }
 
+function normalizeMermaidSource(chart: string): string {
+  return String(chart ?? "")
+    .replace(/\uFEFF/g, "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+}
+
+function sanitizeMindmapLabel(label: string): string {
+  return label
+    .normalize("NFKC")
+    .replace(/[`$]/g, " ")
+    .replace(/[<>{}\[\]]/g, " ")
+    .replace(/\b(?:mindmap|root|graph|flowchart|subgraph|classDef|class|style|click|section|title|LR|RL|TB|BT)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
+}
+
+function extractMindmapLabels(chart: string, maxCount = 6): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string) => {
+    const cleaned = sanitizeMindmapLabel(value);
+    if (!cleaned) {
+      return;
+    }
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push(cleaned);
+  };
+
+  for (const match of chart.matchAll(/root\(\((.+?)\)\)/gi)) {
+    push(match[1] ?? "");
+  }
+  for (const match of chart.matchAll(/\[([^\]]+)\]/g)) {
+    push(match[1] ?? "");
+  }
+
+  for (const rawLine of chart.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || /^mindmap$/i.test(line) || /^```/.test(line)) {
+      continue;
+    }
+    if (MINDMAP_ROOT_RE.test(line)) {
+      push(line.replace(MINDMAP_ROOT_RE, "$1"));
+      continue;
+    }
+    if (MINDMAP_MIXED_SYNTAX_RE.test(line)) {
+      const arrowLabel = line.match(/\[([^\]]+)\]/)?.[1] ?? line.split(/-->|==>/).pop() ?? "";
+      push(arrowLabel);
+      continue;
+    }
+    push(line.replace(/^[-*+]\s+/, ""));
+  }
+
+  return candidates.slice(0, maxCount);
+}
+
+function buildSimplifiedMindmap(chart: string): string {
+  const labels = extractMindmapLabels(chart, 6);
+  const root = labels[0] ?? "核心主题";
+  const children = labels.slice(1);
+  const lines = ["mindmap", `  root((${root}))`];
+  for (const child of children) {
+    lines.push(`    ${child}`);
+  }
+  return lines.join("\n");
+}
+
+function normalizeMindmapChart(chart: string): string {
+  const normalized = normalizeMermaidSource(chart);
+  if (!normalized.toLowerCase().startsWith("mindmap")) {
+    return normalized;
+  }
+
+  const rawLines = normalized.split("\n");
+  const bodyLines = rawLines.slice(1).filter((line) => line.trim().length > 0);
+  if (bodyLines.some((line) => MINDMAP_MIXED_SYNTAX_RE.test(line))) {
+    return buildSimplifiedMindmap(normalized);
+  }
+
+  const output = ["mindmap"];
+  let hasRoot = false;
+
+  for (const rawLine of bodyLines) {
+    const expanded = rawLine.replace(/\t/g, "  ");
+    const indentChars = expanded.match(/^\s*/)?.[0].length ?? 0;
+    const indentLevel = Math.max(1, Math.floor(indentChars / 2));
+    const stripped = expanded.trim().replace(/^[-*+]\s+/, "");
+    if (!stripped) {
+      continue;
+    }
+
+    const rootMatch = stripped.match(MINDMAP_ROOT_RE);
+    if (rootMatch) {
+      const rootLabel = sanitizeMindmapLabel(rootMatch[1] ?? "");
+      if (rootLabel) {
+        output.push(`  root((${rootLabel}))`);
+        hasRoot = true;
+      }
+      continue;
+    }
+
+    const label = sanitizeMindmapLabel(stripped);
+    if (!label) {
+      continue;
+    }
+    if (!hasRoot && indentLevel <= 1) {
+      output.push(`  root((${label}))`);
+      hasRoot = true;
+      continue;
+    }
+    output.push(`${"  ".repeat(Math.max(2, indentLevel))}${label}`);
+  }
+
+  if (!hasRoot) {
+    return buildSimplifiedMindmap(normalized);
+  }
+
+  return output.join("\n");
+}
+
+function buildChartCandidates(chart: string): string[] {
+  const normalized = normalizeMermaidSource(chart);
+  if (!normalized) {
+    return [normalized];
+  }
+  if (!normalized.toLowerCase().startsWith("mindmap")) {
+    return [normalized];
+  }
+
+  const candidates = [normalized, normalizeMindmapChart(normalized), buildSimplifiedMindmap(normalized)];
+  return candidates.filter((candidate, index) => candidate && candidates.indexOf(candidate) === index);
+}
+
+async function renderMermaidChart(diagramId: string, chart: string) {
+  ensureMermaidConfigured();
+  const candidates = buildChartCandidates(chart);
+  let lastError: unknown = null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    try {
+      return await mermaid.render(`${diagramId}-${index}`, candidates[index]);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Mermaid 渲染失败");
+}
+
 function resolveDiagramLabel(chart: string): string {
   const normalized = chart.trim().toLowerCase();
   if (normalized.startsWith("mindmap")) {
@@ -94,8 +248,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
       setErrorMessage(null);
 
       try {
-        ensureMermaidConfigured();
-        const rendered = await mermaid.render(diagramId, chart);
+        const rendered = await renderMermaidChart(diagramId, chart);
         if (!disposed) {
           setSvgMarkup(rendered.svg);
         }

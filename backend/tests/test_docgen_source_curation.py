@@ -14,7 +14,11 @@ from app.workflows.digest.docgen.graph import (
     build_enrich_document_node,
     build_pedagogy_craft_node,
 )
-from app.workflows.digest.docgen.publish import _build_chapter_manifest, _build_source_scope
+from app.workflows.digest.docgen.publish import (
+    _build_chapter_manifest,
+    _build_source_scope,
+    build_merged_markdown,
+)
 
 
 def test_source_curator_prioritizes_local_and_trusted_sources() -> None:
@@ -242,3 +246,27 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
     assert source_scope["local_source_count"] == 1
     assert source_scope["external_source_count"] == 1
     assert source_scope["domains"] == ["example.edu"]
+
+
+def test_build_merged_markdown_dedupes_curriculum_path_tail_title() -> None:
+    merged = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "线性方程组求解的完整路径",
+                "curriculum_path": ["代数基础", "线性方程组求解的完整路径"],
+                "markdown": "# 线性方程组求解的完整路径\n\n## 这章先拿下什么\n\n先看主线。",
+            }
+        ],
+        document_context={
+            "subject": "线性代数",
+            "digest_mode": "systematic",
+            "tone": "encouraging",
+            "user_goal": "系统整理线性方程组求解",
+            "plan_summary": "聚焦线性方程组求解路径。",
+        },
+    )
+
+    assert "## 代数基础" in merged
+    assert "\n## 线性方程组求解的完整路径\n" not in merged
+    assert "\n### 线性方程组求解的完整路径\n" in merged

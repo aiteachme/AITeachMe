@@ -134,4 +134,65 @@ def build_planner_prompt(
     )
 
 
-__all__ = ["build_planner_prompt"]
+def build_planner_chapter_title_messages(
+    *,
+    subject: str,
+    user_goal: str,
+    digest_mode: str,
+    chapters: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    normalized_mode = (digest_mode or "systematic").strip().lower()
+    mode_label = "速成课" if normalized_mode == "sprint" else "系统课"
+    chapter_lines: list[str] = []
+    for chapter in chapters:
+        chapter_index = int(chapter.get("chapter_index", 0) or 0)
+        current_title = str(chapter.get("title") or "").strip() or f"章节 {chapter_index}"
+        objective = str(chapter.get("objective") or "").strip() or "围绕当前研究任务组织教学内容"
+        required_text = "、".join(
+            str(item).strip() for item in list(chapter.get("required_elements") or []) if str(item).strip()
+        ) or "核心概念、方法、例题与易错点"
+        query_text = "；".join(
+            str(item).strip() for item in list(chapter.get("search_queries") or [])[:3] if str(item).strip()
+        ) or "无额外检索词"
+        task_hint = str(chapter.get("task_hint") or "").strip() or "请根据当前章节目标命名"
+        chapter_lines.append(
+            (
+                f"章节 {chapter_index}\n"
+                f"- 当前标题参考：{current_title}\n"
+                f"- 任务焦点：{task_hint}\n"
+                f"- 学习目标：{objective}\n"
+                f"- 必须覆盖：{required_text}\n"
+                f"- 检索重点：{query_text}"
+            )
+        )
+
+    user_prompt = f"""
+请为下面这些知识文档章节重新生成“规划阶段可展示的大章节标题”。
+主题：{subject}
+用户目标：{user_goal or f"围绕 {subject} 生成知识文档"}
+课程类型：{mode_label}
+
+章节信息：
+{chr(10).join(chapter_lines)}
+
+输出要求：
+1. 你需要为每个章节都给出一个中文标题。
+2. 标题必须自然、具体、像真实讲义标题，不要输出“第 N 章”“主题导入”“总结提升”这类模板名。
+3. 如果是速成课，标题要更偏考试导向、动作明确、问题明确。
+4. 如果是系统课，标题要更体现知识主线、定义关系、方法结构或应用脉络。
+5. 各章节标题之间必须有区分度，不要只是同义改写。
+6. 标题长度尽量控制在 4 到 22 个中文字符。
+7. 只生成标题，不要生成解释、编号前缀或 Markdown。
+""".strip()
+    return [
+        {
+            "role": "system",
+            "content": (
+                "你是 AITeachMe 的课程规划命名助手，负责给知识文档规划阶段的章节生成自然、具体、非模板化的中文标题。"
+            ),
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+__all__ = ["build_planner_chapter_title_messages", "build_planner_prompt"]
