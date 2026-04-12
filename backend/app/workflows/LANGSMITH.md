@@ -1,29 +1,84 @@
-# LangSmith 团队接入速查
+# LangSmith 接入说明
 
-这份文档只回答一个核心问题：
+这份文档回答 3 个问题：
 
-`在 workflows 里写好的流程，到底用哪些函数方法可以轻松接入 LangSmith？`
+1. workflow 作者平时到底该用哪些统一入口
+2. 为什么现在默认推荐“同一种注解 + 不同 run_type”
+3. prompt、retriever、tool、llm 这些边界应该怎么分
 
-答案非常简单，团队里只需要记住这 5 个入口。
+## 先看结论
 
-## 先记住这 5 个入口
-
-| 场景 | 应该用什么 |
-| --- | --- |
-| 整个 workflow 执行入口 | `run_state_graph(...)` |
-| LangGraph 节点 | `@traced_digest_node(...)` / `@traced_workflow_node(...)` |
-| 节点内部关键步骤 | `async with tracked_step(...)` |
-| 独立工具 / retriever / service / adapter | `@traceable` |
-| OpenAI SDK 客户端 | `wrap_openai(...)` |
-
-如果一个同学只记住这张表，基本就够用了。
-
-## 1. workflow 入口怎么接
-
-整个 workflow 不需要手动再写 LangSmith span。  
-统一从 [`run_state_graph`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/common/runtime.py) 进去就行。
+如果你喜欢 `11_litellm_tutor_app` 那种风格，这个仓库现在默认也推荐同一种注解思路：
 
 ```python
+from app.workflows.common import (
+    run_state_graph,
+    traceable_run,
+    wrap_traceable_run,
+    tracked_step,
+)
+```
+
+它们各自负责：
+
+1. `run_state_graph(...)`
+   workflow 根 span
+2. `@traceable_run(...)`
+   同一种注解，靠 `run_type` 区分 node / prompt / tool / retriever
+3. `wrap_traceable_run(...)`
+   工厂式节点接线
+4. `async with tracked_step(...)`
+   节点内部关键步骤
+
+`node(...)`、`wrap_node(...)`、`prompt_traceable(...)` 还保留着，但现在更适合看作语义糖，不再是唯一推荐入口。
+
+## 为什么不再强调很多不同注解
+
+你指出的问题是对的。
+
+之前把：
+
+- `@node(...)`
+- `@prompt_traceable(...)`
+- `@workflow_node(...)`
+
+分开写，虽然语义上清楚，但会让协作者误以为“不同对象必须学不同注解”，这和你给的官方示例风格不一致，也不利于上手。
+
+所以现在我们把推荐心智模型改成：
+
+`大多数时候只有一种注解：@traceable_run(...)`
+
+区别只是 `run_type` 不同：
+
+- node 用 `run_type="chain"`
+- prompt builder 用 `run_type="prompt"`
+- retriever 用 `run_type="retriever"`
+- 普通小工具用 `run_type="tool"`
+
+这更贴近 LangSmith 官方和你给的例子。
+
+## 一张总表
+
+| 你在写什么 | 推荐接口 | LangSmith run_type |
+| --- | --- | --- |
+| 整条 workflow | `run_state_graph` | `chain` |
+| LangGraph node | `@traceable_run(..., run_type="chain")` | `chain` |
+| 工厂式 node 接线 | `wrap_traceable_run(..., run_type="chain")` | `chain` |
+| 稳定 prompt builder | `@traceable_run(..., run_type="prompt")` | `prompt` |
+| 检索函数 / 检索步骤 | `@traceable_run(..., run_type="retriever")` 或 `tracked_step(..., trace_run_type="retriever")` | `retriever` |
+| 普通工具步骤 | `tracked_step(..., trace_run_type="tool")` | `tool` |
+| llm SDK / LLM 调用 | infra 统一封装 | `llm` |
+| embedding 批处理 | `tracked_step(..., trace_run_type="embedding")` | `embedding` |
+| parser / 结构化解析 | `tracked_step(..., trace_run_type="parser")` | `parser` |
+
+## 1. workflow 根入口
+
+整个 workflow 统一走 [`run_state_graph`](./common/runtime.py)：
+
+```python
+from app.workflows.common import run_state_graph
+
+
 result = await run_state_graph(
     workflow_name="digest.planner",
     graph_builder=lambda: build_planner_graph(context=context),
@@ -32,179 +87,284 @@ result = await run_state_graph(
 )
 ```
 
-这一步会自动创建最外层的 workflow trace。
+这一步已经会自动创建 workflow 根 span。
 
 团队约定：
 
-- 不要在业务 workflow 里再手动开第二层 workflow span
-- workflow 名要稳定，比如 `digest.planner`、`digest.docgen`
+- 不要在 workflow 入口手写 `langsmith_trace(...)`
+- 不要自己再包第二层 workflow span
+- `workflow_name` 直接用稳定业务语义，例如 `digest.planner`、`ingest.graph`
 
-## 2. LangGraph 节点怎么接
+## 2. 同一种注解怎么覆盖 node 和 prompt
 
-节点一律用装饰器。
-
-Digest 节点用 [`@traced_digest_node(...)`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/digest/observability.py)：
+### node
 
 ```python
-@traced_digest_node(
-    workflow_name=context.workflow_name,
+from app.workflows.common import traceable_run
+
+
+@traceable_run(
+    name="draft_plan",
+    run_type="chain",
+    workflow="digest.planner",
     lane="planner",
-    node_name="load_context",
 )
-async def load_context_node(state: BuildPlannerState) -> dict:
+async def draft_plan_node(state):
     ...
 ```
 
-通用 workflow 节点用 [`@traced_workflow_node(...)`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/common/observability.py)：
+### prompt builder
 
 ```python
-@traced_workflow_node(
-    workflow="ingest.graph",
-    lane="ingest",
-    name="parse_files",
+from app.workflows.common import traceable_run
+
+
+@traceable_run(
+    name="digest.planner.build_prompt",
+    run_type="prompt",
 )
-async def parse_files_node(state: dict) -> dict:
+def build_planner_prompt(...):
     ...
 ```
 
-它们负责：
+你可以看到，注解本身是一种，差别只是：
 
-- 创建 node span
-- 自动补 workflow / lane / node 元数据
-- 记录少量白名单输入输出摘要
-- 继承当前 workflow 的 LLM trace 上下文
+- node 需要 `workflow/lane`
+- prompt builder 不需要
+- `run_type` 不同
 
-团队约定：
+## 3. 工厂式节点为什么还需要 wrapper
 
-- 一个 LangGraph 节点只包一层 node trace
-- 节点名直接写业务动作，比如 `load_context`、`ground_concepts`
-- 不要写 `step1`、`handler`、`main_process`
+这个不是因为 LangSmith 要多一种接口，而是因为 Python 语法限制。
 
-## 3. 节点内部关键步骤怎么接
+如果节点是这种形式：
 
-节点里面如果还有关键步骤，不要为了 trace 再把 LangGraph 节点拆得很碎。  
-直接用 [`tracked_step(...)`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/common/runtime_stats.py)。
+```python
+def build_xxx_node(context):
+    async def xxx_node(state):
+        ...
+    return xxx_node
+```
+
+那就没法直接在定义处写装饰器，所以只能在 graph 接线处包一层：
+
+```python
+from app.workflows.common import wrap_traceable_run
+
+
+workflow.add_node(
+    "targeted_research",
+    wrap_traceable_run(
+        build_targeted_research_node(context=context),
+        name="targeted_research",
+        run_type="chain",
+        workflow=context.workflow_name,
+        lane="docgen",
+    ),
+)
+```
+
+所以这里的区别不是“LangSmith 有两套注解”，而是：
+
+- 能写装饰器时，用 `@traceable_run(...)`
+- 不能写装饰器时，用 `wrap_traceable_run(...)`
+
+## 4. tracked_step 到底还保留干嘛
+
+[`tracked_step`](./TRACKED_STEP.md) 不是另一套 decorator 体系，它解决的是另一个问题：
+
+`node 内部关键步骤怎么统一记 runtime stats + progress + LangSmith substep`
+
+例如：
+
+```python
+from app.workflows.common import tracked_step
+
+
+async with tracked_step(
+    state,
+    name="plan_prompt_build",
+    kind="substep",
+    trace_run_type="prompt",
+) as step:
+    prompt = build_planner_prompt(...)
+    step.set_outputs(prompt_chars=len(prompt))
+```
+
+这里它不是替代 `@traceable_run(...)`，而是在 node 内继续往下切子边界。
+
+## 5. 为什么我们不能只像 demo 一样全靠一个 `@traceable`
+
+你给的 demo 很清楚，也确实值得对齐。  
+但它比我们这个项目简单很多，少了 3 类需求：
+
+1. LangGraph node 里要从 `state` 自动提取白名单输入输出摘要
+2. node 执行时要自动继承 workflow 的 `subject / build_session_id / lane`
+3. node 内部还要同时驱动 runtime stats 和前端 progress
+
+所以我们不能原封不动只暴露 LangSmith 原生 `@traceable`，否则：
+
+- 每个 workflow 作者都要自己写状态摘要逻辑
+- 每个 node 都要自己补 `workflow/lane/session` 元信息
+- 风格很快会重新分叉
+
+现在的做法是折中：
+
+- 对协作者暴露成“同一种注解”心智模型
+- 但底层仍保留 repo 自己的 stateful node wrapper
+
+也就是说，外面看起来像 demo，里面仍然保留我们项目需要的约束和自动注入。
+
+## 6. prompt tracing 现在是默认要求
+
+这个项目里，prompt tracing 不是“可选增强”，而是默认要求。
+
+我们现在默认分两类：
+
+### 稳定 prompt builder
+
+直接用：
+
+```python
+@traceable_run(
+    name="digest.docgen.writer_prompt",
+    run_type="prompt",
+)
+def build_docgen_writer_messages(...):
+    ...
+```
+
+### node 里的临时 prompt build 步骤
+
+直接用：
 
 ```python
 async with tracked_step(
     state,
-    name="prepare_shared_inputs",
+    name="writer_prompt_build",
     kind="substep",
-    trace_metadata={"file_count": len(state.get("file_ids", []))},
-    trace_inputs={"user_goal_present": True},
+    trace_run_type="prompt",
 ) as step:
-    shared_inputs = await prepare_shared_inputs(...)
-    step.set_outputs(source_packet_count=len(shared_inputs.source_packets))
+    messages = build_docgen_writer_messages(...)
+    step.set_outputs(message_count=len(messages))
 ```
 
-它会统一处理：
+这样 LangSmith 里会同时看到：
 
-- substep trace
-- runtime stats
-- progress
+- 这个 node 里发生了 prompt build
+- 具体是哪个 prompt builder 产出的 prompt
 
-也就是说，协作者一般不需要自己手写这些底层动作：
+## 7. LangSmith run_type 我们怎么约定
 
-- `record_step_start(...)`
-- `record_step_end(...)`
-- `trace_substep(...)`
-- `run.end(outputs=...)`
+目前团队统一按 LangSmith 官方常见 run type 来写：
 
-团队约定：
+- `chain`
+- `tool`
+- `llm`
+- `retriever`
+- `embedding`
+- `prompt`
+- `parser`
 
-- 只有关键业务步骤才建 substep
-- 一个 node 一般保留 3 到 6 个 substep
-- `step.set_outputs(...)` 只放计数、状态、少量摘要，不放整段正文
+在这个仓库里：
 
-## 4. 独立工具 / retriever / service 怎么接
+- workflow / node 默认是 `chain`
+- prompt builder 默认是 `prompt`
+- `tracked_step` 默认是 `tool`
+- prompt / retriever / embedding / parser 这些步骤应该显式改掉默认值
 
-这类场景直接按官方 examples 的思路来，用 `@traceable`。
+## 8. 四个完整例子
+
+### 例子 A：planner node
 
 ```python
-@traceable(name="digest.local_retrieval", run_type="retriever")
-async def local_retrieval(query: str) -> list[dict]:
+from app.workflows.common import traceable_run
+
+
+@traceable_run(
+    name="draft_plan",
+    run_type="chain",
+    workflow="digest.planner",
+    lane="planner",
+)
+async def draft_plan_node(state):
+    return {"plan": plan}
+```
+
+### 例子 B：工厂式 node 接线
+
+```python
+from app.workflows.common import wrap_traceable_run
+
+
+workflow.add_node(
+    "targeted_research",
+    wrap_traceable_run(
+        build_targeted_research_node(context=context),
+        name="targeted_research",
+        run_type="chain",
+        workflow=context.workflow_name,
+        lane="docgen",
+    ),
+)
+```
+
+### 例子 C：prompt builder
+
+```python
+from app.workflows.common import traceable_run
+
+
+@traceable_run(
+    name="digest.planner.build_prompt",
+    run_type="prompt",
+)
+def build_planner_prompt(...):
     ...
 ```
 
-```python
-@traceable(name="teaching.expand_example", run_type="tool")
-async def expand_example(concept: str) -> str:
-    ...
-```
+### 例子 D：node 内 retrieval step
 
 ```python
-class TracedSearchAdapter:
-    def __init__(self, inner):
-        self.inner = inner
+from app.workflows.common import tracked_step
 
-    @traceable(name="search_adapter.search", run_type="tool")
-    def search(self, query: str, limit: int = 3):
-        return self.inner.search(query=query, limit=limit)
+
+async with tracked_step(
+    None,
+    name="web_retrieval",
+    kind="substep",
+    trace_run_type="retriever",
+    trace_inputs={"query_count": len(queries)},
+) as step:
+    hits = await search(...)
+    step.set_outputs(result_count=len(hits))
 ```
 
-这类函数适合：
+## 9. 旧名字现在怎么看
 
-- retriever
-- adapter
-- 纯 service 方法
-- 老接口的薄包装
+这些名字还保留着：
 
-## 5. 模型客户端怎么接
+- `node(...)`
+- `wrap_node(...)`
+- `workflow_node(...)`
+- `wrap_workflow_node(...)`
+- `prompt_traceable(...)`
+- `digest_node(...)`
+- `wrap_digest_node(...)`
 
-如果你在封装 OpenAI SDK，直接用 `wrap_openai(...)`，再在你的方法边界上加 `@traceable`。
+但现在推荐这样理解：
 
-```python
-from langsmith import traceable
-from langsmith.wrappers import wrap_openai
+- `traceable_run / wrap_traceable_run` 是统一入口
+- `node / wrap_node / workflow_node / wrap_workflow_node` 是偏 node 语义的别名
+- `prompt_traceable` 是偏 prompt 语义的别名
+- `digest_node / wrap_digest_node` 只是历史兼容层
 
-
-class TutorModelClient:
-    def __init__(self):
-        self.client = wrap_openai(openai.Client())
-
-    @traceable(name="tutor_model_client.generate_answer", run_type="llm")
-    def generate_answer(self, system_prompt: str, user_prompt: str) -> str:
-        response = self.client.chat.completions.create(...)
-        return response.choices[0].message.content or ""
-```
-
-这样 LangSmith 里既能看到你的业务方法，也能看到底层真实模型调用。
-
-## 项目里的推荐分工
-
-团队协作时，直接按下面的规则判断：
-
-| 我要做的事 | 该用什么 |
-| --- | --- |
-| 新增一个 workflow 执行入口 | `run_state_graph(...)` |
-| 新增一个 LangGraph 节点 | `@traced_digest_node(...)` / `@traced_workflow_node(...)` |
-| 在节点内部新增一个关键业务步骤 | `async with tracked_step(...)` |
-| 新增一个 retriever / tool / service | `@traceable` |
-| 给 OpenAI 客户端加观测 | `wrap_openai(...)` + `@traceable` |
-
-## 不建议业务代码直接碰的底层函数
-
-普通协作者通常不要直接调用这些底层函数：
-
-- `langsmith_trace(...)
-- `langsmith_tracing_scope(...)`
-- `llm_trace_scope(...)`
-- `trace_substep(...)`
-
-原因不是它们不能用，而是：
-
-- 这些是 infra 层的底层 primitive
-- 日常扩展 workflow 时，直接用上面的 5 个入口更稳定
-- 大家都走统一入口，LangSmith 图和代码风格才会一致
-
-## 一张最短总结
+## 10. 一句话记忆版
 
 ```python
 workflow 用 run_state_graph
-node 用 @traced_digest_node / @traced_workflow_node
+函数默认优先用 @traceable_run
+工厂式函数用 wrap_traceable_run
 node 内关键步骤用 tracked_step
-独立工具用 @traceable
-OpenAI 客户端用 wrap_openai
+run_type 用来区分 prompt / retriever / tool / parser / embedding / llm
 ```
-
-如果后续有人问“我写的新流程怎么接 LangSmith”，就把这 5 句发给他。

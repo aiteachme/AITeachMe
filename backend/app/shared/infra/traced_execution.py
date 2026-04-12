@@ -16,7 +16,7 @@ from typing import Any, Protocol
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tracing import langsmith_trace, llm_trace_scope
+from app.shared.infra.tracing import annotate_traceable, build_langsmith_extra, llm_trace_scope
 
 logger = structlog.get_logger(__name__)
 
@@ -123,33 +123,33 @@ class BaseTracedExecution(ABC):
             extra_tags.append(f"asset:{self.context.asset_kind}")
         if self.context.chapter_index is not None:
             extra_tags.append(f"chapter:{self.context.chapter_index}")
-        with langsmith_trace(
+        traced_execute = annotate_traceable(
+            _invoke_traced_execution,
             name=node,
             run_type="chain",
-            inputs=_traced_execution_inputs(kwargs),
-            subject=self.context.subject,
-            build_session_id=self.context.build_session_id,
-            workflow=workflow_name,
+            process_inputs=lambda inputs: _traced_execution_inputs(inputs.get("payload") or {}),
+            process_outputs=_traced_execution_outputs,
+        )
+        return await traced_execute(
+            payload=kwargs,
+            runner=self,
+            workflow_name=workflow_name,
             lane=lane,
             node=node,
-            extra_metadata=self.context.trace_metadata(
-                traced_unit_name=self.name,
-                trace_namespace=self.trace_namespace,
-                trace_name=self.trace_name,
-            ),
-            extra_tags=extra_tags,
-        ) as run:
-            with llm_trace_scope(
+            langsmith_extra=build_langsmith_extra(
                 subject=self.context.subject,
                 build_session_id=self.context.build_session_id,
                 workflow=workflow_name,
                 lane=lane,
                 node=node,
-            ):
-                result = await self.execute(**kwargs)
-            if run is not None:
-                run.end(outputs=_traced_execution_outputs(result))
-            return result
+                extra_metadata=self.context.trace_metadata(
+                    traced_unit_name=self.name,
+                    trace_namespace=self.trace_namespace,
+                    trace_name=self.trace_name,
+                ),
+                extra_tags=extra_tags,
+            ),
+        )
 
     @abstractmethod
     async def execute(self, **kwargs: Any) -> TracedExecutionResult:
@@ -257,6 +257,26 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
             inputs[alias] = len(value)
 
     return inputs
+
+
+async def _invoke_traced_execution(
+    *,
+    payload: Mapping[str, Any],
+    runner: BaseTracedExecution,
+    workflow_name: str,
+    lane: str,
+    node: str,
+    langsmith_extra: dict[str, Any] | None = None,
+) -> TracedExecutionResult:
+    del langsmith_extra
+    with llm_trace_scope(
+        subject=runner.context.subject,
+        build_session_id=runner.context.build_session_id,
+        workflow=workflow_name,
+        lane=lane,
+        node=node,
+    ):
+        return await runner.execute(**dict(payload))
 
 __all__ = [
     "BaseTracedExecution",

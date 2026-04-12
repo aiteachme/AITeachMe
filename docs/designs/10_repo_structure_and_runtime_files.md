@@ -48,6 +48,11 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - graph/state 继续在 `workflows`。
 - Digest DocGen 的 concrete runtime 已迁回 `workflows/digest/docgen/runtime`。
 - workflow-local runtime trace 命名改为 `workflow_runtime.docgen.*`。
+- workflow 级 LangSmith 接入规范已统一收口到 `workflows/common`：
+  - `run_state_graph(...)`
+  - `@traceable_run(...)`
+  - `wrap_traceable_run(...)`
+  - `tracked_step(...)`
 - `shared/infra` 不再新增 `runtime` 入口文件，避免和 workflow-local runtime 混淆。
 
 ## 3. 目标架构状态

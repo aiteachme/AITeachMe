@@ -38,7 +38,7 @@
 - `digest/unified` 已把 Doc/KG/Curriculum 隔开
 - `docgen` 已经不是单 prompt，而是稳定的多节点 pipeline
 - `teaching/documents` 已经不是空壳，已有 overview、导读、模式块、recap 等实装
-- LangSmith 已经能覆盖 workflow/node/skill/retriever/llm
+- LangSmith 已经能覆盖 workflow/node/step/prompt/retriever/llm
 
 ### 不要为了参考项目推翻的部分
 
@@ -51,16 +51,22 @@
 
 ## 1.4 当前最关键的执行差距
 
-### 差距 1：`retrieval_profile` 有观测，没有落执行
+### 差距 1：`retrieval_profile` 已落执行，但学科化调权和缓存还不够成熟
 
 现在的事实是：
 
 - `planner/docgen` state 中已经有 `course_type` 和 `retrieval_profile`
 - `search/factory.py` 已经支持 `profile` 参数
-- 但 `ChapterContextRuntime` 仍直接调用 `get_retrievers_for_subject(subject=..., local_sections=...)`
-- 也就是说，课程模式下的检索差异，目前主要存在于 state 和 trace，而不是实际 retriever 组合
+- `ChapterContextRuntime` 已经把 `retrieval_profile` 真实传入 retriever 工厂
+- `requested_profile / applied_profile` 也已经进入 trace 与 lane summary
 
-这是文档和代码之间最需要写实的一个点。
+当前真正剩余的差距是：
+
+- profile 粒度还不够学科化
+- source class 调权仍偏通用
+- retrieval / reader / compression 缓存还没系统化收口
+
+这意味着重点已经不是“让 profile 生效”，而是“让 profile 在不同学科和课程模式下更聪明”。
 
 ### 差距 2：研究深度仍偏“一次成稿”
 

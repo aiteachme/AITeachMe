@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any, Literal
 
-from app.shared.infra.tracing import trace_substep
+from app.shared.infra.tracing import LangSmithRunType, normalize_langsmith_run_type, trace_substep
 
 StepKind = Literal["node", "tool", "substep", "llm"]
 
@@ -169,13 +169,14 @@ async def tracked_step(
     trace_metadata: Mapping[str, Any] | None = None,
     trace_tags: list[str] | None = None,
     trace_inputs: Mapping[str, Any] | None = None,
-    trace_run_type: str = "tool",
+    trace_run_type: LangSmithRunType = "tool",
 ):
     """Unify runtime stats, optional progress, and optional LangSmith substep tracing."""
 
     step_name = str(name)
     progress_step_name = str(progress_step or step_name)
     should_trace = kind != "node" if trace_enabled is None else bool(trace_enabled)
+    resolved_trace_run_type = normalize_langsmith_run_type(trace_run_type)
     started_at = perf_counter()
 
     if state is not None:
@@ -194,7 +195,7 @@ async def tracked_step(
             trace_name or step_name,
             metadata=trace_metadata,
             tags=trace_tags,
-            run_type=trace_run_type,
+            run_type=resolved_trace_run_type,
             inputs=trace_inputs,
         )
         if should_trace

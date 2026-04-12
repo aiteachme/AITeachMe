@@ -10,17 +10,29 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 from uuid import uuid4
 
 import structlog
 from langsmith import trace as langsmith_trace_run
+from langsmith import traceable
 from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.llm_support.routing import TaskType, get_task_profile
 
 logger = structlog.get_logger()
+
+LangSmithRunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
+LANGSMITH_RUN_TYPES: tuple[LangSmithRunType, ...] = (
+    "tool",
+    "chain",
+    "llm",
+    "retriever",
+    "embedding",
+    "prompt",
+    "parser",
+)
 
 
 @dataclass
@@ -158,6 +170,88 @@ def _build_langsmith_context(
         extra_tags=extra_tags,
     )
     return project_name, metadata, tags
+
+
+def build_langsmith_extra(
+    *,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Build one ``langsmith_extra`` payload for ``@traceable`` calls."""
+
+    if not langsmith_tracing_enabled():
+        return None
+
+    project_name, metadata, tags = _build_langsmith_context(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_metadata=extra_metadata,
+        extra_tags=extra_tags,
+    )
+    extra: dict[str, Any] = {
+        "metadata": metadata,
+        "tags": tags,
+    }
+    if project_name:
+        extra["project_name"] = project_name
+    return extra
+
+
+def annotate_traceable(
+    func,
+    *,
+    name: str,
+    run_type: str = "chain",
+    process_inputs=None,
+    process_outputs=None,
+):
+    """Small wrapper around ``langsmith.traceable`` for repo-local helpers."""
+
+    return traceable(
+        name=name,
+        run_type=run_type,
+        process_inputs=process_inputs,
+        process_outputs=process_outputs,
+    )(func)
+
+
+def prompt_traceable(
+    *,
+    name: str,
+    process_inputs=None,
+    process_outputs=None,
+):
+    """Small repo-local decorator for stable prompt builder functions."""
+
+    def decorator(func):
+        return annotate_traceable(
+            func,
+            name=name,
+            run_type="prompt",
+            process_inputs=process_inputs,
+            process_outputs=process_outputs,
+        )
+
+    return decorator
+
+
+def normalize_langsmith_run_type(
+    value: str | None,
+    *,
+    default: LangSmithRunType = "tool",
+) -> LangSmithRunType:
+    normalized = str(value or "").strip().lower()
+    if normalized in LANGSMITH_RUN_TYPES:
+        return normalized  # type: ignore[return-value]
+    return default
 
 
 @dataclass

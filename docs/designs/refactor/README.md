@@ -40,6 +40,7 @@
 9. `implementation_handoff.md`
 
 LangSmith 代码级实现文档：`backend/app/workflows/LANGSMITH.md`
+`tracked_step` 细化规范：`backend/app/workflows/TRACKED_STEP.md`
 
 ## 权威性说明
 

@@ -250,6 +250,7 @@ async def collect_planner_concept_briefing(
         None,
         name="local_retrieval",
         kind="substep",
+        trace_run_type="retriever",
         trace_metadata={"retriever": "local_rag"},
         trace_inputs={"query_count": len(queries)},
     ) as step:
@@ -277,6 +278,7 @@ async def collect_planner_concept_briefing(
             None,
             name="web_retrieval",
             kind="substep",
+            trace_run_type="retriever",
             trace_metadata={"retriever_candidates": external_retrievers},
             trace_inputs={"query_count": len(external_queries)},
         ) as step:

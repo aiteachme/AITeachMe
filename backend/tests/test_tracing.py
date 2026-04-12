@@ -9,11 +9,23 @@ from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support import observability as llm_observability_module
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
-from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trace_context
+from app.shared.infra.tracing import (
+    LLMCallRecord,
+    LLMCallTracker,
+    get_llm_trace_context,
+    normalize_langsmith_run_type,
+)
 from app.shared.infra import tracing as tracing_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
+from app.workflows.common import (
+    node,
+    traceable_run,
+    wrap_node,
+    wrap_traceable_run,
+    workflow_node,
+    wrap_workflow_node,
+)
 from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
-from app.workflows.common.observability import wrap_workflow_node
 from app.workflows.common import runtime_stats as runtime_stats_module
 from app.workflows.common.runtime_stats import emit_progress, record_step_end, record_step_start, tracked_step
 
@@ -253,15 +265,15 @@ def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
     assert captured["node"] == "workflow_runtime.docgen.writer"
 
 
-def test_wrap_workflow_node_keeps_result_thin() -> None:
+def test_wrap_node_keeps_result_thin() -> None:
     async def handler(_state):
         return {"ok": True}
 
-    wrapped = wrap_workflow_node(
+    wrapped = wrap_node(
         handler,
-        workflow_name="digest.planner",
+        workflow="digest.planner",
         lane="planner",
-        node_name="test_node",
+        name="test_node",
     )
     result = asyncio.run(
         wrapped(
@@ -276,6 +288,93 @@ def test_wrap_workflow_node_keeps_result_thin() -> None:
     assert result == {"ok": True}
     assert "node_events" not in result
     assert "node_timings_ms" not in result
+
+
+def test_wrap_traceable_run_wraps_chain_node() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    wrapped = wrap_traceable_run(
+        handler,
+        name="generic_node",
+        run_type="chain",
+        workflow="digest.planner",
+        lane="planner",
+    )
+
+    result = asyncio.run(wrapped({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_wrap_workflow_node_accepts_legacy_parameter_names() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    wrapped = wrap_workflow_node(
+        handler,
+        workflow_name="digest.planner",
+        lane="planner",
+        node_name="legacy_node",
+    )
+
+    result = asyncio.run(wrapped({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_node_short_alias_wraps_node() -> None:
+    @node(
+        workflow="digest.planner",
+        lane="planner",
+        name="short_alias_node",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_traceable_run_unifies_chain_node_decorator() -> None:
+    @traceable_run(
+        name="unified_alias_node",
+        run_type="chain",
+        workflow="digest.planner",
+        lane="planner",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_traceable_run_supports_prompt_function() -> None:
+    @traceable_run(
+        name="prompt_builder",
+        run_type="prompt",
+    )
+    def build_prompt(subject: str) -> str:
+        return f"teach {subject}"
+
+    assert build_prompt("math") == "teach math"
+
+
+def test_workflow_node_alias_wraps_node() -> None:
+    @workflow_node(
+        workflow="digest.docgen",
+        lane="docgen",
+        name="explicit_alias_node",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
 
 
 def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
@@ -352,6 +451,7 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
             phase="planner",
             running_message="开始读取资料",
             completed_message="资料读取完成",
+            trace_run_type="prompt",
             trace_metadata={"file_count": 2},
             trace_inputs={"user_goal_present": True},
         ) as step:
@@ -366,7 +466,7 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
     assert captured["kwargs"] == {
         "metadata": {"file_count": 2},
         "tags": None,
-        "run_type": "tool",
+        "run_type": "prompt",
         "inputs": {"user_goal_present": True},
     }
     assert captured["outputs"]["source_packet_count"] == 3
@@ -386,3 +486,9 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
             "message": "资料读取完成",
         },
     ]
+
+
+def test_normalize_langsmith_run_type_falls_back_to_tool() -> None:
+    assert normalize_langsmith_run_type("prompt") == "prompt"
+    assert normalize_langsmith_run_type("retriever") == "retriever"
+    assert normalize_langsmith_run_type("not-a-run-type") == "tool"

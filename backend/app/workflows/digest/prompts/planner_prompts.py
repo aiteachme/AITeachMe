@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.common import traceable_run
 from app.workflows.digest.shared.models import SharedInputs
 
 
@@ -78,6 +79,7 @@ def _compact_latest_plan(latest_plan: dict | None) -> str:
     return f"上一版章节数：{chapter_count}"
 
 
+@traceable_run(name="digest.planner.build_prompt", run_type="prompt")
 def build_planner_prompt(
     *,
     subject: str,
@@ -134,6 +136,7 @@ def build_planner_prompt(
     )
 
 
+@traceable_run(name="digest.planner.chapter_title_prompt", run_type="prompt")
 def build_planner_chapter_title_messages(
     *,
     subject: str,

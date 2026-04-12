@@ -55,12 +55,20 @@ load_context
 - graph 拓扑要让后续优化人员一眼看懂主骨架和章节并发骨架。
 
 更具体的现行约定见 [`LANGSMITH.md`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/LANGSMITH.md)。
+`tracked_step(...)` 的细化约定见 [`TRACKED_STEP.md`](d:/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/TRACKED_STEP.md)。
 
-协同开发时可以直接记住这 3 个入口：
+协同开发时默认只记住 `app.workflows.common` 里的 4 个核心入口：
 
-- LangGraph 节点: `@traced_workflow_node(...)` / `@traced_digest_node(...)`
-- 节点内部关键步骤: `async with tracked_step(...)`
-- 独立工具或 service: `@traceable`
+- `run_state_graph(...)`
+- `@traceable_run(...)`
+- `wrap_traceable_run(...)`
+- `async with tracked_step(...)`
+
+`node / wrap_node / workflow_node / wrap_workflow_node` 只是偏 node 语义的同义别名。  
+`prompt_traceable(...)` 是偏 prompt 语义的同义别名。  
+`digest_node / wrap_digest_node` 只作为历史兼容层保留，不再作为新代码规范。
+
+`@traceable` 只留给少数确实值得单独展示的 retriever / adapter / service 边界，不作为默认要求。
 
 ## 判断标准
 

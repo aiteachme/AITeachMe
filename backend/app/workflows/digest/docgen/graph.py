@@ -9,6 +9,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from app.utils.docgen_store import update_knowledge_build_status
+from app.workflows.common import wrap_traceable_run
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
     build_collect_drafts_node,
@@ -23,8 +24,6 @@ from app.workflows.digest.docgen.nodes import (
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.observability import wrap_digest_node
-
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the DocGen graph."""
@@ -32,86 +31,95 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(DocGenState)
     workflow.add_node(
         "load_context",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_load_context_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="load_context",
+            name="load_context",
             timing_field="load_ms",
         ),
     )
     workflow.add_node(
         "targeted_research",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_targeted_research_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="targeted_research",
+            name="targeted_research",
         ),
     )
     workflow.add_node(
         "collect_materials",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_collect_materials_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="collect_materials",
+            name="collect_materials",
         ),
     )
     workflow.add_node(
         "resolve_titles",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_resolve_titles_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="resolve_titles",
+            name="resolve_titles",
         ),
     )
     workflow.add_node(
         "pedagogy_craft",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_pedagogy_craft_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="pedagogy_craft",
+            name="pedagogy_craft",
         ),
     )
     workflow.add_node(
         "collect_drafts",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_collect_drafts_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="collect_drafts",
+            name="collect_drafts",
         ),
     )
     workflow.add_node(
         "enrich_document",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_enrich_document_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="enrich_document",
+            name="enrich_document",
             timing_field="enrich_ms",
         ),
     )
     workflow.add_node(
         "inject_examine",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_inject_examine_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="inject_examine",
+            name="inject_examine",
             timing_field="examine_ms",
         ),
     )
     workflow.add_node(
         "finalize_assemble",
-        wrap_digest_node(
+        wrap_traceable_run(
             build_finalize_assemble_node(context=context),
-            workflow_name=context.workflow_name,
+            run_type="chain",
+            workflow=context.workflow_name,
             lane="docgen",
-            node_name="finalize_assemble",
+            name="finalize_assemble",
         ),
     )
 
@@ -262,4 +270,3 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
-

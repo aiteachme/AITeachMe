@@ -6,7 +6,7 @@ import asyncio
 from time import perf_counter
 from typing import Any
 
-from app.shared.infra.tracing import langsmith_trace, langsmith_tracing_scope, llm_trace_scope
+from app.shared.infra.tracing import annotate_traceable, build_langsmith_extra, llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult, err_result, ok_result
 
@@ -32,37 +32,29 @@ async def invoke_state_graph(
     extra_metadata: dict[str, Any] | None = None,
 ) -> Any:
     """Execute a StateGraph directly while preserving shared tracing context."""
-
-    with llm_trace_scope(
+    traced_invoke = annotate_traceable(
+        _invoke_compiled_graph,
+        name=workflow_name,
+        run_type="chain",
+        process_inputs=lambda inputs: _workflow_inputs(inputs.get("initial_state")),
+        process_outputs=_workflow_outputs,
+    )
+    return await traced_invoke(
+        initial_state=initial_state,
+        graph_builder=graph_builder,
         subject=subject,
         build_session_id=build_session_id,
-        workflow=workflow_name,
+        workflow_name=workflow_name,
         lane=lane,
-    ):
-        with langsmith_tracing_scope(
+        langsmith_extra=build_langsmith_extra(
             subject=subject,
             build_session_id=build_session_id,
             workflow=workflow_name,
             lane=lane,
+            node=workflow_name,
             extra_metadata=extra_metadata,
-        ):
-            with langsmith_trace(
-                name=workflow_name,
-                run_type="chain",
-                inputs=_workflow_inputs(initial_state),
-                subject=subject,
-                build_session_id=build_session_id,
-                workflow=workflow_name,
-                lane=lane,
-                node=workflow_name,
-                extra_metadata=extra_metadata,
-            ) as run:
-                graph = graph_builder()
-                compiled = graph.compile()
-                result = await compiled.ainvoke(initial_state)
-                if run is not None:
-                    run.end(outputs=_workflow_outputs(result))
-                return result
+        ),
+    )
 
 
 async def run_state_graph(
@@ -79,36 +71,33 @@ async def run_state_graph(
     workflow_logger.info("workflow_started", workflow_name=workflow_name)
     build_session_id = str(context.metadata.get("build_session_id", ""))
     try:
-        with llm_trace_scope(
+        traced_invoke = annotate_traceable(
+            _invoke_compiled_graph,
+            name=workflow_name,
+            run_type="chain",
+            process_inputs=lambda inputs: _workflow_inputs(inputs.get("initial_state")),
+            process_outputs=_workflow_outputs,
+        )
+        final_state = await traced_invoke(
+            initial_state=initial_state,
+            graph_builder=graph_builder,
             subject=context.subject,
             build_session_id=build_session_id,
-            workflow=workflow_name,
-        ):
-            with langsmith_tracing_scope(
+            workflow_name=workflow_name,
+            lane=str(context.metadata.get("lane", "") or ""),
+            langsmith_extra=build_langsmith_extra(
                 subject=context.subject,
                 build_session_id=build_session_id,
                 workflow=workflow_name,
+                lane=str(context.metadata.get("lane", "") or ""),
+                node=workflow_name,
                 extra_metadata={"context_metadata": dict(context.metadata)},
-            ):
-                with langsmith_trace(
-                    name=workflow_name,
-                    run_type="chain",
-                    inputs=_workflow_inputs(initial_state),
-                    subject=context.subject,
-                    build_session_id=build_session_id,
-                    workflow=workflow_name,
-                    node=workflow_name,
-                    extra_metadata={"context_metadata": dict(context.metadata)},
-                ) as run:
-                    graph = graph_builder()
-                    compiled = graph.compile()
-                    final_state = await compiled.ainvoke(initial_state)
+            ),
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         workflow_logger.info("workflow_completed", workflow_name=workflow_name, elapsed_ms=elapsed_ms)
         if isinstance(final_state, dict):
             final_state.setdefault("workflow_elapsed_ms", elapsed_ms)
-        if run is not None:
-            run.end(outputs=_workflow_outputs(final_state, elapsed_ms=elapsed_ms))
         return ok_result(final_state)
     except asyncio.CancelledError:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -128,6 +117,28 @@ async def run_state_graph(
             str(exc),
             metadata={"workflow_name": workflow_name},
         )
+
+
+async def _invoke_compiled_graph(
+    *,
+    initial_state: Any,
+    graph_builder,
+    subject: str,
+    build_session_id: str,
+    workflow_name: str,
+    lane: str = "",
+    langsmith_extra: dict[str, Any] | None = None,
+) -> Any:
+    del langsmith_extra
+    with llm_trace_scope(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow_name,
+        lane=lane,
+    ):
+        graph = graph_builder()
+        compiled = graph.compile()
+        return await compiled.ainvoke(initial_state)
 
 
 def _workflow_inputs(initial_state: Any) -> dict[str, Any]:

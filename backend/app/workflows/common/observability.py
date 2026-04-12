@@ -1,4 +1,14 @@
-"""Thin workflow node tracing helpers."""
+"""Small workflow-facing LangSmith helpers.
+
+Preferred public API:
+
+- ``@traceable_run(...)`` for traced workflow functions
+- ``wrap_traceable_run(...)`` for graph-builder style wiring
+- ``tracked_step(...)`` for important substeps
+
+``node(...)`` / ``wrap_node(...)`` / ``workflow_node(...)`` remain as thin
+aliases when a more semantic name reads better in workflow code.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +20,13 @@ from typing import Any
 import structlog
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.shared.infra.tracing import langsmith_trace, llm_trace_scope
+from app.shared.infra.tracing import (
+    LangSmithRunType,
+    annotate_traceable,
+    build_langsmith_extra,
+    llm_trace_scope,
+    normalize_langsmith_run_type,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -23,22 +39,10 @@ _DEFAULT_INPUT_KEYS = (
     "course_type",
     "retrieval_profile",
     "teaching_action",
-    "asset_kind",
-    "tone",
-    "selected_skillpacks",
-    "requested_profile",
-    "applied_profile",
-    "coverage_score",
-    "quality_score",
-    "interactive_block_count",
-    "practice_count",
-    "asset_count",
-    "session_id",
-    "job_id",
-    "user_id",
-    "file_id",
-    "exam_paper_id",
     "chapter_index",
+    "file_id",
+    "session_id",
+    "user_id",
 )
 
 _DEFAULT_OUTPUT_KEYS = (
@@ -49,17 +53,11 @@ _DEFAULT_OUTPUT_KEYS = (
     "query_count",
     "local_hits",
     "web_hits",
-    "read_url_count",
-    "trusted_source_count",
     "word_count",
-    "document_count",
-    "chapter_index",
     "coverage_score",
     "quality_score",
-    "interactive_block_count",
-    "practice_count",
     "asset_count",
-    "final_word_count",
+    "chapter_index",
 )
 
 _TRACE_METADATA_FIELDS = (
@@ -70,19 +68,9 @@ _TRACE_METADATA_FIELDS = (
     "retrieval_profile",
     "teaching_action",
     "asset_kind",
-    "selected_skillpacks",
-    "requested_profile",
-    "applied_profile",
-    "coverage_score",
-    "quality_score",
-    "interactive_block_count",
-    "practice_count",
-    "asset_count",
     "session_id",
-    "job_id",
     "user_id",
     "file_id",
-    "exam_paper_id",
 )
 
 _COUNT_FIELDS = {
@@ -91,14 +79,13 @@ _COUNT_FIELDS = {
     "chapter_assignments": "chapter_count",
     "chapter_materials": "chapter_material_count",
     "chapter_drafts": "chapter_draft_count",
-    "chapter_metadatas": "staged_chapter_count",
+    "chapter_metadatas": "chapter_metadata_count",
     "doc_ids": "doc_count",
-    "created_template_ids": "created_template_count",
     "review_tasks": "review_task_count",
     "review_task_ids": "review_task_count",
-    "updated_state_ids": "updated_state_count",
     "weaknesses": "weakness_count",
     "warnings": "warning_count",
+    "runtime_steps": "step_count",
 }
 
 
@@ -112,54 +99,38 @@ def trace_workflow_node(
     output_keys: Sequence[str] | None = None,
     timing_field: str | None = None,
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Wrap one LangGraph node with a thin LangSmith span."""
+    """Wrap one LangGraph node with a thin ``@traceable``-style adapter."""
 
     trace_name = f"{lane}.{name}" if lane else name
 
-    async def wrapped(state: Any) -> dict[str, Any]:
+    async def invoke_node(
+        *,
+        state: Any,
+        langsmith_extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        del langsmith_extra
         state_mapping = state if isinstance(state, Mapping) else {}
         subject = str(state_mapping.get("subject", "") or "")
         build_session_id = _resolve_build_session_id(state_mapping)
-        metadata = _node_trace_metadata(state_mapping)
         started_at = perf_counter()
-        run = None
 
         try:
-            with langsmith_trace(
-                name=trace_name,
-                run_type="chain",
-                inputs=_node_trace_inputs(state_mapping, input_keys=input_keys),
+            with llm_trace_scope(
                 subject=subject,
                 build_session_id=build_session_id,
                 workflow=workflow,
                 lane=lane,
                 node=trace_name,
-                extra_metadata=metadata,
-                extra_tags=_node_trace_tags(metadata, lane=lane, node=name),
-            ) as run:
-                with llm_trace_scope(
-                    subject=subject,
-                    build_session_id=build_session_id,
-                    workflow=workflow,
-                    lane=lane,
-                    node=trace_name,
-                ):
-                    result = handler(state)
-                    if inspect.isawaitable(result):
-                        result = await result
+            ):
+                result = handler(state)
+                if inspect.isawaitable(result):
+                    result = await result
 
             result_mapping = _coerce_result_mapping(result)
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             if timing_field and timing_field not in result_mapping:
                 result_mapping = {**result_mapping, timing_field: elapsed_ms}
-            if run is not None:
-                run.end(
-                    outputs=_node_trace_outputs(
-                        result_mapping,
-                        elapsed_ms=elapsed_ms,
-                        output_keys=output_keys,
-                    )
-                )
+
             logger.bind(
                 workflow=workflow,
                 lane=lane,
@@ -172,10 +143,8 @@ def trace_workflow_node(
                 status="failed" if result_mapping.get("error") else "ok",
             )
             return result_mapping
-        except Exception as exc:
+        except Exception:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
-            if run is not None:
-                run.end(outputs={"status": "failed", "elapsed_ms": elapsed_ms, "error": str(exc)})
             logger.bind(
                 workflow=workflow,
                 lane=lane,
@@ -185,7 +154,56 @@ def trace_workflow_node(
             ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
             raise
 
+    traced_invoke = annotate_traceable(
+        invoke_node,
+        name=trace_name,
+        run_type="chain",
+        process_inputs=lambda inputs: _node_trace_inputs(
+            _extract_traced_state(inputs),
+            input_keys=input_keys,
+        ),
+        process_outputs=lambda outputs: _node_trace_outputs(
+            _coerce_result_mapping(outputs),
+            output_keys=output_keys,
+        ),
+    )
+
+    async def wrapped(state: Any) -> dict[str, Any]:
+        state_mapping = state if isinstance(state, Mapping) else {}
+        trace_extra = build_langsmith_extra(
+            subject=str(state_mapping.get("subject", "") or ""),
+            build_session_id=_resolve_build_session_id(state_mapping),
+            workflow=workflow,
+            lane=lane,
+            node=trace_name,
+            extra_metadata=_node_trace_metadata(state_mapping),
+            extra_tags=_node_trace_tags(state_mapping, lane=lane, node=name),
+        )
+        return await traced_invoke(state=state, langsmith_extra=trace_extra)
+
     return wrapped
+
+
+def node(
+    *,
+    workflow: str,
+    lane: str,
+    name: str,
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
+    """Short semantic alias for one traced LangGraph node."""
+
+    return traceable_run(
+        name=name,
+        run_type="chain",
+        workflow=workflow,
+        lane=lane,
+        input_keys=input_keys,
+        output_keys=output_keys,
+        timing_field=timing_field,
+    )
 
 
 def traced_workflow_node(
@@ -197,7 +215,7 @@ def traced_workflow_node(
     output_keys: Sequence[str] | None = None,
     timing_field: str | None = None,
 ) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
-    """Decorator form of ``trace_workflow_node`` for LangGraph node handlers."""
+    """Decorator form of :func:`trace_workflow_node`."""
 
     def decorator(handler: Callable[[Any], Any]) -> Callable[[Any], Awaitable[dict[str, Any]]]:
         return trace_workflow_node(
@@ -213,27 +231,165 @@ def traced_workflow_node(
     return decorator
 
 
-def wrap_workflow_node(
-    handler: Callable[[Any], Any],
+def workflow_node(
     *,
-    workflow_name: str,
+    workflow: str,
     lane: str,
-    node_name: str,
+    name: str,
     input_keys: Sequence[str] | None = None,
     output_keys: Sequence[str] | None = None,
     timing_field: str | None = None,
-) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Backward-compatible alias for the thin workflow node tracer."""
+) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
+    """Explicit alias for ``@node(...)`` when the longer name reads better."""
 
-    return trace_workflow_node(
-        handler,
-        workflow=workflow_name,
+    return node(
+        workflow=workflow,
         lane=lane,
-        name=node_name,
+        name=name,
         input_keys=input_keys,
         output_keys=output_keys,
         timing_field=timing_field,
     )
+
+
+def wrap_node(
+    handler: Callable[[Any], Any],
+    *,
+    workflow: str,
+    lane: str,
+    name: str,
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+) -> Callable[[Any], Awaitable[dict[str, Any]]]:
+    """Short semantic alias for graph-builder style node registration."""
+
+    return wrap_traceable_run(
+        handler,
+        name=name,
+        run_type="chain",
+        workflow=workflow,
+        lane=lane,
+        input_keys=input_keys,
+        output_keys=output_keys,
+        timing_field=timing_field,
+    )
+
+
+def traceable_run(
+    *,
+    name: str,
+    run_type: LangSmithRunType = "chain",
+    workflow: str = "",
+    lane: str = "",
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+    process_inputs=None,
+    process_outputs=None,
+) -> Callable[[Callable[[Any], Any]], Callable[..., Any]]:
+    """One unified decorator for node, prompt, tool, retriever, parser runs.
+
+    - ``run_type="chain"`` + ``workflow=...`` uses the stateful workflow-node wrapper
+    - other run types map to a thin repo-local ``@traceable`` wrapper
+    """
+
+    resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
+    if resolved_run_type == "chain" and workflow:
+        return traced_workflow_node(
+            workflow=workflow,
+            lane=lane,
+            name=name,
+            input_keys=input_keys,
+            output_keys=output_keys,
+            timing_field=timing_field,
+        )
+
+    def decorator(handler: Callable[[Any], Any]):
+        return annotate_traceable(
+            handler,
+            name=name,
+            run_type=resolved_run_type,
+            process_inputs=process_inputs,
+            process_outputs=process_outputs,
+        )
+
+    return decorator
+
+
+def wrap_traceable_run(
+    handler: Callable[[Any], Any],
+    *,
+    name: str,
+    run_type: LangSmithRunType = "chain",
+    workflow: str = "",
+    lane: str = "",
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+    process_inputs=None,
+    process_outputs=None,
+) -> Callable[..., Any]:
+    """One unified wrapper for graph-builder style traced functions."""
+
+    resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
+    if resolved_run_type == "chain" and workflow:
+        return trace_workflow_node(
+            handler,
+            workflow=workflow,
+            lane=lane,
+            name=name,
+            input_keys=input_keys,
+            output_keys=output_keys,
+            timing_field=timing_field,
+        )
+    return annotate_traceable(
+        handler,
+        name=name,
+        run_type=resolved_run_type,
+        process_inputs=process_inputs,
+        process_outputs=process_outputs,
+    )
+
+
+def wrap_workflow_node(
+    handler: Callable[[Any], Any],
+    *,
+    workflow_name: str | None = None,
+    node_name: str | None = None,
+    workflow: str | None = None,
+    name: str | None = None,
+    lane: str,
+    input_keys: Sequence[str] | None = None,
+    output_keys: Sequence[str] | None = None,
+    timing_field: str | None = None,
+) -> Callable[[Any], Awaitable[dict[str, Any]]]:
+    """Explicit compatibility alias for graph wiring.
+
+    New code can prefer ``wrap_node(...)`` for the shortest common workflow API.
+    """
+
+    resolved_workflow = str(workflow or workflow_name or "").strip()
+    resolved_name = str(name or node_name or "").strip()
+    if not resolved_workflow:
+        raise ValueError("wrap_workflow_node requires `workflow` or `workflow_name`.")
+    if not resolved_name:
+        raise ValueError("wrap_workflow_node requires `name` or `node_name`.")
+
+    return wrap_node(
+        handler,
+        workflow=resolved_workflow,
+        lane=lane,
+        name=resolved_name,
+        input_keys=input_keys,
+        output_keys=output_keys,
+        timing_field=timing_field,
+    )
+
+
+def _extract_traced_state(inputs: Mapping[str, Any]) -> Mapping[str, Any]:
+    state = inputs.get("state")
+    return state if isinstance(state, Mapping) else {}
 
 
 def _resolve_build_session_id(state: Mapping[str, Any]) -> str:
@@ -267,8 +423,7 @@ def _node_trace_inputs(
     *,
     input_keys: Sequence[str] | None,
 ) -> dict[str, Any]:
-    keys = tuple(input_keys or _DEFAULT_INPUT_KEYS)
-    inputs = _pick_fields(state, keys)
+    inputs = _pick_fields(state, tuple(input_keys or _DEFAULT_INPUT_KEYS))
     for field_name, alias in _COUNT_FIELDS.items():
         value = state.get(field_name)
         if isinstance(value, list) and value:
@@ -282,12 +437,10 @@ def _node_trace_inputs(
 def _node_trace_outputs(
     result: Mapping[str, Any],
     *,
-    elapsed_ms: int,
     output_keys: Sequence[str] | None,
 ) -> dict[str, Any]:
     outputs = {
         "status": "failed" if result.get("error") else "ok",
-        "elapsed_ms": int(elapsed_ms),
     }
     outputs.update(_pick_fields(result, tuple(output_keys or _DEFAULT_OUTPUT_KEYS)))
 
@@ -296,147 +449,14 @@ def _node_trace_outputs(
         if isinstance(value, list) and value:
             outputs[alias] = len(value)
 
-    if result.get("chapter_materials"):
-        chapter_materials = list(result.get("chapter_materials", []))
-        outputs["source_count"] = sum(len(item.get("sources", []) or []) for item in chapter_materials)
-        outputs["local_hits"] = sum(int(item.get("local_hits", 0) or 0) for item in chapter_materials)
-        outputs["web_hits"] = sum(int(item.get("web_hits", 0) or 0) for item in chapter_materials)
-        outputs["fallback_used"] = any(bool(item.get("fallback_used", False)) for item in chapter_materials)
-        outputs["trusted_source_count"] = sum(int(item.get("trusted_source_count", 0) or 0) for item in chapter_materials)
-        outputs["planned_query_count"] = sum(len(item.get("planned_queries", []) or []) for item in chapter_materials)
-        outputs["executed_query_count"] = sum(len(item.get("executed_queries", []) or []) for item in chapter_materials)
-        outputs["read_url_count"] = sum(int(item.get("read_url_count", 0) or 0) for item in chapter_materials)
-        outputs["document_count"] = sum(int(item.get("document_count", 0) or 0) for item in chapter_materials)
-        retriever_names = sorted(
-            {
-                str(retriever_name)
-                for item in chapter_materials
-                for retriever_name in dict(item.get("retriever_stats", {}) or {}).keys()
-                if str(retriever_name).strip()
-            }
-        )
-        if retriever_names:
-            outputs["retriever_names"] = retriever_names
-            outputs["retriever_count"] = len(retriever_names)
-        compression_modes = sorted(
-            {
-                str(item.get("compression_mode") or "").strip()
-                for item in chapter_materials
-                if str(item.get("compression_mode") or "").strip()
-            }
-        )
-        if compression_modes:
-            outputs["compression_mode"] = ",".join(compression_modes)
-        requested_profiles = sorted(
-            {
-                str(item.get("requested_profile") or item.get("requested_retrieval_profile") or "").strip()
-                for item in chapter_materials
-                if str(item.get("requested_profile") or item.get("requested_retrieval_profile") or "").strip()
-            }
-        )
-        applied_profiles = sorted(
-            {
-                str(item.get("applied_profile") or item.get("applied_retrieval_profile") or "").strip()
-                for item in chapter_materials
-                if str(item.get("applied_profile") or item.get("applied_retrieval_profile") or "").strip()
-            }
-        )
-        if requested_profiles:
-            outputs["requested_profiles"] = requested_profiles
-        if applied_profiles:
-            outputs["applied_profiles"] = applied_profiles
-        outputs["research_round_count_total"] = sum(
-            int(item.get("research_round_count", 0) or len(item.get("research_rounds", []) or []))
-            for item in chapter_materials
-        )
-        outputs["gap_count"] = sum(
-            len([gap for gap in list(item.get("gaps_remaining", []) or []) if str(gap).strip()])
-            for item in chapter_materials
-        )
-
-    if result.get("chapter_drafts"):
-        chapter_drafts = list(result.get("chapter_drafts", []))
-        outputs["word_count"] = sum(int(item.get("word_count", 0) or 0) for item in chapter_drafts)
-        outputs["placeholder_count"] = sum(int(item.get("placeholder_count", 0) or 0) for item in chapter_drafts)
-        outputs["interactive_block_count"] = sum(int(item.get("interactive_block_count", 0) or 0) for item in chapter_drafts)
-        coverage_scores = [
-            float(item.get("coverage_score", 0.0) or 0.0)
-            for item in chapter_drafts
-            if float(item.get("coverage_score", 0.0) or 0.0) > 0
-        ]
-        quality_scores = [
-            float(item.get("quality_score", 0.0) or 0.0)
-            for item in chapter_drafts
-            if float(item.get("quality_score", 0.0) or 0.0) > 0
-        ]
-        if coverage_scores:
-            outputs["coverage_score"] = round(sum(coverage_scores) / len(coverage_scores), 4)
-        if quality_scores:
-            outputs["quality_score"] = round(sum(quality_scores) / len(quality_scores), 4)
-
-    if result.get("chapter_metadatas"):
-        chapter_metadatas = list(result.get("chapter_metadatas", []))
-        outputs["source_count"] = sum(len(item.get("sources", []) or []) for item in chapter_metadatas)
-        outputs["final_word_count"] = sum(count_words(str(item.get("markdown") or "")) for item in chapter_metadatas)
-        outputs["practice_count"] = sum(int(item.get("practice_count", 0) or 0) for item in chapter_metadatas)
-        outputs["interactive_block_count"] = max(
-            int(outputs.get("interactive_block_count", 0) or 0),
-            sum(int(item.get("interactive_block_count", 0) or 0) for item in chapter_metadatas),
-        )
-
-    for field_name in ("mermaid_block_count", "image_block_count", "interactive_block_count", "practice_count", "asset_count"):
-        value = result.get(field_name)
-        if value not in (None, "", [], {}):
-            outputs[field_name] = int(value)
-
-    asset_summary = result.get("asset_summary")
-    if isinstance(asset_summary, Mapping) and asset_summary:
-        outputs["asset_summary"] = {
-            str(key): int(value or 0)
-            for key, value in asset_summary.items()
-            if str(key).strip()
-        }
-
     merged_markdown = str(
         result.get("enriched_markdown")
         or result.get("merged_markdown")
         or result.get("enhanced_markdown")
         or ""
     )
-    if merged_markdown.strip():
+    if merged_markdown.strip() and "final_word_count" not in outputs:
         outputs["final_word_count"] = count_words(merged_markdown)
-
-    assistant_response = str(result.get("assistant_response") or "")
-    if assistant_response:
-        outputs["response_chars"] = len(assistant_response)
-
-    for field_name in (
-        "asset_ocr_images",
-        "asset_ocr_replacements",
-        "templates_created",
-        "stream_interrupted",
-        "mastery_updated",
-        "review_scheduled",
-        "weaknesses_ranked",
-        "report_generated",
-    ):
-        value = result.get(field_name)
-        if value not in (None, "", [], {}):
-            outputs[field_name] = value
-
-    grade_result = result.get("grade_result")
-    if grade_result is not None:
-        for attr_name in ("correct_items", "total_items", "score"):
-            value = _read_attr_or_key(grade_result, attr_name)
-            if value not in (None, ""):
-                outputs[attr_name] = value
-
-    mastery_result = result.get("mastery_result")
-    if mastery_result is not None:
-        for attr_name in ("states_updated", "already_consumed"):
-            value = _read_attr_or_key(mastery_result, attr_name)
-            if value not in (None, ""):
-                outputs[attr_name] = value
 
     if result.get("error"):
         outputs["error"] = str(result.get("error"))
@@ -453,7 +473,7 @@ def _pick_fields(payload: Mapping[str, Any], keys: Sequence[str]) -> dict[str, A
 
 
 def _node_trace_tags(
-    metadata: Mapping[str, Any],
+    state: Mapping[str, Any],
     *,
     lane: str,
     node: str,
@@ -463,22 +483,17 @@ def _node_trace_tags(
         tags.append(f"lane:{lane}")
     if node:
         tags.append(f"node:{node}")
-    digest_mode = str(metadata.get("digest_mode", "") or "")
-    course_type = str(metadata.get("course_type", "") or "")
-    retrieval_profile = str(metadata.get("retrieval_profile", "") or "")
-    teaching_action = str(metadata.get("teaching_action", "") or "")
-    asset_kind = str(metadata.get("asset_kind", "") or "")
-    chapter_index = metadata.get("chapter_index")
-    if digest_mode:
-        tags.append(f"mode:{digest_mode}")
-    if course_type:
-        tags.append(f"course:{course_type}")
-    if retrieval_profile:
-        tags.append(f"retrieval:{retrieval_profile}")
-    if teaching_action:
-        tags.append(f"teaching:{teaching_action}")
-    if asset_kind:
-        tags.append(f"asset:{asset_kind}")
+    for key, prefix in (
+        ("digest_mode", "mode"),
+        ("course_type", "course"),
+        ("retrieval_profile", "retrieval"),
+        ("teaching_action", "teaching"),
+        ("asset_kind", "asset"),
+    ):
+        value = str(state.get(key, "") or "").strip()
+        if value:
+            tags.append(f"{prefix}:{value}")
+    chapter_index = _extract_chapter_index(state)
     if chapter_index is not None:
         tags.append(f"chapter:{chapter_index}")
     return tags
@@ -488,7 +503,7 @@ def _extract_chapter_index(state: Mapping[str, Any]) -> int | None:
     value = state.get("chapter_index")
     if value not in (None, ""):
         return int(value)
-    for key in ("chapter_assignment", "chapter_material"):
+    for key in ("chapter_assignment", "chapter_material", "chapter_plan"):
         payload = state.get(key) or {}
         if isinstance(payload, Mapping):
             nested = payload.get("chapter_index")
@@ -497,14 +512,13 @@ def _extract_chapter_index(state: Mapping[str, Any]) -> int | None:
     return None
 
 
-def _read_attr_or_key(payload: Any, field_name: str) -> Any:
-    if isinstance(payload, Mapping):
-        return payload.get(field_name)
-    return getattr(payload, field_name, None)
-
-
 __all__ = [
-    "traced_workflow_node",
+    "traceable_run",
+    "wrap_traceable_run",
+    "node",
     "trace_workflow_node",
+    "traced_workflow_node",
+    "workflow_node",
+    "wrap_node",
     "wrap_workflow_node",
 ]

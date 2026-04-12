@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.common import traceable_run
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.token_budget import ContextWindowManager
 from app.shared.infra.prompt_loader import populate_prompt
@@ -16,6 +17,7 @@ from app.workflows.interact.support.types import (
 )
 
 
+@traceable_run(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
     subject: str,

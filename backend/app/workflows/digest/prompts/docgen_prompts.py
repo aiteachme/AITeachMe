@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.common import traceable_run
 
 def _normalize_mode(digest_mode: str) -> str:
     return (digest_mode or "systematic").strip().lower()
@@ -54,6 +55,7 @@ def _build_mode_contract(
     )
 
 
+@traceable_run(name="digest.docgen.writer_prompt", run_type="prompt")
 def build_docgen_writer_messages(
     *,
     title: str,
@@ -136,6 +138,7 @@ def build_docgen_writer_messages(
     ]
 
 
+@traceable_run(name="digest.docgen.heading_repair_prompt", run_type="prompt")
 def build_docgen_heading_repair_messages(
     *,
     title: str,
@@ -197,6 +200,7 @@ def build_docgen_heading_repair_messages(
     ]
 
 
+@traceable_run(name="digest.docgen.research_purify_prompt", run_type="prompt")
 def build_docgen_research_purify_messages(
     *,
     dense_context: str,
@@ -244,6 +248,7 @@ def build_docgen_research_purify_messages(
     ]
 
 
+@traceable_run(name="digest.docgen.mermaid_prompt", run_type="prompt")
 def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
     return f"""
 请根据下面内容生成 Mermaid mindmap 语法。
@@ -261,6 +266,7 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 """.strip()
 
 
+@traceable_run(name="digest.docgen.sub_query_prompt", run_type="prompt")
 def build_docgen_sub_query_messages(
     *,
     query: str,
@@ -314,6 +320,7 @@ def build_docgen_sub_query_messages(
     ]
 
 
+@traceable_run(name="digest.docgen.gap_query_prompt", run_type="prompt")
 def build_docgen_gap_query_messages(
     *,
     dense_context: str,

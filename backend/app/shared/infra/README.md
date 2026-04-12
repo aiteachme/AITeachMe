@@ -91,4 +91,5 @@ shared/infra/
   目前仍是轻量原型文件；如果开始承载多 transport、server lifecycle、registry bridge，就应拆成 `shared/infra/mcp/` 包。
 - LangSmith 兼容代码：
   provider/调用级追踪放 `shared/infra/tracing.py` 与 `shared/infra/llm_support/observability.py`；
-  workflow 级观测结构放 `workflows/common/observability.py` 与各 workflow 自己的 observability 文件。
+  workflow 级统一 tracing 入口放 `workflows/common/observability.py`；
+  各 workflow 自己的 observability 文件如果仍存在，应主要承担 lane summary、timing report、兼容层等职责，而不是再定义第二套接入规范。
