@@ -1,157 +1,177 @@
-﻿## 附录 A：目标数据结构
+## 附录 A：当前已落地的核心合同
 
-> 说明：以下结构分为“当前代码已存在的核心字段”和“本轮建议新增的字段”。
+> 说明：以下以“当前代码已经存在的核心结构”为主，只在必要处补充下一步值得增强的字段。
 
-### A.1 `BuildContract`（目标）
+### A.1 `DigestConfirmedPlanContract`
 
-```python
-class BuildContract(BaseModel):
-    course_type: Literal["sprint", "systematic"]
-    learning_goal: str
-    tone: Literal["casual", "professional", "encouraging", "concise"]
-    target_word_count: int
-    formula_depth: Literal["light", "standard", "full_derivation"]
-    example_density: Literal["low", "medium", "high"]
-    retrieval_profile: str
-    media_preferences: dict[str, bool]
-    chapter_contracts: list["ChapterContract"]
-```
+当前 canonical confirmed plan 合同位于：
 
-### A.2 `ChapterContract`（目标）
+- `backend/app/workflows/digest/shared/contracts.py`
 
-```python
-class ChapterContract(BaseModel):
-    chapter_index: int
-    title: str
-    objective: str
-    required_elements: list[str]
-    search_queries: list[str]
-    writing_instructions: str
-    media_hints: dict[str, list[str]]
-    source_file_ids: list[int]
-```
+它当前已经覆盖：
 
-### A.3 `ChapterMaterial`（当前已有基础，建议扩展）
+- `subject`
+- `user_goal`
+- `digest_mode`
+- `tone`
+- `selected_skillpacks`
+- `chapter_plan`
+- `research_queries`
+- `media_plan`
+- `build_constraints`
+- `plan_summary`
+- `selected_file_ids`
+- `planner_session_id`
+- `confirmed_plan_id`
+- `mode_reason`
 
-```python
-class ChapterMaterial(TypedDict):
-    chapter_index: int
-    dense_context: str
-    sources: list[str]
-    source_details: list[dict[str, object]]
-    local_hits: int
-    web_hits: int
-    query_count: int
-    fallback_used: bool
-    requested_profile: str              # 新增
-    applied_profile: str                # 新增
-    research_rounds: int                # 新增
-    gaps_remaining: list[str]           # 新增
-    confidence_level: str               # 新增
-```
+结论：confirmed plan 已经不是松散 JSON，而是 DocGen 真正可消费的 typed contract。
 
-### A.4 `ChapterDraft`（目标）
+### A.2 `DigestChapterContract` / `DigestChapterExecutionContract`
 
-```python
-class ChapterDraft(BaseModel):
-    chapter_index: int
-    title: str
-    markdown: str
-    word_count: int
-    required_elements_coverage: dict[str, bool]
-    question_hooks: list[str]
-    asset_hints: dict[str, list[str]]
-    quality_flags: list[str]
-```
+当前 chapter-level 合同已经拆成两层：
 
-### A.5 `AssetPlan`（目标）
+- `DigestChapterContract`
+- `DigestChapterExecutionContract`
 
-```python
-class AssetPlan(BaseModel):
-    chapter_index: int
-    mermaid: list[str] = []
-    image: list[str] = []
-    interactive_html: list[str] = []
-    animation: list[str] = []
-    formula_cards: list[str] = []
-    summary_cards: list[str] = []
-```
+关键字段包括：
+
+- `chapter_index`
+- `title`
+- `resolved_title`
+- `objective`
+- `required_elements`
+- `search_queries`
+- `writing_instructions`
+- `media_hints`
+- `execution_contract`
+- `source_file_ids`
+
+而 execution contract 当前已经覆盖：
+
+- `target_word_count`
+- `min_word_count`
+- `coverage_requirements`
+- `min_coverage_score`
+- `explanation_depth`
+- `repair_enabled`
+- `quality_hint`
+- `media_quota`
+- `practice_quota`
+
+结论：模式差异和章节质量约束已经进入 execution contract，而不是只存在于 prompt 文本。
+
+### A.3 `DocGenState` 关键字段
+
+当前 DocGen lane state 位于：
+
+- `backend/app/workflows/digest/docgen/state.py`
+
+其中最关键的结构化字段已经包括：
+
+- 基础输入：`subject / file_ids / build_session_id / planner_session_id / confirmed_plan_id`
+- 模式与策略：`digest_mode / course_type / retrieval_profile / teaching_action / tone`
+- skillpack：`selected_skillpacks / document_context`
+- 中间产物：`chapter_assignments / chapter_materials / chapter_drafts / chapter_metadatas / exam_questions`
+- 富媒体与练习：`mermaid_block_count / image_block_count / interactive_block_count / asset_count / asset_summary / practice_count`
+- 最终产物：`merged_markdown / enriched_markdown / doc_ids / built_paths`
+- 可观测性：`load_ms / research_ms / draft_ms / enrich_ms / examine_ms / finalize_ms / timing_summary / token_summary`
+
+结论：DocGen state 已经能承载“研究、写作、富媒体、练习、发布、统计”这几类产物，不再只是纯 markdown 中转。
 
 ---
 
-## 附录 B：当前关键实现位置
+## 附录 B：DocGen research runtime 当前 metadata
+
+当前 `DocGenChapterContextRuntime` 已经输出的关键 metadata 包括：
+
+- `base_queries`
+- `planned_queries`
+- `gap_queries`
+- `executed_queries`
+- `fallback_queries`
+- `requested_profile`
+- `applied_profile`
+- `configured_retrievers`
+- `active_retrievers`
+- `retriever_stats`
+- `research_rounds`
+- `research_round_count`
+- `coverage_score`
+- `gaps_remaining`
+- `source_class_breakdown`
+- `stop_reason`
+- `selected_skillpacks`
+- `recommended_tool_tags`
+
+结论：research 已经具备足够强的运行时摘要与追踪输入，下一步重点是调优这些字段背后的算法，而不是继续补基础观测面。
+
+---
+
+## 附录 C：Digest lane summary 当前可聚合字段
+
+当前 `backend/app/workflows/digest/observability.py` 已经能聚合：
+
+### Docs Lane
+
+- `selected_skillpacks`
+- `retrieval_profiles`
+- `teaching_actions`
+- `requested_profiles / applied_profiles`
+- `research_rounds / research_round_count_total / max_research_round_count`
+- `source_class_breakdown`
+- `mermaid_count / image_count / interactive_block_count / asset_count / asset_summary`
+- `practice_count`
+- `coverage_score / quality_score`
+
+### KG / Curriculum Lane
+
+- 各步骤耗时
+- 节点 / 单元数量
+- token summary
+- slow item top-k
+
+结论：Digest observability 文件当前的职责应该理解为 lane summary / timing report，而不是重新定义第二套 tracing API。
+
+---
+
+## 附录 D：当前关键实现位置
 
 | 能力 | 当前文件 |
 | --- | --- |
-| course type / retrieval profile helper | `backend/app/workflows/digest/shared/contracts.py` |
-| docgen writer prompt | `backend/app/workflows/digest/prompts/docgen_prompts.py` |
-| chapter context runtime | `backend/app/workflows/digest/docgen/runtime/chapter_context.py` |
-| context compression | `backend/app/shared/infra/search/context_compression.py` |
-| source curation | `backend/app/shared/infra/search/source_curation.py` |
+| confirmed plan / chapter contract | `backend/app/workflows/digest/shared/contracts.py` |
+| planner graph | `backend/app/workflows/digest/planner/graph.py` |
+| docgen graph | `backend/app/workflows/digest/docgen/graph.py` |
+| chapter research runtime | `backend/app/workflows/digest/docgen/runtime/chapter_context.py` |
+| writer runtime | `backend/app/workflows/digest/docgen/runtime/writer.py` |
+| asset sidecar runtime | `backend/app/workflows/digest/docgen/runtime/assets.py` |
+| docgen prompts | `backend/app/workflows/digest/prompts/docgen_prompts.py` |
+| planner prompts | `backend/app/workflows/digest/prompts/planner_prompts.py` |
 | teaching scaffold | `backend/app/teaching/documents/report_generation.py` |
-| teaching content blocks | `backend/app/teaching/documents/content_blocks.py` |
-| docgen load/research/write nodes | `backend/app/workflows/digest/docgen/nodes/*.py` |
-| LLM fallback / tier | `backend/app/shared/infra/llm_support/fallback.py` |
-| LLM routing | `backend/app/shared/infra/llm_support/routing.py` |
+| search factory / retrievers | `backend/app/shared/infra/search/*` |
+| tracing 统一入口 | `backend/app/workflows/common/*` |
+| Digest lane summary | `backend/app/workflows/digest/observability.py` |
 
 ---
 
-## 附录 C：最值得迁移的参考算法
+## 附录 E：下一批值得显式化、但当前还不必伪装成已实现的字段
 
-### 来自 `gpt-researcher`
+下面这些方向值得继续做，但当前不要写成“已经落地”：
 
-| 参考点 | 借法 |
-| --- | --- |
-| `skills/deep_research.py` | 借“补检索”的思路，不照搬递归实现 |
-| `skills/researcher.py` | 借 query planning 与多 retriever 调度思路 |
-| `context/compression.py` | 借快慢路径压缩思路 |
-| `DetailedReport` | 借子话题展开与章节差异化研究思路 |
-
-### 来自 `DeepTutor`
-
-| 参考点 | 借法 |
-| --- | --- |
-| `agents/research/mode_strategy.py` | 借模式策略表，把 `sprint/systematic` 收敛成可执行参数集 |
-| `agents/research/research_pipeline.py` | 借动态 topic queue 与 progress event 思路 |
-| `agents/guide/guide_manager.py` | 借课程产物的”设计 -> 页面 -> 追问 -> 总结”形态 |
-| `agents/math_animator/pipeline.py` | 借富媒体 sidecar 的分析/设计/生成/重试/总结链 |
-
-### 来自 `DeepTutor`（2026-04-11 深度分析补充）
-
-| 参考点 | 借法 |
-| --- | --- |
-| `agents/solve/agents/planner_agent.py` | 借 pre-retrieval planning：先生成多条 query → 并行检索 → LLM 聚合 → 再规划。强化 `planner.ground_concepts` |
-| `agents/guide/agents/interactive_agent.py` | 借知识点级交互 HTML 生成（KaTeX 支持 + fallback 模板）。用于 `runtime/assets.py` 的 interactive 占位符展开 |
-| `agents/question/agents/followup_agent.py` | 借结构化 follow-up 上下文（correctness + explanation + knowledge context）。用于 examine 引擎的追问设计 |
-| `services/session/context_builder.py` | 借对话历史压缩到 token budget 的策略。用于 interact 引擎的长对话管理 |
-| `agents/chat/agentic_pipeline.py` | 借 thinking → acting → observing → responding 的 agent 循环。参考但不照搬 |
-| `knowledge/manager.py` | 借 KB 状态管理（ready/processing/error + needs_reindex）。当前 `docgen_store` 已有类似机制 |
+- 学科特定 retrieval profile 参数表
+- 更细的 gap 类型分类
+- richer interactive / image asset contract
+- animation 执行合同
+- 跨引擎共享的学习画像合同
+- 更强的章节级质量评分拆解
 
 ---
 
-## 附录 D：建议新增的算法参数
+## 附录 F：当前最小检查表
 
-> 这些是建议新增或显式化的配置项，不代表当前仓库已经全部实现。
-
-```env
-DOCGEN_SPRINT_TARGET_WORDS=6000
-DOCGEN_SYSTEMATIC_TARGET_WORDS=12000
-DOCGEN_SPRINT_MAX_RESEARCH_ROUNDS=1
-DOCGEN_SYSTEMATIC_MAX_RESEARCH_ROUNDS=2
-DOCGEN_SPRINT_SUB_QUERY_COUNT=3
-DOCGEN_SYSTEMATIC_SUB_QUERY_COUNT=5
-DOCGEN_ENABLE_ASSET_SIDECAR=true
-DOCGEN_ENABLE_INTERACTIVE_HTML=false
-DOCGEN_ENABLE_ANIMATION=false
-```
-
----
-
-## 附录 E：最小质量检查表
-
-- `BuildContract` 是否完成校验
-- `retrieval_profile` 是否真正影响 retriever 组合
-- `ChapterMaterial` 是否含 coverage / gaps / confidence
-- `ChapterDraft` 是否含 question hooks / asset hints
-- `sprint / systematic` 是否体现出明显产物差异
-- LangSmith 是否能看到 rounds / assets / fallback
+- confirmed plan 是否始终以 typed contract 进入 DocGen
+- `selected_skillpacks` 是否保持 planner -> confirmed plan -> docgen 一致
+- `retrieval_profile` 是否真实影响 retriever 工厂，而不只是 trace 文本
+- `research_rounds / coverage_score / gaps_remaining` 是否能从 trace 和 lane summary 看到
+- `asset_summary / practice_count` 是否进入最终 summary
+- `animation` 是否仍明确标注为预留位，而不是已落地能力

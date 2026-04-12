@@ -1,13 +1,15 @@
 # 09. Execution Plan
 
-## 本轮已执行的落地点
+最后更新：2026-04-13
+
+## 本轮已经落实的关键结果
 
 ### 1. 基础边界
 
-- `shared/infra/traced_execution.py` 成为 canonical traced execution helper
-- `shared/infra/execution.py` 退化为兼容 re-export
-- `shared/infra/orchestrators/` 已删除
-- `shared/infra/prompt_builders/` 已删除
+- `shared/infra/traced_execution.py` 已成为 canonical traced execution helper。
+- `shared/infra/execution.py` 退化为兼容 shim。
+- `shared/infra/orchestrators/` 与 `shared/infra/prompt_builders/` 已退出主线设计。
+- workflow tracing 已统一收口到 `workflows/common` 的最小 4 入口。
 
 ### 2. DocGen runtime 迁移
 
@@ -15,73 +17,132 @@
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 
-节点侧已经改为直接依赖 workflow-local runtime。
+这些 runtime 已承担 DocGen 的 concrete multi-step logic，节点层直接依赖 workflow-local runtime，不再绕回 infra 业务层。
 
 ### 3. Skillpack 主流程接入
 
-- skillpack metadata 已支持：
-  - `prompt_scope`
-  - `recommended_tool_tags`
-  - `defaults`
-- planner API / draft / confirmed plan / docgen state 已支持 `selected_skillpacks`
-- planner prompt 与 docgen runtime prompt 已注入 scoped skillpack guidance
+当前已经落地：
+
+- `selected_skillpacks`
+- `prompt_scope`
+- `recommended_tool_tags`
+- `defaults`
+- planner / confirmed plan / docgen state 的贯通
+- planner 与 docgen prompt/runtime 对 scoped guidance 的消费
 
 ### 4. Toolpack 扩展
 
-- external tool loader 已支持 `manifest.yaml + handler.py`
-- 扫描路径：
-  - `backend/toolpacks`
-  - `~/.atm/toolpacks`
-- YAML-only `backend/tools/*.yaml` 降级为过渡态
+当前已经落地：
 
-## 当前已知未完成的关键差距
+- `manifest.yaml + handler.py` 扩展模型
+- 项目内与用户目录两级扫描
+- toolpack handler 真正注册到 canonical registry
+- YAML-only 工具目录退化为过渡元信息
 
-- `retrieval_profile` 已经真正进入 `DocGenChapterContextRuntime` 的 retriever 工厂，`requested_profile / applied_profile` 也已写入 trace；当前剩余重点变成 micro-loop 调参、学科化 source weight 和缓存。
-- `systematic / sprint` 的章节执行合同已进入 confirmed plan -> assignment -> writer/runtime，但后续仍可继续细化到更多学科模板。
-- `interactive_html` sidecar 已具备最小执行链，`animation` 仍只保留 contract / trace 预留位，尚未进入首轮主线。
-- `inject_examine` 已升级为 digest-local 的模式感知 practice layer，但还没和独立 Examine 引擎共享更深的题目上下文。
+### 5. Workflow tracing 收敛
+
+当前已经落地：
+
+- `workflow_tracer(...).node(...)`
+- `@traceable_run(...)`
+- `tracked_step(...)`
+- `run_state_graph(...)`
+
+而且这一套 tracing 不只覆盖 Digest，也已经扩散到 ingest / interact / examine / profile 的 graph 接线层。
+
+## 当前最重要的未完成差距
+
+### 差距 1：retrieval 还缺学科化调权与缓存
+
+当前 `retrieval_profile` 已经真实进入执行链，剩余重点转成：
+
+- 学科化 profile
+- source class 权重
+- retrieval / reader / compression cache
+- micro-loop 调参与收益分析
+
+### 差距 2：课程质量合同还不够强
+
+当前 confirmed plan 和 chapter execution contract 已经存在，但后续还要继续加强：
+
+- richer teaching blocks
+- 更细的 repair / quality gate
+- 更稳定的 coverage / quality 评估
+- 更清晰的 mode-specific 质量阈值
+
+### 差距 3：asset sidecar 还是 MVP
+
+当前 asset sidecar 已进入最小主线，但仍偏轻：
+
+- image 仍偏占位式
+- interactive HTML 仍偏模板式
+- animation 尚未进入执行链
+- richer media planning 还没展开
+
+### 差距 4：跨引擎协同还没进入第二阶段
+
+当前还没有真正完成的协同点包括：
+
+- Interact 复用 Digest 的 `selected_skillpacks` 与课程合同
+- Examine 共享更深的章节研究上下文
+- Profile 吃到更稳定的课程产物 / 练习 / 交互三方信号
+
+## 下一批开发建议
+
+### 批次 A：retrieval quality
+
+- 学科化 retrieval profile
+- source class 调权
+- 检索 / 读取 / 压缩缓存
+- coverage / stop 条件调优
+
+### 批次 B：content quality
+
+- richer teaching blocks
+- 更细 chapter execution contract
+- repair / quality gate 强化
+- mode-specific 质量分析
+
+### 批次 C：rich media
+
+- richer interactive templates
+- image sidecar 真正内容化
+- animation 进入首轮执行链的准入条件
+- asset planning 与 chapter contract 对齐
+
+### 批次 D：cross-engine convergence
+
+- Interact 共享 selected skillpacks
+- Examine 共享 Digest 章节研究上下文
+- Profile 对齐 Digest / Examine / Interact 的关键合同字段
 
 ## 当前代码检查点
 
 ### `shared/infra`
 
-- 保留通用 helper、tool registry、toolpack loader、skillpack loader
-- 顶层只保留少量兼容 shim，如 `execution.py`、`llm.py`、`model_router.py`
+- 保留基础设施、通用 helper、canonical registry、search/llm/tracing
+- 继续允许少量兼容 shim 存在
+- 不再新增业务 runtime 目录
 
 ### `teaching`
 
-- 继续拥有教学脚手架与 teaching-owned tool
-- 不新增第二套 runtime
+- 继续承载教学语义与 teaching-owned 原子工具
+- 不新增第二套 registry 或 workflow runtime
 
 ### `workflows`
 
-- graph/state 保持原状
-- DocGen business runtime 已归位
-
-## 下一个开发批次
-
-### 批次 A
-
-- research micro-loop 调参
-- query planner 更细粒度 gap detection
-- domain-aware retrieval weight / cache
-
-### 批次 B
-
-- systematic / sprint 更细学科 contract
-- richer asset sidecar
-- animation / 更丰富的 media slot
-
-### 批次 C
-
-- Interact 复用同一套 selected skillpacks
-- teaching persona / style 不再另起配置系统
+- graph/state/router 继续是主入口
+- workflow-local runtime 是业务多步逻辑的落点
+- tracing 主入口继续收口在 `workflows/common`
 
 ## 验证要求
 
-- skillpack contract 测试
-- toolpack loader 测试
-- workflow runtime trace 测试（trace 结构与字段对照见 `backend/app/workflows/LANGSMITH.md`）
-- docgen research / writer 回归测试
-- interactive asset / practice layer 回归测试
-- 非 digest 引擎行为不变
+- skillpack / toolpack 合同测试继续稳定
+- workflow runtime trace 测试继续覆盖关键路径
+- docgen research / writer / asset / practice 回归测试继续存在
+- 非 Digest 引擎行为不被这轮 refactor 破坏
+- 文档中的“已落地”描述必须能在代码中找到对应落点
+
+## 一句话结论
+
+当前 execution plan 的核心不是再开新大项，而是把已经打通的链路做深、做稳，并把 Digest 的成熟合同继续向其他引擎扩散。

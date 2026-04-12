@@ -1,13 +1,14 @@
-﻿# Implementation Handoff
+# Implementation Handoff
 
-## 这轮改动的核心结果
+最后更新：2026-04-13
 
-### 架构
+## 当前已经可以当作“固定事实”的内容
 
-- 长期边界已经固定：
-  - `shared/infra` = 基础设施与基础能力
-  - `teaching` = 教学语义
-  - `workflows` = graph + workflow-local runtime
+### 架构边界
+
+- `shared/infra` = 基础设施与跨引擎基础能力
+- `teaching` = 教学语义与 teaching-owned 原子工具
+- `workflows` = graph + workflow-local runtime + workflow tracing 主入口
 
 ### 扩展模型
 
@@ -17,65 +18,65 @@
 
 ### DocGen
 
-- concrete runtime 已经回到 `workflows/digest/docgen/runtime`
-- trace 命名已切到 `workflow_runtime.docgen.*`
+- concrete runtime 已稳定回到 `workflows/digest/docgen/runtime`
+- `workflow_runtime.docgen.*` 已是当前 runtime trace namespace
 - planner -> confirmed plan -> docgen 已支持 `selected_skillpacks`
+- chapter research 已进入 micro-loop
+- Mermaid / image / interactive HTML 已进入最小 asset sidecar 主线
+- mode-aware practice layer 已进入 digest-local 执行链
 
-## 代码级落地点
+### LangSmith
 
-### 新增
+- workflow tracing 默认只保留四个入口：
+  - `run_state_graph(...)`
+  - `workflow_tracer(...).node(...)`
+  - `@traceable_run(...)`
+  - `tracked_step(...)`
+- 新代码和新文档不再继续传播旧 tracing alias
 
-- `backend/app/workflows/digest/docgen/runtime/`
-- `backend/app/shared/infra/tools/tool_loader.py`
-- `backend/toolpacks/README.md`
-- toolpack fixture tests
+## 目前还在推进中的内容
 
-### 关键修改
-
-- `backend/app/shared/infra/execution.py`
-- `backend/app/workflows/digest/planner/*`
-- `backend/app/workflows/digest/docgen/*`
-- `backend/app/shared/infra/skills/*`
-- `backend/app/shared/infra/tools/*`
-
-## 已验证内容
-
-- skillpack scope/default/tool tags
-- confirmed plan 合同保留 `selected_skillpacks`
-- toolpack manifest / handler 加载
-- workflow runtime trace namespace
-- DocGen research stack 回归
-- research micro-loop / gap query 回归
-- interactive asset sidecar 回归
-- mode-aware practice layer 回归
-- teaching tool registry 自愈与回归
-
-## 仍待继续的工作
-
-- 学科化调优 research micro-loop
-- richer asset sidecar（animation 仍待真正接入）
-- systematic / sprint 更细章节 contract
-- Interact 共享 selected skillpacks
+- 学科化 retrieval 调权与缓存
+- richer asset sidecar，尤其是更强的 interactive/image 能力
+- 更细颗粒度的 chapter execution contract 与质量门槛
+- Digest 与 Interact / Examine / Profile 的更深合同打通
 - 更丰富的教学块与练习块
-- pre-retrieval planning 强化（借鉴 DeepTutor DeepSolve planner）
-- 检索缓存与 source-class 调权
 
-## 新增文档
+## 后续开发时最容易踩错的点
 
-- `backend/app/workflows/LANGSMITH.md`：LangSmith 全链路可观测性指南（代码级实现文档）
-- `backend/app/workflows/TRACKED_STEP.md`：workflow 内部 step、progress、run_type 规范
+1. 不要再把 workflow-local business runtime 写回 `shared/infra`。
+2. 不要为了“更通用”重新引入 `orchestrators` 或 `prompt_builders` 口径。
+3. 不要把 LangSmith 注解重新扩散到大量零散 infra helper。
+4. 不要把“预留位”写成“已经落地能力”，尤其是 animation。
+5. 不要绕开 confirmed plan / execution contract，直接把模式约束只塞进 prompt。
 
-## 继续开发时的纪律
+## 后续继续开发的优先顺序
 
-- 不再往 `shared/infra` 根目录塞 DocGen 业务逻辑
-- `orchestrators/` 与 `prompt_builders/` 目录都已删除
-- 需要业务多步逻辑时，优先放 `workflows/.../runtime`
-- 需要状态可视化和中断能力时，优先做 subgraph
-- 保持 LangSmith trace 可读，不要把业务细节重新藏回 infra helper
-- 所有新增 workflow 节点默认先绑定 `workflow_tracer(...)`，再通过 `trace.node(...)` 接入 LangSmith
-- 所有新增 prompt builder 默认通过 `@traceable_run(..., run_type="prompt")` 接入 LangSmith
-- node 内部关键步骤默认通过 `tracked_step(...)` 接入 LangSmith / runtime stats / progress
-- `BaseTracedExecution` 继续作为 workflow-local runtime 单元的统一 traced execution helper
-- asset sidecar 必须有独立 span（tag: `asset:{kind}`），不埋在正文节点输出里
-- 章节合同优先落在 `confirmed_plan -> assignment -> runtime`，不要只写在 prompt 或文档里
+### 第一优先级
 
+- retrieval quality：profile、source class、cache、micro-loop stop 逻辑
+
+### 第二优先级
+
+- content quality：teaching blocks、repair、coverage/quality gate、mode-specific contract
+
+### 第三优先级
+
+- rich media：interactive/image 做深，animation 设定准入标准
+
+### 第四优先级
+
+- cross-engine convergence：Interact / Examine / Profile 共享 Digest 合同
+
+## 建议继续看的文档
+
+- `docs/designs/refactor/04_docgen_pipeline.md`
+- `docs/designs/refactor/06_retrieval_strategy.md`
+- `docs/designs/refactor/10_langsmith_observability.md`
+- `backend/app/workflows/LANGSMITH.md`
+- `backend/app/workflows/TRACKED_STEP.md`
+
+## 一句话 handoff
+
+这轮 refactor 已经完成“边界收敛 + 主链路打通 + 最小可观测性统一”。
+下一位继续推进的人，应该把精力放在质量、合同和跨引擎协同上，而不是再回头改基础边界。

@@ -1,96 +1,121 @@
 # 08. Migration Plan
 
+最后更新：2026-04-13
+
 ## 总原则
 
-- 只主动改 `digest/docgen + shared extension infrastructure`
-- 不重写其他四大引擎
-- 先修边界，再迁业务 runtime，再做质量增强
+- 不重写五大引擎总骨架。
+- 优先收敛边界、合同与观测，再继续加深质量。
+- 能在现有 workflow graph 内解决的问题，不轻易再新起一套 runtime 体系。
+- 每一轮迁移都要明确“已完成 / 部分完成 / 未开始”，避免计划文档和代码状态脱节。
 
-## Phase 0
+## 当前阶段状态总表
 
-目标：冻结边界与术语。
+| Phase | 目标 | 当前状态 | 说明 |
+| --- | --- | --- | --- |
+| Phase 0 | 冻结边界与术语 | 已完成 | `infra / teaching / workflows` 三层边界与 `tool / skillpack / toolpack / workflow runtime` 术语已经固定 |
+| Phase 1 | skillpack 进入主流程 | 已完成 | `selected_skillpacks` 已进入 planner -> confirmed plan -> docgen |
+| Phase 2 | toolpack 变成真实扩展点 | 已完成 | `manifest.yaml + handler.py` loader 已落地，YAML-only 仅保留过渡语义 |
+| Phase 3 | DocGen concrete runtime 回归 workflows | 已完成 | `workflows/digest/docgen/runtime/*` 已成为 canonical runtime 落点 |
+| Phase 4 | 在不改主骨架的前提下增强 DocGen 质量 | 进行中 | micro-loop、minimal asset sidecar、mode-aware practice 已落地，但仍需继续做深 |
+| Phase 5 | 跨引擎合同收敛 | 未完成 | Interact / Examine / Profile 与 Digest 的更深协同仍待推进 |
 
-交付物：
+## 各阶段的当前判断
 
-- `infra / teaching / workflows` 边界文档
-- `tool / skillpack / toolpack / workflow runtime` 定义
-- 过渡态与目标态两套口径
+### Phase 0：边界冻结
 
-退出标准：
+退出标准已经满足：
 
-- 团队不再把 `orchestrators` 当长期落点继续生长
-- 所有后续设计都能用同一套术语讨论
+- 团队不再把 `orchestrators` 当长期目录继续生长。
+- `prompt_builders` 不再作为业务 prompt 的 canonical 落点。
+- 讨论新能力时，能稳定使用同一套术语。
 
-## Phase 1
+### Phase 1：skillpack 主流程接入
 
-目标：先把 skillpack 变成主流程真实字段。
+退出标准已经满足：
 
-交付物：
+- `selected_skillpacks` 可通过 API 进入 planner。
+- confirmed plan 会保留 skillpack 选择。
+- DocGen 的 `load_context` 与 runtime 能消费 scoped guidance/defaults/tool tags。
 
-- `SkillpackDefinition` 支持 `prompt_scope`
-- `recommended_tool_tags`
-- `defaults`
-- planner / confirmed plan / docgen state 支持 `selected_skillpacks`
-- planner/docgen prompt 接入 skillpack guidance
+### Phase 2：toolpack 扩展模型
 
-退出标准：
+退出标准已经基本满足：
 
-- `selected_skillpacks` 可通过 API 进入 planner
-- confirmed plan 中完整保留
-- docgen runtime 能读到并消费
+- 外部 toolpack 可以注册真实 handler。
+- disabled / broken toolpack 不会拖垮主流程。
+- YAML-only `backend/tools/*.yaml` 已退化为过渡态元信息，而不再宣称是完整扩展模型。
 
-## Phase 2
+### Phase 3：DocGen runtime 回归 workflows
 
-目标：让“用户自己写 tool 并接入”成为真功能。
+退出标准已经满足：
 
-交付物：
+- `workflows/digest/docgen/runtime/*` 已稳定承担 workflow-local 多步逻辑。
+- `shared/infra/traced_execution.py` 成为唯一通用 traced execution base。
+- trace namespace 已切到 `workflow_runtime.docgen.*`。
 
-- `toolpack` loader
-- `backend/toolpacks` 与 `~/.atm/toolpacks` 发现规则
-- `manifest.yaml + handler.py` handler 绑定
-- YAML-only tool 退化为过渡态说明
+### Phase 4：DocGen 质量增强
 
-退出标准：
+当前已完成的部分：
 
-- 外部 toolpack 可以注册真实工具
-- disabled / broken toolpack 不会拖垮主流程
-- 同名用户 toolpack 可以覆盖项目内 toolpack
+- chapter research 已进入 micro-loop
+- `requested_profile / applied_profile / research_rounds / source_class_breakdown` 已进入 summary/trace
+- Mermaid / image / interactive HTML 已进入最小 asset sidecar 主线
+- mode-aware practice layer 已接入文档构建链
+- workflow tracing 已收敛到最小 4 入口
 
-## Phase 3
+当前未完成的部分：
 
-目标：迁回 DocGen concrete runtime。
+- 学科化 retrieval weighting / source class 调权
+- 检索、读取、压缩缓存
+- richer interactive/image sidecar
+- animation 真正执行链
+- 更细颗粒度的章节质量合同与教学块
 
-交付物：
+### Phase 5：跨引擎合同收敛
 
-- `workflows/digest/docgen/runtime/chapter_context.py`
-- `workflows/digest/docgen/runtime/writer.py`
-- `workflows/digest/docgen/runtime/assets.py`
-- `shared/infra/traced_execution.py` 成为唯一 traced execution base
+这是当前下一阶段最容易被低估、但真正重要的工作：
 
-退出标准：
+- Interact 需要进一步复用 Digest 的课程合同与 skillpack 语义。
+- Examine 需要和 Digest 更深共享章节研究上下文、教学动作和知识焦点。
+- Profile 需要把课程产物、练习结果和交互行为连接成更稳定的画像输入。
 
-- workflow-local runtime trace 命名为 `workflow_runtime.docgen.*`
-- `shared/infra/orchestrators/` 目录已删除
-- `shared/infra/prompt_builders/` 目录已删除
+## 当前迁移重点
 
-## Phase 4
+### 重点 1：不要再回头争边界
 
-目标：增强 DocGen 质量，不改主骨架。
+下面这些结论当前不应再反复讨论：
 
-交付物：
+- DocGen business runtime 放在 `workflows/.../runtime`
+- `tool / skillpack / toolpack` 三分模型成立
+- workflow tracing 主入口放在 `workflows/common`
 
-- research micro-loop
-- asset sidecar
-- systematic / sprint 更严格 contract
-- 更丰富的公式、图示、交互插槽
+### 重点 2：开始从“打通”转向“做深”
 
-退出标准：
+当前已经过了最危险的“能力没接起来”阶段。
+接下来重点应该转成：
 
-- 质量增强不破坏主 graph
-- LangSmith trace 仍保持清晰
+- 质量做深
+- 合同做稳
+- 跨引擎打通
+- dashboard/trace 可比较
+
+### 重点 3：把未完成项写成清晰 backlog，而不是继续写抽象愿景
+
+当前未完成项需要继续写成：
+
+- 学科化 profile 与调权策略
+- research cache 策略
+- richer asset sidecar 设计与验收标准
+- Interact / Examine / Profile 的共享合同设计
 
 ## 回滚策略
 
-- 每个 phase 独立提交
-- 保持顶层 shim 一段时间
-- 只在 workflow-local runtime 稳定后再删旧入口引用
+- 继续保持阶段性提交，而不是超大改动混在一起。
+- 保留少量顶层兼容 shim，但不再为 legacy 口径新增新功能。
+- 回滚优先回滚 workflow-local 增强逻辑，不要先动基础边界。
+
+## 一句话结论
+
+Digest refactor 当前已经完成“基础设施重排 + 主链路打通”。
+后续迁移不该再围绕“边界怎么定”打转，而应该转向“质量如何继续做深、跨引擎如何继续收敛”。

@@ -1,137 +1,188 @@
 # 04. DocGen Pipeline
 
-## 1. 主骨架不变
+最后更新：2026-04-13
 
-DocGen 顶层骨架继续保持：
+## 1. 当前主骨架
+
+DocGen 顶层 graph 现在的真实骨架是：
 
 ```text
 load_context
--> targeted_research
+-> targeted_research (fan-out by chapter)
+-> collect_materials
 -> resolve_titles
--> pedagogy_craft
+-> pedagogy_craft (fan-out by chapter)
+-> collect_drafts
 -> enrich_document
 -> inject_examine
--> finalize
+-> finalize_assemble
 ```
 
-这轮不推倒 graph，只调整 ownership 和扩展点。
+这里有两个容易误解的点：
+
+1. `targeted_research` 和 `pedagogy_craft` 不是串行单章，而是章节 fan-out。
+2. `collect_materials` / `collect_drafts` 不是噪声节点，它们承担 fan-in 汇总与后续阶段的状态收口。
+
+所以这轮优化的原则仍然是：
+
+- 不推倒 graph
+- 不把 runtime 再搬回 infra
+- 在现有骨架内继续增强 research、writing、asset、practice 质量
 
 ## 2. 当前 ownership
 
 ### 2.1 Workflow-local runtime
 
+当前 DocGen 业务专属多步逻辑已经明确归到：
+
 - `workflows/digest/docgen/runtime/chapter_context.py`
 - `workflows/digest/docgen/runtime/writer.py`
 - `workflows/digest/docgen/runtime/assets.py`
 
-这些文件拥有 DocGen 业务专属的多步逻辑。
+这些 runtime 负责：
+
+- 章节 research micro-loop
+- chapter-level teaching writing
+- asset sidecar 展开
 
 ### 2.2 Infra helper
 
-- `ContextManager`
-- `SourceCurator`
-- provider 级 `MermaidGenerator`
-- provider 级 `ImageGenerator`
+当前仍应放在 infra 的，是离开 DocGen 仍可复用的基础能力：
 
-这些仍在 infra，因为它们离开 DocGen 仍可复用。
+- search factory / retrievers / readers
+- `ContextCompressor`
+- `SourceCurator`
+- LLM routing / fallback / traced execution
+- 工具注册与 skillpack 解析
 
 ### 2.3 Teaching
 
-- 文档 overview
-- 章节学习脚手架
-- effective chapter title resolver
+当前 teaching 层继续负责：
 
-## 3. Skillpack 接入点
+- 教学脚手架
+- chapter title resolution
+- 教学表达块
+- teaching-owned 原子工具
 
-### 3.1 Planner
+不负责 DocGen graph 编排和 research runtime。
 
-- 用户选择 `selected_skillpacks`
-- 写入 confirmed plan contract
-- planner prompt 注入 strategy guidance
+## 3. Confirmed Plan 与 Skillpack 入口
 
-### 3.2 DocGen
+当前已经打通的链路是：
 
-- `load_context` 解析 selected skillpacks
-- document context 中携带：
-  - `selected_skillpacks`
-  - `skillpack_defaults`
-  - `recommended_tool_tags`
-  - `skillpack_guidance`
-- research runtime 与 writer runtime 按 scope 再次渲染 chapter-level guidance
+```text
+planner
+-> confirmed plan contract
+-> load_context
+-> document_context / chapter assignment
+-> research runtime / writer runtime
+```
 
-## 4. Asset 处理原则
+当前 `load_context` 已经会解析并下发：
 
-- provider 级生成能力仍在 infra
-- placeholder 发现、嵌入、文档级处理回到 workflow-local runtime
-- 后续如果要加 sidecar plan、交互 HTML、动画资产，继续沿 `runtime/assets.py` 扩展
+- `selected_skillpacks`
+- `skillpack_defaults`
+- `recommended_tool_tags`
+- `skillpack_guidance`
+- `course_type`
+- `retrieval_profile`
+- confirmed plan 的 chapter assignment / execution contract
 
-## 5. 系统课 vs 速成课
+这意味着 skillpack 现在已经是真正影响 DocGen 的执行输入，而不再只是 prompt 附件。
 
-### 5.1 速成课
+## 4. Research runtime 的当前状态
 
-- 重视考点抓手、题型拆解、易错提醒、速记卡
-- 研究阶段优先高频题型与最后复盘价值
-- 练习与例题权重更高
+`DocGenChapterContextRuntime` 当前已经不是单轮 research helper，而是受控 micro-loop：
 
-### 5.2 系统课
+- 先做 seed query + sub query planning
+- 按 round 执行 retrieve -> curate -> compress
+- 根据 `coverage_score / gaps_remaining` 补 gap queries
+- 用 `round cap / diminishing returns / coverage target` 停机
+- 额外可对 dense context 做 `purify`
 
-- 重视概念、结构、推理、边界、综合迁移
-- 章节间结构关系更重要
-- 面向 1w 字以上长文档、公式兼容、结构化知识脉络
+当前已经输出到 metadata / lane summary 的关键字段包括：
 
-## 6. 下一步增强，不改骨架
+- `requested_profile`
+- `applied_profile`
+- `executed_queries`
+- `fallback_queries`
+- `retriever_stats`
+- `research_rounds`
+- `research_round_count`
+- `coverage_score`
+- `gaps_remaining`
+- `source_class_breakdown`
+- `stop_reason`
 
-- research micro-loop
-- asset sidecar planning
-- 更细颗粒度的 chapter writing block
-- 更强的公式、图示、交互 HTML 插槽
-- systematic / sprint 的更严格章节 contract
+所以“research micro-loop”不再是未来计划，而是已经进入当前执行链；后续重点是调优，不是从零设计。
 
-## 7. Asset Sidecar 详细设计（2026-04-11 补充）
+## 5. Writing、Enrich、Practice 的当前状态
 
-> 借鉴 DeepTutor `InteractiveAgent` 和 `GuideManager` 的产品形态。
+### `resolve_titles`
 
-### 7.1 Sidecar 原则
+- 负责把章节标题从 provisional task title 收敛为更稳定的教学标题。
+- 这一步已经和 planner 产出的 chapter plan 协同，不再是孤立 prompt。
 
-正文生成和富媒体生成必须解耦：
-- 正文 `pedagogy_craft` 只在 markdown 中留占位符（`<!-- [MERMAID: ...] -->`、`<!-- [IMAGE: ...] -->`、`<!-- [INTERACTIVE: ...] -->`）
-- `enrich_document` 阶段的 `runtime/assets.py` 负责展开占位符
-- 每种资产类型有独立的生成 → 校验 → 重试链
-- 资产失败不阻塞正文发布（降级为文字描述）
+### `pedagogy_craft`
 
-### 7.2 交互 HTML 资产（借鉴 DeepTutor InteractiveAgent）
+- 当前按章节 fan-out 执行。
+- writer runtime 已带 `course_type / retrieval_profile / selected_skillpacks / teaching_action`。
+- 文档产物已经具备比“摘要”更强的教学脚手架，但 richer blocks 仍可继续补强。
 
-DeepTutor 为每个知识点生成独立的交互 HTML 页面，支持：
-- KaTeX 公式渲染
-- 可折叠的推导步骤
-- 自检小测验
-- fallback 模板（生成失败时使用静态模板）
+### `inject_examine`
 
-AITeachMe 的借法：
-- 在 `AssetPlan` 中新增 `interactive_html` 类型
-- `runtime/assets.py` 中新增 `process_interactive_placeholders()`
-- 生成的 HTML 片段嵌入 markdown 的 `<details>` 或 iframe 块
-- MVP 阶段只做公式推导和概念对比两种交互模板
-- 使用 `TaskType.DOCGEN`、`tier=smart`（交互内容需要质量）
+- 当前已经是 digest-local 的 mode-aware practice layer。
+- 它的职责是把练习内容注入当前文档构建链。
+- 但它还没有和独立 Examine 引擎共享更深的题目上下文与知识状态。
 
-### 7.3 资产配额与 LangSmith 追踪
+## 6. Asset sidecar 的当前状态
 
-每种资产在 LangSmith 中必须作为独立 span：
-- tag: `asset:mermaid` / `asset:image` / `asset:interactive_html`
-- metadata: `chapter_index`、`asset_kind`、`success`
-- 失败时记录 `asset_failures` 和降级策略
+当前 asset sidecar 已经不是纯设计，它已经具备最小执行链：
 
-当前 backend-first 落地状态：
-- `enrich_document` 已返回 `mermaid_block_count / image_block_count / interactive_block_count / asset_count / asset_summary`
-- lane summary 已可直接统计文档级资产数量，不需要再从 markdown 文本二次猜测
-- `animation` 仍保持 `contract + trace` 预留位，未进入执行链
+- Mermaid placeholder -> runtime 生成/回退
+- image placeholder -> runtime 展开为建议块
+- interactive placeholder -> runtime 生成最小 HTML 模板
 
-## 8. LangSmith 要求
+当前 summary 侧已经能聚合：
 
-> 详细实现参考 `backend/app/workflows/LANGSMITH.md`
+- `mermaid_block_count`
+- `image_block_count`
+- `interactive_block_count`
+- `asset_count`
+- `asset_summary`
 
-- workflow node 看主骨架
-- runtime span 看 chapter-level multi-step logic
-- 每步都有 digest mode / course type / retrieval profile / teaching action
-- 输入输出可回放，可定位 research 与 writer 的具体问题
-- asset sidecar 必须有独立 span，不埋在正文节点输出里
+需要明确的是：
+
+- `interactive_html` 已经进入最小主线，但仍属于模板级 MVP
+- `animation` 目前仍只是 contract / trace 预留位，尚未进入真正执行链
+
+## 7. `sprint / systematic` 的真实落点
+
+这两种模式现在已经不只存在于 prompt：
+
+- confirmed plan contract
+- chapter execution contract
+- research runtime strategy
+- writer/runtime 的表达与组织
+- practice layer
+- lane summary 与 trace metadata
+
+因此后续工作不再是“让模式进入代码”，而是：
+
+- 继续细化不同学科的章节合同
+- 继续细化 mode-specific 资产策略和练习策略
+- 继续让不同模式在质量评分上形成更明显分层
+
+## 8. 现在还差什么
+
+DocGen 当前最值得继续推进的不是改骨架，而是下面四件事：
+
+1. 让 research micro-loop 的 coverage / stop 逻辑更稳。
+2. 把 richer teaching blocks、质量契约和 repair 机制继续做深。
+3. 把 interactive/image sidecar 从 MVP 模板做成真正有教学价值的富媒体链。
+4. 把 Digest 与 Interact / Examine / Profile 的合同进一步打通。
+
+## 9. 一句话结论
+
+DocGen 这轮已经完成了“边界重排 + 最小能力贯通”。
+下一步应该做的是“在现有 graph 内继续加深质量”，而不是重新发明一套更复杂的 runtime 结构。
