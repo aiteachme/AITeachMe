@@ -1,5 +1,4 @@
 import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -20,14 +19,20 @@ import {
   RefreshCw,
   ExternalLink,
 } from "lucide-react";
-import { useLocation, useParams } from "react-router-dom";
-import type { SubjectVectorStatusResponse } from "../api/generated/model";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { useSubjectAiAssistant } from "../components/ai/SubjectAiAssistant";
+import {
+  type DocViewMode,
+  type KnowledgeBuildMetrics,
+  type KnowledgeBuildPreview,
+  useDocBuildProgress,
+  useDocMarkdown,
+} from "../components/knowledge-docs";
 import { StudyPlanPanel } from "../components/pages/StudyPlanPanel";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
+import { MermaidBlock } from "../components/ui/MermaidBlock";
 import { preprocessLaTeX } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -144,92 +149,6 @@ interface ThreadTurnItem {
   messages: ThreadMessageItem[];
 }
 
-interface DocGenBuildStatus {
-  status?: string | null;
-  requested_at?: string | null;
-  stage?: string | null;
-  error_message?: string | null;
-  draft_available?: boolean;
-}
-
-interface BuildSampleCard {
-  title: string;
-  card_type: string;
-  summary: string;
-}
-
-interface BuildPreviewNode {
-  name: string;
-  node_type: string;
-}
-
-interface KnowledgeBuildPreview {
-  current_stage_description?: string | null;
-  digest_mode?: string | null;
-  mode_reason?: string | null;
-  processed_chunks?: number;
-  total_chunks?: number;
-  discovered_node_count?: number;
-  discovered_node_types?: Record<string, number>;
-  sample_nodes?: BuildPreviewNode[];
-  sample_cards?: BuildSampleCard[];
-  latest_chapter_titles?: string[];
-  draft_excerpt?: string;
-}
-
-interface KnowledgeBuildMetrics {
-  llm_total_calls?: number;
-  failed_llm_call_count?: number;
-  llm_avg_latency_ms?: number;
-  call_count_by_lane?: Record<string, number>;
-}
-interface DocGenGetResponse {
-  exists: boolean;
-  markdown?: string;
-  updated_at?: string | null;
-  source_file_uids?: string[];
-  prompt?: string | null;
-  draft_markdown?: string;
-  draft_updated_at?: string | null;
-  build?: DocGenBuildStatus | null;
-  build_preview?: KnowledgeBuildPreview | null;
-  build_metrics?: KnowledgeBuildMetrics | null;
-  vector_status?: SubjectVectorStatusResponse | null;
-}
-
-type DocViewMode = "live" | "draft";
-
-const ACTIVE_DOC_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
-
-const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
-  build_accepted: 8,
-  prepare_shared: 24,
-  doc_lane_staged: 62,
-  graph_ready: 74,
-  curriculum_deriving: 86,
-  publishing: 94,
-  completed: 100,
-};
-
-const DOC_BUILD_STAGE_CAP: Record<string, number> = {
-  build_accepted: 20,
-  prepare_shared: 48,
-  doc_lane_staged: 76,
-  graph_ready: 86,
-  curriculum_deriving: 93,
-  publishing: 97,
-};
-
-const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
-  build_accepted: "已接收知识构建请求",
-  prepare_shared: "正在分析材料结构与内容画像",
-  doc_lane_staged: "文档草稿已生成，正在等待统一发布",
-  graph_ready: "知识图谱已就绪，正在推导课程结构",
-  curriculum_deriving: "正在生成教学单元、主题树与先修关系",
-  publishing: "正在发布正式版知识文档",
-  completed: "最新知识文档已发布",
-};
-
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -257,12 +176,6 @@ function formatTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function parseIsoTimestamp(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
 function formatDocTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -275,94 +188,6 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function resolveDocBuildStatusText(
-  build: DocGenBuildStatus | null | undefined,
-  hasLiveVersion: boolean,
-  hasDraftVersion: boolean,
-): string {
-  if (!build || build.status === "idle") {
-    if (hasLiveVersion) {
-      return "当前显示已发布的正式版知识文档";
-    }
-    return "等待发起新的知识文档构建";
-  }
-
-  if (build.status === "failed") {
-    return build.error_message?.trim() ? `构建失败：${build.error_message}` : "知识构建失败，请稍后重试";
-  }
-
-  if (build.status === "cancelled") {
-    return "本轮知识构建已取消";
-  }
-
-  if (build.status === "completed") {
-    return hasLiveVersion ? "最新知识文档已发布" : "构建已完成";
-  }
-
-  const stage = build.stage?.trim();
-  if (stage && DOC_BUILD_STAGE_TEXT[stage]) {
-    return DOC_BUILD_STAGE_TEXT[stage];
-  }
-
-  if (hasDraftVersion && !hasLiveVersion) {
-    return "本轮草稿已生成，正在等待图谱与课程结构对齐";
-  }
-
-  if (hasLiveVersion) {
-    return "正在更新知识文档";
-  }
-
-  return "正在生成知识文档";
-}
-
-function resolveDocBuildProgressFloor(
-  build: DocGenBuildStatus | null | undefined,
-  hasDraftVersion: boolean,
-): number {
-  if (!build || build.status === "idle") {
-    return hasDraftVersion ? 62 : 0;
-  }
-
-  if (build.status === "completed") {
-    return 100;
-  }
-
-  const stage = build.stage?.trim();
-  if (stage && DOC_BUILD_STAGE_PROGRESS[stage] !== undefined) {
-    return DOC_BUILD_STAGE_PROGRESS[stage];
-  }
-
-  if (hasDraftVersion || build.draft_available) {
-    return 62;
-  }
-
-  return 8;
-}
-
-function resolveDocBuildProgressCap(
-  build: DocGenBuildStatus | null | undefined,
-  hasDraftVersion: boolean,
-): number {
-  if (!build || build.status === "idle") {
-    return hasDraftVersion ? 78 : 45;
-  }
-
-  if (build.status === "completed") {
-    return 100;
-  }
-
-  const stage = build.stage?.trim();
-  if (stage && DOC_BUILD_STAGE_CAP[stage] !== undefined) {
-    return DOC_BUILD_STAGE_CAP[stage];
-  }
-
-  if (hasDraftVersion || build.draft_available) {
-    return 78;
-  }
-
-  return 45;
 }
 
 const COMPACT_PANEL_BREAKPOINT = 1536;
@@ -596,10 +421,18 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
           </blockquote>
         ),
         code: ({ className, children }) => {
-          const codeText = String(children);
+          const codeText = extractText(children).replace(/\n$/, "");
+          const language = className?.replace(/^language-/, "").trim().toLowerCase() ?? "";
           const isBlock = Boolean(className) || codeText.includes("\n");
+          if (language === "mermaid") {
+            return <MermaidBlock chart={codeText} />;
+          }
           if (isBlock) {
-            return <code className={cn("font-mono text-[13px]", className)}>{children}</code>;
+            return (
+              <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 overflow-x-auto text-sm my-5 leading-relaxed">
+                <code className={cn("font-mono text-[13px]", className)}>{children}</code>
+              </pre>
+            );
           }
           return (
             <code className={cn("bg-slate-100/80 text-slate-800 rounded-md px-1.5 py-0.5 text-sm font-mono", className)}>
@@ -607,11 +440,7 @@ const DocMarkdown = memo(function DocMarkdown({ content }: { content: string }) 
             </code>
           );
         },
-        pre: ({ children }) => (
-          <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 overflow-x-auto text-sm my-5 leading-relaxed">
-            {children}
-          </pre>
-        ),
+        pre: ({ children }) => <>{children}</>,
         table: ({ children }) => (
           <div className="overflow-x-auto my-5 rounded-xl border border-slate-200">
             <table className="min-w-full text-sm">{children}</table>
@@ -1116,189 +945,40 @@ function CommentThread({
 
 export function KnowledgeDocsPage() {
   const { openAssistant } = useSubjectAiAssistant();
-  const { subjectId } = useParams<{ subjectId: string }>();
-  const location = useLocation();
-  const requestedAt = useMemo(
-    () => new URLSearchParams(location.search).get("requested_at"),
-    [location.search],
-  );
-  const requestedAtMs = useMemo(
-    () => parseIsoTimestamp(requestedAt),
-    [requestedAt],
-  );
-  const [docViewMode, setDocViewMode] = useState<DocViewMode>("live");
-  const [buildProgress, setBuildProgress] = useState(0);
-  const [buildStatusText, setBuildStatusText] = useState("正在整理知识文档...");
-  const docMarkdownQuery = useQuery({
-    queryKey: ["docgen-content", subjectId, requestedAt],
-    queryFn: async () => {
-      if (!subjectId) {
-        throw new Error("缺少学科 ID，无法加载知识文档。");
-      }
-      const response = await apiClient<ApiResponse<DocGenGetResponse>>({
-        method: "POST",
-        url: `/api/v1/subjects/${subjectId}/knowledge/docs`,
-      });
-      return response.data;
-    },
-    enabled: Boolean(subjectId),
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const build = data?.build;
-      const buildStatus = build?.status ?? null;
-      if (buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)) {
-        return 2500;
-      }
-
-      if (buildStatus === "failed" || buildStatus === "cancelled" || buildStatus === "completed") {
-        return false;
-      }
-
-      if (!buildStatus || buildStatus === "idle") {
-        return false;
-      }
-
-      const requestedBuildMs = parseIsoTimestamp(build?.requested_at) ?? requestedAtMs;
-      if (requestedBuildMs === null) {
-        return false;
-      }
-
-      const updatedAtMs = parseIsoTimestamp(data?.updated_at);
-      const isReady = updatedAtMs !== null && updatedAtMs >= requestedBuildMs;
-      return isReady ? false : 2500;
-    },
-  });
-  const liveMarkdown = docMarkdownQuery.data?.markdown ?? "";
-  const draftMarkdown = docMarkdownQuery.data?.draft_markdown ?? "";
-  const buildMeta = docMarkdownQuery.data?.build ?? null;
-  const buildPreview = docMarkdownQuery.data?.build_preview ?? null;
-  const buildMetrics = docMarkdownQuery.data?.build_metrics ?? null;
-  const buildStatus = buildMeta?.status ?? null;
-  const liveUpdatedAt = docMarkdownQuery.data?.updated_at ?? null;
-  const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
-  const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
-  const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
-  const buildRequestedAtMs = useMemo(
-    () => parseIsoTimestamp(buildMeta?.requested_at),
-    [buildMeta?.requested_at],
-  );
-  const publishedUpdatedAtMs = useMemo(
-    () => parseIsoTimestamp(liveUpdatedAt),
-    [liveUpdatedAt],
-  );
-  const targetRequestedAtMs =
-    buildStatus && buildStatus !== "idle"
-      ? requestedAtMs ?? buildRequestedAtMs
-      : null;
-  const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
-  const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
-  const isRequestedBuildReady =
-    targetRequestedAtMs !== null
-      ? publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
-      : buildStatus === "completed" && hasLiveDocMarkdown;
-  const isWaitingForRequestedBuild =
-    targetRequestedAtMs !== null && !isRequestedBuildReady && !isBuildFailure;
-  const effectiveDocViewMode: DocViewMode =
-    !hasLiveDocMarkdown && hasDraftDocMarkdown
-      ? "draft"
-      : docViewMode === "draft" && hasDraftDocMarkdown
-        ? "draft"
-        : "live";
-  const renderedMarkdown = effectiveDocViewMode === "draft" ? draftMarkdown : liveMarkdown;
-  const hasRenderedMarkdown = Boolean(renderedMarkdown.trim());
-  const showDocGeneratingState =
-    !docMarkdownQuery.isError &&
-    !hasLiveDocMarkdown &&
-    !hasDraftDocMarkdown &&
-    (isBuildActive || isWaitingForRequestedBuild);
-  const showDocBuildFailureState =
-    !docMarkdownQuery.isError &&
-    !hasLiveDocMarkdown &&
-    !hasDraftDocMarkdown &&
-    isBuildFailure;
-  const showDocEmptyState =
-    !docMarkdownQuery.isError &&
-    !hasLiveDocMarkdown &&
-    !hasDraftDocMarkdown &&
-    !isBuildActive &&
-    !isWaitingForRequestedBuild &&
-    !isBuildFailure;
-  const showDocUpdatingBanner =
-    !docMarkdownQuery.isError &&
-    hasRenderedMarkdown &&
-    (isBuildActive || effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
-
-  useEffect(() => {
-    if (!hasLiveDocMarkdown && hasDraftDocMarkdown) {
-      setDocViewMode("draft");
-      return;
-    }
-
-    if (hasLiveDocMarkdown && !hasDraftDocMarkdown) {
-      setDocViewMode("live");
-      return;
-    }
-
-    if (buildStatus === "completed" && hasLiveDocMarkdown) {
-      setDocViewMode("live");
-    }
-  }, [buildStatus, hasDraftDocMarkdown, hasLiveDocMarkdown]);
-
-  useEffect(() => {
-    const nextStatusText = resolveDocBuildStatusText(buildMeta, hasLiveDocMarkdown, hasDraftDocMarkdown);
-    const progressFloor = resolveDocBuildProgressFloor(buildMeta, hasDraftDocMarkdown);
-    setBuildStatusText(nextStatusText);
-
-    if (buildStatus === "completed" || isRequestedBuildReady) {
-      setBuildProgress(100);
-      return;
-    }
-
-    if (isBuildFailure) {
-      setBuildProgress(progressFloor);
-      return;
-    }
-
-    if (!isBuildActive && !isWaitingForRequestedBuild) {
-      setBuildProgress(progressFloor);
-      return;
-    }
-
-    const progressCap = resolveDocBuildProgressCap(buildMeta, hasDraftDocMarkdown);
-    setBuildProgress((prev) => {
-      const base = prev > 0 ? prev : progressFloor;
-      return Math.max(base, progressFloor);
-    });
-
-    const timer = window.setInterval(() => {
-      setBuildProgress((prev) => {
-        if (prev >= progressCap) {
-          return progressCap;
-        }
-        if (prev < 20) {
-          return Math.min(progressCap, prev + 6);
-        }
-        if (prev < 50) {
-          return Math.min(progressCap, prev + 4);
-        }
-        if (prev < 75) {
-          return Math.min(progressCap, prev + 2.5);
-        }
-        return Math.min(progressCap, prev + 1.2);
-      });
-    }, 600);
-
-    return () => window.clearInterval(timer);
-  }, [
+  const {
+    subjectId,
+    docMarkdownQuery,
     buildMeta,
+    buildPreview,
+    buildMetrics,
     buildStatus,
-    hasDraftDocMarkdown,
+    liveUpdatedAt,
+    draftUpdatedAt,
     hasLiveDocMarkdown,
+    hasDraftDocMarkdown,
     isBuildActive,
     isBuildFailure,
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
-  ]);
+    setDocViewMode,
+    effectiveDocViewMode,
+    renderedMarkdown,
+    hasRenderedMarkdown,
+    showDocGeneratingState,
+    showDocBuildFailureState,
+    showDocEmptyState,
+    showDocUpdatingBanner,
+  } = useDocMarkdown();
+  const { buildProgress, buildStatusText } = useDocBuildProgress({
+    buildMeta,
+    buildStatus,
+    hasLiveDocMarkdown,
+    hasDraftDocMarkdown,
+    isBuildActive,
+    isBuildFailure,
+    isRequestedBuildReady,
+    isWaitingForRequestedBuild,
+  });
 
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");

@@ -9,7 +9,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
-from app.teaching.documents import looks_like_legacy_template_title
+from app.teaching.documents import (
+    clean_generated_chapter_title,
+    is_usable_resolved_chapter_title,
+)
 from app.teaching.runtime_config import (
     get_planner_mode_runtime_config,
     get_teaching_runtime_config,
@@ -159,6 +162,73 @@ SYSTEMATIC_ANGLE_SPECS = [
         objective_template="围绕“{topic}”完成回收与延伸，帮助学生把本章内容沉淀成稳定的长期结构。",
     ),
 ]
+
+SPRINT_TITLE_SUFFIXES: dict[str, str] = {
+    "核心概念": "核心概念与高频考点",
+    "公式方法": "公式与速判技巧",
+    "题型突破": "高频题型突破",
+    "易错辨析": "易错点辨析",
+    "综合迁移": "综合变式与迁移",
+    "考前速查": "考前速查清单",
+}
+
+SYSTEMATIC_TITLE_SUFFIXES: dict[str, str] = {
+    "主题导入": "学习地图与主线",
+    "概念定义": "核心概念与定义",
+    "结构公式": "结构框架与关键公式",
+    "方法推理": "方法推理与证明思路",
+    "例题应用": "典型例题与应用",
+    "边界辨析": "边界条件与易混辨析",
+    "综合迁移": "跨主题综合迁移",
+    "总结延伸": "章节总结与延伸",
+}
+
+
+def _title_suffix_for_angle(*, digest_mode: str, angle: ChapterAngleSpec) -> str:
+    mapping = SPRINT_TITLE_SUFFIXES if _normalize_digest_mode(digest_mode) == "sprint" else SYSTEMATIC_TITLE_SUFFIXES
+    return mapping.get(angle.label, angle.label)
+
+
+def _truncate_title_topic(value: str, *, fallback: str, max_length: int) -> str:
+    cleaned = _clean_text(value).strip("：:，,。；; ")
+    if not cleaned:
+        cleaned = _clean_text(fallback).strip("：:，,。；; ")
+    if not cleaned:
+        return "当前主题"
+
+    fragments = [
+        _clean_text(fragment).strip("：:，,。；; ")
+        for fragment in re.split(r"[：:，,。；;()（）/]", cleaned)
+    ]
+    for fragment in fragments:
+        if 2 <= len(fragment) <= max_length and _has_cjk(fragment):
+            return fragment
+
+    if len(cleaned) <= max_length:
+        return cleaned
+    return cleaned[:max_length].rstrip("：:，,。；; ")
+
+
+def _build_fallback_chapter_title(
+    *,
+    topic: str,
+    display_subject: str,
+    digest_mode: str,
+    angle: ChapterAngleSpec,
+) -> str:
+    suffix = _title_suffix_for_angle(digest_mode=digest_mode, angle=angle)
+    topic_budget = max(4, 26 - len(suffix))
+    title_topic = _truncate_title_topic(topic, fallback=display_subject, max_length=topic_budget)
+    title = clean_generated_chapter_title(f"{title_topic}：{suffix}")
+    if is_usable_resolved_chapter_title(title):
+        return title
+
+    fallback_topic = _truncate_title_topic(display_subject, fallback="当前主题", max_length=topic_budget)
+    fallback_title = clean_generated_chapter_title(f"{fallback_topic}：{suffix}")
+    if is_usable_resolved_chapter_title(fallback_title):
+        return fallback_title
+
+    return clean_generated_chapter_title(f"{fallback_topic}：{angle.label}")
 
 
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
@@ -474,7 +544,12 @@ def _build_fallback_chapter_plan(
         chapter_plan.append(
             PlannerChapterPlan(
                 chapter_index=index,
-                title=f"第 {index} 章",
+                title=_build_fallback_chapter_title(
+                    topic=topic,
+                    display_subject=display_subject,
+                    digest_mode=digest_mode,
+                    angle=angle,
+                ),
                 objective=angle.objective_template.format(topic=topic or display_subject),
                 required_elements=list(angle.required_elements),
                 search_queries=_build_search_queries(
@@ -596,7 +671,7 @@ def _merge_raw_candidates(current: Any, previous: Any) -> dict[str, Any]:
 
 def _is_usable_provisional_title(value: Any) -> bool:
     text = _clean_text(value)
-    return _is_usable_cn_text(text) and not looks_like_legacy_template_title(text)
+    return is_usable_resolved_chapter_title(text)
 
 
 def _merge_chapter(

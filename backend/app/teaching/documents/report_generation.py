@@ -32,6 +32,26 @@ _LEGACY_TEMPLATE_TITLES = {
     "考前速查",
 }
 _STATIC_TITLES = {"练习与自检", "知识文档总览"}
+_TITLE_SPECIFICITY_KEYWORDS = (
+    "高频",
+    "题型",
+    "公式",
+    "速判",
+    "易错",
+    "边界",
+    "路径",
+    "定义",
+    "结构",
+    "方法",
+    "例题",
+    "应用",
+    "迁移",
+    "总结",
+    "速查",
+    "考点",
+    "真题",
+    "变式",
+)
 
 
 def clean_generated_chapter_title(raw_title: str) -> str:
@@ -56,11 +76,34 @@ def is_usable_resolved_chapter_title(title: str) -> bool:
         return True
     if len(cleaned) < 3 or len(cleaned) > 28:
         return False
+    if not re.search(r"[\u3400-\u9fff]", cleaned):
+        return False
     if looks_like_legacy_template_title(cleaned):
         return False
     if re.fullmatch(r"第\s*\d+\s*章", cleaned):
         return False
     return True
+
+
+def _title_specificity_score(title: str) -> int:
+    cleaned = clean_generated_chapter_title(title)
+    if not is_usable_resolved_chapter_title(cleaned):
+        return -100
+
+    score = 0
+    length = len(cleaned)
+    if 6 <= length <= 18:
+        score += 4
+    elif 4 <= length <= 24:
+        score += 2
+
+    if "：" in cleaned or ":" in cleaned:
+        score += 3
+    if any(keyword in cleaned for keyword in _TITLE_SPECIFICITY_KEYWORDS):
+        score += 3
+    if len(set(cleaned)) >= 6:
+        score += 1
+    return score
 
 
 def resolve_effective_chapter_title(
@@ -75,11 +118,11 @@ def resolve_effective_chapter_title(
         return resolved_title
 
     provisional_title = clean_generated_chapter_title(str(chapter_data.get("title") or ""))
-    if provisional_title and not looks_like_legacy_template_title(provisional_title):
+    if is_usable_resolved_chapter_title(provisional_title):
         return provisional_title
 
     cleaned_fallback = clean_generated_chapter_title(str(fallback_title or ""))
-    if cleaned_fallback and not looks_like_legacy_template_title(cleaned_fallback):
+    if is_usable_resolved_chapter_title(cleaned_fallback):
         return cleaned_fallback
 
     if chapter_index is None:
@@ -94,9 +137,12 @@ def coerce_resolved_chapter_title(
     chapter_index: int | None = None,
 ) -> str:
     cleaned = clean_generated_chapter_title(raw_title)
+    current_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     if is_usable_resolved_chapter_title(cleaned):
+        if _title_specificity_score(current_title) > _title_specificity_score(cleaned):
+            return current_title
         return cleaned
-    return resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+    return current_title
 
 
 def build_chapter_title_resolution_messages(

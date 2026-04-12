@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from app.shared.infra.skills import (
     collect_recommended_tool_tags,
     collect_skillpack_defaults,
@@ -8,7 +10,7 @@ from app.shared.infra.skills import (
     render_skill,
 )
 from app.shared.infra.tools import list_agent_tools
-from app.teaching.documents import ensure_chapter_learning_scaffold
+from app.teaching.documents import coerce_resolved_chapter_title, ensure_chapter_learning_scaffold
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.planner.models import build_fallback_plan
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
@@ -42,7 +44,7 @@ def _build_shared_inputs() -> SharedInputs:
     )
 
 
-def test_fallback_plan_uses_neutral_provisional_titles() -> None:
+def test_fallback_plan_uses_specific_provisional_titles() -> None:
     plan = build_fallback_plan(
         subject="高等数学",
         user_goal="考前冲刺偏导数",
@@ -53,7 +55,8 @@ def test_fallback_plan_uses_neutral_provisional_titles() -> None:
 
     assert plan.digest_mode == "sprint"
     assert 3 <= len(plan.chapter_plan) <= 6
-    assert [chapter.title for chapter in plan.chapter_plan[:3]] == ["第 1 章", "第 2 章", "第 3 章"]
+    assert all("：" in chapter.title for chapter in plan.chapter_plan[:3])
+    assert all(not re.fullmatch(r"第\s*\d+\s*章", chapter.title) for chapter in plan.chapter_plan)
     assert plan.build_constraints["target_chapter_count"] == len(plan.chapter_plan)
     assert "fixed_chapter_count" not in plan.build_constraints
     assert "冲刺型知识文档" in plan.plan_summary
@@ -134,6 +137,17 @@ def test_learning_scaffold_does_not_duplicate_support_sections() -> None:
 
     assert enriched_twice.count("## 术语速览") == 1
     assert enriched_twice.count("## 学习目标对照") == 1
+
+
+def test_title_resolution_keeps_more_specific_planner_title() -> None:
+    chapter = {
+        "chapter_index": 1,
+        "title": "偏导数：高频题型突破",
+    }
+
+    resolved = coerce_resolved_chapter_title("题型突破", chapter=chapter, chapter_index=1)
+
+    assert resolved == "偏导数：高频题型突破"
 
 
 def test_docgen_lane_summary_uses_new_fields_only() -> None:

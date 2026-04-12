@@ -10,6 +10,7 @@ export {
   ACTIVE_DOC_BUILD_STATUSES,
   COMPACT_PANEL_BREAKPOINT,
   formatDocTimestamp,
+  parseIsoTimestamp,
   buildChapterStatusLabel,
   chapterStatusClasses,
   normalizeDomainLabel,

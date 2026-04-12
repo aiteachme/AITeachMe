@@ -186,7 +186,7 @@ class TutorModelClient:
 
 普通协作者通常不要直接调用这些底层函数：
 
-- `langsmith_trace(...)`
+- `langsmith_trace(...)
 - `langsmith_tracing_scope(...)`
 - `llm_trace_scope(...)`
 - `trace_substep(...)`

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import asyncio
+import re
 from unittest.mock import AsyncMock, patch
 
 from sqlmodel import Session, select
@@ -195,17 +196,18 @@ def test_create_build_planner_session_normalizes_dirty_workflow_payload(session:
         )
 
     planner_session = session.get(BuildPlannerSession, response.session_id)
+    titles = [chapter.title for chapter in response.plan.chapter_plan]
 
     assert response.plan.digest_mode == "sprint"
     assert 3 <= len(response.plan.chapter_plan) <= 6
-    assert response.plan.chapter_plan[0].title == "第 1 章"
-    assert all(chapter.title == f"第 {index} 章" for index, chapter in enumerate(response.plan.chapter_plan, start=1))
+    assert all("：" in title for title in titles)
+    assert all(not re.fullmatch(r"第\s*\d+\s*章", title) for title in titles)
     assert response.plan.build_constraints["target_chapter_count"] == len(response.plan.chapter_plan)
     assert "fixed_chapter_count" not in response.plan.build_constraints
     assert "冲刺型知识文档" in response.plan.plan_summary
     assert planner_session is not None
     assert planner_session.latest_plan_json is not None
-    assert planner_session.latest_plan_json["chapter_plan"][0]["title"] == "第 1 章"
+    assert "：" in planner_session.latest_plan_json["chapter_plan"][0]["title"]
     assert planner_session.latest_summary == response.plan.plan_summary
 
 

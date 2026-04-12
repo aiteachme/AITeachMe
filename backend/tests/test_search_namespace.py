@@ -18,6 +18,7 @@ from app.shared.infra.search.knowledge import (
     RetrievedChunk as CanonicalRetrievedChunk,
     rerank_chunks as canonical_rerank_chunks,
 )
+from app.shared.infra.search.retrievers.duckduckgo import _parse_duckduckgo_html_results
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.readers import BS4Reader, DOCXReader, PDFReader, PPTXReader, TextReader
 
@@ -66,7 +67,7 @@ def test_registered_search_tool_names_are_exposed() -> None:
     )
 
 
-def test_local_rag_skips_vector_search_when_sections_are_available_and_vectors_are_unavailable(monkeypatch) -> None:
+def test_local_rag_prefers_uploaded_sections_before_vector_search(monkeypatch) -> None:
     section = {
         "title": "计算机基础",
         "normalized_content": "计算机基础知识 包括 操作系统 网络 数据结构 和 算法。",
@@ -91,10 +92,46 @@ def test_local_rag_skips_vector_search_when_sections_are_available_and_vectors_a
         fake_search,
     )
 
-    results = asyncio.run(retriever.search("计算机基础 算法", max_results=3))
+    results = asyncio.run(retriever.search("计算机基础", max_results=3))
 
-    assert called["notice"] == 1
+    assert called["notice"] == 0
     assert called["search"] == 0
     assert results
     assert results[0].source == "local_rag"
     assert results[0].url.startswith("local://section/")
+
+
+def test_local_rag_section_fallback_supports_cjk_ngram_overlap() -> None:
+    retriever = LocalRAGRetriever(
+        local_sections=[
+            {
+                "title": "线性代数基础",
+                "normalized_content": "这里系统讲解向量空间的判定方法、基与维数之间的联系。",
+            }
+        ]
+    )
+
+    results = asyncio.run(retriever.search("向量空间 判别", max_results=3))
+
+    assert results
+    assert results[0].title == "线性代数基础"
+
+
+def test_duckduckgo_html_parser_extracts_result_cards() -> None:
+    html = """
+    <html>
+      <body>
+        <div class="result">
+          <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.edu%2Fcourse">线性代数课程笔记</a>
+          <a class="result__snippet">覆盖向量空间、基与维数的核心概念。</a>
+        </div>
+      </body>
+    </html>
+    """
+
+    results = _parse_duckduckgo_html_results(html, max_results=3)
+
+    assert len(results) == 1
+    assert results[0].url == "https://example.edu/course"
+    assert results[0].title == "线性代数课程笔记"
+    assert "向量空间" in results[0].snippet

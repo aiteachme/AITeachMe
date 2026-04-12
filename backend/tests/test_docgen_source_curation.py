@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.tools.builtin.markdown_processing import append_reference_section
+from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, normalize_mermaid_blocks
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import (
     build_collect_drafts_node,
@@ -89,6 +89,26 @@ def test_append_reference_section_dedupes_and_is_idempotent() -> None:
     assert enriched_again.count("## 参考资料与延伸阅读") == 1
 
 
+def test_normalize_mermaid_blocks_repairs_missing_fences_and_quote_prefix() -> None:
+    markdown = """
+> ```mermaid
+> mindmap
+>   root((线性代数))
+>     向量空间
+>       判别方法
+### 题型拆解
+- 看清楚封闭性
+""".strip()
+
+    normalized = normalize_mermaid_blocks(markdown)
+
+    assert "> ```mermaid" not in normalized
+    assert normalized.count("```mermaid") == 1
+    assert "root((线性代数))" in normalized
+    assert "```" in normalized
+    assert "### 题型拆解" in normalized
+
+
 def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview() -> None:
     captured: dict[str, object] = {}
 
@@ -98,7 +118,19 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
 
         async def run(self, **kwargs):
             captured["kwargs"] = kwargs
-            return TracedExecutionResult(content="# Example Chapter\n\n## Core Idea\n\nOne clean explanation.")
+            return TracedExecutionResult(
+                content=(
+                    "# Example Chapter\n\n"
+                    "## 全局脉络图\n\n"
+                    "```mermaid\n"
+                    "mindmap\n"
+                    "  root((Example Chapter))\n"
+                    "    概念关系\n"
+                    "``` A[bad trailing graph]\n\n"
+                    "## Core Idea\n\n"
+                    "One clean explanation."
+                )
+            )
 
     requested_at = datetime.utcnow()
     context = create_langgraph_dev_context("digest.docgen.source_test")
@@ -197,6 +229,9 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
         "partial derivative meaning",
         "partial derivative example",
     ]
+    assert chapter["markdown"].count("```mermaid") == 1
+    assert "``` A[bad trailing graph]" not in chapter["markdown"]
+    assert "## Core Idea" in chapter["markdown"]
     assert "## 参考资料与延伸阅读" in chapter["markdown"]
     assert "https://example.edu/partial" in chapter["markdown"]
     assert "## 目录" in enrich_result["merged_markdown"]
@@ -207,4 +242,3 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
     assert source_scope["local_source_count"] == 1
     assert source_scope["external_source_count"] == 1
     assert source_scope["domains"] == ["example.edu"]
-

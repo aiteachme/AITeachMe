@@ -9,6 +9,13 @@ from urllib.parse import urlparse
 MERMAID_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[MERMAID:\s*(.+?)\]\s*-->")
 IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
 HEADER_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+MERMAID_START_PATTERN = re.compile(r"^(?P<prefix>(?:>\s*)*)```mermaid\s*$", re.IGNORECASE)
+MERMAID_FENCE_PATTERN = re.compile(r"^```(?P<trailing>.*)$")
+MARKDOWN_BOUNDARY_PATTERN = re.compile(r"^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\[!|\|.+\||---\s*$)")
+MERMAID_KEYWORD_PATTERN = re.compile(
+    r"^(mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
+    re.IGNORECASE,
+)
 
 
 
@@ -25,6 +32,114 @@ def extract_image_placeholders(markdown: str) -> list[str]:
 def count_words(markdown: str) -> int:
     compact = re.sub(r"\s+", "", markdown).strip()
     return len(compact)
+
+
+def _strip_blockquote_prefix(line: str, *, prefix: str) -> str:
+    candidate = str(line or "")
+    if prefix and candidate.startswith(prefix):
+        candidate = candidate[len(prefix) :]
+    return re.sub(r"^(?:>\s*)+", "", candidate)
+
+
+def _looks_like_mermaid_line(line: str) -> bool:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return True
+    if MERMAID_KEYWORD_PATTERN.match(stripped):
+        return True
+    if line.startswith((" ", "\t")):
+        return True
+    if stripped.startswith(("%%", ":::", "subgraph ", "style ", "classDef ", "class ", "click ", "section ", "title ")):
+        return True
+    if any(token in stripped for token in ("-->", "---", "==>", "|", "[", "]", "(", ")", "{", "}")):
+        return True
+    return False
+
+
+def _looks_like_mermaid_garbage(line: str) -> bool:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return False
+    return any(token in stripped for token in ("-->", "[", "]", "classDef", "subgraph"))
+
+
+def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> None:
+    body_lines = list(block_lines)
+    while body_lines and not body_lines[0].strip():
+        body_lines.pop(0)
+    while body_lines and not body_lines[-1].strip():
+        body_lines.pop()
+    if not body_lines:
+        return
+    output_lines.append("```mermaid")
+    output_lines.extend(body_lines)
+    output_lines.append("```")
+
+
+def normalize_mermaid_blocks(markdown: str) -> str:
+    text = str(markdown or "")
+    if "```mermaid" not in text and "> ```mermaid" not in text:
+        return text
+
+    original_has_trailing_newline = text.endswith("\n")
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    normalized_lines: list[str] = []
+    mermaid_lines: list[str] = []
+    mermaid_prefix = ""
+    in_mermaid = False
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        if not in_mermaid:
+            start_match = MERMAID_START_PATTERN.match(line)
+            if start_match:
+                in_mermaid = True
+                mermaid_prefix = start_match.group("prefix") or ""
+                mermaid_lines = []
+                index += 1
+                continue
+            normalized_lines.append(line)
+            index += 1
+            continue
+
+        cleaned_line = _strip_blockquote_prefix(line, prefix=mermaid_prefix).rstrip()
+        fence_match = MERMAID_FENCE_PATTERN.match(cleaned_line.strip())
+        if fence_match:
+            _append_mermaid_block(normalized_lines, mermaid_lines)
+            trailing = (fence_match.group("trailing") or "").strip()
+            if trailing and not _looks_like_mermaid_garbage(trailing):
+                normalized_lines.append(trailing)
+            mermaid_lines = []
+            mermaid_prefix = ""
+            in_mermaid = False
+            index += 1
+            continue
+
+        if mermaid_lines and MARKDOWN_BOUNDARY_PATTERN.match(cleaned_line.strip()):
+            _append_mermaid_block(normalized_lines, mermaid_lines)
+            mermaid_lines = []
+            mermaid_prefix = ""
+            in_mermaid = False
+            continue
+
+        if mermaid_lines and not _looks_like_mermaid_line(cleaned_line):
+            _append_mermaid_block(normalized_lines, mermaid_lines)
+            mermaid_lines = []
+            mermaid_prefix = ""
+            in_mermaid = False
+            continue
+
+        mermaid_lines.append(cleaned_line)
+        index += 1
+
+    if in_mermaid:
+        _append_mermaid_block(normalized_lines, mermaid_lines)
+
+    normalized = "\n".join(normalized_lines)
+    if original_has_trailing_newline and not normalized.endswith("\n"):
+        normalized += "\n"
+    return normalized
 
 
 
@@ -187,6 +302,7 @@ __all__ = [
     "extract_markdown_headers",
     "extract_mermaid_placeholders",
     "normalize_source_details",
+    "normalize_mermaid_blocks",
     "prepend_table_of_contents",
     "slugify_markdown_anchor",
 ]
