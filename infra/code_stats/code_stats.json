@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-11T10:57:07.380303",
-  "total_commits_analyzed": 493,
+  "generated_at": "2026-04-12T12:52:09.046229",
+  "total_commits_analyzed": 509,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3945,6 +3945,134 @@
       "code_lines": 101669,
       "other_lines": 30641,
       "message": "chore: 恢复正确的前端"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "4366add",
+      "total_lines": 132310,
+      "code_lines": 101669,
+      "other_lines": 30641,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "1590f73",
+      "total_lines": 133271,
+      "code_lines": 102227,
+      "other_lines": 31044,
+      "message": "feat: 扩展 search 抓取工具并清理重复检索代码"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5e188fd",
+      "total_lines": 135169,
+      "code_lines": 103974,
+      "other_lines": 31195,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "a2fb625",
+      "total_lines": 133106,
+      "code_lines": 102095,
+      "other_lines": 31011,
+      "message": "refactor: 收口 search reader 语义并清理旧 scraper 兼容层"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "212ed86",
+      "total_lines": 135216,
+      "code_lines": 104003,
+      "other_lines": 31213,
+      "message": "refactor: 精简 LangSmith 包装并重构 planner 运行态观测"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "d4efc1b",
+      "total_lines": 135051,
+      "code_lines": 103871,
+      "other_lines": 31180,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "a8f3000",
+      "total_lines": 135391,
+      "code_lines": 104214,
+      "other_lines": 31177,
+      "message": "refactor: 简化 planner 的 LangSmith 接入方式并统一协同开发约定"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "3a08ed0",
+      "total_lines": 135391,
+      "code_lines": 104214,
+      "other_lines": 31177,
+      "message": "chore: 文档"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5309427",
+      "total_lines": 135233,
+      "code_lines": 104045,
+      "other_lines": 31188,
+      "message": "chore: 整理"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "dabbef2",
+      "total_lines": 135491,
+      "code_lines": 104372,
+      "other_lines": 31119,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "3c28849",
+      "total_lines": 135802,
+      "code_lines": 104656,
+      "other_lines": 31146,
+      "message": "fix: 修复知识文档检索零命中与 Mermaid 渲染异常"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "fa9765b",
+      "total_lines": 136127,
+      "code_lines": 104914,
+      "other_lines": 31213,
+      "message": "feat: 增强无 key 检索链路并补充百科与 SearXNG 检索器"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "9b72ff2",
+      "total_lines": 137269,
+      "code_lines": 105921,
+      "other_lines": 31348,
+      "message": "refactor: 改为智能体主导章节标题生成与结构修复"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "51f9974",
+      "total_lines": 138106,
+      "code_lines": 106509,
+      "other_lines": 31597,
+      "message": "docs: 对齐架构与重构文档中的 LangSmith 和分层规范"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "4cfd508",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "docs: 收口 LangSmith 文档并移除旧 tracing 口径"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "9cb321d",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
