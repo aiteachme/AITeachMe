@@ -7,7 +7,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.runtime_mode import is_local_mode
 from app.shared.infra.storage import get_content_store
 from app.models import (
     ChatMessage,
@@ -257,9 +257,8 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
     if not raw_files:
         return
 
-    settings = get_settings()
     for raw_file in raw_files:
-        if settings.is_local_mode:
+        if is_local_mode():
             # local 模式：原有逻辑，删除本地文件
             for path_value in [raw_file.file_path, raw_file.markdown_path]:
                 if path_value:
@@ -281,6 +280,4 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
-
-
 

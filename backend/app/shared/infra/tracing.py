@@ -19,7 +19,9 @@ from langsmith import traceable
 from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
 from app.shared.infra.llm_support.routing import TaskType, get_task_profile
+from app.shared.infra.runtime_mode import get_app_version, is_local_mode
 
 logger = structlog.get_logger()
 
@@ -49,6 +51,33 @@ class LLMTraceContext:
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
 
 
+def langsmith_tracing_requested() -> bool:
+    return get_env_bool("LANGSMITH_TRACING", False)
+
+
+def get_langsmith_project_name() -> str | None:
+    value = (get_env("LANGSMITH_PROJECT", "AITeachMe") or "AITeachMe").strip()
+    return value or None
+
+
+def get_langsmith_max_text_chars() -> int:
+    return max(32, get_env_int("LANGSMITH_MAX_TEXT_CHARS", 2000))
+
+
+def langsmith_capture_inputs_enabled() -> bool:
+    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_INPUTS")
+    if explicit_value is not None:
+        return explicit_value
+    return is_local_mode()
+
+
+def langsmith_capture_outputs_enabled() -> bool:
+    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_OUTPUTS")
+    if explicit_value is not None:
+        return explicit_value
+    return is_local_mode()
+
+
 def _langsmith_api_key_present() -> bool:
     for env_key in ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"):
         if os.getenv(env_key, "").strip():
@@ -72,7 +101,7 @@ def _sanitize_langsmith_metadata_value(value: Any) -> Any:
     if isinstance(value, str):
         if value.lower().startswith("data:"):
             return "[redacted:data-url]"
-        limit = max(32, int(get_settings().langsmith_max_text_chars))
+        limit = get_langsmith_max_text_chars()
         if len(value) <= limit:
             return value
         return f"{value[: max(1, limit - 3)]}..."
@@ -83,7 +112,7 @@ def langsmith_tracing_enabled() -> bool:
     """Whether LangSmith tracing should be enabled for the current process."""
 
     settings = get_settings()
-    return settings.tracing_enabled and settings.langsmith_tracing and _langsmith_api_key_present()
+    return settings.tracing_enabled and langsmith_tracing_requested() and _langsmith_api_key_present()
 
 
 def build_langsmith_metadata(
@@ -97,10 +126,9 @@ def build_langsmith_metadata(
 ) -> dict[str, Any]:
     """Build a normalized LangSmith metadata payload."""
 
-    settings = get_settings()
     metadata: dict[str, Any] = {
         "app": "aiteachme-backend",
-        "app_version": settings.app_version,
+        "app_version": get_app_version(),
     }
     if subject:
         metadata["subject"] = subject
@@ -154,7 +182,7 @@ def _build_langsmith_context(
     extra_metadata: Mapping[str, Any] | None = None,
     extra_tags: list[str] | None = None,
 ) -> tuple[str | None, dict[str, Any], list[str]]:
-    project_name = (get_settings().langsmith_project or "").strip() or None
+    project_name = get_langsmith_project_name()
     metadata = build_langsmith_metadata(
         subject=subject,
         build_session_id=build_session_id,

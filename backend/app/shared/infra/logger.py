@@ -11,13 +11,12 @@ import sys
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.runtime_mode import is_local_mode
 
 
 def configure_logging(log_level: str = "INFO") -> None:
     """初始化 structlog。"""
-    settings = get_settings()
-    use_colors = settings.is_local_mode and sys.stderr.isatty()
+    use_colors = is_local_mode() and sys.stderr.isatty()
 
     shared_processors = [
         structlog.contextvars.merge_contextvars,

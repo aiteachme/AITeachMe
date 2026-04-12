@@ -14,8 +14,24 @@ from fastapi.staticfiles import StaticFiles
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import init_db
+from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.logger import configure_logging
 from app.shared.infra.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.shared.infra.runtime_mode import (
+    get_app_version,
+    is_local_mode,
+    resolve_app_mode,
+    resolve_guest_cookie_samesite,
+    resolve_guest_cookie_secure,
+)
+from app.shared.infra.storage.config import (
+    get_storage_backend,
+    resolve_dogecloud_space_name,
+    resolve_s3_addressing_style,
+    resolve_s3_credential_mode,
+    s3_uses_dogecloud_tmp_token,
+    storage_is_s3,
+)
 from app.shared.kernel.exceptions import AITeachMeError
 from app.shared.infra.task_registry import BackgroundTaskRegistry
 
@@ -27,8 +43,7 @@ _OPENAPI_EXPORT_STARTED = False
 def _maybe_export_openapi_schema(app: FastAPI) -> None:
     global _OPENAPI_EXPORT_STARTED
 
-    settings = get_settings()
-    if not settings.export_openapi_on_startup:
+    if not get_env_bool("EXPORT_OPENAPI_ON_STARTUP", False):
         return
 
     with _OPENAPI_EXPORT_LOCK:
@@ -75,6 +90,11 @@ def _log_infra_diagnostics(settings) -> None:
     dialect = engine.dialect.name
     project_config_path = get_teaching_runtime_config_path()
 
+    app_mode = resolve_app_mode()
+    storage_backend = get_storage_backend()
+    uses_s3 = storage_is_s3()
+    uses_dogecloud_tmp_token = s3_uses_dogecloud_tmp_token()
+
     lines = [
         "",
         "=" * 60,
@@ -83,7 +103,7 @@ def _log_infra_diagnostics(settings) -> None:
         "",
         "  [ENV]",
         f"    APP_MODE (raw env)     : {os.environ.get('APP_MODE', '!! NOT_SET !!')}",
-        f"    APP_MODE (resolved)    : {settings.resolved_app_mode}",
+        f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
         f"    PROJECT_CONFIG_PATH    : {project_config_path}",
@@ -102,20 +122,20 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [STORAGE]")
-    lines.append(f"    Backend                : {settings.storage_backend}")
+    lines.append(f"    Backend                : {storage_backend}")
 
-    if settings.storage_is_s3:
-        lines.append(f"    S3 Bucket              : {settings.s3_bucket or '!! NOT_SET !!'}")
-        lines.append(f"    S3 Endpoint            : {settings.s3_endpoint or '!! NOT_SET !!'}")
-        lines.append(f"    S3 CDN                 : {settings.s3_public_base_url or 'none'}")
-        lines.append(f"    S3 Addressing Style    : {settings.resolved_s3_addressing_style}")
-        lines.append(f"    S3 Credential Mode     : {settings.resolved_s3_credential_mode}")
+    if uses_s3:
+        lines.append(f"    S3 Bucket              : {get_env('S3_BUCKET') or '!! NOT_SET !!'}")
+        lines.append(f"    S3 Endpoint            : {get_env('S3_ENDPOINT') or '!! NOT_SET !!'}")
+        lines.append(f"    S3 CDN                 : {get_env('S3_PUBLIC_BASE_URL') or 'none'}")
+        lines.append(f"    S3 Addressing Style    : {resolve_s3_addressing_style()}")
+        lines.append(f"    S3 Credential Mode     : {resolve_s3_credential_mode()}")
         lines.append(
-            f"    S3 Session Token       : {'SET' if settings.s3_session_token or settings.s3_uses_dogecloud_tmp_token else 'not used'}"
+            f"    S3 Session Token       : {'SET' if get_env('S3_SESSION_TOKEN') or uses_dogecloud_tmp_token else 'not used'}"
         )
-        if settings.s3_uses_dogecloud_tmp_token:
+        if uses_dogecloud_tmp_token:
             lines.append(
-                f"    DogeCloud Space Name   : {settings.resolved_dogecloud_space_name or '!! NOT_SET !!'}"
+                f"    DogeCloud Space Name   : {resolve_dogecloud_space_name() or '!! NOT_SET !!'}"
             )
         # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
         try:
@@ -151,7 +171,7 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Embedding Model        : {settings.embedding_model}")
     lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
     lines.append(
-        f"    MinerU Server Token    : {'SET' if settings.mineru_api_token else 'not set'}"
+        f"    MinerU Server Token    : {'SET' if get_env('MINERU_API_TOKEN') else 'not set'}"
     )
     lines.append(
         f"    Mermaid Model          : {settings.mermaid_generation_model or 'disabled'}"
@@ -162,9 +182,9 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [AUTH]")
-    lines.append(f"    Enabled                : {settings.auth_enabled}")
+    lines.append(f"    Enabled                : {get_env_bool('AUTH_ENABLED', True)}")
 
-    status = "CLOUD" if settings.resolved_app_mode == "cloud" else "LOCAL"
+    status = "CLOUD" if app_mode == "cloud" else "LOCAL"
     lines.append("")
     lines.append(f"  >>> Running in {status} mode <<<")
     lines.append("")
@@ -188,9 +208,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info(
         "app_started",
-        app_mode=settings.resolved_app_mode,
-        guest_cookie_samesite=settings.resolved_guest_cookie_samesite,
-        guest_cookie_secure=settings.resolved_guest_cookie_secure,
+        app_mode=resolve_app_mode(),
+        guest_cookie_samesite=resolve_guest_cookie_samesite(),
+        guest_cookie_secure=resolve_guest_cookie_secure(),
     )
     yield
     await app.state.background_task_registry.shutdown(cancel_timeout_s=8.0)
@@ -198,17 +218,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def _build_app_metadata() -> dict[str, object]:
-    settings = get_settings()
     return {
         "title": "AITeachMe",
         "description": "本地优先的 AI 助教后端服务。",
-        "version": settings.app_version,
+        "version": get_app_version(),
         "lifespan": lifespan,
     }
 
 
 def _register_middlewares(app: FastAPI) -> None:
-    settings = get_settings()
     # 从环境变量读取允许的跨域来源（逗号分隔），或使用默认白名单
     default_origins = [
         "https://aiteachme.cn",
@@ -221,7 +239,7 @@ def _register_middlewares(app: FastAPI) -> None:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
-    configured = settings.cors_allowed_origins
+    configured = get_env("CORS_ALLOWED_ORIGINS", "")
     origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
     logger.info("cors_configured", allow_origins=origins)
 
@@ -235,8 +253,7 @@ def _register_middlewares(app: FastAPI) -> None:
 
 
 def _register_static_mounts(app: FastAPI) -> None:
-    settings = get_settings()
-    if settings.is_local_mode:
+    if is_local_mode():
         log_legacy_runtime_path_warnings()
         data_dir = get_runtime_data_dir()
         app.mount("/_assets", StaticFiles(directory=data_dir), name="runtime-assets")
