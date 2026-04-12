@@ -188,7 +188,7 @@ async def check_with_llm(
 {{"score": 得分(0~{full}), "passed": true/false, "feedback": "一句话反馈", "criteria_scores": {{"维度名": 得分}}}}"""
 
     try:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
 
         raw = await acompletion(
             messages=[{"role": "user", "content": prompt}],

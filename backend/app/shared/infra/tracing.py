@@ -18,7 +18,7 @@ from langsmith import trace as langsmith_trace_run
 from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.model_router import TaskType, get_task_profile
+from app.shared.infra.llm_support.routing import TaskType, get_task_profile
 
 logger = structlog.get_logger()
 

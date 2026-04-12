@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session
 
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo

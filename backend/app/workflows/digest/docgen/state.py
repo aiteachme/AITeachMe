@@ -23,6 +23,7 @@ class DocGenState(TypedDict, total=False):
     retrieval_profile: str
     teaching_action: str
     tone: str
+    selected_skillpacks: list[str]
     shared_inputs: Any
     document_context: dict[str, Any] | None
 
@@ -34,6 +35,12 @@ class DocGenState(TypedDict, total=False):
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     chapter_metadatas: list[dict[str, Any]]
     exam_questions: list[dict[str, Any]]
+    mermaid_block_count: int
+    image_block_count: int
+    interactive_block_count: int
+    asset_count: int
+    asset_summary: dict[str, int]
+    practice_count: int
 
     merged_markdown: str
     enriched_markdown: str

@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-from app.shared.infra.skills import list_skills
+from app.shared.infra.skills import (
+    collect_recommended_tool_tags,
+    collect_skillpack_defaults,
+    list_skills,
+    render_prompt_scoped_skillpacks,
+    render_skill,
+)
+from app.shared.infra.tools import list_agent_tools
 from app.teaching.documents import ensure_chapter_learning_scaffold
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.planner.models import build_fallback_plan
+from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 
 
@@ -144,8 +152,15 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "curated_source_count": 2,
                     "trusted_source_count": 1,
                     "retrieval_profile": "docgen_systematic",
+                    "requested_profile": "docgen_systematic",
+                    "applied_profile": "docgen_systematic",
                     "teaching_action": "chapter_research",
                     "retriever_stats": {"local_rag": {"query_count": 1}, "bing": {"query_count": 1}},
+                    "research_round_count": 2,
+                    "research_rounds": [{"round_index": 1}, {"round_index": 2}],
+                    "gaps_remaining": ["边界条件"],
+                    "coverage_score": 0.75,
+                    "source_class_breakdown": {"local": 1, "academic": 1},
                     "research_ms": 120,
                 }
             ],
@@ -156,6 +171,10 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "draft_ms": 80,
                     "word_count": 320,
                     "placeholder_count": 1,
+                    "interactive_block_count": 1,
+                    "coverage_score": 0.8,
+                    "quality_score": 0.86,
+                    "repair_applied": True,
                     "teaching_action": "chapter_write",
                 }
             ],
@@ -166,8 +185,13 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
                     "sources": ["local://chunk/1", "https://example.edu/math"],
                 }
             ],
+            "mermaid_block_count": 1,
+            "image_block_count": 1,
+            "asset_count": 3,
+            "asset_summary": {"mermaid": 1, "image": 1, "interactive_html": 1, "animation": 0},
             "merged_markdown": "# 文档\n\n一些内容",
             "exam_questions": [{"question_index": 1}],
+            "practice_count": 4,
             "doc_ids": [101],
         },
         token_summary=DigestTokenSummary(),
@@ -183,15 +207,111 @@ def test_docgen_lane_summary_uses_new_fields_only() -> None:
     assert summary["teaching_actions"] == ["chapter_research", "chapter_write"]
     assert summary["retriever_names"] == ["bing", "local_rag"]
     assert summary["placeholder_count"] == 1
+    assert summary["requested_profiles"] == ["docgen_systematic"]
+    assert summary["applied_profiles"] == ["docgen_systematic"]
+    assert summary["research_round_count_total"] == 2
+    assert summary["gaps_remaining"] == ["边界条件"]
+    assert summary["source_class_breakdown"] == {"academic": 1, "local": 1}
+    assert summary["mermaid_count"] == 1
+    assert summary["image_count"] == 1
+    assert summary["asset_count"] == 3
+    assert summary["asset_summary"] == {"mermaid": 1, "image": 1, "interactive_html": 1, "animation": 0}
+    assert summary["interactive_block_count"] == 1
+    assert summary["practice_count"] == 4
+    assert summary["coverage_score"] == 0.775
+    assert summary["quality_score"] == 0.86
+    assert summary["quality_summary"]["repaired_chapter_count"] == 1
+    assert summary["quality_summary"]["asset_count"] == 3
     assert "cleanse_ms" not in summary
     assert "outline_ms" not in summary
     assert "review_ms" not in summary
     assert "metadata_ms" not in summary
 
 
-def test_teaching_skills_are_registered() -> None:
+def test_confirmed_plan_contract_builds_execution_ready_chapter_contracts() -> None:
+    contract = parse_digest_confirmed_plan_contract(
+        {
+            "subject": "高等数学",
+            "user_goal": "系统整理偏导数",
+            "digest_mode": "systematic",
+            "chapter_plan": [
+                {
+                    "chapter_index": 1,
+                    "title": "第 1 章",
+                    "objective": "建立偏导数的几何直觉，并连接到定义。",
+                    "required_elements": ["几何直觉", "偏导数定义"],
+                    "search_queries": ["偏导数 几何意义"],
+                    "media_hints": {"mermaid": ["偏导数整体关系图"], "interactive": ["偏导数公式推导展开器"]},
+                }
+            ],
+            "media_plan": {"enable_mermaid": True, "enable_interactive_html": True},
+            "build_constraints": {"target_total_words": 12000, "min_coverage_score": 0.8},
+        }
+    )
+
+    assignments = contract.to_chapter_assignments(default_source_file_ids=[1])
+    execution_contract = assignments[0]["execution_contract"]
+
+    assert execution_contract["target_word_count"] >= 1100
+    assert execution_contract["min_word_count"] >= 750
+    assert execution_contract["min_coverage_score"] == 0.8
+    assert execution_contract["media_quota"]["mermaid"] >= 1
+    assert execution_contract["media_quota"]["interactive_html"] >= 1
+    assert execution_contract["practice_quota"]["reasoning"] >= 2
+    assert "几何直觉" in execution_contract["coverage_requirements"]
+
+
+def test_builtin_skillpacks_are_discoverable() -> None:
     skill_names = {item["name"] for item in list_skills()}
-    assert "solve_step_by_step" in skill_names
-    assert "generate_similar_problems" in skill_names
-    assert "explain_formula" in skill_names
-    assert "compare_concepts" in skill_names
+    assert "find_resources" in skill_names
+    assert "explain_with_analogy" in skill_names
+    assert "review_mistakes" in skill_names
+
+
+def test_skillpack_render_binds_parameters() -> None:
+    rendered = render_skill("find_resources", topic="linear algebra", difficulty="intro")
+
+    assert "# Skill: find_resources" in rendered
+    assert "- topic: linear algebra" in rendered
+    assert "- difficulty: intro" in rendered
+    assert "linear algebra" in rendered
+
+
+def test_skillpack_scope_defaults_and_tool_tags_are_exposed() -> None:
+    rendered = render_prompt_scoped_skillpacks(
+        ["find_resources", "explain_with_analogy"],
+        prompt_scope="digest.docgen.writer",
+        bindings={"topic": "偏导数", "concept": "偏导数"},
+    )
+
+    assert "explain_with_analogy" in rendered
+    assert "find_resources" not in rendered
+    assert collect_skillpack_defaults(["find_resources"], prompt_scope="digest.docgen.research") == {
+        "difficulty": "入门"
+    }
+    assert collect_recommended_tool_tags(["find_resources"], prompt_scope="digest.docgen.research") == [
+        "retrieval",
+        "web_search",
+        "knowledge_lookup",
+    ]
+
+
+def test_fallback_plan_preserves_selected_skillpacks() -> None:
+    plan = build_fallback_plan(
+        subject="高等数学",
+        user_goal="系统整理偏导数",
+        digest_mode="systematic",
+        tone="encouraging",
+        selected_skillpacks=["find_resources", "explain_with_analogy", "find_resources"],
+        shared_inputs=_build_shared_inputs(),
+    )
+
+    assert plan.selected_skillpacks == ["find_resources", "explain_with_analogy"]
+
+
+def test_teaching_tools_are_registered_as_agent_tools() -> None:
+    tool_names = {item["name"] for item in list_agent_tools()}
+    assert "solve_step_by_step" in tool_names
+    assert "generate_similar_problems" in tool_names
+    assert "explain_formula" in tool_names
+    assert "compare_concepts" in tool_names

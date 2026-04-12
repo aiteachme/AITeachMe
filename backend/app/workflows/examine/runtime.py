@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionType
 from app.schemas.llm import SYSTEM

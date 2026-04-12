@@ -15,6 +15,7 @@ export interface BuildPlannerPlanResponse {
   user_goal: string;
   digest_mode: string;
   tone: string;
+  selected_skillpacks?: string[];
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   research_queries?: string[];
   media_plan?: BuildPlannerPlanResponseMediaPlan;

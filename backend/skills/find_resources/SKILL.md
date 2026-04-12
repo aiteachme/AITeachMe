@@ -6,6 +6,15 @@ tags:
   - 教学
   - 检索
   - 资源推荐
+prompt_scope:
+  - digest.planner
+  - digest.docgen.research
+recommended_tool_tags:
+  - retrieval
+  - web_search
+  - knowledge_lookup
+defaults:
+  difficulty: 入门
 parameters:
   topic:
     type: string

@@ -57,6 +57,114 @@ async def remember(
     return entry_key
 
 
+async def remember_preference(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.7,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条学习偏好记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.PREFERENCE,
+        importance=importance,
+        key=key,
+    )
+
+
+async def remember_strength(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.65,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条优势能力记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.STRENGTH,
+        importance=importance,
+        key=key,
+    )
+
+
+async def remember_weakness(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.8,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条薄弱点记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.WEAKNESS,
+        importance=importance,
+        key=key,
+    )
+
+
+async def remember_background(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.75,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条背景信息记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.BACKGROUND,
+        importance=importance,
+        key=key,
+    )
+
+
+async def remember_note(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.55,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条学习笔记记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.NOTE,
+        importance=importance,
+        key=key,
+    )
+
+
+async def remember_insight(
+    content: str,
+    *,
+    user_id: str = "default",
+    importance: float = 0.7,
+    key: str | None = None,
+) -> str:
+    """快捷写入一条系统洞察记忆。"""
+
+    return await remember(
+        content,
+        user_id=user_id,
+        tag=MemoryTag.INSIGHT,
+        importance=importance,
+        key=key,
+    )
+
+
 async def recall(
     query: str,
     *,
@@ -146,6 +254,33 @@ async def get_learning_log(
 
     store = get_memory_store()
     return await store.get_learning_logs(user_id, days=days)
+
+
+async def build_memory_context(
+    query: str,
+    *,
+    user_id: str = "default",
+    top_k: int = 5,
+    tag: str | None = None,
+    include_profile: bool = True,
+) -> str:
+    """把画像和相关记忆拼成一段可直接注入提示词的上下文。"""
+
+    parts: list[str] = []
+    if include_profile:
+        profile = await get_user_profile(user_id)
+        profile_message = profile.to_system_message().get("content", "").strip()
+        if profile_message:
+            parts.append(profile_message)
+
+    entries = await recall(query, user_id=user_id, top_k=top_k, tag=tag)
+    if entries:
+        lines = ["## 相关记忆"]
+        for entry in entries:
+            lines.append(f"- [{entry.tag}] {entry.content}")
+        parts.append("\n".join(lines))
+
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 async def log_learning_event(

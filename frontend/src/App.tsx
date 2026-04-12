@@ -8,8 +8,6 @@ import { BuildPlanPage } from "./pages/BuildPlanPage";
 import { ExamsPage } from "./pages/ExamsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { KnowledgeDocsPage } from "./pages/KnowledgeDocsPage";
-import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
-import { ChatPage } from "./pages/ChatPage";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
 
 const queryClient = new QueryClient();
@@ -17,8 +15,6 @@ const queryClient = new QueryClient();
 const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
   build: <BuildPlanPage />,
   "knowledge-docs": <KnowledgeDocsPage />,
-  "knowledge-graph": <KnowledgeGraphPage />,
-  chat: <ChatPage />,
   exams: <ExamsPage />,
   profile: <ProfilePage />,
 };

@@ -21,12 +21,19 @@
 """
 
 from app.shared.infra.memory.api import (
+    build_memory_context,
     forget,
     get_learning_log,
     get_user_profile,
     log_learning_event,
     recall,
     remember,
+    remember_background,
+    remember_insight,
+    remember_note,
+    remember_preference,
+    remember_strength,
+    remember_weakness,
 )
 from app.shared.infra.memory.learner_doc import (
     append_to_learner_section,
@@ -43,12 +50,19 @@ from app.shared.infra.memory.types import LearningLogEntry, MemoryEntry, MemoryT
 
 __all__ = [
     # 核心 API
+    "build_memory_context",
     "forget",
     "get_learning_log",
     "get_user_profile",
     "log_learning_event",
     "recall",
     "remember",
+    "remember_background",
+    "remember_insight",
+    "remember_note",
+    "remember_preference",
+    "remember_strength",
+    "remember_weakness",
     # LEARNER.md
     "append_to_learner_section",
     "get_learner_doc_path",

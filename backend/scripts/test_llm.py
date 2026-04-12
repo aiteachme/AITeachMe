@@ -13,7 +13,7 @@ from app.schemas.llm import ChatMessage, USER
 
 async def test_acompletion() -> None:
     """测试普通异步补全"""
-    from app.shared.infra.llm import acompletion
+    from app.shared.infra.llm_support import acompletion
 
     print("=" * 60)
     print("1️⃣  测试 acompletion() — 异步补全")
@@ -41,7 +41,7 @@ class CityInfo(BaseModel):
 
 async def test_acompletion_structured() -> None:
     """测试 Instructor 结构化输出"""
-    from app.shared.infra.llm import acompletion_structured
+    from app.shared.infra.llm_support import acompletion_structured
 
     print()
     print("=" * 60)
@@ -70,7 +70,7 @@ async def test_acompletion_structured() -> None:
 
 async def test_acompletion_stream() -> None:
     """测试流式输出"""
-    from app.shared.infra.llm import acompletion_stream
+    from app.shared.infra.llm_support import acompletion_stream
 
     print()
     print("=" * 60)

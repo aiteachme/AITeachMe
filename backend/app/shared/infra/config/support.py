@@ -29,8 +29,11 @@ RETRIEVER_ALIASES: dict[str, str] = {
 }
 RETRIEVER_PROFILES: dict[str, list[str]] = {
     "planner_fast": ["local_rag", "bocha", "duckduckgo"],
+    "planner_grounding": ["local_rag", "bocha", "duckduckgo"],
     "docgen_balanced": ["local_rag", "tavily", "bocha"],
+    "docgen_sprint": ["local_rag", "tavily", "bocha"],
     "docgen_academic": ["local_rag", "tavily", "arxiv", "semantic_scholar"],
+    "docgen_systematic": ["local_rag", "tavily", "arxiv", "semantic_scholar"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[5]

@@ -8,8 +8,8 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.shared.infra.llm import acompletion
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support import acompletion
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
 from app.workflows.ingest.parsing.types import ParserRunOptions

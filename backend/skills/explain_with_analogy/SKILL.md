@@ -6,6 +6,14 @@ tags:
   - 教学
   - 解释
   - 类比
+prompt_scope:
+  - digest.docgen.writer
+  - interact
+recommended_tool_tags:
+  - teaching
+  - explain
+defaults:
+  student_level: 初学
 parameters:
   concept:
     type: string

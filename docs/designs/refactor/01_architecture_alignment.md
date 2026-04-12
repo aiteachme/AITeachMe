@@ -1,64 +1,210 @@
-## 一、两个项目的架构对齐 — "我有什么 / 他有什么 / 我缺什么"
+﻿## 一、三项目架构对齐
 
-> **最后更新**：2026-04-10 — 校准代码实际状态，修正过度乐观的"已完成"标记
-
-### 1.1 能力矩阵对照
-
-| 能力维度 | gpt-researcher 实现 | AITeachMe 现状 | 状态 | 后续方向 |
-|:---|:---|:---|:---|:---|
-| **LLM 调用** | `GenericLLMProvider` → 20+ provider, 三级模型 (fast/smart/strategic) | `llm_support/fallback.py` → `acompletion_with_fallback()` 已实现 tier 路由 (strategic→smart→fast)，基于 `TaskType` 降级链 | ✅ 已完成 | 调优各 tier 默认模型配置，收集 LangSmith 数据验证降级频率 |
-| **搜索引擎** | `retrievers/` → 14 种 (Tavily / Bing / DuckDuckGo / arXiv / MCP ...) | `search/retrievers/` → 工厂模式已落地，含 `BaseRetriever` + Bing / DuckDuckGo / LocalRAG / Tavily，`Bocha` 当前仍是 placeholder；`factory.py` 已支持多检索器列表 / profile 解析与按 subject 自动组装 | 🟡 部分完成 | 下一步优先补 `Bocha` 真实现与 arXiv / Semantic Scholar 等学术检索器 |
-| **网页抓取** | `scraper/` → 8 种 (BS4 / PyMuPDF / Selenium / Firecrawl ...) + URL 去重 + 并行 | `search/scraper/` → `BaseScraper` + BS4 + PyMuPDF 两种实现，`web_scraping.py` 支持并行抓取 + URL 去重 | ✅ 已完成 | 可按需扩展 Selenium / Firecrawl |
-| **上下文压缩** | `context/compression.py` → `ContextCompressor` + 小文档快速路径 | `skills/context_manager.py` → `ContextManager` 已实现语义+词法相似度评分、段落去重、字符限制压缩 | ✅ 已完成 | 可引入 Embedding 向量过滤提升精度 |
-| **Skills（技能层）** | `skills/` → 6 个 Skill 类 | `skills/` → `BaseSkill` + `SkillContext` + `SkillResult` 已落地，已实现 ResearchConductor / PedagogyWriter / ContextManager / SourceCurator / ImageGenerator / MermaidGenerator 共 6 个业务 Skill | ✅ 已完成 | 扩展教育专属 Teaching Skills（solve_step_by_step 等） |
-| **Actions（原子操作）** | `actions/` → 7 个模块 | `tools/builtin/` → 已实现 query_processing / web_scraping / web_search / search_kb / markdown_processing / latex_processing / memory_ops 共 7 个模块 | ✅ 已完成 | 补充教育域原子操作（公式验证、题目生成等） |
-| **文生图** | `skills/image_generator.py` → 两阶段 + 自动嵌入 | `skills/image_generator.py` → 已实现占位符处理框架（`<!-- [IMAGE: ...] -->`），当前返回文字建议 | 🟡 框架就绪，生成能力待接入 | 接入通义万相 / DALL-E 实际生成 |
-| **Mermaid / 交互 HTML** | 无（纯 Markdown 报告） | `skills/mermaid_generator.py` → 已实现 mindmap 生成 + 关键词回退；`enrich_document_node` 自动处理 `[MERMAID:]` 占位符 | ✅ Mermaid 已完成 | 交互 HTML（V2 预留） |
-| **流式输出** | `stream_output()` → WebSocket 实时推送 | DocGen 各节点已通过 `events.py` 发布进度事件（plan_ready / research_progress / draft_progress 等），前端可订阅 | 🟡 事件已有，WebSocket 推送待打通 | 打通 DocGen 事件到前端 WebSocket |
-| **三级 LLM 策略** | `FAST_LLM` / `SMART_LLM` / `STRATEGIC_LLM` + 降级容错链 | `llm_support/fallback.py` → `acompletion_with_fallback()` 已实现，通过 `tier` 参数选择，自动降级 | ✅ 已完成 | 收集降级频率数据，调优模型配置 |
-| **MCP 协议** | `mcp/` → MCPRetriever + MCPToolSelector + 三种策略 | `shared/infra/mcp.py` → 有骨架 | 🟡 可扩展 | P3 |
-| **并发控制** | `WorkerPool` + `Semaphore` + `asyncio.gather` | LangGraph `Send()` fan-out 并发 + `docgen_max_parallel_chapters` 控制 + 全局 `_LLM_SEMAPHORE` | ✅ 已有，且更精细 | — |
-| **可观测性** | 简单日志 + JSON handler + 可选 LangSmith | `tracing.py` → LangSmith 全链路集成 + `LLMCallTracker` + `wrap_workflow_node()` + `DigestTimingReport` + 每个 Skill/Retriever 自带 trace metadata | ✅ 已有，且远超 gpt-researcher | 建立自定义 Dashboard（见 10 文档） |
-| **成本追踪** | `utils/costs.py` → `estimate_embedding_cost()` + `add_costs()` 回调 | `LLMCallTracker` 记录 token 用量，`SkillResult.cost_tokens` 追踪 Skill 级消耗 | 🟡 可选扩展 | P3：金额换算 |
-
-### 1.2 我们不需要照搬的部分（不变）
-
-- ❌ `multi_agents/` 编辑部模式（总编辑-记者-审稿人）→ 我们有自己的五大引擎编排
-- ❌ `backend/` FastAPI 服务 → 我们有自己的 FastAPI 后端
-- ❌ `frontend/` → 我们有 React + Vite + Orval 前端
-- ❌ `Config` 类 → 我们有 `shared/infra/config.py` (Pydantic Settings)
-- ❌ `GenericLLMProvider` → 我们有 LiteLLM 统一抽象层（更轻量）
-- ❌ `memory/embeddings.py` → 我们有 `shared/infra/embedding.py`（已适配 DashScope）
-- ❌ `vector_store/` → 我们有 sqlite-vec 向量检索 + reranker
-
-### 1.3 移植核心 — 完成状态追踪
-
-| 序号 | 移植目标 | 融入位置 | 状态 | 备注 |
-|:---|:---|:---|:---|:---|
-| 1 | **三级 LLM 策略** | `llm_support/fallback.py` | ✅ 已完成 | `acompletion_with_fallback()` 支持 tier 参数 + TaskType 降级链 |
-| 2 | **Skill 组合模式** | `shared/infra/skills/` | ✅ 已完成 | `BaseSkill` + `@skill` 双模式共存，6 个业务 Skill 已实现 |
-| 3 | **Plan-Execute-Write 范式** | `workflows/digest/docgen/` | ✅ 已完成 | **9 节点** LangGraph 拓扑：load_context → targeted_research → collect_materials → **resolve_titles** → pedagogy_craft → collect_drafts → enrich_document → inject_examine → finalize_assemble |
-| 4 | **上下文压缩管道** | `skills/context_manager.py` | ✅ 已完成 | 语义+词法双通道评分，段落去重，字符限制 |
-| 5 | **检索器工厂** | `search/retrievers/` + `search/factory.py` | ✅ 已完成 | `BaseRetriever` + 多检索器列表 / profile 解析 + 5 种实现（含 Tavily，Bocha 仍待补真实 API） |
-| 6 | **Scraper 调度器** | `search/scraper/` + `tools/builtin/web_scraping.py` | ✅ 已完成 | BS4 + PyMuPDF + 并行抓取 + URL 去重 |
-| 7 | **文生图两阶段** | `skills/image_generator.py` | 🟡 框架就绪 | 占位符处理已实现，实际图片生成 API 待接入 |
-
-### 1.4 下一阶段重点（2026-04-10 更新）
-
-核心移植骨架已完成，但多数模块仍处于"接口就绪、实现待深化"阶段。后续聚焦于**质量深化和真实能力补齐**：
-
-| 优先级 | 方向 | 具体内容 | 当前差距 |
-|:---|:---|:---|:---|
-| P0 | **Build Contract 收紧** | 定义 `BuildContract` Pydantic model，替代当前松散的 `confirmed_plan` dict | `load_context_node` 从 dict 取值无 schema 校验，字段缺失时 fallback 逻辑分散 |
-| P0 | **章节研究微循环** | `ResearchConductor` 内部增加 assess-gaps → 补检索 → 再压缩 的质量驱动循环 | 当前 `targeted_research_node` 只调一次 `researcher.run()`，无缺口识别 |
-| P0 | **课程模式硬约束** | `sprint` / `systematic` 的章节结构、字数下限、必备区块写入 writer prompt 和 enrich 逻辑 | `course_type` 已在 state 流转，但 writer 和 enrich 节点未做差异化处理 |
-| P0 | **LangSmith Dashboard** | 建立 tier 成本分析、降级监控、DocGen 端到端、检索器命中率等自定义视图 | trace metadata 基础已有，但缺少 `course_type` / `retrieval_profile` 等业务维度 |
-| P1 | **文生图实际接入** | 通义万相 / DALL-E API 接入，替换当前的文字建议占位 | `ImageGenerator` 框架就绪，`run()` 返回文字建议而非真实图片 |
-| P1 | **DocGen 事件 → 前端实时** | 打通 DocGen 进度事件到前端 SSE/WebSocket | 后端事件已发布，前端 `DigestBuildPanel` 通过轮询获取状态 |
-| P1 | **教育 Teaching Skills** | `solve_step_by_step` / `generate_similar_problems` / `explain_formula` / `compare_concepts` | `teaching/skill_tools.py` 仅有 4 个示例函数 |
-| P2 | **本地教育语料库** | `data/edu_corpus/` 预置高数/线代/概率论知识条目 | 尚未开始 |
-| P2 | **学术检索器扩展** | arXiv / Semantic Scholar / PubMed 等学术检索器 | `Bocha` 仍是 placeholder |
-| P3 | **交互式 HTML** | iframe 沙箱 + Desmos / GeoGebra 嵌入 | 仅预留接口 |
-| P3 | **MCP 协议扩展** | MCPRetriever + MCPToolSelector | `shared/infra/mcp.py` 仅有骨架 |
+> 最后更新：2026-04-11
+> 目标：回答”我有什么 / 他们有什么 / 我真正该借什么 / 当前最大的执行差距是什么”。
 
 ---
+
+## 1.1 三个项目的角色定位
+
+| 项目 | 强项 | 不足 | 对 AITeachMe 的价值 |
+| --- | --- | --- | --- |
+| `gpt-researcher` | 深度研究范式、检索器生态、上下文压缩、三级模型与 fallback | 教育语义弱，产物偏通用报告 | 提供 research 方法论和工具组织方式 |
+| `DeepTutor` | 教育能力拆分、guide/interactive/media pipeline、统一能力入口 | runtime 较重，产品面较宽，不适合照搬 | 提供课程产品形态、富媒体 sidecar 思路 |
+| AITeachMe | 五大引擎、LangGraph/LangSmith、前后端一体、教学闭环方向明确 | Digest 还未完全产品化，教学块与媒体链偏轻 | 把研究能力、教学能力、学习闭环整合成统一系统 |
+
+---
+
+## 1.2 能力矩阵对照
+
+| 能力维度 | `gpt-researcher` | `DeepTutor` | AITeachMe 现状 | 当前判断 |
+| --- | --- | --- | --- | --- |
+| 研究范式 | `plan -> search -> compress -> write`，有 `DetailedReport / DeepResearch` | `planning -> researching -> reporting`，有 dynamic topic queue | `ResearchConductor + PedagogyWriter + docgen graph`，但章节 research 仍偏单轮 | AITeachMe 需要借这两者的“研究深度控制” |
+| 检索器生态 | 丰富，profile 驱动 | search providers + tool registry | `search/factory.py` 已支持 profile，retrievers 也较全 | 结构已经有，但 `profile` 还未完整打入执行链 |
+| URL 读取 | 多 reader + URL 去重 | 较偏 research tool 调度 | `search/readers` + `web_reading` 已可用 | 现有方案足够，先不追求更多 provider |
+| 课程产物 | 通用报告 | guide page / chat / summary / animator | 教学文档已有脚手架，但课程产品感还不够强 | 需要借 `DeepTutor` 的产物链 |
+| 富媒体 | image skill，偏插图 | interactive page、math animator、summary | Mermaid 已较成熟，image 仍偏占位，interactive/animation 还没有 sidecar | 这是重要升级点 |
+| 统一能力入口 | skill/action/retriever 分层 | capability/orchestrator/tool/service 分层 | `workflows + infra skills/tools + teaching` 三层已有雏形 | 当前结构更适合渐进式重构 |
+| 教学块 | 基本没有 | 有 guide/chat/summary 等教育 agent | `teaching/documents` 已有 overview/guide/目标对照/模式块/recap | 需要继续向错因卡、公式卡、例题块扩展 |
+| 观测能力 | LangSmith 可选 | 事件和 trace callback 较丰富 | LangSmith 已深度接入 | AITeachMe 已经具备后续优化优势 |
+
+---
+
+## 1.3 已完成、不必幻想重写的部分
+
+### 已经做对了
+
+- `shared/kernel` 与 `shared/infra` 的分层已经成立
+- `digest/unified` 已把 Doc/KG/Curriculum 隔开
+- `docgen` 已经不是单 prompt，而是稳定的多节点 pipeline
+- `teaching/documents` 已经不是空壳，已有 overview、导读、模式块、recap 等实装
+- LangSmith 已经能覆盖 workflow/node/skill/retriever/llm
+
+### 不要为了参考项目推翻的部分
+
+- 不要拆掉现有五大引擎
+- 不要把 `digest` 改成编辑部式多 Agent
+- 不要把 `DeepTutor` 的 capability runtime 搬进当前后端
+- 不要让 `teaching` 长成第二套 infra
+
+---
+
+## 1.4 当前最关键的执行差距
+
+### 差距 1：`retrieval_profile` 有观测，没有落执行
+
+现在的事实是：
+
+- `planner/docgen` state 中已经有 `course_type` 和 `retrieval_profile`
+- `search/factory.py` 已经支持 `profile` 参数
+- 但 `ResearchConductor` 仍直接调用 `get_retrievers_for_subject(subject=..., local_sections=...)`
+- 也就是说，课程模式下的检索差异，目前主要存在于 state 和 trace，而不是实际 retriever 组合
+
+这是文档和代码之间最需要写实的一个点。
+
+### 差距 2：研究深度仍偏“一次成稿”
+
+`gpt-researcher` 的 `DeepResearchSkill` 和 `DetailedReport`，以及 `DeepTutor` 的 `ResearchPipeline`，都有显式的：
+
+- 子话题拆解
+- follow-up question
+- 学到什么
+- 下一轮查什么
+- 并发/队列/重试
+
+AITeachMe 当前的 `ResearchConductor` 已有：
+
+- 子查询规划
+- local + external 检索
+- curator
+- compressor
+- purify
+
+但缺的仍是：
+
+- 对 `required_elements` 的覆盖评估
+- 轻量补检索
+- 置信度与停机条件
+
+### 差距 3：课程产物还没有真正比 Deep Research 更“会教”
+
+当前 `teaching/documents/report_generation.py` 已经能自动补：
+
+- `## 本章导读`
+- `## 学习目标对照`
+- `## 术语速览`
+- 课程模式相关的二级标题
+- `## 快速回顾` / `## 本章要点`
+
+但离你要的“强教育产品”还差：
+
+- 错因卡
+- 公式逐项讲解卡
+- 范例题变式
+- 延伸迁移问题
+- 交互 HTML / 动画 sidecar
+- 更明确的章节质量契约
+
+### 差距 4：富媒体还没有独立 sidecar 流程
+
+`DeepTutor` 的 `GuideManager` 和 `MathAnimatorPipeline` 给了两个非常关键的启发：
+
+- 正文生成不该和富媒体耦死
+- 富媒体应该有自己的分析、设计、生成、重试、总结链
+
+AITeachMe 当前状态：
+
+- Mermaid：可用
+- Image：偏占位
+- Interactive HTML：还没真正进入文档 sidecar
+- Animation：还没有独立 pipeline
+
+结论不是“现在就做动画”，而是现在就要把接口预留对。
+
+---
+
+## 1.5 DeepTutor 深度分析（2026-04-11 补充）
+
+### 1.5.1 DeepTutor 的核心架构特征
+
+DeepTutor 采用 **Tool vs Capability** 两层插件模型：
+- **Tool**：原子动作（retrieval、web_search、code_execution）
+- **Capability**：多阶段 agent 流水线（deep_solve、deep_research、guide、question）
+
+其 **统一 Turn Runtime** 是最值得借鉴的工程资产：
+- 一致的请求格式（CLI / WebSocket）
+- session + turn 创建与持久化
+- 带 summarization budget 的 context 构建（长对话不爆上下文）
+- capability 路由
+- 流式事件总线（stage start/end、tool calls/results、partial LLM chunks）
+
+### 1.5.2 DeepTutor 具体可借鉴点
+
+| 特性 | DeepTutor 实现 | AITeachMe 借法 |
+| --- | --- | --- |
+| **Pre-retrieval planning** | DeepSolve planner 先生成多条检索 query → 并行检索 → LLM 聚合 → 再规划 | 借入 research micro-loop 的 query planning 阶段 |
+| **Guided Learning 页面生成** | `InteractiveAgent` 为每个知识点生成交互 HTML（KaTeX 支持） | 借入 sidecar asset pipeline 的产品形态 |
+| **KB 进度追踪** | ready/processing/error + per-stage progress API | 当前 `docgen_store` 已有类似机制，可对齐事件语义 |
+| **Quiz follow-up** | 结构化问题上下文（correctness + explanation + knowledge context） | 借入 examine 引擎的 follow-up 设计 |
+| **Context summarization** | 对话历史压缩到 token budget 内 | 借入 interact 引擎的长对话管理 |
+
+### 1.5.3 DeepTutor 不应借的部分
+
+- 其 RAG 管线较简单（纯 LlamaIndex vector retrieval，无 rerank、无 hybrid）
+- 其 Guide 子系统与主 Turn Runtime 分离（JSON 文件持久化），不如 AITeachMe 的 LangGraph 统一
+- 其 TutorBot 持久化 agent 概念过重，不适合当前阶段
+
+### 1.5.4 与 gpt-researcher 的互补关系
+
+| 维度 | gpt-researcher 更强 | DeepTutor 更强 |
+| --- | --- | --- |
+| 研究深度 | 递归子话题、多轮补检索、详细报告 | — |
+| 检索器生态 | 多 provider、profile 驱动 | — |
+| 教育产品形态 | — | guide page、quiz follow-up、math animator |
+| 交互式学习 | — | 知识点级交互 HTML、进度追踪 |
+| 上下文管理 | — | summarization budget、长对话压缩 |
+
+结论：gpt-researcher 借”研究方法论”，DeepTutor 借”教育产品形态”。
+
+---
+
+## 1.6 三个项目的最优借法
+
+### 从 `gpt-researcher` 借
+
+- `ResearchConductor` 的下一步：加微循环，不改 graph
+- 检索 profile 明确化
+- query planning / purify / curator 的工程纪律
+- tier fallback 的稳定 trace
+
+### 从 `DeepTutor` 借
+
+- `BuildContract -> Draft -> AssetPlan -> Publish` 的产品形态
+- sidecar 媒体链，而不是把媒体挤进正文 prompt
+- 课程内容支持”设计 -> 互动 -> 追问 -> 总结”的可能性
+- 面向教育产品的任务目录、输出文件和进度事件语义
+- **Pre-retrieval planning 模式**：先检索再规划，提升 planner 质量
+- **交互 HTML 生成**：为知识点生成 KaTeX 兼容的交互页面
+- **Context summarization**：长对话/长构建的上下文压缩策略
+
+### AITeachMe 自己必须坚持
+
+- 五大引擎主架构不动
+- `shared/infra / teaching / workflows` 三层边界不动
+- Docs Lane 升级只影响 `digest` 本身，不外溢重写其他引擎
+- LangSmith 作为后续所有优化的第一观测面板
+
+---
+
+## 1.7 一句话结论
+
+AITeachMe 不缺骨架，缺的是：
+
+- 让 `retrieval_profile` 真正生效
+- 让 research 更像深度研究
+- 让文档产物更像课程产品
+- 让富媒体走独立 sidecar 流程
+
+这正好对应 `gpt-researcher` 和 `DeepTutor` 各自最值得借的部分。
+
+

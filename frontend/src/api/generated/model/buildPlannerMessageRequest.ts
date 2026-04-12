@@ -12,4 +12,6 @@
 export interface BuildPlannerMessageRequest {
   /** User feedback used to revise the current plan draft. */
   message: string;
+  /** Optional updated skillpack selection for the next draft. */
+  selected_skillpacks?: string[] | null;
 }

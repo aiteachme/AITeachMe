@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
-from app.shared.infra.skills.teaching_hooks import build_learning_document_overview
 from app.teaching.documents import resolve_effective_chapter_title
+from app.teaching.documents import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_source_details
 from app.utils.docgen_store import (
@@ -135,7 +135,7 @@ def _build_chapter_manifest(chapter: dict) -> dict[str, object]:
         "planned_queries": list(chapter.get("planned_queries") or []),
         "fallback_queries": list(chapter.get("fallback_queries") or []),
         "query_count": int(chapter.get("query_count", 0) or 0),
-        "scraped_url_count": int(chapter.get("scraped_url_count", 0) or 0),
+        "read_url_count": int(chapter.get("read_url_count", 0) or 0),
         "document_count": int(chapter.get("document_count", 0) or 0),
         "purify_used": bool(chapter.get("purify_used", False)),
     }
@@ -333,3 +333,4 @@ def publish_staged_knowledge_docs(
             created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]
+

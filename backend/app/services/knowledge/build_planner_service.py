@@ -123,6 +123,7 @@ def _plan_response(
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
         tone=str(plan.get("tone") or "encouraging"),
+        selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
         media_plan=dict(plan.get("media_plan") or {}),
@@ -140,6 +141,7 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "tone": str(plan.get("tone") or ""),
+        "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
         "chapter_plan": list(plan.get("chapter_plan") or []),
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
@@ -208,6 +210,7 @@ def _normalize_persisted_plan(
     user_goal: str,
     digest_mode: str,
     tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -217,6 +220,7 @@ def _normalize_persisted_plan(
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
         requested_tone=tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     )
@@ -272,6 +276,7 @@ async def create_build_planner_session_service(
         planner_session_id=session_id,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[user_goal],
         progress_callback=progress_callback,
         token_callback=token_callback,
@@ -284,6 +289,7 @@ async def create_build_planner_session_service(
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=list(payload.selected_skillpacks or []),
         shared_inputs=final_state.get("shared_inputs"),
     )
     record.latest_plan_json = plan
@@ -350,6 +356,11 @@ async def append_build_planner_message_service(
     )
     turns = list_planner_turns(session, session_id=session_id)
     message_history = [turn.content for turn in turns if turn.content.strip()]
+    selected_skillpacks = (
+        list(payload.selected_skillpacks)
+        if payload.selected_skillpacks is not None
+        else list((record.latest_plan_json or {}).get("selected_skillpacks") or [])
+    )
     workflow_result = await run_build_planner_workflow(
         subject=subject.slug,
         file_ids=list(record.selected_file_ids_json),
@@ -357,6 +368,7 @@ async def append_build_planner_message_service(
         planner_session_id=session_id,
         digest_mode=record.digest_mode,
         tone=record.tone,
+        selected_skillpacks=selected_skillpacks,
         message_history=message_history,
         latest_plan=record.latest_plan_json,
         progress_callback=progress_callback,
@@ -370,6 +382,7 @@ async def append_build_planner_message_service(
         user_goal=record.user_goal,
         digest_mode=record.digest_mode,
         tone=record.tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=final_state.get("shared_inputs"),
         latest_plan=record.latest_plan_json,
     )

@@ -7,6 +7,9 @@ from typing import Any
 
 from app.teaching.documents import resolve_effective_chapter_title
 from app.workflows.digest.shared.contracts import (
+    DigestChapterContract,
+    DigestConfirmedPlanContract,
+    parse_digest_confirmed_plan_contract,
     resolve_digest_course_type,
     resolve_digest_retrieval_profile,
 )
@@ -36,38 +39,36 @@ async def publish_docgen_progress(
     )
 
 
-def normalize_chapter_assignments(chapters: list[dict[str, Any]], *, default_source_file_ids: list[int]) -> list[dict[str, Any]]:
-    normalized: list[dict[str, Any]] = []
-    for index, chapter in enumerate(chapters, start=1):
-        chapter_index = int(chapter.get("chapter_index", index) or index)
-        normalized.append(
-            {
-                "chapter_index": chapter_index,
-                "title": str(chapter.get("title") or f"第 {chapter_index} 章"),
-                "resolved_title": str(chapter.get("resolved_title") or "").strip(),
-                "objective": str(chapter.get("objective") or ""),
-                "required_elements": [str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
-                "search_queries": [str(item) for item in chapter.get("search_queries", []) if str(item).strip()],
-                "writing_instructions": str(chapter.get("writing_instructions") or ""),
-                "media_hints": dict(chapter.get("media_hints") or {"images": [], "mermaid": [], "interactive": []}),
-                "source_file_ids": list(chapter.get("source_file_ids") or default_source_file_ids),
-            }
+def normalize_chapter_assignments(
+    chapters: list[dict[str, Any]],
+    *,
+    default_source_file_ids: list[int],
+) -> list[dict[str, Any]]:
+    return [
+        DigestChapterContract.model_validate(chapter).to_assignment(
+            default_source_file_ids=default_source_file_ids
         )
-    return normalized
+        for chapter in chapters
+    ]
+
+
+def normalize_confirmed_plan_contract(plan_payload: dict[str, Any]) -> DigestConfirmedPlanContract:
+    return parse_digest_confirmed_plan_contract(plan_payload)
 
 
 def get_effective_chapter_title(chapter: dict[str, Any], *, fallback_index: int | None = None) -> str:
     return resolve_effective_chapter_title(chapter, chapter_index=fallback_index)
 
 
-def resolve_docgen_dependency(name: str, default: Any) -> Any:
-    """Honor graph-level overrides used by tests and debug entrypoints."""
+def resolve_docgen_dependency(name: str, default: Any, *, owner_module: str | None = None) -> Any:
+    """Resolve debug or test overrides from the owning module instead of graph globals."""
 
+    module_name = owner_module or "app.workflows.digest.docgen.graph"
     try:
-        graph_module = import_module("app.workflows.digest.docgen.graph")
+        module = import_module(module_name)
     except Exception:
         return default
-    return getattr(graph_module, name, default)
+    return getattr(module, name, default)
 
 
 def resolve_docgen_course_type(digest_mode: str | None) -> str:
@@ -91,18 +92,57 @@ def ensure_chapter_heading(title: str, markdown: str) -> str:
     return cleaned + "\n"
 
 
-def build_examine_markdown(question_titles: list[str]) -> str:
+def build_examine_markdown(
+    question_titles: list[str] | None = None,
+    *,
+    exam_questions: list[dict[str, Any]] | None = None,
+    digest_mode: str = "",
+    review_prompts: list[str] | None = None,
+) -> str:
     prompts = question_titles or ["整份文档"]
-    lines = ["# 练习与自检", "", "## 简答题", ""]
-    for index, title in enumerate(prompts, start=1):
-        lines.append(f"{index}. 请用自己的话解释《{title}》最重要的知识点，并补一个你能想到的例子。")
+    normalized_mode = str(digest_mode or "").strip().lower()
+    questions = list(exam_questions or [])
+    if not questions:
+        questions = [
+            {
+                "question_index": index,
+                "type": "short_answer",
+                "question": f"请用自己的话解释《{title}》最重要的知识点，并补一个你能想到的例子。",
+            }
+            for index, title in enumerate(prompts, start=1)
+        ]
+
+    if normalized_mode == "sprint":
+        lines = ["# 练习与自检", "", "## 高频题型自检", ""]
+        for question in questions:
+            lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
+        lines.extend(
+            [
+                "",
+                "## 易错复盘",
+                "",
+                *[f"- {item}" for item in (review_prompts or [
+                    "哪一道题你是靠感觉做出来的？把它改成可复述的判断步骤。",
+                    "哪一个公式你会背但还不会判断使用条件？",
+                    "如果考试时间很紧，这份文档里你最该先回看哪两章？",
+                ])],
+            ]
+        )
+        return "\n".join(lines).strip() + "\n"
+
+    lines = ["# 练习与自检", "", "## 理解与推理题", ""]
+    for question in questions:
+        lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
     lines.extend(
         [
             "",
-            "## 复盘问题",
+            "## 章节收束与迁移",
             "",
-            "- 现在哪一章你仍然最不确定？原因是什么？",
-            "- 哪个公式、定义或推理步骤最值得你再回头看一遍？",
+            *[f"- {item}" for item in (review_prompts or [
+                "把一章里的核心定义、方法和例子串成一条完整主线。",
+                "指出哪一个概念最容易和邻近概念混淆，并做一次对比辨析。",
+                "尝试把这份文档中的一个方法迁移到一个新问题或新场景中。",
+            ])],
         ]
     )
     return "\n".join(lines).strip() + "\n"
@@ -113,6 +153,7 @@ __all__ = [
     "ensure_chapter_heading",
     "get_effective_chapter_title",
     "normalize_chapter_assignments",
+    "normalize_confirmed_plan_contract",
     "publish_docgen_progress",
     "resolve_docgen_dependency",
     "resolve_docgen_course_type",

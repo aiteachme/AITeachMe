@@ -1,146 +1,96 @@
-## 八、迁移落位与清理计划
+# 08. Migration Plan
 
-> 目标：回答“后续新增能力应该落到哪里、哪些目录停止扩张、哪些技术债要逐步清理”。
-> 最后更新：2026-04-09
+## 总原则
 
----
+- 只主动改 `digest/docgen + shared extension infrastructure`
+- 不重写其他四大引擎
+- 先修边界，再迁业务 runtime，再做质量增强
 
-## 8.1 迁移总原则
+## Phase 0
 
-### 原则 1：不搞一次性大搬家
+目标：冻结边界与术语。
 
-这次不是“把旧代码全删掉再重建”，而是：
+交付物：
 
-- 先冻结 canonical 模块
-- 再停止旧入口继续长新逻辑
-- 最后逐步迁移调用点
+- `infra / teaching / workflows` 边界文档
+- `tool / skillpack / toolpack / workflow runtime` 定义
+- 过渡态与目标态两套口径
 
-### 原则 2：先收口，再清理
+退出标准：
 
-先确定哪一层是唯一真相源，再去删兼容层。
-顺序不能反。
+- 团队不再把 `orchestrators` 当长期落点继续生长
+- 所有后续设计都能用同一套术语讨论
 
-### 原则 3：Digest 改造不外溢
+## Phase 1
 
-Docs Lane 的升级不应该迫使其他四大引擎跟着重写。
+目标：先把 skillpack 变成主流程真实字段。
 
----
+交付物：
 
-## 8.2 当前需要明确的 canonical 模块
+- `SkillpackDefinition` 支持 `prompt_scope`
+- `recommended_tool_tags`
+- `defaults`
+- planner / confirmed plan / docgen state 支持 `selected_skillpacks`
+- planner/docgen prompt 接入 skillpack guidance
 
-| 能力 | canonical 落点 | 过渡/兼容 |
-| --- | --- | --- |
-| runtime root | `app.shared.infra.runtime_paths` | 无 |
-| 业务路径 helper | `app.utils.path_helpers` | 无 |
-| memory store / learner doc | `app.shared.infra.memory` | `app.teaching.memory` 仅兼容 |
-| 通用 retriever / scraper | `app.shared.infra.search` | 无 |
-| 原子工具 | `app.shared.infra.tools` | 无 |
-| 组合 skill | `app.shared.infra.skills` | 无 |
-| 教学脚手架 / 教学块 | `app.teaching.documents` | 无 |
-| 教学语义动作 | `app.teaching` | `skill_tools.py` 为轻量原型区 |
-| workflow 公共编排 | `app.workflows.common` | 无 |
+退出标准：
 
----
+- `selected_skillpacks` 可通过 API 进入 planner
+- confirmed plan 中完整保留
+- docgen runtime 能读到并消费
 
-## 8.3 当前停止继续扩张的目录或入口
+## Phase 2
 
-### 1. `app.teaching.memory`
+目标：让“用户自己写 tool 并接入”成为真功能。
 
-处理策略：
+交付物：
 
-- 保留兼容
-- 停止新增底层逻辑
-- 所有新实现直接落到 `app.shared.infra.memory`
+- `toolpack` loader
+- `backend/toolpacks` 与 `~/.atm/toolpacks` 发现规则
+- `manifest.yaml + handler.py` handler 绑定
+- YAML-only tool 退化为过渡态说明
 
-### 2. `app.teaching.skill_tools.py`
+退出标准：
 
-处理策略：
+- 外部 toolpack 可以注册真实工具
+- disabled / broken toolpack 不会拖垮主流程
+- 同名用户 toolpack 可以覆盖项目内 toolpack
 
-- 可继续放轻量样例
-- 一旦出现多步 orchestration、独立 tracing、检索/LLM 组合，迁到 `shared/infra/skills`
+## Phase 3
 
-### 3. workflow 节点中的教学字符串拼接
+目标：迁回 DocGen concrete runtime。
 
-处理策略：
+交付物：
 
-- 不再直接在 node 中堆教学块模板
-- 统一沉回 `app.teaching.documents`
+- `workflows/digest/docgen/runtime/research.py`
+- `workflows/digest/docgen/runtime/writer.py`
+- `workflows/digest/docgen/runtime/assets.py`
+- `shared/infra/traced_execution.py` 成为唯一 traced execution base
 
----
+退出标准：
 
-## 8.4 后续新增能力的落位指南
+- workflow-local runtime trace 命名为 `workflow_runtime.docgen.*`
+- `shared/infra/orchestrators/` 目录已删除
+- `shared/infra/prompt_builders/` 目录已删除
 
-### 新的检索器 / 抓取器 / 工具
+## Phase 4
 
-落点：
+目标：增强 DocGen 质量，不改主骨架。
 
-- `shared/infra/search`
-- `shared/infra/tools`
+交付物：
 
-### 新的研究型 / 媒体型 / 写作型 Skill
+- research micro-loop
+- asset sidecar
+- systematic / sprint 更严格 contract
+- 更丰富的公式、图示、交互插槽
 
-落点：
+退出标准：
 
-- `shared/infra/skills`
+- 质量增强不破坏主 graph
+- LangSmith trace 仍保持清晰
 
-### 新的教学块 / 课程模板 / 错因讲评
+## 回滚策略
 
-落点：
-
-- `app.teaching`
-
-### 新的 DocGen 章节节点或状态流
-
-落点：
-
-- `workflows/digest/docgen`
-
----
-
-## 8.5 推荐清理顺序
-
-### Step 1：冻结 memory 真相源
-
-- 文档层和代码层都明确 `shared/infra/memory` 为 canonical
-- 不再在 `teaching/memory` 新增路径或存储语义
-
-### Step 2：让教学表达只从 `teaching` 输出
-
-- 章节导读
-- 学习目标对照
-- glossary
-- recap
-- 错因块
-
-都统一从 `app.teaching` 导出。
-
-### Step 3：让 workflow 只做 orchestration
-
-- research 在 `infra/skills`
-- 教学结构在 `teaching`
-- graph 只负责编排与 state
-
-### Step 4：再逐步回收兼容层
-
-等调用点收敛后，再考虑进一步瘦身 `teaching/memory` 等过渡目录。
-
----
-
-## 8.6 当前不建议做的事情
-
-- 不建议新建 `app/core`
-- 不建议把 `teaching` 再往 `shared/infra` 里面塞
-- 不建议为了“目录好看”大规模移动已稳定的 workflow 文件
-- 不建议为了复用 `gpt-researcher` 而强行复制其整个目录结构
-
----
-
-## 8.7 一句话结论
-
-这份迁移计划的本质不是“删除哪些文件”，而是：
-
-- 先定唯一真相源
-- 先停止旧入口继续膨胀
-- 再逐步让新能力各归其位
-
-只有这样，后续 Digest 深度重构才不会把整仓结构一起拖乱。
+- 每个 phase 独立提交
+- 保持顶层 shim 一段时间
+- 只在 workflow-local runtime 稳定后再删旧入口引用

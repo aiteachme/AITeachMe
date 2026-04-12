@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.shared.infra.llm import acompletion_stream
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState

@@ -1,4 +1,4 @@
-"""DocGen 主链路使用的中文提示词。"""
+"""DocGen prompt builders owned by the digest workflow layer."""
 
 from __future__ import annotations
 
@@ -66,10 +66,24 @@ def build_docgen_writer_messages(
     dense_context: str,
     chapter_index: int | None = None,
     chapter_count: int | None = None,
+    execution_contract: dict[str, object] | None = None,
+    skillpack_guidance: str = "",
+    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     tone_hint = _tone_hint(tone)
+    execution_contract = dict(execution_contract or {})
+    media_quota = dict(execution_contract.get("media_quota") or {})
+    practice_quota = dict(execution_contract.get("practice_quota") or {})
+    contract_summary = (
+        f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
+        f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
+        f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
+        f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
+        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)} / 图片 {media_quota.get('images', 0)} / 交互块 {media_quota.get('interactive_html', 0)}\n"
+        f"- 练习配额：简答 {practice_quota.get('short_answer', 0)} / 自检 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}"
+    )
     system_prompt = (
         "你是 AITeachMe 的中文教学文档作者。"
         "你的任务是把研究材料写成可直接给学生阅读的高质量 Markdown 讲义。"
@@ -91,17 +105,27 @@ def build_docgen_writer_messages(
 模式契约：
 {_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
 
+执行合同：
+{contract_summary}
+
 风格提醒：
 {tone_hint}
+
+策略包约束：
+{skillpack_guidance.strip() or "无额外策略包约束。"}
+
+推荐工具标签：
+{", ".join(recommended_tool_tags or []) or "无"}
 
 输出硬约束：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
 3. 二级标题必须服从模式契约，不能缺关键模块。
 4. 如果需要图示，请使用 `<!-- [MERMAID: 描述] -->` 或 `<!-- [IMAGE: 描述] -->` 占位。
-5. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
-6. 不允许编造引用、文献、实验结果或材料中不存在的事实。
-7. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
+5. 如果执行合同要求交互块，请使用 `<!-- [INTERACTIVE: 描述] -->` 占位。
+6. 如果需要公式，必须使用 `$...$` 或 `$$...$$`。
+7. 不允许编造引用、文献、实验结果或材料中不存在的事实。
+8. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
 
 研究材料：
 {dense_context[:14000]}
@@ -119,6 +143,8 @@ def build_docgen_research_purify_messages(
     objective: str,
     required_elements: list[str],
     digest_mode: str,
+    skillpack_guidance: str = "",
+    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     normalized_mode = _normalize_mode(digest_mode)
@@ -138,6 +164,12 @@ def build_docgen_research_purify_messages(
 5. 不能补充素材中没有出现的事实。
 6. 如果是 `sprint`，优先保留高频考点、题型线索和易错点。
 7. 如果是 `systematic`，优先保留定义、推导、适用条件和结构关系。
+
+策略包约束：
+{skillpack_guidance.strip() or "无额外策略包约束。"}
+
+推荐工具标签：
+{", ".join(recommended_tool_tags or []) or "无"}
 
 原始素材：
 {dense_context[:12000]}
@@ -173,6 +205,8 @@ def build_docgen_sub_query_messages(
     max_queries: int,
     domain: str,
     fallback_queries: list[str],
+    skillpack_guidance: str = "",
+    recommended_tool_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     context_lines = "\n".join(
         f"- {item['text']}"
@@ -199,6 +233,12 @@ def build_docgen_sub_query_messages(
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
 
+策略包约束：
+{skillpack_guidance.strip() or "无额外策略包约束。"}
+
+推荐工具标签：
+{", ".join(recommended_tool_tags or []) or "无"}
+
 可参考但不要机械照抄的兜底方向：
 {fallback_lines}
 """.strip()
@@ -211,9 +251,44 @@ def build_docgen_sub_query_messages(
     ]
 
 
+def build_docgen_gap_query_messages(
+    *,
+    dense_context: str,
+    required_elements: list[str],
+    max_queries: int = 2,
+    domain: str = "education",
+) -> list[dict[str, str]]:
+    must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
+    user_prompt = f"""
+请分析现有的研究素材，找出缺失的关键信息，并生成用于进一步检索的查询语句。
+
+必须覆盖的知识：{must_cover}
+领域：{domain}
+最多生成新查询数：{max_queries}
+
+现有素材摘要：
+{dense_context[:8000]}
+
+输出要求：
+1. 分析现有素材中**没有充分解释**或**完全缺失**的关键概念、推导过程或示例。
+2. 针对这些盲区（gaps），生成适合在搜索引擎上检索的中文查询语句。
+3. 查询语句要足够具体，比如“XXX公式 详细推导过程”或“XXX 在实际工程中的应用案例”。
+4. 只返回查询语句列表（按行分割或JSON均可，系统会自动提取其中有意义的文本），不要解释。
+5. 如果现有素材已经足够完美，无需补充，你可以返回空结果。
+""".strip()
+    return [
+        {
+            "role": "system",
+            "content": "你是 AITeachMe 的研究分析引擎，负责寻找现有资料的盲区，并生成补充检索的查询语句以完善知识闭环。",
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+
+
 __all__ = [
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
     "build_docgen_sub_query_messages",
+    "build_docgen_gap_query_messages",
     "build_docgen_writer_messages",
 ]

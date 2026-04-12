@@ -1,15 +1,16 @@
-"""Pedagogy craft node for the DocGen lane."""
+﻿"""Pedagogy craft node for the DocGen lane."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from time import perf_counter
 
-from app.shared.infra.skills import PedagogyWriter, SkillContext
+from app.shared.infra.traced_execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
+from app.workflows.digest.docgen.runtime import DocGenWriterRuntime as PedagogyWriter
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
     get_effective_chapter_title,
@@ -54,7 +55,7 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             },
         )
 
-        skill_context = SkillContext(
+        traced_context = TracedExecutionContext(
             subject=state["subject"],
             build_session_id=state.get("build_session_id", ""),
             workflow_context=context,
@@ -70,13 +71,15 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             teaching_action=str(state.get("teaching_action") or "chapter_write"),
             chapter_index=chapter_index,
         )
-        writer_cls = resolve_docgen_dependency("PedagogyWriter", PedagogyWriter)
-        writer = writer_cls(skill_context)
+        writer_cls = resolve_docgen_dependency("PedagogyWriter", PedagogyWriter, owner_module=__name__)
+        writer = writer_cls(traced_context)
         result = await writer.run(
             chapter_plan=material,
             dense_context=str(material.get("dense_context") or ""),
             tone=state.get("tone") or "encouraging",
             digest_mode=state.get("digest_mode") or "systematic",
+            selected_skillpacks=list(state.get("selected_skillpacks") or []),
+            user_goal=str((state.get("document_context") or {}).get("user_goal") or ""),
         )
         markdown = ensure_chapter_heading(chapter_title, result.content)
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -87,13 +90,14 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "markdown": markdown,
             "summary": build_draft_excerpt(markdown, max_chars=260),
             "tags": list(material.get("required_elements") or []),
+            "execution_contract": dict(material.get("execution_contract") or {}),
             "source_file_ids": list(material.get("source_file_ids") or []),
             "sources": list(material.get("sources") or []),
             "source_details": list(material.get("source_details") or []),
             "digest_mode": state.get("digest_mode") or "",
-            "course_type": skill_context.course_type,
-            "retrieval_profile": skill_context.retrieval_profile,
-            "teaching_action": skill_context.teaching_action,
+            "course_type": traced_context.course_type,
+            "retrieval_profile": traced_context.retrieval_profile,
+            "teaching_action": traced_context.teaching_action,
             "research_summary": str(material.get("research_summary") or ""),
             "research_ms": int(material.get("research_ms", 0) or 0),
             "local_hits": int(material.get("local_hits", 0) or 0),
@@ -105,13 +109,21 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "planned_queries": list(material.get("planned_queries") or []),
             "fallback_queries": list(material.get("fallback_queries") or []),
             "query_count": int(material.get("query_count", 0) or 0),
-            "scraped_url_count": int(material.get("scraped_url_count", 0) or 0),
+            "read_url_count": int(material.get("read_url_count", 0) or 0),
             "document_count": int(material.get("document_count", 0) or 0),
             "purify_used": bool(material.get("purify_used", False)),
             "curated_source_count": int(material.get("curated_source_count", 0) or 0),
             "draft_ms": elapsed_ms,
             "word_count": count_words(markdown),
             "placeholder_count": markdown.count("[MERMAID:") + markdown.count("[IMAGE:") + markdown.count("[INTERACTIVE:"),
+            "interactive_placeholder_count": markdown.count("[INTERACTIVE:"),
+            "coverage_score": float(result.metadata.get("coverage_score", 0.0) or 0.0),
+            "quality_score": float(result.metadata.get("quality_score", 0.0) or 0.0),
+            "repair_applied": bool(result.metadata.get("repair_applied", False)),
+            "repair_actions": list(result.metadata.get("repair_actions", []) or []),
+            "quality_summary": dict(result.metadata.get("quality_summary", {}) or {}),
+            "selected_skillpacks": list(result.metadata.get("selected_skillpacks", []) or []),
+            "recommended_tool_tags": list(result.metadata.get("recommended_tool_tags", []) or []),
         }
         upsert_knowledge_build_chapter_progress(
             state["subject"],
@@ -161,3 +173,4 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_pedagogy_craft_node"]
+

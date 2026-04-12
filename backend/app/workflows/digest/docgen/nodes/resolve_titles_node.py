@@ -7,7 +7,7 @@ from copy import deepcopy
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.teaching.documents import (
     build_chapter_title_resolution_messages,
     coerce_resolved_chapter_title,

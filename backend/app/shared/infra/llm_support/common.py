@@ -13,7 +13,7 @@ import structlog
 from app.schemas.llm import ChatMessage
 from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
-from app.shared.infra.model_router import TaskProfile, TaskType, get_task_profile
+from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
 from app.shared.infra.tracing import LLMCallRecord, get_llm_trace_context, get_tracker
 
 logger = structlog.get_logger()

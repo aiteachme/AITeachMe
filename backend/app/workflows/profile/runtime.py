@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import structlog
 
-from app.shared.infra.llm import acompletion
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support import acompletion
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.tracing import llm_trace_scope
 from app.schemas.llm import SYSTEM, USER
