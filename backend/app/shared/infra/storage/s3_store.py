@@ -1,4 +1,4 @@
-"""S3 兼容对象存储实现（DogeCloud / MinIO / R2 等）。"""
+"""S3-compatible object storage implementation (DogeCloud / MinIO / R2 / etc.)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -19,10 +19,16 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 from pydantic import AliasChoices, BaseModel, Field
 
+from app.shared.infra.env_support import get_env
 from app.shared.infra.storage.base import ArtifactStore
-
-if TYPE_CHECKING:
-    from app.shared.infra.config import Settings
+from app.shared.infra.storage.config import (
+    resolve_dogecloud_api_access_key,
+    resolve_dogecloud_api_secret_key,
+    resolve_dogecloud_space_name,
+    resolve_s3_addressing_style,
+    resolve_s3_credential_mode,
+    s3_uses_dogecloud_tmp_token,
+)
 
 logger = structlog.get_logger()
 
@@ -73,20 +79,30 @@ class _DogeCloudTmpTokenResponse(BaseModel):
 
 
 class S3ArtifactStore(ArtifactStore):
-    """基于 S3 兼容协议的 ArtifactStore 实现。"""
+    """ArtifactStore backed by an S3-compatible object storage service."""
 
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-        self._public_base_url = (settings.s3_public_base_url or "").rstrip("/")
+    def __init__(self) -> None:
+        self._public_base_url = (get_env("S3_PUBLIC_BASE_URL") or "").rstrip("/")
         self._client_lock = Lock()
         self._client: Any | None = None
-        self._bucket = settings.s3_bucket or ""
-        self._endpoint = settings.s3_endpoint
+        self._bucket = get_env("S3_BUCKET") or ""
+        self._endpoint = get_env("S3_ENDPOINT")
+        self._s3_access_key = get_env("S3_ACCESS_KEY")
+        self._s3_secret_key = get_env("S3_SECRET_KEY")
+        self._s3_session_token = get_env("S3_SESSION_TOKEN")
+        self._s3_region = get_env("S3_REGION")
+        self._dogecloud_api_base_url = get_env("DOGECLOUD_API_BASE_URL", "https://api.dogecloud.com")
+        self._dogecloud_tmp_token_path = get_env("DOGECLOUD_TMP_TOKEN_PATH", "/auth/tmp_token.json")
+        self._dogecloud_tmp_token_channel = get_env("DOGECLOUD_TMP_TOKEN_CHANNEL", "OSS_FULL")
+        self._dogecloud_tmp_token_scope = get_env("DOGECLOUD_TMP_TOKEN_SCOPE", "*")
+        self._resolved_s3_addressing_style = resolve_s3_addressing_style()
+        self._resolved_s3_credential_mode = resolve_s3_credential_mode()
+        self._uses_dogecloud_tmp_token = s3_uses_dogecloud_tmp_token()
         self._credentials_expire_at: datetime | None = None
         self._boto_config = BotoConfig(
             signature_version="s3v4",
             retries={"max_attempts": 3, "mode": "standard"},
-            s3={"addressing_style": settings.resolved_s3_addressing_style},
+            s3={"addressing_style": self._resolved_s3_addressing_style},
         )
 
         self._refresh_client(force=True)
@@ -94,20 +110,18 @@ class S3ArtifactStore(ArtifactStore):
             "s3_artifact_store_initialized",
             bucket=self._bucket,
             endpoint=self._endpoint,
-            addressing_style=settings.resolved_s3_addressing_style,
-            credential_mode=settings.resolved_s3_credential_mode,
-            has_session_token=bool(self._settings.s3_session_token or self._settings.s3_uses_dogecloud_tmp_token),
+            addressing_style=self._resolved_s3_addressing_style,
+            credential_mode=self._resolved_s3_credential_mode,
+            has_session_token=bool(self._s3_session_token or self._uses_dogecloud_tmp_token),
         )
 
     def _run_sync(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """将同步 boto3 调用包装为 async。"""
-
         return asyncio.to_thread(fn, *args, **kwargs)
 
     def _credentials_need_refresh(self) -> bool:
         if self._client is None:
             return True
-        if not self._settings.s3_uses_dogecloud_tmp_token:
+        if not self._uses_dogecloud_tmp_token:
             return False
         if self._credentials_expire_at is None:
             return False
@@ -121,7 +135,7 @@ class S3ArtifactStore(ArtifactStore):
 
             credentials = self._resolve_credentials()
             self._bucket = credentials.bucket
-            self._endpoint = credentials.endpoint or self._settings.s3_endpoint
+            self._endpoint = credentials.endpoint or self._endpoint
             self._credentials_expire_at = credentials.expires_at
             self._client = boto3.client(
                 "s3",
@@ -129,32 +143,32 @@ class S3ArtifactStore(ArtifactStore):
                 aws_access_key_id=credentials.access_key_id,
                 aws_secret_access_key=credentials.secret_access_key,
                 aws_session_token=credentials.session_token,
-                region_name=self._settings.s3_region or "us-east-1",
+                region_name=self._s3_region or "us-east-1",
                 config=self._boto_config,
             )
             return self._client
 
     def _resolve_credentials(self) -> _ResolvedS3Credentials:
-        if self._settings.s3_uses_dogecloud_tmp_token:
+        if self._uses_dogecloud_tmp_token:
             return self._fetch_dogecloud_tmp_credentials()
         return _ResolvedS3Credentials(
-            bucket=self._settings.s3_bucket or "",
-            endpoint=self._settings.s3_endpoint,
-            access_key_id=self._settings.s3_access_key,
-            secret_access_key=self._settings.s3_secret_key,
-            session_token=self._settings.s3_session_token,
+            bucket=self._bucket,
+            endpoint=self._endpoint,
+            access_key_id=self._s3_access_key,
+            secret_access_key=self._s3_secret_key,
+            session_token=self._s3_session_token,
         )
 
     def _fetch_dogecloud_tmp_credentials(self) -> _ResolvedS3Credentials:
-        api_access_key = self._settings.resolved_dogecloud_api_access_key
-        api_secret_key = self._settings.resolved_dogecloud_api_secret_key
-        bucket = (self._settings.resolved_dogecloud_space_name or "").strip()
+        api_access_key = resolve_dogecloud_api_access_key()
+        api_secret_key = resolve_dogecloud_api_secret_key()
+        bucket = (resolve_dogecloud_space_name() or "").strip()
         if not api_access_key or not api_secret_key:
             raise ValueError("DogeCloud tmp_token 模式缺少 API AccessKey / SecretKey。")
         if not bucket:
             raise ValueError("DogeCloud tmp_token 模式缺少 DOGECLOUD_SPACE_NAME（或 S3_BUCKET）。")
 
-        api_path = self._settings.dogecloud_tmp_token_path.strip() or "/auth/tmp_token.json"
+        api_path = (self._dogecloud_tmp_token_path or "/auth/tmp_token.json").strip() or "/auth/tmp_token.json"
         body = self._build_dogecloud_tmp_token_body(bucket)
         body_json = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
         signature = hmac.new(
@@ -162,7 +176,7 @@ class S3ArtifactStore(ArtifactStore):
             f"{api_path}\n{body_json}".encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
-        api_base_url = (self._settings.dogecloud_api_base_url or "https://api.dogecloud.com").rstrip("/")
+        api_base_url = (self._dogecloud_api_base_url or "https://api.dogecloud.com").rstrip("/")
         request = Request(
             url=f"{api_base_url}{api_path}",
             data=body_json.encode("utf-8"),
@@ -184,7 +198,9 @@ class S3ArtifactStore(ArtifactStore):
 
         parsed = _DogeCloudTmpTokenResponse.model_validate(payload)
         if parsed.code != 200 or parsed.data is None or not parsed.data.buckets:
-            raise RuntimeError(f"DogeCloud tmp_token 接口返回异常: code={parsed.code}, msg={parsed.msg or 'unknown'}")
+            raise RuntimeError(
+                f"DogeCloud tmp_token 接口返回异常: code={parsed.code}, msg={parsed.msg or 'unknown'}"
+            )
 
         bucket_info = parsed.data.buckets[0]
         expires_at = parsed.data.credentials.expires_at
@@ -196,7 +212,7 @@ class S3ArtifactStore(ArtifactStore):
             space_name=bucket,
             bucket=bucket_info.s3_bucket,
             endpoint=bucket_info.s3_endpoint,
-            channel=(self._settings.dogecloud_tmp_token_channel or "").strip() or "OSS_FULL",
+            channel=(self._dogecloud_tmp_token_channel or "").strip() or "OSS_FULL",
         )
         return _ResolvedS3Credentials(
             bucket=bucket_info.s3_bucket,
@@ -208,8 +224,8 @@ class S3ArtifactStore(ArtifactStore):
         )
 
     def _build_dogecloud_tmp_token_body(self, bucket: str) -> dict[str, object]:
-        channel = (self._settings.dogecloud_tmp_token_channel or "").strip() or "OSS_FULL"
-        scope = (self._settings.dogecloud_tmp_token_scope or "").strip() or "*"
+        channel = (self._dogecloud_tmp_token_channel or "").strip() or "OSS_FULL"
+        scope = (self._dogecloud_tmp_token_scope or "").strip() or "*"
         return {
             "channel": channel,
             "scopes": [f"{bucket}:{scope}"],
@@ -220,7 +236,7 @@ class S3ArtifactStore(ArtifactStore):
         try:
             return client_call(client)
         except ClientError as exc:
-            if not self._settings.s3_uses_dogecloud_tmp_token:
+            if not self._uses_dogecloud_tmp_token:
                 raise
             error_code = exc.response.get("Error", {}).get("Code")
             if error_code not in _AUTH_ERROR_CODES:

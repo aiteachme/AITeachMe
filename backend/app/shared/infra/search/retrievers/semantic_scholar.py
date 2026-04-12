@@ -6,6 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -27,8 +28,9 @@ class SemanticScholarRetriever(BaseRetriever):
             "fields": "title,abstract,url,openAccessPdf,isOpenAccess,year,venue",
         }
         headers: dict[str, str] = {}
-        if settings.semantic_scholar_api_key:
-            headers["x-api-key"] = settings.semantic_scholar_api_key
+        api_key = (get_env("SEMANTIC_SCHOLAR_API_KEY") or "").strip()
+        if api_key:
+            headers["x-api-key"] = api_key
         try:
             async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
                 response = await client.get(_SEMANTIC_SCHOLAR_URL, params=params, headers=headers)

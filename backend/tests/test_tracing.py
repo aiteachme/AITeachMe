@@ -6,13 +6,14 @@ import pytest
 
 from app.shared.infra import llm as llm_module
 from app.shared.infra.config import Settings, get_settings
-from app.shared.infra.llm_support import observability as llm_observability_module
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.tracing import (
     LLMCallRecord,
     LLMCallTracker,
     get_llm_trace_context,
+    langsmith_capture_inputs_enabled,
+    langsmith_capture_outputs_enabled,
     normalize_langsmith_run_type,
 )
 from app.shared.infra import tracing as tracing_module
@@ -38,11 +39,7 @@ def clear_settings_cache():
 
 
 def test_langsmith_inputs_redact_messages_when_capture_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_inputs=False),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
 
     inputs = llm_module._langsmith_inputs(
         call_model="openai/gpt-4o-mini",
@@ -66,11 +63,7 @@ def test_langsmith_inputs_redact_messages_when_capture_disabled(monkeypatch) -> 
 
 
 def test_langsmith_outputs_include_usage_metadata(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_outputs=False),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
 
     outputs = llm_module._langsmith_outputs(
         text="secret answer",
@@ -90,11 +83,7 @@ def test_langsmith_outputs_include_usage_metadata(monkeypatch) -> None:
 
 
 def test_langsmith_trace_kwargs_include_invocation_metadata(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_inputs=True),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "true")
 
     trace_kwargs = llm_module._langsmith_trace_kwargs(
         task_type=TaskType.CHAT,
@@ -132,40 +121,31 @@ def test_langsmith_value_redacts_data_urls() -> None:
     assert value["image_url"] == "[redacted:data-url:image/png]"
 
 
-def test_langsmith_capture_defaults_to_enabled_in_local_mode() -> None:
-    settings = Settings(
-        _env_file=None,
-        app_mode="local",
-        langsmith_capture_inputs=None,
-        langsmith_capture_outputs=None,
-    )
+def test_langsmith_capture_defaults_to_enabled_in_local_mode(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
 
-    assert settings.resolved_langsmith_capture_inputs is True
-    assert settings.resolved_langsmith_capture_outputs is True
+    assert langsmith_capture_inputs_enabled() is True
+    assert langsmith_capture_outputs_enabled() is True
 
 
-def test_langsmith_capture_defaults_to_disabled_in_cloud_mode() -> None:
-    settings = Settings(
-        _env_file=None,
-        app_mode="cloud",
-        langsmith_capture_inputs=None,
-        langsmith_capture_outputs=None,
-    )
+def test_langsmith_capture_defaults_to_disabled_in_cloud_mode(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "cloud")
+    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
 
-    assert settings.resolved_langsmith_capture_inputs is False
-    assert settings.resolved_langsmith_capture_outputs is False
+    assert langsmith_capture_inputs_enabled() is False
+    assert langsmith_capture_outputs_enabled() is False
 
 
-def test_langsmith_capture_respects_explicit_config_flags() -> None:
-    settings = Settings(
-        _env_file=None,
-        app_mode="local",
-        langsmith_capture_inputs=False,
-        langsmith_capture_outputs=True,
-    )
+def test_langsmith_capture_respects_explicit_config_flags(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
+    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "true")
 
-    assert settings.resolved_langsmith_capture_inputs is False
-    assert settings.resolved_langsmith_capture_outputs is True
+    assert langsmith_capture_inputs_enabled() is False
+    assert langsmith_capture_outputs_enabled() is True
 
 
 def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
@@ -187,8 +167,9 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     monkeypatch.setattr(
         tracing_module,
         "get_settings",
-        lambda: Settings(_env_file=None, tracing_enabled=True, langsmith_tracing=True),
+        lambda: Settings(tracing_enabled=True),
     )
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
     monkeypatch.delenv("LANGCHAIN_API_KEY", raising=False)
 

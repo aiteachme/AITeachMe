@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -17,8 +17,7 @@ class BochaRetriever(BaseRetriever):
         return "bocha"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        settings = get_settings()
-        if not settings.bocha_api_key:
+        if not get_env("BOCHA_API_KEY"):
             return []
         logger.info("bocha_search_not_implemented", query=query, max_results=max_results)
         return []

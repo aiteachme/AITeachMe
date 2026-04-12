@@ -14,6 +14,7 @@ from app.shared.infra.database import (
     reset_subject_vec_table,
     vector_table_exists,
 )
+from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
 from app.shared.infra.subject_settings import (
     SubjectEmbeddingBinding,
@@ -77,7 +78,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
-    if not settings.llm_api_key:
+    if not get_env("LLM_API_KEY"):
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,
