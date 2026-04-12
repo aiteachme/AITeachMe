@@ -98,11 +98,15 @@ def _parse_duckduckgo_html_results(html: str, *, max_results: int) -> list[Searc
         if len(results) >= max_results:
             return results[:max_results]
 
-    for row in soup.select("table tr"):
-        link = row.select_one("a.result-link")
-        if link is None:
-            continue
-        snippet_node = row.select_one(".result-snippet") or row.find_next("td", class_="result-snippet")
+    for link in soup.select("a.result-link"):
+        row = link.find_parent("tr")
+        snippet_node = None
+        if row is not None:
+            sibling = row.find_next_sibling("tr")
+            if sibling is not None:
+                snippet_node = sibling.select_one(".result-snippet")
+        if snippet_node is None and row is not None:
+            snippet_node = row.find_next("td", class_="result-snippet")
         _append_result(
             results,
             title=link.get_text(" ", strip=True),

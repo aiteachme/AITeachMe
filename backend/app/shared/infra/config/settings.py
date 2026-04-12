@@ -140,6 +140,7 @@ class Settings(BaseSettings):
     web_search_retriever: str = "duckduckgo"
     web_search_retrievers: str = ""
     web_search_retriever_profile: str = ""
+    searxng_base_url: str | None = None
     bing_api_key: str | None = None
     bocha_api_key: str | None = None
     semantic_scholar_api_key: str | None = None

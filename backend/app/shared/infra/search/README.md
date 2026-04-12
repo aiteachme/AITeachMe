@@ -58,3 +58,57 @@ shared/infra/search/
 外部调用时优先从 `app.shared.infra.search` 或 `app.shared.infra.search.readers` 导入。
 
 `app.shared.infra.retrievers` 与 `app.shared.infra.reranker` 目前只保留兼容 shim，不再作为新的 canonical 入口。
+
+## 当前内置 retrievers
+
+- `local_rag`
+  优先基于当前 subject 的本地 section / chunk 做检索，是上传资料驱动场景的第一入口。
+- `wikipedia`
+  基于官方 MediaWiki Search API 的免 key 检索，适合概念定义、知识背景和学科条目补充。
+- `duckduckgo`
+  通用 Web 搜索，优先尝试 `duckduckgo_search` 包，缺包时退回 DuckDuckGo HTML / Lite 页面解析。
+- `searxng`
+  可选的 metasearch retriever，需要配置 `SEARXNG_BASE_URL` 或 `config.yaml` 中的 `searxng_base_url`。
+- `tavily` / `bing` / `bocha`
+  这些属于 API 型检索器，需要用户提供 key。
+- `arxiv` / `semantic_scholar`
+  这两类更偏学术资料补充，不适合作为中文通用搜索引擎的完全替代。
+
+## 检索调用链
+
+对 workflow 开发者来说，核心链路只有 4 层：
+
+1. `config.support.RETRIEVER_PROFILES`
+   定义不同场景默认用哪些 retriever，以及它们的顺序。
+2. `search.factory.get_retrievers_for_subject()`
+   按 profile 把名字解析成 retriever 实例。
+3. workflow 调用 retriever
+   `planner/concept_grounding.py` 和 `digest/docgen/runtime/chapter_context.py` 会逐个执行 retriever。
+4. `readers/`
+   当 retriever 返回外部 URL 后，再由 `read_urls()` 选择合适 reader 把网页 / PDF / DOCX / PPTX 读出来。
+
+## 两条典型链路
+
+### planner
+
+- `collect_planner_concept_briefing()`
+  先用 `local_rag` 找上传资料里的 section。
+- 如果本地命中不够，再按 profile 顺序尝试外部 retriever。
+- 当前 planner 更偏“概念锚点补充”，不会把所有 URL 都深读一遍。
+
+### docgen
+
+- `DocGenChapterContextRuntime.execute()`
+  先跑 `local_rag`。
+- 当 `local_hits < settings.local_rag_min_results` 时，才触发外部 retriever fallback。
+- 外部结果经过 `SourceCurator` 过滤后，再由 `read_urls()` 深读正文。
+- 深读结果再进入 `ContextCompressor`，最后变成章节写作用的 `dense_context`。
+
+## 配置建议
+
+- 完全无 key 的最小可用组合：
+  `local_rag + wikipedia + duckduckgo`
+- 想继续提升稳定性但不想买 API：
+  再加一个自建或可信公共 `SearXNG` 实例。
+- 已有商业 key：
+  再打开 `tavily / bocha / bing`，把它们放到 profile 前面即可。

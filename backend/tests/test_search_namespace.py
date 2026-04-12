@@ -20,6 +20,7 @@ from app.shared.infra.search.knowledge import (
 )
 from app.shared.infra.search.retrievers.duckduckgo import _parse_duckduckgo_html_results
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
+from app.shared.infra.search.retrievers.wikipedia import WikipediaRetriever
 from app.shared.infra.search.readers import BS4Reader, DOCXReader, PDFReader, PPTXReader, TextReader
 
 
@@ -62,7 +63,7 @@ def test_registered_search_tool_names_are_exposed() -> None:
     retriever_names = get_registered_retriever_names()
 
     assert {"bs4", "pdf", "docx", "pptx", "text"}.issubset(set(reader_names))
-    assert {"duckduckgo", "bing", "bocha", "semantic_scholar", "arxiv", "tavily", "local_rag"}.issubset(
+    assert {"duckduckgo", "bing", "bocha", "semantic_scholar", "arxiv", "tavily", "local_rag", "wikipedia", "searxng"}.issubset(
         set(retriever_names)
     )
 
@@ -135,3 +136,70 @@ def test_duckduckgo_html_parser_extracts_result_cards() -> None:
     assert results[0].url == "https://example.edu/course"
     assert results[0].title == "线性代数课程笔记"
     assert "向量空间" in results[0].snippet
+
+
+def test_duckduckgo_html_parser_extracts_lite_results_with_adjacent_snippet_rows() -> None:
+    html = """
+    <html>
+      <body>
+        <table>
+          <tr>
+            <td>1.</td>
+            <td><a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fdeterminant">行列式展开详解</a></td>
+          </tr>
+          <tr>
+            <td></td>
+            <td class="result-snippet">覆盖按行展开、按列展开和拉普拉斯展开。</td>
+          </tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    results = _parse_duckduckgo_html_results(html, max_results=3)
+
+    assert len(results) == 1
+    assert results[0].url == "https://example.org/determinant"
+    assert "拉普拉斯展开" in results[0].snippet
+
+
+def test_wikipedia_retriever_queries_official_mediawiki_api(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "query": {
+                    "search": [
+                        {
+                            "title": "向量空间",
+                            "snippet": "向量空间是带有加法与数乘运算的代数结构。",
+                        }
+                    ]
+                }
+            }
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url: str, *, params: dict[str, object]):
+            captured["url"] = url
+            captured["params"] = params
+            return FakeResponse()
+
+    monkeypatch.setattr("app.shared.infra.search.retrievers.wikipedia.httpx.AsyncClient", lambda **_: FakeClient())
+
+    results = asyncio.run(WikipediaRetriever().search("向量空间 定义", max_results=2))
+
+    assert results
+    assert "w/api.php" in str(captured["url"])
+    assert captured["params"]["list"] == "search"
+    assert results[0].title == "向量空间"
+    assert results[0].url.startswith("https://zh.wikipedia.org/wiki/")

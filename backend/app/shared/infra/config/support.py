@@ -26,14 +26,16 @@ DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
     "rag": "local_rag",
+    "searx": "searxng",
+    "wiki": "wikipedia",
 }
 RETRIEVER_PROFILES: dict[str, list[str]] = {
-    "planner_fast": ["local_rag", "bocha", "duckduckgo"],
-    "planner_grounding": ["local_rag", "bocha", "duckduckgo"],
-    "docgen_balanced": ["local_rag", "tavily", "bocha"],
-    "docgen_sprint": ["local_rag", "tavily", "bocha"],
-    "docgen_academic": ["local_rag", "tavily", "arxiv", "semantic_scholar"],
-    "docgen_systematic": ["local_rag", "tavily", "arxiv", "semantic_scholar"],
+    "planner_fast": ["local_rag", "wikipedia", "searxng", "bocha", "duckduckgo"],
+    "planner_grounding": ["local_rag", "wikipedia", "searxng", "bocha", "duckduckgo"],
+    "docgen_balanced": ["local_rag", "wikipedia", "searxng", "tavily", "bocha", "duckduckgo"],
+    "docgen_sprint": ["local_rag", "wikipedia", "searxng", "tavily", "bocha", "duckduckgo"],
+    "docgen_academic": ["local_rag", "wikipedia", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
+    "docgen_systematic": ["local_rag", "wikipedia", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[5]
@@ -89,6 +91,7 @@ CONFIG_YAML_DIRECT_FIELDS = frozenset(
         "web_search_retriever",
         "web_search_retrievers",
         "web_search_retriever_profile",
+        "searxng_base_url",
         "local_rag_priority",
         "local_rag_min_results",
         "search_max_results_per_query",
