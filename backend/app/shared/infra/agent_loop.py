@@ -103,9 +103,11 @@ async def run_agent_loop(
     """
 
     from app.shared.infra.llm_support import acompletion, acompletion_with_tools
+    from app.shared.infra.tools.api import ensure_project_tool_modules_loaded
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
+    ensure_project_tool_modules_loaded()
     registry = get_tool_registry()
     tracer = get_tracer()
     span = tracer.start_span("agent_loop")
@@ -196,9 +198,11 @@ async def run_agent_loop_stream(
     """
 
     from app.shared.infra.llm_support import acompletion_stream, acompletion_with_tools
+    from app.shared.infra.tools.api import ensure_project_tool_modules_loaded
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
+    ensure_project_tool_modules_loaded()
     registry = get_tool_registry()
 
     available_tools = _get_tool_definitions(registry, tools)

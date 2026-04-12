@@ -11,7 +11,6 @@ import structlog
 from app.shared.infra.config import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.tracing import get_tracker
-from app.workflows.common.observability import traced_workflow_node, workflow_node, wrap_workflow_node
 
 logger = structlog.get_logger(__name__)
 
@@ -662,80 +661,6 @@ def build_unified_timing_report(
     )
 
 
-def wrap_digest_node(
-    handler: Callable[[Any], Awaitable[dict[str, Any]]],
-    *,
-    workflow_name: str,
-    lane: str,
-    node_name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Compatibility wrapper for legacy digest graph wiring.
-
-    New workflow code should prefer ``app.workflows.common.wrap_node(...)``.
-    """
-
-    return wrap_workflow_node(
-        handler,
-        workflow_name=workflow_name,
-        lane=lane,
-        node_name=node_name,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
-
-def traced_digest_node(
-    *,
-    workflow_name: str,
-    lane: str,
-    node_name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-):
-    """Compatibility decorator for legacy digest nodes.
-
-    New workflow code should prefer ``app.workflows.common.node(...)``.
-    """
-
-    return traced_workflow_node(
-        workflow=workflow_name,
-        lane=lane,
-        name=node_name,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
-
-def digest_node(
-    *,
-    workflow_name: str,
-    lane: str,
-    node_name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-):
-    """Compatibility alias kept for older digest modules.
-
-    New workflow code should prefer ``app.workflows.common.node(...)`` and pass
-    ``workflow/lane/name`` directly.
-    """
-
-    return workflow_node(
-        workflow=workflow_name,
-        lane=lane,
-        name=node_name,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
 
 def _top_k(value: int | None = None) -> int:
     if value is not None:
@@ -819,3 +744,5 @@ def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
                 continue
             totals[normalized] = totals.get(normalized, 0) + int(value or 0)
     return {key: value for key, value in totals.items() if value > 0}
+
+

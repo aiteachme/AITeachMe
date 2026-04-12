@@ -1,4 +1,4 @@
-"""LangGraph definition for the interact workflow."""
+﻿"""LangGraph definition for the interact workflow."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common import workflow_tracer
 from app.workflows.interact.nodes import (
     build_load_history_state_node,
     build_persist_turn_node,
@@ -31,62 +31,51 @@ def build_interact_workflow_graph(
 
     workflow_name = context.workflow_name if context is not None else "interact.chat"
     workflow = StateGraph(InteractWorkflowState)
+    trace = workflow_tracer(workflow=workflow_name, lane="chat")
     workflow.add_node(
         "load_history_state",
-        wrap_workflow_node(
+        trace.node(
             _resolve_history_node(context=context, session=session),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="load_history_state",
+            name="load_history_state",
         ),
     )
     workflow.add_node(
         "retrieve_context",
-        wrap_workflow_node(
+        trace.node(
             _resolve_retrieval_node(context=context, session=session),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="retrieve_context",
+            name="retrieve_context",
         ),
     )
     workflow.add_node(
         "select_teaching_strategy",
-        wrap_workflow_node(
+        trace.node(
             _resolve_strategy_node(context=context),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="select_teaching_strategy",
+            name="select_teaching_strategy",
         ),
     )
     workflow.add_node(
         "build_prompt",
-        wrap_workflow_node(
+        trace.node(
             _resolve_prompt_node(context=context),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="build_prompt",
+            name="build_prompt",
         ),
     )
     workflow.add_node(
         "stream_answer",
-        wrap_workflow_node(
+        trace.node(
             _resolve_stream_node(
                 context=context,
                 request=request,
                 emitter=emitter,
             ),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="stream_answer",
+            name="stream_answer",
         ),
     )
     workflow.add_node(
         "persist_turn",
-        wrap_workflow_node(
+        trace.node(
             _resolve_persist_node(context=context, session=session),
-            workflow_name=workflow_name,
-            lane="chat",
-            node_name="persist_turn",
+            name="persist_turn",
         ),
     )
 
@@ -133,7 +122,6 @@ def build_interact_workflow_graph(
     )
     workflow.add_edge("persist_turn", END)
     return workflow
-
 
 def _route_after_standard_step(state: InteractWorkflowState) -> str:
     return "finish" if state.get("error") else "continue"
@@ -215,3 +203,4 @@ __all__ = [
     "build_interact_workflow_graph",
     "get_langgraph_dev_interact_graph",
 ]
+

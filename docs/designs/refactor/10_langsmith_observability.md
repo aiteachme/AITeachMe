@@ -50,14 +50,15 @@ API / service request
 当前 workflow 级 LangSmith 接入规范已统一收口到 `backend/app/workflows/common`：
 
 - `run_state_graph(...)`
+- `workflow_tracer(...).node(...)`
 - `@traceable_run(...)`
-- `wrap_traceable_run(...)`
 - `tracked_step(...)`
 
 其中：
 
-- 函数级 tracing 默认优先用同一种注解 `@traceable_run(...)`
-- node / prompt / retriever / tool / parser / embedding 的区分主要依赖 `run_type`
+- graph node 默认先在 workflow 层绑定 `workflow/lane`，再统一接线
+- 稳定 prompt / helper / retriever 才使用 `@traceable_run(...)`
+- infra 层只保留少数共享边界 trace，不再把注解扩散到大量零散 helper
 - 新代码、新文档、code review 都只展开这 4 个入口，不再继续传播旧别名
 
 ---
@@ -319,3 +320,4 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 
 LangSmith 在这轮重构里不是“埋点系统”，而是算法迭代的操作台。
 如果 trace 不能回答“为什么查、为什么写、为什么补、为什么停”，后续优化就会重新变成黑盒。
+

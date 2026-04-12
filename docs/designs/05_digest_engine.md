@@ -1,4 +1,4 @@
-# 05. Digest 引擎 — 织网引擎技术文档
+﻿# 05. Digest 引擎 — 织网引擎技术文档
 
 > **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/digest/` 代码实现
 > **合并说明**: 本文档合并了原 `05a_digest_knowledge_document.md` 和 `05b_digest_knowledge_graph.md` 的内容。
@@ -729,8 +729,8 @@ LLM 调用: ✅ metadata (每章一次)
 Digest 的 LangSmith / runtime 观测统一按 `workflows/common` 的 4 个入口接入：
 
 - `run_state_graph(...)`：workflow 根 span
-- `@traceable_run(..., run_type="chain")`：node / 稳定函数
-- `wrap_traceable_run(..., run_type="chain")`：工厂式 graph 接线
+- `workflow_tracer(...).node(...)`：workflow node 的默认接入方式
+- `@traceable_run(...)`：稳定 prompt / helper / retriever
 - `tracked_step(...)`：node 内部关键步骤、progress、runtime stats
 
 运行时统计不再依赖旧式 node wrapper 自动塞大块状态，而是：
@@ -789,3 +789,4 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
+

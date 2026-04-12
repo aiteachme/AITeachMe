@@ -1,4 +1,4 @@
-"""Exam grading workflow orchestration.
+﻿"""Exam grading workflow orchestration.
 Reads DB: ``exam_paper*`` and downstream profile state tables.
 Writes DB: ``exam_paper.status``, graded attempts,
 ``user_knowledge_state`` and ``review_task`` via delegated profile steps.
@@ -19,7 +19,7 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
-from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common import workflow_tracer
 from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
@@ -220,49 +220,40 @@ def _route_after_step(state: ExamGradeState) -> str:
 
 def build_exam_grade_graph(*, session: Session | None = None) -> StateGraph:
     workflow = StateGraph(ExamGradeState)
+    trace = workflow_tracer(workflow="examine.exam_grade", lane="exam_grade")
     workflow.add_node(
         "grade_answers",
-        wrap_workflow_node(
+        trace.node(
             partial(grade_answers_node, session_override=session),
-            workflow_name="examine.exam_grade",
-            lane="exam_grade",
-            node_name="grade_answers",
+            name="grade_answers",
         ),
     )
     workflow.add_node(
         "update_mastery",
-        wrap_workflow_node(
+        trace.node(
             partial(update_mastery_node, session_override=session),
-            workflow_name="examine.exam_grade",
-            lane="exam_grade",
-            node_name="update_mastery",
+            name="update_mastery",
         ),
     )
     workflow.add_node(
         "schedule_reviews",
-        wrap_workflow_node(
+        trace.node(
             partial(schedule_reviews_node, session_override=session),
-            workflow_name="examine.exam_grade",
-            lane="exam_grade",
-            node_name="schedule_reviews",
+            name="schedule_reviews",
         ),
     )
     workflow.add_node(
         "finalize_grade",
-        wrap_workflow_node(
+        trace.node(
             partial(finalize_grade_node, session_override=session),
-            workflow_name="examine.exam_grade",
-            lane="exam_grade",
-            node_name="finalize_grade",
+            name="finalize_grade",
         ),
     )
     workflow.add_node(
         "fail_grade",
-        wrap_workflow_node(
+        trace.node(
             partial(fail_grade_node, session_override=session),
-            workflow_name="examine.exam_grade",
-            lane="exam_grade",
-            node_name="fail_grade",
+            name="fail_grade",
         ),
     )
 
@@ -285,7 +276,6 @@ def build_exam_grade_graph(*, session: Session | None = None) -> StateGraph:
     workflow.add_edge("finalize_grade", END)
     workflow.add_edge("fail_grade", END)
     return workflow
-
 
 async def run_exam_grade_workflow(
     *,
@@ -336,3 +326,4 @@ class ExamGradeWorkflow:
             job_id=job_id,
             session=session,
         )
+

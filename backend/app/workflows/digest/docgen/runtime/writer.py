@@ -160,6 +160,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             dense_context=dense_context,
             execution_contract=execution_contract,
         )
+        markdown = self._sanitize_student_facing_markdown(markdown, title=title)
         return TracedExecutionResult(
             content=markdown,
             metadata={
@@ -179,18 +180,42 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
     def _fallback_markdown(self, *, title: str, objective: str, dense_context: str, digest_mode: str) -> str:
         body = dense_context.strip()[:5000] or "当前没有足够的外部研究素材，本章基于已确认的构建方案与现有知识进行整理。"
-        summary_line = f"学习目标：{objective}" if objective else "学习目标：先理解本章最核心的知识主线。"
+        summary_line = f"学习目标：{objective}" if objective else "学习目标：先把本章最核心的概念、方法和应用场景讲清楚。"
         normalized_mode = str(digest_mode or "").strip().lower()
-        opening_heading = "## 这章先抓什么" if normalized_mode == "sprint" else "## 先搭好这章的主线"
-        recap_heading = "## 考前最后带走什么" if normalized_mode == "sprint" else "## 这章最终要带走什么"
+        if normalized_mode == "sprint":
+            return (
+                f"# {title}\n\n"
+                f"> [!TIP]\n> {summary_line}\n\n"
+                "## 这一章到底在考什么\n\n"
+                "- 先判断本章解决的核心问题是什么，再去记结论和题型。\n"
+                "- 做题时优先识别概念、条件和常见问法，不要只盯公式表面。\n\n"
+                "## 先把核心概念讲清楚\n\n"
+                f"{body}\n\n"
+                "## 典型题怎么想怎么做\n\n"
+                "1. 先识别题目在考哪一个概念、性质或方法。\n"
+                "2. 再判断解题需要满足哪些前提条件。\n"
+                "3. 最后回到步骤、结论和失分点，形成稳定套路。\n\n"
+                "## 最容易混淆和失分的地方\n\n"
+                "- 不要只背结论，要同时记住适用条件和不能硬套的场景。\n"
+                "- 若题目换了问法，要回到本质而不是照抄模板步骤。\n\n"
+                "## 本章最后压缩回看\n\n"
+                "- 用一句话讲清本章最关键的判断依据。\n"
+                "- 说出一个最常见题型和一个最容易错的点。\n"
+            )
         return (
             f"# {title}\n\n"
-            f"> [!TIP]\n> {summary_line}\n\n"
-            f"{opening_heading}\n\n"
+            f"> [!IMPORTANT]\n> {summary_line}\n\n"
+            "## 这一章要解决什么问题\n\n"
+            "- 先明确本章讨论对象、问题背景和学习目标。\n\n"
+            "## 核心定义与结构先讲清楚\n\n"
             f"{body}\n\n"
-            f"{recap_heading}\n\n"
-            "- 试着用一句话复述本章最重要的概念。\n"
-            "- 把这个概念和一个具体例子或应用场景对应起来。\n"
+            "## 关键推理是怎样成立的\n\n"
+            "- 先交代前提，再说明结论，最后解释推理链条如何展开。\n\n"
+            "## 例子或应用如何落地\n\n"
+            "- 用一个典型例子把抽象结构落到具体场景里。\n\n"
+            "## 本章最后要带走什么\n\n"
+            "- 总结本章最核心的定义、关系和使用边界。\n"
+            "- 说明它与上一章、下一章之间怎么衔接。\n"
         )
 
     async def _repair_heading_structure(
@@ -340,20 +365,38 @@ class DocGenWriterRuntime(BaseTracedExecution):
         missing_requirements: list[str],
         dense_context: str,
     ) -> str:
-        heading = "## 重点补全" if str(digest_mode or "").strip().lower() == "sprint" else "## 结构补全"
-        summary_lines = self._extract_context_points(dense_context, limit=4)
+        heading = "## 再把关键点压实一遍" if str(digest_mode or "").strip().lower() == "sprint" else "## 再把关键结构补稳"
         lines = [
             heading,
             "",
-            f"为了让《{title}》更完整，下面把还需要重点关注的部分重新补齐。",
+            f"如果只看一遍还不够稳，下面这些内容需要回到《{title}》里再压一遍。",
         ]
         if objective.strip():
-            lines.append(f"本章目标提醒：{objective.strip()}")
-        lines.extend(["", "### 仍需重点覆盖", ""])
-        lines.extend(f"- {item}" for item in missing_requirements[:5])
-        if summary_lines:
-            lines.extend(["", "### 可直接回看这些研究线索", ""])
-            lines.extend(f"- {item}" for item in summary_lines)
+            lines.append(f"本章目标：{objective.strip()}")
+        lines.extend(["", "### 这几项不能漏", ""])
+        lines.extend(f"- {item}：回看定义、判断依据和题目中最常见的问法。" for item in missing_requirements[:5])
+        if str(digest_mode or "").strip().lower() == "sprint":
+            lines.extend(
+                [
+                    "",
+                    "### 回看时优先问自己",
+                    "",
+                    "- 这一点到底在考哪个概念、条件或结论？",
+                    "- 我能不能说清它为什么成立，而不是只记结果？",
+                    "- 如果题目换个问法，我还能不能用同一套判断路径？",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "### 回看时优先问自己",
+                    "",
+                    "- 这一部分的前提、结论和结构关系分别是什么？",
+                    "- 哪一步推理最容易跳步，必须补解释？",
+                    "- 哪个例子最能帮助我把抽象结论落到具体情境？",
+                ]
+            )
         return "\n".join(lines).strip()
 
     def _build_expansion_section(
@@ -365,21 +408,17 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
     ) -> str:
         normalized_mode = str(digest_mode or "").strip().lower()
-        heading = "## 临考补充笔记" if normalized_mode == "sprint" else "## 深入理解补充"
-        context_points = self._extract_context_points(dense_context, limit=6)
+        heading = "## 本章压缩复盘" if normalized_mode == "sprint" else "## 本章补充理解"
         focus_items = required_elements[:4] or (["核心概念", "关键方法", "典型例子"] if normalized_mode == "sprint" else ["定义", "推理", "应用"])
         lines = [
             heading,
             "",
-            f"下面把《{title}》里最值得继续展开的部分再压一遍，方便后续复习或串联。",
+            f"下面把《{title}》里最该继续记牢的内容压缩成一组复盘抓手。",
             "",
-            "### 建议继续回看的抓手",
+            "### 优先回看这些内容",
             "",
         ]
         lines.extend(f"- {item}" for item in focus_items)
-        if context_points:
-            lines.extend(["", "### 研究材料重组", ""])
-            lines.extend(f"- {item}" for item in context_points)
         if normalized_mode == "sprint":
             lines.extend(
                 [
@@ -403,6 +442,48 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 ]
             )
         return "\n".join(lines).strip()
+
+    def _sanitize_student_facing_markdown(self, markdown: str, *, title: str) -> str:
+        cleaned = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = re.sub(r"```markdown\s*.*?```", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(rf"(?im)^\s*学科：\s*subj_[\w-]+\s*$", "", cleaned)
+        cleaned = cleaned.replace("```markdown", "")
+
+        forbidden_section_patterns = [
+            r"(?ms)^##\s*重点补全\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*结构补全\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*临考补充笔记\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*深入理解补充\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^###\s*仍需重点覆盖\s*\n.*?(?=^##\s|^###\s|\Z)",
+            r"(?ms)^###\s*可直接回看这些研究线索\s*\n.*?(?=^##\s|^###\s|\Z)",
+            r"(?ms)^###\s*研究材料重组\s*\n.*?(?=^##\s|^###\s|\Z)",
+        ]
+        for pattern in forbidden_section_patterns:
+            cleaned = re.sub(pattern, "", cleaned)
+
+        forbidden_line_fragments = (
+            "研究笔记",
+            "可直接回看这些研究线索",
+            "研究材料重组",
+            "重点补全",
+            "结构补全",
+        )
+        lines: list[str] = []
+        previous = ""
+        for raw_line in cleaned.split("\n"):
+            line = raw_line.rstrip()
+            if any(fragment in line for fragment in forbidden_line_fragments):
+                continue
+            if line.strip() == previous.strip() and line.strip():
+                continue
+            lines.append(line)
+            previous = line
+
+        cleaned = "\n".join(lines)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        if not cleaned.startswith("#"):
+            cleaned = f"# {title}\n\n{cleaned}".strip()
+        return cleaned + "\n"
 
     def _measure_coverage(self, markdown: str, *, coverage_requirements: list[str]) -> tuple[float, list[str]]:
         if not coverage_requirements:

@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common import wrap_traceable_run
+from app.workflows.common import workflow_tracer
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
     build_collect_drafts_node,
@@ -29,96 +29,70 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the DocGen graph."""
 
     workflow = StateGraph(DocGenState)
+    trace = workflow_tracer(context=context, lane="docgen")
     workflow.add_node(
         "load_context",
-        wrap_traceable_run(
+        trace.node(
             build_load_context_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="load_context",
             timing_field="load_ms",
         ),
     )
     workflow.add_node(
         "targeted_research",
-        wrap_traceable_run(
+        trace.node(
             build_targeted_research_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="targeted_research",
         ),
     )
     workflow.add_node(
         "collect_materials",
-        wrap_traceable_run(
+        trace.node(
             build_collect_materials_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="collect_materials",
         ),
     )
     workflow.add_node(
         "resolve_titles",
-        wrap_traceable_run(
+        trace.node(
             build_resolve_titles_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="resolve_titles",
         ),
     )
     workflow.add_node(
         "pedagogy_craft",
-        wrap_traceable_run(
+        trace.node(
             build_pedagogy_craft_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="pedagogy_craft",
         ),
     )
     workflow.add_node(
         "collect_drafts",
-        wrap_traceable_run(
+        trace.node(
             build_collect_drafts_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="collect_drafts",
         ),
     )
     workflow.add_node(
         "enrich_document",
-        wrap_traceable_run(
+        trace.node(
             build_enrich_document_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="enrich_document",
             timing_field="enrich_ms",
         ),
     )
     workflow.add_node(
         "inject_examine",
-        wrap_traceable_run(
+        trace.node(
             build_inject_examine_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="inject_examine",
             timing_field="examine_ms",
         ),
     )
     workflow.add_node(
         "finalize_assemble",
-        wrap_traceable_run(
+        trace.node(
             build_finalize_assemble_node(context=context),
-            run_type="chain",
-            workflow=context.workflow_name,
-            lane="docgen",
             name="finalize_assemble",
         ),
     )
@@ -134,7 +108,6 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges("inject_examine", route_after_step, {"continue": "finalize_assemble", "fail": END})
     workflow.add_edge("finalize_assemble", END)
     return workflow
-
 
 def create_docgen_initial_state(
     *,
@@ -270,3 +243,6 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
+
+
+

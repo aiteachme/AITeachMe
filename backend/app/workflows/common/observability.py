@@ -2,15 +2,15 @@
 
 Preferred public API:
 
-- ``@traceable_run(...)`` for traced workflow functions
-- ``wrap_traceable_run(...)`` for graph-builder style wiring
-- ``tracked_step(...)`` for important substeps
+- ``workflow_tracer(...).node(...)`` for workflow node wiring/decorators
+- ``@traceable_run(...)`` for traced prompt/helper functions
 """
 
 from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -24,8 +24,81 @@ from app.shared.infra.tracing import (
     llm_trace_scope,
     normalize_langsmith_run_type,
 )
+from app.workflows.common.context import WorkflowContext
 
 logger = structlog.get_logger(__name__)
+
+
+def _resolve_workflow_name(
+    *,
+    workflow: str | None = None,
+    workflow_name: str | None = None,
+    context: WorkflowContext | None = None,
+) -> str:
+    resolved_workflow = str(workflow or workflow_name or "").strip()
+    if resolved_workflow:
+        return resolved_workflow
+    if context is not None:
+        return str(context.workflow_name or "").strip()
+    return ""
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowTraceBinding:
+    """Bind workflow/lane metadata once and reuse it across a graph."""
+
+    workflow: str
+    lane: str = ""
+
+    def node(
+        self,
+        handler: Callable[[Any], Any] | None = None,
+        *,
+        name: str,
+        input_keys: Sequence[str] | None = None,
+        output_keys: Sequence[str] | None = None,
+        timing_field: str | None = None,
+    ):
+        """Wrap or decorate one workflow node using the bound workflow metadata."""
+
+        if handler is None:
+            return _decorate_workflow_node(
+                workflow=self.workflow,
+                lane=self.lane,
+                name=name,
+                input_keys=input_keys,
+                output_keys=output_keys,
+                timing_field=timing_field,
+            )
+        return trace_workflow_node(
+            handler,
+            workflow=self.workflow,
+            lane=self.lane,
+            name=name,
+            input_keys=input_keys,
+            output_keys=output_keys,
+            timing_field=timing_field,
+        )
+
+
+def workflow_tracer(
+    *,
+    workflow: str | None = None,
+    workflow_name: str | None = None,
+    context: WorkflowContext | None = None,
+    lane: str = "",
+) -> WorkflowTraceBinding:
+    """Create one reusable binding for a workflow graph or node module."""
+
+    resolved_workflow = _resolve_workflow_name(
+        workflow=workflow,
+        workflow_name=workflow_name,
+        context=context,
+    )
+    if not resolved_workflow:
+        raise ValueError("workflow_tracer requires `workflow`, `workflow_name`, or `context`.")
+    return WorkflowTraceBinding(workflow=resolved_workflow, lane=str(lane or ""))
+
 
 _DEFAULT_INPUT_KEYS = (
     "subject",
@@ -181,7 +254,7 @@ def trace_workflow_node(
     return wrapped
 
 
-def node(
+def _decorate_workflow_node(
     *,
     workflow: str,
     lane: str,
@@ -190,30 +263,6 @@ def node(
     output_keys: Sequence[str] | None = None,
     timing_field: str | None = None,
 ) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
-    """Short semantic alias for one traced LangGraph node."""
-
-    return traceable_run(
-        name=name,
-        run_type="chain",
-        workflow=workflow,
-        lane=lane,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
-
-def traced_workflow_node(
-    *,
-    workflow: str,
-    lane: str,
-    name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
-    """Decorator form of :func:`trace_workflow_node`."""
-
     def decorator(handler: Callable[[Any], Any]) -> Callable[[Any], Awaitable[dict[str, Any]]]:
         return trace_workflow_node(
             handler,
@@ -228,56 +277,14 @@ def traced_workflow_node(
     return decorator
 
 
-def workflow_node(
-    *,
-    workflow: str,
-    lane: str,
-    name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-) -> Callable[[Callable[[Any], Any]], Callable[[Any], Awaitable[dict[str, Any]]]]:
-    """Explicit alias for ``@node(...)`` when the longer name reads better."""
-
-    return node(
-        workflow=workflow,
-        lane=lane,
-        name=name,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
-
-def wrap_node(
-    handler: Callable[[Any], Any],
-    *,
-    workflow: str,
-    lane: str,
-    name: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Short semantic alias for graph-builder style node registration."""
-
-    return wrap_traceable_run(
-        handler,
-        name=name,
-        run_type="chain",
-        workflow=workflow,
-        lane=lane,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
-
 
 def traceable_run(
     *,
     name: str,
     run_type: LangSmithRunType = "chain",
     workflow: str = "",
+    workflow_name: str | None = None,
+    context: WorkflowContext | None = None,
     lane: str = "",
     input_keys: Sequence[str] | None = None,
     output_keys: Sequence[str] | None = None,
@@ -287,15 +294,18 @@ def traceable_run(
 ) -> Callable[[Callable[[Any], Any]], Callable[..., Any]]:
     """One unified decorator for node, prompt, tool, retriever, parser runs.
 
-    - ``run_type="chain"`` + ``workflow=...`` uses the stateful workflow-node wrapper
-    - other run types map to a thin repo-local ``@traceable`` wrapper
+    - chain nodes should bind workflow metadata once and reuse it
+    - non-chain runs stay on the thin repo-local ``@traceable`` wrapper
     """
 
+    resolved_workflow = _resolve_workflow_name(
+        workflow=workflow,
+        workflow_name=workflow_name,
+        context=context,
+    )
     resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
-    if resolved_run_type == "chain" and workflow:
-        return traced_workflow_node(
-            workflow=workflow,
-            lane=lane,
+    if resolved_run_type == "chain" and resolved_workflow:
+        return workflow_tracer(workflow=resolved_workflow, lane=lane).node(
             name=name,
             input_keys=input_keys,
             output_keys=output_keys,
@@ -313,75 +323,6 @@ def traceable_run(
 
     return decorator
 
-
-def wrap_traceable_run(
-    handler: Callable[[Any], Any],
-    *,
-    name: str,
-    run_type: LangSmithRunType = "chain",
-    workflow: str = "",
-    lane: str = "",
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-    process_inputs=None,
-    process_outputs=None,
-) -> Callable[..., Any]:
-    """One unified wrapper for graph-builder style traced functions."""
-
-    resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
-    if resolved_run_type == "chain" and workflow:
-        return trace_workflow_node(
-            handler,
-            workflow=workflow,
-            lane=lane,
-            name=name,
-            input_keys=input_keys,
-            output_keys=output_keys,
-            timing_field=timing_field,
-        )
-    return annotate_traceable(
-        handler,
-        name=name,
-        run_type=resolved_run_type,
-        process_inputs=process_inputs,
-        process_outputs=process_outputs,
-    )
-
-
-def wrap_workflow_node(
-    handler: Callable[[Any], Any],
-    *,
-    workflow_name: str | None = None,
-    node_name: str | None = None,
-    workflow: str | None = None,
-    name: str | None = None,
-    lane: str,
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-) -> Callable[[Any], Awaitable[dict[str, Any]]]:
-    """Explicit compatibility alias for graph wiring.
-
-    New code can prefer ``wrap_node(...)`` for the shortest common workflow API.
-    """
-
-    resolved_workflow = str(workflow or workflow_name or "").strip()
-    resolved_name = str(name or node_name or "").strip()
-    if not resolved_workflow:
-        raise ValueError("wrap_workflow_node requires `workflow` or `workflow_name`.")
-    if not resolved_name:
-        raise ValueError("wrap_workflow_node requires `name` or `node_name`.")
-
-    return wrap_node(
-        handler,
-        workflow=resolved_workflow,
-        lane=lane,
-        name=resolved_name,
-        input_keys=input_keys,
-        output_keys=output_keys,
-        timing_field=timing_field,
-    )
 
 
 def _extract_traced_state(inputs: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -510,12 +451,14 @@ def _extract_chapter_index(state: Mapping[str, Any]) -> int | None:
 
 
 __all__ = [
+    "WorkflowTraceBinding",
+    "workflow_tracer",
     "traceable_run",
-    "wrap_traceable_run",
-    "node",
-    "trace_workflow_node",
-    "traced_workflow_node",
-    "workflow_node",
-    "wrap_node",
-    "wrap_workflow_node",
 ]
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-# Implementation Handoff
+﻿# Implementation Handoff
 
 ## 这轮改动的核心结果
 
@@ -72,9 +72,10 @@
 - 需要业务多步逻辑时，优先放 `workflows/.../runtime`
 - 需要状态可视化和中断能力时，优先做 subgraph
 - 保持 LangSmith trace 可读，不要把业务细节重新藏回 infra helper
-- 所有新增 workflow 节点默认通过 `@traceable_run(..., run_type="chain")` 或 `wrap_traceable_run(..., run_type="chain")` 接入 LangSmith
+- 所有新增 workflow 节点默认先绑定 `workflow_tracer(...)`，再通过 `trace.node(...)` 接入 LangSmith
 - 所有新增 prompt builder 默认通过 `@traceable_run(..., run_type="prompt")` 接入 LangSmith
 - node 内部关键步骤默认通过 `tracked_step(...)` 接入 LangSmith / runtime stats / progress
 - `BaseTracedExecution` 继续作为 workflow-local runtime 单元的统一 traced execution helper
 - asset sidecar 必须有独立 span（tag: `asset:{kind}`），不埋在正文节点输出里
 - 章节合同优先落在 `confirmed_plan -> assignment -> runtime`，不要只写在 prompt 或文档里
+

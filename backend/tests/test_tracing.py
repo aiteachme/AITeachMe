@@ -1,32 +1,30 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 
 import pytest
 
+from app.shared.infra import agent_loop as agent_loop_module
 from app.shared.infra import llm as llm_module
 from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support import observability as llm_observability_module
 from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.tools.definition import ToolDefinition
+from app.shared.infra.tools.registry import ToolRegistry
 from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.tracing import (
     LLMCallRecord,
     LLMCallTracker,
+    LLMTraceContext,
     get_llm_trace_context,
     normalize_langsmith_run_type,
 )
 from app.shared.infra import tracing as tracing_module
+from app.shared.infra.tools import registry as registry_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
-from app.workflows.common import (
-    node,
-    traceable_run,
-    wrap_node,
-    wrap_traceable_run,
-    workflow_node,
-    wrap_workflow_node,
-)
-from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
 from app.workflows.common import runtime_stats as runtime_stats_module
+from app.workflows.common import traceable_run, workflow_tracer
+from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
 from app.workflows.common.runtime_stats import emit_progress, record_step_end, record_step_start, tracked_step
 
 
@@ -265,16 +263,57 @@ def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
     assert captured["node"] == "workflow_runtime.docgen.writer"
 
 
-def test_wrap_node_keeps_result_thin() -> None:
+
+def test_workflow_tracer_wraps_node() -> None:
     async def handler(_state):
         return {"ok": True}
 
-    wrapped = wrap_node(
-        handler,
-        workflow="digest.planner",
-        lane="planner",
-        name="test_node",
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+    wrapped = trace.node(handler, name="bound_node")
+
+    result = asyncio.run(wrapped({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_workflow_tracer_supports_decorator_form() -> None:
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+
+    @trace.node(name="decorated_node")
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_traceable_run_accepts_context_for_chain_nodes() -> None:
+    context = WorkflowContext(
+        workflow_name="digest.planner",
+        subject=LANGGRAPH_DEV_SUBJECT,
+        metadata={"lane": "planner"},
     )
+
+    @traceable_run(
+        name="context_bound_node",
+        context=context,
+        lane="planner",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_workflow_tracer_keeps_result_thin() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+    wrapped = trace.node(handler, name="test_node")
     result = asyncio.run(
         wrapped(
             {
@@ -288,53 +327,6 @@ def test_wrap_node_keeps_result_thin() -> None:
     assert result == {"ok": True}
     assert "node_events" not in result
     assert "node_timings_ms" not in result
-
-
-def test_wrap_traceable_run_wraps_chain_node() -> None:
-    async def handler(_state):
-        return {"ok": True}
-
-    wrapped = wrap_traceable_run(
-        handler,
-        name="generic_node",
-        run_type="chain",
-        workflow="digest.planner",
-        lane="planner",
-    )
-
-    result = asyncio.run(wrapped({"subject": "demo"}))
-
-    assert result == {"ok": True}
-
-
-def test_wrap_workflow_node_accepts_legacy_parameter_names() -> None:
-    async def handler(_state):
-        return {"ok": True}
-
-    wrapped = wrap_workflow_node(
-        handler,
-        workflow_name="digest.planner",
-        lane="planner",
-        node_name="legacy_node",
-    )
-
-    result = asyncio.run(wrapped({"subject": "demo"}))
-
-    assert result == {"ok": True}
-
-
-def test_node_short_alias_wraps_node() -> None:
-    @node(
-        workflow="digest.planner",
-        lane="planner",
-        name="short_alias_node",
-    )
-    async def handler(_state):
-        return {"ok": True}
-
-    result = asyncio.run(handler({"subject": "demo"}))
-
-    assert result == {"ok": True}
 
 
 def test_traceable_run_unifies_chain_node_decorator() -> None:
@@ -363,18 +355,6 @@ def test_traceable_run_supports_prompt_function() -> None:
     assert build_prompt("math") == "teach math"
 
 
-def test_workflow_node_alias_wraps_node() -> None:
-    @workflow_node(
-        workflow="digest.docgen",
-        lane="docgen",
-        name="explicit_alias_node",
-    )
-    async def handler(_state):
-        return {"ok": True}
-
-    result = asyncio.run(handler({"subject": "demo"}))
-
-    assert result == {"ok": True}
 
 
 def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
@@ -492,3 +472,98 @@ def test_normalize_langsmith_run_type_falls_back_to_tool() -> None:
     assert normalize_langsmith_run_type("prompt") == "prompt"
     assert normalize_langsmith_run_type("retriever") == "retriever"
     assert normalize_langsmith_run_type("not-a-run-type") == "tool"
+
+
+def test_tool_registry_execute_emits_tool_trace(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class DummyRun:
+        def end(self, *, outputs):
+            captured["outputs"] = outputs
+
+    class DummyTraceContext:
+        def __enter__(self):
+            return DummyRun()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_langsmith_trace(**kwargs):
+        captured["trace_kwargs"] = kwargs
+        return DummyTraceContext()
+
+    monkeypatch.setattr(registry_module, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        registry_module,
+        "get_llm_trace_context",
+        lambda: LLMTraceContext(
+            subject="math",
+            build_session_id="build-1",
+            workflow="digest.docgen",
+            lane="docgen",
+            node="writer",
+        ),
+    )
+
+    registry = ToolRegistry()
+
+    async def demo_tool(query: str) -> dict[str, str]:
+        return {"result": f"handled:{query}"}
+
+    registry.register(
+        ToolDefinition(
+            name="demo_tool",
+            description="demo",
+            parameters={"type": "object"},
+            handler=demo_tool,
+            is_async=True,
+            tags=["retrieval"],
+            source="python",
+        )
+    )
+
+    result = asyncio.run(registry.execute("demo_tool", query="线性代数"))
+
+    assert result == {"result": "handled:线性代数"}
+    assert captured["trace_kwargs"]["name"] == "tool.demo_tool"
+    assert captured["trace_kwargs"]["run_type"] == "tool"
+    assert captured["trace_kwargs"]["inputs"] == {
+        "name": "demo_tool",
+        "arguments": {"query": "线性代数"},
+    }
+    assert captured["outputs"] == {
+        "success": True,
+        "result": {"result": "handled:线性代数"},
+    }
+
+
+def test_run_agent_loop_loads_project_tools_before_registry_lookup(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class DummyRegistry:
+        def to_openai_format(self):
+            calls.append("registry")
+            return []
+
+    async def fake_acompletion(messages, *, task_type, **kwargs):
+        del messages, task_type, kwargs
+        return "ok"
+
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: calls.append("load"))
+    monkeypatch.setattr("app.shared.infra.tools.registry.get_tool_registry", lambda: DummyRegistry())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion", fake_acompletion)
+
+    result = asyncio.run(
+        agent_loop_module.run_agent_loop(
+            [{"role": "user", "content": "hello"}],
+        )
+    )
+
+    assert result.final_answer == "ok"
+    assert calls[:2] == ["load", "registry"]
+
+
+
+
+
+

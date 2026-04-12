@@ -1,10 +1,10 @@
-"""Digest curriculum workflow graph and initial state."""
+﻿"""Digest curriculum workflow graph and initial state."""
 
 from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common import wrap_traceable_run
+from app.workflows.common import workflow_tracer
 from app.workflows.digest.curriculum.nodes import (
     derive_prereq_dag_node,
     derive_theme_tree_node,
@@ -21,57 +21,43 @@ def build_curriculum_derive_graph() -> StateGraph:
     """Build the LangGraph workflow for curriculum derivation."""
 
     workflow = StateGraph(CurriculumDeriveState)
+    trace = workflow_tracer(workflow="digest.curriculum", lane="curriculum")
     workflow.add_node(
         "derive_units",
-        wrap_traceable_run(
+        trace.node(
             derive_units_node,
-            run_type="chain",
-            workflow="digest.curriculum",
-            lane="curriculum",
             name="derive_units",
             timing_field="derive_units_ms",
         ),
     )
     workflow.add_node(
         "derive_theme_tree",
-        wrap_traceable_run(
+        trace.node(
             derive_theme_tree_node,
-            run_type="chain",
-            workflow="digest.curriculum",
-            lane="curriculum",
             name="derive_theme_tree",
             timing_field="theme_tree_ms",
         ),
     )
     workflow.add_node(
         "derive_prereq_dag",
-        wrap_traceable_run(
+        trace.node(
             derive_prereq_dag_node,
-            run_type="chain",
-            workflow="digest.curriculum",
-            lane="curriculum",
             name="derive_prereq_dag",
             timing_field="prereq_dag_ms",
         ),
     )
     workflow.add_node(
         "finalize_curriculum",
-        wrap_traceable_run(
+        trace.node(
             finalize_curriculum_node,
-            run_type="chain",
-            workflow="digest.curriculum",
-            lane="curriculum",
             name="finalize_curriculum",
             timing_field="finalize_ms",
         ),
     )
     workflow.add_node(
         "fail_curriculum",
-        wrap_traceable_run(
+        trace.node(
             fail_curriculum_node,
-            run_type="chain",
-            workflow="digest.curriculum",
-            lane="curriculum",
             name="fail_curriculum",
         ),
     )
@@ -105,7 +91,6 @@ def build_curriculum_derive_graph() -> StateGraph:
     workflow.add_edge("fail_curriculum", END)
     return workflow
 
-
 def create_curriculum_derive_initial_state(
     *,
     subject: str,
@@ -135,3 +120,4 @@ __all__ = [
     "build_curriculum_derive_graph",
     "create_curriculum_derive_initial_state",
 ]
+

@@ -1,4 +1,4 @@
-"""Tracing helpers for workflow-scoped LLM observability."""
+﻿"""Tracing helpers for workflow-scoped LLM observability."""
 
 from __future__ import annotations
 
@@ -222,25 +222,6 @@ def annotate_traceable(
         process_outputs=process_outputs,
     )(func)
 
-
-def prompt_traceable(
-    *,
-    name: str,
-    process_inputs=None,
-    process_outputs=None,
-):
-    """Small repo-local decorator for stable prompt builder functions."""
-
-    def decorator(func):
-        return annotate_traceable(
-            func,
-            name=name,
-            run_type="prompt",
-            process_inputs=process_inputs,
-            process_outputs=process_outputs,
-        )
-
-    return decorator
 
 
 def normalize_langsmith_run_type(
@@ -679,3 +660,4 @@ def get_tracker() -> LLMCallTracker:
     if _tracker is None:
         _tracker = LLMCallTracker()
     return _tracker
+

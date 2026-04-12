@@ -1,4 +1,4 @@
-# 10. 仓库结构与运行时文件
+﻿# 10. 仓库结构与运行时文件
 
 最后更新：2026-04-11
 
@@ -50,8 +50,8 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - workflow-local runtime trace 命名改为 `workflow_runtime.docgen.*`。
 - workflow 级 LangSmith 接入规范已统一收口到 `workflows/common`：
   - `run_state_graph(...)`
+  - `workflow_tracer(...).node(...)`
   - `@traceable_run(...)`
-  - `wrap_traceable_run(...)`
   - `tracked_step(...)`
 - `shared/infra` 不再新增 `runtime` 入口文件，避免和 workflow-local runtime 混淆。
 
@@ -125,3 +125,4 @@ api -> services -> workflows -> teaching -> shared/infra -> shared/kernel
 - `skills` 之前几乎没有进入 planner/docgen 主运行链。
 
 这些问题现在都不再作为“推荐结构”继续扩张。
+

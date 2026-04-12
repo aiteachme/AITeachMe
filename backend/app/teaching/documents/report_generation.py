@@ -54,6 +54,7 @@ _TITLE_SPECIFICITY_KEYWORDS = (
     "变式",
 )
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+_SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9_-]+$", re.IGNORECASE)
 _GENERIC_FOCUS_TERMS = {
     "核心概念",
     "高频考点",
@@ -254,6 +255,7 @@ def build_chapter_title_resolution_messages(
 def build_document_overview(
     *,
     subject: str,
+    subject_display_name: str = "",
     digest_mode: str,
     tone: str,
     user_goal: str,
@@ -266,46 +268,81 @@ def build_document_overview(
     normalized_mode = _normalize_mode(digest_mode)
     mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
     note_kind = "TIP" if normalized_mode == "sprint" else "IMPORTANT"
-    goal_line = user_goal.strip() or f"围绕 {subject} 生成一份结构化学习文档。"
+    display_subject = _resolve_subject_display_name(subject=subject, subject_display_name=subject_display_name)
+    deduped_chapters = _dedupe_chapters_for_overview(chapters)
+    goal_line = user_goal.strip() or f"围绕 {display_subject} 生成一份结构化学习文档。"
     summary_line = plan_summary.strip() or _default_plan_summary(
-        subject=subject,
+        subject=display_subject,
         digest_mode=normalized_mode,
-        chapters=chapters,
+        chapters=deduped_chapters,
     )
 
     lines = [
         "# 知识文档总览",
         "",
         f"> [!{note_kind}]",
-        f"> 学科：{subject}",
-        f"> 模式：{mode_label}",
-        f"> 风格：{tone or 'encouraging'}",
-        f"> 目标：{goal_line}",
-        f"> 方案摘要：{summary_line}",
+        f"> 课程：{display_subject}",
+        f"> 类型：{mode_label}",
+        f"> 学习目标：{goal_line}",
+        f"> 文档定位：{summary_line}",
     ]
     source_strategy_label = _source_strategy_label(source_strategy)
     if source_strategy_label:
-        lines.append(f"> 资料策略：{source_strategy_label}")
-    lines.extend(["", "## 如何使用这份文档", ""])
+        lines.append(f"> 资料来源：{source_strategy_label}")
+    lines.extend(["", "## 这份文档怎么读", ""])
     lines.extend(f"- {item}" for item in _reading_guidance(normalized_mode))
     lines.extend(
         [
             "",
-            "## 章节路线图",
+            "## 章节安排",
             "",
-            "| 章节 | 学习重点 | 证据概览 |",
-            "| --- | --- | --- |",
+            "| 章节 | 标题 | 学习重点 | 章节定位 |",
+            "| --- | --- | --- | --- |",
         ]
     )
 
-    for chapter in chapters:
+    for chapter in deduped_chapters:
         chapter_index = int(chapter.get("chapter_index", 0) or 0)
         title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
         focus = _chapter_focus(chapter)
-        evidence = _chapter_evidence(chapter)
-        lines.append(f"| {chapter_index or '-'} | {title} | {focus} | {evidence} |")
+        takeaway = _chapter_takeaway(chapter, digest_mode=normalized_mode)
+        lines.append(f"| {chapter_index or '-'} | {title} | {focus} | {takeaway} |")
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _resolve_subject_display_name(*, subject: str, subject_display_name: str = "") -> str:
+    explicit = str(subject_display_name or "").strip()
+    if explicit and not _SUBJECT_SLUG_RE.fullmatch(explicit):
+        return explicit
+    normalized = str(subject or "").strip()
+    if normalized and not _SUBJECT_SLUG_RE.fullmatch(normalized):
+        return normalized
+    return "当前课程"
+
+
+def _dedupe_chapters_for_overview(chapters: list[Mapping[str, object]]) -> list[Mapping[str, object]]:
+    best_by_index: dict[int, Mapping[str, object]] = {}
+    for chapter in chapters:
+        chapter_index = int(chapter.get("chapter_index", 0) or 0)
+        existing = best_by_index.get(chapter_index)
+        if existing is None:
+            best_by_index[chapter_index] = chapter
+            continue
+        existing_len = len(str(existing.get("markdown") or existing.get("summary") or ""))
+        current_len = len(str(chapter.get("markdown") or chapter.get("summary") or ""))
+        if current_len >= existing_len:
+            best_by_index[chapter_index] = chapter
+    return [best_by_index[index] for index in sorted(best_by_index)]
+
+
+def _chapter_takeaway(chapter: Mapping[str, object], *, digest_mode: str) -> str:
+    tags = [str(item).strip() for item in chapter.get("tags", []) if str(item).strip()]
+    if tags:
+        if _normalize_mode(digest_mode) == "sprint":
+            return f"先讲清 {tags[0]}，再落到题型与失分点"
+        return f"先建立 {tags[0]}，再展开推理与应用"
+    return "按本章主线完成概念理解、方法落地和总结回收"
 
 
 def _extract_heading_titles(
@@ -374,26 +411,26 @@ def _build_scaffold_headings(
     focus = _pick_heading_focus(title, required_elements, fallback=short_title or "本章内容")
     if normalized_mode == "sprint":
         return {
-            "guide": "## 这章先拿下什么",
-            "glossary": "## 本章概念先对齐",
+            "guide": "## 这一章先看什么",
+            "glossary": "## 先把核心概念讲清楚",
             "objectives": "## 学完这章你要会什么",
-            "main": f"## {focus}的得分抓手",
-            "drills": f"## {focus}题怎么拆",
-            "memory": "## 临考前最该记什么",
-            "pitfalls": f"## {focus}最容易错在哪",
-            "recap": "## 考前最后 3 分钟回看什么",
+            "main": f"## {focus}的核心结论与判断抓手",
+            "drills": "## 典型题型怎么审怎么做",
+            "memory": "## 临考速记：最后要记住什么",
+            "pitfalls": "## 易错点和混淆点集中辨析",
+            "recap": "## 本章最后复盘",
         }
     return {
-        "guide": f"## 先用什么视角进入《{short_title}》",
-        "glossary": "## 关键概念先对齐",
+        "guide": f"## 进入《{short_title}》前先抓哪条主线",
+        "glossary": "## 关键概念先讲清楚",
         "objectives": f"## 学完《{short_title}》后你应该会什么",
-        "prereq": f"## 学《{short_title}》前要补什么",
-        "motivation": f"## 为什么要学《{short_title}》",
-        "definitions": f"## {focus}的定义与结构",
-        "reasoning": f"## {focus}怎么走到应用",
+        "prereq": f"## 学《{short_title}》前要先补什么",
+        "motivation": f"## 为什么这一章必须现在学",
+        "definitions": f"## {focus}的定义、结构与核心关系",
+        "reasoning": f"## {focus}怎样一步步走到应用",
         "map": f"## 《{short_title}》在整门课里的位置",
-        "extension": f"## 学完《{short_title}》后怎么继续",
-        "recap": f"## 《{short_title}》真正要带走什么",
+        "extension": f"## 学完《{short_title}》后还能往哪里接",
+        "recap": f"## 《{short_title}》最后要带走什么",
     }
 
 
@@ -535,13 +572,13 @@ def build_chapter_guide(
     )
 
     lines = [
-        heading or "## 本章导读",
+        heading or ("## 这一章先看什么" if normalized_mode == "sprint" else "## 本章导读"),
         "",
         f"> [!{note_kind}]",
-        f"> 学习目标：{goal_line}",
-        f"> 素材说明：{evidence_line}",
+        f"> 本章目标：{goal_line}",
+        f"> 阅读建议：{evidence_line}",
         "",
-        "### 建议先抓住这些点",
+        "### 先抓住这些内容",
         "",
     ]
     lines.extend(f"- {item}" for item in focus_items)
@@ -605,9 +642,10 @@ def _build_mode_sections(
                     [
                         resolved_headings["main"],
                         "",
-                        f"- 本章目标：{objective or '把本章最关键的得分点讲清楚。'}",
-                        f"- 优先掌握：{focus_text}",
-                        "- 先理解概念，再把它和题型、步骤、误区连起来。",
+                        f"- 先明确本章要解决什么问题：{objective or '把本章最关键的考点、条件和解题路径讲清楚。'}",
+                        f"- 第一层先讲清：{focus_text}",
+                        "- 第二层再讲：这些概念在题目里通常怎样出现，怎样判断能不能用。",
+                        "- 第三层再收：哪些结论必须连同条件一起记，哪些地方最容易混淆。",
                     ]
                 ).strip(),
             ),
@@ -618,16 +656,16 @@ def _build_mode_sections(
                     [
                         resolved_headings["drills"],
                         "",
-                        "1. 先识别题目在考什么概念或公式。",
-                        "2. 再判断题目需要哪条解题路径。",
-                        "3. 最后总结这种题型最容易踩的坑。",
+                        "1. 先看题眼，判断它在考哪个概念、性质或方法。",
+                        "2. 再看条件，确认这道题为什么能走这条解题路径。",
+                        "3. 最后把步骤、常见变形和失分点一起归纳。",
                     ]
                 ).strip(),
             ),
             (
                 "memory",
                 resolved_headings["memory"],
-                "\n".join([resolved_headings["memory"], "", *quick_card]).strip(),
+                "\n".join([resolved_headings["memory"], "", *quick_card, "- 不要只背公式，要同时背‘什么时候用’和‘不能怎么误用’。"]).strip(),
             ),
             (
                 "pitfalls",
@@ -636,9 +674,9 @@ def _build_mode_sections(
                     [
                         resolved_headings["pitfalls"],
                         "",
-                        "- 不要只记结论，要记“什么时候用”和“为什么这样用”。",
-                        "- 如果出现相近概念，必须顺手做一遍对比。",
-                        "- 做题时先判断条件，再套方法，不要直接机械代公式。",
+                        "- 把最像但不一样的概念放在一起对比，不要分开零散记。",
+                        "- 做题时先判断条件，再决定方法，不能看到熟词就机械套公式。",
+                        "- 如果一个结论看起来很好用，先确认它有没有前提、范围或隐含条件。",
                     ]
                 ).strip(),
             ),
@@ -653,8 +691,8 @@ def _build_mode_sections(
                     resolved_headings["prereq"],
                     "",
                     f"- 建议先回顾：{focus_items[0]}",
-                    f"- 本章会反复用到：{focus_items[1] if len(focus_items) > 1 else '核心定义'}",
-                    "- 如果前置概念还不稳，先从定义和符号入手。",
+                    f"- 本章会反复调用：{focus_items[1] if len(focus_items) > 1 else '核心定义'}",
+                    "- 如果前置概念还不稳，先把定义、符号和基本关系补平。",
                 ]
             ).strip(),
         ),
@@ -665,7 +703,8 @@ def _build_mode_sections(
                 [
                     resolved_headings["motivation"],
                     "",
-                    f"{objective or '本章要解决的是：为什么需要这部分知识，它在整体结构里承担什么作用。'}",
+                    f"{objective or '本章要解决的是：为什么需要这部分知识，它在整门课里承担什么作用。'}",
+                    "- 读这一章时，不只要记结论，还要知道它回答了哪个上位问题。",
                 ]
             ).strip(),
         ),
@@ -677,7 +716,7 @@ def _build_mode_sections(
                     resolved_headings["definitions"],
                     "",
                     f"- 请围绕这些元素组织内容：{focus_text}",
-                    "- 若出现定理或公式，必须解释适用条件、结论含义和使用边界。",
+                    "- 若出现定理或公式，必须同时交代定义背景、适用条件、结论含义和使用边界。",
                 ]
             ).strip(),
         ),
@@ -688,8 +727,8 @@ def _build_mode_sections(
                 [
                     resolved_headings["reasoning"],
                     "",
-                    "- 先说明推理链条，再给出应用例子。",
-                    "- 例子最好覆盖“怎么用”“为什么这样用”“容易错在哪”。",
+                    "- 先说明推理链条，再给出能够落地的例子或应用。",
+                    "- 例子最好同时覆盖‘怎么用’‘为什么这样用’和‘容易错在哪’。",
                 ]
             ).strip(),
         ),
@@ -736,14 +775,14 @@ def _default_required_elements(digest_mode: str) -> list[str]:
 def _reading_guidance(digest_mode: str) -> list[str]:
     if digest_mode == "sprint":
         return [
-            "先看每章开头的导入或抓手小节，快速确认哪些概念、公式和题型最值得优先记住。",
-            "重点利用题型拆解、易错辨析和速记类小节，训练考场场景下的快速判断路径。",
-            "每章结尾的回顾/复盘模块适合在考前或刷题前再扫一遍。",
+            "先看每章开头，先确认这一章到底在考什么、常见问法是什么，再进入细节。",
+            "每章都按“概念讲清楚 -> 题型拆开讲 -> 易错点收口”的顺序读，不要只扫结论。",
+            "考前回看时优先扫“典型题型”“易错点”“本章复盘”三块，而不是从头重读。",
         ]
     return [
-        "建议按章节顺序阅读，因为后面的内容通常依赖前面建立的定义和结构。",
-        "结合章节路线图和每章开头的导入小节来理解整体脉络，不要只孤立记忆零散知识点。",
-        "每读完一章就回看一次章节收束或总结模块，先固化主结论，再进入下一章。",
+        "建议按章节顺序阅读，因为后面的推理和应用通常依赖前面建立的定义与结构。",
+        "每章优先读懂“定义/结构 -> 推理 -> 例子”这条主线，不要把知识点切碎了记。",
+        "每读完一章就回看一次本章总结，确认自己能讲清概念、关系和使用边界，再进入下一章。",
     ]
 
 
