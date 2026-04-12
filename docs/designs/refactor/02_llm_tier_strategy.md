@@ -1,7 +1,7 @@
 ﻿## 二、三级模型策略
 
-> 最后更新：2026-04-10
-> 目标：在保证速度和质量的前提下，让 `Planner / Research / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪、可降级。
+> 最后更新：2026-04-12
+> 目标：在保证速度和质量的前提下，让 `Planner / Grounding / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪、可降级。
 
 ---
 
@@ -38,7 +38,7 @@
 - `confirm_plan`、`chapter_plan`、`BuildContract` 校验建议：`strategic`
 - 目标：少调用，但要稳定、清楚、结构化
 
-### Research
+### Grounding / Retrieval
 
 - `generate_sub_queries`：`strategic`
 - `assess_gaps`：`fast`
@@ -115,7 +115,7 @@
 这是 Digest 最适合的默认策略：
 
 - Planner：调用少，但要结构正确
-- Research：把贵模型用在 query planning 和 gap assessment
+- Grounding：把贵模型用在 query planning 和 gap assessment
 - Writer：正文优先稳定质量
 - Asset：默认不抢正文预算
 
@@ -198,4 +198,3 @@
 - 把贵模型预算集中在规划和正文
 - 把轻量模型预算集中在整理和资产规划
 - 让所有降级都能在 LangSmith 中被清楚看见
-

@@ -5,9 +5,6 @@ Preferred public API:
 - ``@traceable_run(...)`` for traced workflow functions
 - ``wrap_traceable_run(...)`` for graph-builder style wiring
 - ``tracked_step(...)`` for important substeps
-
-``node(...)`` / ``wrap_node(...)`` / ``workflow_node(...)`` remain as thin
-aliases when a more semantic name reads better in workflow code.
 """
 
 from __future__ import annotations

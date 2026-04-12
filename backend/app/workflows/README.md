@@ -64,11 +64,9 @@ load_context
 - `wrap_traceable_run(...)`
 - `async with tracked_step(...)`
 
-`node / wrap_node / workflow_node / wrap_workflow_node` 只是偏 node 语义的同义别名。  
-`prompt_traceable(...)` 是偏 prompt 语义的同义别名。  
-`digest_node / wrap_digest_node` 只作为历史兼容层保留，不再作为新代码规范。
-
 `@traceable` 只留给少数确实值得单独展示的 retriever / adapter / service 边界，不作为默认要求。
+
+团队协作时，新代码、新文档、code review 都统一按这 4 个入口表达，不再扩散旧名字。
 
 ## 判断标准
 

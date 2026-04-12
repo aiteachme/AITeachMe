@@ -6,7 +6,6 @@ Recommended public surface for new workflows:
 - ``@traceable_run(...)``
 - ``wrap_traceable_run(...)``
 - ``tracked_step(...)``
-- ``@prompt_traceable(...)`` remains as a convenience alias for prompt builders
 """
 
 from __future__ import annotations

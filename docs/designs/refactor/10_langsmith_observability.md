@@ -1,7 +1,7 @@
 ﻿## 十、LangSmith 全链路可观测性
 
 > 目标：保证这轮算法升级不是”黑盒优化”，而是每一步都能被看见、被比较、被定位。
-> 最后更新：2026-04-11
+> 最后更新：2026-04-12
 >
 > **详细实现文档**：`backend/app/workflows/LANGSMITH.md` 包含统一入口、run_type 约定和代码级示例；`backend/app/workflows/TRACKED_STEP.md` 进一步说明 node 内部 step 的 kind / trace_run_type 规范。本文档侧重设计目标和验收标准，具体实现细节请参考这两份代码文档。
 
@@ -58,7 +58,7 @@ API / service request
 
 - 函数级 tracing 默认优先用同一种注解 `@traceable_run(...)`
 - node / prompt / retriever / tool / parser / embedding 的区分主要依赖 `run_type`
-- `node(...)`、`wrap_node(...)`、`prompt_traceable(...)` 现在更适合看作语义糖或兼容别名
+- 新代码、新文档、code review 都只展开这 4 个入口，不再继续传播旧别名
 
 ---
 

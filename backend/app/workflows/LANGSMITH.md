@@ -30,19 +30,11 @@ from app.workflows.common import (
 4. `async with tracked_step(...)`
    节点内部关键步骤
 
-`node(...)`、`wrap_node(...)`、`prompt_traceable(...)` 还保留着，但现在更适合看作语义糖，不再是唯一推荐入口。
-
 ## 为什么不再强调很多不同注解
 
 你指出的问题是对的。
 
-之前把：
-
-- `@node(...)`
-- `@prompt_traceable(...)`
-- `@workflow_node(...)`
-
-分开写，虽然语义上清楚，但会让协作者误以为“不同对象必须学不同注解”，这和你给的官方示例风格不一致，也不利于上手。
+之前按 node / prompt / workflow 语义拆成多种写法，虽然局部可读，但会让协作者误以为“不同对象必须学不同注解”，这和你给的官方示例风格不一致，也不利于上手。
 
 所以现在我们把推荐心智模型改成：
 
@@ -56,6 +48,12 @@ from app.workflows.common import (
 - 普通小工具用 `run_type="tool"`
 
 这更贴近 LangSmith 官方和你给的例子。
+
+协同开发时直接按下面这条纪律执行：
+
+- 新代码只推荐 `run_state_graph / traceable_run / wrap_traceable_run / tracked_step`
+- 新文档和 code review 也只讲这 4 个入口
+- 不再在文档里展开旧别名的用法，避免团队心智重新分叉
 
 ## 一张总表
 
@@ -340,26 +338,7 @@ async with tracked_step(
     step.set_outputs(result_count=len(hits))
 ```
 
-## 9. 旧名字现在怎么看
-
-这些名字还保留着：
-
-- `node(...)`
-- `wrap_node(...)`
-- `workflow_node(...)`
-- `wrap_workflow_node(...)`
-- `prompt_traceable(...)`
-- `digest_node(...)`
-- `wrap_digest_node(...)`
-
-但现在推荐这样理解：
-
-- `traceable_run / wrap_traceable_run` 是统一入口
-- `node / wrap_node / workflow_node / wrap_workflow_node` 是偏 node 语义的别名
-- `prompt_traceable` 是偏 prompt 语义的别名
-- `digest_node / wrap_digest_node` 只是历史兼容层
-
-## 10. 一句话记忆版
+## 9. 一句话记忆版
 
 ```python
 workflow 用 run_state_graph
