@@ -104,6 +104,28 @@ shared/infra/search/
 - 外部结果经过 `SourceCurator` 过滤后，再由 `read_urls()` 深读正文。
 - 深读结果再进入 `ContextCompressor`，最后变成章节写作用的 `dense_context`。
 
+## 运行时缓存
+
+当前已经落地一套最小 runtime cache，用来收口检索链路里最容易重复的 IO：
+
+- external retriever 结果会按 `(retriever_name, query, max_results)` 做进程内 TTL 缓存
+- reader 结果会按 `(reader_name, url)` 做进程内 TTL 缓存
+- `ContextCompressor` 结果会按 `(query, documents, focus_terms, budgets)` 做进程内 TTL 缓存
+
+当前策略保持刻意简单：
+
+- 只做进程内内存缓存
+- 带 TTL 和最大条目数
+- 相同请求会做 inflight dedupe，避免同一轮 fan-out 重复打外部 IO
+- `local_rag` 默认不缓存，避免把当前 subject 的本地知识快照误当成稳定公网结果
+
+LangSmith 侧会在 retriever / reader / traced execution span 输出：
+
+- `cache_status`
+- `cache_hit`
+
+后续如果继续做持久化缓存、subject-aware 隔离或跨构建共享，再单独扩展这层策略；当前不在 workflow 里重复实现第二套缓存。
+
 ## 配置建议
 
 - 完全无 key 的最小可用组合：

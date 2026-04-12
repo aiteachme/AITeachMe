@@ -181,20 +181,23 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         value = result.metadata.get(field_name)
         if value not in (None, "", [], {}):
             outputs[field_name] = value
-    for field_name in ("fallback_used", "purify_used", "repair_applied"):
+    for field_name in ("fallback_used", "purify_used", "repair_applied", "cache_hit"):
         value = result.metadata.get(field_name)
         if value is not None:
             outputs[field_name] = bool(value)
-    compression_mode = str(result.metadata.get("compression_mode") or "").strip()
-    if compression_mode:
-        outputs["compression_mode"] = compression_mode
-    for field_name in ("requested_profile", "applied_profile", "template_kind"):
+    for field_name in (
+        "compression_mode",
+        "cache_status",
+        "stop_reason",
+        "requested_profile",
+        "applied_profile",
+        "requested_retrieval_profile",
+        "applied_retrieval_profile",
+        "template_kind",
+    ):
         value = str(result.metadata.get(field_name) or "").strip()
         if value:
             outputs[field_name] = value
-    applied_retrieval_profile = str(result.metadata.get("applied_retrieval_profile") or "").strip()
-    if applied_retrieval_profile:
-        outputs["applied_retrieval_profile"] = applied_retrieval_profile
     coverage_score = result.metadata.get("coverage_score")
     if coverage_score not in (None, ""):
         outputs["coverage_score"] = float(coverage_score)

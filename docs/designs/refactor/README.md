@@ -25,13 +25,14 @@
 ### 已经部分落地
 
 - 章节 research 已从单轮检索升级为轻量 micro-loop。
+- retriever / reader / compression 已接入最小 runtime cache。
 - asset sidecar 已支持 Mermaid / image / interactive HTML 的最小执行链。
 - `systematic / sprint` 已进入 confirmed plan、chapter assignment、writer/runtime 与 practice layer。
 - digest 侧 lane summary 已能聚合 `requested_profile / applied_profile / research_rounds / asset_summary / practice_count`。
 
 ### 仍未完成
 
-- 学科化 retrieval 权重、来源分类调参与缓存收口。
+- 学科化 retrieval 权重、来源分类调参与持久化缓存策略。
 - richer asset sidecar，尤其是更强的 interactive 模板与 animation 真正执行链。
 - Interact / Examine / Profile 与 Digest 在 skillpack、课程合同、知识上下文上的更深协同。
 - 更强的教学块，例如错因卡、公式卡、变式题、迁移题。

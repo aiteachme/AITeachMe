@@ -1,4 +1,4 @@
-﻿"""Local RAG retriever with a section-based fallback."""
+"""Local RAG retriever with a section-based fallback."""
 
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ def _tokenize(text: str) -> list[str]:
 
 class LocalRAGRetriever(BaseRetriever):
     aliases = ("rag",)
+    cacheable = False
 
     def __init__(self, *, subject: str | None = None, local_sections: list[Any] | None = None) -> None:
         self.subject = (subject or "").strip()

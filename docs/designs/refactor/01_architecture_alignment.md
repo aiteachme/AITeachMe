@@ -76,7 +76,7 @@
 
 ## 1.4 当前真正还缺的，不再是“有没有”，而是“做得够不够深”
 
-### 差距 1：`retrieval_profile` 已进执行链，但学科化调权和缓存还不够成熟
+### 差距 1：`retrieval_profile` 已进执行链，但学科化调权和持久化缓存策略还不够成熟
 
 现在的真实情况是：
 
@@ -89,7 +89,7 @@
 
 - profile 粒度还不够学科化
 - source class 权重仍偏通用
-- retrieval / reader / compression 结果还没有系统化缓存策略
+- retriever / reader / compression 虽已接入最小 runtime cache，但持久化与隔离策略还没定型
 
 ### 差距 2：research 已是 micro-loop，但覆盖评估和停机条件还可以更稳
 
@@ -173,7 +173,7 @@
 
 ## 1.6 当前最值得投入的下一批工作
 
-1. 继续做 retrieval 的学科化 profile、source class 调权和缓存。
+1. 继续做 retrieval 的学科化 profile、source class 调权和持久化缓存策略。
 2. 把 research micro-loop 的 coverage / stop 逻辑做得更稳定。
 3. 把 richer teaching blocks、practice 结构和章节质量契约继续做深。
 4. 把 interactive/image sidecar 从“最小可用”做成“真正有教学价值”。

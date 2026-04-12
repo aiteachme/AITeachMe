@@ -7,6 +7,12 @@
 """
 
 from .api import get_knowledge_search_notice, search_knowledge, web_search
+from .cache import (
+    get_compression_runtime_cache,
+    get_reader_runtime_cache,
+    get_retriever_runtime_cache,
+    reset_search_runtime_caches,
+)
 from .context_compression import ContextCompressor, ContextManager
 from .factory import (
     get_external_retriever_names,
@@ -30,14 +36,18 @@ __all__ = [
     "SearchResult",
     "SourceCurator",
     "WebSearchResult",
+    "get_compression_runtime_cache",
     "get_external_retriever_names",
+    "get_reader_for_url",
+    "get_reader_runtime_cache",
     "get_registered_reader_names",
     "get_registered_retriever_names",
-    "get_reader_for_url",
     "get_knowledge_search_notice",
     "get_retriever",
+    "get_retriever_runtime_cache",
     "get_retrievers_for_subject",
     "rerank_chunks",
+    "reset_search_runtime_caches",
     "search_knowledge",
     "web_search",
 ]

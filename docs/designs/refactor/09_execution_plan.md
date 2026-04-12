@@ -52,13 +52,13 @@
 
 ## 当前最重要的未完成差距
 
-### 差距 1：retrieval 还缺学科化调权与缓存
+### 差距 1：retrieval 还缺学科化调权与持久化缓存策略
 
-当前 `retrieval_profile` 已经真实进入执行链，剩余重点转成：
+当前 `retrieval_profile` 已经真实进入执行链，而且 retriever / reader / compression 也已经有最小 runtime cache；剩余重点转成：
 
 - 学科化 profile
 - source class 权重
-- retrieval / reader / compression cache
+- 持久化 cache 与隔离策略
 - micro-loop 调参与收益分析
 
 ### 差距 2：课程质量合同还不够强
@@ -93,7 +93,7 @@
 
 - 学科化 retrieval profile
 - source class 调权
-- 检索 / 读取 / 压缩缓存
+- 持久化检索缓存策略
 - coverage / stop 条件调优
 
 ### 批次 B：content quality

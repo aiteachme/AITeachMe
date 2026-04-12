@@ -102,6 +102,10 @@ def test_local_rag_prefers_uploaded_sections_before_vector_search(monkeypatch) -
     assert results[0].url.startswith("local://section/")
 
 
+def test_local_rag_is_not_runtime_cacheable() -> None:
+    assert LocalRAGRetriever.cacheable is False
+
+
 def test_local_rag_section_fallback_supports_cjk_ngram_overlap() -> None:
     retriever = LocalRAGRetriever(
         local_sections=[

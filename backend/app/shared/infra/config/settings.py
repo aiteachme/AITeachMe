@@ -36,10 +36,14 @@ class Settings(BaseModel):
     model_overrides: dict[str, str] = {}
     llm_observability_enabled: bool = True
     tracing_enabled: bool = True
+    langsmith_max_text_chars: int = 2000
     guardrails_enabled: bool = True
     llm_cache_enabled: bool = False
     llm_cache_ttl_s: int = 3600
     llm_cache_max_entries: int = 1000
+    search_runtime_cache_enabled: bool = True
+    search_runtime_cache_ttl_s: int = 900
+    search_runtime_cache_max_entries: int = 256
     llm_observability_max_records: int = 5000
     llm_concurrency_limit: int = 20
     default_token_budget: int = 4000

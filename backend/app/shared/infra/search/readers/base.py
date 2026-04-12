@@ -6,6 +6,7 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from app.shared.infra.search.cache import get_reader_runtime_cache
 from app.shared.infra.search.types import ScrapedPage
 from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
 
@@ -52,6 +53,7 @@ class BaseReader(ABC):
     aliases: tuple[str, ...] = ()
     auto_register: bool = True
     priority: int = 0
+    cacheable: bool = True
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -108,7 +110,17 @@ class BaseReader(ABC):
             extra_metadata={"reader_name": self.name},
             extra_tags=[f"reader:{self.name}"],
         ) as run:
-            result = await self.read(url)
+            if self.cacheable:
+                result, cache_status = await get_reader_runtime_cache().get_or_compute(
+                    payload={
+                        "reader_name": self.name,
+                        "url": url,
+                    },
+                    loader=lambda: self.read(url),
+                )
+            else:
+                result = await self.read(url)
+                cache_status = "disabled"
             result.reader_name = result.reader_name or self.name
             if run is not None:
                 run.end(
@@ -118,6 +130,8 @@ class BaseReader(ABC):
                         "content_type": result.content_type,
                         "reader_name": result.reader_name,
                         "error": result.error or "",
+                        "cache_status": cache_status,
+                        "cache_hit": cache_status in {"hit", "shared"},
                     }
                 )
             return result

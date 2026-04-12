@@ -1,7 +1,7 @@
 ﻿## 十、LangSmith 全链路可观测性
 
 > 目标：保证这轮算法升级不是”黑盒优化”，而是每一步都能被看见、被比较、被定位。
-> 最后更新：2026-04-12
+> 最后更新：2026-04-13
 >
 > **详细实现文档**：`backend/app/workflows/LANGSMITH.md` 包含统一入口、run_type 约定和代码级示例；`backend/app/workflows/TRACKED_STEP.md` 进一步说明 node 内部 step 的 kind / trace_run_type 规范。本文档侧重设计目标和验收标准，具体实现细节请参考这两份代码文档。
 
@@ -122,6 +122,24 @@ API / service request
 Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 `animation` 仍只保留 contract / trace 预留位，尚未进入主线执行链。
 
+### 问题 4：cache telemetry 已经进入共享边界，但还要继续做收益分析
+
+当前最小 runtime cache 已经接到：
+
+- retriever
+- reader
+- `BaseTracedExecution` 驱动的 `ContextCompressor`
+
+因此 LangSmith 现在已经可以直接看到：
+
+- `cache_status`
+- `cache_hit`
+
+后续还值得继续补：
+
+- 命中率按学科 / profile / lane 的聚合视图
+- cache 对总耗时和 round 数的真实收益分析
+
 ---
 
 ## 10.5 每个重点节点应该记录什么
@@ -205,6 +223,8 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `applied_profile`
 - `coverage_score`
 - `quality_score`
+- `cache_status`
+- `cache_hit`
 
 ### Retriever
 
@@ -215,6 +235,8 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `query`
 - `result_count`
 - `latency_ms`
+- `cache_status`
+- `cache_hit`
 
 ### Prompt
 
@@ -235,6 +257,8 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 - `content_kind`
 - `success`
 - `content_length`
+- `cache_status`
+- `cache_hit`
 
 ---
 
@@ -320,4 +344,3 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 
 LangSmith 在这轮重构里不是“埋点系统”，而是算法迭代的操作台。
 如果 trace 不能回答“为什么查、为什么写、为什么补、为什么停”，后续优化就会重新变成黑盒。
-

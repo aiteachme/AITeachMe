@@ -10,7 +10,12 @@ from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.traced_execution import (
+    BaseTracedExecution,
+    TracedExecutionContext,
+    TracedExecutionResult,
+    _traced_execution_outputs,
+)
 from app.shared.infra.tracing import (
     LLMCallRecord,
     LLMCallTracker,
@@ -242,6 +247,32 @@ def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
     assert captured["workflow"] == "digest.docgen.test"
     assert captured["lane"] == "docgen"
     assert captured["node"] == "workflow_runtime.docgen.writer"
+
+
+def test_traced_execution_outputs_include_cache_and_retrieval_profile_fields() -> None:
+    outputs = _traced_execution_outputs(
+        TracedExecutionResult(
+            content="dense context",
+            sources=["https://example.com/math"],
+            metadata={
+                "cache_status": "hit",
+                "cache_hit": True,
+                "stop_reason": "coverage_target_met",
+                "requested_profile": "docgen_systematic",
+                "applied_profile": "docgen_systematic",
+                "requested_retrieval_profile": "docgen_systematic",
+                "applied_retrieval_profile": "docgen_systematic",
+            },
+        )
+    )
+
+    assert outputs["cache_status"] == "hit"
+    assert outputs["cache_hit"] is True
+    assert outputs["stop_reason"] == "coverage_target_met"
+    assert outputs["requested_profile"] == "docgen_systematic"
+    assert outputs["applied_profile"] == "docgen_systematic"
+    assert outputs["requested_retrieval_profile"] == "docgen_systematic"
+    assert outputs["applied_retrieval_profile"] == "docgen_systematic"
 
 
 
@@ -542,7 +573,6 @@ def test_run_agent_loop_loads_project_tools_before_registry_lookup(monkeypatch) 
 
     assert result.final_answer == "ok"
     assert calls[:2] == ["load", "registry"]
-
 
 
 

@@ -202,6 +202,12 @@ async with tracked_step(
 
 原因是这几类边界天然具有复用价值，也适合被跨 workflow 比较。
 
+补充一条当前已经固定下来的约束：
+
+- runtime cache 的观测也跟着这些共享边界走
+- retriever / reader / `BaseTracedExecution` 直接输出 `cache_status / cache_hit`
+- 不再为了 cache 去给 `shared/infra/search/cache.py` 里的内部 helper 单独加 decorator
+
 除此之外，普通 infra helper 默认不要为了 LangSmith 再单独加一层 decorator。
 
 ## 什么时候才应该在 infra 层新增 trace
@@ -249,6 +255,12 @@ async with tracked_step(
 5. 这是 infra 共享执行边界吗？
    才考虑在 infra 层保留或新增 trace
 
+如果你在做的是缓存、重试、fallback 之类的横切能力，也先问自己：
+
+- 这是不是已经可以挂在现有共享边界 outputs 上？
+
+如果答案是是，就优先扩展已有 span 的 metadata，而不是再新开一层 trace。
+
 ## 一句话版本
 
 ```python
@@ -258,4 +270,3 @@ prompt / helper 用 @traceable_run
 node 内关键步骤用 tracked_step
 infra 只保留少数共享边界 trace，不再逐个 helper 扩散
 ```
-

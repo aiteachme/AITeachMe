@@ -60,6 +60,7 @@
 
 - chapter research 已进入 micro-loop
 - `requested_profile / applied_profile / research_rounds / source_class_breakdown` 已进入 summary/trace
+- retriever / reader / compression 已接入最小 runtime cache
 - Mermaid / image / interactive HTML 已进入最小 asset sidecar 主线
 - mode-aware practice layer 已接入文档构建链
 - workflow tracing 已收敛到最小 4 入口
@@ -67,7 +68,7 @@
 当前未完成的部分：
 
 - 学科化 retrieval weighting / source class 调权
-- 检索、读取、压缩缓存
+- 持久化检索、读取、压缩缓存策略
 - richer interactive/image sidecar
 - animation 真正执行链
 - 更细颗粒度的章节质量合同与教学块
@@ -105,7 +106,7 @@
 当前未完成项需要继续写成：
 
 - 学科化 profile 与调权策略
-- research cache 策略
+- 持久化 research cache 策略
 - richer asset sidecar 设计与验收标准
 - Interact / Examine / Profile 的共享合同设计
 

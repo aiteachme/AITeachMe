@@ -36,6 +36,7 @@
 
 当前推荐：
 
+- 先把已经落地的 runtime cache 保持在 `shared/infra/search` 统一收口
 - 优先缓存检索结果、URL 读取结果、压缩结果
 - 先做 workflow-safe、本地可控的缓存
 - 不把用户上传资料内容粗暴沉淀成长期公用语料

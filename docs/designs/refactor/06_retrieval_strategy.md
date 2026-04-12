@@ -19,9 +19,9 @@
 
 但当前最关键的真实差距是：
 
-> 现在真正的差距已经不再是“profile 没打通”，而是 profile、gap detection 和 source class 还需要继续做更细的学科调权与缓存优化。
+> 现在真正的差距已经不再是“profile 没打通”，而是 profile、gap detection 和 source class 还需要继续做更细的学科调权；而缓存侧已经有最小 runtime cache，但持久化与学科隔离策略仍待继续收口。
 
-这意味着，后续优化重点不是“再接几个搜索 API”，而是继续提升 micro-loop 的调参质量、source class 的教育场景权重和缓存命中率。
+这意味着，后续优化重点不是“再接几个搜索 API”，而是继续提升 micro-loop 的调参质量、source class 的教育场景权重，以及把 runtime cache 往更稳的持久化策略推进。
 
 ---
 
@@ -321,16 +321,31 @@ seed_queries
 
 ## 6.11 缓存与性能
 
-至少缓存三类对象：
+当前已经落地的最小策略：
 
-- `(query, profile, retriever)` 的检索结果
+- `(query, profile, retriever)` 对应的 external retriever 结果
 - `(url, reader_kind)` 的读取结果
 - `(query, focus_terms, compression_budget)` 的压缩结果
 
-原因：
+当前实现特点：
+
+- 位置收口在 `shared/infra/search/cache.py`
+- 只做进程内内存缓存
+- 带 TTL、最大条目数和 inflight dedupe
+- `local_rag` 不进入这层缓存，避免把本地知识快照当成稳定外部结果
+- LangSmith span 会统一输出 `cache_status / cache_hit`
+
+这样做的原因：
 
 - Planner、Grounding、Asset 很容易重复查询相近内容
 - `systematic` 模式如果不缓存，时延会迅速失控
+
+但后续仍待补：
+
+- 持久化 cache 的放置层
+- subject-aware / user-aware 隔离策略
+- profile-specific TTL 与淘汰策略
+- 更细的命中率与收益分析
 
 ---
 
@@ -344,13 +359,14 @@ seed_queries
 2. `requested_profile / applied_profile` 已统一输出到 trace metadata
 3. trace 已补 `source_class_breakdown`
 4. 章节 research 已增加 queue 化补检索
+5. retriever / reader / compression 已接入最小 runtime cache
 
 ### 后续批次再做
 
 - 更细粒度的学科特定 profile
 - 本地教育语料库首批建设
 - 交互与动画素材检索
-- 检索缓存与 profile-specific 调权
+- 持久化缓存策略与 profile-specific 调权
 
 ---
 

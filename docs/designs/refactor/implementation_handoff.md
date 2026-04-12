@@ -22,6 +22,7 @@
 - `workflow_runtime.docgen.*` 已是当前 runtime trace namespace
 - planner -> confirmed plan -> docgen 已支持 `selected_skillpacks`
 - chapter research 已进入 micro-loop
+- retriever / reader / compression 已有最小 runtime cache
 - Mermaid / image / interactive HTML 已进入最小 asset sidecar 主线
 - mode-aware practice layer 已进入 digest-local 执行链
 
@@ -36,7 +37,7 @@
 
 ## 目前还在推进中的内容
 
-- 学科化 retrieval 调权与缓存
+- 学科化 retrieval 调权与持久化缓存策略
 - richer asset sidecar，尤其是更强的 interactive/image 能力
 - 更细颗粒度的 chapter execution contract 与质量门槛
 - Digest 与 Interact / Examine / Profile 的更深合同打通
@@ -54,7 +55,7 @@
 
 ### 第一优先级
 
-- retrieval quality：profile、source class、cache、micro-loop stop 逻辑
+- retrieval quality：profile、source class、持久化 cache、micro-loop stop 逻辑
 
 ### 第二优先级
 
