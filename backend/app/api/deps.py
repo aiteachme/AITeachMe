@@ -1,4 +1,4 @@
-﻿"""接口层公共依赖。"""
+"""接口层公共依赖。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from fastapi import Depends, Request, Response
 from sqlmodel import Session
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.runtime_mode import get_guest_cookie_name, is_local_mode
+from app.shared.infra.runtime import get_guest_cookie_name, is_local_mode
 from app.shared.infra.exceptions import AITeachMeError
 from app.services.auth_service import (
     create_guest_user,

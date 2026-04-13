@@ -7,7 +7,7 @@ import structlog
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.schemas.llm import SYSTEM, USER
 from app.workflows.profile.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 
@@ -60,6 +60,6 @@ async def generate_report_suggestions(
             if line.strip()
         ]
         return lines or [_DEFAULT_SUGGESTION]
-    except Exception:
-        logger.warning("generate_report_suggestions_fallback", subject=subject)
-        return [_DEFAULT_SUGGESTION]
+    except Exception as exc:
+        logger.warning("generate_report_suggestions_failed", subject=subject, error=str(exc))
+        raise

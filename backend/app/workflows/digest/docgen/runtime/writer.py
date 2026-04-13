@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
@@ -83,20 +83,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
             skillpack_guidance=skillpack_guidance,
             recommended_tool_tags=recommended_tool_tags,
         )
-        try:
-            markdown = await llm(
-                messages,
-                task_type=TaskType.DOCGEN,
-                tier="reason" if digest_mode == "systematic" else "primary",
-                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
-            )
-        except Exception:
-            markdown = self._fallback_markdown(
-                title=title,
-                objective=objective,
-                dense_context=dense_context,
-                digest_mode=digest_mode,
-            )
+        markdown = await llm(
+            messages,
+            task_type=TaskType.DOCGEN,
+            tier="reason" if digest_mode == "systematic" else "primary",
+            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+        )
 
         markdown = str(markdown).strip()
         heading_quality = analyze_chapter_heading_quality(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from app.shared.infra.runtime_paths import get_runtime_data_dir
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.storage.base import ArtifactStore
 
 

@@ -35,8 +35,10 @@ RETRIEVER_PROFILES: dict[str, list[str]] = {
 }
 
 CONFIG_YAML_FIELD_MAP: dict[str, str] = {
+    "models_reason": "llm_model_reason",
     "models_primary": "llm_model",
-    "models_light": "llm_model_light",
+    "models_fast": "llm_model_fast",
+    "models_light": "llm_model_fast",  # legacy alias
     "models_extract": "llm_model_extract",
     "models_ocr": "ocr_model",
     "models_embedding": "embedding_model",

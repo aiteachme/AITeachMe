@@ -1,4 +1,4 @@
-﻿"""Question build workflow based on LangGraph.
+"""Question build workflow based on LangGraph.
 
 Reads DB: teaching units and graph-backed teaching context.
 Writes DB: question_template via downstream builder.
@@ -16,7 +16,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.workflows.common import workflow_tracer

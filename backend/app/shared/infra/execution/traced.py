@@ -16,12 +16,11 @@ from typing import Any, Protocol
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tracing import (
-    annotate_traceable,
-    build_langsmith_extra,
+from app.shared.infra.observability import (
     llm_trace_scope,
     sanitize_langsmith_input,
     sanitize_langsmith_output,
+    traceable_with_context,
 )
 
 logger = structlog.get_logger(__name__)
@@ -152,47 +151,21 @@ class BaseTracedExecution(ABC):
         metadata = getattr(workflow_context, "metadata", {}) if workflow_context is not None else {}
         lane = str(metadata.get("lane", "")) if isinstance(metadata, Mapping) else ""
         node = self.trace_node
-        tag_namespace = str(self.trace_namespace or "traced_execution").strip(". ")
-        extra_tags = [f"{tag_namespace}:{self.trace_name}"]
-        if self.context.digest_mode:
-            extra_tags.append(f"mode:{self.context.digest_mode}")
-        if self.context.course_type:
-            extra_tags.append(f"course:{self.context.course_type}")
-        if self.context.retrieval_profile:
-            extra_tags.append(f"retrieval:{self.context.retrieval_profile}")
-        if self.context.teaching_action:
-            extra_tags.append(f"teaching:{self.context.teaching_action}")
-        if self.context.asset_kind:
-            extra_tags.append(f"asset:{self.context.asset_kind}")
-        if self.context.chapter_index is not None:
-            extra_tags.append(f"chapter:{self.context.chapter_index}")
-        traced_execute = annotate_traceable(
-            _invoke_traced_execution,
-            name=node,
-            run_type="chain",
-            process_inputs=lambda inputs: _traced_execution_inputs(inputs.get("payload") or {}),
-            process_outputs=_traced_execution_outputs,
-        )
-        return await traced_execute(
-            payload=kwargs,
-            runner=self,
-            workflow_name=workflow_name,
+        with llm_trace_scope(
+            subject=self.context.subject,
+            build_session_id=self.context.build_session_id,
+            workflow=workflow_name,
             lane=lane,
             node=node,
-            langsmith_extra=build_langsmith_extra(
-                subject=self.context.subject,
-                build_session_id=self.context.build_session_id,
-                workflow=workflow_name,
+        ):
+            payload = await _invoke_traced_execution(
+                payload=kwargs,
+                runner=self,
+                workflow_name=workflow_name,
                 lane=lane,
                 node=node,
-                extra_metadata=self.context.trace_metadata(
-                    traced_unit_name=self.name,
-                    trace_namespace=self.trace_namespace,
-                    trace_name=self.trace_name,
-                ),
-                extra_tags=extra_tags,
-            ),
-        )
+            )
+        return payload["result"]
 
     @abstractmethod
     async def execute(self, **kwargs: Any) -> TracedExecutionResult:
@@ -292,6 +265,48 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
     return outputs
 
 
+def _traced_execution_trace_outputs(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, Mapping):
+        trace_outputs = payload.get("trace")
+        if isinstance(trace_outputs, Mapping):
+            return dict(trace_outputs)
+    return {}
+
+
+def _traced_execution_metadata(
+    *,
+    runner: BaseTracedExecution,
+    **_: Any,
+) -> dict[str, Any]:
+    return runner.context.trace_metadata(
+        traced_unit_name=runner.name,
+        trace_namespace=runner.trace_namespace,
+        trace_name=runner.trace_name,
+    )
+
+
+def _traced_execution_tags(
+    *,
+    runner: BaseTracedExecution,
+    **_: Any,
+) -> list[str]:
+    tag_namespace = str(runner.trace_namespace or "traced_execution").strip(". ")
+    tags = [f"{tag_namespace}:{runner.trace_name}"]
+    if runner.context.digest_mode:
+        tags.append(f"mode:{runner.context.digest_mode}")
+    if runner.context.course_type:
+        tags.append(f"course:{runner.context.course_type}")
+    if runner.context.retrieval_profile:
+        tags.append(f"retrieval:{runner.context.retrieval_profile}")
+    if runner.context.teaching_action:
+        tags.append(f"teaching:{runner.context.teaching_action}")
+    if runner.context.asset_kind:
+        tags.append(f"asset:{runner.context.asset_kind}")
+    if runner.context.chapter_index is not None:
+        tags.append(f"chapter:{runner.context.chapter_index}")
+    return tags
+
+
 def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     inputs: dict[str, Any] = {
         "input_keys": sorted(str(key) for key in kwargs.keys()),
@@ -334,6 +349,15 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     return inputs
 
 
+@traceable_with_context(
+    name="traced_execution.run",
+    run_type="chain",
+    process_inputs=lambda inputs: _traced_execution_inputs(inputs.get("payload") or {}),
+    process_outputs=_traced_execution_trace_outputs,
+    name_factory=lambda *, node, **_: node,
+    metadata_factory=_traced_execution_metadata,
+    tags_factory=_traced_execution_tags,
+)
 async def _invoke_traced_execution(
     *,
     payload: Mapping[str, Any],
@@ -342,16 +366,13 @@ async def _invoke_traced_execution(
     lane: str,
     node: str,
     langsmith_extra: dict[str, Any] | None = None,
-) -> TracedExecutionResult:
-    del langsmith_extra
-    with llm_trace_scope(
-        subject=runner.context.subject,
-        build_session_id=runner.context.build_session_id,
-        workflow=workflow_name,
-        lane=lane,
-        node=node,
-    ):
-        return await runner.execute(**dict(payload))
+) -> dict[str, Any]:
+    del workflow_name, lane, node, langsmith_extra
+    result = await runner.execute(**dict(payload))
+    return {
+        "result": result,
+        "trace": _traced_execution_outputs(result),
+    }
 
 __all__ = [
     "BaseTracedExecution",

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,

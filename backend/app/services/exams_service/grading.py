@@ -13,7 +13,7 @@ from app.models import (
     validate_status_transition,
 )
 from app.repositories import exams_repo
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.utils.time import seconds_between, utcnow
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.profile.mastery_updater import update_mastery_from_exam

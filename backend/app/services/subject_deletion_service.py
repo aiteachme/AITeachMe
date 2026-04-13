@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -7,7 +7,7 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, func, select
 
-from app.shared.infra.runtime_mode import is_local_mode
+from app.shared.infra.runtime import is_local_mode
 from app.shared.infra.storage import get_content_store
 from app.models import (
     ChatMessage,

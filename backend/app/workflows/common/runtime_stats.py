@@ -8,7 +8,11 @@ from contextlib import asynccontextmanager, nullcontext
 from time import perf_counter
 from typing import Any, Literal
 
-from app.shared.infra.tracing import LangSmithRunType, get_llm_trace_context, langsmith_trace, normalize_langsmith_run_type
+from app.shared.infra.observability import (
+    LangSmithRunType,
+    normalize_langsmith_run_type,
+    trace_substep,
+)
 
 StepKind = Literal["node", "tool", "substep", "llm"]
 
@@ -114,6 +118,45 @@ def _step_key(*, name: str, kind: StepKind) -> str:
     return f"{kind}:{name}"
 
 
+async def _emit_step_progress(
+    state: Mapping[str, Any] | None,
+    *,
+    phase: str | None,
+    step: str,
+    status: str,
+    message: str | None,
+) -> None:
+    if state is None or not phase or not message:
+        return
+    await emit_progress(
+        state,
+        phase=phase,
+        step=step,
+        status=status,
+        message=message,
+    )
+
+
+def _build_trace_context_manager(
+    *,
+    enabled: bool,
+    name: str,
+    run_type: LangSmithRunType,
+    inputs: Mapping[str, Any] | None,
+    metadata: Mapping[str, Any] | None,
+    tags: list[str] | None,
+):
+    if not enabled:
+        return nullcontext()
+    return trace_substep(
+        name,
+        run_type=run_type,
+        inputs=inputs,
+        metadata=metadata,
+        tags=tags,
+    )
+
+
 class TrackedStep:
     """Mutable handle exposed inside ``tracked_step``."""
 
@@ -182,37 +225,25 @@ async def tracked_step(
     resolved_trace_run_type = normalize_langsmith_run_type(trace_run_type)
     started_at = perf_counter()
 
-    # Emit "running" progress.
     if state is not None:
         record_step_start(state, name=step_name, kind=kind)
-        if phase and running_message:
-            await emit_progress(
-                state,
-                phase=phase,
-                step=progress_step_name,
-                status="running",
-                message=running_message,
-            )
+    await _emit_step_progress(
+        state,
+        phase=phase,
+        step=progress_step_name,
+        status="running",
+        message=running_message,
+    )
 
-    # Build trace context manager (real LangSmith span or nullcontext).
-    if should_trace:
-        ctx = get_llm_trace_context()
-        trace_cm = langsmith_trace(
-            name=step_name,
-            run_type=resolved_trace_run_type,
-            inputs=dict(trace_inputs or {}),
-            subject=ctx.subject,
-            build_session_id=ctx.build_session_id,
-            workflow=ctx.workflow,
-            lane=ctx.lane,
-            node=ctx.node,
-            extra_metadata={"substep": step_name, **dict(trace_metadata or {})},
-            extra_tags=[f"substep:{step_name}", *(trace_tags or [])],
-        )
-    else:
-        trace_cm = nullcontext()
+    trace_cm = _build_trace_context_manager(
+        enabled=should_trace,
+        name=step_name,
+        run_type=resolved_trace_run_type,
+        inputs=dict(trace_inputs or {}),
+        metadata={"substep": step_name, **dict(trace_metadata or {})},
+        tags=[f"substep:{step_name}", *(trace_tags or [])],
+    )
 
-    # Unified execution path — no more duplicated try/except.
     with trace_cm as run:
         step = TrackedStep(run)
         try:
@@ -220,14 +251,13 @@ async def tracked_step(
         except Exception as exc:
             if state is not None:
                 record_step_end(state, name=step_name, kind=kind, status="failed")
-                if phase and failed_message:
-                    await emit_progress(
-                        state,
-                        phase=phase,
-                        step=progress_step_name,
-                        status="failed",
-                        message=failed_message,
-                    )
+            await _emit_step_progress(
+                state,
+                phase=phase,
+                step=progress_step_name,
+                status="failed",
+                message=failed_message,
+            )
             step.end_trace(outputs={"status": "failed", "error": str(exc)})
             raise
         else:
@@ -235,14 +265,14 @@ async def tracked_step(
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             if state is not None:
                 elapsed_ms = record_step_end(state, name=step_name, kind=kind, status=final_status)
-                if phase and completed_message and final_status == "ok":
-                    await emit_progress(
-                        state,
-                        phase=phase,
-                        step=progress_step_name,
-                        status="completed",
-                        message=completed_message,
-                    )
+            if final_status == "ok":
+                await _emit_step_progress(
+                    state,
+                    phase=phase,
+                    step=progress_step_name,
+                    status="completed",
+                    message=completed_message,
+                )
             step.end_trace(outputs={"status": final_status, "elapsed_ms": elapsed_ms})
 
 

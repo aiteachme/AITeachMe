@@ -13,7 +13,7 @@ from fastapi import Request
 from app.shared.infra.agent_loop import AgentLoopConfig, run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.execution import InteractExecutionMode

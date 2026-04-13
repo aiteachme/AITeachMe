@@ -1,4 +1,4 @@
-﻿"""Targeted research node for the DocGen lane."""
+"""Targeted research node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow

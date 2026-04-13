@@ -75,6 +75,17 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     return "正在生成构建方案。"
 
 
+def _sanitize_planner_error_detail(error: Exception) -> str:
+    text = str(error).strip()
+    if not text:
+        return "主模型调用失败，未生成结果。"
+    if "[SQL:" in text or "Traceback" in text or len(text) > 240:
+        return "主模型调用失败，未生成结果。"
+    if text.startswith("主模型调用失败"):
+        return text
+    return f"主模型调用失败，未生成结果。{text}"
+
+
 def _planner_stream_response(
     *,
     request: Request,
@@ -125,7 +136,10 @@ def _planner_stream_response(
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})
         except Exception as exc:
-            await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
+            await emitter.emit_error(
+                detail=_sanitize_planner_error_detail(exc),
+                error_code="planner_stream_failed",
+            )
         finally:
             await emitter.close()
 

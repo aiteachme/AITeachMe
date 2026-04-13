@@ -6,7 +6,7 @@ import re
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.prompts import build_docgen_mermaid_prompt
 
 _IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")
@@ -197,7 +197,7 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
             )
             body = _sanitize_mindmap_body(str(response), topic=topic)
         except Exception:
-            body = self._fallback_mermaid(topic, context)
+            raise
         return TracedExecutionResult(content=f"```mermaid\n{body}\n```")
 
     async def process_placeholders(self, markdown: str) -> str:

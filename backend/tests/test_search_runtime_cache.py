@@ -8,7 +8,7 @@ from app.shared.infra.search import ContextCompressor, reset_search_runtime_cach
 from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 
 
 class DummyCachedRetriever(BaseRetriever):

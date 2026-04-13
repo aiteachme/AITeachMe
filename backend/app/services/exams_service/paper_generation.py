@@ -12,7 +12,7 @@ from sqlmodel import Session
 from app.models import ExamMode, is_paper_exam_mode, is_web_practice_mode
 from app.repositories import exams_repo
 from app.shared.infra.exceptions import NoPublishedCurriculumSnapshotError
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.utils.time import utcnow
 from app.workflows.examine.context import (
     build_exam_style_profile,

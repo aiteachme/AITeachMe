@@ -62,15 +62,6 @@ _TASK_TO_TIER: dict[TaskType, LLMTier] = {
     TaskType.DEFAULT: "primary",
 }
 
-# ── Fallback chains ────────────────────────────────────────────────
-# When a tier's model fails, we try progressively cheaper alternatives.
-
-_TIER_FALLBACK_CHAIN: dict[LLMTier, tuple[TaskType, ...]] = {
-    "reason": (TaskType.REASONING, TaskType.DOCGEN, TaskType.DOCGEN_LIGHT),
-    "primary": (TaskType.DOCGEN, TaskType.DOCGEN_LIGHT, TaskType.DEFAULT),
-    "fast": (TaskType.DOCGEN_LIGHT, TaskType.DEFAULT),
-}
-
 
 def resolve_llm_tier(task_type: TaskType) -> LLMTier:
     """Resolve the default LLM tier for one task type."""
@@ -87,72 +78,55 @@ async def acompletion_with_fallback(
     extra_metadata: Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> str | T:
-    """Run a text or structured completion with a stable fallback chain.
-
-    The wrapper keeps LangSmith metadata aligned across tier downgrades and
-    allows planner/docgen code to ask for one logical capability instead of a
-    specific single model profile.
-    """
+    """Run one text or structured completion with strict failure semantics."""
 
     resolved_tier = tier or resolve_llm_tier(task_type)
-    chain = _TIER_FALLBACK_CHAIN[resolved_tier]
-    from app.shared.infra.tracing import get_llm_trace_context, langsmith_tracing_scope
+    from app.shared.infra.observability import get_llm_trace_context, langsmith_tracing_scope
 
     trace = get_llm_trace_context()
-    last_error: Exception | None = None
+    metadata = {
+        "llm_tier": resolved_tier,
+        "llm_candidate_tier": resolved_tier,
+        "llm_candidate_task_type": task_type.value,
+        "llm_strict_mode": True,
+        **dict(extra_metadata or {}),
+    }
 
-    for index, candidate_task_type in enumerate(chain):
-        candidate_tier = resolve_llm_tier(candidate_task_type)
-        metadata = {
-            "llm_tier": resolved_tier,
-            "llm_candidate_tier": candidate_tier,
-            "llm_candidate_task_type": candidate_task_type.value,
-            **dict(extra_metadata or {}),
-        }
-        if index > 0:
-            metadata["llm_fallback_from"] = chain[index - 1].value
-            metadata["llm_fallback_to"] = candidate_task_type.value
-
-        try:
-            with langsmith_tracing_scope(
-                subject=trace.subject,
-                build_session_id=trace.build_session_id,
-                workflow=trace.workflow,
-                lane=trace.lane,
-                node=trace.node,
-                extra_metadata=metadata,
-                extra_tags=[f"tier:{resolved_tier}", f"candidate:{candidate_task_type.value}"],
-            ):
-                if response_model is not None:
-                    return await acompletion_structured(
-                        response_model,
-                        messages,
-                        task_type=candidate_task_type,
-                        **kwargs,
-                    )
-                return await acompletion(
+    try:
+        with langsmith_tracing_scope(
+            subject=trace.subject,
+            build_session_id=trace.build_session_id,
+            workflow=trace.workflow,
+            lane=trace.lane,
+            node=trace.node,
+            extra_metadata=metadata,
+            extra_tags=[f"tier:{resolved_tier}", f"candidate:{task_type.value}"],
+        ):
+            if response_model is not None:
+                return await acompletion_structured(
+                    response_model,
                     messages,
-                    task_type=candidate_task_type,
+                    task_type=task_type,
                     **kwargs,
                 )
-        except Exception as exc:  # pragma: no cover - fallback behavior is integration-heavy
-            last_error = exc
-            logger.warning(
-                "llm_fallback_candidate_failed",
-                requested_task_type=task_type.value,
-                requested_tier=resolved_tier,
-                candidate_task_type=candidate_task_type.value,
-                candidate_tier=candidate_tier,
-                error=str(exc),
-                subject=trace.subject,
-                build_session_id=trace.build_session_id,
-                workflow=trace.workflow,
-                lane=trace.lane,
-                node=trace.node,
+            return await acompletion(
+                messages,
+                task_type=task_type,
+                **kwargs,
             )
-
-    assert last_error is not None
-    raise last_error
+    except Exception as exc:  # pragma: no cover - integration-heavy behavior
+        logger.warning(
+            "llm_primary_call_failed",
+            requested_task_type=task_type.value,
+            requested_tier=resolved_tier,
+            error=str(exc),
+            subject=trace.subject,
+            build_session_id=trace.build_session_id,
+            workflow=trace.workflow,
+            lane=trace.lane,
+            node=trace.node,
+        )
+        raise
 
 
 __all__ = ["LLMTier", "acompletion_with_fallback", "resolve_llm_tier"]

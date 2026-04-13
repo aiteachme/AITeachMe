@@ -25,6 +25,12 @@
 - 后端 API 服务 (Render): https://aiteachme.onrender.com/api/health
 
 
+## 环境变量
+```bash
+$env:PYTHONUTF8="1"
+```
+
+
 ## 启动
 
 ```bash

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import os
 
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -23,7 +25,7 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
 # NOTE: llm_support.routing is imported lazily inside LLMCallTracker.build_token_summary
 # to avoid circular import: tracing → llm_support/__init__ → fallback → tracing
-from app.shared.infra.runtime_mode import get_app_version, is_local_mode
+from app.shared.infra.runtime import get_app_version, is_local_mode
 
 logger = structlog.get_logger()
 
@@ -328,21 +330,146 @@ def build_langsmith_extra(
 
 
 def annotate_traceable(
-    func,
+    func=None,
     *,
     name: str,
     run_type: str = "chain",
     process_inputs=None,
     process_outputs=None,
+    name_factory: Callable[..., str | None] | None = None,
+    metadata_factory: Callable[..., Mapping[str, Any] | None] | None = None,
+    tags_factory: Callable[..., Sequence[str] | None] | None = None,
 ):
-    """Small wrapper around ``langsmith.traceable`` for repo-local helpers."""
+    """Repo-local ``@traceable`` wrapper with ambient trace-context injection."""
 
-    return traceable(
+    decorator = traceable_with_context(
         name=name,
         run_type=run_type,
         process_inputs=process_inputs,
         process_outputs=process_outputs,
-    )(func)
+        name_factory=name_factory,
+        metadata_factory=metadata_factory,
+        tags_factory=tags_factory,
+    )
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def _merge_langsmith_extras(
+    base: dict[str, Any] | None,
+    override: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not base:
+        return dict(override or {}) or None
+    if not override:
+        return dict(base)
+
+    merged = dict(base)
+    for key, value in override.items():
+        if value in (None, "", [], {}):
+            continue
+        if key == "metadata":
+            merged[key] = {
+                **dict(merged.get(key) or {}),
+                **dict(value or {}),
+            }
+            continue
+        if key == "tags":
+            merged[key] = list(dict.fromkeys([*(merged.get(key) or []), *(value or [])]))
+            continue
+        if key == "run_extra":
+            merged[key] = {
+                **dict(merged.get(key) or {}),
+                **dict(value or {}),
+            }
+            continue
+        merged[key] = value
+    return merged
+
+
+def _build_dynamic_langsmith_extra(
+    *,
+    name_factory: Callable[..., str | None] | None,
+    metadata_factory: Callable[..., Mapping[str, Any] | None] | None,
+    tags_factory: Callable[..., Sequence[str] | None] | None,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not langsmith_tracing_enabled():
+        return None
+    context = get_llm_trace_context()
+    extra_metadata = metadata_factory(*args, **kwargs) if metadata_factory is not None else None
+    extra_tags = list(tags_factory(*args, **kwargs) or []) if tags_factory is not None else None
+    extra = build_langsmith_extra(
+        subject=context.subject,
+        build_session_id=context.build_session_id,
+        workflow=context.workflow,
+        lane=context.lane,
+        node=context.node,
+        extra_metadata=extra_metadata,
+        extra_tags=extra_tags,
+    ) or {}
+    if name_factory is not None:
+        dynamic_name = str(name_factory(*args, **kwargs) or "").strip()
+        if dynamic_name:
+            extra["name"] = dynamic_name
+    return extra or None
+
+
+def traceable_with_context(
+    *,
+    name: str,
+    run_type: str = "chain",
+    process_inputs=None,
+    process_outputs=None,
+    name_factory: Callable[..., str | None] | None = None,
+    metadata_factory: Callable[..., Mapping[str, Any] | None] | None = None,
+    tags_factory: Callable[..., Sequence[str] | None] | None = None,
+):
+    """Decorator around ``@traceable`` that auto-injects ambient workflow context."""
+
+    traced = traceable(
+        name=name,
+        run_type=run_type,
+        process_inputs=process_inputs,
+        process_outputs=process_outputs,
+    )
+
+    def decorator(func):
+        traced_func = traced(func)
+
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, langsmith_extra: dict[str, Any] | None = None, **kwargs: Any):
+                dynamic_extra = _build_dynamic_langsmith_extra(
+                    name_factory=name_factory,
+                    metadata_factory=metadata_factory,
+                    tags_factory=tags_factory,
+                    args=args,
+                    kwargs=kwargs,
+                )
+                merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
+                return await traced_func(*args, langsmith_extra=merged_extra, **kwargs)
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def sync_wrapper(*args: Any, langsmith_extra: dict[str, Any] | None = None, **kwargs: Any):
+            dynamic_extra = _build_dynamic_langsmith_extra(
+                name_factory=name_factory,
+                metadata_factory=metadata_factory,
+                tags_factory=tags_factory,
+                args=args,
+                kwargs=kwargs,
+            )
+            merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
+            return traced_func(*args, langsmith_extra=merged_extra, **kwargs)
+
+        return sync_wrapper
+
+    return decorator
 
 
 

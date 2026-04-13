@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from urllib.parse import urlparse
 
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.search.types import SearchResult
 
 _TRUSTED_DOMAIN_KEYWORDS = (

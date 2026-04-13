@@ -22,7 +22,7 @@ from app.shared.infra.exceptions import (
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
-from app.shared.infra.runtime_mode import is_cloud_mode
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_artifact_store, get_content_store, run_store_sync
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (

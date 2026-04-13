@@ -15,7 +15,7 @@ from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
-from app.shared.infra.tracing import LLMCallRecord, get_llm_trace_context, get_tracker
+from app.shared.infra.observability import LLMCallRecord, get_llm_trace_context, get_tracker
 
 logger = structlog.get_logger()
 

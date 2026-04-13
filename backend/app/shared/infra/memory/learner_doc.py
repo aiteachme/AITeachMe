@@ -34,7 +34,7 @@ from pathlib import Path
 
 import structlog
 
-from app.shared.infra.runtime_paths import get_runtime_data_dir
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.memory.api import get_user_profile
 
 logger = structlog.get_logger()
