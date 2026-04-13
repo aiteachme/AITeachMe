@@ -29,6 +29,7 @@ from app.shared.infra.observability.tracing import (
     sanitize_langsmith_text,
     sanitize_langsmith_value,
     trace_substep,
+    traceable_with_context,
 )
 
 __all__ = [
@@ -60,4 +61,5 @@ __all__ = [
     "sanitize_langsmith_text",
     "sanitize_langsmith_value",
     "trace_substep",
+    "traceable_with_context",
 ]

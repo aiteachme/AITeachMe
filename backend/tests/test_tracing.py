@@ -19,7 +19,6 @@ from app.shared.infra.execution import (
 from app.shared.infra.observability import (
     LLMCallRecord,
     LLMCallTracker,
-    LLMTraceContext,
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,
@@ -426,22 +425,17 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    def fake_langsmith_trace(**kwargs):
-        captured["trace_kwargs"] = kwargs
+    def fake_trace_substep(name, *, run_type, inputs, metadata, tags):
+        captured["trace_kwargs"] = {
+            "name": name,
+            "run_type": run_type,
+            "inputs": inputs,
+            "metadata": metadata,
+            "tags": tags,
+        }
         return DummyTraceContext()
 
-    monkeypatch.setattr(runtime_stats_module, "langsmith_trace", fake_langsmith_trace)
-    monkeypatch.setattr(
-        runtime_stats_module,
-        "get_llm_trace_context",
-        lambda: LLMTraceContext(
-            subject="demo",
-            build_session_id="build-1",
-            workflow="digest.planner",
-            lane="planner",
-            node="load_context",
-        ),
-    )
+    monkeypatch.setattr(runtime_stats_module, "trace_substep", fake_trace_substep)
 
     state = {"progress_callback": callback}
 
@@ -465,17 +459,14 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
     assert state["runtime_steps"][0]["kind"] == "substep"
     assert state["runtime_steps"][0]["status"] == "ok"
 
-    # Verify langsmith_trace was called with correct args
+    # Verify tracked_step now delegates to trace_substep with the expected payload.
     tk = captured["trace_kwargs"]
     assert tk["name"] == "prepare_shared_inputs"
     assert tk["run_type"] == "prompt"
     assert tk["inputs"] == {"user_goal_present": True}
-    assert tk["subject"] == "demo"
-    assert tk["workflow"] == "digest.planner"
-    assert tk["lane"] == "planner"
-    assert tk["node"] == "load_context"
-    assert tk["extra_metadata"]["file_count"] == 2
-    assert tk["extra_metadata"]["substep"] == "prepare_shared_inputs"
+    assert tk["metadata"]["file_count"] == 2
+    assert tk["metadata"]["substep"] == "prepare_shared_inputs"
+    assert "substep:prepare_shared_inputs" in tk["tags"]
 
     assert captured["outputs"]["source_packet_count"] == 3
     assert captured["outputs"]["status"] == "ok"
@@ -502,68 +493,68 @@ def test_normalize_langsmith_run_type_falls_back_to_tool() -> None:
     assert normalize_langsmith_run_type("not-a-run-type") == "tool"
 
 
-def test_tool_registry_execute_emits_tool_trace(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    class DummyRun:
-        def end(self, *, outputs):
-            captured["outputs"] = outputs
-
-    class DummyTraceContext:
-        def __enter__(self):
-            return DummyRun()
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    def fake_langsmith_trace(**kwargs):
-        captured["trace_kwargs"] = kwargs
-        return DummyTraceContext()
-
-    monkeypatch.setattr(registry_module, "langsmith_trace", fake_langsmith_trace)
-    monkeypatch.setattr(
-        registry_module,
-        "get_llm_trace_context",
-        lambda: LLMTraceContext(
-            subject="math",
-            build_session_id="build-1",
-            workflow="digest.docgen",
-            lane="docgen",
-            node="writer",
-        ),
-    )
-
+def test_tool_registry_traced_runner_builds_tool_trace_payload() -> None:
     registry = ToolRegistry()
 
     async def demo_tool(query: str) -> dict[str, str]:
         return {"result": f"handled:{query}"}
 
-    registry.register(
-        ToolDefinition(
-            name="demo_tool",
-            description="demo",
-            parameters={"type": "object"},
-            handler=demo_tool,
-            is_async=True,
-            tags=["retrieval"],
-            source="python",
+    definition = ToolDefinition(
+        name="demo_tool",
+        description="demo",
+        parameters={"type": "object"},
+        handler=demo_tool,
+        is_async=True,
+        tags=["retrieval"],
+        source="python",
+    )
+    registry.register(definition)
+
+    payload = asyncio.run(
+        registry._run_traced_tool(
+            tool_name="demo_tool",
+            arguments={"query": "线性代数"},
+            tool_definition=definition,
         )
     )
-
     result = asyncio.run(registry.execute("demo_tool", query="线性代数"))
 
-    assert result == {"result": "handled:线性代数"}
-    assert captured["trace_kwargs"]["name"] == "tool.demo_tool"
-    assert captured["trace_kwargs"]["run_type"] == "tool"
-    assert captured["trace_kwargs"]["inputs"] == {
-        "name": "demo_tool",
-        "arguments": {"query": "线性代数"},
-    }
-    assert captured["outputs"] == {
+    assert payload["result"] == {"result": "handled:线性代数"}
+    assert payload["trace"] == {
         "success": True,
         "result_keys": ["result"],
         "result_type": "dict",
     }
+    assert result == {"result": "handled:线性代数"}
+
+    assert registry_module._tool_trace_inputs(
+        {
+            "tool_name": "demo_tool",
+            "arguments": {"query": "线性代数"},
+        }
+    ) == {
+        "name": "demo_tool",
+        "arguments": {"query": "线性代数"},
+    }
+
+    assert registry_module._tool_trace_metadata(
+        registry,
+        tool_name="demo_tool",
+        arguments={"query": "线性代数"},
+        tool_definition=definition,
+    ) == {
+        "tool_name": "demo_tool",
+        "tool_source": "python",
+        "tool_tags": ["retrieval"],
+        "tool_is_async": True,
+    }
+    assert registry_module._tool_trace_tags(
+        registry,
+        tool_name="demo_tool",
+        arguments={"query": "线性代数"},
+        tool_definition=definition,
+    ) == ["tool:demo_tool", "tool_tag:retrieval"]
+    assert registry_module._tool_trace_outputs({"trace": payload["trace"]}) == payload["trace"]
 
 
 def test_run_agent_loop_loads_project_tools_before_registry_lookup(monkeypatch) -> None:
@@ -665,5 +656,3 @@ def test_run_agent_loop_injects_tool_argument_overrides(monkeypatch) -> None:
             "kwargs": {"query": "偏导数", "subject": "math_demo"},
         }
     ]
-
-

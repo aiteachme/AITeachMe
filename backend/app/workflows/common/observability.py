@@ -23,12 +23,13 @@ from time import perf_counter
 from typing import Any
 
 import structlog
-from langsmith import traceable, tracing_context
+from langsmith import tracing_context
 
 from app.shared.infra.observability import (
     LangSmithRunType,
     llm_trace_scope,
     normalize_langsmith_run_type,
+    traceable_with_context,
 )
 from app.workflows.common.context import WorkflowContext
 
@@ -181,7 +182,7 @@ def workflow_tracer(
 
 
 # ---------------------------------------------------------------------------
-# traceable_run — thin alias for @traceable
+# traceable_run — repo-local @traceable wrapper
 # ---------------------------------------------------------------------------
 
 def traceable_run(
@@ -201,7 +202,7 @@ def traceable_run(
 ):
     """Decorator for traced prompt/helper/retriever functions.
 
-    This is a thin wrapper around ``langsmith.traceable``.
+    This is the workflow-facing wrapper around ``langsmith.traceable``.
     Usage is identical to the reference example::
 
         @traceable_run(name="digest.planner.build_prompt", run_type="prompt")
@@ -210,7 +211,7 @@ def traceable_run(
     """
 
     resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
-    return traceable(
+    return traceable_with_context(
         name=name,
         run_type=resolved_run_type,
         process_inputs=process_inputs,
