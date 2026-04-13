@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-12T12:52:09.046229",
-  "total_commits_analyzed": 509,
+  "generated_at": "2026-04-13T02:25:16.871928",
+  "total_commits_analyzed": 515,
   "stats": [
     {
       "date": "2026-03-11",
@@ -4073,6 +4073,54 @@
       "code_lines": 106495,
       "other_lines": 31592,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "34638ad",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "a6ded68",
+      "total_lines": 138406,
+      "code_lines": 106674,
+      "other_lines": 31732,
+      "message": "refactor: 拆分运行环境解析并补强 shared kernel 边界"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "3337661",
+      "total_lines": 138035,
+      "code_lines": 106461,
+      "other_lines": 31574,
+      "message": "refactor: 收敛 workflows 的 LangSmith 接口并清理 legacy 追踪"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "a424dd8",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "b17f313",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "6c76a27",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
