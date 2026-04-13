@@ -11,23 +11,7 @@ from app.shared.infra.tracing import (
     get_llm_trace_context,
     langsmith_trace,
     sanitize_langsmith_input,
-    sanitize_langsmith_output,
 )
-
-
-def _pages_preview(pages: list[ScrapedPage], *, limit: int = 3) -> list[dict[str, object]]:
-    preview: list[dict[str, object]] = []
-    for page in pages[: max(1, limit)]:
-        preview.append(
-            {
-                "url": page.url,
-                "title": page.title,
-                "reader_name": page.reader_name,
-                "success": page.success,
-                "error": page.error or "",
-            }
-        )
-    return preview
 
 
 async def read_urls(
@@ -62,7 +46,7 @@ async def read_urls(
             "url_count": len(ordered_urls),
             "max_workers": worker_count,
             "preferred_reader": preferred_reader or "",
-            "urls_preview": sanitize_langsmith_input(ordered_urls[:3], field_name="urls"),
+            "urls_preview": sanitize_langsmith_input(ordered_urls[:2], field_name="urls"),
         },
         subject=trace.subject,
         build_session_id=trace.build_session_id,
@@ -78,10 +62,6 @@ async def read_urls(
                 outputs={
                     "page_count": len(pages),
                     "success_count": sum(1 for page in pages if page.success),
-                    "pages_preview": sanitize_langsmith_output(
-                        _pages_preview(pages),
-                        field_name="pages_preview",
-                    ),
                 }
             )
         return pages

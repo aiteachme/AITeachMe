@@ -26,7 +26,6 @@ def _search_result_preview(results: list[SearchResult], *, limit: int = 3) -> li
                 "title": item.title,
                 "url": item.url,
                 "snippet": item.snippet,
-                "score": item.score,
                 "source": item.source,
             }
         )
@@ -141,7 +140,7 @@ class BaseRetriever(ABC):
                         "cache_status": cache_status,
                         "cache_hit": cache_status in {"hit", "shared"},
                         "results_preview": sanitize_langsmith_output(
-                            _search_result_preview(results),
+                            _search_result_preview(results, limit=2),
                             field_name="results_preview",
                         ),
                     }

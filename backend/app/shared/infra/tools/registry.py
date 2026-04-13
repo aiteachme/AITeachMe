@@ -15,6 +15,17 @@ from app.shared.infra.tracing import (
 logger = structlog.get_logger()
 
 
+def _tool_result_summary(result: Any) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "result_type": type(result).__name__,
+    }
+    if isinstance(result, dict):
+        summary["result_keys"] = sorted(str(key) for key in list(result.keys())[:6])
+    elif isinstance(result, (list, tuple, set)):
+        summary["item_count"] = len(result)
+    return summary
+
+
 class ToolRegistry:
     """管理工具的注册、查询、执行。"""
 
@@ -80,7 +91,7 @@ class ToolRegistry:
                 run.end(
                     outputs={
                         "success": True,
-                        "result": sanitize_langsmith_output(result, field_name="result"),
+                        **sanitize_langsmith_output(_tool_result_summary(result), field_name="result_summary"),
                     }
                 )
             return result

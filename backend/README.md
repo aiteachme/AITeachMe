@@ -109,9 +109,12 @@ langgraph dev --config langgraph.json
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=lsv2_xxx
 LANGSMITH_PROJECT=AITeachMe
+LANGSMITH_CAPTURE_INPUTS=true
+LANGSMITH_CAPTURE_OUTPUTS=true
 ```
 
-当前约定下，workflow 统一运行入口和 `app.shared.infra.llm` 会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
+当前约定下，workflow 统一运行入口和共享 infra trace 边界会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
+`LANGSMITH_CAPTURE_INPUTS / LANGSMITH_CAPTURE_OUTPUTS` 现在不仅影响 LLM span，也会影响 retriever / reader / tool / runtime 的输入输出预览；在 `APP_MODE=local` 下默认开启，显式配置只用于覆盖默认策略。
 
 ## 手动验证
 

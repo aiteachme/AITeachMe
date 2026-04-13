@@ -23,7 +23,7 @@ def _scraped_page_preview(page: ScrapedPage) -> dict[str, object]:
         "url": page.url,
         "title": page.title,
         "content_type": page.content_type,
-        "content_excerpt": page.content[:800],
+        "content_length": len(page.content),
         "reader_name": page.reader_name,
         "success": page.success,
         "error": page.error or "",
