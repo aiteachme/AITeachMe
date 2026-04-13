@@ -44,6 +44,40 @@ from app.workflows.common import (
 
 ---
 
+## 当前落地状态
+
+当前仓库的主执行 workflow 已经**大体统一到这 4 个入口**，但还不是每个文件都 100% 完全一致。
+
+### 已基本对齐的主线
+
+- `digest.planner`
+- `digest.docgen`
+- `digest.unified`
+- `digest.graph`
+- `interact.chat`
+- `ingest.fast_parse / ingest.deep_enhance`
+- `examine.question_build / examine.exam_grade`
+- `profile.pipeline`
+
+这些主线至少满足：
+
+- workflow root 通过 `run_state_graph(...)` 或 `invoke_state_graph(...)` 进入
+- graph node 通过 `workflow_tracer(...).node(...)` 接线
+- prompt builder 通过 `@traceable_run(...)`
+- node 内关键子步骤优先通过 `tracked_step(...)`
+
+### 仍存在的历史差异
+
+- 少数“概览图 / 非主执行图”仍是轻量 StateGraph，没有完整 tracing 包装；这类图主要用于展示结构，不作为 tracing 规范样板。
+- 少数旧节点内部仍会直接使用 `llm_trace_scope(...)` 做上下文桥接；这属于兼容保留，不应继续扩散为新写法。
+
+结论：
+
+- **把当前主执行 workflow 视为“基本统一”是合理的**
+- **把 `LANGSMITH.md` 视为后续新增代码的唯一规范来源更重要**
+
+---
+
 ## 详细用法
 
 ### 1. workflow 入口 — `run_state_graph`
@@ -320,6 +354,77 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 
 **关键约束：不要在 workflow 层手动调用 `langsmith_trace()`、`annotate_traceable()`、
 `build_langsmith_extra()` 等底层函数。** 所有 workflow 追踪都应该通过上面 4 个入口完成。
+
+进一步约束：
+
+- 新增 workflow graph 时，`workflow.add_node(...)` 默认都应包在 `trace.node(...)` 外层。
+- 新增 workflow runtime 入口时，默认走 `run_state_graph(...)` / `invoke_state_graph(...)`，不要自己直接 `graph.compile().ainvoke(...)`。
+- 新增 prompt builder 时，默认加 `@traceable_run(..., run_type="prompt")`，不要裸写成无名 helper。
+- 新增 node 内多步逻辑时，优先用 `tracked_step(...)` 表达关键边界，不要在 node 里零散手写 LangSmith span。
+- **不要在新的 workflow 业务代码里直接调用 `llm_trace_scope(...)`。**
+  这个接口只应该留在 `workflows/common`、共享 runtime 桥接层或少数历史兼容代码里。
+
+你可以把它理解成一条 code review 红线：
+
+- 如果在 `app/workflows/**` 新代码里看到了 `langsmith_trace(...)`
+- 或 `annotate_traceable(...)`
+- 或 `build_langsmith_extra(...)`
+- 或直接手写 `tracing_context(...)`
+- 或直接手写 `llm_trace_scope(...)`
+
+那通常说明这段代码没有按规范接入，应该优先重写成 4 个统一入口之一。
+
+---
+
+## 新 Workflow 模板
+
+新增 workflow 时，推荐直接按下面这个骨架起手：
+
+```python
+from langgraph.graph import END, StateGraph
+
+from app.workflows.common import run_state_graph, tracked_step, workflow_tracer
+from app.workflows.common.context import WorkflowContext
+
+
+def build_demo_graph(*, context: WorkflowContext) -> StateGraph:
+    workflow = StateGraph(DemoState)
+    trace = workflow_tracer(context=context, lane="demo")
+
+    @trace.node(name="load_context")
+    async def load_context_node(state: DemoState) -> dict:
+        async with tracked_step(
+            state,
+            name="prepare_inputs",
+            kind="substep",
+            trace_run_type="tool",
+        ) as step:
+            payload = await prepare_inputs(...)
+            step.set_outputs(item_count=len(payload))
+        return {"payload": payload}
+
+    @trace.node(name="finalize")
+    async def finalize_node(state: DemoState) -> dict:
+        return {"done": True}
+
+    workflow.add_node("load_context", load_context_node)
+    workflow.add_node("finalize", finalize_node)
+    workflow.set_entry_point("load_context")
+    workflow.add_edge("load_context", "finalize")
+    workflow.add_edge("finalize", END)
+    return workflow
+
+
+async def run_demo_workflow(*, context: WorkflowContext, initial_state: DemoState):
+    return await run_state_graph(
+        workflow_name="demo.workflow",
+        graph_builder=lambda: build_demo_graph(context=context),
+        initial_state=initial_state,
+        context=context,
+    )
+```
+
+只要新代码大体长这样，trace 风格通常就不会跑偏。
 
 ---
 
