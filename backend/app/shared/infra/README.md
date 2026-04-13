@@ -22,16 +22,22 @@
 
 ## 1. 先看它在系统里的位置
 
-当前推荐依赖方向：
+当前更准确的依赖关系应该理解成一个小型 DAG，而不是单条线：
 
 ```text
-api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
+api -> services
+services -> workflows
+services -> teaching
+workflows -> teaching
+services/workflows/teaching -> shared.infra -> shared.kernel
 ```
 
 这里的含义是：
 
 - `infra` 在业务层之下，给上层提供共用能力。
 - `infra` 可以被 `services`、`workflows`、`teaching` 复用。
+- `workflows` 可以依赖 `teaching` 提供的教学语义与文档脚手架。
+- `teaching` 不应该反向依赖 `workflows`。
 - `infra` 不应该反向依赖某个具体业务流程。
 
 另外注意一个很容易混的点：
@@ -62,8 +68,8 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 | Toolpack 扩展加载 | `tools/tool_loader.py` |
 | Skillpack 渲染与推荐 tag | `skills/` |
 | 共享记忆与学习档案 | `memory/` |
-| 统一 LangSmith / LLM tracing | `observability/tracing.py` |
-| 长执行单元的通用执行契约 | `execution/traced.py` |
+| 统一 LangSmith / LLM tracing | `observability/` |
+| 长执行单元的通用执行契约 | `execution/` |
 | 进程内后台任务注册 | `runtime/tasks.py` |
 | 学科级 embedding 绑定 | `subject_settings.py` |
 
@@ -184,14 +190,12 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 
 推荐继续阅读：
 
-- [search/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/infra/search/README.md)
+- `search/README.md`
 
-兼容层：
+旧的根层检索入口例如 `retrievers.py`、`reranker.py` 已经删除。
 
-- `retrievers.py`
-- `reranker.py`
-
-这两个文件仍保留旧导入路径，但新的实现不要继续往这里堆逻辑。
+如果你在旧文档或旧分支里看到这些名字，请把它们理解成历史入口；
+当前实现统一从 `search/` 及其子目录进入。
 
 ### 3.5 工具、扩展与技能包层
 
@@ -239,10 +243,12 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 
 主要文件：
 
+- `observability/__init__.py`
+  `infra` 层推荐直接从这里导入 tracing 能力；底层实现位于 `observability/tracing.py`。
 - `observability/tracing.py`
-  统一 LangSmith / LLM tracing、上下文透传、敏感字段裁剪、调用统计。
-- `observability/tracing.py`
-  内部已经包含 LLM 调用统计与摘要能力。
+  统一 LangSmith / LLM tracing、上下文透传、敏感字段裁剪、调用统计与摘要能力。
+- `execution/__init__.py`
+  `infra` 层推荐直接从这里导入共享执行契约；底层实现位于 `execution/traced.py`。
 - `execution/traced.py`
   通用长执行单元契约，例如章节 research/writer 一类 runtime 单元会复用这个抽象。
 - `exceptions.py`
@@ -286,9 +292,9 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 一个 workflow 节点如果要调模型，通常会经过：
 
 1. `workflows/common` 建立 workflow 上下文
-2. `observability/tracing.py` 用 `llm_trace_scope(...)` 绑定 subject / workflow / lane / node
+2. `app.shared.infra.observability` 用 `llm_trace_scope(...)` 绑定 subject / workflow / lane / node
 3. `llm_support/*` 发起实际模型调用
-4. `observability/tracing.py` 内部统计 token 和延迟
+4. `app.shared.infra.observability` 内部统计 token 和延迟
 
 所以：
 
@@ -382,7 +388,8 @@ DocGen / Planner / Interact 需要找资料时，通常是：
 | 新增一个教学工具 | `teaching.tools` |
 | 新增一个章节脚手架函数 | `teaching.documents` |
 | 新增一个 Digest graph 节点 | `workflows.digest...` |
-| 新增一个 workflow 运行步骤的 trace 规则 | `workflows.common` 或 `shared.infra.observability` |
+| 新增一个 workflow 节点 / 步骤的 trace 规则 | `workflows.common` |
+| 新增一个共享 tracing primitive 或注解式 helper | `shared.infra.observability` |
 
 ## 8. 阅读建议
 
@@ -397,7 +404,7 @@ DocGen / Planner / Interact 需要找资料时，通常是：
 7. `search/__init__.py`
 8. `tools/__init__.py`
 9. `memory/__init__.py`
-10. `observability/tracing.py` 与 `execution/traced.py`
+10. `observability/__init__.py` 与 `execution/__init__.py`
 
 ## 9. 一句话总结
 
