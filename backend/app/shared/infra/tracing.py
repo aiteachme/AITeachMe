@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 from collections import defaultdict
@@ -36,6 +37,20 @@ LANGSMITH_RUN_TYPES: tuple[LangSmithRunType, ...] = (
     "prompt",
     "parser",
 )
+_SAFE_LANGSMITH_FIELDS = {
+    "content_type",
+    "finish_reason",
+    "id",
+    "model",
+    "name",
+    "reader_name",
+    "retriever_name",
+    "role",
+    "source",
+    "tool_call_id",
+    "type",
+    "url",
+}
 
 
 @dataclass
@@ -84,6 +99,84 @@ def _langsmith_api_key_present() -> bool:
         if os.getenv(env_key, "").strip():
             return True
     return False
+
+
+def _serialize_langsmith_value(value: Any) -> Any:
+    if hasattr(value, "model_dump") and callable(getattr(value, "model_dump", None)):
+        value = value.model_dump(mode="json")
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
+def _redacted_data_url(text: str) -> str:
+    prefix = str(text or "").split(";", 1)[0]
+    mime_type = prefix[5:].strip().lower() if prefix.lower().startswith("data:") else "unknown"
+    return f"[redacted:data-url:{mime_type or 'unknown'}]"
+
+
+def sanitize_langsmith_text(
+    text: str,
+    *,
+    capture_text: bool,
+    field_name: str = "",
+) -> str:
+    normalized_field = str(field_name or "").strip().lower()
+    if text.lower().startswith("data:"):
+        return _redacted_data_url(text)
+    if normalized_field in {"url", "urls", "image_url", "base64"} and not capture_text:
+        return "[redacted:url]"
+    if normalized_field in _SAFE_LANGSMITH_FIELDS:
+        return _sanitize_langsmith_metadata_value(text)
+    if not capture_text and text:
+        return "[redacted]"
+    return _sanitize_langsmith_metadata_value(text)
+
+
+def sanitize_langsmith_value(
+    value: Any,
+    *,
+    capture_text: bool,
+    field_name: str = "",
+) -> Any:
+    if hasattr(value, "model_dump") and callable(getattr(value, "model_dump", None)):
+        value = value.model_dump(mode="json")
+    if isinstance(value, Mapping):
+        return {
+            str(key): sanitize_langsmith_value(item, capture_text=capture_text, field_name=str(key))
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [
+            sanitize_langsmith_value(item, capture_text=capture_text, field_name=field_name)
+            for item in value
+        ]
+    if isinstance(value, str):
+        return sanitize_langsmith_text(value, capture_text=capture_text, field_name=field_name)
+    return _serialize_langsmith_value(value)
+
+
+def sanitize_langsmith_input(
+    value: Any,
+    *,
+    field_name: str = "",
+) -> Any:
+    return sanitize_langsmith_value(
+        value,
+        capture_text=langsmith_capture_inputs_enabled(),
+        field_name=field_name,
+    )
+
+
+def sanitize_langsmith_output(
+    value: Any,
+    *,
+    field_name: str = "",
+) -> Any:
+    return sanitize_langsmith_value(
+        value,
+        capture_text=langsmith_capture_outputs_enabled(),
+        field_name=field_name,
+    )
 
 
 def _sanitize_langsmith_metadata_value(value: Any) -> Any:
@@ -690,4 +783,3 @@ def get_tracker() -> LLMCallTracker:
     if _tracker is None:
         _tracker = LLMCallTracker()
     return _tracker
-

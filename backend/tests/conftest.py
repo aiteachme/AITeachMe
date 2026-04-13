@@ -15,6 +15,12 @@ if backend_root_str not in sys.path:
 from app.models import User
 
 
+@pytest.fixture(autouse=True)
+def disable_langsmith_uploads_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Keep pytest runs from polluting the shared LangSmith project with test traces.
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+
+
 @pytest.fixture
 def session() -> Session:
     engine = create_engine(

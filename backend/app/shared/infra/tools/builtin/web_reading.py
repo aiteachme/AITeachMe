@@ -7,7 +7,11 @@ import asyncio
 from app.shared.infra.config import get_settings
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.tracing import (
+    get_llm_trace_context,
+    langsmith_trace,
+    sanitize_langsmith_input,
+)
 
 
 async def read_urls(
@@ -42,6 +46,7 @@ async def read_urls(
             "url_count": len(ordered_urls),
             "max_workers": worker_count,
             "preferred_reader": preferred_reader or "",
+            "urls_preview": sanitize_langsmith_input(ordered_urls[:2], field_name="urls"),
         },
         subject=trace.subject,
         build_session_id=trace.build_session_id,

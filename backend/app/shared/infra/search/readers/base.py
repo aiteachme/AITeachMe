@@ -8,9 +8,26 @@ from collections.abc import Iterable
 
 from app.shared.infra.search.cache import get_reader_runtime_cache
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.tracing import (
+    get_llm_trace_context,
+    langsmith_trace,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 
 _REGISTERED_READER_TYPES: dict[str, type["BaseReader"]] = {}
+
+
+def _scraped_page_preview(page: ScrapedPage) -> dict[str, object]:
+    return {
+        "url": page.url,
+        "title": page.title,
+        "content_type": page.content_type,
+        "content_length": len(page.content),
+        "reader_name": page.reader_name,
+        "success": page.success,
+        "error": page.error or "",
+    }
 
 
 def _normalize_registry_name(value: str) -> str:
@@ -101,7 +118,7 @@ class BaseReader(ABC):
         with langsmith_trace(
             name=f"reader.{self.name}",
             run_type="tool",
-            inputs={"url": url},
+            inputs={"url": sanitize_langsmith_input(url, field_name="url")},
             subject=trace.subject,
             build_session_id=trace.build_session_id,
             workflow=trace.workflow,
@@ -132,6 +149,10 @@ class BaseReader(ABC):
                         "error": result.error or "",
                         "cache_status": cache_status,
                         "cache_hit": cache_status in {"hit", "shared"},
+                        "page_preview": sanitize_langsmith_output(
+                            _scraped_page_preview(result),
+                            field_name="page_preview",
+                        ),
                     }
                 )
             return result

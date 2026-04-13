@@ -561,7 +561,8 @@ def test_tool_registry_execute_emits_tool_trace(monkeypatch) -> None:
     }
     assert captured["outputs"] == {
         "success": True,
-        "result": {"result": "handled:线性代数"},
+        "result_keys": ["result"],
+        "result_type": "dict",
     }
 
 
@@ -664,7 +665,6 @@ def test_run_agent_loop_injects_tool_argument_overrides(monkeypatch) -> None:
             "kwargs": {"query": "偏导数", "subject": "math_demo"},
         }
     ]
-
 
 
 
