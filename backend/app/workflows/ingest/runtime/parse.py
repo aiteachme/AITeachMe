@@ -1,10 +1,9 @@
+"""Main ingest parse workflow entry point (Phase 1 + Phase 2 dispatch)."""
+
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import json
-import mimetypes
-import re
 import shutil
 import tempfile
 import time
@@ -13,371 +12,34 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.env_support import get_env
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_content_store, run_store_sync
-from app.models import IngestStatus, RawFileAsset, TaskStatus
+from app.shared.infra.env_support import get_env
+from app.shared.infra.storage import get_content_store
+from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.common.result import WorkflowResult, err_result, ok_result
-from app.workflows.ingest.events import (
-    IngestFileEnhanceFailedEvent,
-    IngestFileEnhanceStartedEvent,
-    IngestFileReadyForDigestEvent,
-)
-from app.workflows.ingest.parsing.classifier import ClassificationResult, classify_file
+from app.workflows.ingest.parsing.classifier import classify_file
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     get_text_language_hint,
     is_text_extension,
 )
-from app.workflows.ingest.parsing.orchestrator import deep_enhance_file, fast_parse_file
+from app.workflows.ingest.parsing.orchestrator import fast_parse_file
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.parsing.types import ParserRunOptions
-from app.workflows.ingest.state import IngestParseState
 from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.workflows.ingest.state import IngestParseState
 
-try:
-    from PIL import Image
-except ImportError:
-    Image = None
+from ._helpers import (
+    _MinerUFastParseResult,
+    _background_tasks,
+    _build_asset_rows,
+    _compute_quality_score,
+)
+from .enhance import _run_deep_enhance_background
 
 logger = structlog.get_logger()
-
-_PAGE_RE = re.compile(r"(?:page|p|slide|s)[_\-]?(\d{1,4})", re.IGNORECASE)
-
-# Track background tasks to prevent GC collection (RISK-2 fix)
-_background_tasks: set[asyncio.Task] = set()
-
-
-@dataclass(frozen=True, slots=True)
-class _MinerUFastParseResult:
-    markdown: str
-    parser_used: str
-    attempted_parsers: list[str]
-    parser_elapsed_s: dict[str, float]
-    rewritten_image_refs: int
-    extracted_data_images: int
-    appended_asset_images: int
-    needs_enhance: bool
-
-
-def create_parse_file_initial_state(*, subject: str, file_id: int) -> IngestParseState:
-    return {
-        "subject": subject,
-        "file_id": file_id,
-        "error": None,
-    }
-
-
-def _guess_asset_kind(filename: str) -> str:
-    lowered = filename.lower()
-    if "formula" in lowered or "equation" in lowered or "latex" in lowered:
-        return "formula_image"
-    return "image"
-
-
-def _guess_page_num(filename: str) -> int | None:
-    match = _PAGE_RE.search(filename)
-    if not match:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
-
-
-def _compute_quality_score(*, markdown: str, image_count: int, classification: dict[str, object]) -> float:
-    score = 0.55
-    if markdown.strip():
-        score += 0.2
-    if len(markdown.strip()) >= 500:
-        score += 0.1
-    if image_count > 0:
-        score += 0.05
-    if classification.get("has_tables"):
-        score += 0.05
-    if classification.get("has_formulas"):
-        score += 0.05
-    return max(0.0, min(round(score, 3), 1.0))
-
-
-def _resolve_mineru_token_source(*, requested_parser_provider: str | None, mineru_token: str | None) -> str:
-    """Label the effective MinerU token source for safe diagnostics.
-
-    We only expose the source label in logs; the token value itself must never be logged.
-    """
-
-    if requested_parser_provider != "mineru":
-        return "not_requested"
-    if mineru_token and mineru_token.strip():
-        return "request_or_env"
-    return "missing"
-
-
-def _read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
-    if Image is None:
-        return None, None
-    try:
-        with Image.open(path) as image:
-            return image.width, image.height
-    except Exception:
-        return None, None
-
-
-def _build_asset_rows(
-    *,
-    raw_file_id: int,
-    asset_dir: Path,
-    asset_storage_dir: str,
-    storage_backend: str,
-) -> list[RawFileAsset]:
-    rows: list[RawFileAsset] = []
-    normalized_storage_dir = asset_storage_dir.rstrip("/")
-    for path in sorted(asset_dir.iterdir()):
-        if not path.is_file():
-            continue
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        width, height = _read_image_dimensions(path)
-        rows.append(
-            RawFileAsset(
-                raw_file_id=raw_file_id,
-                asset_name=path.name,
-                asset_kind=_guess_asset_kind(path.name),
-                storage_backend=storage_backend,
-                storage_key=f"{normalized_storage_dir}/{path.name}",
-                mime_type=mime_type,
-                page_num=_guess_page_num(path.name),
-                width=width,
-                height=height,
-                ocr_text=None,
-            )
-        )
-    return rows
-
-
-# ── Phase 2 background task ──
-
-
-async def _run_deep_enhance_background(
-    *,
-    subject: str,
-    file_id: int,
-    event_bus=None,
-) -> None:
-    """Background Phase 2: LLM Vision OCR enhancement.
-
-    This runs as an asyncio.Task after Phase 1 completes. It reads the
-    Phase 1 markdown, enhances it with OCR, and updates the DB status.
-    """
-
-    enhance_logger = logger.bind(subject=subject, file_id=file_id, phase="deep_enhance")
-    enhance_logger.info("deep_enhance_background_started")
-
-    cs = get_content_store()
-    settings = get_settings()
-    try:
-        # Load context from DB
-        with managed_session() as session:
-            raw_file = get_raw_file_by_id(session, file_id)
-            if raw_file is None:
-                enhance_logger.warning("deep_enhance_raw_file_not_found")
-                return
-
-            _temp_dir = Path(tempfile.mkdtemp(prefix="atm_enhance_"))
-            file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
-            # Materialize markdown to temp for Phase 2 parsing
-            md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
-            markdown_path = _temp_dir / f"{file_id}.md"
-            md_text = run_store_sync(cs.read_text, md_key, default=None)
-            if md_text:
-                markdown_path.write_text(md_text, encoding="utf-8")
-            else:
-                markdown_path.write_text(raw_file.markdown_content or "", encoding="utf-8")
-            asset_dir = _temp_dir / "assets" / str(file_id)
-            asset_dir.mkdir(parents=True, exist_ok=True)
-            asset_name_prefix = build_asset_name_prefix(
-                filename=raw_file.original_filename,
-                file_uid=raw_file.uid,
-                file_id=file_id,
-            )
-
-            # Rebuild classification and parse_plan
-            classification = None
-            if raw_file.classification_json:
-                try:
-                    classification = ClassificationResult(**json.loads(raw_file.classification_json))
-                except Exception:
-                    pass
-
-            parse_plan = build_parse_plan(
-                file_path=str(file_path),
-                filetype=raw_file.file_ext,
-                file_size_bytes=raw_file.size_bytes,
-                classification=classification,
-            )
-            parse_plan.options.asset_name_prefix = asset_name_prefix
-
-            # Update status to ENHANCING
-            update_raw_file(
-                session,
-                raw_file,
-                ingest_status=IngestStatus.ENHANCING.value,
-                digest_current_step="ingest.enhance.running",
-            )
-
-        # Publish enhance started event
-        if event_bus is not None:
-            await event_bus.publish(
-                IngestFileEnhanceStartedEvent(subject=subject, file_id=file_id)
-            )
-
-        # Read Phase 1 markdown
-        if not markdown_path.exists():
-            enhance_logger.warning("deep_enhance_markdown_not_found", path=str(markdown_path))
-            with managed_session() as session:
-                raw_file = get_raw_file_by_id(session, file_id)
-                if raw_file is not None:
-                    update_raw_file(
-                        session,
-                        raw_file,
-                        ingest_status=IngestStatus.ENHANCE_FAILED.value,
-                        digest_current_step="ingest.enhance.failed",
-                    )
-            return
-
-        markdown = markdown_path.read_text(encoding="utf-8")
-
-        # ── Step 1: Quality re-parse with pymupdf4llm (no LLM needed) ──
-        # Phase 1 used pymupdf_native for speed. Now re-parse with pymupdf4llm
-        # for better markdown formatting (tables, headings, formula rendering).
-        extension = Path(str(file_path)).suffix.lower()
-        # MinerU already returns a high-quality markdown; avoid overriding it here.
-        if extension == ".pdf" and raw_file.parser_used != "mineru":
-            try:
-                from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
-                from app.workflows.ingest.parsing.types import ParserRunOptions
-                from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
-
-                if PDF_PYMUPDF4LLM_AVAILABLE:
-                    quality_options = ParserRunOptions(
-                        ocr_language_mode=parse_plan.options.ocr_language_mode,
-                        asset_name_prefix=asset_name_prefix,
-                    )
-                    raw_quality = await parse_pdf_with_pymupdf4llm(
-                        file_path, asset_dir, quality_options,
-                    )
-                    # BUG-2 fix: canonicalize_markdown returns CanonicalMarkdownResult, extract .markdown
-                    quality_result = canonicalize_markdown(
-                        raw_quality,
-                        asset_dir=asset_dir,
-                        asset_link_prefix=f"../assets/{file_id}",
-                        asset_name_prefix=asset_name_prefix,
-                    )
-                    quality_md = quality_result.markdown
-                    # Only use quality version if it has reasonable content
-                    if quality_md and len(quality_md.strip()) > len(markdown.strip()) * 0.5:
-                        # BUG-1 fix: capture old length before reassignment
-                        old_chars = len(markdown)
-                        markdown = quality_md
-                        markdown_path.write_text(markdown, encoding="utf-8")
-                        enhance_logger.info(
-                            "quality_reparse_completed",
-                            parser="pymupdf4llm",
-                            chars_before=old_chars,
-                            chars_after=len(quality_md),
-                        )
-            except Exception as exc:
-                enhance_logger.warning("quality_reparse_failed", error=str(exc))
-                # Continue with Phase 1 markdown — quality re-parse is best-effort
-
-        # ── Step 2: LLM OCR enrichment (only if vision model configured) ──
-        has_vision = get_settings().has_vision_ocr_model
-
-        if has_vision:
-            enhance_result = await deep_enhance_file(
-                markdown,
-                file_path=str(file_path),
-                asset_dir=str(asset_dir),
-                asset_link_prefix=f"../assets/{file_id}",
-                asset_name_prefix=asset_name_prefix,
-                parse_plan=parse_plan,
-                classification=classification,
-            )
-        else:
-            enhance_logger.info(
-                "skipping_ocr_no_vision_model",
-                hint="Set OCR_MODEL in .env to enable LLM OCR (e.g. OCR_MODEL=qwen-vl-max)",
-            )
-            # Create a dummy result — no OCR was done
-            from app.workflows.ingest.parsing.orchestrator import DeepEnhanceResult
-            enhance_result = DeepEnhanceResult(markdown=markdown)
-
-        # Overwrite markdown with enhanced version
-        markdown_path.write_text(enhance_result.markdown, encoding="utf-8")
-        md_key = raw_file.markdown_path or cs.raw_markdown_key(subject, file_id)
-        await cs.write_text(md_key, enhance_result.markdown)
-
-        # Update DB: READY_FOR_DIGEST
-        with managed_session() as session:
-            raw_file = get_raw_file_by_id(session, file_id)
-            if raw_file is not None:
-                # Update parse_metadata with OCR stats
-                parse_metadata = {}
-                if raw_file.parse_metadata_json:
-                    try:
-                        parse_metadata = json.loads(raw_file.parse_metadata_json)
-                    except Exception:
-                        pass
-                parse_metadata["asset_ocr_images"] = enhance_result.asset_ocr_images
-                parse_metadata["asset_ocr_replacements"] = enhance_result.asset_ocr_replacements
-                parse_metadata["provider_status"] = "enhanced"
-
-                update_raw_file(
-                    session,
-                    raw_file,
-                    parsed_markdown=enhance_result.markdown,
-                    parse_metadata_json=json.dumps(parse_metadata, ensure_ascii=False),
-                    ingest_status=IngestStatus.READY_FOR_DIGEST.value,
-                    digest_current_step="ingest.enhance.completed",
-                )
-
-        # Publish ready event
-        if event_bus is not None:
-            await event_bus.publish(
-                IngestFileReadyForDigestEvent(subject=subject, file_id=file_id)
-            )
-        enhance_logger.info(
-            "deep_enhance_background_completed",
-            ocr_images=enhance_result.asset_ocr_images,
-            ocr_replacements=enhance_result.asset_ocr_replacements,
-        )
-
-    except Exception as exc:
-        enhance_logger.exception("deep_enhance_background_failed", error=str(exc))
-        # Mark as ENHANCE_FAILED (Phase 1 result preserved)
-        try:
-            with managed_session() as session:
-                raw_file = get_raw_file_by_id(session, file_id)
-                if raw_file is not None:
-                    update_raw_file(
-                        session,
-                        raw_file,
-                        ingest_status=IngestStatus.ENHANCE_FAILED.value,
-                        digest_current_step="ingest.enhance.failed",
-                        parse_error_message=f"Phase 2 enhance failed: {exc}",
-                    )
-            if event_bus is not None:
-                await event_bus.publish(
-                    IngestFileEnhanceFailedEvent(
-                        subject=subject, file_id=file_id, error_message=str(exc)
-                    )
-                )
-        except Exception:
-            enhance_logger.exception("deep_enhance_failure_update_error")
-
-
-# ── Main entry point ──
 
 
 async def run_parse_file_workflow(
@@ -447,7 +109,7 @@ async def run_parse_file_workflow(
                 session.refresh(raw_file)
 
             # ── Load "parse request" metadata (set at upload time) ──
-            # 前端 settings 属于“本地配置”，后端后台 ingest 无法直接读取。
+            # 前端 settings 属于"本地配置"，后端后台 ingest 无法直接读取。
             # 因此 upload 时会把 parser_provider 与 MinerU 参数作为 multipart 字段传来，并暂存到 parse_metadata_json。
             # 这里读取后：
             # 1) 把 token 拿到内存中用于本次解析
@@ -737,7 +399,7 @@ async def run_parse_file_workflow(
             # Build a FastParseResult-compatible payload for the rest of the pipeline.
             # We keep the same shape so downstream metadata/status logic stays unchanged.
             # MinerU 已经输出高质量 markdown（并可按需开启 is_ocr）。
-            # 为了保持“选择 MinerU 就不走原有解析/增强链路”的直觉，这里默认不再触发 Phase 2。
+            # 为了保持"选择 MinerU 就不走原有解析/增强链路"的直觉，这里默认不再触发 Phase 2。
             # 如需 LLM Vision OCR 增强，可后续单独提供显式开关。
             needs_enhance = False
 
