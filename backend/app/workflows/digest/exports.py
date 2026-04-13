@@ -49,8 +49,7 @@ def _build_unified_graph_for_export():
 
 _DOCGEN_SEND_EDGES = (
     "load_context -. Send xN .-> targeted_research",
-    "targeted_research --> collect_materials",
-    "collect_materials -. Send xN .-> pedagogy_craft",
+    "resolve_titles -. Send xN .-> pedagogy_craft",
     "pedagogy_craft --> collect_drafts",
     "collect_drafts --> enrich_document",
     "enrich_document --> inject_examine",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
@@ -98,14 +98,34 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     )
 
     workflow.set_entry_point("load_context")
-    workflow.add_conditional_edges("load_context", route_after_load_context, {"continue": "targeted_research", "fail": END})
+    workflow.add_conditional_edges(
+        "load_context",
+        route_after_load_context,
+        {"continue": "targeted_research", "fail": END},
+    )
     workflow.add_edge("targeted_research", "collect_materials")
     workflow.add_edge("collect_materials", "resolve_titles")
-    workflow.add_conditional_edges("resolve_titles", build_craft_sends)
+    workflow.add_conditional_edges(
+        "resolve_titles",
+        build_craft_sends,
+        ["pedagogy_craft"],
+    )
     workflow.add_edge("pedagogy_craft", "collect_drafts")
-    workflow.add_conditional_edges("collect_drafts", route_after_step, {"continue": "enrich_document", "fail": END})
-    workflow.add_conditional_edges("enrich_document", route_after_step, {"continue": "inject_examine", "fail": END})
-    workflow.add_conditional_edges("inject_examine", route_after_step, {"continue": "finalize_assemble", "fail": END})
+    workflow.add_conditional_edges(
+        "collect_drafts",
+        route_after_step,
+        {"continue": "enrich_document", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "enrich_document",
+        route_after_step,
+        {"continue": "inject_examine", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "inject_examine",
+        route_after_step,
+        {"continue": "finalize_assemble", "fail": END},
+    )
     workflow.add_edge("finalize_assemble", END)
     return workflow
 
@@ -148,11 +168,11 @@ def create_docgen_initial_state(
     }
 
 
-def route_after_step(state: DocGenState) -> str:
+def route_after_step(state: DocGenState) -> Literal["fail", "continue"]:
     return "fail" if state.get("error") else "continue"
 
 
-def route_after_load_context(state: DocGenState) -> list[Send] | str:
+def route_after_load_context(state: DocGenState) -> list[Send] | Literal["fail"]:
     if state.get("error"):
         return "fail"
     return build_research_sends(state)
@@ -243,6 +263,5 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
-
 
 
