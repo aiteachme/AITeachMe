@@ -1,4 +1,8 @@
-"""LangGraph 运行时薄封装。"""
+"""LangGraph 运行时薄封装。
+
+Simplified: passes LangGraph config for native tracing instead of
+manually wrapping with ``_annotate_traceable``.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +10,60 @@ import asyncio
 from time import perf_counter
 from typing import Any
 
-from app.shared.infra.tracing import annotate_traceable, build_langsmith_extra, llm_trace_scope
+import structlog
+
+from app.shared.infra.tracing import (
+    get_langsmith_project_name,
+    langsmith_tracing_enabled,
+    llm_trace_scope,
+)
 from app.workflows.common.context import WorkflowContext
 from app.workflows.common.result import WorkflowResult, err_result, ok_result
+
+logger = structlog.get_logger(__name__)
+
+
+def _build_graph_config(
+    *,
+    workflow_name: str,
+    subject: str = "",
+    build_session_id: str = "",
+    lane: str = "",
+    extra_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a LangGraph invoke config that auto-propagates to LangSmith."""
+
+    metadata: dict[str, Any] = {
+        "app": "aiteachme-backend",
+        "workflow": workflow_name,
+    }
+    if subject:
+        metadata["subject"] = subject
+    if build_session_id:
+        metadata["build_session_id"] = build_session_id
+    if lane:
+        metadata["lane"] = lane
+    if extra_metadata:
+        metadata.update(
+            {k: v for k, v in extra_metadata.items() if v not in (None, "", [], {})}
+        )
+
+    tags = ["aiteachme", f"workflow:{workflow_name}"]
+    if lane:
+        tags.append(f"lane:{lane}")
+
+    config: dict[str, Any] = {
+        "run_name": workflow_name,
+        "tags": tags,
+        "metadata": metadata,
+    }
+
+    if langsmith_tracing_enabled():
+        project_name = get_langsmith_project_name()
+        if project_name:
+            config["project_name"] = project_name
+
+    return config
 
 
 async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
@@ -32,29 +87,23 @@ async def invoke_state_graph(
     extra_metadata: dict[str, Any] | None = None,
 ) -> Any:
     """Execute a StateGraph directly while preserving shared tracing context."""
-    traced_invoke = annotate_traceable(
-        _invoke_compiled_graph,
-        name=workflow_name,
-        run_type="chain",
-        process_inputs=lambda inputs: _workflow_inputs(inputs.get("initial_state")),
-        process_outputs=_workflow_outputs,
-    )
-    return await traced_invoke(
-        initial_state=initial_state,
-        graph_builder=graph_builder,
+
+    config = _build_graph_config(
+        workflow_name=workflow_name,
         subject=subject,
         build_session_id=build_session_id,
-        workflow_name=workflow_name,
         lane=lane,
-        langsmith_extra=build_langsmith_extra(
-            subject=subject,
-            build_session_id=build_session_id,
-            workflow=workflow_name,
-            lane=lane,
-            node=workflow_name,
-            extra_metadata=extra_metadata,
-        ),
+        extra_metadata=extra_metadata,
     )
+    with llm_trace_scope(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow_name,
+        lane=lane,
+    ):
+        graph = graph_builder()
+        compiled = graph.compile()
+        return await compiled.ainvoke(initial_state, config=config)
 
 
 async def run_state_graph(
@@ -69,31 +118,29 @@ async def run_state_graph(
     workflow_logger = context.get_logger()
     started_at = perf_counter()
     workflow_logger.info("workflow_started", workflow_name=workflow_name)
+
     build_session_id = str(context.metadata.get("build_session_id", ""))
+    lane = str(context.metadata.get("lane", "") or "")
+
+    config = _build_graph_config(
+        workflow_name=workflow_name,
+        subject=context.subject,
+        build_session_id=build_session_id,
+        lane=lane,
+        extra_metadata={"context_metadata": dict(context.metadata)},
+    )
+
     try:
-        traced_invoke = annotate_traceable(
-            _invoke_compiled_graph,
-            name=workflow_name,
-            run_type="chain",
-            process_inputs=lambda inputs: _workflow_inputs(inputs.get("initial_state")),
-            process_outputs=_workflow_outputs,
-        )
-        final_state = await traced_invoke(
-            initial_state=initial_state,
-            graph_builder=graph_builder,
+        with llm_trace_scope(
             subject=context.subject,
             build_session_id=build_session_id,
-            workflow_name=workflow_name,
-            lane=str(context.metadata.get("lane", "") or ""),
-            langsmith_extra=build_langsmith_extra(
-                subject=context.subject,
-                build_session_id=build_session_id,
-                workflow=workflow_name,
-                lane=str(context.metadata.get("lane", "") or ""),
-                node=workflow_name,
-                extra_metadata={"context_metadata": dict(context.metadata)},
-            ),
-        )
+            workflow=workflow_name,
+            lane=lane,
+        ):
+            graph = graph_builder()
+            compiled = graph.compile()
+            final_state = await compiled.ainvoke(initial_state, config=config)
+
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         workflow_logger.info("workflow_completed", workflow_name=workflow_name, elapsed_ms=elapsed_ms)
         if isinstance(final_state, dict):
@@ -117,71 +164,3 @@ async def run_state_graph(
             str(exc),
             metadata={"workflow_name": workflow_name},
         )
-
-
-async def _invoke_compiled_graph(
-    *,
-    initial_state: Any,
-    graph_builder,
-    subject: str,
-    build_session_id: str,
-    workflow_name: str,
-    lane: str = "",
-    langsmith_extra: dict[str, Any] | None = None,
-) -> Any:
-    del langsmith_extra
-    with llm_trace_scope(
-        subject=subject,
-        build_session_id=build_session_id,
-        workflow=workflow_name,
-        lane=lane,
-    ):
-        graph = graph_builder()
-        compiled = graph.compile()
-        return await compiled.ainvoke(initial_state)
-
-
-def _workflow_inputs(initial_state: Any) -> dict[str, Any]:
-    if not isinstance(initial_state, dict):
-        return {}
-    inputs: dict[str, Any] = {}
-    for field_name in (
-        "subject",
-        "build_session_id",
-        "planner_session_id",
-        "confirmed_plan_id",
-        "digest_mode",
-        "course_type",
-        "retrieval_profile",
-        "teaching_action",
-    ):
-        value = initial_state.get(field_name)
-        if value not in (None, "", [], {}):
-            inputs[field_name] = value
-    for field_name, alias in (
-        ("file_ids", "file_count"),
-        ("chunk_ids", "chunk_count"),
-        ("message_history", "message_count"),
-    ):
-        value = initial_state.get(field_name)
-        if isinstance(value, list) and value:
-            inputs[alias] = len(value)
-    return inputs
-
-
-def _workflow_outputs(final_state: Any, *, elapsed_ms: int | None = None) -> dict[str, Any]:
-    if not isinstance(final_state, dict):
-        return {"status": "ok", "elapsed_ms": int(elapsed_ms or 0)}
-
-    outputs: dict[str, Any] = {
-        "status": "failed" if final_state.get("error") else "ok",
-        "elapsed_ms": int(elapsed_ms or final_state.get("workflow_elapsed_ms", 0) or 0),
-    }
-    for field_name in ("fallback_used", "planner_generation_mode", "generation_mode"):
-        value = final_state.get(field_name)
-        if value not in (None, "", [], {}):
-            outputs[field_name] = value
-    runtime_steps = final_state.get("runtime_steps")
-    if isinstance(runtime_steps, list) and runtime_steps:
-        outputs["step_count"] = len(runtime_steps)
-    return outputs

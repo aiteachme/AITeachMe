@@ -426,12 +426,22 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    def fake_trace_substep(name: str, **kwargs):
-        captured["name"] = name
-        captured["kwargs"] = kwargs
+    def fake_langsmith_trace(**kwargs):
+        captured["trace_kwargs"] = kwargs
         return DummyTraceContext()
 
-    monkeypatch.setattr(runtime_stats_module, "trace_substep", fake_trace_substep)
+    monkeypatch.setattr(runtime_stats_module, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        runtime_stats_module,
+        "get_llm_trace_context",
+        lambda: LLMTraceContext(
+            subject="demo",
+            build_session_id="build-1",
+            workflow="digest.planner",
+            lane="planner",
+            node="load_context",
+        ),
+    )
 
     state = {"progress_callback": callback}
 
@@ -454,13 +464,19 @@ def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
     assert state["runtime_steps"][0]["name"] == "prepare_shared_inputs"
     assert state["runtime_steps"][0]["kind"] == "substep"
     assert state["runtime_steps"][0]["status"] == "ok"
-    assert captured["name"] == "prepare_shared_inputs"
-    assert captured["kwargs"] == {
-        "metadata": {"file_count": 2},
-        "tags": None,
-        "run_type": "prompt",
-        "inputs": {"user_goal_present": True},
-    }
+
+    # Verify langsmith_trace was called with correct args
+    tk = captured["trace_kwargs"]
+    assert tk["name"] == "prepare_shared_inputs"
+    assert tk["run_type"] == "prompt"
+    assert tk["inputs"] == {"user_goal_present": True}
+    assert tk["subject"] == "demo"
+    assert tk["workflow"] == "digest.planner"
+    assert tk["lane"] == "planner"
+    assert tk["node"] == "load_context"
+    assert tk["extra_metadata"]["file_count"] == 2
+    assert tk["extra_metadata"]["substep"] == "prepare_shared_inputs"
+
     assert captured["outputs"]["source_packet_count"] == 3
     assert captured["outputs"]["status"] == "ok"
     assert captured["outputs"]["elapsed_ms"] >= 0

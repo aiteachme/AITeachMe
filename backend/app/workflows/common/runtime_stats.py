@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from time import perf_counter
 from typing import Any, Literal
 
-from app.shared.infra.tracing import LangSmithRunType, normalize_langsmith_run_type, trace_substep
+from app.shared.infra.tracing import LangSmithRunType, get_llm_trace_context, langsmith_trace, normalize_langsmith_run_type
 
 StepKind = Literal["node", "tool", "substep", "llm"]
 
@@ -164,21 +164,24 @@ async def tracked_step(
     running_message: str | None = None,
     completed_message: str | None = None,
     failed_message: str | None = None,
-    trace_name: str | None = None,
-    trace_enabled: bool | None = None,
     trace_metadata: Mapping[str, Any] | None = None,
     trace_tags: list[str] | None = None,
     trace_inputs: Mapping[str, Any] | None = None,
     trace_run_type: LangSmithRunType = "tool",
 ):
-    """Unify runtime stats, optional progress, and optional LangSmith substep tracing."""
+    """Unify runtime stats, optional progress, and optional LangSmith substep tracing.
+
+    Simplified: uses ``nullcontext`` to merge the traced / untraced branches
+    into a single code path, eliminating ~50 lines of duplication.
+    """
 
     step_name = str(name)
     progress_step_name = str(progress_step or step_name)
-    should_trace = kind != "node" if trace_enabled is None else bool(trace_enabled)
+    should_trace = kind != "node"
     resolved_trace_run_type = normalize_langsmith_run_type(trace_run_type)
     started_at = perf_counter()
 
+    # Emit "running" progress.
     if state is not None:
         record_step_start(state, name=step_name, kind=kind)
         if phase and running_message:
@@ -190,49 +193,26 @@ async def tracked_step(
                 message=running_message,
             )
 
-    trace_context = (
-        trace_substep(
-            trace_name or step_name,
-            metadata=trace_metadata,
-            tags=trace_tags,
+    # Build trace context manager (real LangSmith span or nullcontext).
+    if should_trace:
+        ctx = get_llm_trace_context()
+        trace_cm = langsmith_trace(
+            name=step_name,
             run_type=resolved_trace_run_type,
-            inputs=trace_inputs,
+            inputs=dict(trace_inputs or {}),
+            subject=ctx.subject,
+            build_session_id=ctx.build_session_id,
+            workflow=ctx.workflow,
+            lane=ctx.lane,
+            node=ctx.node,
+            extra_metadata={"substep": step_name, **dict(trace_metadata or {})},
+            extra_tags=[f"substep:{step_name}", *(trace_tags or [])],
         )
-        if should_trace
-        else None
-    )
-    run = None
-    if trace_context is None:
-        step = TrackedStep(None)
-        try:
-            yield step
-        except Exception:
-            if state is not None:
-                record_step_end(state, name=step_name, kind=kind, status="failed")
-                if phase and failed_message:
-                    await emit_progress(
-                        state,
-                        phase=phase,
-                        step=progress_step_name,
-                        status="failed",
-                        message=failed_message,
-                    )
-            raise
-        else:
-            final_status = step.status or "ok"
-            if state is not None:
-                record_step_end(state, name=step_name, kind=kind, status=final_status)
-                if phase and completed_message and final_status == "ok":
-                    await emit_progress(
-                        state,
-                        phase=phase,
-                        step=progress_step_name,
-                        status="completed",
-                        message=completed_message,
-                    )
-        return
+    else:
+        trace_cm = nullcontext()
 
-    with trace_context as run:
+    # Unified execution path — no more duplicated try/except.
+    with trace_cm as run:
         step = TrackedStep(run)
         try:
             yield step

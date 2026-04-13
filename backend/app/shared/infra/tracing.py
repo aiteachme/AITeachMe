@@ -1,4 +1,4 @@
-﻿"""Tracing helpers for workflow-scoped LLM observability."""
+"""Tracing helpers for workflow-scoped LLM observability."""
 
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
-from app.shared.infra.llm_support.routing import TaskType, get_task_profile
+# NOTE: llm_support.routing is imported lazily inside LLMCallTracker.build_token_summary
+# to avoid circular import: tracing → llm_support/__init__ → fallback → tracing
 from app.shared.infra.runtime_mode import get_app_version, is_local_mode
 
 logger = structlog.get_logger()
@@ -378,6 +379,7 @@ class LLMCallTracker:
         settings = get_settings()
         light_model = ""
         if settings.llm_model_light:
+            from app.shared.infra.llm_support.routing import TaskType, get_task_profile
             light_model = get_task_profile(TaskType.DOCGEN_LIGHT).model
 
         total_latency_ms = int(round(sum(record.latency_s for record in records) * 1000))
@@ -438,7 +440,7 @@ class LLMCallTracker:
             if light_model and record.model == light_model:
                 light_model_call_count += 1
                 light_model_total_tokens += record.total_tokens
-            if record.task_type == TaskType.DOCGEN_LIGHT.value:
+            if record.task_type == "docgen_light":
                 light_task_call_count += 1
                 light_task_total_tokens += record.total_tokens
 
