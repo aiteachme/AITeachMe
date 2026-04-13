@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -12,22 +11,12 @@ from pydantic import BaseModel
 from app.schemas.llm import ChatMessage
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import (
-    get_langsmith_max_text_chars,
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,
+    sanitize_langsmith_text as _shared_sanitize_langsmith_text,
+    sanitize_langsmith_value as _shared_sanitize_langsmith_value,
 )
-
-_SAFE_LANGSMITH_FIELDS = {
-    "finish_reason",
-    "id",
-    "model",
-    "name",
-    "role",
-    "tool_call_id",
-    "type",
-}
-
 
 def _langsmith_usage(
     *,
@@ -44,7 +33,7 @@ def _langsmith_usage(
 
 def _serialize_langsmith_value(value: Any) -> Any:
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        value = value.model_dump(mode="json")
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
@@ -67,35 +56,17 @@ def _resolved_trace_model(
     return raw_model, provider, model_name or fallback_model
 
 
-def _truncate_langsmith_text(text: str) -> str:
-    limit = get_langsmith_max_text_chars()
-    if len(text) <= limit:
-        return text
-    return f"{text[: max(1, limit - 3)]}..."
-
-
-def _redacted_data_url(text: str) -> str:
-    match = re.match(r"^data:([^;,]+)", text, re.IGNORECASE)
-    mime_type = match.group(1).lower() if match else "unknown"
-    return f"[redacted:data-url:{mime_type}]"
-
-
 def _sanitize_langsmith_text(
     text: str,
     *,
     capture_text: bool,
     field_name: str = "",
 ) -> str:
-    normalized_field = field_name.strip().lower()
-    if text.lower().startswith("data:"):
-        return _redacted_data_url(text)
-    if normalized_field in {"url", "image_url", "base64"} and not capture_text:
-        return "[redacted:url]"
-    if normalized_field in _SAFE_LANGSMITH_FIELDS:
-        return _truncate_langsmith_text(text)
-    if not capture_text and text:
-        return "[redacted]"
-    return _truncate_langsmith_text(text)
+    return _shared_sanitize_langsmith_text(
+        text,
+        capture_text=capture_text,
+        field_name=field_name,
+    )
 
 
 def _sanitize_langsmith_value(
@@ -104,22 +75,11 @@ def _sanitize_langsmith_value(
     capture_text: bool,
     field_name: str = "",
 ) -> Any:
-    if isinstance(value, BaseModel):
-        value = value.model_dump(mode="json")
-    if isinstance(value, Mapping):
-        return {
-            str(key): _sanitize_langsmith_value(item, capture_text=capture_text, field_name=str(key))
-            for key, item in value.items()
-            if item is not None
-        }
-    if isinstance(value, (list, tuple)):
-        return [
-            _sanitize_langsmith_value(item, capture_text=capture_text, field_name=field_name)
-            for item in value
-        ]
-    if isinstance(value, str):
-        return _sanitize_langsmith_text(value, capture_text=capture_text, field_name=field_name)
-    return _serialize_langsmith_value(value)
+    return _shared_sanitize_langsmith_value(
+        value,
+        capture_text=capture_text,
+        field_name=field_name,
+    )
 
 
 def _langsmith_tool_calls(message: Any) -> list[dict[str, Any]]:

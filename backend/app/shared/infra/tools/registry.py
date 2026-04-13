@@ -2,34 +2,17 @@
 from __future__ import annotations
 import asyncio
 import json
-from collections.abc import Mapping
 from typing import Any
 import structlog
-from app.shared.infra.config import get_settings
 from app.shared.infra.tools.definition import ToolDefinition
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.tracing import (
+    get_llm_trace_context,
+    langsmith_trace,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 
 logger = structlog.get_logger()
-
-
-def _serialize_trace_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {
-            str(key): _serialize_trace_value(item)
-            for key, item in value.items()
-            if item is not None
-        }
-    if isinstance(value, (list, tuple, set)):
-        return [_serialize_trace_value(item) for item in value]
-    if isinstance(value, (str, bytes)):
-        text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
-        limit = max(32, int(get_settings().langsmith_max_text_chars))
-        if len(text) <= limit:
-            return text
-        return f"{text[: max(1, limit - 3)]}..."
-    if isinstance(value, (int, float, bool)) or value is None:
-        return value
-    return _serialize_trace_value(str(value))
 
 
 class ToolRegistry:
@@ -58,7 +41,7 @@ class ToolRegistry:
         trace_context = get_llm_trace_context()
         trace_inputs = {
             "name": name,
-            "arguments": _serialize_trace_value(kwargs),
+            "arguments": sanitize_langsmith_input(kwargs, field_name="arguments"),
         }
         trace_tags = [f"tool:{name}", *[f"tool_tag:{tag}" for tag in list(td.tags)[:5]]]
         trace_metadata = {
@@ -89,7 +72,7 @@ class ToolRegistry:
                     run.end(
                         outputs={
                             "success": False,
-                            "error": _serialize_trace_value(str(exc)),
+                            "error": sanitize_langsmith_output(str(exc), field_name="error"),
                         }
                     )
                 raise
@@ -97,7 +80,7 @@ class ToolRegistry:
                 run.end(
                     outputs={
                         "success": True,
-                        "result": _serialize_trace_value(result),
+                        "result": sanitize_langsmith_output(result, field_name="result"),
                     }
                 )
             return result

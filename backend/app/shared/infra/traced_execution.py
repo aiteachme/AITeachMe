@@ -16,9 +16,54 @@ from typing import Any, Protocol
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tracing import annotate_traceable, build_langsmith_extra, llm_trace_scope
+from app.shared.infra.tracing import (
+    annotate_traceable,
+    build_langsmith_extra,
+    llm_trace_scope,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 
 logger = structlog.get_logger(__name__)
+
+
+def _preview_list(values: list[Any], *, limit: int = 3) -> list[Any]:
+    return list(values[: max(1, limit)])
+
+
+def _preview_source_details(source_details: list[Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    preview: list[dict[str, Any]] = []
+    for item in source_details[: max(1, limit)]:
+        if not isinstance(item, Mapping):
+            continue
+        preview.append(
+            {
+                "title": item.get("title"),
+                "url": item.get("url"),
+                "snippet": item.get("snippet"),
+                "source": item.get("source"),
+            }
+        )
+    return preview
+
+
+def _preview_research_rounds(rounds: list[Any], *, limit: int = 2) -> list[dict[str, Any]]:
+    preview: list[dict[str, Any]] = []
+    for item in rounds[: max(1, limit)]:
+        if not isinstance(item, Mapping):
+            continue
+        preview.append(
+            {
+                "round_index": item.get("round_index"),
+                "executed_queries": _preview_list(list(item.get("executed_queries") or []), limit=3),
+                "coverage_score": item.get("coverage_score"),
+                "local_hits": item.get("local_hits"),
+                "web_hits": item.get("web_hits"),
+                "gaps_remaining": _preview_list(list(item.get("gaps_remaining") or []), limit=3),
+                "compression_mode": item.get("compression_mode"),
+            }
+        )
+    return preview
 
 
 class WorkflowTraceContext(Protocol):
@@ -163,6 +208,11 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "source_count": len(result.sources),
         "image_count": len(result.images),
     }
+    if result.content.strip():
+        outputs["content_preview"] = sanitize_langsmith_output(
+            result.content[:800],
+            field_name="content",
+        )
     for field_name in (
         "local_hits",
         "web_hits",
@@ -228,6 +278,34 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         outputs["active_retriever_count"] = len(
             [name for name in active_retrievers if str(name).strip()]
         )
+    for field_name in (
+        "executed_queries",
+        "base_queries",
+        "planned_queries",
+        "fallback_queries",
+        "gaps_remaining",
+        "configured_retrievers",
+        "active_retrievers",
+        "sources",
+    ):
+        value = result.sources if field_name == "sources" else result.metadata.get(field_name)
+        if isinstance(value, list) and value:
+            outputs[f"{field_name}_preview"] = sanitize_langsmith_output(
+                _preview_list(list(value)),
+                field_name=field_name,
+            )
+    source_details = result.metadata.get("source_details")
+    if isinstance(source_details, list) and source_details:
+        outputs["source_details_preview"] = sanitize_langsmith_output(
+            _preview_source_details(source_details),
+            field_name="source_details",
+        )
+    research_rounds = result.metadata.get("research_rounds")
+    if isinstance(research_rounds, list) and research_rounds:
+        outputs["research_rounds_preview"] = sanitize_langsmith_output(
+            _preview_research_rounds(research_rounds),
+            field_name="research_rounds",
+        )
     return outputs
 
 
@@ -249,6 +327,17 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
         value = kwargs.get(field_name)
         if value not in (None, "", [], {}):
             inputs[field_name] = value
+    for field_name in ("query", "chapter_title", "objective", "local_rag_subject"):
+        value = kwargs.get(field_name)
+        if value not in (None, "", [], {}):
+            inputs[field_name] = sanitize_langsmith_input(value, field_name=field_name)
+    for field_name in ("queries", "required_elements"):
+        value = kwargs.get(field_name)
+        if isinstance(value, list) and value:
+            inputs[f"{field_name}_preview"] = sanitize_langsmith_input(
+                _preview_list(list(value)),
+                field_name=field_name,
+            )
 
     for field_name, alias in (
         ("sources", "source_count"),
