@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from app.workflows.common import traceable_run
+from app.shared.infra.tracing import annotate_traceable
 from app.teaching.documents.content_blocks import (
     build_glossary_section,
     build_learning_objectives_section,
@@ -201,7 +201,7 @@ def coerce_resolved_chapter_title(
     return current_title
 
 
-@traceable_run(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
+@annotate_traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
 def build_chapter_title_resolution_messages(
     *,
     subject: str,
