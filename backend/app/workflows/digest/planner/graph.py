@@ -195,12 +195,6 @@ def _build_preview_title(*, display_subject: str, user_goal: str, digest_mode: s
     return topic if topic.endswith(suffix) else f"{topic}{suffix}"
 
 
-def _build_preview_tail(tasks: list[str]) -> str:
-    lines = [f"({index}) {task}" for index, task in enumerate(tasks, start=1)]
-    lines.extend(["分析结果", "生成报告"])
-    return "\n".join(lines)
-
-
 def _suggest_provisional_title_from_task(task: str, fallback_title: str) -> str:
     cleaned = _clean_preview_line(task)
     if not cleaned:
@@ -339,12 +333,6 @@ def _build_raw_plan_from_preview(
         for task in _extract_preview_tasks(preview_text)
         if _clean_preview_line(_replace_subject_slug(task, display_subject))
     ]
-    if not preview_tasks:
-        preview_tasks = [
-            _clean_preview_line(_replace_subject_slug(task, display_subject))
-            for task in list(fallback_plan.research_queries[:6])
-            if _clean_preview_line(_replace_subject_slug(task, display_subject))
-        ]
 
     chapter_count = max(len(preview_tasks), len(fallback_plan.chapter_plan)) if preview_tasks else len(fallback_plan.chapter_plan)
     chapter_plan: list[dict[str, Any]] = []
@@ -599,7 +587,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
 
     @trace.node(
         name="draft_plan",
-        output_keys=("fallback_used", "planner_generation_mode"),
+        output_keys=("planner_generation_mode",),
     )
     async def draft_plan_node(state: BuildPlannerState) -> dict:
         shared_inputs = state["shared_inputs"]
@@ -677,6 +665,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
 
             streamed_tokens: list[str] = []
             stream_failed = False
+            stream_error: Exception | None = None
             async with tracked_step(
                 state,
                 name="planner_stream_generate",
@@ -707,13 +696,20 @@ def build_draft_plan_node(*, context: WorkflowContext):
                         async for token in stream:
                             streamed_tokens.append(token)
                             await _emit_planner_token(state, token)
-                except Exception:
+                except Exception as exc:
                     stream_failed = True
+                    stream_error = exc
                     step.set_status("failed")
                 step.set_outputs(
                     token_chunk_count=len(streamed_tokens),
                     stream_failed=stream_failed,
                 )
+
+            if stream_failed:
+                assert stream_error is not None
+                raise stream_error
+            if not streamed_tokens:
+                raise RuntimeError("主模型调用失败，未生成结果。")
 
             preview_text = preview_prefix + "".join(streamed_tokens)
             raw_draft, preview_tasks = _build_raw_plan_from_preview(
@@ -724,21 +720,8 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 tone=tone,
                 fallback_plan=fallback_plan,
             )
-            fallback_used = stream_failed
-            generation_mode = "stream_plaintext_partial" if stream_failed else "stream_plaintext"
-            if stream_failed and not streamed_tokens:
-                async with tracked_step(
-                    state,
-                    name="planner_fallback_build",
-                    kind="substep",
-                    phase="planner",
-                    progress_step="draft_plan",
-                    running_message="模型响应较慢，正在用本地快速方案补齐研究任务...",
-                    trace_metadata={"preview_task_count": len(preview_tasks[:6])},
-                ) as step:
-                    await _emit_planner_tokens(state, _build_preview_tail(preview_tasks[:6]))
-                    generation_mode = "fallback_plan"
-                    step.set_outputs(preview_task_count=len(preview_tasks[:6]))
+            if not preview_tasks:
+                raise RuntimeError("主模型调用失败，未生成有效研究任务。")
 
             draft = normalize_planner_draft(
                 raw_draft,
@@ -750,7 +733,6 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 shared_inputs=shared_inputs,
                 latest_plan=state.get("latest_plan"),
             )
-            generated_titles: dict[int, str] = {}
             async with tracked_step(
                 state,
                 name="planner_title_generate",
@@ -758,26 +740,22 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 trace_metadata={"chapter_count": len(draft.chapter_plan)},
                 trace_inputs={"preview_task_count": len(preview_tasks)},
             ) as step:
-                try:
-                    generated_titles = await _generate_planner_titles(
-                        subject=display_subject,
-                        user_goal=state.get("user_goal") or "",
-                        digest_mode=digest_mode,
-                        chapter_plan=[
-                            {
-                                **chapter.model_dump(mode="json"),
-                                "task_hint": preview_tasks[index] if index < len(preview_tasks) else "",
-                            }
-                            for index, chapter in enumerate(draft.chapter_plan)
-                        ],
-                        planner_session_id=state.get("planner_session_id") or "",
-                        course_type=course_type,
-                        retrieval_profile=retrieval_profile,
-                        teaching_action=teaching_action,
-                    )
-                except Exception:
-                    generated_titles = {}
-                    step.set_status("failed")
+                generated_titles = await _generate_planner_titles(
+                    subject=display_subject,
+                    user_goal=state.get("user_goal") or "",
+                    digest_mode=digest_mode,
+                    chapter_plan=[
+                        {
+                            **chapter.model_dump(mode="json"),
+                            "task_hint": preview_tasks[index] if index < len(preview_tasks) else "",
+                        }
+                        for index, chapter in enumerate(draft.chapter_plan)
+                    ],
+                    planner_session_id=state.get("planner_session_id") or "",
+                    course_type=course_type,
+                    retrieval_profile=retrieval_profile,
+                    teaching_action=teaching_action,
+                )
                 step.set_outputs(generated_title_count=len(generated_titles))
             draft = _apply_generated_titles_to_draft(
                 draft,
@@ -794,8 +772,7 @@ def build_draft_plan_node(*, context: WorkflowContext):
                 "teaching_action": teaching_action,
                 "tone": draft.tone,
                 "selected_skillpacks": list(draft.selected_skillpacks),
-                "fallback_used": fallback_used,
-                "planner_generation_mode": generation_mode,
+                "planner_generation_mode": "stream_plaintext",
                 **_runtime_steps_patch(state),
             }
 
@@ -843,5 +820,3 @@ def get_langgraph_dev_planner_graph() -> StateGraph:
 
 
 __all__ = ["build_planner_graph", "create_planner_initial_state"]
-
-

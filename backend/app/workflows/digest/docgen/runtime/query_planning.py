@@ -151,7 +151,7 @@ async def generate_sub_queries(
     skillpack_guidance: str = "",
     recommended_tool_tags: list[str] | None = None,
 ) -> list[str]:
-    """Generate research sub-queries with an LLM and a deterministic fallback."""
+    """Generate research sub-queries with an LLM."""
 
     normalized_query = " ".join(str(query or "").split()).strip()
     if not normalized_query:
@@ -166,27 +166,24 @@ async def generate_sub_queries(
     )
     caller = llm_caller or acompletion_with_fallback
 
-    try:
-        response = await caller(
-            build_docgen_sub_query_messages(
-                query=normalized_query,
-                context_summary=serialized_context,
-                max_queries=safe_max_queries,
-                domain=domain,
-                fallback_queries=fallback_queries,
-                skillpack_guidance=skillpack_guidance,
-                recommended_tool_tags=recommended_tool_tags or [],
-            ),
-            task_type=TaskType.REASONING,
-            response_model=ResearchSubQueryPlan,
-            extra_metadata={
-                "query_tool": "generate_sub_queries",
-                "query_domain": domain,
-                **dict(extra_metadata or {}),
-            },
-        )
-    except Exception:
-        response = ResearchSubQueryPlan(queries=fallback_queries)
+    response = await caller(
+        build_docgen_sub_query_messages(
+            query=normalized_query,
+            context_summary=serialized_context,
+            max_queries=safe_max_queries,
+            domain=domain,
+            fallback_queries=fallback_queries,
+            skillpack_guidance=skillpack_guidance,
+            recommended_tool_tags=recommended_tool_tags or [],
+        ),
+        task_type=TaskType.REASONING,
+        response_model=ResearchSubQueryPlan,
+        extra_metadata={
+            "query_tool": "generate_sub_queries",
+            "query_domain": domain,
+            **dict(extra_metadata or {}),
+        },
+    )
 
     if isinstance(response, ResearchSubQueryPlan):
         raw_queries = response.queries
@@ -195,14 +192,14 @@ async def generate_sub_queries(
     elif isinstance(response, Mapping):
         raw_queries = list(response.get("queries") or [])
     else:
-        raw_queries = fallback_queries
+        raw_queries = []
 
     cleaned = [
         item
         for item in dedupe_queries([str(raw) for raw in raw_queries], limit=safe_max_queries)
         if item and item != normalized_query
     ]
-    return cleaned or fallback_queries[:safe_max_queries]
+    return cleaned
 
 
 async def generate_gap_queries(
@@ -220,24 +217,21 @@ async def generate_gap_queries(
     
     caller = llm_caller or acompletion_with_fallback
     
-    try:
-        response = await caller(
-            build_docgen_gap_query_messages(
-                dense_context=dense_context,
-                required_elements=list(required_elements or []),
-                max_queries=int(max_queries or 2),
-                domain=domain,
-            ),
-            task_type=TaskType.REASONING,
-            response_model=ResearchSubQueryPlan,
-            extra_metadata={
-                "query_tool": "generate_gap_queries",
-                "query_domain": domain,
-                **dict(extra_metadata or {}),
-            },
-        )
-    except Exception:
-        return []
+    response = await caller(
+        build_docgen_gap_query_messages(
+            dense_context=dense_context,
+            required_elements=list(required_elements or []),
+            max_queries=int(max_queries or 2),
+            domain=domain,
+        ),
+        task_type=TaskType.REASONING,
+        response_model=ResearchSubQueryPlan,
+        extra_metadata={
+            "query_tool": "generate_gap_queries",
+            "query_domain": domain,
+            **dict(extra_metadata or {}),
+        },
+    )
 
     if isinstance(response, ResearchSubQueryPlan):
         raw_queries = response.queries

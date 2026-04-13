@@ -63,26 +63,23 @@ async def _resolve_material_title(material: dict[str, object], state: DocGenStat
         local_hits=int(resolved.get("local_hits", 0) or 0),
         web_hits=int(resolved.get("web_hits", 0) or 0),
     )
-    try:
-        raw_title = await acompletion_with_fallback(
-            messages,
-            task_type=TaskType.DOCGEN_LIGHT,
-            tier="fast",
-            max_tokens=48,
-            temperature=0.2,
-            extra_metadata={
-                "planner_session_id": state.get("planner_session_id") or "",
-                "confirmed_plan_id": state.get("confirmed_plan_id") or "",
-                "build_session_id": state.get("build_session_id") or "",
-                "digest_mode": state.get("digest_mode") or "",
-                "course_type": state.get("course_type") or "",
-                "retrieval_profile": state.get("retrieval_profile") or "",
-                "teaching_action": "chapter_title_resolve",
-                "chapter_index": chapter_index,
-            },
-        )
-    except Exception:
-        raw_title = fallback_title
+    raw_title = await acompletion_with_fallback(
+        messages,
+        task_type=TaskType.DOCGEN_LIGHT,
+        tier="fast",
+        max_tokens=48,
+        temperature=0.2,
+        extra_metadata={
+            "planner_session_id": state.get("planner_session_id") or "",
+            "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+            "build_session_id": state.get("build_session_id") or "",
+            "digest_mode": state.get("digest_mode") or "",
+            "course_type": state.get("course_type") or "",
+            "retrieval_profile": state.get("retrieval_profile") or "",
+            "teaching_action": "chapter_title_resolve",
+            "chapter_index": chapter_index,
+        },
+    )
 
     resolved["resolved_title"] = coerce_resolved_chapter_title(
         str(raw_title or ""),

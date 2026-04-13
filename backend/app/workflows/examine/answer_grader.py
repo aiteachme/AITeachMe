@@ -266,16 +266,23 @@ async def grade_paper(
         )
         for index, result in zip(short_answer_indices, short_answer_results):
             if isinstance(result, Exception):
-                logger.warning("answer_grader_short_answer_fallback", error=str(result))
-                to_grade[index].is_correct = exact_match_grade(
-                    to_grade[index].user_answer,
-                    to_grade[index].correct_answer,
+                logger.error(
+                    "answer_grader_short_answer_failed",
+                    exam_paper_id=exam_paper_id,
+                    exam_paper_item_id=to_grade[index].item.id,
+                    error=str(result),
                 )
-            else:
-                to_grade[index].is_correct = bool(result)
+                raise RuntimeError(
+                    f"short_answer_grading_failed:item={to_grade[index].item.id or index}: {result}"
+                ) from result
+            to_grade[index].is_correct = bool(result)
 
     for entry in to_grade:
         if entry.is_correct is None:
+            if entry.question_type == QuestionType.SHORT_ANSWER.value:
+                raise RuntimeError(
+                    f"short_answer_grading_missing:item={entry.item.id or 0}"
+                )
             entry.is_correct = exact_match_grade(entry.user_answer, entry.correct_answer)
 
     wrong_short_answer_indices = [

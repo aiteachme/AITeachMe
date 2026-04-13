@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -16,7 +18,9 @@ from app.models import (
 )
 from app.repositories import profile_repo
 from app.workflows.examine.context import TemplateSelectionHints
+from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.paper_assembler import assemble_paper
+from app.workflows.profile.runtime import generate_report_suggestions
 from app.workflows.profile.mastery_updater import update_mastery_from_exam
 
 
@@ -262,3 +266,73 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
     assert unit_state is not None
     assert node_1_state is not None
     assert node_2_state is None
+
+
+def test_grade_paper_raises_when_short_answer_llm_grading_fails(session) -> None:
+    curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
+    unit = TeachingUnit(
+        subject="math",
+        canonical_name="short-answer-unit",
+        normalized_name="short-answer-unit",
+        member_signature="short-answer-unit",
+        status="active",
+    )
+    paper = ExamPaper(
+        subject="math",
+        user_id="local",
+        exam_mode="web_practice",
+        curriculum_version_id=1,
+        status="draft",
+    )
+    session.add_all([curriculum, unit, paper])
+    session.commit()
+
+    item = ExamPaperItem(
+        exam_paper_id=paper.id,
+        question_template_id=1,
+        item_order=1,
+        stem_snapshot="Explain the derivative concept.",
+        answer_snapshot="A derivative is a rate of change.",
+        explanation_snapshot="exp",
+        teaching_unit_id=unit.id,
+        node_refs_json=json.dumps([], ensure_ascii=False),
+        difficulty=Difficulty.MEDIUM.value,
+        question_type="short_answer",
+        answer_content="It is something else.",
+        is_correct=None,
+    )
+    session.add(item)
+    session.commit()
+
+    with patch(
+        "app.workflows.examine.answer_grader.read_knowledge_doc_text",
+        return_value="",
+    ), patch(
+        "app.workflows.examine.answer_grader._build_knowledge_context",
+        return_value="knowledge context",
+    ), patch(
+        "app.workflows.examine.answer_grader._grade_short_answer_with_llm",
+        new=AsyncMock(side_effect=RuntimeError("grading llm failed")),
+    ):
+        with pytest.raises(RuntimeError, match="short_answer_grading_failed"):
+            asyncio.run(grade_paper(session, paper.id, auto_commit=False))
+
+
+def test_generate_report_suggestions_raises_when_llm_fails() -> None:
+    with patch(
+        "app.workflows.profile.runtime.acompletion",
+        new=AsyncMock(side_effect=RuntimeError("profile llm failed")),
+    ):
+        with pytest.raises(RuntimeError, match="profile llm failed"):
+            asyncio.run(
+                generate_report_suggestions(
+                    subject="math",
+                    overall_mastery=0.42,
+                    weak_points=[
+                        {
+                            "knowledge_point": "derivatives",
+                            "mastery_text": "42%",
+                        }
+                    ],
+                )
+            )

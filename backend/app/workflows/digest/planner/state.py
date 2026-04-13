@@ -31,7 +31,6 @@ class BuildPlannerState(TypedDict, total=False):
     workflow_elapsed_ms: int
     runtime_steps: list[dict[str, Any]]
     _runtime_step_starts: dict[str, float]
-    fallback_used: bool
     planner_generation_mode: str
     progress_callback: Any
     token_callback: Any
