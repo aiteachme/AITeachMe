@@ -168,6 +168,7 @@ async def tracked_step(
     trace_tags: list[str] | None = None,
     trace_inputs: Mapping[str, Any] | None = None,
     trace_run_type: LangSmithRunType = "tool",
+    trace_enabled: bool = True,
 ):
     """Unify runtime stats, optional progress, and optional LangSmith substep tracing.
 
@@ -177,7 +178,7 @@ async def tracked_step(
 
     step_name = str(name)
     progress_step_name = str(progress_step or step_name)
-    should_trace = kind != "node"
+    should_trace = trace_enabled and kind != "node"
     resolved_trace_run_type = normalize_langsmith_run_type(trace_run_type)
     started_at = perf_counter()
 
