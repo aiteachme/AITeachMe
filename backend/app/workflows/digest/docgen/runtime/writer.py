@@ -83,20 +83,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
             skillpack_guidance=skillpack_guidance,
             recommended_tool_tags=recommended_tool_tags,
         )
-        try:
-            markdown = await llm(
-                messages,
-                task_type=TaskType.DOCGEN,
-                tier="advanced" if digest_mode == "systematic" else "smart",
-                extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
-            )
-        except Exception:
-            markdown = self._fallback_markdown(
-                title=title,
-                objective=objective,
-                dense_context=dense_context,
-                digest_mode=digest_mode,
-            )
+        markdown = await llm(
+            messages,
+            task_type=TaskType.DOCGEN,
+            tier="advanced" if digest_mode == "systematic" else "smart",
+            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+        )
 
         markdown = str(markdown).strip()
         heading_quality = analyze_chapter_heading_quality(

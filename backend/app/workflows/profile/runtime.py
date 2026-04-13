@@ -60,6 +60,6 @@ async def generate_report_suggestions(
             if line.strip()
         ]
         return lines or [_DEFAULT_SUGGESTION]
-    except Exception:
-        logger.warning("generate_report_suggestions_fallback", subject=subject)
-        return [_DEFAULT_SUGGESTION]
+    except Exception as exc:
+        logger.warning("generate_report_suggestions_failed", subject=subject, error=str(exc))
+        raise

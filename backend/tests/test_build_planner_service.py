@@ -4,6 +4,7 @@ import asyncio
 import re
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlmodel import Session, select
 
 from app.models import IngestStatus, RawFile, Subject, TaskStatus
@@ -23,6 +24,14 @@ class DummyWorkflowResult:
 
     def require_value(self):
         return self._value
+
+
+class FailingWorkflowResult:
+    def __init__(self, error: Exception):
+        self._error = error
+
+    def require_value(self):
+        raise self._error
 
 
 def _seed_subject(session: Session, *, subject_slug: str) -> Subject:
@@ -332,3 +341,80 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
         "load_context",
         "draft_plan",
     ]
+
+
+def test_create_build_planner_session_marks_session_failed_when_workflow_result_fails(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_planner_create_failed")
+    _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_plan_create_failed")
+
+    with patch(
+        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        new=AsyncMock(return_value=FailingWorkflowResult(RuntimeError("planner llm failed"))),
+    ):
+        with pytest.raises(RuntimeError, match="planner llm failed"):
+            asyncio.run(
+                create_build_planner_session_service(
+                    session,
+                    subject=subject,
+                    user_id="local",
+                    payload=BuildPlannerCreateRequest(user_goal="create should fail"),
+                )
+            )
+
+    planner_sessions = list(
+        session.exec(
+            select(BuildPlannerSession).where(BuildPlannerSession.subject == subject.slug)
+        ).all()
+    )
+
+    assert len(planner_sessions) == 1
+    assert planner_sessions[0].status == "failed"
+    assert planner_sessions[0].latest_plan_json is None
+
+
+def test_append_build_planner_message_marks_session_failed_when_workflow_result_fails(session: Session) -> None:
+    subject = _seed_subject(session, subject_slug="subj_planner_append_failed")
+    _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_plan_append_failed")
+
+    plan = _plan_payload(
+        subject=subject.slug,
+        goal="先创建一版方案",
+        digest_mode="systematic",
+        tone="encouraging",
+        title="基础概念",
+        summary="先创建一版可编辑方案。",
+    )
+
+    with patch(
+        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        new=AsyncMock(return_value=DummyWorkflowResult({"plan": plan, "plan_summary": plan["plan_summary"]})),
+    ):
+        created = asyncio.run(
+            create_build_planner_session_service(
+                session,
+                subject=subject,
+                user_id="local",
+                payload=BuildPlannerCreateRequest(user_goal="先创建一版方案"),
+            )
+        )
+
+    with patch(
+        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        new=AsyncMock(return_value=FailingWorkflowResult(RuntimeError("planner append llm failed"))),
+    ):
+        with pytest.raises(RuntimeError, match="planner append llm failed"):
+            asyncio.run(
+                append_build_planner_message_service(
+                    session,
+                    subject=subject,
+                    user_id="local",
+                    session_id=created.session_id,
+                    payload=BuildPlannerMessageRequest(message="请继续优化"),
+                )
+            )
+
+    planner_session = session.get(BuildPlannerSession, created.session_id)
+
+    assert planner_session is not None
+    assert planner_session.status == "failed"
+    assert planner_session.latest_plan_json is not None

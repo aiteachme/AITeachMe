@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+from sqlmodel import select
+
 from app.models import Curriculum, Difficulty, KnowledgeNode, QuestionTemplate, TeachingUnit
 from app.services.exams_service import _resolve_requested_unit_scope
 from app.utils.time import utcnow
@@ -16,6 +19,7 @@ from app.workflows.examine.context import (
 from app.workflows.examine.question_builder import (
     _build_node_refs_json,
     _load_existing_template_counts,
+    build_question_templates,
 )
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow
 
@@ -518,3 +522,68 @@ def test_question_build_workflow_passes_context_fields_to_builder(session, monke
     assert captured["scope_locked"] is True
     assert captured["focus_teaching_unit_ids"] == [unit.id]
     assert captured["focus_node_ids"] == [node.id]
+
+
+def test_build_question_templates_raises_and_does_not_persist_when_any_unit_generation_fails(
+    session,
+    monkeypatch,
+) -> None:
+    context_1 = _make_unit_context(
+        node_contexts=[NodeExamContext(1, "Functions", "summary", "body", "primary", 1.0)]
+    )
+    context_2 = UnitExamContext(
+        subject="math",
+        unit_id=12,
+        unit_name="Limits",
+        unit_summary="summary",
+        unit_body="body",
+        learning_objectives=["obj"],
+        doc_excerpt="excerpt",
+        node_contexts=[NodeExamContext(2, "Limits", "summary", "body", "primary", 1.0)],
+        unit_mastery_score=0.4,
+        recent_mistakes=[],
+        weak_node_names=[],
+        style_profile=ExamStyleProfile(),
+        exam_mode="web_practice",
+        preferred_question_types=["single_choice"],
+        requested_question_count=3,
+    )
+
+    monkeypatch.setattr(
+        "app.workflows.examine.question_builder.build_unit_exam_contexts",
+        lambda *args, **kwargs: [context_1, context_2],
+    )
+    monkeypatch.setattr(
+        "app.workflows.examine.question_builder._load_existing_template_counts",
+        lambda *args, **kwargs: {context_1.unit_id: 0, context_2.unit_id: 0},
+    )
+    monkeypatch.setattr(
+        "app.workflows.examine.question_builder._load_existing_hashes",
+        lambda *args, **kwargs: {},
+    )
+
+    async def fake_try_llm_generate_templates(context, **kwargs):
+        del kwargs
+        if context.unit_id == context_2.unit_id:
+            raise RuntimeError("unit llm failed")
+        return []
+
+    monkeypatch.setattr(
+        "app.workflows.examine.question_builder._try_llm_generate_templates",
+        fake_try_llm_generate_templates,
+    )
+
+    with pytest.raises(RuntimeError, match="question_builder_generation_failed"):
+        asyncio.run(
+            build_question_templates(
+                session,
+                subject="math",
+                user_id="local",
+                unit_ids=[context_1.unit_id, context_2.unit_id],
+                questions_per_unit=3,
+                exam_mode="web_practice",
+                curriculum_version_id=1,
+            )
+        )
+
+    assert list(session.exec(select(QuestionTemplate)).all()) == []

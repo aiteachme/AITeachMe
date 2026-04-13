@@ -69,7 +69,7 @@ class Settings(BaseModel):
     search_scrape_timeout_s: int = 20
 
     planner_default_tone: str = "encouraging"
-    planner_default_digest_mode: str = "systematic"
+    planner_default_digest_mode: str = "sprint"
     planner_allow_external_search: bool = True
     planner_sprint_min_chapters: int = 3
     planner_sprint_max_chapters: int = 6

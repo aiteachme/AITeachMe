@@ -74,7 +74,6 @@ interface PlannerRuntimeStep {
 interface PlannerRuntimeStats {
   elapsed_ms?: number;
   steps?: PlannerRuntimeStep[];
-  fallback_used?: boolean;
   generation_mode?: string | null;
 }
 
@@ -180,8 +179,6 @@ function formatPlannerNodeLabel(stepName: string): string {
       return "构建规划提示词";
     case "planner_stream_generate":
       return "流式生成草案";
-    case "planner_fallback_build":
-      return "本地兜底补齐";
     default:
       return stepName;
   }
@@ -192,19 +189,6 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
     return [];
   }
   return (runtimeStats.steps ?? []).map((step) => [step.name, step.elapsed_ms]);
-}
-
-function getPlannerFallbackNotice(runtimeStats: PlannerRuntimeStats | null | undefined): string {
-  if (!runtimeStats) {
-    return "";
-  }
-  if (runtimeStats.fallback_used) {
-    return "已使用兜底方案，当前结果由本地快速规划补齐。";
-  }
-  if (runtimeStats.generation_mode === "stream_plaintext_partial") {
-    return "模型流式输出中断，当前结果已保留可用内容。";
-  }
-  return "";
 }
 
 function extractPlannerPreviewText(raw: string): string {
@@ -387,7 +371,7 @@ async function streamPlannerSession(
       if (isRecord(payload) && typeof payload.detail === "string" && payload.detail.trim()) {
         streamError = payload.detail.trim();
       } else {
-        streamError = "规划方案失败，请稍后重试。";
+        streamError = "主模型调用失败，未生成结果，请修改设置后重试。";
       }
     },
   });
@@ -399,7 +383,7 @@ async function streamPlannerSession(
     throw new Error(streamError);
   }
   if (!result.sawDone || !session) {
-    throw new Error("服务端没有返回完整的规划结果，请稍后重试。");
+    throw new Error("主模型调用失败，未生成结果，请修改设置后重试。");
   }
   return session;
 }
@@ -730,7 +714,7 @@ export function BuildPlanPage() {
       } catch (error) {
         setMessages((prev) => [
           ...prev,
-          createMessage("system", getApiErrorMessage(error, "规划方案失败，请稍后重试。")),
+          createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
         ]);
       } finally {
         setPlannerStreaming(false);
@@ -950,7 +934,7 @@ export function BuildPlanPage() {
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        createMessage("system", getApiErrorMessage(error, "规划方案失败，请稍后重试。")),
+        createMessage("system", getApiErrorMessage(error, "主模型调用失败，未生成结果，请修改设置后重试。")),
       ]);
     } finally {
       setPlannerStreaming(false);
@@ -1194,22 +1178,11 @@ export function BuildPlanPage() {
                               <p className="mt-1 whitespace-pre-line text-xs leading-5 text-zinc-500">
                                 {message.plan.plan_summary}
                               </p>
-                              {getPlannerFallbackNotice(message.runtimeStats) ? (
-                                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
-                                  {getPlannerFallbackNotice(message.runtimeStats)}
-                                </div>
-                              ) : null}
-
                               {message.runtimeStats ? (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
                                     总耗时 {formatElapsedMs(message.runtimeStats.elapsed_ms)}
                                   </span>
-                                  {message.runtimeStats.fallback_used ? (
-                                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                                      已使用兜底方案
-                                    </span>
-                                  ) : null}
                                   {listPlannerNodeTimings(message.runtimeStats)
                                     .slice(0, 4)
                                     .map(([nodeName, elapsedMs]) => (

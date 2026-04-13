@@ -170,7 +170,7 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
         steps=steps,
-        fallback_used=bool(final_state.get("fallback_used", False)),
+        fallback_used=False,
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
 
@@ -189,7 +189,6 @@ def _log_planner_runtime(
         planner_session_id=session_id,
         elapsed_ms=runtime_stats.elapsed_ms,
         steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
-        fallback_used=runtime_stats.fallback_used,
         generation_mode=runtime_stats.generation_mode,
     )
 
@@ -272,7 +271,13 @@ async def create_build_planner_session_service(
         progress_callback=progress_callback,
         token_callback=token_callback,
     )
-    final_state = workflow_result.require_value()
+    try:
+        final_state = workflow_result.require_value()
+    except Exception:
+        record.status = "failed"
+        record.updated_at = utcnow()
+        update_planner_session(session, record)
+        raise
     runtime_stats = _runtime_stats_response(final_state)
     plan = _normalize_persisted_plan(
         dict(final_state.get("plan") or {}),
@@ -365,7 +370,13 @@ async def append_build_planner_message_service(
         progress_callback=progress_callback,
         token_callback=token_callback,
     )
-    final_state = workflow_result.require_value()
+    try:
+        final_state = workflow_result.require_value()
+    except Exception:
+        record.status = "failed"
+        record.updated_at = utcnow()
+        update_planner_session(session, record)
+        raise
     runtime_stats = _runtime_stats_response(final_state)
     plan = _normalize_persisted_plan(
         dict(final_state.get("plan") or {}),
