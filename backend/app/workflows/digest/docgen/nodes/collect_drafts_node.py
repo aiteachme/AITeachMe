@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.tools.builtin.markdown_processing import prepend_table_of_contents
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
@@ -15,11 +16,32 @@ from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
+def _draft_score(draft: dict) -> tuple[int, int, int]:
+    markdown = str(draft.get("markdown") or "")
+    return (
+        1 if markdown.strip() else 0,
+        count_words(markdown),
+        len(str(draft.get("summary") or "")),
+    )
+
+
+def _dedupe_drafts_by_chapter(drafts: list[dict]) -> list[dict]:
+    best_by_index: dict[int, dict] = {}
+    for draft in drafts:
+        chapter_index = int(draft.get("chapter_index", 0) or 0)
+        existing = best_by_index.get(chapter_index)
+        if existing is None or _draft_score(draft) >= _draft_score(existing):
+            best_by_index[chapter_index] = draft
+    return [best_by_index[index] for index in sorted(best_by_index)]
+
+
 def build_collect_drafts_node(*, context: WorkflowContext):
     async def collect_drafts_node(state: DocGenState) -> dict:
-        drafts = sorted(
-            list(state.get("chapter_drafts", [])),
-            key=lambda item: item.get("chapter_index", 0),
+        drafts = _dedupe_drafts_by_chapter(
+            sorted(
+                list(state.get("chapter_drafts", [])),
+                key=lambda item: item.get("chapter_index", 0),
+            )
         )
         chapter_metadatas = [
             {
@@ -45,7 +67,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
                 "planned_queries": list(draft.get("planned_queries") or []),
                 "fallback_queries": list(draft.get("fallback_queries") or []),
                 "query_count": int(draft.get("query_count", 0) or 0),
-                "scraped_url_count": int(draft.get("scraped_url_count", 0) or 0),
+                "read_url_count": int(draft.get("read_url_count", 0) or 0),
                 "document_count": int(draft.get("document_count", 0) or 0),
                 "purify_used": bool(draft.get("purify_used", False)),
                 "curated_source_count": int(draft.get("curated_source_count", 0) or 0),
@@ -64,7 +86,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
             if chapter_metadatas
             else ""
         )
-        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status)
+        update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status, owner_module=__name__)
         update_status(
             state["subject"],
             requested_at=state["requested_at"],

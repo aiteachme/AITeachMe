@@ -4,14 +4,34 @@ import asyncio
 
 import pytest
 
+from app.shared.infra import agent_loop as agent_loop_module
 from app.shared.infra import llm as llm_module
 from app.shared.infra.config import Settings, get_settings
-from app.shared.infra.llm_support import observability as llm_observability_module
-from app.shared.infra.model_router import TaskType
-from app.shared.infra.skills.base import BaseSkill, SkillContext, SkillResult
-from app.shared.infra.tracing import LLMCallRecord, LLMCallTracker, get_llm_trace_context
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.tools.definition import ToolDefinition
+from app.shared.infra.tools.registry import ToolRegistry
+from app.shared.infra.traced_execution import (
+    BaseTracedExecution,
+    TracedExecutionContext,
+    TracedExecutionResult,
+    _traced_execution_outputs,
+)
+from app.shared.infra.tracing import (
+    LLMCallRecord,
+    LLMCallTracker,
+    LLMTraceContext,
+    get_llm_trace_context,
+    langsmith_capture_inputs_enabled,
+    langsmith_capture_outputs_enabled,
+    normalize_langsmith_run_type,
+)
 from app.shared.infra import tracing as tracing_module
+from app.shared.infra.tools import registry as registry_module
+from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
+from app.workflows.common import runtime_stats as runtime_stats_module
+from app.workflows.common import traceable_run, workflow_tracer
 from app.workflows.common.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
+from app.workflows.common.runtime_stats import emit_progress, record_step_end, record_step_start, tracked_step
 
 
 @pytest.fixture(autouse=True)
@@ -22,11 +42,7 @@ def clear_settings_cache():
 
 
 def test_langsmith_inputs_redact_messages_when_capture_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_inputs=False),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
 
     inputs = llm_module._langsmith_inputs(
         call_model="openai/gpt-4o-mini",
@@ -50,11 +66,7 @@ def test_langsmith_inputs_redact_messages_when_capture_disabled(monkeypatch) -> 
 
 
 def test_langsmith_outputs_include_usage_metadata(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_outputs=False),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
 
     outputs = llm_module._langsmith_outputs(
         text="secret answer",
@@ -74,11 +86,7 @@ def test_langsmith_outputs_include_usage_metadata(monkeypatch) -> None:
 
 
 def test_langsmith_trace_kwargs_include_invocation_metadata(monkeypatch) -> None:
-    monkeypatch.setattr(
-        llm_observability_module,
-        "get_settings",
-        lambda: Settings(_env_file=None, langsmith_capture_inputs=True),
-    )
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "true")
 
     trace_kwargs = llm_module._langsmith_trace_kwargs(
         task_type=TaskType.CHAT,
@@ -116,30 +124,31 @@ def test_langsmith_value_redacts_data_urls() -> None:
     assert value["image_url"] == "[redacted:data-url:image/png]"
 
 
-def test_langsmith_capture_defaults_to_enabled_in_local_mode() -> None:
-    settings = Settings(_env_file=None, app_mode="local")
+def test_langsmith_capture_defaults_to_enabled_in_local_mode(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
 
-    assert settings.resolved_langsmith_capture_inputs is True
-    assert settings.resolved_langsmith_capture_outputs is True
-
-
-def test_langsmith_capture_defaults_to_disabled_in_cloud_mode() -> None:
-    settings = Settings(_env_file=None, app_mode="cloud")
-
-    assert settings.resolved_langsmith_capture_inputs is False
-    assert settings.resolved_langsmith_capture_outputs is False
+    assert langsmith_capture_inputs_enabled() is True
+    assert langsmith_capture_outputs_enabled() is True
 
 
-def test_langsmith_capture_respects_explicit_config_flags() -> None:
-    settings = Settings(
-        _env_file=None,
-        app_mode="local",
-        langsmith_capture_inputs=False,
-        langsmith_capture_outputs=True,
-    )
+def test_langsmith_capture_defaults_to_disabled_in_cloud_mode(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "cloud")
+    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
 
-    assert settings.resolved_langsmith_capture_inputs is False
-    assert settings.resolved_langsmith_capture_outputs is True
+    assert langsmith_capture_inputs_enabled() is False
+    assert langsmith_capture_outputs_enabled() is False
+
+
+def test_langsmith_capture_respects_explicit_config_flags(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
+    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "true")
+
+    assert langsmith_capture_inputs_enabled() is False
+    assert langsmith_capture_outputs_enabled() is True
 
 
 def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
@@ -161,8 +170,9 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     monkeypatch.setattr(
         tracing_module,
         "get_settings",
-        lambda: Settings(_env_file=None, tracing_enabled=True, langsmith_tracing=True),
+        lambda: Settings(tracing_enabled=True),
     )
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
     monkeypatch.delenv("LANGCHAIN_API_KEY", raising=False)
 
@@ -173,12 +183,12 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     assert tracing_module.langsmith_tracing_enabled() is True
 
 
-def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
-    class DummySkill(BaseSkill):
-        async def execute(self, **kwargs) -> SkillResult:
+def test_base_runtime_run_sets_nested_llm_trace_scope() -> None:
+    class DummyTracedExecution(BaseTracedExecution):
+        async def execute(self, **kwargs) -> TracedExecutionResult:
             del kwargs
             trace = get_llm_trace_context()
-            return SkillResult(
+            return TracedExecutionResult(
                 metadata={
                     "trace_workflow": trace.workflow,
                     "trace_lane": trace.lane,
@@ -186,7 +196,7 @@ def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
                 }
             )
 
-    context = SkillContext(
+    context = TracedExecutionContext(
         subject="demo",
         build_session_id="build-1",
         workflow_context=WorkflowContext(
@@ -197,8 +207,464 @@ def test_base_skill_run_sets_nested_llm_trace_scope() -> None:
         digest_mode="sprint",
         chapter_index=2,
     )
-    result = asyncio.run(DummySkill(context).run())
+    result = asyncio.run(DummyTracedExecution(context).run())
 
     assert result.metadata["trace_workflow"] == "digest.docgen.test"
     assert result.metadata["trace_lane"] == "docgen"
-    assert result.metadata["trace_node"] == "skill.DummySkill"
+    assert result.metadata["trace_node"] == "traced_execution.DummyTracedExecution"
+
+
+def test_docgen_writer_runtime_uses_workflow_runtime_trace_namespace() -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_llm(*_args, **_kwargs) -> str:
+        trace = get_llm_trace_context()
+        captured["workflow"] = trace.workflow
+        captured["lane"] = trace.lane
+        captured["node"] = trace.node
+        return "# 偏导数\n\n正文"
+
+    context = TracedExecutionContext(
+        subject="demo",
+        build_session_id="build-2",
+        workflow_context=WorkflowContext(
+            workflow_name="digest.docgen.test",
+            subject=LANGGRAPH_DEV_SUBJECT,
+            metadata={"lane": "docgen"},
+        ),
+        chapter_index=1,
+        llm_caller=fake_llm,
+    )
+    asyncio.run(
+        DocGenWriterRuntime(context).run(
+            chapter_plan={"chapter_index": 1, "title": "偏导数"},
+            dense_context="偏导数是多元函数沿坐标方向的变化率。",
+            tone="encouraging",
+            digest_mode="systematic",
+        )
+    )
+
+    assert captured["workflow"] == "digest.docgen.test"
+    assert captured["lane"] == "docgen"
+    assert captured["node"] == "workflow_runtime.docgen.writer"
+
+
+def test_traced_execution_outputs_include_cache_and_retrieval_profile_fields() -> None:
+    outputs = _traced_execution_outputs(
+        TracedExecutionResult(
+            content="dense context",
+            sources=["https://example.com/math"],
+            metadata={
+                "cache_status": "hit",
+                "cache_hit": True,
+                "stop_reason": "coverage_target_met",
+                "requested_profile": "docgen_systematic",
+                "applied_profile": "docgen_systematic",
+                "requested_retrieval_profile": "docgen_systematic",
+                "applied_retrieval_profile": "docgen_systematic",
+            },
+        )
+    )
+
+    assert outputs["cache_status"] == "hit"
+    assert outputs["cache_hit"] is True
+    assert outputs["stop_reason"] == "coverage_target_met"
+    assert outputs["requested_profile"] == "docgen_systematic"
+    assert outputs["applied_profile"] == "docgen_systematic"
+    assert outputs["requested_retrieval_profile"] == "docgen_systematic"
+    assert outputs["applied_retrieval_profile"] == "docgen_systematic"
+
+
+
+def test_workflow_tracer_wraps_node() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+    wrapped = trace.node(handler, name="bound_node")
+
+    result = asyncio.run(wrapped({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_workflow_tracer_supports_decorator_form() -> None:
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+
+    @trace.node(name="decorated_node")
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_traceable_run_accepts_context_for_chain_nodes() -> None:
+    context = WorkflowContext(
+        workflow_name="digest.planner",
+        subject=LANGGRAPH_DEV_SUBJECT,
+        metadata={"lane": "planner"},
+    )
+
+    @traceable_run(
+        name="context_bound_node",
+        context=context,
+        lane="planner",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_workflow_tracer_keeps_result_thin() -> None:
+    async def handler(_state):
+        return {"ok": True}
+
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+    wrapped = trace.node(handler, name="test_node")
+    result = asyncio.run(
+        wrapped(
+            {
+                "subject": "demo",
+                "node_events": [{"name": "legacy"}],
+                "node_timings_ms": {"legacy": 1},
+            }
+        )
+    )
+
+    assert result == {"ok": True}
+    assert "node_events" not in result
+    assert "node_timings_ms" not in result
+
+
+def test_traceable_run_unifies_chain_node_decorator() -> None:
+    @traceable_run(
+        name="unified_alias_node",
+        run_type="chain",
+        workflow="digest.planner",
+        lane="planner",
+    )
+    async def handler(_state):
+        return {"ok": True}
+
+    result = asyncio.run(handler({"subject": "demo"}))
+
+    assert result == {"ok": True}
+
+
+def test_traceable_run_supports_prompt_function() -> None:
+    @traceable_run(
+        name="prompt_builder",
+        run_type="prompt",
+    )
+    def build_prompt(subject: str) -> str:
+        return f"teach {subject}"
+
+    assert build_prompt("math") == "teach math"
+
+
+
+
+def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
+    payloads: list[dict[str, str]] = []
+
+    async def callback(payload):
+        payloads.append(payload)
+
+    state = {"progress_callback": callback}
+
+    record_step_start(state, name="load_context", kind="node")
+    elapsed_ms = record_step_end(state, name="load_context", kind="node")
+    asyncio.run(
+        emit_progress(
+            state,
+            phase="planner",
+            step="load_context",
+            status="completed",
+            message="已读取资料。",
+        )
+    )
+
+    assert elapsed_ms >= 0
+    assert state["runtime_steps"] == [
+        {
+            "name": "load_context",
+            "kind": "node",
+            "status": "ok",
+            "elapsed_ms": elapsed_ms,
+        }
+    ]
+    assert payloads == [
+        {
+            "phase": "planner",
+            "step": "load_context",
+            "status": "completed",
+            "message": "已读取资料。",
+        }
+    ]
+
+
+def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
+    payloads: list[dict[str, str]] = []
+    captured: dict[str, object] = {}
+
+    async def callback(payload):
+        payloads.append(payload)
+
+    class DummyRun:
+        def end(self, *, outputs):
+            captured["outputs"] = outputs
+
+    class DummyTraceContext:
+        def __enter__(self):
+            return DummyRun()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_langsmith_trace(**kwargs):
+        captured["trace_kwargs"] = kwargs
+        return DummyTraceContext()
+
+    monkeypatch.setattr(runtime_stats_module, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        runtime_stats_module,
+        "get_llm_trace_context",
+        lambda: LLMTraceContext(
+            subject="demo",
+            build_session_id="build-1",
+            workflow="digest.planner",
+            lane="planner",
+            node="load_context",
+        ),
+    )
+
+    state = {"progress_callback": callback}
+
+    async def run_step() -> None:
+        async with tracked_step(
+            state,
+            name="prepare_shared_inputs",
+            kind="substep",
+            phase="planner",
+            running_message="开始读取资料",
+            completed_message="资料读取完成",
+            trace_run_type="prompt",
+            trace_metadata={"file_count": 2},
+            trace_inputs={"user_goal_present": True},
+        ) as step:
+            step.set_outputs(source_packet_count=3)
+
+    asyncio.run(run_step())
+
+    assert state["runtime_steps"][0]["name"] == "prepare_shared_inputs"
+    assert state["runtime_steps"][0]["kind"] == "substep"
+    assert state["runtime_steps"][0]["status"] == "ok"
+
+    # Verify langsmith_trace was called with correct args
+    tk = captured["trace_kwargs"]
+    assert tk["name"] == "prepare_shared_inputs"
+    assert tk["run_type"] == "prompt"
+    assert tk["inputs"] == {"user_goal_present": True}
+    assert tk["subject"] == "demo"
+    assert tk["workflow"] == "digest.planner"
+    assert tk["lane"] == "planner"
+    assert tk["node"] == "load_context"
+    assert tk["extra_metadata"]["file_count"] == 2
+    assert tk["extra_metadata"]["substep"] == "prepare_shared_inputs"
+
+    assert captured["outputs"]["source_packet_count"] == 3
+    assert captured["outputs"]["status"] == "ok"
+    assert captured["outputs"]["elapsed_ms"] >= 0
+    assert payloads == [
+        {
+            "phase": "planner",
+            "step": "prepare_shared_inputs",
+            "status": "running",
+            "message": "开始读取资料",
+        },
+        {
+            "phase": "planner",
+            "step": "prepare_shared_inputs",
+            "status": "completed",
+            "message": "资料读取完成",
+        },
+    ]
+
+
+def test_normalize_langsmith_run_type_falls_back_to_tool() -> None:
+    assert normalize_langsmith_run_type("prompt") == "prompt"
+    assert normalize_langsmith_run_type("retriever") == "retriever"
+    assert normalize_langsmith_run_type("not-a-run-type") == "tool"
+
+
+def test_tool_registry_execute_emits_tool_trace(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class DummyRun:
+        def end(self, *, outputs):
+            captured["outputs"] = outputs
+
+    class DummyTraceContext:
+        def __enter__(self):
+            return DummyRun()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_langsmith_trace(**kwargs):
+        captured["trace_kwargs"] = kwargs
+        return DummyTraceContext()
+
+    monkeypatch.setattr(registry_module, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        registry_module,
+        "get_llm_trace_context",
+        lambda: LLMTraceContext(
+            subject="math",
+            build_session_id="build-1",
+            workflow="digest.docgen",
+            lane="docgen",
+            node="writer",
+        ),
+    )
+
+    registry = ToolRegistry()
+
+    async def demo_tool(query: str) -> dict[str, str]:
+        return {"result": f"handled:{query}"}
+
+    registry.register(
+        ToolDefinition(
+            name="demo_tool",
+            description="demo",
+            parameters={"type": "object"},
+            handler=demo_tool,
+            is_async=True,
+            tags=["retrieval"],
+            source="python",
+        )
+    )
+
+    result = asyncio.run(registry.execute("demo_tool", query="线性代数"))
+
+    assert result == {"result": "handled:线性代数"}
+    assert captured["trace_kwargs"]["name"] == "tool.demo_tool"
+    assert captured["trace_kwargs"]["run_type"] == "tool"
+    assert captured["trace_kwargs"]["inputs"] == {
+        "name": "demo_tool",
+        "arguments": {"query": "线性代数"},
+    }
+    assert captured["outputs"] == {
+        "success": True,
+        "result": {"result": "handled:线性代数"},
+    }
+
+
+def test_run_agent_loop_loads_project_tools_before_registry_lookup(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class DummyRegistry:
+        def to_openai_format(self):
+            calls.append("registry")
+            return []
+
+    async def fake_acompletion(messages, *, task_type, **kwargs):
+        del messages, task_type, kwargs
+        return "ok"
+
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: calls.append("load"))
+    monkeypatch.setattr("app.shared.infra.tools.registry.get_tool_registry", lambda: DummyRegistry())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion", fake_acompletion)
+
+    result = asyncio.run(
+        agent_loop_module.run_agent_loop(
+            [{"role": "user", "content": "hello"}],
+        )
+    )
+
+    assert result.final_answer == "ok"
+    assert calls[:2] == ["load", "registry"]
+
+
+def test_run_agent_loop_injects_tool_argument_overrides(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class DummyRegistry:
+        def to_openai_format(self):
+            return [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_kb",
+                        "description": "demo",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ]
+
+        async def execute(self, name: str, **kwargs):
+            calls.append({"name": name, "kwargs": kwargs})
+            return {"result": "知识片段"}
+
+    class FakeToolFunction:
+        name = "search_kb"
+        arguments = '{"query":"偏导数"}'
+
+    class FakeToolCall:
+        id = "tool-1"
+        function = FakeToolFunction()
+
+    class FakeToolMessage:
+        content = None
+        tool_calls = [FakeToolCall()]
+
+    class FakeFinalMessage:
+        content = "最终回答"
+        tool_calls = None
+
+    class FakeResponse:
+        def __init__(self, message):
+            self.choices = [type("Choice", (), {"message": message})()]
+
+    responses = iter(
+        [
+            FakeResponse(FakeToolMessage()),
+            FakeResponse(FakeFinalMessage()),
+        ]
+    )
+
+    async def fake_acompletion_with_tools(messages, *, tools, task_type, **kwargs):
+        del messages, tools, task_type, kwargs
+        return next(responses)
+
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
+    monkeypatch.setattr("app.shared.infra.tools.registry.get_tool_registry", lambda: DummyRegistry())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion_with_tools", fake_acompletion_with_tools)
+
+    result = asyncio.run(
+        agent_loop_module.run_agent_loop(
+            [{"role": "user", "content": "帮我一步步理解偏导数"}],
+            tools=["search_kb"],
+            config=agent_loop_module.AgentLoopConfig(
+                max_iterations=2,
+                tool_argument_overrides={"search_kb": {"subject": "math_demo"}},
+            ),
+        )
+    )
+
+    assert result.final_answer == "最终回答"
+    assert calls == [
+        {
+            "name": "search_kb",
+            "kwargs": {"query": "偏导数", "subject": "math_demo"},
+        }
+    ]
+
+
+
+

@@ -5,6 +5,7 @@ from .content_blocks import (
     build_learning_objectives_section,
 )
 from .report_generation import (
+    analyze_chapter_heading_quality,
     build_chapter_title_resolution_messages,
     build_chapter_guide,
     build_chapter_recap,
@@ -18,6 +19,7 @@ from .report_generation import (
 )
 
 __all__ = [
+    "analyze_chapter_heading_quality",
     "build_chapter_title_resolution_messages",
     "build_chapter_guide",
     "build_chapter_recap",

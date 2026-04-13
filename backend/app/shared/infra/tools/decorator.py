@@ -25,7 +25,7 @@ def _build_schema(func: Callable) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-def tool(name: str, description: str) -> Callable:
+def tool(name: str, description: str, *, tags: list[str] | None = None, source: str = "python") -> Callable:
     """装饰器：将函数注册为 LLM 可调用的工具。
 
     用法::
@@ -38,6 +38,8 @@ def tool(name: str, description: str) -> Callable:
             name=name, description=description,
             parameters=_build_schema(func), handler=func,
             is_async=asyncio.iscoroutinefunction(func),
+            tags=list(tags or []),
+            source=source,
         )
         get_tool_registry().register(td)
         return func

@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { MOCK_DOCUMENT_MARKDOWN } from "../../components/knowledge-docs/mock";
 
 export interface SubjectItem {
   id: number;
@@ -109,6 +110,24 @@ export const subjectHandlers = [
         deleted: true,
         subject_id: body.subject_id,
         deleted_counts: { subject: 1 },
+      },
+    });
+  }),
+
+  http.post("/api/v1/subjects/:subjectId/knowledge/docs", () => {
+    // When mock is explicitly requested or when in MSW development mode
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        exists: true,
+        markdown: MOCK_DOCUMENT_MARKDOWN,
+        updated_at: new Date().toISOString(),
+        build: { status: "completed", digest_mode: "systematic" },
+        build_metrics: { llm_total_calls: 12 },
+        build_preview: {
+            plan_summary: "系统渲染 Mock 数据效果预览，确保样式与排版完全正确。",
+            latest_chapter_titles: ["Mock 样式概览"]
+        }
       },
     });
   }),

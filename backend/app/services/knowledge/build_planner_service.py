@@ -31,10 +31,10 @@ from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
-    BuildPlannerNodeTimingResponse,
     BuildPlannerPlanResponse,
     BuildPlannerRuntimeStatsResponse,
     BuildPlannerSessionResponse,
+    BuildPlannerStepStatsResponse,
     BuildPlannerTurnResponse,
 )
 from app.shared.infra.exceptions import (
@@ -123,6 +123,7 @@ def _plan_response(
         user_goal=str(plan.get("user_goal") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
         tone=str(plan.get("tone") or "encouraging"),
+        selected_skillpacks=list(plan.get("selected_skillpacks") or []),
         chapter_plan=list(plan.get("chapter_plan") or []),
         research_queries=list(plan.get("research_queries") or []),
         media_plan=dict(plan.get("media_plan") or {}),
@@ -140,6 +141,7 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
         "user_goal": str(plan.get("user_goal") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "tone": str(plan.get("tone") or ""),
+        "selected_skillpacks": list(plan.get("selected_skillpacks") or []),
         "chapter_plan": list(plan.get("chapter_plan") or []),
         "research_queries": list(plan.get("research_queries") or []),
         "media_plan": dict(plan.get("media_plan") or {}),
@@ -152,31 +154,22 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     if not isinstance(final_state, dict):
         return None
 
-    node_timings_raw = final_state.get("node_timings_ms") or {}
-    node_timings_ms = {
-        str(key): int(value)
-        for key, value in dict(node_timings_raw).items()
-        if value not in (None, "")
-    } if isinstance(node_timings_raw, dict) else {}
-
-    node_events: list[BuildPlannerNodeTimingResponse] = []
-    for item in list(final_state.get("node_events") or []):
+    steps: list[BuildPlannerStepStatsResponse] = []
+    for item in list(final_state.get("runtime_steps") or []):
         if not isinstance(item, dict):
             continue
-        node_events.append(
-            BuildPlannerNodeTimingResponse(
-                node_name=str(item.get("node_name") or ""),
-                lane=str(item.get("lane") or "planner"),
-                workflow=str(item.get("workflow") or "digest.planner"),
+        steps.append(
+            BuildPlannerStepStatsResponse(
+                name=str(item.get("name") or ""),
+                kind=str(item.get("kind") or "substep"),
                 elapsed_ms=int(item.get("elapsed_ms", 0) or 0),
                 status=str(item.get("status") or "ok"),
             )
         )
 
     return BuildPlannerRuntimeStatsResponse(
-        workflow_elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
-        node_timings_ms=node_timings_ms,
-        node_events=node_events,
+        elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
+        steps=steps,
         fallback_used=bool(final_state.get("fallback_used", False)),
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
@@ -194,8 +187,8 @@ def _log_planner_runtime(
         "planner_runtime_summary",
         subject=subject,
         planner_session_id=session_id,
-        workflow_elapsed_ms=runtime_stats.workflow_elapsed_ms,
-        node_timings_ms=runtime_stats.node_timings_ms,
+        elapsed_ms=runtime_stats.elapsed_ms,
+        steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
         fallback_used=runtime_stats.fallback_used,
         generation_mode=runtime_stats.generation_mode,
     )
@@ -208,6 +201,7 @@ def _normalize_persisted_plan(
     user_goal: str,
     digest_mode: str,
     tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -217,6 +211,7 @@ def _normalize_persisted_plan(
         user_goal=user_goal,
         requested_digest_mode=digest_mode,
         requested_tone=tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     )
@@ -272,6 +267,7 @@ async def create_build_planner_session_service(
         planner_session_id=session_id,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=list(payload.selected_skillpacks or []),
         message_history=[user_goal],
         progress_callback=progress_callback,
         token_callback=token_callback,
@@ -284,6 +280,7 @@ async def create_build_planner_session_service(
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=list(payload.selected_skillpacks or []),
         shared_inputs=final_state.get("shared_inputs"),
     )
     record.latest_plan_json = plan
@@ -350,6 +347,11 @@ async def append_build_planner_message_service(
     )
     turns = list_planner_turns(session, session_id=session_id)
     message_history = [turn.content for turn in turns if turn.content.strip()]
+    selected_skillpacks = (
+        list(payload.selected_skillpacks)
+        if payload.selected_skillpacks is not None
+        else list((record.latest_plan_json or {}).get("selected_skillpacks") or [])
+    )
     workflow_result = await run_build_planner_workflow(
         subject=subject.slug,
         file_ids=list(record.selected_file_ids_json),
@@ -357,6 +359,7 @@ async def append_build_planner_message_service(
         planner_session_id=session_id,
         digest_mode=record.digest_mode,
         tone=record.tone,
+        selected_skillpacks=selected_skillpacks,
         message_history=message_history,
         latest_plan=record.latest_plan_json,
         progress_callback=progress_callback,
@@ -370,6 +373,7 @@ async def append_build_planner_message_service(
         user_goal=record.user_goal,
         digest_mode=record.digest_mode,
         tone=record.tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=final_state.get("shared_inputs"),
         latest_plan=record.latest_plan_json,
     )

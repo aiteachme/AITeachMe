@@ -4,7 +4,17 @@
 /*  docs page components, hooks, and sub-systems.                      */
 /* ------------------------------------------------------------------ */
 
-import type { FileRecord, SubjectVectorStatusResponse } from "../../api/generated/model";
+import type {
+  BuildPreviewChapterProgressResponse,
+  BuildPreviewNodeResponse,
+  BuildPreviewRecentEventResponse,
+  BuildSampleCardResponse,
+  DocGenGetResponse as ApiDocGenGetResponse,
+  FileRecord,
+  KnowledgeBuildMetricsResponse,
+  KnowledgeBuildPreviewResponse,
+  KnowledgeBuildStatusResponse,
+} from "../../api/generated/model";
 
 /* ---- TOC ---- */
 
@@ -116,86 +126,14 @@ export interface ThreadTurnItem {
 
 /* ---- Build Status & Preview ---- */
 
-export interface DocGenBuildStatus {
-  status?: string | null;
-  requested_at?: string | null;
-  stage?: string | null;
-  error_message?: string | null;
-  draft_available?: boolean;
-  digest_mode?: string | null;
-}
-
-export interface BuildSampleCard {
-  title: string;
-  card_type: string;
-  summary: string;
-}
-
-export interface BuildPreviewNode {
-  name: string;
-  node_type: string;
-}
-
-export interface BuildPreviewChapterProgress {
-  chapter_index: number;
-  title: string;
-  status: string;
-  source_count?: number;
-  local_hits?: number;
-  web_hits?: number;
-  query_count?: number;
-  word_count?: number;
-  fallback_used?: boolean;
-}
-
-export interface BuildPreviewRecentEvent {
-  stage: string;
-  chapter_index?: number | null;
-  title?: string | null;
-  summary: string;
-  created_at?: string | null;
-  domains?: string[];
-  source_titles?: string[];
-  source_urls?: string[];
-}
-
-export interface KnowledgeBuildPreview {
-  current_stage_description?: string | null;
-  digest_mode?: string | null;
-  mode_reason?: string | null;
-  plan_summary?: string | null;
-  processed_chunks?: number;
-  total_chunks?: number;
-  discovered_node_count?: number;
-  discovered_node_types?: Record<string, number>;
-  sample_nodes?: BuildPreviewNode[];
-  sample_cards?: BuildSampleCard[];
-  chapter_progress?: BuildPreviewChapterProgress[];
-  recent_events?: BuildPreviewRecentEvent[];
-  latest_chapter_titles?: string[];
-  draft_excerpt?: string;
-}
-
-export interface KnowledgeBuildMetrics {
-  llm_total_calls?: number;
-  failed_llm_call_count?: number;
-  llm_avg_latency_ms?: number;
-  call_count_by_lane?: Record<string, number>;
-}
-
-export interface DocGenGetResponse {
-  exists: boolean;
-  markdown?: string;
-  updated_at?: string | null;
-  source_file_uids?: string[];
-  prompt?: string | null;
-  draft_markdown?: string;
-  draft_updated_at?: string | null;
-  build?: DocGenBuildStatus | null;
-  build_preview?: KnowledgeBuildPreview | null;
-  build_metrics?: KnowledgeBuildMetrics | null;
-  vector_status?: SubjectVectorStatusResponse | null;
-}
+export type DocGenBuildStatus = KnowledgeBuildStatusResponse;
+export type BuildSampleCard = BuildSampleCardResponse;
+export type BuildPreviewNode = BuildPreviewNodeResponse;
+export type BuildPreviewChapterProgress = BuildPreviewChapterProgressResponse;
+export type BuildPreviewRecentEvent = BuildPreviewRecentEventResponse;
+export type KnowledgeBuildPreview = KnowledgeBuildPreviewResponse;
+export type KnowledgeBuildMetrics = KnowledgeBuildMetricsResponse;
+export type DocGenGetResponse = ApiDocGenGetResponse;
 
 export interface FilesListResponse {
   items: FileRecord[];

@@ -1,146 +1,122 @@
-## 八、迁移落位与清理计划
+# 08. Migration Plan
 
-> 目标：回答“后续新增能力应该落到哪里、哪些目录停止扩张、哪些技术债要逐步清理”。
-> 最后更新：2026-04-09
+最后更新：2026-04-13
 
----
+## 总原则
 
-## 8.1 迁移总原则
+- 不重写五大引擎总骨架。
+- 优先收敛边界、合同与观测，再继续加深质量。
+- 能在现有 workflow graph 内解决的问题，不轻易再新起一套 runtime 体系。
+- 每一轮迁移都要明确“已完成 / 部分完成 / 未开始”，避免计划文档和代码状态脱节。
 
-### 原则 1：不搞一次性大搬家
+## 当前阶段状态总表
 
-这次不是“把旧代码全删掉再重建”，而是：
+| Phase | 目标 | 当前状态 | 说明 |
+| --- | --- | --- | --- |
+| Phase 0 | 冻结边界与术语 | 已完成 | `infra / teaching / workflows` 三层边界与 `tool / skillpack / toolpack / workflow runtime` 术语已经固定 |
+| Phase 1 | skillpack 进入主流程 | 已完成 | `selected_skillpacks` 已进入 planner -> confirmed plan -> docgen |
+| Phase 2 | toolpack 变成真实扩展点 | 已完成 | `manifest.yaml + handler.py` loader 已落地，YAML-only 仅保留过渡语义 |
+| Phase 3 | DocGen concrete runtime 回归 workflows | 已完成 | `workflows/digest/docgen/runtime/*` 已成为 canonical runtime 落点 |
+| Phase 4 | 在不改主骨架的前提下增强 DocGen 质量 | 进行中 | micro-loop、minimal asset sidecar、mode-aware practice 已落地，但仍需继续做深 |
+| Phase 5 | 跨引擎合同收敛 | 未完成 | Interact / Examine / Profile 与 Digest 的更深协同仍待推进 |
 
-- 先冻结 canonical 模块
-- 再停止旧入口继续长新逻辑
-- 最后逐步迁移调用点
+## 各阶段的当前判断
 
-### 原则 2：先收口，再清理
+### Phase 0：边界冻结
 
-先确定哪一层是唯一真相源，再去删兼容层。
-顺序不能反。
+退出标准已经满足：
 
-### 原则 3：Digest 改造不外溢
+- 团队不再把 `orchestrators` 当长期目录继续生长。
+- `prompt_builders` 不再作为业务 prompt 的 canonical 落点。
+- 讨论新能力时，能稳定使用同一套术语。
 
-Docs Lane 的升级不应该迫使其他四大引擎跟着重写。
+### Phase 1：skillpack 主流程接入
 
----
+退出标准已经满足：
 
-## 8.2 当前需要明确的 canonical 模块
+- `selected_skillpacks` 可通过 API 进入 planner。
+- confirmed plan 会保留 skillpack 选择。
+- DocGen 的 `load_context` 与 runtime 能消费 scoped guidance/defaults/tool tags。
 
-| 能力 | canonical 落点 | 过渡/兼容 |
-| --- | --- | --- |
-| runtime root | `app.shared.infra.runtime_paths` | 无 |
-| 业务路径 helper | `app.utils.path_helpers` | 无 |
-| memory store / learner doc | `app.shared.infra.memory` | `app.teaching.memory` 仅兼容 |
-| 通用 retriever / scraper | `app.shared.infra.search` | 无 |
-| 原子工具 | `app.shared.infra.tools` | 无 |
-| 组合 skill | `app.shared.infra.skills` | 无 |
-| 教学脚手架 / 教学块 | `app.teaching.documents` | 无 |
-| 教学语义动作 | `app.teaching` | `skill_tools.py` 为轻量原型区 |
-| workflow 公共编排 | `app.workflows.common` | 无 |
+### Phase 2：toolpack 扩展模型
 
----
+退出标准已经基本满足：
 
-## 8.3 当前停止继续扩张的目录或入口
+- 外部 toolpack 可以注册真实 handler。
+- disabled / broken toolpack 不会拖垮主流程。
+- YAML-only `backend/tools/*.yaml` 已退化为过渡态元信息，而不再宣称是完整扩展模型。
 
-### 1. `app.teaching.memory`
+### Phase 3：DocGen runtime 回归 workflows
 
-处理策略：
+退出标准已经满足：
 
-- 保留兼容
-- 停止新增底层逻辑
-- 所有新实现直接落到 `app.shared.infra.memory`
+- `workflows/digest/docgen/runtime/*` 已稳定承担 workflow-local 多步逻辑。
+- `shared/infra/traced_execution.py` 成为唯一通用 traced execution base。
+- trace namespace 已切到 `workflow_runtime.docgen.*`。
 
-### 2. `app.teaching.skill_tools.py`
+### Phase 4：DocGen 质量增强
 
-处理策略：
+当前已完成的部分：
 
-- 可继续放轻量样例
-- 一旦出现多步 orchestration、独立 tracing、检索/LLM 组合，迁到 `shared/infra/skills`
+- chapter research 已进入 micro-loop
+- `requested_profile / applied_profile / research_rounds / source_class_breakdown` 已进入 summary/trace
+- retriever / reader / compression 已接入最小 runtime cache
+- Mermaid / image / interactive HTML 已进入最小 asset sidecar 主线
+- mode-aware practice layer 已接入文档构建链
+- workflow tracing 已收敛到最小 4 入口
 
-### 3. workflow 节点中的教学字符串拼接
+当前未完成的部分：
 
-处理策略：
+- 学科化 retrieval weighting / source class 调权
+- 持久化检索、读取、压缩缓存策略
+- richer interactive/image sidecar
+- animation 真正执行链
+- 更细颗粒度的章节质量合同与教学块
 
-- 不再直接在 node 中堆教学块模板
-- 统一沉回 `app.teaching.documents`
+### Phase 5：跨引擎合同收敛
 
----
+这是当前下一阶段最容易被低估、但真正重要的工作：
 
-## 8.4 后续新增能力的落位指南
+- Interact 需要进一步复用 Digest 的课程合同与 skillpack 语义。
+- Examine 需要和 Digest 更深共享章节研究上下文、教学动作和知识焦点。
+- Profile 需要把课程产物、练习结果和交互行为连接成更稳定的画像输入。
 
-### 新的检索器 / 抓取器 / 工具
+## 当前迁移重点
 
-落点：
+### 重点 1：不要再回头争边界
 
-- `shared/infra/search`
-- `shared/infra/tools`
+下面这些结论当前不应再反复讨论：
 
-### 新的研究型 / 媒体型 / 写作型 Skill
+- DocGen business runtime 放在 `workflows/.../runtime`
+- `tool / skillpack / toolpack` 三分模型成立
+- workflow tracing 主入口放在 `workflows/common`
 
-落点：
+### 重点 2：开始从“打通”转向“做深”
 
-- `shared/infra/skills`
+当前已经过了最危险的“能力没接起来”阶段。
+接下来重点应该转成：
 
-### 新的教学块 / 课程模板 / 错因讲评
+- 质量做深
+- 合同做稳
+- 跨引擎打通
+- dashboard/trace 可比较
 
-落点：
+### 重点 3：把未完成项写成清晰 backlog，而不是继续写抽象愿景
 
-- `app.teaching`
+当前未完成项需要继续写成：
 
-### 新的 DocGen 章节节点或状态流
+- 学科化 profile 与调权策略
+- 持久化 research cache 策略
+- richer asset sidecar 设计与验收标准
+- Interact / Examine / Profile 的共享合同设计
 
-落点：
+## 回滚策略
 
-- `workflows/digest/docgen`
+- 继续保持阶段性提交，而不是超大改动混在一起。
+- 保留少量顶层兼容 shim，但不再为 legacy 口径新增新功能。
+- 回滚优先回滚 workflow-local 增强逻辑，不要先动基础边界。
 
----
+## 一句话结论
 
-## 8.5 推荐清理顺序
-
-### Step 1：冻结 memory 真相源
-
-- 文档层和代码层都明确 `shared/infra/memory` 为 canonical
-- 不再在 `teaching/memory` 新增路径或存储语义
-
-### Step 2：让教学表达只从 `teaching` 输出
-
-- 章节导读
-- 学习目标对照
-- glossary
-- recap
-- 错因块
-
-都统一从 `app.teaching` 导出。
-
-### Step 3：让 workflow 只做 orchestration
-
-- research 在 `infra/skills`
-- 教学结构在 `teaching`
-- graph 只负责编排与 state
-
-### Step 4：再逐步回收兼容层
-
-等调用点收敛后，再考虑进一步瘦身 `teaching/memory` 等过渡目录。
-
----
-
-## 8.6 当前不建议做的事情
-
-- 不建议新建 `app/core`
-- 不建议把 `teaching` 再往 `shared/infra` 里面塞
-- 不建议为了“目录好看”大规模移动已稳定的 workflow 文件
-- 不建议为了复用 `gpt-researcher` 而强行复制其整个目录结构
-
----
-
-## 8.7 一句话结论
-
-这份迁移计划的本质不是“删除哪些文件”，而是：
-
-- 先定唯一真相源
-- 先停止旧入口继续膨胀
-- 再逐步让新能力各归其位
-
-只有这样，后续 Digest 深度重构才不会把整仓结构一起拖乱。
+Digest refactor 当前已经完成“基础设施重排 + 主链路打通”。
+后续迁移不该再围绕“边界怎么定”打转，而应该转向“质量如何继续做深、跨引擎如何继续收敛”。

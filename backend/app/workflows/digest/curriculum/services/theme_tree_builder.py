@@ -10,7 +10,7 @@ import structlog
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Session, select
 
-from app.shared.infra.llm import acompletion_structured
+from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.models.curriculum import (
     TaxonomyAnchor,

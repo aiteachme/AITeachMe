@@ -1,4 +1,4 @@
-﻿"""Fallback-aware LLM helpers."""
+"""Fallback-aware LLM helpers."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ from typing import Any, Literal, TypeVar
 import structlog
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.model_router import TaskType
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_tracing_scope
+from app.shared.infra.llm_support.routing import TaskType
+# NOTE: tracing imports are deferred to function scope to avoid
+# circular import: tracing → llm_support/__init__ → fallback → tracing
 
 from .structured_calls import acompletion_structured
 from .text import acompletion
@@ -64,6 +65,8 @@ async def acompletion_with_fallback(
 
     resolved_tier = tier or resolve_llm_tier(task_type)
     chain = _TIER_FALLBACK_CHAIN[resolved_tier]
+    from app.shared.infra.tracing import get_llm_trace_context, langsmith_tracing_scope
+
     trace = get_llm_trace_context()
     last_error: Exception | None = None
 

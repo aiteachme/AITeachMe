@@ -7,8 +7,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.config import get_settings
 from app.models.subject import Subject
+from app.shared.infra.runtime_mode import is_cloud_mode
 from app.utils.time import utcnow
 
 _LEGACY_VECTOR_TABLE = "chunk_embeddings"
@@ -95,10 +95,9 @@ def build_enabled_binding(
 ) -> SubjectEmbeddingBinding:
     """Create an enabled binding for one subject."""
 
-    settings = get_settings()
     vector_target = (
         _POSTGRES_VECTOR_REF
-        if settings.is_cloud_mode
+        if is_cloud_mode()
         else build_subject_vector_table_name(subject_slug)
     )
 
@@ -134,7 +133,7 @@ def build_disabled_binding(
             if previous_binding is not None
             else (
                 _POSTGRES_VECTOR_REF
-                if get_settings().is_cloud_mode
+                if is_cloud_mode()
                 else build_subject_vector_table_name(subject_slug)
             )
         ),

@@ -4,15 +4,21 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from pydantic import ValidationError
+
+from app.shared.infra.skills import (
+    collect_recommended_tool_tags,
+    collect_skillpack_defaults,
+    render_prompt_scoped_skillpacks,
+    resolve_skillpacks,
+)
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
-    normalize_chapter_assignments,
+    normalize_confirmed_plan_contract,
     publish_docgen_progress,
-    resolve_docgen_course_type,
-    resolve_docgen_retrieval_profile,
     serialize_section,
 )
 from app.workflows.digest.docgen.state import DocGenState
@@ -39,35 +45,67 @@ def build_load_context_node(*, context: WorkflowContext):
             )
 
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
-        tone = state.get("tone") or "encouraging"
-        plan_payload = deepcopy(state.get("confirmed_plan") or {})
-        if not plan_payload:
+        tone = str(state.get("tone") or "").strip()
+        raw_plan_payload = deepcopy(state.get("confirmed_plan") or {})
+        if not raw_plan_payload:
             return {"error": "DocGen 缺少已确认的构建方案，不能直接进入文档生成。"}
-        if not plan_payload.get("chapter_plan"):
+
+        try:
+            plan_contract = normalize_confirmed_plan_contract(raw_plan_payload)
+        except ValidationError as exc:
+            first_error = exc.errors()[0] if exc.errors() else {}
+            location = ".".join(str(item) for item in list(first_error.get("loc") or []))
+            location = location or "confirmed_plan"
+            return {"error": f"已确认的构建方案字段不完整或格式错误：{location}"}
+
+        if not plan_contract.chapter_plan:
             return {"error": "已确认的构建方案缺少章节规划，无法继续生成知识文档。"}
 
-        digest_mode = str(plan_payload.get("digest_mode") or digest_mode)
-        course_type = resolve_docgen_course_type(digest_mode)
-        retrieval_profile = resolve_docgen_retrieval_profile(course_type)
-        tone = str(plan_payload.get("tone") or tone)
-        assignments = normalize_chapter_assignments(
-            plan_payload.get("chapter_plan") or [],
+        digest_mode = str(plan_contract.digest_mode or digest_mode)
+        course_type = plan_contract.resolve_course_type()
+        retrieval_profile = plan_contract.resolve_retrieval_profile()
+        selected_skillpacks = [definition.name for definition in resolve_skillpacks(plan_contract.selected_skillpacks)]
+        skillpack_defaults = collect_skillpack_defaults(selected_skillpacks, prompt_scope="digest.docgen")
+        tone = str(plan_contract.tone or tone or skillpack_defaults.get("tone") or "encouraging")
+        assignments = plan_contract.to_chapter_assignments(
             default_source_file_ids=list(state.get("file_ids", [])),
         )
         if not assignments:
             return {"error": "已确认的构建方案中没有可执行的章节。"}
+        plan_payload = plan_contract.to_payload()
+        plan_payload["course_type"] = course_type
+        plan_payload["retrieval_profile"] = retrieval_profile
+        plan_payload["selected_skillpacks"] = selected_skillpacks
 
         has_local_materials = bool(shared_inputs.source_packets)
         document_context = {
             "subject": state["subject"],
+            "subject_display_name": str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
             "digest_mode": digest_mode,
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "tone": tone,
-            "user_goal": str(plan_payload.get("user_goal") or state.get("user_prompt") or ""),
-            "plan_summary": str(plan_payload.get("plan_summary") or ""),
+            "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
+            "plan_summary": str(plan_contract.plan_summary or ""),
             "source_strategy": "local_first" if has_local_materials else "web_first",
+            "include_sources": bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
+            "selected_skillpacks": selected_skillpacks,
+            "skillpack_defaults": skillpack_defaults,
+            "recommended_tool_tags": collect_recommended_tool_tags(
+                selected_skillpacks,
+                prompt_scope="digest.docgen",
+            ),
+            "skillpack_guidance": render_prompt_scoped_skillpacks(
+                selected_skillpacks,
+                prompt_scope="digest.docgen",
+                bindings={
+                    "subject": state["subject"],
+                    "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
+                    "topic": state["subject"],
+                    "concept": state["subject"],
+                },
+            ),
         }
 
         update_knowledge_build_status(
@@ -78,16 +116,16 @@ def build_load_context_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id") or None,
             confirmed_plan_id=state.get("confirmed_plan_id") or None,
             digest_mode=digest_mode,
-            mode_reason=(plan_payload.get("mode_reason") or "confirmed_build_plan"),
+            mode_reason=(plan_contract.mode_reason or "confirmed_build_plan"),
             current_stage_description=(
-                str(plan_payload.get("plan_summary") or "方案已确认，开始按章节执行。")
+                str(plan_contract.plan_summary or "方案已确认，开始按章节执行。")
                 if has_local_materials
-                else str(plan_payload.get("plan_summary") or "方案已确认，当前没有本地资料，将优先执行联网研究。")
+                else str(plan_contract.plan_summary or "方案已确认，当前没有本地资料，将优先执行联网研究。")
             ),
             total_chunks=len(assignments),
             processed_chunks=0,
             current_chunk=0,
-            plan_summary=str(plan_payload.get("plan_summary") or ""),
+            plan_summary=str(plan_contract.plan_summary or ""),
             chapter_progress=[
                 {
                     "chapter_index": int(item.get("chapter_index", index + 1) or (index + 1)),
@@ -144,6 +182,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "retrieval_profile": retrieval_profile,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "tone": tone,
+            "selected_skillpacks": selected_skillpacks,
             "document_context": document_context,
             "planner_ms": 0,
         }

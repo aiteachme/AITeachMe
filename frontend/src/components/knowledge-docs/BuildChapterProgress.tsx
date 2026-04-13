@@ -59,7 +59,7 @@ export function BuildChapterProgress({ chapters, className }: Props) {
                 "flex-1 min-w-0 truncate",
                 isActive ? "text-sky-700 font-medium" : isDone ? "text-stone-600" : "text-stone-400",
               )}>
-                <span className="text-stone-300 mr-1">{String(chapter.chapter_index + 1).padStart(2, "0")}</span>
+                <span className="text-stone-300 mr-1">{String(chapter.chapter_index).padStart(2, "0")}</span>
                 {chapter.title}
               </span>
 

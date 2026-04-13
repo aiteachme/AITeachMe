@@ -10,17 +10,32 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 from uuid import uuid4
 
 import structlog
 from langsmith import trace as langsmith_trace_run
+from langsmith import traceable
 from langsmith import tracing_context
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.model_router import TaskType, get_task_profile
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
+# NOTE: llm_support.routing is imported lazily inside LLMCallTracker.build_token_summary
+# to avoid circular import: tracing → llm_support/__init__ → fallback → tracing
+from app.shared.infra.runtime_mode import get_app_version, is_local_mode
 
 logger = structlog.get_logger()
+
+LangSmithRunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
+LANGSMITH_RUN_TYPES: tuple[LangSmithRunType, ...] = (
+    "tool",
+    "chain",
+    "llm",
+    "retriever",
+    "embedding",
+    "prompt",
+    "parser",
+)
 
 
 @dataclass
@@ -35,6 +50,33 @@ class LLMTraceContext:
 
 
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
+
+
+def langsmith_tracing_requested() -> bool:
+    return get_env_bool("LANGSMITH_TRACING", False)
+
+
+def get_langsmith_project_name() -> str | None:
+    value = (get_env("LANGSMITH_PROJECT", "AITeachMe") or "AITeachMe").strip()
+    return value or None
+
+
+def get_langsmith_max_text_chars() -> int:
+    return max(32, get_env_int("LANGSMITH_MAX_TEXT_CHARS", 2000))
+
+
+def langsmith_capture_inputs_enabled() -> bool:
+    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_INPUTS")
+    if explicit_value is not None:
+        return explicit_value
+    return is_local_mode()
+
+
+def langsmith_capture_outputs_enabled() -> bool:
+    explicit_value = get_env_optional_bool("LANGSMITH_CAPTURE_OUTPUTS")
+    if explicit_value is not None:
+        return explicit_value
+    return is_local_mode()
 
 
 def _langsmith_api_key_present() -> bool:
@@ -60,7 +102,7 @@ def _sanitize_langsmith_metadata_value(value: Any) -> Any:
     if isinstance(value, str):
         if value.lower().startswith("data:"):
             return "[redacted:data-url]"
-        limit = max(32, int(get_settings().langsmith_max_text_chars))
+        limit = get_langsmith_max_text_chars()
         if len(value) <= limit:
             return value
         return f"{value[: max(1, limit - 3)]}..."
@@ -71,7 +113,7 @@ def langsmith_tracing_enabled() -> bool:
     """Whether LangSmith tracing should be enabled for the current process."""
 
     settings = get_settings()
-    return settings.tracing_enabled and settings.langsmith_tracing and _langsmith_api_key_present()
+    return settings.tracing_enabled and langsmith_tracing_requested() and _langsmith_api_key_present()
 
 
 def build_langsmith_metadata(
@@ -85,10 +127,9 @@ def build_langsmith_metadata(
 ) -> dict[str, Any]:
     """Build a normalized LangSmith metadata payload."""
 
-    settings = get_settings()
     metadata: dict[str, Any] = {
         "app": "aiteachme-backend",
-        "app_version": settings.app_version,
+        "app_version": get_app_version(),
     }
     if subject:
         metadata["subject"] = subject
@@ -142,7 +183,7 @@ def _build_langsmith_context(
     extra_metadata: Mapping[str, Any] | None = None,
     extra_tags: list[str] | None = None,
 ) -> tuple[str | None, dict[str, Any], list[str]]:
-    project_name = (get_settings().langsmith_project or "").strip() or None
+    project_name = get_langsmith_project_name()
     metadata = build_langsmith_metadata(
         subject=subject,
         build_session_id=build_session_id,
@@ -158,6 +199,69 @@ def _build_langsmith_context(
         extra_tags=extra_tags,
     )
     return project_name, metadata, tags
+
+
+def build_langsmith_extra(
+    *,
+    subject: str = "",
+    build_session_id: str = "",
+    workflow: str = "",
+    lane: str = "",
+    node: str = "",
+    extra_metadata: Mapping[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Build one ``langsmith_extra`` payload for ``@traceable`` calls."""
+
+    if not langsmith_tracing_enabled():
+        return None
+
+    project_name, metadata, tags = _build_langsmith_context(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+        extra_metadata=extra_metadata,
+        extra_tags=extra_tags,
+    )
+    extra: dict[str, Any] = {
+        "metadata": metadata,
+        "tags": tags,
+    }
+    if project_name:
+        extra["project_name"] = project_name
+    return extra
+
+
+def annotate_traceable(
+    func,
+    *,
+    name: str,
+    run_type: str = "chain",
+    process_inputs=None,
+    process_outputs=None,
+):
+    """Small wrapper around ``langsmith.traceable`` for repo-local helpers."""
+
+    return traceable(
+        name=name,
+        run_type=run_type,
+        process_inputs=process_inputs,
+        process_outputs=process_outputs,
+    )(func)
+
+
+
+def normalize_langsmith_run_type(
+    value: str | None,
+    *,
+    default: LangSmithRunType = "tool",
+) -> LangSmithRunType:
+    normalized = str(value or "").strip().lower()
+    if normalized in LANGSMITH_RUN_TYPES:
+        return normalized  # type: ignore[return-value]
+    return default
 
 
 @dataclass
@@ -275,6 +379,7 @@ class LLMCallTracker:
         settings = get_settings()
         light_model = ""
         if settings.llm_model_light:
+            from app.shared.infra.llm_support.routing import TaskType, get_task_profile
             light_model = get_task_profile(TaskType.DOCGEN_LIGHT).model
 
         total_latency_ms = int(round(sum(record.latency_s for record in records) * 1000))
@@ -335,7 +440,7 @@ class LLMCallTracker:
             if light_model and record.model == light_model:
                 light_model_call_count += 1
                 light_model_total_tokens += record.total_tokens
-            if record.task_type == TaskType.DOCGEN_LIGHT.value:
+            if record.task_type == "docgen_light":
                 light_task_call_count += 1
                 light_task_total_tokens += record.total_tokens
 
@@ -536,6 +641,33 @@ def langsmith_trace(
             yield run
 
 
+@contextmanager
+def trace_substep(
+    name: str,
+    *,
+    metadata: Mapping[str, Any] | None = None,
+    tags: list[str] | None = None,
+    run_type: str = "tool",
+    inputs: Mapping[str, Any] | None = None,
+) -> Iterator[Any | None]:
+    """Create one nested substep span from the ambient workflow trace context."""
+
+    context = get_llm_trace_context()
+    with langsmith_trace(
+        name=name,
+        run_type=run_type,
+        inputs=dict(inputs or {}),
+        subject=context.subject,
+        build_session_id=context.build_session_id,
+        workflow=context.workflow,
+        lane=context.lane,
+        node=context.node,
+        extra_metadata={"substep": name, **dict(metadata or {})},
+        extra_tags=[f"substep:{name}", *(tags or [])],
+    ) as run:
+        yield run
+
+
 def get_llm_trace_context() -> LLMTraceContext:
     """Return the current ambient LLM trace context."""
 
@@ -558,3 +690,4 @@ def get_tracker() -> LLMCallTracker:
     if _tracker is None:
         _tracker = LLMCallTracker()
     return _tracker
+

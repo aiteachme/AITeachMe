@@ -6,6 +6,7 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from app.shared.infra.search.cache import get_retriever_runtime_cache
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
 
@@ -41,10 +42,15 @@ def get_registered_retriever_types() -> dict[str, type["BaseRetriever"]]:
     return dict(_REGISTERED_RETRIEVER_TYPES)
 
 
+def get_registered_retriever_names() -> list[str]:
+    return sorted(_REGISTERED_RETRIEVER_TYPES)
+
+
 class BaseRetriever(ABC):
     canonical_name: str = ""
     aliases: tuple[str, ...] = ()
     auto_register: bool = True
+    cacheable: bool = True
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -91,13 +97,26 @@ class BaseRetriever(ABC):
             extra_metadata={"retriever_name": self.name},
             extra_tags=[f"retriever:{self.name}"],
         ) as run:
-            results = await self.search(query, max_results=max_results)
+            if self.cacheable:
+                results, cache_status = await get_retriever_runtime_cache().get_or_compute(
+                    payload={
+                        "retriever_name": self.name,
+                        "query": query,
+                        "max_results": int(max_results),
+                    },
+                    loader=lambda: self.search(query, max_results=max_results),
+                )
+            else:
+                results = await self.search(query, max_results=max_results)
+                cache_status = "disabled"
             if run is not None:
                 run.end(
                     outputs={
                         "result_count": len(results),
                         "unique_url_count": len({item.url for item in results if item.url}),
                         "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
+                        "cache_status": cache_status,
+                        "cache_hit": cache_status in {"hit", "shared"},
                     }
                 )
             return results
@@ -105,6 +124,7 @@ class BaseRetriever(ABC):
 
 __all__ = [
     "BaseRetriever",
+    "get_registered_retriever_names",
     "get_registered_retriever_types",
     "register_retriever_type",
 ]

@@ -12,7 +12,11 @@ from app.services.auth_service import (
     resolve_guest_user_from_token,
 )
 from app.services.subject_service import create_subject_record, get_subject_record
-from app.shared.infra.config import Settings
+from app.shared.infra.runtime_mode import (
+    resolve_app_mode,
+    resolve_guest_cookie_samesite,
+    resolve_guest_cookie_secure,
+)
 
 
 _DEVICE_KEY = "dk_guest_identity_0001"
@@ -158,21 +162,22 @@ def test_build_logout_guest_user_moves_device_key_to_guest(session) -> None:
     assert registered.device_key is None
 
 
-def test_cloud_guest_cookie_defaults_support_cross_site_requests() -> None:
-    local_settings = Settings(app_mode="local", guest_cookie_secure=None, guest_cookie_samesite="auto")
-    cloud_settings = Settings(app_mode="cloud", guest_cookie_secure=None, guest_cookie_samesite="auto")
+def test_cloud_guest_cookie_defaults_support_cross_site_requests(monkeypatch) -> None:
+    monkeypatch.setenv("APP_MODE", "local")
+    monkeypatch.delenv("GUEST_COOKIE_SECURE", raising=False)
+    monkeypatch.setenv("GUEST_COOKIE_SAMESITE", "auto")
+    assert resolve_guest_cookie_samesite() == "lax"
+    assert resolve_guest_cookie_secure() is False
 
-    assert local_settings.resolved_guest_cookie_samesite == "lax"
-    assert local_settings.resolved_guest_cookie_secure is False
-    assert cloud_settings.resolved_guest_cookie_samesite == "none"
-    assert cloud_settings.resolved_guest_cookie_secure is True
+    monkeypatch.setenv("APP_MODE", "cloud")
+    assert resolve_guest_cookie_samesite() == "none"
+    assert resolve_guest_cookie_secure() is True
 
 
 def test_auto_app_mode_defaults_to_cloud_on_render(monkeypatch) -> None:
+    monkeypatch.delenv("APP_MODE", raising=False)
     monkeypatch.setenv("RENDER", "true")
 
-    settings = Settings(_env_file=None)
-
-    assert settings.resolved_app_mode == "cloud"
-    assert settings.resolved_guest_cookie_samesite == "none"
-    assert settings.resolved_guest_cookie_secure is True
+    assert resolve_app_mode() == "cloud"
+    assert resolve_guest_cookie_samesite() == "none"
+    assert resolve_guest_cookie_secure() is True

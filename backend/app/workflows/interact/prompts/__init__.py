@@ -2,6 +2,19 @@
 
 from __future__ import annotations
 
-from .prompts import PROMPTS, SYSTEM_PROMPT_TUTOR
+from .prompts import (
+    PROMPTS,
+    SYSTEM_PROMPT_TUTOR,
+    get_execution_instruction,
+    get_strategy_instruction,
+)
+from .messages import build_chat_messages, format_retrieval_context_item
 
-__all__ = ["PROMPTS", "SYSTEM_PROMPT_TUTOR"]
+__all__ = [
+    "PROMPTS",
+    "SYSTEM_PROMPT_TUTOR",
+    "build_chat_messages",
+    "format_retrieval_context_item",
+    "get_execution_instruction",
+    "get_strategy_instruction",
+]

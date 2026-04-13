@@ -1,14 +1,16 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
+from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
-from app.shared.infra.skills import ContextManager, ResearchConductor, SkillContext, SkillResult
-from app.shared.infra.tools.builtin.query_processing import ResearchSubQueryPlan, generate_sub_queries
-from app.shared.infra.tools.builtin.web_scraping import scrape_urls
+from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.common.context import create_langgraph_dev_context
+from app.workflows.digest.docgen.runtime import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.runtime.query_planning import ResearchSubQueryPlan, generate_sub_queries
 from app.workflows.digest.docgen.graph import build_resolve_titles_node, build_targeted_research_node
 
 
@@ -23,12 +25,12 @@ class FakeRetriever:
         return list(self.results[:max_results])
 
 
-class FakeScraper:
+class FakeReader:
     def __init__(self, pages: dict[str, ScrapedPage]) -> None:
         self.pages = pages
         self.calls: list[str] = []
 
-    async def traced_scrape(self, url: str) -> ScrapedPage:
+    async def traced_read(self, url: str) -> ScrapedPage:
         self.calls.append(url)
         return self.pages[url]
 
@@ -47,8 +49,8 @@ async def _fake_query_planner(*_args, **_kwargs) -> ResearchSubQueryPlan:
     )
 
 
-async def _run_context_manager_fast_path() -> SkillResult:
-    manager = ContextManager(SkillContext(subject="demo"))
+async def _run_context_manager_fast_path() -> TracedExecutionResult:
+    manager = ContextCompressor(TracedExecutionContext(subject="demo"))
     return await manager.run(
         query="partial derivative geometric meaning",
         documents=[
@@ -80,8 +82,8 @@ def test_context_manager_embedding_filter_prefers_relevant_passages() -> None:
                 embeddings.append([0.0, 1.0])
         return embeddings
 
-    manager = ContextManager(SkillContext(subject="demo"))
-    with patch("app.shared.infra.skills.context_manager.aembed_texts", new=fake_embed_texts):
+    manager = ContextCompressor(TracedExecutionContext(subject="demo"))
+    with patch("app.shared.infra.search.context_compression.aembed_texts", new=fake_embed_texts):
         result = asyncio.run(
             manager.run(
                 query="partial derivative",
@@ -112,8 +114,8 @@ def test_generate_sub_queries_prefers_structured_result_and_dedupes() -> None:
     ]
 
 
-def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
-    html_scraper = FakeScraper(
+def test_read_urls_dedupes_and_keeps_url_order() -> None:
+    html_reader = FakeReader(
         {
             "https://example.com/a": ScrapedPage(url="https://example.com/a", title="A", content="Alpha", success=True),
             "https://example.com/b": ScrapedPage(url="https://example.com/b", title="B", content="Beta", success=True),
@@ -121,11 +123,11 @@ def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
     )
 
     with patch(
-        "app.shared.infra.tools.builtin.web_scraping.get_scraper_for_url",
-        new=lambda _url: html_scraper,
+        "app.shared.infra.tools.builtin.web_reading.get_reader_for_url",
+        new=lambda _url: html_reader,
     ):
         pages = asyncio.run(
-            scrape_urls(
+            read_urls(
                 [
                     "https://example.com/a",
                     "https://example.com/a",
@@ -139,7 +141,7 @@ def test_scrape_urls_dedupes_and_keeps_url_order() -> None:
         "https://example.com/a",
         "https://example.com/b",
     ]
-    assert html_scraper.calls == [
+    assert html_reader.calls == [
         "https://example.com/a",
         "https://example.com/b",
     ]
@@ -156,16 +158,16 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
         results=[SearchResult(url="https://example.com", title="web", snippet="web snippet", source="duckduckgo")],
     )
 
-    skill = ResearchConductor(SkillContext(subject="demo"))
+    skill = DocGenChapterContextRuntime(TracedExecutionContext(subject="demo"))
 
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    with patch("app.shared.infra.skills.researcher.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.shared.infra.skills.researcher.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.shared.infra.skills.researcher.generate_sub_queries",
+        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ):
         result = asyncio.run(
@@ -179,13 +181,61 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     assert result.metadata["web_hits"] == 0
     assert result.metadata["fallback_used"] is False
     assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
+    assert result.metadata["research_round_count"] == 1
+    assert result.metadata["coverage_score"] == 1.0
     assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
     assert result.metadata["retriever_stats"]["local_rag"]["result_count"] == 2
     assert web_retriever.calls == []
     assert "Partial derivative" in result.content
 
 
-def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
+def test_research_conductor_applies_retrieval_profile_to_factory() -> None:
+    local_retriever = FakeRetriever(
+        name="local_rag",
+        results=[
+            SearchResult(url="local://chunk/1", title="Partial derivative definition", snippet="Rate of change", source="local_rag")
+        ],
+    )
+    web_retriever = FakeRetriever(
+        name="semantic_scholar",
+        results=[SearchResult(url="https://example.com/paper", title="paper", snippet="paper snippet", source="semantic_scholar")],
+    )
+    captured: dict[str, object] = {}
+    skill = DocGenChapterContextRuntime(TracedExecutionContext(subject="demo", retrieval_profile="docgen_systematic"))
+
+    async def no_sub_queries(*_args, **_kwargs) -> list[str]:
+        return []
+
+    def fake_get_retrievers_for_subject(**kwargs):
+        captured.update(kwargs)
+        return [local_retriever, web_retriever]
+
+    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+        new=fake_get_retrievers_for_subject,
+    ), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.get_configured_retriever_names",
+        new=lambda **_kwargs: ["local_rag", "tavily", "arxiv", "semantic_scholar"],
+    ), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        new=no_sub_queries,
+    ):
+        result = asyncio.run(
+            skill.run(
+                queries=["partial derivative history"],
+                local_rag_subject="demo",
+                retrieval_profile="docgen_systematic",
+            )
+        )
+
+    assert captured["profile"] == "docgen_systematic"
+    assert result.metadata["requested_retrieval_profile"] == "docgen_systematic"
+    assert result.metadata["applied_retrieval_profile"] == "docgen_systematic"
+    assert result.metadata["configured_retrievers"] == ["local_rag", "tavily", "arxiv", "semantic_scholar"]
+    assert result.metadata["active_retrievers"] == ["local_rag", "semantic_scholar"]
+
+
+def test_research_conductor_falls_back_to_web_reading_and_purifies() -> None:
     local_retriever = FakeRetriever(
         name="local_rag",
         results=[SearchResult(url="local://chunk/1", title="Definition", snippet="Rate of change along one axis", source="local_rag")],
@@ -198,7 +248,7 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
             SearchResult(url="https://example.com/proof", title="Worked example", snippet="example and solution", source="duckduckgo"),
         ],
     )
-    scraper = FakeScraper(
+    reader = FakeReader(
         {
             "https://example.com/math": ScrapedPage(
                 url="https://example.com/math",
@@ -213,24 +263,24 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
             ),
         }
     )
-    skill = ResearchConductor(SkillContext(subject="demo", llm_caller=_fake_llm_caller))
+    skill = DocGenChapterContextRuntime(TracedExecutionContext(subject="demo", llm_caller=_fake_llm_caller))
 
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    async def fake_scrape_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
         del max_workers
-        return [scraper.pages[url] for url in urls]
+        return [reader.pages[url] for url in urls]
 
-    with patch("app.shared.infra.skills.researcher.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.shared.infra.skills.researcher.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.shared.infra.skills.researcher.generate_sub_queries",
+        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.shared.infra.skills.researcher.scrape_urls",
-        new=fake_scrape_urls,
+        "app.workflows.digest.docgen.runtime.chapter_context.read_urls",
+        new=fake_read_urls,
     ):
         result = asyncio.run(
             skill.run(
@@ -246,25 +296,94 @@ def test_research_conductor_falls_back_to_web_scraping_and_purifies() -> None:
     assert result.content == "Purified research notes"
     assert result.metadata["fallback_used"] is True
     assert result.metadata["purify_used"] is True
-    assert result.metadata["scraped_url_count"] == 1
-    assert result.metadata["executed_queries"] == ["partial derivative geometric meaning"]
-    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] == 1
+    assert result.metadata["read_url_count"] == 1
+    assert result.metadata["executed_queries"][0] == "partial derivative geometric meaning"
+    assert result.metadata["research_round_count"] >= 1
+    assert result.metadata["retriever_stats"]["local_rag"]["query_count"] >= 1
     assert result.metadata["retriever_stats"]["duckduckgo"]["query_count"] >= 1
     assert result.metadata["trusted_source_count"] >= 1
     assert result.metadata["web_source_count"] >= 1
+    assert "source_class_breakdown" in result.metadata
     assert sorted(result.sources) == ["https://example.com/math", "https://example.com/proof", "local://chunk/1"]
+
+
+def test_research_conductor_enqueues_gap_queries_when_required_elements_are_missing() -> None:
+    local_retriever = FakeRetriever(
+        name="local_rag",
+        results=[
+            SearchResult(
+                url="local://chunk/1",
+                title="Definition",
+                snippet="Partial derivatives describe local rate of change.",
+                source="local_rag",
+            )
+        ],
+    )
+    web_retriever = FakeRetriever(
+        name="duckduckgo",
+        results=[
+            SearchResult(
+                url="https://example.com/math",
+                title="Definition and intuition",
+                snippet="surface slice intuition without worked example",
+                source="duckduckgo",
+            )
+        ],
+    )
+    skill = DocGenChapterContextRuntime(TracedExecutionContext(subject="demo"))
+
+    async def no_sub_queries(*_args, **_kwargs) -> list[str]:
+        return []
+
+    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
+        del max_workers
+        return [
+            ScrapedPage(
+                url=url,
+                title="Definition and intuition",
+                content="This page explains the definition and surface slice intuition only.",
+                success=True,
+            )
+            for url in urls
+        ]
+
+    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+        new=lambda **_kwargs: [local_retriever, web_retriever],
+    ), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        new=no_sub_queries,
+    ), patch(
+        "app.workflows.digest.docgen.runtime.chapter_context.read_urls",
+        new=fake_read_urls,
+    ):
+        result = asyncio.run(
+            skill.run(
+                queries=["partial derivative geometric meaning"],
+                local_rag_subject="demo",
+                chapter_title="Geometric meaning of partial derivatives",
+                objective="Connect surface slices and worked examples.",
+                required_elements=["surface slice", "worked example"],
+                digest_mode="systematic",
+            )
+        )
+
+    assert result.metadata["research_round_count"] >= 2
+    assert result.metadata["executed_queries"][0] == "partial derivative geometric meaning"
+    assert any("worked example" in query.lower() for query in result.metadata["executed_queries"][1:])
+    assert "worked example" in " ".join(result.metadata["gaps_remaining"]).lower()
 
 
 def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
     captured: dict[str, object] = {}
 
-    class FakeResearchConductor:
+    class FakeChapterContextRuntime:
         def __init__(self, context) -> None:
             captured["context"] = context
 
         async def run(self, **kwargs):
             captured["kwargs"] = kwargs
-            return SkillResult(
+            return TracedExecutionResult(
                 content="Dense research context",
                 sources=["https://example.com/math"],
                 metadata={
@@ -273,6 +392,10 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
                     "fallback_used": True,
                     "compression_mode": "embedding_filter",
                     "purify_used": True,
+                    "requested_retrieval_profile": "docgen_sprint",
+                    "applied_retrieval_profile": "docgen_sprint",
+                    "configured_retrievers": ["local_rag", "tavily", "bocha"],
+                    "active_retrievers": ["local_rag", "tavily"],
                     "executed_queries": ["partial derivative geometric meaning"],
                     "curated_source_count": 3,
                     "trusted_source_count": 2,
@@ -299,7 +422,10 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
         },
     }
 
-    with patch("app.workflows.digest.docgen.graph.ResearchConductor", new=FakeResearchConductor):
+    with patch(
+        "app.workflows.digest.docgen.nodes.targeted_research_node.ChapterContextRuntime",
+        new=FakeChapterContextRuntime,
+    ):
         result = asyncio.run(node(state))
 
     kwargs = captured["kwargs"]
@@ -309,6 +435,7 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
     assert kwargs["objective"] == "Help the learner understand the link between surface slices and partial derivatives."
     assert kwargs["required_elements"] == ["geometric meaning", "surface slice"]
     assert kwargs["digest_mode"] == "sprint"
+    assert kwargs["retrieval_profile"] == "docgen_sprint"
     assert context.course_type == "sprint"
     assert context.retrieval_profile == "docgen_sprint"
     assert context.teaching_action == "chapter_research"
@@ -317,6 +444,10 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
     assert result["chapter_materials"][0]["curated_source_count"] == 3
     assert result["chapter_materials"][0]["trusted_source_count"] == 2
     assert result["chapter_materials"][0]["retrieval_profile"] == "docgen_sprint"
+    assert result["chapter_materials"][0]["requested_retrieval_profile"] == "docgen_sprint"
+    assert result["chapter_materials"][0]["applied_retrieval_profile"] == "docgen_sprint"
+    assert result["chapter_materials"][0]["configured_retrievers"] == ["local_rag", "tavily", "bocha"]
+    assert result["chapter_materials"][0]["active_retrievers"] == ["local_rag", "tavily"]
     assert result["chapter_materials"][0]["teaching_action"] == "chapter_research"
     assert result["chapter_materials"][0]["retriever_stats"]["local_rag"]["query_count"] == 1
     assert result["llm_calls_total"] == 1

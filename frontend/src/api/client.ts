@@ -139,9 +139,11 @@ export interface SseErrorPayload {
 export interface SseStatusPayload {
   stage?: string;
   detail?: string;
-  node_name?: string;
+  phase?: string;
+  step?: string;
+  status?: string;
+  message?: string;
   elapsed_ms?: number;
-  workflow_elapsed_ms?: number;
 }
 
 export interface PostSseJsonOptions {
@@ -190,9 +192,11 @@ function normalizeSseEvent(
   }
   if (
     typeof payload.stage === "string" ||
-    typeof payload.node_name === "string" ||
+    typeof payload.phase === "string" ||
+    typeof payload.step === "string" ||
+    typeof payload.message === "string" ||
     typeof payload.elapsed_ms === "number" ||
-    typeof payload.workflow_elapsed_ms === "number"
+    typeof payload.detail === "string"
   ) {
     return "status";
   }

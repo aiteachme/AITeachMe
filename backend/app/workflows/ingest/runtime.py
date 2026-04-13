@@ -13,6 +13,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus, RawFileAsset, TaskStatus
@@ -501,7 +502,7 @@ async def run_parse_file_workflow(
 
             # Fallback: allow centralized deployment to provide MinerU token via env.
             if requested_parser_provider == "mineru" and not (mineru_token and mineru_token.strip()):
-                env_token = (settings.mineru_api_token or "").strip()
+                env_token = (get_env("MINERU_API_TOKEN") or "").strip()
                 if env_token:
                     mineru_token = env_token
                     mineru_token_source = "server_env"

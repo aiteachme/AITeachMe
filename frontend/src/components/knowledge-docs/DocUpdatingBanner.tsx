@@ -29,7 +29,7 @@ export function DocUpdatingBanner({
   viewMode,
   hasLiveVersion,
   hasDraftVersion,
-
+  buildPreview,
   onViewModeChange,
   className,
 }: Props) {
@@ -49,14 +49,25 @@ export function DocUpdatingBanner({
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Status */}
-          <div className="flex items-center gap-2 min-w-0">
-            {isFetching ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3370FF] shrink-0" />
-            ) : (
-              <div className="w-1.5 h-1.5 rounded-full bg-[#3370FF] animate-pulse shrink-0" />
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              {isFetching ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3370FF] shrink-0" />
+              ) : (
+                <div className="w-1.5 h-1.5 rounded-full bg-[#3370FF] animate-pulse shrink-0" />
+              )}
+              <p className="text-[13px] text-[#1F2329] truncate font-medium">{statusText}</p>
+              <span className="text-[12px] font-medium text-[#3370FF] shrink-0">{Math.round(progress)}%</span>
+            </div>
+            
+            {/* Deep Research / Stage Desc */}
+            {buildPreview?.current_stage_description && (
+              <div className="pl-5 flex items-center">
+                <p className="text-[11px] text-[#646A73] truncate flex items-center gap-1.5 bg-white/50 rounded-sm px-1.5 py-0.5 border border-white/60">
+                   {buildPreview.current_stage_description}
+                </p>
+              </div>
             )}
-            <p className="text-[13px] text-[#1F2329] truncate">{statusText}</p>
-            <span className="text-[12px] font-medium text-[#3370FF] shrink-0">{Math.round(progress)}%</span>
           </div>
 
           {/* View toggle */}

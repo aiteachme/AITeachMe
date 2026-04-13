@@ -8,8 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 import structlog
 
-from app.shared.infra.llm import acompletion_structured
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support import acompletion_structured
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg.services.candidate_identity import build_candidate_stable_id

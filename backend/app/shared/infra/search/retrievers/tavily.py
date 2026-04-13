@@ -6,6 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -19,7 +20,8 @@ class TavilyRetriever(BaseRetriever):
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         settings = get_settings()
-        if not settings.tavily_api_key:
+        api_key = (get_env("TAVILY_API_KEY") or "").strip()
+        if not api_key:
             return []
 
         payload = {
@@ -30,7 +32,7 @@ class TavilyRetriever(BaseRetriever):
             "include_raw_content": False,
             "include_images": False,
             "max_results": max_results,
-            "api_key": settings.tavily_api_key,
+            "api_key": api_key,
         }
         try:
             async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:

@@ -19,7 +19,7 @@ from typing import Any, AsyncGenerator
 
 import structlog
 
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import get_tracer
 
 logger = structlog.get_logger()
@@ -44,6 +44,7 @@ class AgentLoopConfig:
     tool_timeout_s: int = 30
     task_type: TaskType = TaskType.CHAT
     result_max_chars: int = 2000
+    tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # ── 结果 ──────────────────────────────────────────────────────
@@ -102,10 +103,12 @@ async def run_agent_loop(
         print(result.final_answer)
     """
 
-    from app.shared.infra.llm import acompletion, acompletion_with_tools
+    from app.shared.infra.llm_support import acompletion, acompletion_with_tools
+    from app.shared.infra.tools.api import ensure_project_tool_modules_loaded
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
+    ensure_project_tool_modules_loaded()
     registry = get_tool_registry()
     tracer = get_tracer()
     span = tracer.start_span("agent_loop")
@@ -195,10 +198,12 @@ async def run_agent_loop_stream(
             print(chunk, end="")
     """
 
-    from app.shared.infra.llm import acompletion_stream, acompletion_with_tools
+    from app.shared.infra.llm_support import acompletion_stream, acompletion_with_tools
+    from app.shared.infra.tools.api import ensure_project_tool_modules_loaded
     from app.shared.infra.tools.registry import get_tool_registry
 
     cfg = config or AgentLoopConfig()
+    ensure_project_tool_modules_loaded()
     registry = get_tool_registry()
 
     available_tools = _get_tool_definitions(registry, tools)
@@ -282,6 +287,14 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         args = json.loads(tool_call.function.arguments)
     except (json.JSONDecodeError, TypeError):
         args = {}
+    if not isinstance(args, dict):
+        args = {}
+    injected_args = dict(cfg.tool_argument_overrides.get(func_name, {}) or {})
+    if injected_args:
+        args = {
+            **args,
+            **injected_args,
+        }
 
     start = time.monotonic()
     try:

@@ -1,4 +1,4 @@
-"""Top-level LangGraph for unified digest builds."""
+﻿"""Top-level LangGraph for unified digest builds."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
+from app.workflows.common import workflow_tracer
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common.result import WorkflowResult
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs
-from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.runtime import (
     run_curriculum_derive_workflow,
     run_docgen_workflow,
@@ -33,61 +33,50 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the unified digest graph."""
 
     workflow = StateGraph(UnifiedDigestState)
+    trace = workflow_tracer(context=context, lane="unified")
     workflow.add_node(
         "prepare_shared",
-        wrap_digest_node(
+        trace.node(
             build_prepare_shared_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="prepare_shared",
+            name="prepare_shared",
         ),
     )
     workflow.add_node(
         "run_parallel_lanes",
-        wrap_digest_node(
+        trace.node(
             build_parallel_lanes_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="run_parallel_lanes",
+            name="run_parallel_lanes",
             timing_field="parallel_lanes_ms",
         ),
     )
     workflow.add_node(
         "derive_curriculum",
-        wrap_digest_node(
+        trace.node(
             build_derive_curriculum_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="derive_curriculum",
+            name="derive_curriculum",
         ),
     )
     workflow.add_node(
         "publish_outputs",
-        wrap_digest_node(
+        trace.node(
             build_publish_outputs_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="publish_outputs",
+            name="publish_outputs",
             timing_field="publish_ms",
         ),
     )
     workflow.add_node(
         "cleanup",
-        wrap_digest_node(
+        trace.node(
             build_cleanup_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="cleanup",
+            name="cleanup",
             timing_field="cleanup_ms",
         ),
     )
     workflow.add_node(
         "fail",
-        wrap_digest_node(
+        trace.node(
             build_fail_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="unified",
-            node_name="fail",
+            name="fail",
         ),
     )
 
@@ -115,7 +104,6 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_edge("cleanup", END)
     workflow.add_edge("fail", END)
     return workflow
-
 
 def create_unified_initial_state(
     *,
@@ -511,3 +499,4 @@ def get_langgraph_dev_unified_graph() -> StateGraph:
     return build_unified_digest_graph(
         context=create_langgraph_dev_context("digest.unified.langgraph_dev"),
     )
+

@@ -28,12 +28,14 @@ from app.services.knowledge.build_planner_service import get_confirmed_build_pla
 from app.services.subject_embedding_service import get_subject_vector_status_by_slug, inspect_subject_build_precheck, resolve_subject_build_vector_status
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
+from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.utils.docgen_store import KnowledgeBuildLock, acquire_knowledge_build_lock, clear_docgen_staging, read_knowledge_build_lock, read_knowledge_build_status, read_knowledge_manifest, release_knowledge_build_lock, update_knowledge_build_status
 from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.observability import build_token_summary
+from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.unified import run_unified_digest_build
 
 logger = structlog.get_logger()
@@ -270,7 +272,7 @@ def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
     payload["selected_file_ids"] = list(plan.selected_file_ids_json)
     payload["planner_session_id"] = plan.planner_session_id
     payload["confirmed_plan_id"] = plan.id
-    return payload
+    return normalize_digest_confirmed_plan_payload(payload)
 
 
 def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_id: str) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:
@@ -529,8 +531,8 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     draft_path = build_merged_knowledge_base_build_path(subject)
     manifest = read_knowledge_manifest(subject)
     build_status = read_knowledge_build_status(subject)
-    markdown = merged_path.read_text(encoding="utf-8") if merged_path.exists() else ""
-    draft_markdown = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
+    markdown = normalize_mermaid_blocks(merged_path.read_text(encoding="utf-8")) if merged_path.exists() else ""
+    draft_markdown = normalize_mermaid_blocks(draft_path.read_text(encoding="utf-8")) if draft_path.exists() else ""
     updated_at = manifest.updated_at if manifest is not None else (datetime.fromtimestamp(merged_path.stat().st_mtime) if merged_path.exists() else None)
     draft_updated_at = build_status.draft_updated_at if build_status is not None and build_status.draft_updated_at is not None else (datetime.fromtimestamp(draft_path.stat().st_mtime) if draft_path.exists() else None)
     source_file_uids = _resolve_file_uids_from_ids(session, subject=subject, file_ids=(manifest.source_file_ids if manifest is not None else [])) if manifest is not None else []

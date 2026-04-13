@@ -7,6 +7,7 @@ import { getStoredAppSettings } from "./hooks/useSettings";
 
 const BACKEND_READY_TIMEOUT_MS = 6000;
 const BACKEND_READY_POLL_INTERVAL_MS = 300;
+const BACKEND_READY_REQUEST_TIMEOUT_MS = 1200;
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -33,17 +34,25 @@ async function waitForBackendReady() {
   const deadline = Date.now() + BACKEND_READY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), BACKEND_READY_REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(healthUrl, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
+        signal: controller.signal,
       });
 
       if (response.ok) {
+        window.clearTimeout(timeoutId);
         return;
       }
-    } catch {}
+    } catch {
+      // Swallow startup probe failures so the app can still mount and show real UI errors.
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
 
     await sleep(BACKEND_READY_POLL_INTERVAL_MS);
   }
@@ -51,7 +60,7 @@ async function waitForBackendReady() {
 
 async function prepare() {
   const shouldUseMock =
-    import.meta.env.VITE_USE_MOCK === "true" || getStoredAppSettings().useMock;
+    import.meta.env.VITE_USE_MOCK === "true" || getStoredAppSettings().useMock || window.location.search.includes("mock=1");
 
   if (shouldUseMock) {
     const { worker } = await import("./mocks/browser");
@@ -62,7 +71,9 @@ async function prepare() {
   await waitForBackendReady();
 }
 
-prepare().then(() => {
+prepare().catch(() => {
+  // Startup preparation should never block initial rendering.
+}).then(() => {
   ReactDOM.createRoot(document.getElementById("app")!).render(
     <React.StrictMode>
       <App />

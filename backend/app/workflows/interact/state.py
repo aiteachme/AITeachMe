@@ -7,6 +7,7 @@ from typing import TypedDict
 from app.shared.infra.strategies import StrategyMode
 from app.schemas.chats import ChatContextItem
 from app.schemas.llm import ChatMessage
+from app.workflows.interact.support.execution import InteractExecutionMode
 from app.workflows.interact.support.types import (
     MistakeSummary,
     RetrievedContext,
@@ -28,6 +29,7 @@ class InteractWorkflowState(TypedDict, total=False):
     retrieval_results: list[RetrievedContext]
     contexts: list[ChatContextItem] | None
     strategy_mode: StrategyMode
+    execution_mode: InteractExecutionMode
     messages: list[ChatMessage]
     assistant_response: str
     turn_id: str

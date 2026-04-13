@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-09T18:31:33.951726",
-  "total_commits_analyzed": 485,
+  "generated_at": "2026-04-13T02:25:16.871928",
+  "total_commits_analyzed": 515,
   "stats": [
     {
       "date": "2026-03-11",
@@ -3881,6 +3881,246 @@
       "code_lines": 100146,
       "other_lines": 31345,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "57c9e51",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5f70a4e",
+      "total_lines": 129385,
+      "code_lines": 99343,
+      "other_lines": 30042,
+      "message": "refactor: 收口 infra 与 workflow runtime 分层边界"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "6e69f9d",
+      "total_lines": 129390,
+      "code_lines": 99346,
+      "other_lines": 30044,
+      "message": "chore: 添加openai.json"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "b9f470c",
+      "total_lines": 130369,
+      "code_lines": 99885,
+      "other_lines": 30484,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "aa67df4",
+      "total_lines": 130369,
+      "code_lines": 99885,
+      "other_lines": 30484,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "bcb93d5",
+      "total_lines": 129247,
+      "code_lines": 98865,
+      "other_lines": 30382,
+      "message": "feat: 恢复知识文档页完整工作区布局与右侧交互"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "c429c48",
+      "total_lines": 129550,
+      "code_lines": 99122,
+      "other_lines": 30428,
+      "message": "chore: 暂时改动回页面"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "b6ab60d",
+      "total_lines": 132310,
+      "code_lines": 101669,
+      "other_lines": 30641,
+      "message": "chore: 恢复正确的前端"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "4366add",
+      "total_lines": 132310,
+      "code_lines": 101669,
+      "other_lines": 30641,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "1590f73",
+      "total_lines": 133271,
+      "code_lines": 102227,
+      "other_lines": 31044,
+      "message": "feat: 扩展 search 抓取工具并清理重复检索代码"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5e188fd",
+      "total_lines": 135169,
+      "code_lines": 103974,
+      "other_lines": 31195,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "a2fb625",
+      "total_lines": 133106,
+      "code_lines": 102095,
+      "other_lines": 31011,
+      "message": "refactor: 收口 search reader 语义并清理旧 scraper 兼容层"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "212ed86",
+      "total_lines": 135216,
+      "code_lines": 104003,
+      "other_lines": 31213,
+      "message": "refactor: 精简 LangSmith 包装并重构 planner 运行态观测"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "d4efc1b",
+      "total_lines": 135051,
+      "code_lines": 103871,
+      "other_lines": 31180,
+      "message": "Merge branch 'main' into dev_ywl"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "a8f3000",
+      "total_lines": 135391,
+      "code_lines": 104214,
+      "other_lines": 31177,
+      "message": "refactor: 简化 planner 的 LangSmith 接入方式并统一协同开发约定"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "3a08ed0",
+      "total_lines": 135391,
+      "code_lines": 104214,
+      "other_lines": 31177,
+      "message": "chore: 文档"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "5309427",
+      "total_lines": 135233,
+      "code_lines": 104045,
+      "other_lines": 31188,
+      "message": "chore: 整理"
+    },
+    {
+      "date": "2026-04-11",
+      "commit": "dabbef2",
+      "total_lines": 135491,
+      "code_lines": 104372,
+      "other_lines": 31119,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "3c28849",
+      "total_lines": 135802,
+      "code_lines": 104656,
+      "other_lines": 31146,
+      "message": "fix: 修复知识文档检索零命中与 Mermaid 渲染异常"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "fa9765b",
+      "total_lines": 136127,
+      "code_lines": 104914,
+      "other_lines": 31213,
+      "message": "feat: 增强无 key 检索链路并补充百科与 SearXNG 检索器"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "9b72ff2",
+      "total_lines": 137269,
+      "code_lines": 105921,
+      "other_lines": 31348,
+      "message": "refactor: 改为智能体主导章节标题生成与结构修复"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "51f9974",
+      "total_lines": 138106,
+      "code_lines": 106509,
+      "other_lines": 31597,
+      "message": "docs: 对齐架构与重构文档中的 LangSmith 和分层规范"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "4cfd508",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "docs: 收口 LangSmith 文档并移除旧 tracing 口径"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "9cb321d",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "34638ad",
+      "total_lines": 138087,
+      "code_lines": 106495,
+      "other_lines": 31592,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "a6ded68",
+      "total_lines": 138406,
+      "code_lines": 106674,
+      "other_lines": 31732,
+      "message": "refactor: 拆分运行环境解析并补强 shared kernel 边界"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "3337661",
+      "total_lines": 138035,
+      "code_lines": 106461,
+      "other_lines": 31574,
+      "message": "refactor: 收敛 workflows 的 LangSmith 接口并清理 legacy 追踪"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "a424dd8",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "b17f313",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "6c76a27",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }

@@ -9,7 +9,7 @@ from threading import Lock, RLock
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.runtime_mode import is_cloud_mode, is_local_mode
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,
@@ -274,8 +274,7 @@ def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
 def read_knowledge_build_lock(subject: str) -> KnowledgeBuildLock | None:
     """Read the subject-level build lock, if present."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         return _cloud_read_build_lock(subject)
     return _read_build_lock_path(build_knowledge_build_lock_path(subject))
 
@@ -283,8 +282,7 @@ def read_knowledge_build_lock(subject: str) -> KnowledgeBuildLock | None:
 def acquire_knowledge_build_lock(subject: str, lock: KnowledgeBuildLock) -> bool:
     """Create a subject-level build lock atomically."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         return _cloud_acquire_build_lock(subject, lock)
 
     path = build_knowledge_build_lock_path(subject)
@@ -305,8 +303,7 @@ def acquire_knowledge_build_lock(subject: str, lock: KnowledgeBuildLock) -> bool
 def release_knowledge_build_lock(subject: str) -> None:
     """Remove the subject-level build lock if it exists."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         _cloud_release_build_lock(subject)
         return
 
@@ -318,8 +315,7 @@ def release_knowledge_build_lock(subject: str) -> None:
 def is_knowledge_build_locked(subject: str) -> bool:
     """Check whether the subject-level build lock exists."""
 
-    settings = get_settings()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         return _cloud_read_build_lock(subject) is not None
     return build_knowledge_build_lock_path(subject).exists()
 
@@ -497,8 +493,7 @@ def clear_docgen_staging(subject: str) -> None:
     cs = get_content_store()
     run_store_sync(cs.delete_prefix, cs.knowledge_build_prefix(subject), default=0)
 
-    settings = get_settings()
-    if settings.is_local_mode:
+    if is_local_mode():
         intermediate_dir = build_docgen_intermediate_latest_dir(subject)
         if intermediate_dir.exists():
             shutil.rmtree(intermediate_dir, ignore_errors=True)

@@ -10,9 +10,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.config import get_settings
-from app.shared.infra.model_router import TaskType
-from app.shared.infra.tracing import get_llm_trace_context
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.tracing import (
+    get_langsmith_max_text_chars,
+    get_llm_trace_context,
+    langsmith_capture_inputs_enabled,
+    langsmith_capture_outputs_enabled,
+)
 
 _SAFE_LANGSMITH_FIELDS = {
     "finish_reason",
@@ -64,7 +68,7 @@ def _resolved_trace_model(
 
 
 def _truncate_langsmith_text(text: str) -> str:
-    limit = max(32, int(get_settings().langsmith_max_text_chars))
+    limit = get_langsmith_max_text_chars()
     if len(text) <= limit:
         return text
     return f"{text[: max(1, limit - 3)]}..."
@@ -139,7 +143,7 @@ def _langsmith_inputs(
     messages: list[ChatMessage],
     tools: list[dict] | None = None,
 ) -> dict[str, Any]:
-    capture_inputs = get_settings().resolved_langsmith_capture_inputs
+    capture_inputs = langsmith_capture_inputs_enabled()
     inputs: dict[str, Any] = {
         "model": _sanitize_langsmith_text(call_model, capture_text=True, field_name="model"),
         "messages": _sanitize_langsmith_value(messages, capture_text=capture_inputs, field_name="messages"),
@@ -158,7 +162,7 @@ def _langsmith_outputs(
     completion_tokens: int = 0,
     total_tokens: int = 0,
 ) -> dict[str, Any]:
-    capture_outputs = get_settings().resolved_langsmith_capture_outputs
+    capture_outputs = langsmith_capture_outputs_enabled()
     assistant_message: dict[str, Any] = {
         "role": "assistant",
         "content": _sanitize_langsmith_value(
@@ -191,7 +195,7 @@ def _langsmith_outputs(
 
 
 def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, Any]:
-    capture_inputs = get_settings().resolved_langsmith_capture_inputs
+    capture_inputs = langsmith_capture_inputs_enabled()
     invocation_params: dict[str, Any] = {}
     for key in (
         "temperature",

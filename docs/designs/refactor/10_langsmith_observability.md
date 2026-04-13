@@ -1,234 +1,268 @@
-## 十、LangSmith 全链路可观测性
+﻿## 十、LangSmith 全链路可观测性
 
-> 目标：保证后续所有重构都不是“黑盒升级”，而是每一步都能被看见、被比较、被定位。
-> 最后更新：2026-04-09
+> 目标：保证这轮算法升级不是”黑盒优化”，而是每一步都能被看见、被比较、被定位。
+> 最后更新：2026-04-13
+>
+> **详细实现文档**：`backend/app/workflows/LANGSMITH.md` 包含统一入口、run_type 约定和代码级示例；`backend/app/workflows/TRACKED_STEP.md` 进一步说明 node 内部 step 的 kind / trace_run_type 规范。本文档侧重设计目标和验收标准，具体实现细节请参考这两份代码文档。
 
 ---
 
 ## 10.1 观测目标
 
-后续 Digest 重构一定要满足下面三个目标：
+对这轮重构，LangSmith 至少要回答 4 个问题：
 
-1. 能看清 Planner 如何决定课程合同。
-2. 能看清每章 research / write / enrich / examine 的耗时和质量差异。
-3. 能把不同课程模式、不同检索 profile、不同媒体策略拉出来比较。
-
-如果做不到这三点，后续调优会非常低效。
+1. Planner 最终确认的课程合同是什么。
+2. 每章 research 为什么会查这些来源、补这些 query。
+3. Writer 和 teaching blocks 为什么让文档长成这样。
+4. 富媒体 sidecar 和练习注入是否真的提升了质量，而不是拖慢流程。
 
 ---
 
-## 10.2 必须保持的 trace 层次
-
-推荐统一成下面这棵树：
+## 10.2 必须保持的 trace 树
 
 ```text
 API / service request
 └── workflow root span
     ├── node span
-    │   ├── skill span
+    │   ├── prompt span
+    │   ├── workflow runtime span
+    │   │   ├── research_round span
     │   │   ├── retriever span
-    │   │   ├── scraper span
+    │   │   ├── reader span
+    │   │   ├── prompt span
     │   │   └── llm span
     │   └── direct llm span
     └── publish / asset / eval span
 ```
 
-### 关键要求
+关键要求：
 
 - graph 拓扑清楚
-- node 粒度清楚
-- skill / retriever / scraper / llm 都能下钻
-
-### 禁止事项
-
-- 新增第二套 tracing 系统
-- workflow runtime 和 node wrapper 之外自行乱开根 span
-- 在关键动作里完全不打 metadata
+- node 边界清楚
+- prompt build 边界清楚
+- workflow runtime 内部关键子步骤可下钻
+- asset sidecar 和正文主链路分得开
 
 ---
 
-## 10.3 关键关联 ID
+## 10.2.1 统一接入入口
 
-所有 Docs Lane 相关 trace，建议最少统一带以下字段：
+当前 workflow 级 LangSmith 接入规范已统一收口到 `backend/app/workflows/common`：
+
+- `run_state_graph(...)`
+- `workflow_tracer(...).node(...)`
+- `@traceable_run(...)`
+- `tracked_step(...)`
+
+其中：
+
+- graph node 默认先在 workflow 层绑定 `workflow/lane`，再统一接线
+- 稳定 prompt / helper / retriever 才使用 `@traceable_run(...)`
+- infra 层只保留少数共享边界 trace，不再把注解扩散到大量零散 helper
+- 新代码、新文档、code review 都只展开这 4 个入口，不再继续传播旧别名
+
+---
+
+## 10.3 最重要的业务 ID
+
+所有 Docs Lane trace 至少统一带：
 
 | 字段 | 作用 |
 | --- | --- |
-| `subject` | 学科或主题 |
+| `subject` | 学科/主题 |
 | `user_id` | 用户定位 |
-| `build_session_id` | 本次构建主链路 ID |
-| `planner_session_id` | Planner 会话关联 |
-| `confirmed_plan_id` | 已确认方案关联 |
-| `digest_mode` | `sprint` / `systematic` |
-| `course_type` | 与 `digest_mode` 同语义或保留扩展 |
-| `chapter_index` | 章节 fan-out 追踪 |
-| `retrieval_profile` | 检索策略标识 |
-| `asset_kind` | `mermaid` / `image` / `interactive_html` |
-| `teaching_action` | 教学动作标识 |
+| `build_session_id` | 本次构建主链路 |
+| `planner_session_id` | Planner 会话 |
+| `confirmed_plan_id` | 已确认方案 |
+| `course_type` | `sprint / systematic` |
+| `retrieval_profile` | 期望检索策略 |
+| `chapter_index` | fan-out 追踪 |
+| `teaching_action` | 教学动作 |
+| `asset_kind` | `mermaid / image / interactive_html / animation` |
 
-其中最重要的是：
+后续新增的关键字段：
 
-- `build_session_id`
-- `planner_session_id`
-- `confirmed_plan_id`
-- `chapter_index`
-
-这四个字段决定你能不能跨 graph 把一条链拉通。
-
----
-
-## 10.4 Planner 与 DocGen 的跨图关联
-
-这是当前后续调优最关键的一条链。
-
-### 推荐关系
-
-```text
-planner session
-→ confirmed plan
-→ docgen build
-→ practice injection
-→ publish result
-```
-
-### 必须做到
-
-- Planner graph 的输出 trace 能定位到 `confirmed_plan_id`
-- DocGen graph 的每章 trace 能带上 `planner_session_id` 和 `confirmed_plan_id`
-- 如果后续 `inject_examine` 生成练习，也应沿用同一主链路 ID
-
-这样打开 LangSmith 时，才能从“用户如何下需求”一路看到“文档为何长成这样”。
+- `requested_profile`
+- `applied_profile`
+- `research_rounds`
+- `gaps_remaining`
+- `source_class_breakdown`
+- `quality_score`
 
 ---
 
-## 10.5 Docs Lane 重点节点应该记录什么
+## 10.4 当前最需要补强的观测点
+
+### 问题 1：profile 请求值与执行值已经区分，但后续还要继续做学科化对比
+
+当前 trace 已经显式区分：
+
+- `requested_profile`
+- `applied_profile`
+
+后续主要是继续对比不同学科、不同 profile 下的 source mix 和 round 收益。
+
+### 问题 2：research round 已经进入 runtime metadata，但还可以继续细化分析视图
+
+当前 runtime metadata 已经能看清：
+
+- 第 1 轮查了什么
+- 为什么触发第 2 轮
+- 第 2 轮补了哪些 gaps
+- 为什么停止
+
+但后续 dashboard 仍值得补：
+
+- round 收益衰减可视化
+- gap 类型统计
+- 学科/模式维度的 round 深度分布
+
+### 问题 3：asset sidecar 已独立可见，但 animation 仍待真正接入
+
+Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
+`animation` 仍只保留 contract / trace 预留位，尚未进入主线执行链。
+
+### 问题 4：cache telemetry 已经进入共享边界，但还要继续做收益分析
+
+当前最小 runtime cache 已经接到：
+
+- retriever
+- reader
+- `BaseTracedExecution` 驱动的 `ContextCompressor`
+
+因此 LangSmith 现在已经可以直接看到：
+
+- `cache_status`
+- `cache_hit`
+
+后续还值得继续补：
+
+- 命中率按学科 / profile / lane 的聚合视图
+- cache 对总耗时和 round 数的真实收益分析
+
+---
+
+## 10.5 每个重点节点应该记录什么
 
 ### `load_context`
 
 - `chapter_count`
-- `has_confirmed_plan`
-- `digest_mode`
+- `course_type`
 - `retrieval_profile`
+- `has_confirmed_plan`
+- `build_contract_version`
 
 ### `targeted_research`
 
 - `chapter_index`
+- `requested_profile`
+- `applied_profile`
 - `query_count`
+- `research_rounds`
+- `research_round_count`
 - `local_hits`
 - `web_hits`
-- `academic_hits`
+- `source_class_breakdown`
 - `curated_source_count`
-- `retriever_names`
-- `compression_mode`
-- `gap_fill_rounds`
+- `gaps_remaining`
+- `coverage_score`
+- `stop_reason`
 
 ### `pedagogy_craft`
 
 - `chapter_index`
 - `word_count`
-- `required_elements_coverage`
-- `placeholder_count`
-- `teaching_block_count`
+- `coverage_score`
+- `quality_score`
+- `repair_applied`
+- `repair_actions`
+- `asset_hint_count`
 
 ### `enrich_document`
 
 - `mermaid_count`
 - `image_count`
 - `interactive_block_count`
-- `latex_normalized`
-- `asset_failures`
+- `asset_count`
+- `asset_summary`
+- `formula_block_count`
 
 ### `inject_examine`
 
 - `question_count`
-- `practice_block_count`
+- `practice_count`
 - `practice_mode`
 
 ### `finalize_assemble`
 
-- `doc_ids`
-- `built_paths`
-- `staged_chapter_count`
 - `published_doc_count`
+- `built_paths`
+- `asset_summary`
+- `quality_score`
+
+当前已落地补充：
+- node outputs 会聚合 `requested_profiles / applied_profiles`
+- Docs Lane summary 会聚合 `research_round_count_total`
+- Docs Lane summary 会聚合 `mermaid_count / image_count / interactive_block_count / asset_count`
+- Docs Lane summary 会输出结构化 `asset_summary`
 
 ---
 
-## 10.6 Skill / Retriever / Scraper 必须补充的 metadata
+## 10.6 Workflow Runtime / Retriever / Reader 的 metadata
 
-### Skill
+### Workflow runtime
 
-建议所有组合 Skill 至少带：
+至少带：
 
-- `skill_name`
-- `research_stage`
-- `chapter_index`
-- `digest_mode`
+- `runtime_name`
+- `course_type`
 - `retrieval_profile`
+- `chapter_index`
+- `research_stage`
+- `requested_profile`
+- `applied_profile`
+- `coverage_score`
+- `quality_score`
+- `cache_status`
+- `cache_hit`
 
 ### Retriever
 
-建议至少带：
+至少带：
 
 - `retriever_name`
 - `source_class`
 - `query`
 - `result_count`
 - `latency_ms`
+- `cache_status`
+- `cache_hit`
 
-其中 `source_class` 推荐统一成：
+### Prompt
 
-- `local_user_material`
-- `local_edu_corpus`
-- `edu_web`
-- `academic_web`
-- `general_web`
+至少带：
 
-### Scraper
+- `prompt_name`
+- `prompt_scope`
+- `message_count`
+- `prompt_chars`
+- `template_kind`
 
-建议至少带：
+### Reader
 
-- `scraper_name`
+至少带：
+
+- `reader_name`
 - `url`
 - `content_kind`
 - `success`
 - `content_length`
+- `cache_status`
+- `cache_hit`
 
 ---
 
-## 10.7 课程模式对比视图
-
-LangSmith 后续应该重点支持下面几类对比：
-
-### `sprint` vs `systematic`
-
-比较：
-
-- 总时延
-- 总 token
-- research 阶段耗时占比
-- 每章字数
-- 例题 / 练习块数量
-- 媒体生成成功率
-
-### 检索 profile 对比
-
-比较：
-
-- `planner_grounding` 命中率
-- `docgen_sprint` 命中率
-- `docgen_systematic` 命中率
-- 本地命中与外部命中的占比
-
-### asset 策略对比
-
-比较：
-
-- 仅 Mermaid
-- Mermaid + image
-- Mermaid + image + interactive
-
----
-
-## 10.8 推荐 Dashboard
+## 10.7 课程模式和算法的核心对比视图
 
 ### Dashboard 1：Docs Lane 总览
 
@@ -238,69 +272,75 @@ LangSmith 后续应该重点支持下面几类对比：
 - 节点耗时占比
 - 失败率
 
-### Dashboard 2：课程模式对比
+### Dashboard 2：模式对比
 
 看：
 
-- `sprint` / `systematic` 的平均耗时、字数、token
+- `sprint / systematic` 平均耗时
+- 平均字数
+- 平均练习数
+- 平均媒体数
 
 ### Dashboard 3：Research 质量
 
 看：
 
-- retriever 命中数
-- curated source 数
-- 本地/外部来源占比
+- `requested_profile / applied_profile`
+- local / edu_web / academic / general 的命中分布
+- `gaps_remaining`
+- `curated_source_count`
 
-### Dashboard 4：媒体生成
+### Dashboard 4：LLM tier 与 fallback
+
+看：
+
+- `strategic / smart / fast` 占比
+- fallback 频率
+- 哪些节点最容易降级
+
+### Dashboard 5：Asset sidecar
 
 看：
 
 - Mermaid 成功率
 - image 成功率
-- interactive block 占比
-
-### Dashboard 5：Fallback 与 rate limit
-
-看：
-
-- LLM fallback 频率
-- retriever 失败率
-- scraper 失败率
-- 并发压力下的异常分布
+- interactive / animation 调用频率
+- asset 对总耗时的影响
 
 ---
 
-## 10.9 前端事件与 LangSmith 对齐
+## 10.8 前端事件与 LangSmith 对齐
 
-建议前端实时事件不要再使用完全独立的一套命名，而应尽量和 LangSmith node 语义贴近。
+前端进度事件建议尽量贴近 LangSmith node / step 语义：
 
-### 推荐事件语义
-
-- `planner_grounding`
-- `plan_confirmed`
-- `chapter_research_progress`
-- `chapter_draft_progress`
-- `asset_generation_progress`
+- `plan_ready`
+- `chapter_research_started`
+- `chapter_research_completed`
+- `chapter_draft_completed`
+- `asset_generation_completed`
 - `practice_injected`
 - `publish_completed`
 
-这样用户界面、日志和 LangSmith 三套视角会更容易相互对照。
+如果未来要引入 research 微循环，再补：
+
+- `research_round_started`
+- `research_gap_detected`
+- `research_round_completed`
 
 ---
 
-## 10.10 验收标准
+## 10.9 验收标准
 
-以下四条至少要全部满足：
+以下四条至少全部满足：
 
-1. 打开 LangSmith，能一眼看出主流程、章节 fan-out、失败位置。
-2. 任意一章的 research 和 writing 都能单独追踪。
-3. 能把 Planner 决策和最终文档结果串起来。
-4. 能比较不同课程模式、不同检索 profile、不同媒体策略的效果。
+1. 打开 LangSmith，能一眼看懂主流程与章节 fan-out。
+2. 任意一章的 research round、writer、asset 都能独立定位。
+3. 能对比 `requested_profile` 和 `applied_profile`。
+4. 能比较不同课程模式、不同 research 深度、不同 asset 策略的效果。
 
 ---
 
-## 10.11 一句话结论
+## 10.10 一句话结论
 
-LangSmith 在这个项目里不是“埋点系统”，而是后续所有重构的操作台。
-如果 trace 树不清楚，后面越做越复杂时，整个系统会很难继续优化。
+LangSmith 在这轮重构里不是“埋点系统”，而是算法迭代的操作台。
+如果 trace 不能回答“为什么查、为什么写、为什么补、为什么停”，后续优化就会重新变成黑盒。

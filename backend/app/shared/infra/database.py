@@ -21,7 +21,9 @@ import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
+from app.shared.infra.runtime_mode import is_cloud_mode, is_local_mode
 from app.shared.infra.runtime_paths import get_sqlite_db_path, log_legacy_runtime_path_warnings
 from app.shared.infra.subject_settings import (
     build_subject_vector_table_name,
@@ -217,7 +219,6 @@ def _remove_sqlite_files(db_path: Path) -> None:
 
 
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
-    settings = get_settings()
     db_path = _get_db_path()
     if not db_path.exists():
         return engine
@@ -226,7 +227,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     if drift is None:
         return engine
 
-    if not settings.is_local_mode:
+    if not is_local_mode():
         raise RuntimeError(
             "Database schema drift detected for non-local mode. "
             f"db_path={db_path}, unexpected_tables={drift['unexpected_tables']}, "
@@ -275,14 +276,15 @@ def _build_sqlite_engine() -> sa.Engine:
 def _build_postgres_engine(settings) -> sa.Engine:
     """创建 PostgreSQL 引擎（云端模式）。"""
 
-    if not settings.database_url:
+    database_url = (get_env("DATABASE_URL") or "").strip()
+    if not database_url:
         raise RuntimeError(
             "APP_MODE=cloud requires DATABASE_URL to be set. "
             "Example: postgresql+psycopg://user:pass@host:5432/dbname"
         )
 
     engine = create_engine(
-        settings.database_url,
+        database_url,
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
@@ -299,7 +301,7 @@ def get_engine() -> sa.Engine:
         return _engine
 
     settings = get_settings()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         _engine = _build_postgres_engine(settings)
     else:
         _engine = _build_sqlite_engine()
@@ -599,7 +601,7 @@ def init_db() -> None:
 
     settings = get_settings()
 
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         _init_postgres_db(settings)
     else:
         _init_local_sqlite_db(settings)

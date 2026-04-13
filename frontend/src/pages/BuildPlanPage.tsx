@@ -24,8 +24,10 @@ import type {
   BuildPlannerPlanResponse,
   BuildPlannerSessionResponse,
   DocGenBuildData,
+  FileRecord as ApiFileRecord,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
+import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
@@ -62,16 +64,16 @@ let messageCounter = 0;
 const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
 const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
 
-interface PlannerNodeEvent {
-  node_name: string;
+interface PlannerRuntimeStep {
+  name: string;
+  kind: "node" | "tool" | "substep" | "llm";
   elapsed_ms: number;
   status?: string;
 }
 
 interface PlannerRuntimeStats {
-  workflow_elapsed_ms?: number;
-  node_timings_ms?: Record<string, number>;
-  node_events?: PlannerNodeEvent[];
+  elapsed_ms?: number;
+  steps?: PlannerRuntimeStep[];
   fallback_used?: boolean;
   generation_mode?: string | null;
 }
@@ -162,16 +164,26 @@ function formatElapsedMs(value: number | undefined): string {
   return `${(value / 1000).toFixed(1)} s`;
 }
 
-function formatPlannerNodeLabel(nodeName: string): string {
-  switch (nodeName) {
+function formatPlannerNodeLabel(stepName: string): string {
+  switch (stepName) {
     case "load_context":
       return "读取上下文";
     case "ground_concepts":
       return "概念预检索";
     case "draft_plan":
       return "生成方案";
+    case "prepare_shared_inputs":
+      return "准备资料上下文";
+    case "concept_grounding":
+      return "补充概念锚点";
+    case "plan_prompt_build":
+      return "构建规划提示词";
+    case "planner_stream_generate":
+      return "流式生成草案";
+    case "planner_fallback_build":
+      return "本地兜底补齐";
     default:
-      return nodeName;
+      return stepName;
   }
 }
 
@@ -179,10 +191,20 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
   if (!runtimeStats) {
     return [];
   }
-  if (runtimeStats.node_events?.length) {
-    return runtimeStats.node_events.map((event) => [event.node_name, event.elapsed_ms]);
+  return (runtimeStats.steps ?? []).map((step) => [step.name, step.elapsed_ms]);
+}
+
+function getPlannerFallbackNotice(runtimeStats: PlannerRuntimeStats | null | undefined): string {
+  if (!runtimeStats) {
+    return "";
   }
-  return Object.entries(runtimeStats.node_timings_ms ?? {});
+  if (runtimeStats.fallback_used) {
+    return "已使用兜底方案，当前结果由本地快速规划补齐。";
+  }
+  if (runtimeStats.generation_mode === "stream_plaintext_partial") {
+    return "模型流式输出中断，当前结果已保留可用内容。";
+  }
+  return "";
 }
 
 function extractPlannerPreviewText(raw: string): string {
@@ -244,11 +266,15 @@ function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在生成构建方案...";
   }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message.trim();
+  }
   if (typeof payload.detail === "string" && payload.detail.trim()) {
     return payload.detail.trim();
   }
-  if (typeof payload.node_name === "string" && typeof payload.elapsed_ms === "number") {
-    return `${payload.node_name} 完成，耗时 ${payload.elapsed_ms} ms。`;
+  if (typeof payload.step === "string" && payload.step.trim()) {
+    const label = formatPlannerNodeLabel(payload.step.trim());
+    return payload.status === "failed" ? `${label} 失败。` : `${label} 进行中...`;
   }
   return "正在生成构建方案...";
 }
@@ -426,6 +452,10 @@ export function BuildPlanPage() {
   useSettings();
 
   const navState = location.state as { initialFiles?: File[]; initialPrompt?: string; autoStart?: boolean } | null;
+  const requestedAt = useMemo(
+    () => new URLSearchParams(location.search).get("requested_at"),
+    [location.search],
+  );
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
@@ -457,10 +487,31 @@ export function BuildPlanPage() {
   });
 
   const knowledgeDocState = useQuery({
-    queryKey: buildKnowledgeDocStateQueryKey(subjectId),
+    queryKey: [...buildKnowledgeDocStateQueryKey(subjectId), requestedAt],
     queryFn: () => fetchKnowledgeDocState(subjectId),
     enabled: Boolean(subjectId),
     retry: false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const build = data?.build;
+      const status = build?.status ?? null;
+
+      if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) {
+        return 2500;
+      }
+      if (status === "failed" || status === "cancelled" || status === "completed") {
+        return false;
+      }
+
+      const targetRequestedAtMs = parseIsoTimestamp(requestedAt) ?? parseIsoTimestamp(build?.requested_at ?? null);
+      if (targetRequestedAtMs === null) {
+        return false;
+      }
+
+      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
+      const isReady = updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs;
+      return isReady ? false : 2500;
+    },
   });
 
   const files = filesQuery.data?.items ?? [];
@@ -468,6 +519,58 @@ export function BuildPlanPage() {
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
   const plannerFileUids = useMemo(() => plannerFiles.map((item) => item.uid), [plannerFiles]);
   const readyFileUids = useMemo(() => readyFiles.map((item) => item.uid), [readyFiles]);
+  const buildSourceFiles = useMemo<ApiFileRecord[]>(
+    () =>
+      files.map((file) => ({
+        ...file,
+        status: file.status as ApiFileRecord["status"],
+      })),
+    [files],
+  );
+
+  const buildMeta = knowledgeDocState.data?.build ?? null;
+  const buildPreview = knowledgeDocState.data?.build_preview ?? null;
+  const buildMetrics = knowledgeDocState.data?.build_metrics ?? null;
+  const buildStatus = buildMeta?.status ?? null;
+  const liveMarkdown = knowledgeDocState.data?.markdown ?? "";
+  const draftMarkdown = knowledgeDocState.data?.draft_markdown ?? "";
+  const hasLiveDocMarkdown = Boolean(knowledgeDocState.data?.exists && liveMarkdown.trim().length > 0);
+  const hasDraftDocMarkdown = Boolean(draftMarkdown.trim().length > 0);
+  const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
+  const buildRequestedAtMs = useMemo(
+    () => parseIsoTimestamp(buildMeta?.requested_at ?? null),
+    [buildMeta?.requested_at],
+  );
+  const publishedUpdatedAtMs = useMemo(
+    () => parseIsoTimestamp(knowledgeDocState.data?.updated_at ?? null),
+    [knowledgeDocState.data?.updated_at],
+  );
+  const targetRequestedAtMs = requestedAtMs ?? buildRequestedAtMs;
+  const isBuildActive = Boolean(buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
+  const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
+  const isRequestedBuildReady =
+    targetRequestedAtMs !== null
+      ? publishedUpdatedAtMs !== null && publishedUpdatedAtMs >= targetRequestedAtMs
+      : buildStatus === "completed" && hasLiveDocMarkdown;
+  const isWaitingForRequestedBuild =
+    targetRequestedAtMs !== null &&
+    !isRequestedBuildReady &&
+    !isBuildFailure &&
+    (isBuildActive || hasDraftDocMarkdown);
+  const shouldShowBuildView =
+    Boolean(requestedAt) &&
+    (isBuildActive || isWaitingForRequestedBuild || isRequestedBuildReady || isBuildFailure || hasDraftDocMarkdown || hasLiveDocMarkdown);
+  const buildStage = buildMeta?.stage ?? null;
+  const { buildProgress, buildStatusText } = useDocBuildProgress({
+    buildMeta,
+    buildStatus,
+    hasLiveDocMarkdown,
+    hasDraftDocMarkdown,
+    isBuildActive,
+    isBuildFailure,
+    isRequestedBuildReady,
+    isWaitingForRequestedBuild,
+  });
 
   useEffect(() => {
     if (!subjectId) {
@@ -687,13 +790,16 @@ export function BuildPlanPage() {
         params.set("confirmed_plan_id", data.confirmed_plan_id);
       }
 
-      navigate(`/subject/${subjectId}/knowledge-docs?${params.toString()}`, {
-        state: {
-          planSnapshot: currentPlanRef.current,
-          plannerSessionId: plannerSessionIdRef.current,
-          confirmedPlanId: data.confirmed_plan_id ?? null,
+      navigate(
+        {
+          pathname: `/subject/${subjectId}/build`,
+          search: params.toString() ? `?${params.toString()}` : "",
         },
-      });
+        {
+          replace: true,
+          state: null,
+        },
+      );
     },
   });
 
@@ -764,6 +870,29 @@ export function BuildPlanPage() {
       ),
     });
   }, [navigate, readyFiles, subjectId]);
+
+  const handleOpenKnowledgeDocs = useCallback(() => {
+    if (!subjectId) {
+      return;
+    }
+    navigate(`/subject/${subjectId}/knowledge-docs${location.search}`);
+  }, [location.search, navigate, subjectId]);
+
+  const handleReturnToPlanner = useCallback(() => {
+    if (!subjectId) {
+      return;
+    }
+    navigate(
+      {
+        pathname: `/subject/${subjectId}/build`,
+        search: "",
+      },
+      {
+        replace: true,
+        state: null,
+      },
+    );
+  }, [navigate, subjectId]);
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
@@ -858,17 +987,12 @@ export function BuildPlanPage() {
       const response = await confirmPlannerMutation.mutateAsync(plannerSessionId);
       setCurrentPlan(response.plan);
       setIsRevisingPlan(false);
+      const buildAcceptedMessage =
+        readyFileUids.length > 0
+          ? "方案已确认，构建请求已受理，接下来会在当前页面展示真实的检索、研究和写作进度。"
+          : "方案已确认。当前没有已解析资料，这一轮会直接进入联网研究模式，并在当前页面展示构建过程。";
 
-      setMessages((prev) => [
-        ...prev,
-        createMessage(
-          "system",
-          readyFileUids.length > 0
-            ? "方案已确认，正在切换到知识库页面并启动正式构建。"
-            : "方案已确认。当前没有已解析资料，本轮会直接进入联网研究模式来生成知识文档。",
-        ),
-      ]);
-
+      setMessages((prev) => [...prev, createMessage("system", buildAcceptedMessage)]);
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.plan_id,
         file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
@@ -917,6 +1041,9 @@ export function BuildPlanPage() {
       : "继续补充你想调整的章节、风格、重点或检索方向"
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
+  const canOpenKnowledgeDocs =
+    shouldShowBuildView && (isRequestedBuildReady || buildStatus === "completed" || hasLiveDocMarkdown);
+
   return (
     <>
       <FullPageDropOverlay
@@ -932,7 +1059,85 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
+        {shouldShowBuildView ? (
+          <div className="flex-1 overflow-y-auto px-4 pb-6 md:px-8 lg:px-16">
+            <div className="mx-auto max-w-[1100px] rounded-[28px] border border-zinc-200/80 bg-white/90 p-5 shadow-[0_28px_70px_-48px_rgba(24,24,27,0.35)] backdrop-blur-sm md:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-sky-700">
+                    <Sparkles className="h-3 w-3" />
+                    Knowledge Build
+                  </div>
+                  <h2 className="text-xl font-semibold text-zinc-900">
+                    {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
+                  </h2>
+                  <p className="max-w-2xl text-sm leading-6 text-zinc-600">
+                    {isBuildFailure
+                      ? buildMeta?.error_message?.trim() || "构建过程中出现了问题，你可以回到方案规划后重新发起。"
+                      : canOpenKnowledgeDocs
+                        ? "正式知识文档已经可以打开。你也可以先在这里检查章节推进、检索来源和草稿片段。"
+                        : "这里会持续展示材料处理、检索来源、章节推进和草稿片段，不再把构建过程丢到知识文档页里。"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {canOpenKnowledgeDocs ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenKnowledgeDocs}
+                      className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      进入知识文档
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleReturnToPlanner}
+                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    返回方案规划
+                  </button>
+                </div>
+              </div>
+
+              {knowledgeDocState.isError ? (
+                <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="space-y-2">
+                      <p className="font-medium">构建状态拉取失败</p>
+                      <p>如果后端已经受理，重新刷新即可恢复；如果问题持续，可以先回到规划态重新发起。</p>
+                      <button
+                        type="button"
+                        onClick={() => void knowledgeDocState.refetch()}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        重新拉取状态
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <BuildView
+                  className="pt-2"
+                  isFetching={knowledgeDocState.isFetching}
+                  progress={buildProgress}
+                  statusText={buildStatusText}
+                  buildPreview={buildPreview}
+                  buildMetrics={buildMetrics}
+                  sourceFiles={buildSourceFiles}
+                  sourceFilesFetching={filesQuery.isFetching}
+                  buildStage={buildStage}
+                />
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={shouldShowBuildView ? "hidden" : "flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16"}>
           <div className="mx-auto max-w-3xl space-y-3">
             {messages.map((message) => (
               <div
@@ -989,11 +1194,16 @@ export function BuildPlanPage() {
                               <p className="mt-1 whitespace-pre-line text-xs leading-5 text-zinc-500">
                                 {message.plan.plan_summary}
                               </p>
+                              {getPlannerFallbackNotice(message.runtimeStats) ? (
+                                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                                  {getPlannerFallbackNotice(message.runtimeStats)}
+                                </div>
+                              ) : null}
 
                               {message.runtimeStats ? (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
-                                    总耗时 {formatElapsedMs(message.runtimeStats.workflow_elapsed_ms)}
+                                    总耗时 {formatElapsedMs(message.runtimeStats.elapsed_ms)}
                                   </span>
                                   {message.runtimeStats.fallback_used ? (
                                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
@@ -1114,7 +1324,7 @@ export function BuildPlanPage() {
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
                 <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">
-                  方案已确认，正在切换到知识库页面。构建一旦被后端受理，就会立刻展示真实的检索、研究与写作进度。
+                  方案已确认，正在发起正式构建。当前页面会在后端受理后继续展示真实的检索、研究与写作进度。
                 </div>
               </div>
             ) : null}
@@ -1142,7 +1352,7 @@ export function BuildPlanPage() {
           </div>
         </div>
 
-        <div className="border-t border-zinc-200/60 bg-white/80 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8 lg:px-16">
+        <div className={shouldShowBuildView ? "hidden" : "border-t border-zinc-200/60 bg-white/80 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8 lg:px-16"}>
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -1271,7 +1481,7 @@ export function BuildPlanPage() {
             </p>
 
             <p className="mt-1 text-center text-[11px] text-zinc-400">
-              先生成方案，再确认构建。点击开始构建后会立刻跳到知识库页面查看真实进度。
+              先生成方案，再确认构建。确认后会留在当前 build 页面，持续展示真实的构建过程与检索来源。
             </p>
           </div>
         </div>
@@ -1285,25 +1495,27 @@ export function BuildPlanPage() {
         onResolve={knowledgeBuild.resolvePrecheckConflict}
       />
 
-      <button
-        type="button"
-        onClick={handleOpenKnowledgeGraph}
-        className="fixed bottom-24 right-4 z-20 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#082f49_0%,#0f766e_100%)] px-4 py-3 text-left text-white shadow-[0_18px_40px_-18px_rgba(8,47,73,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_-18px_rgba(8,47,73,0.6)] md:bottom-24 md:right-8"
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/14">
-          <Network className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">构建知识图谱</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-sky-50/85">
-            {readyFiles.length > 0
-              ? `基于 ${readyFiles.length} 份已解析资料直达图谱调试`
-              : files.length > 0
-                ? "文件还在解析中，可先进入图谱页调试入口"
-                : "上传资料后可直接跳转图谱页调试构建"}
+      {shouldShowBuildView ? null : (
+        <button
+          type="button"
+          onClick={handleOpenKnowledgeGraph}
+          className="fixed bottom-24 right-4 z-20 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#082f49_0%,#0f766e_100%)] px-4 py-3 text-left text-white shadow-[0_18px_40px_-18px_rgba(8,47,73,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_-18px_rgba(8,47,73,0.6)] md:bottom-24 md:right-8"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/14">
+            <Network className="h-5 w-5" />
           </div>
-        </div>
-      </button>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">构建知识图谱</div>
+            <div className="mt-0.5 text-[11px] leading-4 text-sky-50/85">
+              {readyFiles.length > 0
+                ? `基于 ${readyFiles.length} 份已解析资料直达图谱调试`
+                : files.length > 0
+                  ? "文件还在解析中，可先进入图谱页调试入口"
+                  : "上传资料后可直接跳转图谱页调试构建"}
+            </div>
+          </div>
+        </button>
+      )}
     </>
   );
 }

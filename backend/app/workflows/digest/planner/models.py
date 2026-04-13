@@ -9,7 +9,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
-from app.teaching.documents import looks_like_legacy_template_title
+from app.teaching.documents import (
+    clean_generated_chapter_title,
+    is_usable_resolved_chapter_title,
+)
 from app.teaching.runtime_config import (
     get_planner_mode_runtime_config,
     get_teaching_runtime_config,
@@ -21,6 +24,28 @@ _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 _TOPIC_SPLIT_RE = re.compile(r"[，。；：,.!?！？/\n]")
+_GOAL_PREFIX_RE = re.compile(
+    r"^(?:请|请你|帮我|麻烦你|能不能|可以|想让你)?(?:再)?(?:详细)?(?:系统)?(?:完整)?"
+    r"(?:帮我)?(?:整理|梳理|总结|讲解|解释|复习|学习|掌握|冲刺|备考|准备|构建|生成|做|写)"
+    r"(?:一份|一下|下)?",
+)
+_GENERIC_TOPIC_MARKERS = (
+    "相关知识",
+    "知识点",
+    "知识文档",
+    "知识体系",
+    "学习资料",
+    "学习路径",
+    "课程内容",
+    "课程讲义",
+    "系统课",
+    "冲刺课",
+    "复习资料",
+    "整理一下",
+    "帮我整理",
+    "帮我梳理",
+    "总结一下",
+)
 
 
 class PlannerChapterPlan(BaseModel):
@@ -40,6 +65,7 @@ class BuildPlannerDraft(BaseModel):
     user_goal: str
     digest_mode: str = "systematic"
     tone: str = "encouraging"
+    selected_skillpacks: list[str] = Field(default_factory=list)
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
     research_queries: list[str] = Field(default_factory=list)
     media_plan: dict[str, Any] = Field(default_factory=dict)
@@ -159,6 +185,142 @@ SYSTEMATIC_ANGLE_SPECS = [
     ),
 ]
 
+SPRINT_TITLE_SUFFIXES: dict[str, str] = {
+    "核心概念": "核心概念与高频考点",
+    "公式方法": "公式与速判技巧",
+    "题型突破": "高频题型突破",
+    "易错辨析": "易错点辨析",
+    "综合迁移": "综合变式与迁移",
+    "考前速查": "考前速查清单",
+}
+
+SYSTEMATIC_TITLE_SUFFIXES: dict[str, str] = {
+    "主题导入": "学习地图与主线",
+    "概念定义": "核心概念与定义",
+    "结构公式": "结构框架与关键公式",
+    "方法推理": "方法推理与证明思路",
+    "例题应用": "典型例题与应用",
+    "边界辨析": "边界条件与易混辨析",
+    "综合迁移": "跨主题综合迁移",
+    "总结延伸": "章节总结与延伸",
+}
+
+
+def _title_suffix_for_angle(*, digest_mode: str, angle: ChapterAngleSpec) -> str:
+    mapping = SPRINT_TITLE_SUFFIXES if _normalize_digest_mode(digest_mode) == "sprint" else SYSTEMATIC_TITLE_SUFFIXES
+    return mapping.get(angle.label, angle.label)
+
+
+def _truncate_title_topic(value: str, *, fallback: str, max_length: int) -> str:
+    cleaned = _clean_text(value).strip("：:，,。；; ")
+    if not cleaned:
+        cleaned = _clean_text(fallback).strip("：:，,。；; ")
+    if not cleaned:
+        return "当前主题"
+
+    fragments = [
+        _clean_text(fragment).strip("：:，,。；; ")
+        for fragment in re.split(r"[：:，,。；;()（）/]", cleaned)
+    ]
+    for fragment in fragments:
+        if 2 <= len(fragment) <= max_length and _has_cjk(fragment):
+            return fragment
+
+    if len(cleaned) <= max_length:
+        return cleaned
+    return cleaned[:max_length].rstrip("：:，,。；; ")
+
+
+def _build_fallback_chapter_title(
+    *,
+    topic: str,
+    display_subject: str,
+    digest_mode: str,
+    angle: ChapterAngleSpec,
+) -> str:
+    suffix = _title_suffix_for_angle(digest_mode=digest_mode, angle=angle)
+    topic_budget = max(4, 26 - len(suffix))
+    title_topic = _truncate_title_topic(topic, fallback=display_subject, max_length=topic_budget)
+    title = clean_generated_chapter_title(f"{title_topic}：{suffix}")
+    if is_usable_resolved_chapter_title(title):
+        return title
+
+    fallback_topic = _truncate_title_topic(display_subject, fallback="当前主题", max_length=topic_budget)
+    fallback_title = clean_generated_chapter_title(f"{fallback_topic}：{suffix}")
+    if is_usable_resolved_chapter_title(fallback_title):
+        return fallback_title
+
+    return clean_generated_chapter_title(f"{fallback_topic}：{angle.label}")
+
+
+def _title_key(value: str) -> str:
+    return clean_generated_chapter_title(value).casefold()
+
+
+def _split_title_components(title: str) -> tuple[str, str]:
+    cleaned = clean_generated_chapter_title(title)
+    for separator in ("：", ":"):
+        if separator in cleaned:
+            left, right = cleaned.split(separator, 1)
+            return left.strip(), right.strip()
+    return cleaned, ""
+
+
+def _chapter_focus_candidates(chapter: PlannerChapterPlan, *, subject_display_name: str) -> list[str]:
+    raw_candidates: list[str] = []
+    raw_candidates.extend(list(chapter.search_queries))
+    raw_candidates.extend(list(chapter.required_elements))
+    raw_candidates.append(chapter.objective)
+    raw_candidates.append(chapter.writing_instructions)
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_candidates:
+        normalized = _normalize_topic_phrase(raw, max_length=18)
+        if not normalized or normalized == subject_display_name or _is_generic_topic_text(normalized):
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(normalized)
+    return candidates
+
+
+def _dedupe_chapter_plan_titles(
+    chapter_plan: list[PlannerChapterPlan],
+    *,
+    subject_display_name: str,
+) -> list[PlannerChapterPlan]:
+    deduped: list[PlannerChapterPlan] = []
+    seen_keys: set[str] = set()
+
+    for chapter in chapter_plan:
+        title = clean_generated_chapter_title(chapter.title) or f"第 {chapter.chapter_index} 章"
+        if _title_key(title) in seen_keys:
+            topic, suffix = _split_title_components(title)
+            for focus in _chapter_focus_candidates(chapter, subject_display_name=subject_display_name):
+                if focus == topic:
+                    continue
+                candidate = clean_generated_chapter_title(f"{focus}：{suffix}" if suffix else focus)
+                if candidate and _title_key(candidate) not in seen_keys and is_usable_resolved_chapter_title(candidate):
+                    title = candidate
+                    break
+            else:
+                fallback_focus = _chapter_focus_candidates(chapter, subject_display_name=subject_display_name)
+                for focus in fallback_focus:
+                    candidate = clean_generated_chapter_title(f"{topic}：{focus}")
+                    if candidate and _title_key(candidate) not in seen_keys and is_usable_resolved_chapter_title(candidate):
+                        title = candidate
+                        break
+                else:
+                    title = clean_generated_chapter_title(f"{topic}：专题 {chapter.chapter_index}")
+
+        seen_keys.add(_title_key(title))
+        deduped.append(chapter.model_copy(update={"title": title}))
+
+    return deduped
+
 
 def _minimal_shared_inputs(subject: str) -> SharedInputs:
     return SharedInputs(
@@ -178,6 +340,13 @@ def _normalize_tone(value: Any) -> str:
     return text or get_teaching_runtime_config().planner.default_tone
 
 
+def _normalize_selected_skillpacks(value: Any) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, (list, tuple, set)) else [value]
+    return _dedupe_strings(items, limit=16)
+
+
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
@@ -186,6 +355,42 @@ def _clean_text(value: Any) -> str:
 
 def _has_cjk(text: str) -> bool:
     return bool(_CJK_RE.search(text))
+
+
+def _strip_goal_instruction_text(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    stripped = _GOAL_PREFIX_RE.sub("", text).strip(" ：:，,。；;")
+    for marker in _GENERIC_TOPIC_MARKERS:
+        if marker in stripped:
+            stripped = stripped.replace(marker, " ")
+    stripped = re.sub(r"\s+", " ", stripped).strip(" ：:，,。；;")
+    return stripped or text
+
+
+def _normalize_topic_phrase(value: Any, *, max_length: int = 20) -> str:
+    cleaned = _strip_goal_instruction_text(value)
+    if not cleaned:
+        return ""
+    fragments = [
+        _clean_text(fragment).strip(" ：:，,。；;")
+        for fragment in re.split(r"[，。；：,.!?！？/\n()（）]", cleaned)
+        if _clean_text(fragment).strip(" ：:，,。；;")
+    ]
+    for fragment in fragments:
+        if 2 <= len(fragment) <= max_length and _has_cjk(fragment):
+            return fragment
+    if len(cleaned) <= max_length and _has_cjk(cleaned):
+        return cleaned
+    return cleaned[:max_length].rstrip(" ：:，,。；;")
+
+
+def _is_generic_topic_text(value: Any) -> bool:
+    text = _clean_text(value)
+    if not text:
+        return True
+    return any(marker in text for marker in _GENERIC_TOPIC_MARKERS)
 
 
 def _is_usable_cn_text(value: Any, *, min_length: int = 2) -> bool:
@@ -347,7 +552,7 @@ def _resolve_subject_display_name(
     shared_inputs: SharedInputs | None,
     user_goal: str = "",
 ) -> str:
-    profile_name = _clean_text((shared_inputs.subject_profile.subject_name if shared_inputs else ""))
+    profile_name = _normalize_topic_phrase(shared_inputs.subject_profile.subject_name if shared_inputs else "")
     if profile_name and not _looks_like_subject_slug(profile_name):
         return profile_name
 
@@ -356,19 +561,19 @@ def _resolve_subject_display_name(
             *shared_inputs.subject_profile.key_topics,
             *shared_inputs.fast_hints.chapter_candidates,
         ]:
-            cleaned = _clean_text(candidate)
+            cleaned = _normalize_topic_phrase(candidate)
             if cleaned and not _looks_like_subject_slug(cleaned):
                 return cleaned
 
-    goal = _clean_text(user_goal)
+    goal = _normalize_topic_phrase(user_goal)
     if goal and not _looks_like_subject_slug(goal):
-        if len(goal) <= 20:
+        if len(goal) <= 20 and not _is_generic_topic_text(goal):
             return goal
-        goal_head = re.split(r"[，。；：,.!?！？\n]", goal, maxsplit=1)[0].strip()
+        goal_head = _normalize_topic_phrase(re.split(r"[，。；：,.!?！？\n]", goal, maxsplit=1)[0].strip())
         if goal_head and len(goal_head) <= 20:
             return goal_head
 
-    normalized_subject = _clean_text(subject)
+    normalized_subject = _normalize_topic_phrase(subject)
     if normalized_subject and not _looks_like_subject_slug(normalized_subject):
         return normalized_subject
     return "当前主题"
@@ -383,13 +588,19 @@ def _replace_subject_slug_text(value: Any, replacement: str) -> str:
 
 def _extract_goal_topic_hints(user_goal: str, *, display_subject: str) -> list[str]:
     fragments = [
-        fragment.strip()
+        _normalize_topic_phrase(fragment)
         for fragment in _TOPIC_SPLIT_RE.split(_replace_subject_slug_text(user_goal, display_subject))
-        if fragment.strip()
+        if _normalize_topic_phrase(fragment)
     ]
     hints: list[str] = []
     for fragment in fragments:
-        if fragment == display_subject or len(fragment) < 2 or len(fragment) > 20 or not _has_cjk(fragment):
+        if (
+            fragment == display_subject
+            or len(fragment) < 2
+            or len(fragment) > 20
+            or not _has_cjk(fragment)
+            or _is_generic_topic_text(fragment)
+        ):
             continue
         hints.append(fragment)
     return _dedupe_strings(hints, limit=4)
@@ -403,7 +614,7 @@ def _topic_candidates(*, subject: str, shared_inputs: SharedInputs, user_goal: s
     display_subject = _resolve_subject_display_name(subject, shared_inputs=shared_inputs, user_goal=user_goal)
     return _dedupe_strings(
         [
-            *_collect_topic_hints(shared_inputs, limit=12),
+            *[_normalize_topic_phrase(item) for item in _collect_topic_hints(shared_inputs, limit=12)],
             *_extract_goal_topic_hints(user_goal, display_subject=display_subject),
             display_subject,
         ],
@@ -466,7 +677,12 @@ def _build_fallback_chapter_plan(
         chapter_plan.append(
             PlannerChapterPlan(
                 chapter_index=index,
-                title=f"第 {index} 章",
+                title=_build_fallback_chapter_title(
+                    topic=topic,
+                    display_subject=display_subject,
+                    digest_mode=digest_mode,
+                    angle=angle,
+                ),
                 objective=angle.objective_template.format(topic=topic or display_subject),
                 required_elements=list(angle.required_elements),
                 search_queries=_build_search_queries(
@@ -530,6 +746,7 @@ def build_fallback_plan(
     digest_mode: str,
     tone: str,
     shared_inputs: SharedInputs,
+    selected_skillpacks: list[str] | None = None,
     target_count: int | None = None,
 ) -> BuildPlannerDraft:
     normalized_mode = _normalize_digest_mode(digest_mode)
@@ -548,6 +765,10 @@ def build_fallback_plan(
         shared_inputs=shared_inputs,
         target_count=resolved_count,
     )
+    chapter_plan = _dedupe_chapter_plan_titles(
+        chapter_plan,
+        subject_display_name=display_subject,
+    )
     research_queries = _dedupe_strings(
         [query for chapter in chapter_plan for query in chapter.search_queries],
         limit=24,
@@ -558,6 +779,7 @@ def build_fallback_plan(
         user_goal=user_goal,
         digest_mode=normalized_mode,
         tone=normalized_tone,
+        selected_skillpacks=_normalize_selected_skillpacks(selected_skillpacks),
         chapter_plan=chapter_plan,
         research_queries=research_queries,
         media_plan={
@@ -586,7 +808,7 @@ def _merge_raw_candidates(current: Any, previous: Any) -> dict[str, Any]:
 
 def _is_usable_provisional_title(value: Any) -> bool:
     text = _clean_text(value)
-    return _is_usable_cn_text(text) and not looks_like_legacy_template_title(text)
+    return is_usable_resolved_chapter_title(text)
 
 
 def _merge_chapter(
@@ -687,6 +909,7 @@ def normalize_planner_draft(
     user_goal: str,
     requested_digest_mode: str,
     requested_tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> BuildPlannerDraft:
@@ -697,6 +920,11 @@ def normalize_planner_draft(
         requested_digest_mode or current_raw.get("digest_mode") or previous_raw.get("digest_mode")
     )
     tone = _normalize_tone(requested_tone or current_raw.get("tone") or previous_raw.get("tone"))
+    resolved_skillpacks = _normalize_selected_skillpacks(
+        selected_skillpacks
+        if selected_skillpacks is not None
+        else current_raw.get("selected_skillpacks") or previous_raw.get("selected_skillpacks")
+    )
     subject_display_name = _resolve_subject_display_name(subject, shared_inputs=shared, user_goal=user_goal)
     target_count = _resolve_requested_count(
         digest_mode=digest_mode,
@@ -711,6 +939,7 @@ def normalize_planner_draft(
         digest_mode=digest_mode,
         tone=tone,
         shared_inputs=shared,
+        selected_skillpacks=resolved_skillpacks,
         target_count=target_count,
     )
     current_chapters = _coerce_chapter_mappings(current_raw.get("chapter_plan"))
@@ -724,6 +953,10 @@ def normalize_planner_draft(
         )
         for index, fallback in enumerate(fallback_plan.chapter_plan)
     ]
+    chapter_plan = _dedupe_chapter_plan_titles(
+        chapter_plan,
+        subject_display_name=subject_display_name,
+    )
 
     chapter_queries = [query for chapter in chapter_plan for query in chapter.search_queries]
     research_queries = _dedupe_strings(
@@ -743,6 +976,7 @@ def normalize_planner_draft(
         user_goal=user_goal,
         digest_mode=digest_mode,
         tone=tone,
+        selected_skillpacks=resolved_skillpacks,
         chapter_plan=chapter_plan,
         research_queries=research_queries or fallback_research_queries,
         media_plan=_normalize_media_plan(
@@ -769,6 +1003,7 @@ def normalize_planner_payload(
     user_goal: str,
     requested_digest_mode: str,
     requested_tone: str,
+    selected_skillpacks: list[str] | None = None,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -778,6 +1013,7 @@ def normalize_planner_payload(
         user_goal=user_goal,
         requested_digest_mode=requested_digest_mode,
         requested_tone=requested_tone,
+        selected_skillpacks=selected_skillpacks,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
     ).model_dump(mode="json")

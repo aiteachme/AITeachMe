@@ -1,23 +1,28 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from datetime import datetime
 from unittest.mock import patch
 
+from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.skills import SkillContext, SkillResult, SourceCurator
-from app.shared.infra.tools.builtin.markdown_processing import append_reference_section
+from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, normalize_mermaid_blocks
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import (
     build_collect_drafts_node,
     build_enrich_document_node,
     build_pedagogy_craft_node,
 )
-from app.workflows.digest.docgen.publish import _build_chapter_manifest, _build_source_scope
+from app.workflows.digest.docgen.publish import (
+    _build_chapter_manifest,
+    _build_source_scope,
+    build_merged_markdown,
+)
 
 
 def test_source_curator_prioritizes_local_and_trusted_sources() -> None:
-    curator = SourceCurator(SkillContext(subject="demo"))
+    curator = SourceCurator(TracedExecutionContext(subject="demo"))
     curated, metadata = asyncio.run(
         curator.curate_sources(
             query="partial derivative geometric meaning examples",
@@ -88,6 +93,26 @@ def test_append_reference_section_dedupes_and_is_idempotent() -> None:
     assert enriched_again.count("## 参考资料与延伸阅读") == 1
 
 
+def test_normalize_mermaid_blocks_repairs_missing_fences_and_quote_prefix() -> None:
+    markdown = """
+> ```mermaid
+> mindmap
+>   root((线性代数))
+>     向量空间
+>       判别方法
+### 题型拆解
+- 看清楚封闭性
+""".strip()
+
+    normalized = normalize_mermaid_blocks(markdown)
+
+    assert "> ```mermaid" not in normalized
+    assert normalized.count("```mermaid") == 1
+    assert "root((线性代数))" in normalized
+    assert "```" in normalized
+    assert "### 题型拆解" in normalized
+
+
 def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview() -> None:
     captured: dict[str, object] = {}
 
@@ -97,7 +122,19 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
 
         async def run(self, **kwargs):
             captured["kwargs"] = kwargs
-            return SkillResult(content="# Example Chapter\n\n## Core Idea\n\nOne clean explanation.")
+            return TracedExecutionResult(
+                content=(
+                    "# Example Chapter\n\n"
+                    "## 全局脉络图\n\n"
+                    "```mermaid\n"
+                    "mindmap\n"
+                    "  root((Example Chapter))\n"
+                    "    概念关系\n"
+                    "``` A[bad trailing graph]\n\n"
+                    "## Core Idea\n\n"
+                    "One clean explanation."
+                )
+            )
 
     requested_at = datetime.utcnow()
     context = create_langgraph_dev_context("digest.docgen.source_test")
@@ -135,8 +172,8 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
         },
     }
 
-    with patch("app.workflows.digest.docgen.graph.PedagogyWriter", new=FakePedagogyWriter), patch(
-        "app.workflows.digest.docgen.graph.update_knowledge_build_status"
+    with patch("app.workflows.digest.docgen.nodes.pedagogy_craft_node.PedagogyWriter", new=FakePedagogyWriter), patch(
+        "app.workflows.digest.docgen.nodes.collect_drafts_node.update_knowledge_build_status"
     ):
         craft_result = asyncio.run(craft_node(craft_state))
         collect_result = asyncio.run(
@@ -196,6 +233,9 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
         "partial derivative meaning",
         "partial derivative example",
     ]
+    assert chapter["markdown"].count("```mermaid") == 1
+    assert "``` A[bad trailing graph]" not in chapter["markdown"]
+    assert "## Core Idea" in chapter["markdown"]
     assert "## 参考资料与延伸阅读" in chapter["markdown"]
     assert "https://example.edu/partial" in chapter["markdown"]
     assert "## 目录" in enrich_result["merged_markdown"]
@@ -206,3 +246,27 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
     assert source_scope["local_source_count"] == 1
     assert source_scope["external_source_count"] == 1
     assert source_scope["domains"] == ["example.edu"]
+
+
+def test_build_merged_markdown_dedupes_curriculum_path_tail_title() -> None:
+    merged = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "线性方程组求解的完整路径",
+                "curriculum_path": ["代数基础", "线性方程组求解的完整路径"],
+                "markdown": "# 线性方程组求解的完整路径\n\n## 这章先拿下什么\n\n先看主线。",
+            }
+        ],
+        document_context={
+            "subject": "线性代数",
+            "digest_mode": "systematic",
+            "tone": "encouraging",
+            "user_goal": "系统整理线性方程组求解",
+            "plan_summary": "聚焦线性方程组求解路径。",
+        },
+    )
+
+    assert "## 代数基础" in merged
+    assert "\n## 线性方程组求解的完整路径\n" not in merged
+    assert "\n### 线性方程组求解的完整路径\n" in merged

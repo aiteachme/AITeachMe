@@ -1,112 +1,177 @@
-## 附录 A：关键数据结构定义
+## 附录 A：当前已落地的核心合同
 
-### A.1 ChapterPlan（edu_planner 输出）
+> 说明：以下以“当前代码已经存在的核心结构”为主，只在必要处补充下一步值得增强的字段。
 
-```python
-class ChapterPlan(TypedDict):
-    chapter_index: int
-    title: str
-    required_elements: list[str]      # 该章节必须包含的内容类型
-    search_queries: list[str]         # 供 targeted_research 使用的搜索词
-    writing_instructions: str         # 给 pedagogy_craft 的写作指令
-    media_hints: MediaHints           # 富媒体提示
-    estimated_words: int              # 预估字数（系统课用于控制总字数）
+### A.1 `DigestConfirmedPlanContract`
 
-class MediaHints(TypedDict):
-    images: list[str]                 # 需要生成的图片描述
-    mermaid: list[str]                # 需要生成的思维导图描述
-    interactive: list[str]            # 需要生成的交互 HTML 描述（V2）
-```
+当前 canonical confirmed plan 合同位于：
 
-### A.2 ChapterMaterial（targeted_research 输出）
+- `backend/app/workflows/digest/shared/contracts.py`
 
-```python
-class ChapterMaterial(TypedDict):
-    chapter_index: int
-    dense_context: str                # 高浓度精华文本
-    sources: list[str]                # 引用来源 URL
-    local_rag_hits: int               # 本地 RAG 命中数
-    web_search_hits: int              # 外网搜索命中数
-```
+它当前已经覆盖：
 
-### A.3 ChapterDraft（pedagogy_craft 输出）
+- `subject`
+- `user_goal`
+- `digest_mode`
+- `tone`
+- `selected_skillpacks`
+- `chapter_plan`
+- `research_queries`
+- `media_plan`
+- `build_constraints`
+- `plan_summary`
+- `selected_file_ids`
+- `planner_session_id`
+- `confirmed_plan_id`
+- `mode_reason`
 
-```python
-class ChapterDraft(TypedDict):
-    chapter_index: int
-    title: str
-    markdown_content: str             # 带占位符的 Markdown
-    image_placeholders: list[str]     # [IMAGE: ...] 占位符列表
-    mermaid_placeholders: list[str]   # [MERMAID: ...] 占位符列表
-    word_count: int                   # 实际字数
-```
+结论：confirmed plan 已经不是松散 JSON，而是 DocGen 真正可消费的 typed contract。
 
-### A.4 ScrapedPage（web_scraping 输出）
+### A.2 `DigestChapterContract` / `DigestChapterExecutionContract`
 
-```python
-@dataclass(slots=True)
-class ScrapedPage:
-    url: str
-    content: str
-    success: bool
-    error: str | None = None
-    content_type: str = "html"        # "html" | "pdf"
-    title: str = ""
-```
+当前 chapter-level 合同已经拆成两层：
+
+- `DigestChapterContract`
+- `DigestChapterExecutionContract`
+
+关键字段包括：
+
+- `chapter_index`
+- `title`
+- `resolved_title`
+- `objective`
+- `required_elements`
+- `search_queries`
+- `writing_instructions`
+- `media_hints`
+- `execution_contract`
+- `source_file_ids`
+
+而 execution contract 当前已经覆盖：
+
+- `target_word_count`
+- `min_word_count`
+- `coverage_requirements`
+- `min_coverage_score`
+- `explanation_depth`
+- `repair_enabled`
+- `quality_hint`
+- `media_quota`
+- `practice_quota`
+
+结论：模式差异和章节质量约束已经进入 execution contract，而不是只存在于 prompt 文本。
+
+### A.3 `DocGenState` 关键字段
+
+当前 DocGen lane state 位于：
+
+- `backend/app/workflows/digest/docgen/state.py`
+
+其中最关键的结构化字段已经包括：
+
+- 基础输入：`subject / file_ids / build_session_id / planner_session_id / confirmed_plan_id`
+- 模式与策略：`digest_mode / course_type / retrieval_profile / teaching_action / tone`
+- skillpack：`selected_skillpacks / document_context`
+- 中间产物：`chapter_assignments / chapter_materials / chapter_drafts / chapter_metadatas / exam_questions`
+- 富媒体与练习：`mermaid_block_count / image_block_count / interactive_block_count / asset_count / asset_summary / practice_count`
+- 最终产物：`merged_markdown / enriched_markdown / doc_ids / built_paths`
+- 可观测性：`load_ms / research_ms / draft_ms / enrich_ms / examine_ms / finalize_ms / timing_summary / token_summary`
+
+结论：DocGen state 已经能承载“研究、写作、富媒体、练习、发布、统计”这几类产物，不再只是纯 markdown 中转。
 
 ---
 
-## 附录 B：Prompt 模板索引
+## 附录 B：DocGen research runtime 当前 metadata
 
-| Prompt 名称 | 用途 | 模型层级 | 所在文件 |
-|:---|:---|:---|:---|
-| `sprint_planner` | 速成课大纲规划 | Strategic | `prompts/sprint_prompts.py` |
-| `systematic_planner` | 系统课大纲规划 | Strategic | `prompts/systematic_prompts.py` |
-| `generate_sub_queries` | 子查询生成 | Strategic | `tools/builtin/query_processing.py` |
-| `purify_material` | 素材提纯 | Fast | `nodes/targeted_research_node.py` |
-| `sprint_writer` | 速成课章节写作 | Smart | `prompts/sprint_prompts.py` |
-| `systematic_writer` | 系统课章节写作 | Smart | `prompts/systematic_prompts.py` |
-| `generate_mermaid` | Mermaid 思维导图生成 | Fast | `skills/mermaid_generator.py` |
-| `plan_image_concepts` | 图片规划 | Fast | `skills/image_generator.py` |
-| `inject_exam_questions` | 趁热打铁出题 | Smart | `nodes/inject_examine_node.py` |
+当前 `DocGenChapterContextRuntime` 已经输出的关键 metadata 包括：
+
+- `base_queries`
+- `planned_queries`
+- `gap_queries`
+- `executed_queries`
+- `fallback_queries`
+- `requested_profile`
+- `applied_profile`
+- `configured_retrievers`
+- `active_retrievers`
+- `retriever_stats`
+- `research_rounds`
+- `research_round_count`
+- `coverage_score`
+- `gaps_remaining`
+- `source_class_breakdown`
+- `stop_reason`
+- `selected_skillpacks`
+- `recommended_tool_tags`
+
+结论：research 已经具备足够强的运行时摘要与追踪输入，下一步重点是调优这些字段背后的算法，而不是继续补基础观测面。
 
 ---
 
-## 附录 C：环境变量完整清单（新增部分）
+## 附录 C：Digest lane summary 当前可聚合字段
 
-```env
-# ══════════════════════════════════════════════
-# 三级模型分层（可选，不配则 fallback 到 LLM_MODEL）
-# ══════════════════════════════════════════════
-STRATEGIC_LLM=qwq-32b
-SMART_LLM=qwen-max
-FAST_LLM=qwen-turbo
-STRATEGIC_TOKEN_LIMIT=4000
-SMART_TOKEN_LIMIT=8000
-FAST_TOKEN_LIMIT=3000
+当前 `backend/app/workflows/digest/observability.py` 已经能聚合：
 
-# ══════════════════════════════════════════════
-# 检索器配置
-# ══════════════════════════════════════════════
-WEB_SEARCH_RETRIEVER=bing
-BING_API_KEY=
-BOCHA_API_KEY=
-LOCAL_RAG_PRIORITY=true
-LOCAL_RAG_MIN_RESULTS=3
+### Docs Lane
 
-# ══════════════════════════════════════════════
-# 文生图配置（可选）
-# ══════════════════════════════════════════════
-IMAGE_GENERATION_ENABLED=false
-IMAGE_GENERATION_MODEL=wanxiang-v2
-IMAGE_GENERATION_MAX_IMAGES=3
+- `selected_skillpacks`
+- `retrieval_profiles`
+- `teaching_actions`
+- `requested_profiles / applied_profiles`
+- `research_rounds / research_round_count_total / max_research_round_count`
+- `source_class_breakdown`
+- `mermaid_count / image_count / interactive_block_count / asset_count / asset_summary`
+- `practice_count`
+- `coverage_score / quality_score`
 
-# ══════════════════════════════════════════════
-# DocGen 模式默认值
-# ══════════════════════════════════════════════
-DOCGEN_DEFAULT_MODE=sprint
-DOCGEN_DEFAULT_TONE=casual
-DOCGEN_SYSTEMATIC_MIN_WORDS=10000
-DOCGEN_SPRINT_MAX_CHAPTERS=4
-DOCGEN_SYSTEMATIC_MAX_CHAPTERS=10
-```
+### KG / Curriculum Lane
+
+- 各步骤耗时
+- 节点 / 单元数量
+- token summary
+- slow item top-k
+
+结论：Digest observability 文件当前的职责应该理解为 lane summary / timing report，而不是重新定义第二套 tracing API。
+
+---
+
+## 附录 D：当前关键实现位置
+
+| 能力 | 当前文件 |
+| --- | --- |
+| confirmed plan / chapter contract | `backend/app/workflows/digest/shared/contracts.py` |
+| planner graph | `backend/app/workflows/digest/planner/graph.py` |
+| docgen graph | `backend/app/workflows/digest/docgen/graph.py` |
+| chapter research runtime | `backend/app/workflows/digest/docgen/runtime/chapter_context.py` |
+| writer runtime | `backend/app/workflows/digest/docgen/runtime/writer.py` |
+| asset sidecar runtime | `backend/app/workflows/digest/docgen/runtime/assets.py` |
+| docgen prompts | `backend/app/workflows/digest/prompts/docgen_prompts.py` |
+| planner prompts | `backend/app/workflows/digest/prompts/planner_prompts.py` |
+| teaching scaffold | `backend/app/teaching/documents/report_generation.py` |
+| search factory / retrievers | `backend/app/shared/infra/search/*` |
+| tracing 统一入口 | `backend/app/workflows/common/*` |
+| Digest lane summary | `backend/app/workflows/digest/observability.py` |
+
+---
+
+## 附录 E：下一批值得显式化、但当前还不必伪装成已实现的字段
+
+下面这些方向值得继续做，但当前不要写成“已经落地”：
+
+- 学科特定 retrieval profile 参数表
+- 更细的 gap 类型分类
+- richer interactive / image asset contract
+- animation 执行合同
+- 跨引擎共享的学习画像合同
+- 更强的章节级质量评分拆解
+
+---
+
+## 附录 F：当前最小检查表
+
+- confirmed plan 是否始终以 typed contract 进入 DocGen
+- `selected_skillpacks` 是否保持 planner -> confirmed plan -> docgen 一致
+- `retrieval_profile` 是否真实影响 retriever 工厂，而不只是 trace 文本
+- `research_rounds / coverage_score / gaps_remaining` 是否能从 trace 和 lane summary 看到
+- `asset_summary / practice_count` 是否进入最终 summary
+- `animation` 是否仍明确标注为预留位，而不是已落地能力

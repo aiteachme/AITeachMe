@@ -10,7 +10,7 @@ from enum import Enum
 
 import structlog
 
-from app.shared.infra.model_router import TaskType
+from app.shared.infra.llm_support.routing import TaskType
 from app.schemas.llm import SYSTEM, USER
 
 logger = structlog.get_logger()
@@ -75,7 +75,7 @@ class ReasoningEngine:
         config: ReasoningConfig | None = None,
         task_type: TaskType = TaskType.REASONING,
     ) -> ReasoningResult:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
 
         cfg = config or ReasoningConfig()
         dispatch = {
@@ -87,11 +87,11 @@ class ReasoningEngine:
         return await dispatch.get(cfg.strategy, self._direct)(messages, task_type=task_type)
 
     async def _direct(self, messages, *, task_type) -> ReasoningResult:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
         return ReasoningResult(final_answer=await acompletion(messages, task_type=task_type))
 
     async def _cot(self, messages, *, task_type) -> ReasoningResult:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
         msgs = list(messages)
         if msgs and msgs[-1].get("role") == "user":
             msgs[-1] = {"role": "user", "content": _wrap_cot(str(msgs[-1]["content"]))}
@@ -99,7 +99,7 @@ class ReasoningEngine:
         return ReasoningResult(final_answer=answer, reasoning_trace=steps)
 
     async def _reflect(self, messages, *, task_type) -> ReasoningResult:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
         draft = await acompletion(messages, task_type=task_type)
         refined = await acompletion([
             {"role": SYSTEM, "content": "你是严格的内容审查者。"},
@@ -108,7 +108,7 @@ class ReasoningEngine:
         return ReasoningResult(final_answer=refined, reasoning_trace=[f"初稿：{draft[:100]}...", "反思修正完成"])
 
     async def _plan_and_solve(self, messages, *, task_type) -> ReasoningResult:
-        from app.shared.infra.llm import acompletion
+        from app.shared.infra.llm_support import acompletion
         user_msg = next((str(m["content"]) for m in reversed(messages) if m.get("role") == "user"), "")
         plan = await acompletion([
             {"role": SYSTEM, "content": "请制定3-5步解决计划。"},

@@ -6,8 +6,7 @@ from sqlmodel import Session
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.reranker import rerank_chunks
-from app.shared.infra.retrievers import RetrievalConfig, RetrievalPipeline, RetrievedChunk
+from app.shared.infra.search.knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
 from app.repositories.knowledge.knowledge_repo import vector_search
 from app.utils.presenters import require_id
 from app.workflows.interact.support.types import RetrievedContext

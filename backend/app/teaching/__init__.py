@@ -1,5 +1,13 @@
-"""教学领域逻辑层：上下文组装、判卷、教学函数、事件、记忆。"""
+"""Teaching-layer business adapters and teaching-owned tools."""
 
 from . import skill_tools as _skill_tools
+from . import tools as _tools
+from .teaching import list_teaching_functions, run_teaching_function, teaching_function
 
-__all__ = ["_skill_tools"]
+__all__ = [
+    "_skill_tools",
+    "_tools",
+    "list_teaching_functions",
+    "run_teaching_function",
+    "teaching_function",
+]
