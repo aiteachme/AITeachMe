@@ -8,7 +8,7 @@ from collections.abc import Iterable
 
 from app.shared.infra.search.cache import get_retriever_runtime_cache
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     get_llm_trace_context,
     langsmith_trace,
     sanitize_langsmith_input,

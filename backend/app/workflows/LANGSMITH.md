@@ -268,7 +268,7 @@ async with tracked_step(
 
 默认只保留这几类共享边界：
 
-1. **LLM 调用包装** — `app/shared/infra/llm.py` 中的 `acompletion` / `acompletion_structured`
+1. **LLM 调用包装** — `app/shared/infra/llm_support/` 中的 `acompletion` / `acompletion_structured`
 2. **Tool registry** — `ToolRegistry.execute()` 自动创建 tool span
 3. **retriever / reader** — 共享 IO 边界
 4. **`BaseTracedExecution`** — 长运行共享执行单元（如 DocGenWriterRuntime）

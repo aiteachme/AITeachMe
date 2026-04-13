@@ -837,7 +837,7 @@ Render 创建 PostgreSQL 后：
 |------|----------|
 | `backend/app/shared/infra/config.py` | 新增云端配置字段 |
 | `backend/app/shared/infra/database.py` | 双数据库引擎 + pgvector 初始化 |
-| `backend/app/shared/infra/runtime_paths.py` | cloud 模式下 data_dir 处理 |
+| `backend/app/shared/infra/runtime/paths.py` | cloud 模式下 data_dir 处理 |
 | `backend/app/utils/path_helpers.py` | 确保 storage_key 在 cloud 模式下正确 |
 | `backend/app/utils/docgen_store.py` | 文档读写走 store 抽象 |
 | `backend/app/models/raw_file.py` | storage_key 在 cloud 模式下的语义 |

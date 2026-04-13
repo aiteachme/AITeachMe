@@ -20,7 +20,7 @@ from typing import Any, AsyncGenerator
 import structlog
 
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tracing import get_tracer
+from app.shared.infra.observability import get_tracer
 
 logger = structlog.get_logger()
 

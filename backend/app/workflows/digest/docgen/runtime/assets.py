@@ -6,7 +6,7 @@ import re
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
 from app.workflows.digest.prompts import build_docgen_mermaid_prompt
 
 _IMAGE_PLACEHOLDER_PATTERN = re.compile(r"<!--\s*\[IMAGE:\s*(.+?)\]\s*-->")

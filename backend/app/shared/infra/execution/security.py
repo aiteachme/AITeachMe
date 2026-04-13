@@ -5,8 +5,8 @@
 
 对外使用::
 
-    from app.shared.infra.security import SecurityLevel, require_confirmation
-    from app.shared.infra.security import check_action_safety
+    from app.shared.infra.execution.security import SecurityLevel, require_confirmation
+    from app.shared.infra.execution.security import check_action_safety
 
     # 方式 1：装饰器
     @tool("execute_code", "执行代码")

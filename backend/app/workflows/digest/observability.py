@@ -10,7 +10,7 @@ import structlog
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.shared.infra.tracing import get_tracker
+from app.shared.infra.observability import get_tracker
 
 logger = structlog.get_logger(__name__)
 

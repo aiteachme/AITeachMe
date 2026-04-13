@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.workflows.digest.docgen.runtime.assets import _MermaidPlaceholderRuntime
 from app.workflows.digest.docgen.runtime.writer import DocGenWriterRuntime
 

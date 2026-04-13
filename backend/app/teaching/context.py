@@ -5,7 +5,7 @@
 
 对外使用::
 
-    from app.shared.infra.context import build_teaching_context
+    from app.teaching.context import build_teaching_context
 
     ctx = await build_teaching_context(
         subject_id="linear-algebra",

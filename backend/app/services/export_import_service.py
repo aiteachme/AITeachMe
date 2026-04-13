@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.env_support import get_env
-from app.shared.infra.runtime_mode import is_cloud_mode
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import (
     ChatMessage,

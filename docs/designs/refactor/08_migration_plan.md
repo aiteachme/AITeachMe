@@ -51,7 +51,7 @@
 退出标准已经满足：
 
 - `workflows/digest/docgen/runtime/*` 已稳定承担 workflow-local 多步逻辑。
-- `shared/infra/traced_execution.py` 成为唯一通用 traced execution base。
+- `shared/infra/execution/traced.py` 成为唯一通用 traced execution base。
 - trace namespace 已切到 `workflow_runtime.docgen.*`。
 
 ### Phase 4：DocGen 质量增强

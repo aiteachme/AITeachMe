@@ -1,4 +1,4 @@
-﻿"""Authentication service: device-aware guest and email/password login."""
+"""Authentication service: device-aware guest and email/password login."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.shared.infra.env_support import (
     get_env_int,
 )
 from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
-from app.shared.infra.runtime_mode import (
+from app.shared.infra.runtime import (
     get_guest_cookie_name,
     is_local_mode,
     resolve_guest_cookie_samesite,

@@ -16,8 +16,8 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.logger import configure_logging
-from app.shared.infra.runtime_paths import get_runtime_data_dir, log_legacy_runtime_path_warnings
-from app.shared.infra.runtime_mode import (
+from app.shared.infra.runtime import get_runtime_data_dir, log_legacy_runtime_path_warnings
+from app.shared.infra.runtime import (
     get_app_version,
     is_local_mode,
     resolve_app_mode,
@@ -33,7 +33,7 @@ from app.shared.infra.storage.config import (
     storage_is_s3,
 )
 from app.shared.kernel.exceptions import AITeachMeError
-from app.shared.infra.task_registry import BackgroundTaskRegistry
+from app.shared.infra.runtime import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
 _OPENAPI_EXPORT_LOCK = threading.Lock()
@@ -160,7 +160,7 @@ def _log_infra_diagnostics(settings) -> None:
         except Exception as exc:
             lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
     else:
-        from app.shared.infra.runtime_paths import get_runtime_data_dir
+        from app.shared.infra.runtime import get_runtime_data_dir
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
 
     lines.append("")

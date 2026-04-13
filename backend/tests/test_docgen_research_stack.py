@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 from datetime import datetime
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.execution import TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls

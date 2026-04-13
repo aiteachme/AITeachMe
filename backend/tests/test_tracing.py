@@ -5,18 +5,18 @@ import asyncio
 import pytest
 
 from app.shared.infra import agent_loop as agent_loop_module
-from app.shared.infra import llm as llm_module
+from app.shared.infra import llm_support as llm_module
 from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
-from app.shared.infra.traced_execution import (
+from app.shared.infra.execution import (
     BaseTracedExecution,
     TracedExecutionContext,
     TracedExecutionResult,
     _traced_execution_outputs,
 )
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     LLMCallRecord,
     LLMCallTracker,
     LLMTraceContext,
@@ -25,7 +25,7 @@ from app.shared.infra.tracing import (
     langsmith_capture_outputs_enabled,
     normalize_langsmith_run_type,
 )
-from app.shared.infra import tracing as tracing_module
+from app.shared.infra.observability import tracing as tracing_module
 from app.shared.infra.tools import registry as registry_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
 from app.workflows.common import runtime_stats as runtime_stats_module
@@ -665,6 +665,5 @@ def test_run_agent_loop_injects_tool_argument_overrides(monkeypatch) -> None:
             "kwargs": {"query": "偏导数", "subject": "math_demo"},
         }
     ]
-
 
 

@@ -23,7 +23,7 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_int, get_env_optional_bool
 # NOTE: llm_support.routing is imported lazily inside LLMCallTracker.build_token_summary
 # to avoid circular import: tracing → llm_support/__init__ → fallback → tracing
-from app.shared.infra.runtime_mode import get_app_version, is_local_mode
+from app.shared.infra.runtime import get_app_version, is_local_mode
 
 logger = structlog.get_logger()
 

@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 from datetime import datetime
 from unittest.mock import patch
 
-from app.shared.infra.traced_execution import TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.execution import TracedExecutionContext, TracedExecutionResult
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, normalize_mermaid_blocks

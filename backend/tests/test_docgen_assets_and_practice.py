@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.workflows.common.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
 from app.workflows.digest.docgen.runtime import DocGenAssetRuntime

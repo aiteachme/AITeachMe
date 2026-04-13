@@ -7,7 +7,7 @@ import asyncio
 from app.shared.infra.config import get_settings
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     get_llm_trace_context,
     langsmith_trace,
     sanitize_langsmith_input,

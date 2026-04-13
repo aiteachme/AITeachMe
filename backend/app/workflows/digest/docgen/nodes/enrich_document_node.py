@@ -1,10 +1,10 @@
-﻿"""Enrich document node for the DocGen lane."""
+"""Enrich document node for the DocGen lane."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_draft_excerpt,

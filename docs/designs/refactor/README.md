@@ -45,7 +45,7 @@
 - `toolpack` 是真实外部工具扩展模型。
 - `workflows/.../runtime` 承载 workflow 专属多步逻辑。
 - `shared/infra/orchestrators` 与 `shared/infra/prompt_builders` 不再作为长期目录继续生长。
-- `shared/infra/traced_execution.py` 是唯一通用 traced execution helper。
+- `shared/infra/execution/traced.py` 是唯一通用 traced execution helper。
 - workflow tracing 的主入口在 `workflows`，不在 `infra`。
 
 ## 阅读顺序

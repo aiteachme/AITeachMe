@@ -25,7 +25,7 @@ from typing import Any
 import structlog
 from langsmith import traceable, tracing_context
 
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     LangSmithRunType,
     llm_trace_scope,
     normalize_langsmith_run_type,

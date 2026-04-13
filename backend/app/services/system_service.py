@@ -1,9 +1,9 @@
-﻿"""系统信息服务层。"""
+"""系统信息服务层。"""
 
 from __future__ import annotations
 
 from app.shared.infra.env_support import get_env_bool
-from app.shared.infra.runtime_mode import get_app_version, resolve_app_mode
+from app.shared.infra.runtime import get_app_version, resolve_app_mode
 from app.schemas.system import InitData, RuntimeUser
 
 

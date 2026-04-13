@@ -9,7 +9,7 @@ from threading import Lock, RLock
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.runtime_mode import is_cloud_mode, is_local_mode
+from app.shared.infra.runtime import is_cloud_mode, is_local_mode
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.utils.path_helpers import (
     build_docgen_intermediate_latest_dir,

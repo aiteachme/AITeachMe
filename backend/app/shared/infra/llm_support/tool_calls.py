@@ -11,7 +11,7 @@ import litellm
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tracing import langsmith_trace
+from app.shared.infra.observability import langsmith_trace
 
 from .common import (
     build_completion_context,

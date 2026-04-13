@@ -5,7 +5,7 @@ import json
 from typing import Any
 import structlog
 from app.shared.infra.tools.definition import ToolDefinition
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     get_llm_trace_context,
     langsmith_trace,
     sanitize_langsmith_input,

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, nullcontext
 from time import perf_counter
 from typing import Any, Literal
 
-from app.shared.infra.tracing import LangSmithRunType, get_llm_trace_context, langsmith_trace, normalize_langsmith_run_type
+from app.shared.infra.observability import LangSmithRunType, get_llm_trace_context, langsmith_trace, normalize_langsmith_run_type
 
 StepKind = Literal["node", "tool", "substep", "llm"]
 

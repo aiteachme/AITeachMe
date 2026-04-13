@@ -11,7 +11,7 @@ import sys
 
 import structlog
 
-from app.shared.infra.runtime_mode import is_local_mode
+from app.shared.infra.runtime import is_local_mode
 
 
 def configure_logging(log_level: str = "INFO") -> None:

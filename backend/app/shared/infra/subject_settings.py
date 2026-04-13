@@ -8,7 +8,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from app.models.subject import Subject
-from app.shared.infra.runtime_mode import is_cloud_mode
+from app.shared.infra.runtime import is_cloud_mode
 from app.utils.time import utcnow
 
 _LEGACY_VECTOR_TABLE = "chunk_embeddings"

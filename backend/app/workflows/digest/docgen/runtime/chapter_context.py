@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject

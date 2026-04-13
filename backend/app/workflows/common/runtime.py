@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.tracing import (
+from app.shared.infra.observability import (
     get_langsmith_project_name,
     langsmith_tracing_enabled,
     llm_trace_scope,

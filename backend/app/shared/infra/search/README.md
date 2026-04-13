@@ -57,7 +57,7 @@ shared/infra/search/
 
 外部调用时优先从 `app.shared.infra.search` 或 `app.shared.infra.search.readers` 导入。
 
-`app.shared.infra.retrievers` 与 `app.shared.infra.reranker` 目前只保留兼容 shim，不再作为新的 canonical 入口。
+不要再从 `app.shared.infra.retrievers` 或 `app.shared.infra.reranker` 这类根层旧入口导入；检索能力统一从 `app.shared.infra.search` 及其子目录进入。
 
 ## 当前内置 retrievers
 

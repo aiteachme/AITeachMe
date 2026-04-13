@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi import Response
 from starlette.requests import Request
@@ -12,7 +12,7 @@ from app.services.auth_service import (
     resolve_guest_user_from_token,
 )
 from app.services.subject_service import create_subject_record, get_subject_record
-from app.shared.infra.runtime_mode import (
+from app.shared.infra.runtime import (
     resolve_app_mode,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,

@@ -6,8 +6,8 @@
 
 ### 1. 基础边界
 
-- `shared/infra/traced_execution.py` 已成为 canonical traced execution helper。
-- `shared/infra/execution.py` 退化为兼容 shim。
+- `shared/infra/execution/traced.py` 已成为 canonical traced execution helper。
+- `shared/infra/execution/` 已成为共享执行契约与执行安全的统一目录。
 - `shared/infra/orchestrators/` 与 `shared/infra/prompt_builders/` 已退出主线设计。
 - workflow tracing 已统一收口到 `workflows/common` 的最小 4 入口。
 
