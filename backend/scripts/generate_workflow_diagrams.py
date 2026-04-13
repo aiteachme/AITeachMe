@@ -12,6 +12,7 @@ import argparse
 import re
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 
@@ -121,6 +122,61 @@ def _render_edge_label(label: str | None) -> str | None:
     return mapping.get(s.lower(), s)
 
 
+@dataclass(frozen=True, slots=True)
+class DisplayEdge:
+    source: str
+    target: str
+    label: str | None = None
+    dashed: bool = False
+
+
+def _parse_extra_edge(edge_str: str) -> DisplayEdge:
+    """Parse a manually-declared display edge."""
+
+    dashed_match = re.fullmatch(r"\s*(\w+)\s+-\.\s*(.*?)\s*\.\->\s*(\w+)\s*", edge_str)
+    if dashed_match:
+        src, label, tgt = dashed_match.groups()
+        return DisplayEdge(source=src, target=tgt, label=label.strip() or None, dashed=True)
+
+    plain_match = re.fullmatch(r"\s*(\w+)\s+-->\s*(\w+)\s*", edge_str)
+    if plain_match:
+        src, tgt = plain_match.groups()
+        return DisplayEdge(source=src, target=tgt)
+
+    raise ValueError(f"Unsupported extra edge format: {edge_str!r}")
+
+
+def _merge_display_edges(
+    raw_edges: list[DisplayEdge],
+    extra_edges: tuple[str, ...],
+) -> list[DisplayEdge]:
+    """Merge compiled edges with explicit display overrides."""
+
+    parsed_extra = [_parse_extra_edge(edge_str) for edge_str in extra_edges]
+    extra_by_pair = {(edge.source, edge.target): edge for edge in parsed_extra}
+    raw_pairs = {(edge.source, edge.target) for edge in raw_edges}
+
+    merged: list[DisplayEdge] = []
+    emitted_extra_pairs: set[tuple[str, str]] = set()
+
+    for edge in raw_edges:
+        pair = (edge.source, edge.target)
+        replacement = extra_by_pair.get(pair)
+        if replacement is not None:
+            merged.append(replacement)
+            emitted_extra_pairs.add(pair)
+            continue
+        merged.append(edge)
+
+    for edge in parsed_extra:
+        pair = (edge.source, edge.target)
+        if pair in raw_pairs or pair in emitted_extra_pairs:
+            continue
+        merged.append(edge)
+
+    return merged
+
+
 # ── Discovery ────────────────────────────────────────────────────────────────
 
 
@@ -181,7 +237,7 @@ def resolve_keys(modules: list[str]) -> list[str]:
 # ── Graph analysis ───────────────────────────────────────────────────────────
 
 
-def _trace_happy_path(out_edges: dict, node_ids: list[str]) -> list[str]:
+def _trace_happy_path(out_edges: dict[str, list[DisplayEdge]], node_ids: list[str]) -> list[str]:
     """Walk the graph from __start__ following only 'continue'/unlabeled edges.
 
     Returns an ordered list of node IDs on the primary success path.
@@ -198,22 +254,22 @@ def _trace_happy_path(out_edges: dict, node_ids: list[str]) -> list[str]:
         # Pick the next node: prefer 'continue' edge, then unlabeled, skip fail
         outs = out_edges.get(current, [])
         next_node = None
-        for tgt, label in outs:
-            lbl = str(label).lower().strip() if label else ""
+        for edge in outs:
+            lbl = str(edge.label).lower().strip() if edge.label else ""
             if lbl == "continue":
-                next_node = tgt
+                next_node = edge.target
                 break
         if not next_node:
-            for tgt, label in outs:
-                lbl = str(label).lower().strip() if label else ""
-                if not lbl and tgt != "__end__":
-                    next_node = tgt
+            for edge in outs:
+                lbl = str(edge.label).lower().strip() if edge.label else ""
+                if not lbl and edge.target != "__end__":
+                    next_node = edge.target
                     break
         if not next_node:
-            for tgt, label in outs:
-                lbl = str(label).lower().strip() if label else ""
-                if lbl not in ("fail", "error", "finish") and tgt != "__end__":
-                    next_node = tgt
+            for edge in outs:
+                lbl = str(edge.label).lower().strip() if edge.label else ""
+                if lbl not in ("fail", "error", "finish") and edge.target != "__end__":
+                    next_node = edge.target
                     break
         current = next_node
 
@@ -227,14 +283,18 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
     graph = compiled.get_graph()
 
     node_ids = [n.id for n in graph.nodes.values()]
-    edges = [(e.source, e.target, e.data) for e in graph.edges]
+    raw_edges = [
+        DisplayEdge(source=e.source, target=e.target, label=e.data)
+        for e in graph.edges
+    ]
+    edges = _merge_display_edges(raw_edges, export.extra_edges)
 
     # Build adjacency info
-    out_edges: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
-    in_edges: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
-    for src, tgt, label in edges:
-        out_edges[src].append((tgt, label))
-        in_edges[tgt].append((src, label))
+    out_edges: dict[str, list[DisplayEdge]] = defaultdict(list)
+    in_edges: dict[str, list[DisplayEdge]] = defaultdict(list)
+    for edge in edges:
+        out_edges[edge.source].append(edge)
+        in_edges[edge.target].append(edge)
 
     # Trace the happy path (main success flow)
     happy_path = _trace_happy_path(out_edges, node_ids)
@@ -254,7 +314,7 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
         elif nid in fail_nodes:
             node_roles[nid] = "❌ 错误处理"
         elif len(out_edges[nid]) > 1:
-            labels = [lbl for _, lbl in out_edges[nid] if lbl]
+            labels = [edge.label for edge in out_edges[nid] if edge.label]
             if labels:
                 node_roles[nid] = "🔀 条件路由"
             else:
@@ -269,14 +329,6 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
     max_out = max((len(out_edges[n]) for n in process_nodes), default=0)
     is_linear = max_out <= 2 and len(process_nodes) <= 8
 
-    # Extra edges for fan-out
-    extra_edge_sources: set[str] = set()
-    if export.extra_edges:
-        for edge_str in export.extra_edges:
-            m = re.match(r"\s*(\w+)\s", edge_str)
-            if m:
-                extra_edge_sources.add(m.group(1))
-
     return {
         "node_ids": node_ids,
         "edges": edges,
@@ -286,7 +338,6 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
         "happy_step": happy_step,
         "fail_nodes": fail_nodes,
         "is_linear": is_linear,
-        "extra_edge_sources": extra_edge_sources,
         "process_node_count": len(process_nodes),
         "edge_count": len(edges),
         "has_fan_out": bool(export.extra_edges),
@@ -304,7 +355,6 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
 
     node_ids = analysis["node_ids"]
     edges = analysis["edges"]
-    extra_edge_sources = analysis["extra_edge_sources"]
     is_linear = analysis["is_linear"]
     happy_step = analysis["happy_step"]
     fail_nodes = analysis["fail_nodes"]
@@ -343,33 +393,24 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
     edge_index = 0
     fail_indices: list[int] = []
 
-    for src, tgt, label in edges:
-        # Skip fake edges replaced by extra_edges
-        if src in extra_edge_sources:
-            continue
+    for edge in edges:
+        rendered = _render_edge_label(edge.label)
+        edge_type = _classify_edge_label(edge.label)
+        is_dashed = edge.dashed or edge_type in ("fail", "abort")
 
-        rendered = _render_edge_label(label)
-        edge_type = _classify_edge_label(label)
-
-        if edge_type in ("fail", "abort"):
+        if is_dashed:
             if rendered:
-                lines.append(f"    {src} -. \"{rendered}\" .-> {tgt}")
+                lines.append(f"    {edge.source} -. \"{rendered}\" .-> {edge.target}")
             else:
-                lines.append(f"    {src} -.-> {tgt}")
-            fail_indices.append(edge_index)
+                lines.append(f"    {edge.source} -.-> {edge.target}")
+            if edge_type in ("fail", "abort"):
+                fail_indices.append(edge_index)
         elif rendered:
-            lines.append(f'    {src} -->|"{rendered}"| {tgt}')
+            lines.append(f'    {edge.source} -->|"{rendered}"| {edge.target}')
         else:
-            lines.append(f"    {src} --> {tgt}")
+            lines.append(f"    {edge.source} --> {edge.target}")
 
         edge_index += 1
-
-    # --- Extra edges (Send fan-out) ---
-    if export.extra_edges:
-        lines.append("")
-        lines.append("    %% Fan-out / Send edges")
-        for edge_str in export.extra_edges:
-            lines.append(f"    {edge_str}")
 
     lines.append("")
 
@@ -405,7 +446,6 @@ def build_node_table(analysis: dict) -> str:
     node_ids = analysis["node_ids"]
     node_roles = analysis["node_roles"]
     out_edges = analysis["out_edges"]
-    in_edges = analysis["in_edges"]
 
     rows = []
     for nid in node_ids:
@@ -419,15 +459,29 @@ def build_node_table(analysis: dict) -> str:
         outs = out_edges.get(nid, [])
         route_desc = ""
         if len(outs) > 1:
-            labels = [str(lbl) for _, lbl in outs if lbl]
+            labels = [str(edge.label) for edge in outs if edge.label]
             if labels:
+                route_desc = " / ".join(
+                    f"`{edge.label}` -> {'END' if edge.target == '__end__' else _humanize(edge.target)}"
+                    if edge.label
+                    else f"-> {'END' if edge.target == '__end__' else _humanize(edge.target)}"
+                    for edge in outs
+                )
+                labels = None
+            if labels is not None and labels:
                 route_desc = " → ".join(f"`{l}`" for l in labels)
-            else:
-                targets = [_humanize(t) for t, _ in outs]
+            elif labels is not None:
+                targets = [_humanize(edge.target) for edge in outs]
                 route_desc = " / ".join(targets)
         elif len(outs) == 1:
-            tgt, lbl = outs[0]
-            if tgt == "__end__":
+            edge = outs[0]
+            tgt = edge.target
+            lbl = edge.label
+            target_label = "END" if tgt == "__end__" else _humanize(tgt)
+            if lbl:
+                route_desc = f"`{lbl}` -> {target_label}"
+                lbl = None
+            elif edge.target == "__end__":
                 route_desc = "→ END"
             else:
                 route_desc = f"→ {_humanize(tgt)}"

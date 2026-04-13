@@ -8,9 +8,29 @@ from collections.abc import Iterable
 
 from app.shared.infra.search.cache import get_retriever_runtime_cache
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.tracing import (
+    get_llm_trace_context,
+    langsmith_trace,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 
 _REGISTERED_RETRIEVER_TYPES: dict[str, type["BaseRetriever"]] = {}
+
+
+def _search_result_preview(results: list[SearchResult], *, limit: int = 3) -> list[dict[str, object]]:
+    preview: list[dict[str, object]] = []
+    for item in results[: max(1, limit)]:
+        preview.append(
+            {
+                "title": item.title,
+                "url": item.url,
+                "snippet": item.snippet,
+                "score": item.score,
+                "source": item.source,
+            }
+        )
+    return preview
 
 
 def _normalize_registry_name(value: str) -> str:
@@ -88,7 +108,10 @@ class BaseRetriever(ABC):
         with langsmith_trace(
             name=f"retriever.{self.name}",
             run_type="retriever",
-            inputs={"query": query, "max_results": max_results},
+            inputs={
+                "query": sanitize_langsmith_input(query, field_name="query"),
+                "max_results": int(max_results),
+            },
             subject=trace.subject,
             build_session_id=trace.build_session_id,
             workflow=trace.workflow,
@@ -117,6 +140,10 @@ class BaseRetriever(ABC):
                         "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
                         "cache_status": cache_status,
                         "cache_hit": cache_status in {"hit", "shared"},
+                        "results_preview": sanitize_langsmith_output(
+                            _search_result_preview(results),
+                            field_name="results_preview",
+                        ),
                     }
                 )
             return results

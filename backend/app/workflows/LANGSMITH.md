@@ -287,8 +287,8 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 | `LANGSMITH_TRACING=true` | 是 | 启用 LangSmith 追踪 |
 | `LANGSMITH_API_KEY` | 是 | LangSmith API 密钥 |
 | `LANGSMITH_PROJECT` | 否 | 项目名（默认 `AITeachMe`） |
-| `LANGSMITH_CAPTURE_INPUTS` | 否 | 是否记录 LLM 调用输入（本地模式默认开启，云端默认关闭） |
-| `LANGSMITH_CAPTURE_OUTPUTS` | 否 | 是否记录 LLM 调用输出（同上） |
+| `LANGSMITH_CAPTURE_INPUTS` | 否 | 是否记录 trace 输入预览；本地默认开启，云端默认关闭，只在你想覆盖默认策略时设置 |
+| `LANGSMITH_CAPTURE_OUTPUTS` | 否 | 是否记录 trace 输出预览；LLM / retriever / reader / tool / runtime 共用这套策略 |
 | `LANGSMITH_MAX_TEXT_CHARS` | 否 | 单个文本字段最大长度，超出会截断（默认 2000） |
 
 ---
