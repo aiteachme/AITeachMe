@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-12T17:53:49.743234",
-  "total_commits_analyzed": 514,
+  "generated_at": "2026-04-13T02:25:16.871928",
+  "total_commits_analyzed": 515,
   "stats": [
     {
       "date": "2026-03-11",
@@ -4113,6 +4113,14 @@
       "code_lines": 106640,
       "other_lines": 31714,
       "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "6c76a27",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
