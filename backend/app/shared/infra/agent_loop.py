@@ -44,6 +44,7 @@ class AgentLoopConfig:
     tool_timeout_s: int = 30
     task_type: TaskType = TaskType.CHAT
     result_max_chars: int = 2000
+    tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # ── 结果 ──────────────────────────────────────────────────────
@@ -286,6 +287,14 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         args = json.loads(tool_call.function.arguments)
     except (json.JSONDecodeError, TypeError):
         args = {}
+    if not isinstance(args, dict):
+        args = {}
+    injected_args = dict(cfg.tool_argument_overrides.get(func_name, {}) or {})
+    if injected_args:
+        args = {
+            **args,
+            **injected_args,
+        }
 
     start = time.monotonic()
     try:

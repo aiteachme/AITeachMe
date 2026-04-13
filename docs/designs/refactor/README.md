@@ -29,6 +29,7 @@
 - asset sidecar 已支持 Mermaid / image / interactive HTML 的最小执行链。
 - `systematic / sprint` 已进入 confirmed plan、chapter assignment、writer/runtime 与 practice layer。
 - digest 侧 lane summary 已能聚合 `requested_profile / applied_profile / research_rounds / asset_summary / practice_count`。
+- interact 已开始引入 mode-aware execution 的最小骨架。
 
 ### 仍未完成
 
@@ -60,6 +61,7 @@
 9. `11_open_questions.md`
 10. `12_appendix.md`
 11. `implementation_handoff.md`
+12. `13_interact_agent_modes.md`
 
 代码侧实现文档：
 

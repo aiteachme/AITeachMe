@@ -37,7 +37,7 @@ from app.schemas.chats import (
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.utils.presenters import require_id
 from app.workflows.interact.runtime import stream_chat_workflow
-from app.workflows.interact.support.messages import build_chat_messages
+from app.workflows.interact.prompts import build_chat_messages
 from app.workflows.interact.support.streaming import format_sse_event
 from app.workflows.interact.support.strategies import select_teaching_strategy
 

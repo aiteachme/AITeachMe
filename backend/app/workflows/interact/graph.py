@@ -9,6 +9,7 @@ from sqlmodel import Session
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.common import workflow_tracer
 from app.workflows.interact.nodes import (
+    build_select_execution_mode_node,
     build_load_history_state_node,
     build_persist_turn_node,
     build_prompt_node,
@@ -51,6 +52,13 @@ def build_interact_workflow_graph(
         trace.node(
             _resolve_strategy_node(context=context),
             name="select_teaching_strategy",
+        ),
+    )
+    workflow.add_node(
+        "select_execution_mode",
+        trace.node(
+            _resolve_execution_mode_node(context=context),
+            name="select_execution_mode",
         ),
     )
     workflow.add_node(
@@ -98,6 +106,14 @@ def build_interact_workflow_graph(
     )
     workflow.add_conditional_edges(
         "select_teaching_strategy",
+        _route_after_standard_step,
+        {
+            "continue": "select_execution_mode",
+            "finish": END,
+        },
+    )
+    workflow.add_conditional_edges(
+        "select_execution_mode",
         _route_after_standard_step,
         {
             "continue": "build_prompt",
@@ -159,6 +175,12 @@ def _resolve_strategy_node(*, context: WorkflowContext | None):
     return build_select_teaching_strategy_node(context=context)
 
 
+def _resolve_execution_mode_node(*, context: WorkflowContext | None):
+    if context is None:
+        return _noop_node
+    return build_select_execution_mode_node(context=context)
+
+
 def _resolve_prompt_node(*, context: WorkflowContext | None):
     if context is None:
         return _noop_node
@@ -203,4 +225,3 @@ __all__ = [
     "build_interact_workflow_graph",
     "get_langgraph_dev_interact_graph",
 ]
-

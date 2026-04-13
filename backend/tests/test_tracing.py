@@ -575,6 +575,80 @@ def test_run_agent_loop_loads_project_tools_before_registry_lookup(monkeypatch) 
     assert calls[:2] == ["load", "registry"]
 
 
+def test_run_agent_loop_injects_tool_argument_overrides(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class DummyRegistry:
+        def to_openai_format(self):
+            return [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_kb",
+                        "description": "demo",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ]
+
+        async def execute(self, name: str, **kwargs):
+            calls.append({"name": name, "kwargs": kwargs})
+            return {"result": "知识片段"}
+
+    class FakeToolFunction:
+        name = "search_kb"
+        arguments = '{"query":"偏导数"}'
+
+    class FakeToolCall:
+        id = "tool-1"
+        function = FakeToolFunction()
+
+    class FakeToolMessage:
+        content = None
+        tool_calls = [FakeToolCall()]
+
+    class FakeFinalMessage:
+        content = "最终回答"
+        tool_calls = None
+
+    class FakeResponse:
+        def __init__(self, message):
+            self.choices = [type("Choice", (), {"message": message})()]
+
+    responses = iter(
+        [
+            FakeResponse(FakeToolMessage()),
+            FakeResponse(FakeFinalMessage()),
+        ]
+    )
+
+    async def fake_acompletion_with_tools(messages, *, tools, task_type, **kwargs):
+        del messages, tools, task_type, kwargs
+        return next(responses)
+
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
+    monkeypatch.setattr("app.shared.infra.tools.registry.get_tool_registry", lambda: DummyRegistry())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion_with_tools", fake_acompletion_with_tools)
+
+    result = asyncio.run(
+        agent_loop_module.run_agent_loop(
+            [{"role": "user", "content": "帮我一步步理解偏导数"}],
+            tools=["search_kb"],
+            config=agent_loop_module.AgentLoopConfig(
+                max_iterations=2,
+                tool_argument_overrides={"search_kb": {"subject": "math_demo"}},
+            ),
+        )
+    )
+
+    assert result.final_answer == "最终回答"
+    assert calls == [
+        {
+            "name": "search_kb",
+            "kwargs": {"query": "偏导数", "subject": "math_demo"},
+        }
+    ]
+
 
 
 

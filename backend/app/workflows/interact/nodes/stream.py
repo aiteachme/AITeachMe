@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from app.shared.infra.agent_loop import AgentLoopConfig, run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.tracing import llm_trace_scope
 from app.workflows.common.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
+from app.workflows.interact.support.execution import InteractExecutionMode
 from app.workflows.interact.support.streaming import SSEEventEmitter
 
 
@@ -48,6 +50,26 @@ def _build_stream_state(
     return next_state
 
 
+def _build_response_stream(state: InteractWorkflowState, *, subject: str):
+    execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
+    if execution_mode == InteractExecutionMode.PLAN_EXECUTE:
+        return run_agent_loop_stream(
+            state["messages"],
+            tools=["search_kb"],
+            config=AgentLoopConfig(
+                max_iterations=3,
+                max_tool_calls_per_turn=2,
+                tool_timeout_s=20,
+                task_type=TaskType.CHAT,
+                tool_argument_overrides={"search_kb": {"subject": subject}},
+            ),
+        )
+    return acompletion_stream(
+        state["messages"],
+        task_type=TaskType.CHAT,
+    )
+
+
 def build_stream_answer_node(
     *,
     context: WorkflowContext,
@@ -72,10 +94,7 @@ def build_stream_answer_node(
             lane="chat",
             node="stream_answer",
         ):
-            stream = acompletion_stream(
-                state["messages"],
-                task_type=TaskType.CHAT,
-            )
+            stream = _build_response_stream(state, subject=subject)
             try:
                 async for token in stream:
                     if await _is_disconnected(request):
@@ -101,6 +120,7 @@ def build_stream_answer_node(
             "interact_stream_completed",
             response_chars=len(assistant_response),
             streaming_enabled=emitter is not None,
+            execution_mode=state.get("execution_mode", InteractExecutionMode.SINGLE_PASS).value,
         )
         return _build_stream_state(
             state,
