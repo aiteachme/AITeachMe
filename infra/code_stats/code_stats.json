@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-13T02:25:16.871928",
-  "total_commits_analyzed": 515,
+  "generated_at": "2026-04-13T05:50:55.213677",
+  "total_commits_analyzed": 520,
   "stats": [
     {
       "date": "2026-03-11",
@@ -4121,6 +4121,46 @@
       "code_lines": 106640,
       "other_lines": 31714,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "d023893",
+      "total_lines": 138525,
+      "code_lines": 106717,
+      "other_lines": 31808,
+      "message": "docs: 更新 refactor 文档并对齐当前 Digest 实现"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "54b1210",
+      "total_lines": 139034,
+      "code_lines": 107125,
+      "other_lines": 31909,
+      "message": "refactor: 收口检索运行时缓存与 LangSmith 观测口径"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "0a40827",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "111f32d",
+      "total_lines": 139540,
+      "code_lines": 107509,
+      "other_lines": 32031,
+      "message": "feat: 为 Interact 引入受控执行模式与最小 plan-execute 路径"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "916a824",
+      "total_lines": 139540,
+      "code_lines": 107509,
+      "other_lines": 32031,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
     }
   ]
 }
