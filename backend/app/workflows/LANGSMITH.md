@@ -291,6 +291,12 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 | `LANGSMITH_CAPTURE_OUTPUTS` | 否 | 是否记录 trace 输出预览；LLM / retriever / reader / tool / runtime 共用这套策略 |
 | `LANGSMITH_MAX_TEXT_CHARS` | 否 | 单个文本字段最大长度，超出会截断（默认 2000） |
 
+补充说明：
+
+- 本地开发如果 `APP_MODE=local`，trace 输入输出预览默认开启；显式写环境变量只是覆盖默认值，不是必须每次都配。
+- `pytest` 默认不应把测试 trace 上传到正式 LangSmith project；仓库里的测试夹具会主动关闭这一点。
+- 输入输出预览遵循“关键事实优先”原则：保留 query、url、title、关键 snippet、研究轮次等诊断必需信息；不默认上传整页正文、通用 tool 大结果或运行时长文本正文。
+
 ---
 
 ## 迁移纪律

@@ -59,8 +59,6 @@ def _preview_research_rounds(rounds: list[Any], *, limit: int = 2) -> list[dict[
                 "coverage_score": item.get("coverage_score"),
                 "local_hits": item.get("local_hits"),
                 "web_hits": item.get("web_hits"),
-                "gaps_remaining": _preview_list(list(item.get("gaps_remaining") or []), limit=3),
-                "compression_mode": item.get("compression_mode"),
             }
         )
     return preview
@@ -208,11 +206,6 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "source_count": len(result.sources),
         "image_count": len(result.images),
     }
-    if result.content.strip():
-        outputs["content_preview"] = sanitize_langsmith_output(
-            result.content[:800],
-            field_name="content",
-        )
     for field_name in (
         "local_hits",
         "web_hits",
@@ -278,26 +271,16 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         outputs["active_retriever_count"] = len(
             [name for name in active_retrievers if str(name).strip()]
         )
-    for field_name in (
-        "executed_queries",
-        "base_queries",
-        "planned_queries",
-        "fallback_queries",
-        "gaps_remaining",
-        "configured_retrievers",
-        "active_retrievers",
-        "sources",
-    ):
-        value = result.sources if field_name == "sources" else result.metadata.get(field_name)
-        if isinstance(value, list) and value:
-            outputs[f"{field_name}_preview"] = sanitize_langsmith_output(
-                _preview_list(list(value)),
-                field_name=field_name,
-            )
+    executed_queries = result.metadata.get("executed_queries")
+    if isinstance(executed_queries, list) and executed_queries:
+        outputs["executed_queries_preview"] = sanitize_langsmith_output(
+            _preview_list(list(executed_queries)),
+            field_name="executed_queries",
+        )
     source_details = result.metadata.get("source_details")
     if isinstance(source_details, list) and source_details:
         outputs["source_details_preview"] = sanitize_langsmith_output(
-            _preview_source_details(source_details),
+            _preview_source_details(source_details, limit=2),
             field_name="source_details",
         )
     research_rounds = result.metadata.get("research_rounds")
@@ -327,11 +310,11 @@ def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
         value = kwargs.get(field_name)
         if value not in (None, "", [], {}):
             inputs[field_name] = value
-    for field_name in ("query", "chapter_title", "objective", "local_rag_subject"):
+    for field_name in ("query", "chapter_title", "objective"):
         value = kwargs.get(field_name)
         if value not in (None, "", [], {}):
             inputs[field_name] = sanitize_langsmith_input(value, field_name=field_name)
-    for field_name in ("queries", "required_elements"):
+    for field_name in ("queries",):
         value = kwargs.get(field_name)
         if isinstance(value, list) and value:
             inputs[f"{field_name}_preview"] = sanitize_langsmith_input(
