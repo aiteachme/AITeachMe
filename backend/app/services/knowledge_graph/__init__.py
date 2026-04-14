@@ -1,8 +1,7 @@
-"""Knowledge graph domain entrypoint.
+﻿"""Knowledge graph domain entrypoint.
 
-This package hosts the subject-facing knowledge graph domain façade and
-use-case services. Existing callers may still use compatibility shims under
-``app.services.knowledge.*`` during migration.
+This package hosts the subject-facing knowledge graph domain facade and
+use-case services.
 """
 
 from app.services.knowledge_graph.build import KnowledgeGraphBuildService

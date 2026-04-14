@@ -1,7 +1,6 @@
 """Knowledge docs domain service entrypoints.
 
-This package is the canonical docs-side service namespace. Legacy modules under
-``app.services.knowledge`` are kept for compatibility during migration.
+This package is the canonical docs-side service namespace.
 """
 
 from app.services.knowledge_docs.build_planner_service import (

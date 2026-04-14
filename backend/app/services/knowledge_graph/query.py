@@ -1,8 +1,4 @@
-"""Knowledge graph query use-cases.
-
-The implementation is intentionally behavior-compatible with the legacy
-``app.services.knowledge.graph_query_service`` module.
-"""
+﻿"""Knowledge graph query use-cases."""
 
 from __future__ import annotations
 
@@ -274,4 +270,3 @@ __all__ = [
     "get_graph_node_detail",
     "get_graph_nodes",
 ]
-
