@@ -76,6 +76,43 @@ def test_source_curator_prioritizes_local_and_trusted_sources() -> None:
     assert metadata["selected_count"] == 3
 
 
+def test_source_curator_prioritizes_cjk_matches_over_generic_high_score_results() -> None:
+    curator = SourceCurator(TracedExecutionContext(subject="demo"))
+    curated, _ = asyncio.run(
+        curator.curate_sources(
+            query="高等数学 极限 定义 性质",
+            max_results=3,
+            sources=[
+                SearchResult(
+                    url="https://example.com/history-overview",
+                    title="世界历史概述",
+                    snippet="梳理欧洲历史发展脉络。",
+                    score=0.98,
+                    source="duckduckgo",
+                ),
+                SearchResult(
+                    url="https://math.example.cn/limit-definition",
+                    title="高等数学极限的定义与性质",
+                    snippet="介绍极限概念、基本性质与典型例题。",
+                    score=0.35,
+                    source="duckduckgo",
+                ),
+                SearchResult(
+                    url="https://www.zhihu.com/question/limit",
+                    title="高数里的极限应该怎么理解",
+                    snippet="从定义、几何直观和常见误区解释极限。",
+                    score=0.42,
+                    source="duckduckgo",
+                ),
+            ],
+        )
+    )
+
+    urls = [item.url for item in curated]
+    assert urls[0] == "https://math.example.cn/limit-definition"
+    assert urls[-1] == "https://example.com/history-overview"
+
+
 def test_append_reference_section_dedupes_and_is_idempotent() -> None:
     markdown = "# Example Chapter\n\nA short explanation with one source."
     source_details = [
