@@ -1,4 +1,4 @@
-"""Inject examine node for the DocGen lane."""
+﻿"""Inject examine node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -169,3 +169,5 @@ def build_inject_examine_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_inject_examine_node"]
+
+

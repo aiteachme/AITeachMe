@@ -1,4 +1,4 @@
-"""Prompt-building node builders for the interact workflow."""
+﻿"""Prompt-building node builders for the interact workflow."""
 
 from __future__ import annotations
 
@@ -47,3 +47,5 @@ def build_prompt_node(*, context: WorkflowContext):
         }
 
     return build_prompt
+
+

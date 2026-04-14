@@ -1,4 +1,4 @@
-"""Load, fingerprint, classify, and plan nodes for ingest workflows.
+﻿"""Load, fingerprint, classify, and plan nodes for ingest workflows.
 
 Reads DB: ``raw_file``.
 Writes DB: ``raw_file`` classification / ingest-prep metadata.
@@ -209,3 +209,5 @@ def build_plan_parse_node(*, context: WorkflowContext):
             }
 
     return plan_parse_node
+
+

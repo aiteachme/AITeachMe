@@ -1,4 +1,4 @@
-"""Digest knowledge-graph workflow graph and initial state."""
+﻿"""Digest knowledge-graph workflow graph and initial state."""
 
 from __future__ import annotations
 
@@ -216,4 +216,6 @@ __all__ = [
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
+
+
 

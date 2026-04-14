@@ -5,9 +5,9 @@
 
 ## 架构边界（已固定）
 
-- `shared/infra` = 基础设施（LLM / tracing / storage / search / tools / skills）
+- `shared/infra` = 基础设施（LLM / observability / storage / search / tools / skills / workflow support）
 - `teaching` = 教学语义（脚手架、表达块、teaching-owned 原子工具）
-- `workflows` = graph + workflow-local runtime + workflow tracing 主入口
+- `workflows` = 五大业务引擎与 graph 编排主体
 
 ## 扩展模型（已固定）
 
@@ -44,6 +44,12 @@
 2. `workflow_tracer(...).node(...)` — node 装饰
 3. `@traceable_run(...)` — 稳定 prompt/helper/retriever
 4. `tracked_step(...)` — node 内部子步骤
+
+补充边界：
+
+- 底层 tracing / tracking 的真实实现统一在 `app.shared.infra.observability`
+- `app.shared.infra.workflow` 只保留 workflow authoring / runtime 支撑
+- `workflow_tracer`、`traceable_run`、`WorkflowGraphExport` 的实现位于 `app.shared.infra.workflow.authoring`，业务侧公共入口统一是 `app.shared.infra.workflow`
 
 ## Teaching Tools（已落地）
 

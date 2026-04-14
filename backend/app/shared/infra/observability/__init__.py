@@ -1,12 +1,22 @@
-"""Canonical tracing and in-memory LLM observability helpers."""
+"""Canonical observability entrypoints.
 
-from app.shared.infra.observability.tracing import (
+Only two real modules exist in this package:
+- ``trace.py`` for LangSmith tracing and ambient trace context
+- ``track.py`` for in-memory runtime tracking
+"""
+
+from app.shared.infra.observability.track import (
     LLMCallRecord,
     LLMCallTracker,
-    LLMTraceContext,
-    LangSmithRunType,
     Span,
     Tracer,
+    get_tracer,
+    get_tracker,
+)
+from app.shared.infra.observability.trace import (
+    LANGSMITH_RUN_TYPES,
+    LLMTraceContext,
+    LangSmithRunType,
     annotate_traceable,
     build_langsmith_extra,
     build_langsmith_metadata,
@@ -14,8 +24,6 @@ from app.shared.infra.observability.tracing import (
     get_langsmith_max_text_chars,
     get_langsmith_project_name,
     get_llm_trace_context,
-    get_tracer,
-    get_tracker,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,
     langsmith_trace,
@@ -33,6 +41,7 @@ from app.shared.infra.observability.tracing import (
 )
 
 __all__ = [
+    "LANGSMITH_RUN_TYPES",
     "LLMCallRecord",
     "LLMCallTracker",
     "LLMTraceContext",

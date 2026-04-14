@@ -1,6 +1,6 @@
 # 10. 仓库结构与运行时文件
 
-最后更新：2026-04-14
+最后更新：2026-04-15
 
 这份文档回答四个问题：
 
@@ -12,10 +12,10 @@
 如果只想先建立整体心智模型，先看这份。
 更细的边界说明再看：
 
-- [backend/app/shared/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/README.md)
-- [backend/app/shared/infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/infra/README.md)
-- [backend/app/teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/teaching/README.md)
-- [backend/app/workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/README.md)
+- [backend/app/shared/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/README.md)
+- [backend/app/shared/infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)
+- [backend/app/teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/teaching/README.md)
+- [backend/app/workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)
 - `docs/designs/refactor/*`
 
 ## 1. 先记住三件事
@@ -153,14 +153,19 @@ api        = 接 HTTP 请求
 services   = 组合流程与返回结果
 workflows  = 编排业务主链
 teaching   = 表达教学语义
-shared     = 提供共享基础能力
+shared     = 提供共享基础能力与 workflow 共用支撑
 ```
 
 具体边界说明见：
 
-- [backend/app/shared/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/README.md)
-- [backend/app/teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/teaching/README.md)
-- [backend/app/workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/README.md)
+- [backend/app/shared/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/README.md)
+- [backend/app/teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/teaching/README.md)
+- [backend/app/workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)
+
+其中当前要特别记住两点：
+
+- `backend/app/shared/infra/observability/` 是唯一的底层 trace / track 实现层
+- `backend/app/shared/infra/workflow/` 是 workflow 共用的 authoring / runtime 支撑层，不是业务引擎目录
 
 ## 5. 当前知识构建主链从哪开始
 

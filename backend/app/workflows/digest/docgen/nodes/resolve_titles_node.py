@@ -1,4 +1,4 @@
-"""Resolve final chapter titles from research context before writing."""
+﻿"""Resolve final chapter titles from research context before writing."""
 
 from __future__ import annotations
 
@@ -159,3 +159,5 @@ def build_resolve_titles_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_resolve_titles_node"]
+
+

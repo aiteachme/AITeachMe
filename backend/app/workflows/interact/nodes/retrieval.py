@@ -1,4 +1,4 @@
-"""Retrieval node builders for the interact workflow.
+﻿"""Retrieval node builders for the interact workflow.
 
 Reads DB: ``retrieval_chunk`` and subject-scoped vector tables through the retrieval pipeline.
 Writes DB: none.
@@ -87,3 +87,5 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
         }
 
     return retrieve_context_node
+
+

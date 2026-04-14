@@ -1,4 +1,4 @@
-"""Prompt assembly for the interact workflow."""
+﻿"""Prompt assembly for the interact workflow."""
 
 from __future__ import annotations
 
@@ -107,3 +107,5 @@ __all__ = [
     "build_chat_messages",
     "format_retrieval_context_item",
 ]
+
+

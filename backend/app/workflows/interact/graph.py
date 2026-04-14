@@ -1,4 +1,4 @@
-"""LangGraph definition for the interact workflow."""
+﻿"""LangGraph definition for the interact workflow."""
 
 from __future__ import annotations
 
@@ -225,3 +225,5 @@ __all__ = [
     "build_interact_workflow_graph",
     "get_langgraph_dev_interact_graph",
 ]
+
+

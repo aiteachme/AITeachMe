@@ -1,4 +1,4 @@
-"""Persistence node builders for the interact workflow.
+﻿"""Persistence node builders for the interact workflow.
 
 Reads DB: none.
 Writes DB: ``chat_message`` user/assistant turn pairs with serialized citation contexts.
@@ -81,3 +81,5 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
         }
 
     return persist_turn
+
+

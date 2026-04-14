@@ -1,8 +1,8 @@
-"""Workflow graph exports for interact workflows."""
+﻿"""Workflow graph exports for interact workflows."""
 
 from __future__ import annotations
 
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.shared.infra.workflow import WorkflowGraphExport
 from app.workflows.interact.graph import get_langgraph_dev_interact_graph
 from app.workflows.interact.prompts.prompts import PROMPTS
 
@@ -15,3 +15,5 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
+
+

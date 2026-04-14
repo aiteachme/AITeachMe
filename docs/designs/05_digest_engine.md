@@ -726,7 +726,7 @@ LLM 调用: ✅ metadata (每章一次)
 
 ## 10. 可观测性
 
-Digest 的 LangSmith / runtime 观测统一按 `workflows/common` 的 4 个入口接入：
+Digest 的 LangSmith / runtime 观测统一按 `shared/infra/workflow` 的 4 个入口接入：
 
 - `run_state_graph(...)`：workflow 根 span
 - `workflow_tracer(...).node(...)`：workflow node 的默认接入方式
@@ -789,4 +789,3 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
-

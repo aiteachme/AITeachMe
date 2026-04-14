@@ -1,8 +1,15 @@
-# LangSmith 接入说明
+﻿# LangSmith 接入说明
 
 这份文档只回答一件事：
 
 如何让 `workflows/` 里的 LangSmith 追踪足够简单，后续改动时不需要在大量节点和 infra helper 之间来回同步。
+
+说明：
+
+- 底层 tracing / tracking 的真实实现统一在 `app.shared.infra.observability`
+- `app.shared.infra.workflow` 只保留 workflow authoring / runtime 支撑
+- `workflow_tracer`、`traceable_run` 当前由 `app.shared.infra.workflow.authoring` 提供，并通过 `app.shared.infra.workflow` 对外暴露
+- 业务 workflow 代码默认只从 `app.shared.infra.workflow` 导入，不直接依赖 `authoring.py` / `steps.py`
 
 ---
 
@@ -69,7 +76,7 @@ from app.shared.infra.workflow import (
 ### 仍存在的历史差异
 
 - 少数“概览图 / 非主执行图”仍是轻量 StateGraph，没有完整 tracing 包装；这类图主要用于展示结构，不作为 tracing 规范样板。
-- 少数旧节点内部仍会直接使用 `llm_trace_scope(...)` 做上下文桥接；这属于兼容保留，不应继续扩散为新写法。
+- 少数旧节点内部仍可能直接使用 `llm_trace_scope(...)` 做上下文桥接；这属于历史兼容，不应继续扩散为新写法。
 
 结论：
 
@@ -362,7 +369,7 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 - 新增 prompt builder 时，默认加 `@traceable_run(..., run_type="prompt")`，不要裸写成无名 helper。
 - 新增 node 内多步逻辑时，优先用 `tracked_step(...)` 表达关键边界，不要在 node 里零散手写 LangSmith span。
 - **不要在新的 workflow 业务代码里直接调用 `llm_trace_scope(...)`。**
-  这个接口只应该留在 `shared/infra/workflow`、共享 runtime 桥接层或少数历史兼容代码里。
+  这个接口只应该留在 `shared/infra/observability`、共享 runtime 桥接层或少数历史兼容代码里。
 
 你可以把它理解成一条 code review 红线：
 
@@ -438,3 +445,6 @@ node 内关键步骤 → tracked_step
 infra 层       → 只在共享执行边界保留 trace
 LangGraph 自动追踪每个 node — 不需要手动再创建 node span
 ```
+
+
+

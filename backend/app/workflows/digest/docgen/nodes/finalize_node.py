@@ -1,4 +1,4 @@
-"""Finalize knowledge docs by staging or publishing them."""
+﻿"""Finalize knowledge docs by staging or publishing them."""
 
 from __future__ import annotations
 
@@ -141,3 +141,5 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
         }
 
     return finalize_assemble_node
+
+

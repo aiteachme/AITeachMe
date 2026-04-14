@@ -1,4 +1,4 @@
-"""Main ingest parse workflow entry point (Phase 1 + Phase 2 dispatch)."""
+﻿"""Main ingest parse workflow entry point (Phase 1 + Phase 2 dispatch)."""
 
 from __future__ import annotations
 
@@ -587,3 +587,5 @@ async def run_parse_file_workflow(
         except Exception:
             logger.exception("ingest_workflow_error_recovery_failed", file_id=file_id)
         return err_result("ingest_unhandled_error", str(exc), metadata={"subject": subject, "file_id": file_id})
+
+

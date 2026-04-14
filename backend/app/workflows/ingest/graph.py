@@ -1,4 +1,4 @@
-"""Ingest workflow graph definitions — two-phase architecture.
+﻿"""Ingest workflow graph definitions — two-phase architecture.
 
 Phase 1 (Fast Parse): Traditional parsing, no LLM.
 Phase 2 (Deep Enhance): LLM Vision OCR, runs in background.
@@ -217,4 +217,6 @@ def get_langgraph_dev_fast_parse_graph() -> StateGraph:
     return build_fast_parse_graph(
         context=create_langgraph_dev_context("ingest.file.parse.langgraph_dev"),
     )
+
+
 

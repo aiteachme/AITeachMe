@@ -1,8 +1,8 @@
-"""Workflow graph exports for examine workflows."""
+﻿"""Workflow graph exports for examine workflows."""
 
 from __future__ import annotations
 
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.shared.infra.workflow import WorkflowGraphExport
 from app.workflows.examine.graph import (
     build_exam_grade_graph,
     build_examine_workflow_graph,
@@ -33,3 +33,5 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
+
+

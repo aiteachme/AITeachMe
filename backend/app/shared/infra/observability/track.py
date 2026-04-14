@@ -1,4 +1,4 @@
-"""In-memory LLM call tracking and span primitives."""
+"""In-memory tracking helpers for LLM calls and lightweight spans."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 
 @dataclass
 class LLMCallRecord:
-    """A single LLM call record."""
+    """One recorded LLM call."""
 
     task_type: str
     model: str
@@ -38,7 +38,7 @@ class LLMCallRecord:
 
 @dataclass
 class Span:
-    """A simple span primitive for future tracing expansion."""
+    """A simple in-memory span primitive."""
 
     name: str
     span_id: str = field(default_factory=lambda: uuid4().hex[:12])
@@ -308,7 +308,6 @@ def get_tracker() -> LLMCallTracker:
 __all__ = [
     "LLMCallRecord",
     "LLMCallTracker",
-    "LLMTraceContext",
     "Span",
     "Tracer",
     "get_tracer",

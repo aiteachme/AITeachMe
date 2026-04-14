@@ -214,4 +214,4 @@ ContentStore 对业务代码完全透明——同一套代码在两种模式下�
 - `build_status.json` 记录当前或最近一次知识构建的生命周期，统一通过 ContentStore 读写。
 - 构建锁（Build Lock）使用双策略：本地模式用文件锁，云端模式用 Subject 表行锁。
   这是唯一保留 `is_cloud_mode` 判断的业务逻辑，因为两种锁机制本质不同。
-- 该设计不引入新的全局 `app/common` 层；共享编排继续留在 `workflows/common`，路径与存储辅助能力继续留在 `utils/`。
+- 该设计不引入新的全局 `app/common` 层；共享 workflow 编排继续收口到 `shared/infra/workflow`，路径与存储辅助能力继续留在 `utils/`。

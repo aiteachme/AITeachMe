@@ -1,4 +1,4 @@
-"""Collect drafts node for the DocGen lane."""
+﻿"""Collect drafts node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -133,3 +133,5 @@ def build_collect_drafts_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_collect_drafts_node"]
+
+

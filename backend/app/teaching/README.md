@@ -1,6 +1,6 @@
 # Teaching 分层说明
 
-最后更新：2026-04-14
+最后更新：2026-04-15
 
 `app.teaching` 是教学语义层。
 它负责回答：
@@ -13,6 +13,8 @@
 它**不**负责：
 
 - 数据库、存储、LLM、检索这些底层接入
+- trace / track 与 LangSmith 观测接入
+- workflow 共用 runtime / authoring 支撑
 - workflow graph 的编排
 - API 请求流程控制
 
@@ -32,6 +34,7 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 
 - `teaching` 建立在 `infra` 之上。
 - `teaching` 可以调用 `infra` 的 LLM、search、memory、tool registry。
+- `teaching` 不拥有独立的 observability 或 workflow 支撑实现。
 - `workflows` 再把 `teaching` 提供的教学语义组织成具体流程。
 
 ## 2. 新同学先用这张“找东西地图”

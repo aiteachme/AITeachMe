@@ -1,4 +1,4 @@
-"""Compatibility shim for the deprecated unified digest build runtime.
+﻿"""Compatibility shim for the deprecated unified digest build runtime.
 
 This module used to host a full runtime implementation. It now forwards all
 legacy imports to the active runtime in ``app.workflows.digest.unified.runtime``
@@ -32,3 +32,4 @@ async def run_unified_digest_build(
         requested_at=requested_at,
         event_bus=event_bus,
     )
+

@@ -1,4 +1,4 @@
-"""DocGen prompt builders owned by the digest workflow layer."""
+﻿"""DocGen prompt builders owned by the digest workflow layer."""
 
 from __future__ import annotations
 
@@ -398,3 +398,5 @@ __all__ = [
     "build_docgen_gap_query_messages",
     "build_docgen_writer_messages",
 ]
+
+

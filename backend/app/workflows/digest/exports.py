@@ -1,10 +1,10 @@
-"""Workflow graph exports for digest workflows."""
+﻿"""Workflow graph exports for digest workflows."""
 
 from __future__ import annotations
 
+from app.shared.infra.workflow import WorkflowGraphExport
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.digest.graph import (
     build_curriculum_derive_graph,
     build_docgen_graph,
@@ -94,3 +94,5 @@ WORKFLOW_EXPORTS = (
         build_graph=_build_unified_graph_for_export,
     ),
 )
+
+

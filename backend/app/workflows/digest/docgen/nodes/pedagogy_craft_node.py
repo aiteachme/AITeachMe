@@ -1,4 +1,4 @@
-"""Pedagogy craft node for the DocGen lane."""
+﻿"""Pedagogy craft node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -173,4 +173,6 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_pedagogy_craft_node"]
+
+
 

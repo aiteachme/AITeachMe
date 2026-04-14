@@ -1,66 +1,54 @@
-﻿"""Shared workflow authoring helpers with lazy exports.
+"""Canonical workflow entrypoints.
 
-Recommended public surface for new workflows:
-
-- ``run_state_graph(...)``
-- ``workflow_tracer(...).node(...)``
-- ``@traceable_run(...)``
-- ``tracked_step(...)``
+This package contains shared workflow support only:
+- context and event bus
+- graph runtime wrappers
+- workflow authoring helpers
+- tracked steps and result contracts
 """
 
-from __future__ import annotations
-
-from importlib import import_module
+from app.shared.infra.workflow.authoring import WorkflowGraphExport, WorkflowTraceBinding, traceable_run, workflow_tracer
+from app.shared.infra.workflow.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.events import InProcessEventBus, LoggedWorkflowEvent, WorkflowEvent
+from app.shared.infra.workflow.result import WorkflowError, WorkflowResult, err_result, ok_result
+from app.shared.infra.workflow.runtime import cancel_tasks_and_drain, invoke_state_graph, run_state_graph
+from app.shared.infra.workflow.steps import (
+    StepKind,
+    TrackedStep,
+    emit_progress,
+    get_runtime_steps,
+    record_step_end,
+    record_step_start,
+    tracked_step,
+)
+from app.shared.infra.workflow.types import AsyncNode, GraphBuilder, StateT
 
 __all__ = [
+    "AsyncNode",
+    "GraphBuilder",
     "InProcessEventBus",
+    "LANGGRAPH_DEV_SUBJECT",
+    "LoggedWorkflowEvent",
+    "StateT",
+    "StepKind",
+    "TrackedStep",
     "WorkflowContext",
     "WorkflowError",
-    "WorkflowGraphExport",
     "WorkflowEvent",
+    "WorkflowGraphExport",
     "WorkflowResult",
-    "run_state_graph",
-    "invoke_state_graph",
-    "traceable_run",
-    "workflow_tracer",
     "WorkflowTraceBinding",
-    "tracked_step",
+    "cancel_tasks_and_drain",
+    "create_langgraph_dev_context",
     "emit_progress",
+    "err_result",
+    "get_runtime_steps",
+    "invoke_state_graph",
+    "ok_result",
     "record_step_end",
     "record_step_start",
-    "get_runtime_steps",
-    "err_result",
-    "ok_result",
+    "run_state_graph",
+    "traceable_run",
+    "tracked_step",
+    "workflow_tracer",
 ]
-
-_ATTR_TO_MODULE = {
-    "InProcessEventBus": "app.shared.infra.workflow.events",
-    "WorkflowContext": "app.shared.infra.workflow.context",
-    "WorkflowError": "app.shared.infra.workflow.result",
-    "WorkflowGraphExport": "app.shared.infra.workflow.graph_export",
-    "WorkflowEvent": "app.shared.infra.workflow.events",
-    "WorkflowResult": "app.shared.infra.workflow.result",
-    "run_state_graph": "app.shared.infra.workflow.runtime",
-    "invoke_state_graph": "app.shared.infra.workflow.runtime",
-    "traceable_run": "app.shared.infra.workflow.observability",
-    "workflow_tracer": "app.shared.infra.workflow.observability",
-    "WorkflowTraceBinding": "app.shared.infra.workflow.observability",
-    "tracked_step": "app.shared.infra.workflow.runtime_stats",
-    "emit_progress": "app.shared.infra.workflow.runtime_stats",
-    "record_step_end": "app.shared.infra.workflow.runtime_stats",
-    "record_step_start": "app.shared.infra.workflow.runtime_stats",
-    "get_runtime_steps": "app.shared.infra.workflow.runtime_stats",
-    "err_result": "app.shared.infra.workflow.result",
-    "ok_result": "app.shared.infra.workflow.result",
-}
-
-
-def __getattr__(name: str):
-    module_name = _ATTR_TO_MODULE.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    module = import_module(module_name)
-    value = getattr(module, name)
-    globals()[name] = value
-    return value

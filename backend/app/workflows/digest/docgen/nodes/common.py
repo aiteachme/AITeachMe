@@ -1,4 +1,4 @@
-"""DocGen 节点公共辅助函数。"""
+﻿"""DocGen 节点公共辅助函数。"""
 
 from __future__ import annotations
 
@@ -160,3 +160,5 @@ __all__ = [
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
+
+

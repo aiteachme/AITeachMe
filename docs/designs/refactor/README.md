@@ -1,6 +1,6 @@
 # Digest Refactor 总览
 
-> 最后更新：2026-04-14
+> 最后更新：2026-04-15
 
 本目录是 Digest refactor 的设计入口。本轮 refactor 已完成"边界收敛 + 主链路打通 + 最小可观测性统一"，后续重点是质量做深和跨引擎协同。
 
@@ -21,7 +21,7 @@
 
 - `backend/app/workflows/LANGSMITH.md` — LangSmith 代码级规范
 - `backend/app/workflows/TRACKED_STEP.md` — workflow step 规范
-- `backend/app/workflows/common/__init__.py` — workflow authoring 入口
+- `backend/app/shared/infra/workflow/__init__.py` — workflow 共用公共入口
 - `backend/app/workflows/README.md` — workflows 层总览
 - `backend/app/teaching/README.md` — teaching 层总览
 

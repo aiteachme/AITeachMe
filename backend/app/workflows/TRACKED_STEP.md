@@ -1,4 +1,4 @@
-# tracked_step 规范
+﻿# tracked_step 规范
 
 这份文档只讲一件事：
 
@@ -266,3 +266,5 @@ async with tracked_step(
 - prompt builder 函数本身用 `@traceable_run(..., run_type="prompt")`
 
 这样在 LangSmith 里既能看到“这个 node 里发生了 prompt build”，也能看到“具体是哪一个 prompt builder 产出的内容”。
+
+

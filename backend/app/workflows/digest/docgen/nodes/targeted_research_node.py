@@ -1,4 +1,4 @@
-"""Targeted research node for the DocGen lane."""
+﻿"""Targeted research node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -233,3 +233,5 @@ def build_targeted_research_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_targeted_research_node"]
+
+

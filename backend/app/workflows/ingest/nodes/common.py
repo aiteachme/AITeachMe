@@ -1,4 +1,4 @@
-"""Shared ingest workflow helpers."""
+﻿"""Shared ingest workflow helpers."""
 
 from __future__ import annotations
 
@@ -11,3 +11,5 @@ def workflow_logger(context: WorkflowContext, state: IngestParseState):
         file_id=state["file_id"],
         filename=state.get("filename"),
     )
+
+

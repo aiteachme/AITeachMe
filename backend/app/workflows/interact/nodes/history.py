@@ -1,4 +1,4 @@
-"""History-loading node builders for the interact workflow.
+﻿"""History-loading node builders for the interact workflow.
 
 Reads DB: ``chat_message`` plus active mastery/attempt summaries.
 Writes DB: none.
@@ -89,3 +89,5 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
         }
 
     return load_history_state
+
+

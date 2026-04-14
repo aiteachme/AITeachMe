@@ -1,4 +1,4 @@
-"""Streaming node builders for the interact workflow.
+﻿"""Streaming node builders for the interact workflow.
 
 Reads DB: none.
 Writes DB: none directly; persistence happens in the next node.
@@ -129,3 +129,5 @@ def build_stream_answer_node(
         )
 
     return stream_answer
+
+

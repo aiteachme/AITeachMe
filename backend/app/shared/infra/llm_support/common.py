@@ -145,8 +145,7 @@ def build_completion_kwargs(
         "model": f"openai/{context.profile.model}",
         "messages": messages,
         "api_base": (
-            get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            get_env("LLM_BASE_URL")
         ),
         "api_key": context.api_key,
         "timeout": context.profile.timeout_s,

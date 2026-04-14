@@ -1,10 +1,17 @@
 # LangSmith 可观测性 — 待完成部分
 
-> 最后更新：2026-04-14
+> 最后更新：2026-04-15
 >
 > 已落地：4 个 tracing 入口、业务 ID 统一、node metadata 输出、lane summary 聚合。
 > 详细实现文档：`backend/app/workflows/LANGSMITH.md`、`backend/app/workflows/TRACKED_STEP.md`。
 > 本文档只保留待建设的 dashboard 和待补强的观测点。
+
+当前代码边界补充如下：
+
+- `backend/app/shared/infra/observability/trace.py`：唯一的底层 LangSmith trace、ambient context、`@traceable` wrapper 与脱敏入口
+- `backend/app/shared/infra/observability/track.py`：唯一的内存态 track / span 入口
+- `backend/app/shared/infra/workflow/authoring.py`：workflow-facing 适配层，负责 `workflow_tracer`、`traceable_run`、`WorkflowGraphExport`
+- `backend/app/shared/infra/workflow/steps.py`：`tracked_step(...)` 与 runtime progress / stats
 
 ---
 

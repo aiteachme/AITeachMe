@@ -1,8 +1,8 @@
-"""Workflow graph exports for profile workflows."""
+﻿"""Workflow graph exports for profile workflows."""
 
 from __future__ import annotations
 
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.shared.infra.workflow import WorkflowGraphExport
 from app.workflows.profile.graph import (
     build_profile_pipeline_graph,
     build_profile_workflow_graph,
@@ -25,3 +25,5 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
+
+

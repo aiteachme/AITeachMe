@@ -1,4 +1,4 @@
-"""Helpers for staging and publishing knowledge docs."""
+﻿"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -399,3 +399,5 @@ def publish_staged_knowledge_docs(
             created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]
+
+

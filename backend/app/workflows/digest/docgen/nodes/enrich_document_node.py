@@ -1,4 +1,4 @@
-"""Enrich document node for the DocGen lane."""
+﻿"""Enrich document node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -129,3 +129,5 @@ def build_enrich_document_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_enrich_document_node"]
+
+

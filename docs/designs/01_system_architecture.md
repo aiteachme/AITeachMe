@@ -190,5 +190,5 @@
 - `core/` 仍然保持为最小基础层，规范的 AI 运行时模块统一放在 `infra/`，不再回落到 `core/`。
 - `infra/` 是 `llm_support`、`tracing`、`tools`、`skills`、`prompt_loader` 这类基础模块的规范归属位置；`llm_support/routing.py` 是当前模型路由的唯一推荐入口。
 - `utils/` 负责跨层纯工具能力，例如 `path_helpers`、`presenters`、`docgen_store`。
-- 不新增顶层 `app/common` 目录；共享编排辅助能力继续放在 `workflows/common`。
+- 不新增顶层 `app/common` 目录；共享 workflow 编排辅助能力统一放在 `shared/infra/workflow`。
 - 不再在 `services/` 下保留跨层 helper shim；规范导入应直接指向 `app.shared.infra.*` 与 `app.utils.*`。

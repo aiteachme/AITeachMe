@@ -1,4 +1,4 @@
-"""Workflow 共享类型定义。"""
+"""Shared workflow type aliases."""
 
 from __future__ import annotations
 
@@ -9,4 +9,3 @@ StateT = TypeVar("StateT")
 
 AsyncNode = Callable[[StateT], Awaitable[StateT]]
 GraphBuilder = Callable[[], Any]
-

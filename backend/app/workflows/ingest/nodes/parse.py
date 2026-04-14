@@ -1,4 +1,4 @@
-"""Parse-phase node for ingest workflows (Phase 1: Fast Parse).
+﻿"""Parse-phase node for ingest workflows (Phase 1: Fast Parse).
 
 Reads DB: ``raw_file`` lookup during parse result persistence.
 Writes DB: ``raw_file`` ingest status transitions and parse metadata.
@@ -132,3 +132,5 @@ def build_parse_file_node(*, context: WorkflowContext):
             }
 
     return parse_file_node
+
+

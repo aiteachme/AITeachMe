@@ -1,6 +1,6 @@
 # Shared 层说明
 
-最后更新：2026-04-14
+最后更新：2026-04-15
 
 `app.shared` 是后端的共享基础层。
 它负责收拢那些“离开具体业务依然成立，而且多个模块都会复用”的能力，让上层代码有稳定入口。
@@ -30,7 +30,7 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 | 目录 | 作用 | 当前典型内容 |
 | --- | --- | --- |
 | `app.shared.kernel` | 最底层原语层 | 异常、时间、ID、领域事件 |
-| `app.shared.infra` | 共享基础设施层 | 配置、数据库、存储、LLM、检索、工具、记忆、Tracing |
+| `app.shared.infra` | 共享基础设施层 | 配置、数据库、存储、LLM、检索、工具、记忆、trace / track、workflow 共用支撑 |
 
 可以把它理解成：
 
@@ -63,14 +63,14 @@ infra  = 已经接上外部系统的共享能力
 - 读取 `.env` 和 `config.yaml`
 - 初始化数据库与运行时路径
 - 封装本地存储 / S3 存储
-- 提供 LLM、Tracing、Prompt、Embedding 等 AI 基础能力
+- 提供 LLM、trace / track、Prompt、Embedding 等 AI 基础能力
 - 提供 Search、Reader、Retriever、Context Compression
 - 提供 Tool Registry、Toolpack、Skillpack
 - 提供共享 Memory、事件日志、通用执行契约
 
 更细的目录导航见：
 
-- [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/infra/README.md)
+- [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)
 
 ## 5. 哪些内容不要放进 `shared`
 
@@ -129,16 +129,16 @@ infra  = 已经接上外部系统的共享能力
 不建议：
 
 - `services` 直接 import 某个 workflow 的内部私有模块
-- `teaching` 或 `workflows` 自己再复制一套 LLM、Tracing、Tool Registry
+- `teaching` 或 `workflows` 自己再复制一套 LLM、trace / track、Tool Registry
 
 ## 8. 新成员阅读顺序
 
 第一次接手后端，建议按这个顺序读：
 
 1. 本文件，先建立 `kernel / infra` 的边界。
-2. [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/shared/infra/README.md)，看共享基础设施怎么分层。
-3. [teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/teaching/README.md)，看教学语义放在哪里。
-4. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/README.md)，看真正的业务流程怎么编排。
+2. [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)，看共享基础设施怎么分层。
+3. [teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/teaching/README.md)，看教学语义放在哪里。
+4. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)，看真正的业务流程怎么编排。
 
 ## 9. 一句话总结
 
