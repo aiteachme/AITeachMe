@@ -4,7 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
 from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS

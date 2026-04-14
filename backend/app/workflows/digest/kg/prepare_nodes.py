@@ -24,7 +24,7 @@ from app.workflows.digest.kg.services.extractor import (
 from app.workflows.digest.observability import add_slow_item
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
-from app.workflows.common.runtime import cancel_tasks_and_drain
+from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 

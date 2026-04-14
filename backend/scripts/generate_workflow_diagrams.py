@@ -20,7 +20,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.workflows.common.graph_export import WorkflowGraphExport
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / ".generated_workflow_diagrams"
 WORKFLOWS_DIR = BACKEND_DIR / "app" / "workflows"

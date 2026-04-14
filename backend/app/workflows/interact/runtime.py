@@ -8,10 +8,10 @@ from collections.abc import AsyncGenerator
 from fastapi import Request
 from sqlmodel import Session
 
-from app.workflows.common.context import WorkflowContext
-from app.workflows.common.events import InProcessEventBus
-from app.workflows.common.result import WorkflowResult, err_result
-from app.workflows.common.runtime import run_state_graph
+from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.events import InProcessEventBus
+from app.shared.infra.workflow.result import WorkflowResult, err_result
+from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.interact.events import (
     InteractCompletedEvent,
     InteractFailedEvent,

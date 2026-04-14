@@ -31,7 +31,7 @@ from app.shared.infra.observability import (
     normalize_langsmith_run_type,
     traceable_with_context,
 )
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 
 logger = structlog.get_logger(__name__)
 

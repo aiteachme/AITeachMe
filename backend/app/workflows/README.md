@@ -370,9 +370,9 @@ load_context
 
 workflow 级 tracing 的主入口在：
 
-- `workflows/common/runtime.py`
-- `workflows/common/observability.py`
-- `workflows/common/runtime_stats.py`
+- `shared/infra/workflow/runtime.py`
+- `shared/infra/workflow/observability.py`
+- `shared/infra/workflow/runtime_stats.py`
 
 团队现在应优先使用：
 
@@ -408,7 +408,7 @@ workflow 级 tracing 的主入口在：
 | 新增一个 Digest graph 节点 | `workflows/digest/...` |
 | 新增一个 Interact 检索策略节点 | `workflows/interact/nodes` 或 `support` |
 | 新增一个 DocGen 章节 runtime 单元 | `workflows/digest/docgen/runtime/` |
-| 新增一个 workflow 公共 tracing helper | `workflows/common` |
+| 新增一个 workflow 公共 tracing helper | `shared/infra/workflow` |
 | 新增一个教学脚手架函数 | `teaching/documents` |
 | 新增一个共享 retriever | `shared.infra.search` |
 

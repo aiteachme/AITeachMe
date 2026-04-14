@@ -17,8 +17,8 @@ from app.shared.infra.observability import (
     langsmith_tracing_enabled,
     llm_trace_scope,
 )
-from app.workflows.common.context import WorkflowContext
-from app.workflows.common.result import WorkflowResult, err_result, ok_result
+from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
 
 logger = structlog.get_logger(__name__)
 

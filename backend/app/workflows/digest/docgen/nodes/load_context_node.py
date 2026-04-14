@@ -14,7 +14,7 @@ from app.shared.infra.skills import (
 )
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     normalize_confirmed_plan_contract,

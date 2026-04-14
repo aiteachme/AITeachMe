@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.schemas.llm import ChatMessage, SYSTEM
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.prompts import build_chat_messages, get_execution_instruction
 from app.workflows.interact.state import InteractWorkflowState
 

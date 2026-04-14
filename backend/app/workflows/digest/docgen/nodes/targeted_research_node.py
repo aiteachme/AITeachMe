@@ -11,7 +11,7 @@ from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.runtime import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,

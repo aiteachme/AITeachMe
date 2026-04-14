@@ -40,6 +40,7 @@ from app.services.knowledge_docs.build_planner_service import (
     create_build_planner_session_service,
     get_latest_planner_session_service,
 )
+from app.services.auth_service import set_guest_cookie_for_user
 from app.services.knowledge_docs.cleanup_service import clear_subject_knowledge
 from app.services.knowledge_docs.curriculum_service import (
     get_teaching_unit_detail,
@@ -74,6 +75,7 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
 def _planner_stream_response(
     *,
     request: Request,
+    user_id: str,
     runner,
 ) -> StreamingResponse:
     emitter = SSEEventEmitter()
@@ -104,20 +106,24 @@ def _planner_stream_response(
 
             response = await runner(progress_callback, token_callback)
             runtime_stats = getattr(response, "runtime_stats", None)
+            elapsed_ms = 0
+            if runtime_stats is not None:
+                elapsed_ms = int(
+                    getattr(runtime_stats, "elapsed_ms", None)
+                    or getattr(runtime_stats, "workflow_elapsed_ms", 0)
+                    or 0
+                )
             await emitter.emit_event(
                 "status",
                 {
                     "stage": "completed",
                     "detail": (
-                        f"方案生成完成，总耗时 {runtime_stats.workflow_elapsed_ms} ms。"
+                        f"方案生成完成，总耗时 {elapsed_ms} ms。"
                         if runtime_stats is not None
                         else "方案生成完成。"
                     ),
-                    "workflow_elapsed_ms": (
-                        int(runtime_stats.workflow_elapsed_ms)
-                        if runtime_stats is not None
-                        else 0
-                    ),
+                    "elapsed_ms": elapsed_ms,
+                    "workflow_elapsed_ms": elapsed_ms,
                 },
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})
@@ -131,7 +137,7 @@ def _planner_stream_response(
         async for payload in emitter.stream(request=request, workflow_task=task):
             yield payload
 
-    return StreamingResponse(
+    stream_response = StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
@@ -139,6 +145,8 @@ def _planner_stream_response(
             "X-Accel-Buffering": "no",
         },
     )
+    set_guest_cookie_for_user(stream_response, user_id=user_id)
+    return stream_response
 
 
 @router.post(
@@ -201,6 +209,7 @@ async def knowledge_build_plan_create_stream(
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
+        user_id=user.user_id,
         runner=lambda progress_callback, token_callback: create_build_planner_session_service(
             session,
             subject=subject_record,
@@ -254,6 +263,7 @@ async def knowledge_build_plan_message_stream(
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     return _planner_stream_response(
         request=request,
+        user_id=user.user_id,
         runner=lambda progress_callback, token_callback: append_build_planner_message_service(
             session,
             subject=subject_record,

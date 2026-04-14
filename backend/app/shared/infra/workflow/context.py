@@ -8,7 +8,7 @@ import uuid
 
 import structlog
 
-from app.workflows.common.events import InProcessEventBus
+from app.shared.infra.workflow.events import InProcessEventBus
 
 logger = structlog.get_logger()
 

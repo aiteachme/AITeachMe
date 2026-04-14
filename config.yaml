@@ -1,19 +1,10 @@
-# 这里只放项目级运行配置�?
-# 密钥、连接串、SMTP、对象存储、LangSmith 等环境相关参数放 `.env` / 进程环境变量�?
-
-# 三层模型策略:
-#   reason  �?推理模型 (深度推理、规�? �?留空则回退�?primary
-#   primary �?常用模型 (教学、出题、批改、对�?
-#   fast    �?快速模�?(批量抽取、分类、摘�? �?留空则回退�?primary
-models:
+﻿models:
   reason: ""
   primary: qwen-plus-latest
   fast: ""
   extract: ""
   ocr: ""
-  # Embedding 模型�?
   embedding: text-embedding-v4
-  # 文生图模型。留空禁用�?
   image_generation: ""
   mermaid_generation: qwen-plus-latest
 
@@ -27,16 +18,14 @@ planner:
   default_digest_mode: sprint
   default_tone: encouraging
   allow_external_search: true
-
   sprint:
     min_chapters: 3
     max_chapters: 6
-    target_length: 3000-5000�?
-
+    target_length: "3000-5000字"
   systematic:
     min_chapters: 5
     max_chapters: 12
-    target_length: 10000-15000�?
+    target_length: "10000-15000字"
 
 docgen:
   max_parallel_chapters: 20

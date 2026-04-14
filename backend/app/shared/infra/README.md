@@ -285,7 +285,7 @@ api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 
 一个 workflow 节点如果要调模型，通常会经过：
 
-1. `workflows/common` 建立 workflow 上下文
+1. `shared/infra/workflow` 建立 workflow 上下文
 2. `observability/tracing.py` 用 `llm_trace_scope(...)` 绑定 subject / workflow / lane / node
 3. `llm_support/*` 发起实际模型调用
 4. `observability/tracing.py` 内部统计 token 和延迟
@@ -382,7 +382,7 @@ DocGen / Planner / Interact 需要找资料时，通常是：
 | 新增一个教学工具 | `teaching.tools` |
 | 新增一个章节脚手架函数 | `teaching.documents` |
 | 新增一个 Digest graph 节点 | `workflows.digest...` |
-| 新增一个 workflow 运行步骤的 trace 规则 | `workflows.common` 或 `shared.infra.observability` |
+| 新增一个 workflow 运行步骤的 trace 规则 | `shared.infra.workflow` 或 `shared.infra.observability` |
 
 ## 8. 阅读建议
 

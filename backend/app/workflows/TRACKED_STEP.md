@@ -17,7 +17,7 @@
 ## 最常见写法
 
 ```python
-from app.workflows.common import tracked_step
+from app.shared.infra.workflow import tracked_step
 
 
 async with tracked_step(

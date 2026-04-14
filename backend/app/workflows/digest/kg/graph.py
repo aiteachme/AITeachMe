@@ -1,4 +1,4 @@
-﻿"""Digest knowledge-graph workflow graph and initial state."""
+"""Digest knowledge-graph workflow graph and initial state."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.digest.kg.finalize_nodes import build_finalize_graph_node, fail_node
 from app.workflows.digest.kg.prepare_nodes import (
     acquire_lock_node,

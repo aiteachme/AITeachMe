@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.common.graph_export import WorkflowGraphExport
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.profile.graph import (
     build_profile_pipeline_graph,
     build_profile_workflow_graph,
