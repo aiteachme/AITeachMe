@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 这里只放项目级运行配置。
 # 密钥、连接串、SMTP、对象存储、LangSmith 等环境相关参数放 `.env` / 进程环境变量。
 
@@ -7,9 +6,6 @@
 #   primary – 常用模型 (教学、出题、批改、对话)
 #   light   – 轻量模型 (批量抽取、分类、摘要) — 留空则回退到 primary
 models:
-=======
-﻿models:
->>>>>>> bd1f0f0dd7d2e6dea6a91aadf9123046c9724ee0
   reason: ""
   primary: qwen-plus-latest
   light: ""
