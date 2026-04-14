@@ -60,10 +60,14 @@ def get_task_profile(task_type: TaskType = TaskType.DEFAULT) -> TaskProfile:
     override_model = settings.model_overrides.get(task_type.value)
 
     if not override_model:
-        if task_type is TaskType.DOCGEN_LIGHT and settings.llm_model_light:
+        # Tier-based model resolution: reason → light → primary fallback
+        if task_type is TaskType.REASONING and settings.llm_model_reason:
+            override_model = settings.llm_model_reason
+        elif task_type in {TaskType.DOCGEN_LIGHT, TaskType.SUMMARIZE, TaskType.CLASSIFY} and settings.llm_model_light:
             override_model = settings.llm_model_light
-        elif task_type is TaskType.EXTRACT and settings.llm_model_extract:
-            override_model = settings.llm_model_extract
+        elif task_type is TaskType.EXTRACT:
+            # EXTRACT has its own explicit slot; falls back to light tier, then primary
+            override_model = settings.llm_model_extract or settings.llm_model_light
 
     resolved_model = override_model or base.model or fallback_model
 

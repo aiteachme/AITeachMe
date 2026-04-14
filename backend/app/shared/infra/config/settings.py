@@ -86,6 +86,7 @@ class Settings(BaseModel):
     rag_rerank_model: str | None = None
     rag_rerank_top_k: int = 3
 
+    llm_model_reason: str | None = None
     llm_model_light: str | None = None
     llm_model_extract: str | None = None
     kg_extract_max_parallelism: int = 20

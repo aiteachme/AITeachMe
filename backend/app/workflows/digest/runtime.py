@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Awaitable, Callable
 
-from app.workflows.common.context import WorkflowContext
-from app.workflows.common.events import InProcessEventBus
-from app.workflows.common.result import WorkflowResult, err_result
-from app.workflows.common.runtime import run_state_graph
+from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.events import InProcessEventBus
+from app.shared.infra.workflow.result import WorkflowResult, err_result
+from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.events import (
     CurriculumDeriveCompletedEvent,
     CurriculumDeriveFailedEvent,
@@ -45,6 +45,7 @@ async def run_graph_digest_workflow(
     subject: str,
     job_id: int,
     file_ids: list[int],
+    doc_chapter_metadatas: list[dict[str, object]] | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
     trigger_curriculum_after_finalize: bool = True,
@@ -95,6 +96,7 @@ async def run_graph_digest_workflow(
             file_ids=file_ids,
             job_id=job_id,
             build_session_id=build_session_id,
+            doc_chapter_metadatas=doc_chapter_metadatas,
         ),
         context=context,
     )

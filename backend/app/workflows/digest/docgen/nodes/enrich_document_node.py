@@ -13,7 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 )
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.runtime import DocGenAssetRuntime
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type, resolve_docgen_dependency
 from app.workflows.digest.docgen.publish import build_merged_markdown

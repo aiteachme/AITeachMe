@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-13T02:25:16.871928",
-  "total_commits_analyzed": 515,
+  "generated_at": "2026-04-14T05:00:28.817164",
+  "total_commits_analyzed": 553,
   "stats": [
     {
       "date": "2026-03-11",
@@ -4121,6 +4121,310 @@
       "code_lines": 106640,
       "other_lines": 31714,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "d023893",
+      "total_lines": 138525,
+      "code_lines": 106717,
+      "other_lines": 31808,
+      "message": "docs: 更新 refactor 文档并对齐当前 Digest 实现"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "54b1210",
+      "total_lines": 139034,
+      "code_lines": 107125,
+      "other_lines": 31909,
+      "message": "refactor: 收口检索运行时缓存与 LangSmith 观测口径"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "0a40827",
+      "total_lines": 138354,
+      "code_lines": 106640,
+      "other_lines": 31714,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "111f32d",
+      "total_lines": 139540,
+      "code_lines": 107509,
+      "other_lines": 32031,
+      "message": "feat: 为 Interact 引入受控执行模式与最小 plan-execute 路径"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "916a824",
+      "total_lines": 139540,
+      "code_lines": 107509,
+      "other_lines": 32031,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "83889b6",
+      "total_lines": 129293,
+      "code_lines": 98994,
+      "other_lines": 30299,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-04-09",
+      "commit": "b37d6d4",
+      "total_lines": 129293,
+      "code_lines": 98994,
+      "other_lines": 30299,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "96fa486",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "03cd209",
+      "total_lines": 139540,
+      "code_lines": 107509,
+      "other_lines": 32031,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "0c6a469",
+      "total_lines": 139662,
+      "code_lines": 107566,
+      "other_lines": 32096,
+      "message": "refactor(tracing): 简化 LangSmith 追踪为 LangGraph 原生优先"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "e4c07e7",
+      "total_lines": 139663,
+      "code_lines": 107567,
+      "other_lines": 32096,
+      "message": "refactor(tracing): 简化 LangSmith 追踪为 LangGraph 原生优先"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "ad43ccd",
+      "total_lines": 139663,
+      "code_lines": 107567,
+      "other_lines": 32096,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "16d2e5f",
+      "total_lines": 139663,
+      "code_lines": 107567,
+      "other_lines": 32096,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "844939b",
+      "total_lines": 141054,
+      "code_lines": 108604,
+      "other_lines": 32450,
+      "message": "fix: 修正文档生成工作流图的真实拓扑展示"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "7e27fe8",
+      "total_lines": 141055,
+      "code_lines": 108605,
+      "other_lines": 32450,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "60f6122",
+      "total_lines": 141259,
+      "code_lines": 108786,
+      "other_lines": 32473,
+      "message": "refactor: 统一 LangSmith trace 采集与预览策略"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "66943fc",
+      "total_lines": 141259,
+      "code_lines": 108786,
+      "other_lines": 32473,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "7138785",
+      "total_lines": 141242,
+      "code_lines": 108766,
+      "other_lines": 32476,
+      "message": "refactor: 精简 LangSmith 追踪并保留关键诊断信息"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "7900005",
+      "total_lines": 141347,
+      "code_lines": 108838,
+      "other_lines": 32509,
+      "message": "docs: 补充 workflows LangSmith 统一规范与落地状态"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "dee7887",
+      "total_lines": 141347,
+      "code_lines": 108838,
+      "other_lines": 32509,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "ff1116c",
+      "total_lines": 140058,
+      "code_lines": 107902,
+      "other_lines": 32156,
+      "message": "fix: 关闭主模型失败后的业务兜底"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "7bdb94b",
+      "total_lines": 141742,
+      "code_lines": 109173,
+      "other_lines": 32569,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "56aaabb",
+      "total_lines": 141628,
+      "code_lines": 109050,
+      "other_lines": 32578,
+      "message": "refactor: 收紧 LangSmith trace 与 workflow track 分层"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "271c7e1",
+      "total_lines": 142023,
+      "code_lines": 109385,
+      "other_lines": 32638,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AIT"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "be5c8d3",
+      "total_lines": 142346,
+      "code_lines": 109443,
+      "other_lines": 32903,
+      "message": "refactor: 重构 shared infra 的运行时、执行与观测分层"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "ae02c34",
+      "total_lines": 142633,
+      "code_lines": 109661,
+      "other_lines": 32972,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "dff418b",
+      "total_lines": 141659,
+      "code_lines": 109069,
+      "other_lines": 32590,
+      "message": "refactor: workflows模块调整"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "f2ad6f2",
+      "total_lines": 142955,
+      "code_lines": 109901,
+      "other_lines": 33054,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl'"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "47d82e8",
+      "total_lines": 113221,
+      "code_lines": 85690,
+      "other_lines": 27531,
+      "message": "fix: 修改标题为通用代码量变化趋势，更新主函数输出信息"
+    },
+    {
+      "date": "2026-04-10",
+      "commit": "28b84bf",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "81e5beb",
+      "total_lines": 131491,
+      "code_lines": 100146,
+      "other_lines": 31345,
+      "message": "wip"
+    },
+    {
+      "date": "2026-04-12",
+      "commit": "5e4e3d2",
+      "total_lines": 135233,
+      "code_lines": 104045,
+      "other_lines": 31188,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-04-13",
+      "commit": "220ecd8",
+      "total_lines": 142955,
+      "code_lines": 109901,
+      "other_lines": 33054,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "a91ada2",
+      "total_lines": 135453,
+      "code_lines": 104246,
+      "other_lines": 31207,
+      "message": "Update generated model files to reflect new versio"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "b795391",
+      "total_lines": 136240,
+      "code_lines": 104891,
+      "other_lines": 31349,
+      "message": "refactor: 拆分知识文档和知识图谱的代码"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "1de6e62",
+      "total_lines": 135888,
+      "code_lines": 104607,
+      "other_lines": 31281,
+      "message": "refactor: 完成拆分后的代码迁移"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "9516d2d",
+      "total_lines": 143594,
+      "code_lines": 110449,
+      "other_lines": 33145,
+      "message": "Merge commit '220ecd8568e2a1af837ab545280203f923ca"
+    },
+    {
+      "date": "2026-04-14",
+      "commit": "e496232",
+      "total_lines": 143594,
+      "code_lines": 110449,
+      "other_lines": 33145,
+      "message": "fix: 更新orval生成的文件中的emoji，从🍺更改为馃嵑"
     }
   ]
 }

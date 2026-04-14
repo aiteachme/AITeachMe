@@ -1,77 +1,50 @@
 # Digest Refactor 总览
 
-最后更新：2026-04-13
+> 最后更新：2026-04-14
 
-本目录是 Digest refactor 的权威设计入口，但它现在不再只是“未来计划”，而是要明确区分三类信息：
+本目录是 Digest refactor 的设计入口。本轮 refactor 已完成"边界收敛 + 主链路打通 + 最小可观测性统一"，后续重点是质量做深和跨引擎协同。
 
-1. 已经在代码里落地的边界与约束
-2. 已经部分实现、可以继续扩展的能力
-3. 仍然只是预留位或下一批工作的方向
+## 文档索引
 
-## 当前状态快照
-
-### 已经落地
-
-- `shared/infra / teaching / workflows` 三层边界已经固定。
-- `tool / skillpack / toolpack` 三种扩展模型已经拆开。
-- `workflows/digest/docgen/runtime` 已成为 DocGen 的 workflow-local runtime 落点。
-- `selected_skillpacks` 已经打通到 planner -> confirmed plan -> docgen。
-- workflow 级 LangSmith 已统一收口为：
-  - `run_state_graph(...)`
-  - `workflow_tracer(...).node(...)`
-  - `@traceable_run(...)`
-  - `tracked_step(...)`
-
-### 已经部分落地
-
-- 章节 research 已从单轮检索升级为轻量 micro-loop。
-- retriever / reader / compression 已接入最小 runtime cache。
-- asset sidecar 已支持 Mermaid / image / interactive HTML 的最小执行链。
-- `systematic / sprint` 已进入 confirmed plan、chapter assignment、writer/runtime 与 practice layer。
-- digest 侧 lane summary 已能聚合 `requested_profile / applied_profile / research_rounds / asset_summary / practice_count`。
-- interact 已开始引入 mode-aware execution 的最小骨架。
-
-### 仍未完成
-
-- 学科化 retrieval 权重、来源分类调参与持久化缓存策略。
-- richer asset sidecar，尤其是更强的 interactive 模板与 animation 真正执行链。
-- Interact / Examine / Profile 与 Digest 在 skillpack、课程合同、知识上下文上的更深协同。
-- 更强的教学块，例如错因卡、公式卡、变式题、迁移题。
-
-## 本轮权威结论
-
-- `tools` 是唯一运行时可调用扩展点。
-- `skillpack` 是 `SKILL.md` 风格 prompt strategy package。
-- `toolpack` 是真实外部工具扩展模型。
-- `workflows/.../runtime` 承载 workflow 专属多步逻辑。
-- `shared/infra/orchestrators` 与 `shared/infra/prompt_builders` 不再作为长期目录继续生长。
-- `shared/infra/execution/traced.py` 是唯一通用 traced execution helper。
-- workflow tracing 的主入口在 `workflows`，不在 `infra`。
-
-## 阅读顺序
-
-1. `01_architecture_alignment.md`
-2. `03_tools_refactor.md`
-3. `04_docgen_pipeline.md`
-4. `05_document_modes.md`
-5. `06_retrieval_strategy.md`
-6. `10_langsmith_observability.md`
-7. `08_migration_plan.md`
-8. `09_execution_plan.md`
-9. `11_open_questions.md`
-10. `12_appendix.md`
-11. `implementation_handoff.md`
-12. `13_interact_agent_modes.md`
+| 文件 | 内容 |
+| --- | --- |
+| `02_landed_decisions.md` | 已落地的关键决策（架构边界、扩展模型、LLM 策略、DocGen 骨架、tracing） |
+| `05_document_modes.md` | 知识文档模式契约 — 待完成的章节结构、资产配额、质量门槛、交互内容 |
+| `06_retrieval_strategy.md` | 检索策略 — 待完成的学科化 profile、持久化缓存、本地语料库 |
+| `08_migration_plan.md` | 迁移计划 — Phase 0-5 状态总表与开发优先级 |
+| `09_execution_plan.md` | 执行计划 — 待办批次 A-D |
+| `10_langsmith_observability.md` | LangSmith 可观测性 — 待建设的 dashboard 和观测点 |
+| `13_interact_agent_modes.md` | Interact 执行模式 — 待扩展的 agent mode 和工具白名单 |
+| `14_llamaindex_migration.md` | LlamaIndex 渐进式迁移方案 — adapter 层设计、分阶段实施计划 |
 
 代码侧实现文档：
 
-- LangSmith 代码级规范：`backend/app/workflows/LANGSMITH.md`
-- workflow step 规范：`backend/app/workflows/TRACKED_STEP.md`
-- 当前 workflow authoring 入口：`backend/app/workflows/common/__init__.py`
+- `backend/app/workflows/LANGSMITH.md` — LangSmith 代码级规范
+- `backend/app/workflows/TRACKED_STEP.md` — workflow step 规范
+- `backend/app/workflows/common/__init__.py` — workflow authoring 入口
+- `backend/app/workflows/README.md` — workflows 层总览
+- `backend/app/teaching/README.md` — teaching 层总览
+
+## 开放问题
+
+以下问题仍待拍板，但不阻塞当前开发：
+
+1. **前端暴露粒度**：`course_type` / `retrieval_profile` 前端要暴露到多细？当前推荐由 planner 推断，前端只做简单模式切换。
+2. **research cache 持久化**：缓存放置层、过期策略和跨用户隔离粒度待定。当前先保持 runtime 内存缓存。
+3. **interactive_html 渲染契约**：前端最终支持"简单 HTML 模板"还是"更强交互组件协议"？当前保持 backend-first 最小模板。
+4. **skillpack 扩展到 Interact / Examine**：先接哪个引擎？最小共享字段范围？当前先把 Digest 合同做稳。
+5. **animation 准入标准**：教育价值验收标准和首批适用学科待定。当前保持 contract/trace 预留位。
+6. **本地教育语料库**：第一批学科和语料生产/审核流程待定。
+
+## 需要持续验证的方向
+
+- 不同学科下 `coverage_score` 阈值设定
+- `sprint / systematic` 的 research round cap 是否需按学科细分
+- `SourceCurator` 来源分类与教育权重稳定性
+- `interactive_html` 对时延和学习价值的真实收益
+- `practice layer` 哪类题目最能提升课程质量
+- Interact 长对话压缩策略
 
 ## 权威性说明
 
-- 本 README、`08_migration_plan.md`、`09_execution_plan.md`、`implementation_handoff.md` 是当前重构口径的管理性文档。
-- `04_docgen_pipeline.md`、`05_document_modes.md`、`06_retrieval_strategy.md`、`10_langsmith_observability.md` 是专题设计文档。
-- 如果设计文档与当前代码或代码旁文档冲突，优先以当前代码和 `backend/app/workflows/*.md` 的实现文档为准。
-- 其他旧文档如果还残留 “infra orchestrator / prompt_builder / legacy tracing alias” 等历史措辞，应按这里的口径理解。
+如果设计文档与当前代码冲突，优先以当前代码和 `backend/app/workflows/*.md` 为准。

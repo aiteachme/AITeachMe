@@ -19,8 +19,8 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.observability import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
-from app.workflows.common import workflow_tracer
-from app.workflows.common.runtime import invoke_state_graph
+from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.runtime import invoke_state_graph
 from app.workflows.examine.question_builder import build_question_templates
 from app.workflows.examine.state import QuestionBuildState
 

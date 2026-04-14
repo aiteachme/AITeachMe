@@ -1,4 +1,4 @@
-﻿"""DocGen LangGraph definition."""
+"""DocGen LangGraph definition."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common import workflow_tracer
-from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
     build_collect_drafts_node,
     build_collect_materials_node,

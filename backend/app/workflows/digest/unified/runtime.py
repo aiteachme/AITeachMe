@@ -7,9 +7,9 @@ from time import perf_counter
 
 import structlog
 
-from app.workflows.common.context import WorkflowContext
-from app.workflows.common.events import InProcessEventBus
-from app.workflows.common.runtime import run_state_graph
+from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.events import InProcessEventBus
+from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.observability import build_token_summary, build_unified_timing_report
 from app.workflows.digest.unified.events import (
     UnifiedBuildCompletedEvent,

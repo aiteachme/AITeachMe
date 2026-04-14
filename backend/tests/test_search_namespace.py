@@ -1,7 +1,5 @@
 import asyncio
 
-from app.shared.infra import reranker as reranker_shim
-from app.shared.infra import retrievers as retriever_shim
 from app.shared.infra.search import (
     RetrievalConfig,
     RetrievalPipeline,
@@ -29,13 +27,6 @@ def test_search_package_exposes_canonical_knowledge_contracts() -> None:
     assert RetrievalPipeline is CanonicalRetrievalPipeline
     assert RetrievedChunk is CanonicalRetrievedChunk
     assert rerank_chunks is canonical_rerank_chunks
-
-
-def test_compatibility_shims_point_to_search_namespace() -> None:
-    assert retriever_shim.RetrievalConfig is CanonicalRetrievalConfig
-    assert retriever_shim.RetrievalPipeline is CanonicalRetrievalPipeline
-    assert retriever_shim.RetrievedChunk is CanonicalRetrievedChunk
-    assert reranker_shim.rerank_chunks is canonical_rerank_chunks
 
 
 def test_reader_factory_resolves_expected_reader_types() -> None:

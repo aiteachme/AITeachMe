@@ -16,7 +16,7 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.ingest.events import (
     IngestFileFastParsedEvent,
     IngestFileParseFailedEvent,

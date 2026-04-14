@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
   
   # 每次推送到主分支时运行（可选）
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 
 permissions:
   contents: write

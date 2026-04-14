@@ -32,7 +32,8 @@ from app.shared.infra.storage.config import (
     s3_uses_dogecloud_tmp_token,
     storage_is_s3,
 )
-from app.shared.kernel.exceptions import AITeachMeError
+from app.shared.infra.exceptions import AITeachMeError as InfraAITeachMeError
+from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
@@ -165,9 +166,10 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [TEACHING]")
+    lines.append(f"    Reason Model           : {settings.llm_model_reason or settings.llm_model}")
     lines.append(f"    Primary Model          : {settings.llm_model}")
     lines.append(f"    Light Model            : {settings.llm_model_light or settings.llm_model}")
-    lines.append(f"    Extract Model          : {settings.llm_model_extract or settings.llm_model}")
+    lines.append(f"    Extract Override       : {settings.llm_model_extract or '(uses light)'}")
     lines.append(f"    Embedding Model        : {settings.embedding_model}")
     lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
     lines.append(
@@ -260,8 +262,12 @@ def _register_static_mounts(app: FastAPI) -> None:
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
-    @app.exception_handler(AITeachMeError)
-    async def aiteachme_error_handler(request: Request, exc: AITeachMeError) -> JSONResponse:
+    @app.exception_handler(KernelAITeachMeError)
+    @app.exception_handler(InfraAITeachMeError)
+    async def aiteachme_error_handler(
+        request: Request,
+        exc: KernelAITeachMeError | InfraAITeachMeError,
+    ) -> JSONResponse:
         del request
         return JSONResponse(
             status_code=exc.status_code,

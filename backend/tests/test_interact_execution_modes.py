@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from app.shared.infra.strategies import StrategyMode
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.nodes.prompt import build_prompt_node
 from app.workflows.interact.nodes.stream import build_stream_answer_node
 from app.workflows.interact.support.execution import (

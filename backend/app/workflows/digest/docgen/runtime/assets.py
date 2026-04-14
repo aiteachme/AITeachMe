@@ -191,7 +191,7 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
             response = await llm(
                 [{"role": "user", "content": build_docgen_mermaid_prompt(topic=topic, context=context)}],
                 task_type=TaskType.DOCGEN_LIGHT,
-                tier="fast",
+                tier="light",
                 extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
                 **llm_kwargs,
             )

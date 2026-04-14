@@ -16,7 +16,7 @@ from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.teaching.runtime_config import get_teaching_runtime_config
-from app.workflows.common.runtime_stats import tracked_step
+from app.shared.infra.workflow.runtime_stats import tracked_step
 from app.workflows.digest.planner.models import _resolve_subject_display_name
 from app.workflows.digest.shared.models import SharedInputs
 

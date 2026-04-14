@@ -28,7 +28,9 @@
 | `11_database_and_storage_architecture.md` | 本地部署、中心化部署、存储抽象 |
 | `12_api_refactor_plan.md` | API 收敛计划 |
 | `13_database_schema_inventory.md` | 当前数据库唯一主设计文档 |
+| `15_export_import.md` | 导入导出 `.atmx` 格式设计 |
 | `future.md` | 未来学习形态与产品化路线（与当前代码能力映射） |
+| `refactor/` | Digest refactor 设计（见 [refactor/README.md](refactor/README.md)） |
 
 ---
 

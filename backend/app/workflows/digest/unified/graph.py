@@ -1,8 +1,7 @@
-﻿"""Top-level LangGraph for unified digest builds."""
+"""Top-level LangGraph for unified digest builds."""
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 from uuid import uuid4
 
@@ -10,9 +9,9 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common import workflow_tracer
-from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common.result import WorkflowResult
+from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs
 from app.workflows.digest.runtime import (
     run_curriculum_derive_workflow,
@@ -153,6 +152,17 @@ def _graph_is_ready(kg_state: dict | None) -> bool:
     return bool(kg_state and kg_state.get("graph_ready"))
 
 
+def _build_kg_doc_chapter_metadatas(doc_state: dict[str, object]) -> list[dict[str, object]]:
+    chapter_metadatas = doc_state.get("chapter_metadatas", [])
+    if not isinstance(chapter_metadatas, list):
+        return []
+    normalized: list[dict[str, object]] = []
+    for item in chapter_metadatas:
+        if isinstance(item, dict):
+            normalized.append(item)
+    return normalized
+
+
 def build_prepare_shared_node(*, context: WorkflowContext):
     async def prepare_shared_node(state: UnifiedDigestState) -> UnifiedDigestState:
         started_at = perf_counter()
@@ -255,6 +265,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             file_count=len(file_ids),
             llm_concurrency_limit=settings.llm_concurrency_limit,
             docgen_max_parallel_chapters=settings.docgen_max_parallel_chapters,
+            graph_depends_on_doc_summaries=True,
         )
 
         async def run_doc_lane() -> tuple[WorkflowResult[dict], int]:
@@ -275,32 +286,34 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             )
             return result, int((perf_counter() - started_at) * 1000)
 
-        async def run_graph_lane() -> tuple[WorkflowResult[dict], int]:
+        async def run_graph_lane(
+            *,
+            chapter_metadatas: list[dict[str, object]],
+        ) -> tuple[WorkflowResult[dict], int]:
             started_at = perf_counter()
             result = await run_graph_digest_workflow(
                 subject=subject,
                 job_id=graph_job_id,
                 file_ids=file_ids,
+                doc_chapter_metadatas=chapter_metadatas,
                 event_bus=context.event_bus,
                 build_session_id=build_session_id,
                 trigger_curriculum_after_finalize=False,
             )
             return result, int((perf_counter() - started_at) * 1000)
 
-        (doc_result, doc_lane_ms), (kg_result, kg_lane_ms) = await asyncio.gather(
-            run_doc_lane(),
-            run_graph_lane(),
-        )
-
         doc_state: dict = {}
-        kg_state: dict = {}
         errors: list[str] = []
-
+        doc_result, doc_lane_ms = await run_doc_lane()
         if doc_result.failed:
             errors.append(f"Doc lane failed: {doc_result.error.detail}")
         else:
             doc_state = doc_result.require_value()
 
+        chapter_metadatas = _build_kg_doc_chapter_metadatas(doc_state)
+        kg_result, kg_lane_ms = await run_graph_lane(chapter_metadatas=chapter_metadatas)
+
+        kg_state: dict = {}
         if kg_result.failed:
             errors.append(f"Graph lane failed: {kg_result.error.detail}")
         else:
@@ -339,7 +352,7 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
             "doc_state": doc_state,
             "kg_state": kg_state,
             "graph_ready": _graph_is_ready(kg_state),
-            "lane_ms": max(doc_lane_ms, kg_lane_ms),
+            "lane_ms": doc_lane_ms + kg_lane_ms,
             "doc_lane_ms": doc_lane_ms,
             "kg_lane_ms": kg_lane_ms,
             "doc_lane_error": doc_result.error.detail if doc_result.failed else None,

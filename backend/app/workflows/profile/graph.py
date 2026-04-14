@@ -1,4 +1,4 @@
-﻿"""LangGraph definitions for the profile workflow package."""
+"""LangGraph definitions for the profile workflow package."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from sqlmodel import Session
 
 from app.models import ExamPaper
 from app.shared.infra.database import managed_session
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.profile.mastery_updater import MasteryUpdateResult, update_mastery_from_exam
 from app.workflows.profile.review_scheduler import schedule_reviews
 from app.workflows.profile.state import ProfileWorkflowState
