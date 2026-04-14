@@ -1,4 +1,4 @@
-﻿"""LangGraph definition for the interact workflow."""
+"""LangGraph definition for the interact workflow."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from fastapi import Request
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.interact.nodes import (
     build_select_execution_mode_node,
     build_load_history_state_node,

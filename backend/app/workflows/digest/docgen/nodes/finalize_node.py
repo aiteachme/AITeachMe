@@ -8,7 +8,7 @@ import structlog
 
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs, stage_knowledge_docs
 from app.workflows.digest.docgen.state import DocGenState

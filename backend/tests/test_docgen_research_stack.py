@@ -10,7 +10,7 @@ from app.shared.infra.execution import TracedExecutionContext, TracedExecutionRe
 from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
-from app.workflows.common.context import create_langgraph_dev_context
+from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.runtime import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.runtime.query_planning import (
     ResearchSubQueryPlan,

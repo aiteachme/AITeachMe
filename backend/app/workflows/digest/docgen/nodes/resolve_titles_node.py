@@ -14,7 +14,7 @@ from app.teaching.documents import (
 )
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 

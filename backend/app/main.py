@@ -32,7 +32,8 @@ from app.shared.infra.storage.config import (
     s3_uses_dogecloud_tmp_token,
     storage_is_s3,
 )
-from app.shared.kernel.exceptions import AITeachMeError
+from app.shared.infra.exceptions import AITeachMeError as InfraAITeachMeError
+from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
 
 logger = structlog.get_logger()
@@ -261,8 +262,12 @@ def _register_static_mounts(app: FastAPI) -> None:
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
-    @app.exception_handler(AITeachMeError)
-    async def aiteachme_error_handler(request: Request, exc: AITeachMeError) -> JSONResponse:
+    @app.exception_handler(KernelAITeachMeError)
+    @app.exception_handler(InfraAITeachMeError)
+    async def aiteachme_error_handler(
+        request: Request,
+        exc: KernelAITeachMeError | InfraAITeachMeError,
+    ) -> JSONResponse:
         del request
         return JSONResponse(
             status_code=exc.status_code,

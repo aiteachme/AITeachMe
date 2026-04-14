@@ -6,7 +6,7 @@ from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.token_budget import ContextWindowManager
-from app.workflows.common import traceable_run
+from app.shared.infra.workflow import traceable_run
 from app.workflows.interact.prompts.prompts import SYSTEM_PROMPT_TUTOR, get_strategy_instruction
 from app.workflows.interact.support.types import (
     MistakeSummary,

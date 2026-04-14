@@ -60,8 +60,9 @@ async def _call_embedding(
         )
         return [item["embedding"] for item in response.data]
     except litellm.exceptions.BadRequestError as exc:
+        error_text = str(exc)
         # encoding_format 不被支持，降级重试
-        if "encoding_format" in str(exc):
+        if "encoding_format" in error_text:
             logger.info(
                 "embedding_encoding_format_fallback",
                 reason="API 不支持 encoding_format 参数，降级重试",
@@ -73,6 +74,19 @@ async def _call_embedding(
                 api_key=api_key,
             )
             return [item["embedding"] for item in response.data]
+        if (
+            "Incorrect model ID" in error_text
+            or "do not have permission to use this model" in error_text
+        ):
+            configured_model = model.split("/", 1)[1] if "/" in model else model
+            raise LLMCallError(
+                reason=(
+                    f"Embedding 模型 `{configured_model}` 在当前供应商不可用或无权限。"
+                    "请在项目根目录 config.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
+                    f"当前 LLM_BASE_URL={api_base}。"
+                    "常见可选：`text-embedding-3-small`（OpenAI 兼容）或 `text-embedding-v4`（DashScope）。"
+                )
+            ) from exc
         raise
 
 
@@ -123,6 +137,15 @@ async def aembed_texts(
                     api_key=api_key,
                 )
                 return batch_idx, batch_vectors
+            except LLMCallError as exc:
+                logger.error(
+                    "embedding_batch_failed",
+                    batch_idx=batch_idx,
+                    batch_size=len(batch),
+                    model=model,
+                    error=str(exc),
+                )
+                raise
             except Exception as exc:
                 logger.error(
                     "embedding_batch_failed",

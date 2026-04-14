@@ -10,7 +10,7 @@ from sqlmodel import select
 
 from app.models.knowledge_doc import KnowledgeDoc
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.common.context import create_langgraph_dev_context
+from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
 from app.workflows.digest.docgen.publish import build_merged_markdown, publish_staged_knowledge_docs

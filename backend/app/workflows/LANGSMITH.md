@@ -27,7 +27,7 @@
 ## 4 个核心入口
 
 ```python
-from app.workflows.common import (
+from app.shared.infra.workflow import (
     run_state_graph,     # workflow 入口
     workflow_tracer,     # node 接线
     traceable_run,       # prompt/helper 装饰器
@@ -83,7 +83,7 @@ from app.workflows.common import (
 ### 1. workflow 入口 — `run_state_graph`
 
 ```python
-from app.workflows.common import run_state_graph
+from app.shared.infra.workflow import run_state_graph
 
 result = await run_state_graph(
     workflow_name="digest.planner",
@@ -115,7 +115,7 @@ result = await run_state_graph(
 ### 2. node 接线 — `workflow_tracer().node()`
 
 ```python
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow import workflow_tracer
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(DocGenState)
@@ -182,7 +182,7 @@ def build_load_context_node(*, context: WorkflowContext):
 ### 3. prompt builder — `@traceable_run`
 
 ```python
-from app.workflows.common import traceable_run
+from app.shared.infra.workflow import traceable_run
 
 @traceable_run(name="digest.docgen.writer_prompt", run_type="prompt")
 def build_writer_messages(*, subject: str, tone: str) -> list[dict]:
@@ -217,7 +217,7 @@ def build_writer_messages(*, subject: str, tone: str) -> list[dict]:
 ### 4. node 内关键步骤 — `tracked_step`
 
 ```python
-from app.workflows.common import tracked_step
+from app.shared.infra.workflow import tracked_step
 
 async with tracked_step(
     state,
@@ -362,7 +362,7 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 - 新增 prompt builder 时，默认加 `@traceable_run(..., run_type="prompt")`，不要裸写成无名 helper。
 - 新增 node 内多步逻辑时，优先用 `tracked_step(...)` 表达关键边界，不要在 node 里零散手写 LangSmith span。
 - **不要在新的 workflow 业务代码里直接调用 `llm_trace_scope(...)`。**
-  这个接口只应该留在 `workflows/common`、共享 runtime 桥接层或少数历史兼容代码里。
+  这个接口只应该留在 `shared/infra/workflow`、共享 runtime 桥接层或少数历史兼容代码里。
 
 你可以把它理解成一条 code review 红线：
 
@@ -383,8 +383,8 @@ graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
 ```python
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common import run_state_graph, tracked_step, workflow_tracer
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow import run_state_graph, tracked_step, workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext
 
 
 def build_demo_graph(*, context: WorkflowContext) -> StateGraph:

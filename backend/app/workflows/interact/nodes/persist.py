@@ -15,7 +15,7 @@ from sqlmodel import Session
 
 from app.repositories.chats_repo import create_message_pair
 from app.shared.infra.database import managed_session
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 
 

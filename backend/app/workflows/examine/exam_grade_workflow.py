@@ -1,4 +1,4 @@
-﻿"""Exam grading workflow orchestration.
+"""Exam grading workflow orchestration.
 Reads DB: ``exam_paper*`` and downstream profile state tables.
 Writes DB: ``exam_paper.status``, graded attempts,
 ``user_knowledge_state`` and ``review_task`` via delegated profile steps.
@@ -19,8 +19,8 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.models import ExamPaper, ExamPaperStatus, validate_status_transition
 from app.utils.time import utcnow
-from app.workflows.common import workflow_tracer
-from app.workflows.common.runtime import invoke_state_graph
+from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.runtime import invoke_state_graph
 from app.workflows.examine.answer_grader import grade_paper
 from app.workflows.examine.state import ExamGradeState
 from app.workflows.profile.mastery_updater import update_mastery_from_exam

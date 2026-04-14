@@ -1,4 +1,4 @@
-﻿"""Digest knowledge-graph workflow graph and initial state."""
+"""Digest knowledge-graph workflow graph and initial state."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.digest.kg.finalize_nodes import build_finalize_graph_node, fail_node
 from app.workflows.digest.kg.prepare_nodes import (
     acquire_lock_node,
@@ -179,6 +179,7 @@ def create_graph_digest_initial_state(
     file_ids: list[int],
     job_id: int,
     build_session_id: str | None = None,
+    doc_chapter_metadatas: list[dict[str, object]] | None = None,
 ) -> KGDigestState:
     """Create the initial state for digest graph building."""
 
@@ -187,6 +188,7 @@ def create_graph_digest_initial_state(
         "file_ids": file_ids,
         "job_id": job_id,
         "build_session_id": build_session_id or "",
+        "doc_chapter_metadatas": list(doc_chapter_metadatas or []),
         "shared_inputs": None,
         "chunk_ids": [],
         "chunk_uid_to_chunk_id": {},

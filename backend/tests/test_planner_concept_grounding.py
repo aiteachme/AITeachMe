@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 from app.shared.infra.search.types import SearchResult
-from app.workflows.common.context import create_langgraph_dev_context
+from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.planner.concept_grounding import (
     build_planner_concept_queries,
     collect_planner_concept_briefing,

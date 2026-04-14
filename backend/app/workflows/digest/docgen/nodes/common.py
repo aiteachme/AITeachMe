@@ -13,8 +13,8 @@ from app.workflows.digest.shared.contracts import (
     resolve_digest_course_type,
     resolve_digest_retrieval_profile,
 )
-from app.workflows.common.context import WorkflowContext
-from app.workflows.common.events import LoggedWorkflowEvent
+from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.events import LoggedWorkflowEvent
 
 
 async def publish_docgen_progress(
