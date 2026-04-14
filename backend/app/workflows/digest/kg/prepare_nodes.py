@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from time import perf_counter
+from typing import Any
 
 from sqlmodel import select
 
@@ -26,6 +27,7 @@ from app.workflows.digest.kg.support import workflow_logger
 from app.workflows.common.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
+
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
@@ -92,6 +94,158 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
             )
         )
     return TopicAnchorSnapshot(anchors=anchors)
+
+
+def _normalize_doc_chapter_metadatas(payload: object) -> list[dict[str, object]]:
+    if not isinstance(payload, list):
+        return []
+
+    normalized: list[dict[str, object]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        summary = str(item.get("summary") or "").strip()
+        research_summary = str(item.get("research_summary") or "").strip()
+        if not summary and not research_summary:
+            continue
+        tags = [str(tag).strip() for tag in list(item.get("tags") or []) if str(tag).strip()]
+        source_file_ids: list[int] = []
+        for file_id in list(item.get("source_file_ids") or []):
+            try:
+                parsed = int(file_id)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                source_file_ids.append(parsed)
+        normalized.append(
+            {
+                "chapter_index": int(item.get("chapter_index", 0) or 0),
+                "title": str(item.get("resolved_title") or item.get("title") or "").strip(),
+                "summary": summary,
+                "research_summary": research_summary,
+                "tags": tags,
+                "source_file_ids": source_file_ids,
+            }
+        )
+    return normalized
+
+
+def _build_doc_summary_content(chapter: dict[str, object]) -> str:
+    summary = str(chapter.get("summary") or "").strip()
+    research_summary = str(chapter.get("research_summary") or "").strip()
+    tags = [str(tag).strip() for tag in list(chapter.get("tags") or []) if str(tag).strip()]
+    parts: list[str] = []
+    if summary:
+        parts.append(f"章节总结：{summary}")
+    if research_summary:
+        parts.append(f"研究补充：{research_summary}")
+    if tags:
+        parts.append(f"关键词：{'、'.join(tags[:8])}")
+    return "\n\n".join(parts).strip()
+
+
+def _resolve_doc_summary_chunk_id(
+    chapter: dict[str, object],
+    *,
+    file_id_to_chunk_ids: dict[int, list[int]],
+    fallback_chunk_id: int | None,
+) -> int | None:
+    for file_id in list(chapter.get("source_file_ids") or []):
+        try:
+            parsed = int(file_id)
+        except (TypeError, ValueError):
+            continue
+        chunk_ids = file_id_to_chunk_ids.get(parsed, [])
+        if chunk_ids:
+            return chunk_ids[0]
+    return fallback_chunk_id
+
+
+async def _extract_doc_summary_candidates(
+    *,
+    chapter_metadatas: list[dict[str, object]],
+    ordered_results: list[ChunkExtractionResult],
+    all_candidate_edges: list[tuple[CandidateEdge, int]],
+    chunk_id_to_index: dict[int, int],
+    file_id_to_chunk_ids: dict[int, list[int]],
+    fallback_chunk_id: int | None,
+    semaphore: asyncio.Semaphore,
+    taxonomy_hints: set[str],
+    subject_context: str,
+    sibling_topics: str,
+    digest_mode: str,
+    chapter_topic_hints: list[str],
+    digest_logger: Any,
+) -> tuple[int, int, int]:
+    if not chapter_metadatas or not chunk_id_to_index:
+        return 0, 0, 0
+
+    summary_jobs: list[tuple[int, int, str, str]] = []
+    for chapter in chapter_metadatas:
+        content = _build_doc_summary_content(chapter)
+        if not content:
+            continue
+        chunk_id = _resolve_doc_summary_chunk_id(
+            chapter,
+            file_id_to_chunk_ids=file_id_to_chunk_ids,
+            fallback_chunk_id=fallback_chunk_id,
+        )
+        if chunk_id is None:
+            continue
+        target_index = chunk_id_to_index.get(chunk_id)
+        if target_index is None:
+            continue
+        chapter_title = str(chapter.get("title") or "").strip() or f"章节{int(chapter.get('chapter_index', 0) or 0)}"
+        summary_jobs.append((target_index, chunk_id, chapter_title, content))
+
+    if not summary_jobs:
+        return 0, 0, 0
+
+    async def _extract_one(
+        target_index: int,
+        chunk_id: int,
+        chapter_title: str,
+        summary_content: str,
+    ) -> tuple[int, int, ChunkExtractionResult]:
+        async with semaphore:
+            result = await extract_candidates(
+                chunk_content=summary_content,
+                chunk_title=chapter_title,
+                header_path=chapter_title,
+                doc_source_type="knowledge_doc_summary",
+                subject_context=subject_context,
+                prefer_fast_path=False,
+                sibling_topics=sibling_topics,
+                digest_mode=digest_mode,
+                chapter_topic_hints=chapter_topic_hints,
+            )
+        _apply_taxonomy_hints(result, taxonomy_hints)
+        return target_index, chunk_id, result
+
+    tasks = [
+        asyncio.create_task(_extract_one(target_index, chunk_id, chapter_title, summary_content))
+        for target_index, chunk_id, chapter_title, summary_content in summary_jobs
+    ]
+    extracted_summary_count = 0
+    extracted_node_count = 0
+    extracted_edge_count = 0
+    try:
+        for task in asyncio.as_completed(tasks):
+            try:
+                target_index, chunk_id, result = await task
+            except Exception as exc:
+                digest_logger.warning("kg_doc_summary_extract_failed", error=str(exc))
+                continue
+            ordered_results[target_index].nodes.extend(result.nodes)
+            ordered_results[target_index].edges.extend(result.edges)
+            all_candidate_edges.extend((edge, chunk_id) for edge in result.edges)
+            extracted_summary_count += 1
+            extracted_node_count += len(result.nodes)
+            extracted_edge_count += len(result.edges)
+    except asyncio.CancelledError:
+        await cancel_tasks_and_drain(tasks)
+        raise
+    return extracted_summary_count, extracted_node_count, extracted_edge_count
 
 
 async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
@@ -178,6 +332,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             digest_mode = ""
             sibling_topics = ""
             chapter_topic_hints: list[str] = []
+            doc_chapter_metadatas = _normalize_doc_chapter_metadatas(
+                state.get("doc_chapter_metadatas", [])
+            )
             if build_session_id:
                 unified_session = get_unified_build_session(build_session_id)
                 shared_inputs = unified_session.shared_inputs
@@ -239,6 +396,12 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             chunk_map = {chunk.id: chunk for chunk in chunk_rows if chunk.id is not None}
             ordered_results = [ChunkExtractionResult() for _ in chunk_ids]
             all_candidate_edges: list[tuple[CandidateEdge, int]] = []
+            chunk_id_to_index = {chunk_id: index for index, chunk_id in enumerate(chunk_ids)}
+            file_id_to_chunk_ids: dict[int, list[int]] = {}
+            for chunk_id, chunk in chunk_map.items():
+                file_id_to_chunk_ids.setdefault(int(chunk.document_id), []).append(chunk_id)
+            for ids in file_id_to_chunk_ids.values():
+                ids.sort()
             success_chunk_count = 0
             failed_chunk_count = 0
             failure_samples: list[dict[str, str | int]] = []
@@ -246,6 +409,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
             fast_path_chunk_count = 0
             llm_extract_chunk_count = 0
+            doc_summary_extraction_count = 0
+            doc_summary_node_count = 0
+            doc_summary_edge_count = 0
             slowest_chunks: list[dict[str, object]] = []
 
             def _should_prefer_fast_path(chunk_id: int) -> bool:
@@ -402,6 +568,33 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 await cancel_tasks_and_drain(tasks)
                 raise
 
+            (
+                doc_summary_extraction_count,
+                doc_summary_node_count,
+                doc_summary_edge_count,
+            ) = await _extract_doc_summary_candidates(
+                chapter_metadatas=doc_chapter_metadatas,
+                ordered_results=ordered_results,
+                all_candidate_edges=all_candidate_edges,
+                chunk_id_to_index=chunk_id_to_index,
+                file_id_to_chunk_ids=file_id_to_chunk_ids,
+                fallback_chunk_id=(chunk_ids[0] if chunk_ids else None),
+                semaphore=semaphore,
+                taxonomy_hints=taxonomy_hints,
+                subject_context=subject_context,
+                sibling_topics=sibling_topics,
+                digest_mode=digest_mode,
+                chapter_topic_hints=chapter_topic_hints,
+                digest_logger=digest_logger,
+            )
+            if doc_summary_extraction_count:
+                digest_logger.info(
+                    "kg_doc_summary_extract_complete",
+                    summary_count=doc_summary_extraction_count,
+                    node_count=doc_summary_node_count,
+                    edge_count=doc_summary_edge_count,
+                )
+
             update_job_progress(
                 session,
                 job_id=state["job_id"],
@@ -432,9 +625,12 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 total_nodes=total_nodes,
                 total_edges=total_edges,
                 parallelism=extract_parallelism,
+                doc_summary_count=doc_summary_extraction_count,
+                doc_summary_nodes=doc_summary_node_count,
+                doc_summary_edges=doc_summary_edge_count,
                 failure_samples=failure_samples,
             )
-            if chunk_ids and success_chunk_count == 0:
+            if chunk_ids and success_chunk_count == 0 and doc_summary_extraction_count == 0:
                 error_message = "extract_failed: all_chunk_extractions_failed"
                 digest_logger.error(
                     "kg_workflow_extract_zero_success",
@@ -471,6 +667,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 "llm_extract_chunk_count": llm_extract_chunk_count,
                 "success_chunk_count": success_chunk_count,
                 "failed_chunk_count": failed_chunk_count,
+                "doc_summary_extraction_count": doc_summary_extraction_count,
+                "doc_summary_node_count": doc_summary_node_count,
+                "doc_summary_edge_count": doc_summary_edge_count,
                 "slowest_chunks": slowest_chunks,
             }
         except Exception as exc:

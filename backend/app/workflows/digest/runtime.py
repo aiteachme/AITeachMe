@@ -45,6 +45,7 @@ async def run_graph_digest_workflow(
     subject: str,
     job_id: int,
     file_ids: list[int],
+    doc_chapter_metadatas: list[dict[str, object]] | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
     trigger_curriculum_after_finalize: bool = True,
@@ -95,6 +96,7 @@ async def run_graph_digest_workflow(
             file_ids=file_ids,
             job_id=job_id,
             build_session_id=build_session_id,
+            doc_chapter_metadatas=doc_chapter_metadatas,
         ),
         context=context,
     )
