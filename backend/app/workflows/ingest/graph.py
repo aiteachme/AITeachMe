@@ -1,4 +1,4 @@
-﻿"""Ingest workflow graph definitions — two-phase architecture.
+"""Ingest workflow graph definitions — two-phase architecture.
 
 Phase 1 (Fast Parse): Traditional parsing, no LLM.
 Phase 2 (Deep Enhance): LLM Vision OCR, runs in background.
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.ingest.nodes.enhance import (
     build_deep_enhance_file_node,
     build_finalize_deep_enhance_node,

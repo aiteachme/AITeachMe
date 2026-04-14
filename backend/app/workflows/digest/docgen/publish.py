@@ -1,4 +1,4 @@
-﻿"""Helpers for staging and publishing knowledge docs."""
+"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from app.utils.docgen_store import (
 )
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
-from app.workflows.common.runtime import cancel_tasks_and_drain
+from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 
 
 class StagedKnowledgeDocs(BaseModel):

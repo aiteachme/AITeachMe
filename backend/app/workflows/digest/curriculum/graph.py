@@ -1,10 +1,10 @@
-﻿"""Digest curriculum workflow graph and initial state."""
+"""Digest curriculum workflow graph and initial state."""
 
 from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
-from app.workflows.common import workflow_tracer
+from app.shared.infra.workflow import workflow_tracer
 from app.workflows.digest.curriculum.nodes import (
     derive_prereq_dag_node,
     derive_theme_tree_node,

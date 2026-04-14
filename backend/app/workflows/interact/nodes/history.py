@@ -18,7 +18,7 @@ from app.shared.infra.database import managed_session
 from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
 from app.utils.presenters import mastery_to_text
-from app.workflows.common.context import WorkflowContext
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.types import (
     MistakeSummary,

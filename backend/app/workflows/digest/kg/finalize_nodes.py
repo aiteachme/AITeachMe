@@ -17,7 +17,7 @@ from app.utils.job_helpers import (
     cleanup_pending_by_job,
     update_job_progress,
 )
-from app.workflows.common.result import WorkflowResult
+from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.kg.state import KGDigestState
 from app.workflows.digest.kg.support import workflow_logger
 from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot

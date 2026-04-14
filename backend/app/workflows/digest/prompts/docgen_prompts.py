@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.common import traceable_run
+from app.shared.infra.workflow import traceable_run
 
 def _normalize_mode(digest_mode: str) -> str:
     return (digest_mode or "systematic").strip().lower()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.workflows.common import traceable_run
+from app.shared.infra.workflow import traceable_run
 from app.workflows.digest.shared.models import SharedInputs
 
 

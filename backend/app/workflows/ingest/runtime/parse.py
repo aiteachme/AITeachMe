@@ -18,7 +18,7 @@ from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
-from app.workflows.common.result import WorkflowResult, err_result, ok_result
+from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
 from app.workflows.ingest.parsing.classifier import classify_file
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,

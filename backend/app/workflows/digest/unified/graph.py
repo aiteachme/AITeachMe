@@ -1,4 +1,4 @@
-﻿"""Top-level LangGraph for unified digest builds."""
+"""Top-level LangGraph for unified digest builds."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from langgraph.graph import END, StateGraph
 
 from app.shared.infra.config import get_settings
 from app.utils.docgen_store import update_knowledge_build_status
-from app.workflows.common import workflow_tracer
-from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common.result import WorkflowResult
+from app.shared.infra.workflow import workflow_tracer
+from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.docgen.publish import publish_staged_knowledge_docs
 from app.workflows.digest.runtime import (
     run_curriculum_derive_workflow,

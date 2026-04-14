@@ -8,7 +8,7 @@ from app.shared.infra.execution import TracedExecutionContext, TracedExecutionRe
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, normalize_mermaid_blocks
-from app.workflows.common.context import create_langgraph_dev_context
+from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import (
     build_collect_drafts_node,
     build_enrich_document_node,

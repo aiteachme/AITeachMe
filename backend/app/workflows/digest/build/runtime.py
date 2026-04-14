@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.workflows.common.events import InProcessEventBus
+from app.shared.infra.workflow.events import InProcessEventBus
 from app.workflows.digest.unified.runtime import (
     run_unified_digest_build as run_active_unified_digest_build,
 )
