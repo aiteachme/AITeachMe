@@ -22,6 +22,7 @@ from app.shared.infra.exceptions import (
     InvalidRawFileStateError,
     RawFileNotFoundError,
 )
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_artifact_store, get_content_store, run_store_sync
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import (
@@ -236,7 +237,7 @@ async def save_uploaded_file(
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
 
-    storage_backend = "s3" if settings.is_cloud_mode else "local"
+    storage_backend = "s3" if is_cloud_mode() else "local"
     # 注意：这里把“本次解析请求参数”暂存到 parse_metadata_json。
     # ingest runtime 会在真正解析时读取这些参数，并在写入最终 parse_metadata_json 时决定是否保留敏感字段。
     parse_request_json = None
@@ -266,7 +267,7 @@ async def save_uploaded_file(
 
 
     cs = get_content_store()
-    if settings.is_cloud_mode:
+    if is_cloud_mode():
         # cloud: 上传到 OSS，file_path 存 storage_key
         storage_key = f"{normalized_subject}/raw_files/{raw_file_id}{extension}"
         try:

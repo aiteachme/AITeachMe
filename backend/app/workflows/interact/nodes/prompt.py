@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from app.schemas.llm import ChatMessage, SYSTEM
 from app.workflows.common.context import WorkflowContext
+from app.workflows.interact.prompts import build_chat_messages, get_execution_instruction
 from app.workflows.interact.state import InteractWorkflowState
-from app.workflows.interact.support.messages import build_chat_messages
 
 
 def build_prompt_node(*, context: WorkflowContext):
@@ -24,10 +25,21 @@ def build_prompt_node(*, context: WorkflowContext):
             selected_context=state.get("selected_context"),
             source_chunk_id=state.get("source_chunk_id"),
         )
+        execution_instruction = get_execution_instruction(state["execution_mode"])
+        if execution_instruction:
+            mode_message: ChatMessage = {
+                "role": SYSTEM,
+                "content": execution_instruction,
+            }
+            if messages and messages[0].get("role") == SYSTEM:
+                messages = [messages[0], mode_message, *messages[1:]]
+            else:
+                messages = [mode_message, *messages]
         workflow_logger.info(
             "interact_prompt_built",
             message_count=len(messages),
             citation_count=len(state.get("contexts") or []),
+            execution_mode=state["execution_mode"].value,
         )
         return {
             **state,

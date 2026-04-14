@@ -1,15 +1,13 @@
-"""Teaching-oriented view over the shared project configuration.
-
-`shared/infra/config.py` 负责“配置从哪里加载”。
-这里负责把通用 settings 组织成教学语义更清晰的结构，供 planner/docgen 使用。
-"""
+"""Teaching-oriented projection of project runtime configuration."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
-from app.shared.infra.config import get_settings, resolve_project_config_path
+from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import resolve_project_config_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +38,7 @@ class TeachingRuntimeConfig:
     source_path: str
 
 
-def get_teaching_runtime_config_path():
+def get_teaching_runtime_config_path() -> Path:
     """Return the resolved project config path for diagnostics/debugging."""
 
     return resolve_project_config_path()
@@ -58,7 +56,10 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
             allow_external_search=settings.planner_allow_external_search,
             sprint=PlannerModeRuntimeConfig(
                 min_chapters=settings.planner_sprint_min_chapters,
-                max_chapters=max(settings.planner_sprint_min_chapters, settings.planner_sprint_max_chapters),
+                max_chapters=max(
+                    settings.planner_sprint_min_chapters,
+                    settings.planner_sprint_max_chapters,
+                ),
                 target_length=settings.planner_sprint_target_length,
             ),
             systematic=PlannerModeRuntimeConfig(
@@ -86,6 +87,6 @@ __all__ = [
     "PlannerRuntimeConfig",
     "TeachingRuntimeConfig",
     "get_planner_mode_runtime_config",
-    "get_teaching_runtime_config_path",
     "get_teaching_runtime_config",
+    "get_teaching_runtime_config_path",
 ]

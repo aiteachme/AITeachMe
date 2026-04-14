@@ -3,11 +3,74 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.observability import (
+    sanitize_langsmith_input,
+    traceable_with_context,
+)
+
+
+def _read_urls_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    urls = [str(url or "").strip() for url in list(inputs.get("urls") or []) if str(url or "").strip()]
+    payload: dict[str, object] = {
+        "url_count": len(urls),
+        "preferred_reader": str(inputs.get("preferred_reader") or ""),
+        "urls_preview": sanitize_langsmith_input(urls[:2], field_name="urls"),
+    }
+    max_workers = inputs.get("max_workers")
+    if max_workers not in (None, ""):
+        payload["max_workers"] = int(max_workers)
+    return payload
+
+
+def _read_urls_trace_outputs(payload: object) -> dict[str, object]:
+    if not isinstance(payload, Mapping):
+        return {}
+    trace = payload.get("trace")
+    if isinstance(trace, Mapping):
+        return dict(trace)
+    return {}
+
+
+@traceable_with_context(
+    name="tool.read_urls",
+    run_type="tool",
+    process_inputs=_read_urls_trace_inputs,
+    process_outputs=_read_urls_trace_outputs,
+    metadata_factory=lambda urls, max_workers=None, preferred_reader=None: {"tool_name": "read_urls"},
+    tags_factory=lambda urls, max_workers=None, preferred_reader=None: ["tool:read_urls"],
+)
+async def _run_traced_read_urls(
+    urls: list[str],
+    *,
+    max_workers: int,
+    preferred_reader: str | None,
+    langsmith_extra: dict[str, object] | None = None,
+) -> dict[str, object]:
+    del langsmith_extra
+    ordered_urls = list(dict.fromkeys(str(url or "").strip() for url in urls if str(url or "").strip()))
+    semaphore = asyncio.Semaphore(max_workers)
+
+    async def _read_one(url: str) -> ScrapedPage:
+        async with semaphore:
+            reader = get_reader_for_url(url, preferred=preferred_reader) if preferred_reader else get_reader_for_url(url)
+            try:
+                return await reader.traced_read(url)
+            except Exception as exc:  # pragma: no cover - reader backends are integration-heavy
+                return ScrapedPage(url=url, success=False, error=str(exc))
+
+    pages = await asyncio.gather(*[_read_one(url) for url in ordered_urls])
+    return {
+        "pages": pages,
+        "trace": {
+            "page_count": len(pages),
+            "success_count": sum(1 for page in pages if page.success),
+        },
+    }
 
 
 async def read_urls(
@@ -24,42 +87,12 @@ async def read_urls(
 
     settings = get_settings()
     worker_count = max(1, int(max_workers or settings.docgen_io_parallelism or 1))
-    semaphore = asyncio.Semaphore(worker_count)
-    trace = get_llm_trace_context()
-
-    async def _read_one(url: str) -> ScrapedPage:
-        async with semaphore:
-            reader = get_reader_for_url(url, preferred=preferred_reader) if preferred_reader else get_reader_for_url(url)
-            try:
-                return await reader.traced_read(url)
-            except Exception as exc:  # pragma: no cover - reader backends are integration-heavy
-                return ScrapedPage(url=url, success=False, error=str(exc))
-
-    with langsmith_trace(
-        name="tool.read_urls",
-        run_type="tool",
-        inputs={
-            "url_count": len(ordered_urls),
-            "max_workers": worker_count,
-            "preferred_reader": preferred_reader or "",
-        },
-        subject=trace.subject,
-        build_session_id=trace.build_session_id,
-        workflow=trace.workflow,
-        lane=trace.lane,
-        node=trace.node,
-        extra_metadata={"tool_name": "read_urls"},
-        extra_tags=["tool:read_urls"],
-    ) as run:
-        pages = await asyncio.gather(*[_read_one(url) for url in ordered_urls])
-        if run is not None:
-            run.end(
-                outputs={
-                    "page_count": len(pages),
-                    "success_count": sum(1 for page in pages if page.success),
-                }
-            )
-        return pages
+    payload = await _run_traced_read_urls(
+        ordered_urls,
+        max_workers=worker_count,
+        preferred_reader=preferred_reader,
+    )
+    return list(payload.get("pages") or [])
 
 
 __all__ = ["read_urls"]

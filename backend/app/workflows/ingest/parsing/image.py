@@ -7,7 +7,9 @@ from pathlib import Path
 
 import structlog
 
-from app.shared.infra.exceptions import FileParseError
+from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
+from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
@@ -70,10 +72,16 @@ async def parse_image_bytes_with_llm_vision(
         logger.warning("parse_image_bytes_skipped", reason="image_bytes_too_small", size=len(image_bytes))
         return _UNCLEAR_MARKDOWN
 
-    from app.shared.infra.config import get_settings
-
     settings = get_settings()
-    ocr_model, ocr_api_key, ocr_base_url = settings.get_ocr_config()
+    ocr_model = settings.ocr_model or settings.llm_model
+    ocr_api_key = (get_env("OCR_API_KEY") or get_env("LLM_API_KEY") or "").strip()
+    ocr_base_url = (
+        get_env("OCR_BASE_URL")
+        or get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    if not ocr_api_key:
+        raise MissingLLMApiKeyError()
 
     encoded = base64.b64encode(image_bytes).decode("utf-8")
     prompt = populate_prompt(get_image_parse_prompt(language_mode))

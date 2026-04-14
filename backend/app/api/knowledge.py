@@ -18,4 +18,3 @@ router.include_router(knowledge_docs_router)
 router.include_router(knowledge_graph_router)
 
 __all__ = ["router"]
-

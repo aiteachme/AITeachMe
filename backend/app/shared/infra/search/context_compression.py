@@ -7,7 +7,8 @@ import re
 from collections import Counter
 
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.search.cache import get_compression_runtime_cache
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 
 _FAST_PATH_CHAR_LIMIT = 2400
 _DEFAULT_PASSAGE_MAX_CHARS = 900
@@ -127,6 +128,29 @@ def _limit_by_total_chars(passages: list[str], *, max_total_chars: int) -> list[
     return selected or passages[:1]
 
 
+def _build_compression_cache_payload(
+    *,
+    query: str,
+    documents: list[str],
+    focus_terms: list[str],
+    similarity_threshold: float,
+    lexical_threshold: float,
+    max_results: int,
+    max_total_chars: int,
+    passage_max_chars: int,
+) -> dict[str, object]:
+    return {
+        "query": str(query or "").strip(),
+        "documents": [str(item or "") for item in documents],
+        "focus_terms": [str(item or "").strip() for item in focus_terms if str(item or "").strip()],
+        "similarity_threshold": float(similarity_threshold),
+        "lexical_threshold": float(lexical_threshold),
+        "max_results": int(max_results),
+        "max_total_chars": int(max_total_chars),
+        "passage_max_chars": int(passage_max_chars),
+    }
+
+
 class ContextCompressor(BaseTracedExecution):
     async def execute(
         self,
@@ -140,11 +164,49 @@ class ContextCompressor(BaseTracedExecution):
         max_total_chars: int = _DEFAULT_MAX_TOTAL_CHARS,
         passage_max_chars: int = _DEFAULT_PASSAGE_MAX_CHARS,
     ) -> TracedExecutionResult:
+        normalized_focus_terms = [str(item).strip() for item in focus_terms or [] if str(item).strip()]
+        result, cache_status = await get_compression_runtime_cache().get_or_compute(
+            payload=_build_compression_cache_payload(
+                query=query,
+                documents=documents,
+                focus_terms=normalized_focus_terms,
+                similarity_threshold=similarity_threshold,
+                lexical_threshold=lexical_threshold,
+                max_results=max_results,
+                max_total_chars=max_total_chars,
+                passage_max_chars=passage_max_chars,
+            ),
+            loader=lambda: self._execute_uncached(
+                query=query,
+                documents=documents,
+                focus_terms=normalized_focus_terms,
+                similarity_threshold=similarity_threshold,
+                lexical_threshold=lexical_threshold,
+                max_results=max_results,
+                max_total_chars=max_total_chars,
+                passage_max_chars=passage_max_chars,
+            ),
+        )
+        result.metadata["cache_status"] = cache_status
+        result.metadata["cache_hit"] = cache_status in {"hit", "shared"}
+        return result
+
+    async def _execute_uncached(
+        self,
+        *,
+        query: str,
+        documents: list[str],
+        focus_terms: list[str],
+        similarity_threshold: float,
+        lexical_threshold: float,
+        max_results: int,
+        max_total_chars: int,
+        passage_max_chars: int,
+    ) -> TracedExecutionResult:
         cleaned_documents = [doc.strip() for doc in documents if str(doc).strip()]
         if not cleaned_documents:
             return TracedExecutionResult(metadata={"compression_mode": "empty"})
 
-        normalized_focus_terms = [str(item).strip() for item in focus_terms or [] if str(item).strip()]
         passages = _dedupe_passages(
             [
                 passage
@@ -155,7 +217,7 @@ class ContextCompressor(BaseTracedExecution):
         if not passages:
             return TracedExecutionResult(metadata={"compression_mode": "empty"})
 
-        focus_query = " ".join([query.strip(), *normalized_focus_terms]).strip()
+        focus_query = " ".join([query.strip(), *focus_terms]).strip()
         query_tokens = Counter(_tokenize(focus_query))
         total_chars = sum(len(item) for item in passages)
 
@@ -172,7 +234,7 @@ class ContextCompressor(BaseTracedExecution):
                     "document_count": len(cleaned_documents),
                     "passage_count": len(passages),
                     "selected_count": len(selected),
-                    "focus_term_count": len(normalized_focus_terms),
+                    "focus_term_count": len(focus_terms),
                 },
             )
 
@@ -197,7 +259,7 @@ class ContextCompressor(BaseTracedExecution):
                         "document_count": len(cleaned_documents),
                         "passage_count": len(passages),
                         "selected_count": len(selected),
-                        "focus_term_count": len(normalized_focus_terms),
+                        "focus_term_count": len(focus_terms),
                     },
                 )
         except Exception:
@@ -215,7 +277,7 @@ class ContextCompressor(BaseTracedExecution):
                 "document_count": len(cleaned_documents),
                 "passage_count": len(passages),
                 "selected_count": len(selected),
-                "focus_term_count": len(normalized_focus_terms),
+                "focus_term_count": len(focus_terms),
             },
         )
 

@@ -1,7 +1,9 @@
-﻿## 二、三级模型策略
+## 二、三级模型策略
 
-> 最后更新：2026-04-10
-> 目标：在保证速度和质量的前提下，让 `Planner / Research / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪、可降级。
+> 最后更新：2026-04-14
+>
+> **Tier 命名变更**：`strategic/smart/fast` → `reason/primary/fast`
+> 目标：在保证速度和质量的前提下，让 `Planner / Grounding / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪、可降级。
 
 ---
 
@@ -11,7 +13,7 @@
 真实实现是：
 
 - `TaskType` 仍然是模型任务语义
-- `llm_support/fallback.py` 已定义 `LLMTier = "strategic" | "smart" | "fast"`
+- `llm_support/fallback.py` 已定义 `LLMTier = "reason" | "primary" | "fast"`
 - `acompletion_with_fallback()` 同时接受 `task_type` 与可选 `tier`
 - `writer.py`、`mermaid_generator.py`、`resolve_titles_node.py` 已经在显式传 `tier`
 
@@ -25,9 +27,9 @@
 
 | 层级 | 当前实现 | 主要场景 | 优先级 |
 | --- | --- | --- | --- |
-| `strategic` | `TaskType.REASONING` 为主，fallback 到 `DOCGEN` / `DOCGEN_LIGHT` | 规划、子查询生成、Build Contract 收紧、缺口评估 | 质量优先 |
-| `smart` | `TaskType.DOCGEN` 为主，fallback 到 `DOCGEN_LIGHT` / `DEFAULT` | 章节写作、长文本组织、总结、解释 | 平衡 |
-| `fast` | `TaskType.DOCGEN_LIGHT` 为主，fallback 到 `DEFAULT` | 标题解析、术语/结构整理、Mermaid 规划、轻量评估 | 速度优先 |
+| `reason` | `TaskType.REASONING` 为主，fallback 到 `DOCGEN` / `DOCGEN_LIGHT` | 规划、子查询生成、Build Contract 收紧、缺口评估 | 推理深度优先 |
+| `primary` | `TaskType.DOCGEN` 为主，fallback 到 `DOCGEN_LIGHT` / `DEFAULT` | 章节写作、题目生成、批改、对话、OCR | 质量均衡 |
+| `fast` | `TaskType.DOCGEN_LIGHT` 为主，fallback 到 `DEFAULT` | KG 抽取、标题解析、分类、Mermaid 规划、轻量评估 | 吞吐/成本优先 |
 
 ---
 
@@ -35,19 +37,19 @@
 
 ### Planner
 
-- `confirm_plan`、`chapter_plan`、`BuildContract` 校验建议：`strategic`
+- `confirm_plan`、`chapter_plan`、`BuildContract` 校验建议：`reason`
 - 目标：少调用，但要稳定、清楚、结构化
 
-### Research
+### Grounding / Retrieval
 
-- `generate_sub_queries`：`strategic`
+- `generate_sub_queries`：`reason`
 - `assess_gaps`：`fast`
 - `purify_material`：`fast`
 - 目标：尽量把重质量用在“查什么”和“还缺什么”，不要把昂贵模型浪费在机械整理上
 
 ### Writer
 
-- `PedagogyWriter` 主写作：`smart`
+- `PedagogyWriter` 主写作：`primary`
 - 标题解析、块级修补：`fast`
 - 目标：把长文本质量留给正文，把格式整理和补洞交给轻量模型
 
@@ -55,7 +57,7 @@
 
 - Mermaid 规划：`fast`
 - 图片 prompt 规划：`fast`
-- 交互 HTML / 动画设计稿：`smart`
+- 交互 HTML / 动画设计稿：`primary`
 - 目标：资产规划和最终正文分开，不让富媒体拖垮主链路
 
 ---
@@ -66,8 +68,8 @@
 
 | 请求层级 | 候选链 |
 | --- | --- |
-| `strategic` | `REASONING -> DOCGEN -> DOCGEN_LIGHT` |
-| `smart` | `DOCGEN -> DOCGEN_LIGHT -> DEFAULT` |
+| `reason` | `REASONING -> DOCGEN -> DOCGEN_LIGHT` |
+| `primary` | `DOCGEN -> DOCGEN_LIGHT -> DEFAULT` |
 | `fast` | `DOCGEN_LIGHT -> DEFAULT` |
 
 每次候选尝试都会在 LangSmith metadata 中记录：
@@ -107,7 +109,7 @@
 不适合乱传 `tier` 的场景：
 
 - 所有节点都手动覆盖
-- 为了“看起来聪明”统一上 `strategic`
+- 为了“看起来聪明”统一上 `reason`
 - 业务语义不清，只是碰运气调模型
 
 ### 原则 3：Planner 少而贵，Writer 稳而准，Asset 轻而快
@@ -115,7 +117,7 @@
 这是 Digest 最适合的默认策略：
 
 - Planner：调用少，但要结构正确
-- Research：把贵模型用在 query planning 和 gap assessment
+- Grounding：把贵模型用在 query planning 和 gap assessment
 - Writer：正文优先稳定质量
 - Asset：默认不抢正文预算
 
@@ -127,14 +129,14 @@
 
 - 更重速度和得分信息密度
 - 研究补检索上限应更低
-- 允许更多 `fast` / `smart`
-- 不建议大面积使用 `strategic`
+- 允许更多 `fast` / `primary`
+- 不建议大面积使用 `reason`
 
 ### `systematic`
 
 - 更重结构完整性和解释质量
-- 允许在 `BuildContract`、缺口评估、结构校正上多用 `strategic`
-- 写作阶段仍以 `smart` 为主
+- 允许在 `BuildContract`、缺口评估、结构校正上多用 `reason`
+- 写作阶段仍以 `primary` 为主
 
 ---
 
@@ -180,14 +182,14 @@
 
 | 阶段 | 默认层级 |
 | --- | --- |
-| Planner confirm / contract normalization | `strategic` |
-| 章节 query planning | `strategic` |
+| Planner confirm / contract normalization | `reason` |
+| 章节 query planning | `reason` |
 | 章节 gap assessment | `fast` |
 | 研究笔记 purify | `fast` |
-| 正文写作 | `smart` |
+| 正文写作 | `primary` |
 | 标题修正 / 轻量结构补全 | `fast` |
 | Mermaid / 图片 prompt 规划 | `fast` |
-| 交互 HTML / 动画设计稿 | `smart` |
+| 交互 HTML / 动画设计稿 | `primary` |
 
 ---
 
@@ -198,4 +200,3 @@
 - 把贵模型预算集中在规划和正文
 - 把轻量模型预算集中在整理和资产规划
 - 让所有降级都能在 LangSmith 中被清楚看见
-

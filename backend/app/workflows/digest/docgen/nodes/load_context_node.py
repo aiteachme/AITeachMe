@@ -80,6 +80,7 @@ def build_load_context_node(*, context: WorkflowContext):
         has_local_materials = bool(shared_inputs.source_packets)
         document_context = {
             "subject": state["subject"],
+            "subject_display_name": str(getattr(shared_inputs.subject_profile, "subject_name", "") or state["subject"]),
             "digest_mode": digest_mode,
             "course_type": course_type,
             "retrieval_profile": retrieval_profile,
@@ -88,6 +89,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "user_goal": str(plan_contract.user_goal or state.get("user_prompt") or ""),
             "plan_summary": str(plan_contract.plan_summary or ""),
             "source_strategy": "local_first" if has_local_materials else "web_first",
+            "include_sources": bool((plan_payload.get("build_constraints") or {}).get("include_sources", True)),
             "selected_skillpacks": selected_skillpacks,
             "skillpack_defaults": skillpack_defaults,
             "recommended_tool_tags": collect_recommended_tool_tags(

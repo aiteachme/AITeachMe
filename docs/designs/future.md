@@ -121,7 +121,7 @@ LLM 不是每种学习形式都有优势。以下是 LLM **真正擅长**的学�
 
 | 步骤 | 依赖 |
 |------|------|
-| Digest 从文档提取知识点 → 生成卡片 | `llm.py` + Digest 引擎 |
+| Digest 从文档提取知识点 → 生成卡片 | `llm_support/` + Digest 引擎 |
 | 间隔重复算法决定何时复习 | `events.py`（记录复习事件）+ `memory/` |
 | 复习时 AI 追问检验 | `teaching.py` → `check_understanding` |
 | 复习结果回流画像 | `events.py` → Profile 引擎 |
@@ -165,7 +165,7 @@ AI: "非常准确！最后一问：MySQL 的 InnoDB 默认隔离级别是什么�
 | 步骤 | 依赖 |
 |------|------|
 | 根据知识点生成首问 | `teaching.py` → `generate_practice` |
-| 根据学生回答动态追问 | `llm.py` + `context.py`（注入知识+画像） |
+| 根据学生回答动态追问 | `llm_support/` + `context.py`（注入知识+画像） |
 | 判定回答质量 | `checker.py` → `check_with_llm` |
 | 按 rubric 评分 | `checker.py` → Rubric |
 | 记录结果 | `events.py` + `memory/` |
@@ -209,7 +209,7 @@ AI: "非常准确！最后一问：MySQL 的 InnoDB 默认隔离级别是什么�
 
 | 步骤 | 依赖 |
 |------|------|
-| 从知识文档生成填空题 | `llm.py`（LLM 选择挖空位置） |
+| 从知识文档生成填空题 | `llm_support/`（LLM 选择挖空位置） |
 | 判定答案 | `checker.py` → keywords 策略 |
 | 解释反馈 | `teaching.py` → `explain_concept` |
 

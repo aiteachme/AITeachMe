@@ -1,12 +1,16 @@
-﻿"""Enrich document node for the DocGen lane."""
+"""Enrich document node for the DocGen lane."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
-from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, build_draft_excerpt, prepend_table_of_contents
+from app.shared.infra.tools.builtin.markdown_processing import (
+    build_draft_excerpt,
+    normalize_mermaid_blocks,
+    prepend_table_of_contents,
+)
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
@@ -25,7 +29,6 @@ def build_enrich_document_node(*, context: WorkflowContext):
         if not chapter_metadatas:
             return {"error": "当前没有可用于增强处理的章节草稿。"}
 
-        include_sources = bool((state.get("confirmed_plan") or {}).get("build_constraints", {}).get("include_sources", True))
         mermaid_count = 0
         image_count = 0
         interactive_count = 0
@@ -61,8 +64,7 @@ def build_enrich_document_node(*, context: WorkflowContext):
                 )
             markdown = normalize_math_delimiters(markdown)
             markdown = validate_latex(markdown)
-            if include_sources:
-                markdown = append_reference_section(markdown, list(chapter.get("source_details") or []))
+            markdown = normalize_mermaid_blocks(markdown)
             chapter["markdown"] = markdown
             chapter["summary"] = build_draft_excerpt(markdown, max_chars=260)
             chapter["interactive_block_count"] = markdown.count('data-atm-kind="')
@@ -75,6 +77,7 @@ def build_enrich_document_node(*, context: WorkflowContext):
             min_level=2,
             max_level=4,
         )
+        merged_markdown = normalize_mermaid_blocks(merged_markdown)
         update_status = resolve_docgen_dependency("update_knowledge_build_status", update_knowledge_build_status, owner_module=__name__)
         update_status(
             state["subject"],
@@ -126,4 +129,3 @@ def build_enrich_document_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_enrich_document_node"]
-

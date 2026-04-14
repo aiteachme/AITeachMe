@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from app.shared.infra.storage.base import ArtifactStore
+from app.shared.infra.storage.config import storage_is_s3
 from app.shared.infra.storage.content_store import ContentStore
 from app.shared.infra.storage.sync_bridge import run_store_sync
 
@@ -21,13 +22,10 @@ def get_artifact_store() -> ArtifactStore:
     if _store is not None:
         return _store
 
-    from app.shared.infra.config import get_settings
-
-    settings = get_settings()
-    if settings.storage_is_s3:
+    if storage_is_s3():
         from app.shared.infra.storage.s3_store import S3ArtifactStore
 
-        _store = S3ArtifactStore(settings)
+        _store = S3ArtifactStore()
     else:
         from app.shared.infra.storage.local_store import LocalArtifactStore
 

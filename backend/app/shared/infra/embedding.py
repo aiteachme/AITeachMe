@@ -16,7 +16,8 @@ import litellm
 import structlog
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.exceptions import LLMCallError
+from app.shared.infra.env_support import get_env
+from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 
 logger = structlog.get_logger()
 
@@ -98,16 +99,22 @@ async def aembed_texts(
 
     Args:
         texts: 待向量化的文本列表。
-        batch_size: 每批大小（默认从 config 读取，环境变量 EMBEDDING_BATCH_SIZE）。
+        batch_size: 每批大小（默认从 `config.yaml` 读取）。
     """
 
     if not texts:
         return []
 
     settings = get_settings()
-    api_key = settings.require_llm_api_key()
+    api_key = (get_env("LLM_API_KEY") or "").strip()
+    if not api_key:
+        raise MissingLLMApiKeyError()
     batch_size = batch_size or settings.embedding_batch_size
     model = _build_model_name(settings.embedding_model)
+    api_base = (
+        get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []
@@ -126,7 +133,7 @@ async def aembed_texts(
                 batch_vectors = await _call_embedding(
                     model=model,
                     batch=batch,
-                    api_base=settings.llm_base_url,
+                    api_base=api_base,
                     api_key=api_key,
                 )
                 return batch_idx, batch_vectors

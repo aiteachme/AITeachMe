@@ -16,10 +16,10 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
-from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common import workflow_tracer
 from app.workflows.common.runtime import invoke_state_graph
 from app.workflows.examine.question_builder import build_question_templates
 from app.workflows.examine.state import QuestionBuildState
@@ -232,40 +232,33 @@ def _route_after_step(state: QuestionBuildState) -> str:
 
 def build_question_build_graph(*, session: Session | None = None) -> StateGraph:
     workflow = StateGraph(QuestionBuildState)
+    trace = workflow_tracer(workflow="examine.question_build", lane="question_build")
     workflow.add_node(
         "load_units",
-        wrap_workflow_node(
+        trace.node(
             partial(load_units_node, session_override=session),
-            workflow_name="examine.question_build",
-            lane="question_build",
-            node_name="load_units",
+            name="load_units",
         ),
     )
     workflow.add_node(
         "generate_templates",
-        wrap_workflow_node(
+        trace.node(
             partial(generate_templates_node, session_override=session),
-            workflow_name="examine.question_build",
-            lane="question_build",
-            node_name="generate_templates",
+            name="generate_templates",
         ),
     )
     workflow.add_node(
         "finalize_build",
-        wrap_workflow_node(
+        trace.node(
             partial(finalize_build_node, session_override=session),
-            workflow_name="examine.question_build",
-            lane="question_build",
-            node_name="finalize_build",
+            name="finalize_build",
         ),
     )
     workflow.add_node(
         "fail_build",
-        wrap_workflow_node(
+        trace.node(
             partial(fail_build_node, session_override=session),
-            workflow_name="examine.question_build",
-            lane="question_build",
-            node_name="fail_build",
+            name="fail_build",
         ),
     )
 
@@ -283,7 +276,6 @@ def build_question_build_graph(*, session: Session | None = None) -> StateGraph:
     workflow.add_edge("finalize_build", END)
     workflow.add_edge("fail_build", END)
     return workflow
-
 
 async def run_question_build_workflow(
     *,
@@ -389,3 +381,4 @@ class QuestionBuildWorkflow:
             focus_node_ids=focus_node_ids,
             session=session,
         )
+

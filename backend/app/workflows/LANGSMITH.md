@@ -1,712 +1,440 @@
-﻿# LangSmith 全链路可观测性指南
+# LangSmith 接入说明
 
-> 本文档基于当前代码实现，详细说明 AITeachMe 在 LangSmith 上的 trace 结构、每层的输入输出、metadata 和 tags。
-> 目标：让开发者打开 LangSmith 后能立刻理解每个 span 是什么、为什么在那里、记录了什么。
+这份文档只回答一件事：
 
----
-
-## 1. 启用条件
-
-LangSmith tracing 需要同时满足三个条件（见 `shared/infra/tracing.py:langsmith_tracing_enabled`）：
-
-1. `config.yaml` 中 `observability.tracing_enabled: true`
-2. `config.yaml` 中 `langsmith.tracing: true`
-3. 环境变量 `LANGSMITH_API_KEY` 或 `LANGCHAIN_API_KEY` 已设置
-
-项目名由 `langsmith.project` 配置，默认 `AITeachMe`。
+如何让 `workflows/` 里的 LangSmith 追踪足够简单，后续改动时不需要在大量节点和 infra helper 之间来回同步。
 
 ---
 
-## 2. Trace 树总览
+## 核心原则
 
-一次完整的 Digest DocGen 构建在 LangSmith 中呈现为如下层级：
+**LangGraph 自动追踪 node** — 我们不再手动创建 node span。
 
-```
-API / Service 调用
-└── [workflow root] langsmith_tracing_scope (digest.unified / digest.docgen)
-    │
-    ├── [node span] unified.prepare_shared          ← wrap_workflow_node 创建
-    │
-    ├── [node span] docgen.load_context             ← wrap_digest_node → wrap_workflow_node
-    │
-    ├── [node span] docgen.targeted_research        ← 每章一个 (fan-out via Send)
-    │   └── [runtime span] workflow_runtime.docgen.research   ← BaseTracedExecution.run
-    │       ├── [llm span] generate_sub_queries     ← acompletion_with_fallback
-    │       ├── [retriever calls]                   ← 各 retriever 的调用
-    │       ├── [reader calls]                      ← read_urls
-    │       ├── [runtime metadata] research_rounds  ← round/gap/coverage 在 runtime metadata 中展开
-    │       └── [llm span] purify_material          ← 可选的 LLM 精炼
-    │
-    ├── [node span] docgen.collect_materials
-    ├── [node span] docgen.resolve_titles
-    │
-    ├── [node span] docgen.pedagogy_craft           ← 每章一个 (fan-out via Send)
-    │   └── [runtime span] workflow_runtime.docgen.writer    ← BaseTracedExecution.run
-    │       └── [llm span] chapter_write            ← acompletion_with_fallback
-    │
-    ├── [node span] docgen.collect_drafts
-    ├── [node span] docgen.enrich_document
-    │   └── [runtime span] workflow_runtime.docgen.assets    ← 可选
-    │       ├── [llm span] mermaid_generation
-    │       ├── [runtime span] image_placeholder
-    │       └── [runtime span] interactive_placeholder
-    │
-    ├── [node span] docgen.inject_examine
-    ├── [node span] docgen.finalize_assemble
-    │
-    ├── [node span] kg.acquire_lock                 ← KG lane (并行)
-    ├── [node span] kg.prepare
-    ├── [node span] kg.extract                      ← 每 chunk 的 LLM 抽取
-    ├── ...
-    │
-    └── [node span] unified.publish_outputs
-```
+当 `LANGSMITH_TRACING=true` 时，LangGraph 编译后的 graph 会自动为每个 node 创建 LangSmith span。
+我们只需要做两件事：
 
-关键原则：
-- **node span** = LangGraph 图中的一个节点，由 `wrap_workflow_node` 创建
-- **runtime span** = 节点内部的多步业务逻辑，由 `BaseTracedExecution.run` 创建
-- **llm span** = 单次 LLM 调用，由 LiteLLM/LangSmith 自动捕获
-- fan-out 节点（`targeted_research`、`pedagogy_craft`）每章产生独立的 node span
+1. 通过 `config=` 传递 metadata/tags 给 `graph.ainvoke()`，让 LangGraph root span 带上业务上下文
+2. 通过 `llm_trace_scope()` 设置 ambient context，让 infra 层 LLM 调用自动继承当前 workflow/lane/node 信息
+
+### 为什么不手动创建 node span？
+
+之前的做法是在 `trace.node()` 内部用 `annotate_traceable` + `build_langsmith_extra` 再包一层，
+导致每个 node 在 LangSmith 上出现**两个 span**（LangGraph 自动的 + 我们手动的）。
+去掉手动 span 后，trace 层级更干净，代码也少了约 300 行。
 
 ---
 
-## 3. 三层 Span 详解
-
-### 3.1 Node Span（节点层）
-
-**创建者**：`wrap_workflow_node()` in `workflows/common/observability.py`
-
-**Span 名称格式**：`{lane}.{node_name}`
-- 例：`docgen.targeted_research`、`kg.extract`、`unified.prepare_shared`
-
-**run_type**：`"chain"`
-
-**Inputs 记录内容**（由 `_node_trace_inputs` 从 state 中提取）：
-
-| 字段 | 来源 | 说明 |
-| --- | --- | --- |
-| `subject` | state | 学科/主题名 |
-| `build_session_id` | state | 本次构建会话 ID |
-| `planner_session_id` | state | Planner 会话 ID |
-| `confirmed_plan_id` | state | 已确认方案 ID |
-| `digest_mode` | state | `sprint` / `systematic` |
-| `course_type` | state | 课程类型 |
-| `retrieval_profile` | state | 检索策略 |
-| `teaching_action` | state | 教学动作（如 `chapter_research`、`chapter_write`） |
-| `asset_kind` | state | 资产类型 |
-| `tone` | state | 写作语气 |
-| `session_id` / `job_id` / `user_id` | state | 其他引擎的会话标识 |
-| `chapter_index` | state 或 `chapter_assignment.chapter_index` | fan-out 章节索引 |
-| `chapter_count` | `len(state["chapter_assignments"])` | 章节总数（列表字段自动计数） |
-
-列表字段会自动转为计数值（`_COUNT_FIELDS` 映射），例如：
-- `file_ids` → `file_count`
-- `chapter_materials` → `chapter_material_count`
-- `chapter_drafts` → `chapter_draft_count`
-
-**Outputs 记录内容**（由 `_node_trace_outputs` 从节点返回值中提取）：
-
-| 字段 | 说明 |
-| --- | --- |
-| `elapsed_ms` | 节点执行耗时（毫秒） |
-| `status` | `"ok"` 或 `"failed"` |
-| `output_keys` | 返回字典的所有 key 列表 |
-| `*_ms` | 所有以 `_ms` 结尾的计时字段 |
-| `source_count` | 来源总数 |
-| `local_hits` / `web_hits` | 本地/外部命中数 |
-| `fallback_used` | 是否使用了 fallback 检索 |
-| `word_count` | 章节草稿总字数 |
-| `final_word_count` | 最终文档字数 |
-| `retriever_names` / `retriever_count` | 使用的检索器名称和数量 |
-| `compression_mode` | 压缩模式 |
-| `error` | 错误信息（如有） |
-
-**Metadata**（由 `_node_trace_metadata` 提取，附加到 LangSmith span）：
-
-从 state 中提取以下字段（非空时）：
-`planner_session_id`、`confirmed_plan_id`、`digest_mode`、`course_type`、
-`retrieval_profile`、`teaching_action`、`asset_kind`、`session_id`、
-`job_id`、`user_id`、`file_id`、`exam_paper_id`、`chapter_index`
-
-**Tags**（由 `_node_trace_tags` 生成）：
-
-固定 tags：
-- `aiteachme`
-- `workflow:{workflow_name}`（如 `workflow:digest.docgen`）
-- `lane:{lane}`（如 `lane:docgen`）
-- `node:{lane}.{node_name}`（如 `node:docgen.targeted_research`）
-
-动态 tags（非空时追加）：
-- `mode:{digest_mode}`（如 `mode:systematic`）
-- `course:{course_type}`（如 `course:systematic`）
-- `retrieval:{retrieval_profile}`（如 `retrieval:docgen_systematic`）
-- `teaching:{teaching_action}`（如 `teaching:chapter_research`）
-- `asset:{asset_kind}`（如 `asset:mermaid`）
-- `chapter:{chapter_index}`（如 `chapter:0`）
-
-**附加行为**：
-- 自动记录 `node_timings_ms` 到 state（累积各节点耗时）
-- 自动记录 `node_events` 到 state（最近 64 条节点事件）
-- 如果 state 中有 `progress_callback`，自动触发进度回调
-
----
-
-### 3.2 Runtime Span（业务运行单元层）
-
-**创建者**：`BaseTracedExecution.run()` in `shared/infra/traced_execution.py`
-
-**Span 名称格式**：`{trace_namespace}.{trace_name}`
-- 例：`workflow_runtime.docgen.research`、`workflow_runtime.docgen.writer`、`workflow_runtime.docgen.assets`
-
-**run_type**：`"chain"`
-
-**嵌套关系**：Runtime span 嵌套在 node span 内部。例如 `docgen.targeted_research` 节点内部会创建 `workflow_runtime.docgen.research` 的 runtime span。
-
-**Inputs**：传入 `execute(**kwargs)` 的所有关键字参数。
-
-**Outputs**（由 `_traced_execution_outputs` 从 `TracedExecutionResult` 中提取）：
-
-| 字段 | 说明 |
-| --- | --- |
-| `content_length` | 生成内容的字符长度 |
-| `source_count` | 来源数量 |
-| `image_count` | 图片数量 |
-| `metadata_keys` | result.metadata 的所有 key 列表 |
-| `local_hits` / `web_hits` | 本地/外部命中数 |
-| `query_count` | 执行的查询数 |
-| `read_url_count` | 读取的 URL 数 |
-| `document_count` | 处理的文档数 |
-| `research_round_count` | research 微循环轮次数 |
-| `curated_source_count` | 筛选后的来源数 |
-| `trusted_source_count` | 可信来源数 |
-| `fallback_used` / `purify_used` | 是否使用了 fallback/精炼 |
-| `requested_profile` / `applied_profile` | 请求 / 实际执行的 profile |
-| `coverage_score` | 当前运行单元的覆盖分 |
-| `quality_score` | 当前运行单元的质量分 |
-| `gap_count` | 剩余 gap 数 |
-| `source_class_breakdown` | 来源类别分布 |
-| `compression_mode` | 压缩模式 |
-| `applied_retrieval_profile` | 实际执行的检索 profile |
-| `retriever_names` | 使用的检索器列表 |
-| `retriever_call_count` | 检索器调用总次数 |
-| `configured_retriever_count` | 配置的检索器数 |
-| `active_retriever_count` | 实际激活的检索器数 |
-
-**Metadata**（由 `TracedExecutionContext.trace_metadata()` 生成）：
-
-核心业务字段（非空时写入）：
-
-```
-planner_session_id    ← Planner 会话 ID
-confirmed_plan_id     ← 已确认方案 ID
-digest_mode           ← sprint / systematic
-course_type           ← 课程类型
-retrieval_profile     ← 检索策略
-teaching_action       ← 教学动作
-asset_kind            ← 资产类型（mermaid/image/...）
-chapter_index         ← 章节索引
-```
-
-Runtime 层额外注入的 metadata：
-
-```
-traced_unit_name      ← 运行单元类名（如 DocGenResearchRuntime）
-trace_namespace       ← 命名空间（如 workflow_runtime.docgen）
-trace_name            ← 运行单元名（如 research）
-```
-
-各运行单元在 `execute()` 内部的 LLM 调用还会追加：
-
-```
-runtime_name          ← 运行单元类名
-research_stage        ← 研究阶段（如 plan_sub_queries / purify_material）
-template_kind         ← 资产 sidecar 模板类型（如 formula_expander / concept_check）
-```
-
-**Tags**：
-
-固定 tags：
-- `aiteachme`
-- `workflow:{workflow_name}`
-- `lane:{lane}`
-- `node:{trace_namespace}.{trace_name}`
-- `{trace_namespace}:{trace_name}`（如 `workflow_runtime.docgen:research`）
-
-动态 tags（同 node span）：
-- `mode:{digest_mode}`
-- `course:{course_type}`
-- `retrieval:{retrieval_profile}`
-- `teaching:{teaching_action}`
-- `asset:{asset_kind}`
-- `chapter:{chapter_index}`
-
-**LLM Trace Scope**：Runtime span 内部通过 `llm_trace_scope()` 设置环境上下文，使得所有嵌套的 LLM 调用自动继承 `(subject, build_session_id, workflow, lane, node)` 五元组。
-
----
-
-### 3.3 LLM Span（模型调用层）
-
-**创建者**：LiteLLM + LangSmith 自动集成（通过 `langsmith.tracing_context` 环境）
-
-LLM span 不需要手动创建。当 `llm_trace_scope` 和 `langsmith_tracing_scope` 处于活跃状态时，所有通过 `acompletion_with_fallback()` 发起的 LLM 调用会自动被 LangSmith 捕获为子 span。
-
-**自动记录的内容**：
-
-| 字段 | 说明 |
-| --- | --- |
-| `model` | 实际使用的模型名（如 `qwen-plus-latest`） |
-| `prompt` / `messages` | 发送给模型的完整 prompt（受 `langsmith.capture_inputs` 控制） |
-| `completion` | 模型返回的完整响应（受 `langsmith.capture_outputs` 控制） |
-| `token_usage` | prompt_tokens / completion_tokens / total_tokens |
-| `latency` | 调用耗时 |
-
-**隐私控制**（`config.yaml`）：
-
-```yaml
-langsmith:
-  capture_inputs: true    # 是否记录输入文本，null = 本地 true / 云端 false
-  capture_outputs: true   # 是否记录输出文本
-  max_text_chars: 2000    # 单段文本保留上限
-```
-
-`_sanitize_langsmith_metadata_value()` 会自动：
-- 截断超长文本到 `max_text_chars`
-- 脱敏 `data:` 开头的 URL（替换为 `[redacted:data-url]`）
-- 过滤空值
-
-**Tier 与 Fallback 追踪**：
-
-`acompletion_with_fallback()` 在 LLM span 的 metadata 中记录：
-
-| 字段 | 说明 |
-| --- | --- |
-| `llm_tier` | 请求的层级（`strategic` / `smart` / `fast`） |
-| `llm_candidate_tier` | 当前候选的层级 |
-| `llm_candidate_task_type` | 当前候选的 TaskType |
-| `llm_fallback_from` | 降级前的模型 |
-| `llm_fallback_to` | 降级后的模型 |
-
-这使得在 LangSmith 中可以清楚看到：哪些调用发生了降级、从哪个模型降到了哪个模型。
-
----
-
-### 3.4 本地观测层（非 LangSmith）
-
-除了 LangSmith 外，系统还维护了一套内存中的观测数据：
-
-**LLMCallTracker**（`shared/infra/tracing.py`）：
-
-每次 LLM 调用都会记录一条 `LLMCallRecord`：
+## 4 个核心入口
 
 ```python
-@dataclass
-class LLMCallRecord:
-    task_type: str          # TaskType 值
-    model: str              # 模型名
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-    latency_s: float
-    success: bool
-    subject: str            # 继承自 llm_trace_scope
-    build_session_id: str
-    workflow: str
-    lane: str
-    node: str
+from app.workflows.common import (
+    run_state_graph,     # workflow 入口
+    workflow_tracer,     # node 接线
+    traceable_run,       # prompt/helper 装饰器
+    tracked_step,        # node 内关键步骤
+)
 ```
 
-通过 `get_tracker().get_summary(...)` 可以按 `build_session_id` / `subject` / `workflow` / `lane` / `node` 过滤，获取：
-- 总调用数、失败数、token 用量
-- 按模型/TaskType/lane/node 的 token 分布
-- 轻量模型 vs 重量模型的调用比例
-- 模型混合比例（`model_mix_ratio`）
-
-**Digest 观测摘要**（`workflows/digest/observability.py`）：
-
-`build_token_summary()` 在构建完成后生成完整的 token 使用报告，包含：
-- 各 lane 的 token 分布
-- 最慢的 chunk/章节排名（`timing_top_k` 配置）
-- 模型使用比例
+| 你在写什么 | 推荐接口 | 创建 LangSmith span？ | 备注 |
+| --- | --- | --- | --- |
+| 整条 workflow 执行 | `run_state_graph(...)` | 否（LangGraph 自动创建 root span） | 传 `config=` 给 `ainvoke()` |
+| graph 里的 node 接线 | `trace = workflow_tracer(...); trace.node(...)` | 否（LangGraph 自动创建 node span） | 只设 ambient context |
+| 稳定 prompt builder | `@traceable_run(..., run_type="prompt")` | 是（创建子 span） | 等价于 `@langsmith.traceable(...)` |
+| node 内关键步骤 | `tracked_step(...)` | 是（当 `kind != "node"` 时创建子 span） | 同时管理 runtime stats + progress |
 
 ---
 
-## 4. 各引擎 Trace 详解
+## 当前落地状态
 
-### 4.1 Digest Unified（统一构建）
+当前仓库的主执行 workflow 已经**大体统一到这 4 个入口**，但还不是每个文件都 100% 完全一致。
 
-**Graph**：`digest/unified/graph.py`
-**Workflow name**：`digest.unified`
-**Lane**：`unified`
+### 已基本对齐的主线
 
-| Node Span | 说明 | 关键 Outputs |
-| --- | --- | --- |
-| `unified.prepare_shared` | 准备共享输入、物化文档/chunks/embeddings | `digest_mode`、`course_type`、`file_count` |
-| `unified.run_parallel_lanes` | 并行运行 DocGen + KG lane | `docgen_status`、`kg_status` |
-| `unified.derive_curriculum` | 从 KG impact 推导课程体系（仅 graph_ready 时） | `curriculum_version` |
-| `unified.publish_outputs` | 发布文档到 DB/存储 | `published_doc_count` |
-| `unified.cleanup` | 清理 build session mailbox | — |
+- `digest.planner`
+- `digest.docgen`
+- `digest.unified`
+- `digest.graph`
+- `interact.chat`
+- `ingest.fast_parse / ingest.deep_enhance`
+- `examine.question_build / examine.exam_grade`
+- `profile.pipeline`
 
-注意：`run_parallel_lanes` 内部会启动完整的 DocGen 和 KG 子图，它们的 trace 会作为嵌套子树出现。
+这些主线至少满足：
 
-### 4.2 Digest DocGen（文档生成）
+- workflow root 通过 `run_state_graph(...)` 或 `invoke_state_graph(...)` 进入
+- graph node 通过 `workflow_tracer(...).node(...)` 接线
+- prompt builder 通过 `@traceable_run(...)`
+- node 内关键子步骤优先通过 `tracked_step(...)`
 
-**Graph**：`digest/docgen/graph.py`
-**Workflow name**：`digest.docgen` 或 `digest.docgen.langgraph_dev`
-**Lane**：`docgen`
+### 仍存在的历史差异
 
-#### 完整节点链与 trace 内容
+- 少数“概览图 / 非主执行图”仍是轻量 StateGraph，没有完整 tracing 包装；这类图主要用于展示结构，不作为 tracing 规范样板。
+- 少数旧节点内部仍会直接使用 `llm_trace_scope(...)` 做上下文桥接；这属于兼容保留，不应继续扩散为新写法。
 
-**`docgen.load_context`**
+结论：
 
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 加载 confirmed plan、解析 skillpacks、构建 document_context |
-| Inputs | `subject`、`build_session_id`、`confirmed_plan_id`、`digest_mode` |
-| Outputs | `chapter_count`、`course_type`、`retrieval_profile`、`has_confirmed_plan` |
-| 关键判断 | 如果缺少 `confirmed_plan` 则直接报错 |
+- **把当前主执行 workflow 视为“基本统一”是合理的**
+- **把 `LANGSMITH.md` 视为后续新增代码的唯一规范来源更重要**
 
-**`docgen.targeted_research`**（fan-out，每章一个 span）
+---
 
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 为单章执行检索、抓取、压缩、精炼 |
-| Inputs | `chapter_index`、`teaching_action=chapter_research`、`retrieval_profile` |
-| 内嵌 Runtime | `workflow_runtime.docgen.research` |
-| Runtime Outputs | `local_hits`、`web_hits`、`query_count`、`curated_source_count`、`compression_mode`、`requested_profile`、`applied_profile`、`research_round_count`、`coverage_score`、`gaps_remaining`、`source_class_breakdown`、`retriever_names`、`fallback_used`、`purify_used` |
-| 内嵌 LLM 调用 | `generate_sub_queries`（stage: `plan_sub_queries`）、`purify_material`（stage: `purify_material`，可选） |
+## 详细用法
 
-Research Runtime 的完整 metadata 输出（写入 `TracedExecutionResult.metadata`）：
+### 1. workflow 入口 — `run_state_graph`
 
-```
-local_hits, web_hits, query_count, base_queries, planned_queries,
-fallback_queries, fallback_used, executed_queries, read_url_count,
-document_count, requested_profile, applied_profile,
-requested_retrieval_profile, applied_retrieval_profile, configured_retrievers,
-active_retrievers, compression_mode, purify_used, curated_source_count,
-trusted_source_count, local_source_count, web_source_count,
-unique_domain_count, top_domains, retriever_stats, research_rounds,
-research_round_count, coverage_score, gaps_remaining, source_class_breakdown,
-stop_reason, source_details, selected_skillpacks, recommended_tool_tags
+```python
+from app.workflows.common import run_state_graph
+
+result = await run_state_graph(
+    workflow_name="digest.planner",
+    graph_builder=lambda: build_planner_graph(context=context),
+    initial_state=initial_state,
+    context=context,
+)
 ```
 
-**`docgen.collect_materials`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 汇总所有章节的研究材料 |
-| Outputs | `chapter_material_count`、`source_count`、`local_hits`（汇总） |
-
-**`docgen.resolve_titles`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 用 LLM 为每章解析更精确的标题 |
-| 内嵌 LLM | `TaskType.DOCGEN_LIGHT`、`tier=fast`、`max_tokens=48` |
-| Outputs | 每章的 `resolved_title` |
-
-**`docgen.pedagogy_craft`**（fan-out，每章一个 span）
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 为单章生成教学文档 |
-| Inputs | `chapter_index`、`teaching_action=chapter_write`、`retrieval_profile` |
-| 内嵌 Runtime | `workflow_runtime.docgen.writer` |
-| Runtime Outputs | `content_length`、`source_count`、`coverage_score`、`quality_score`、`repair_applied` |
-| 内嵌 LLM | `TaskType.DOCGEN`、`tier=smart` |
-| 后处理 | `ensure_chapter_learning_scaffold()` + mode contract repair + media placeholder enforcement |
-
-**`docgen.collect_drafts`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 汇总草稿、合并 markdown、生成目录 |
-| Outputs | `word_count`（汇总）、`staged_chapter_count` |
-
-**`docgen.enrich_document`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 富媒体增强：Mermaid 展开、图片占位、interactive_html sidecar、LaTeX 规范化、参考文献 |
-| 内嵌 Runtime | `workflow_runtime.docgen.assets`（可选） |
-| Outputs | `mermaid_count`、`image_count`、`interactive_count`、`formula_block_count`、`final_word_count` |
-| 内嵌 LLM | Mermaid 生成用 `TaskType.DOCGEN_LIGHT`、`tier=fast` |
-
-**`docgen.inject_examine`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 注入 digest-local 的模式感知 practice layer（冲刺课偏高频题型/自检，系统课偏理解/推理/迁移） |
-| Outputs | `question_count`、`practice_count` |
-
-**`docgen.finalize_assemble`**
-
-| 维度 | 内容 |
-| --- | --- |
-| 作用 | 暂存或发布最终文档 |
-| Outputs | `published_doc_count`、`final_word_count` |
-
-### 4.3 Digest KG（知识图谱）
-
-**Graph**：`digest/kg/graph.py`
-**Lane**：`kg`
-
-| Node Span | 说明 | 关键 Outputs |
-| --- | --- | --- |
-| `kg.acquire_lock` | 获取学科构建锁 | `lock_acquired` |
-| `kg.prepare` | 从 unified session 获取物化 chunks | `chunk_count` |
-| `kg.extract` | 并行抽取实体/关系候选（每 chunk 一次 LLM） | `candidate_count`、`slowest_chunks` |
-| `kg.cluster` | 基于 embedding 的候选聚类 | `cluster_count` |
-| `kg.resolve_nodes` | 与已有节点匹配/合并/新建 | `resolved_node_count`、`new_node_count` |
-| `kg.resolve_edges` | 端点解析、边创建/更新 | `resolved_edge_count` |
-| `kg.analyze_impact` | 计算影响范围（课程体系重建范围） | `affected_unit_count` |
-| `kg.finalize_graph` | 激活实体、发布 topic snapshot | `graph_ready`、`topic_anchor_count` |
-
-KG extract 节点的 LLM 调用使用 `TaskType.EXTRACT`，并有 fast-path 和 topic-fallback 两种降级策略。
-
-### 4.4 Digest Planner（规划器）
-
-**Graph**：`digest/planner/graph.py`
-**Lane**：`planner`
-
-| Node Span | 说明 | 关键 Outputs |
-| --- | --- | --- |
-| `planner.load_context` | 准备共享输入、设置 `teaching_action=plan_course` | `digest_mode`、`course_type` |
-| `planner.ground_concepts` | 用本地/Web 锚点丰富主题提示 | `topic_hint_count` |
-| `planner.draft_plan` | 流式生成快速方案（`TaskType.DOCGEN_LIGHT`，`max_tokens=260`） | `chapter_count`、`plan_preview` |
-
-Planner 的 LLM 调用通过 `acompletion_stream()` 流式输出，token 通过 `token_callback` 实时推送到前端。
-
-### 4.5 Digest Curriculum（课程体系推导）
-
-**Graph**：`digest/curriculum/graph.py`
-**Lane**：`curriculum`
-
-从 KG 的 `ImpactSet` 出发，推导主题树、前置依赖 DAG、教学单元。仅在 KG `graph_ready=true` 时执行。
-
-### 4.6 其他引擎
-
-所有引擎都使用相同的 `wrap_workflow_node` 机制，trace 结构一致。
-
-**Interact（伴读引擎）**：
-- Workflow name：`interact`
-- 主要 trace 内容：对话历史、检索上下文、tool calling、流式响应
-
-**Examine（诊断引擎）**：
-- 包含 `examine_question_build`（题目生成）和 `examine_exam_grade`（评分）两个子图
-- 题目生成的 trace 包含：题型分布、知识点覆盖、难度分级
-
-**Profile（显影引擎）**：
-- 包含 mastery 更新、review 调度、weakness 排序、summary 刷新
-- trace 中可看到 `mastery_updated`、`review_scheduled`、`weaknesses_ranked`
-
----
-
-## 5. Metadata 全局字典
-
-以下是所有可能出现在 LangSmith metadata 中的业务字段汇总：
-
-### 5.1 基础字段（所有 span 都带）
-
-| 字段 | 来源 | 说明 |
-| --- | --- | --- |
-| `app` | 固定值 `aiteachme-backend` | 应用标识 |
-| `app_version` | `settings.app_version` | 应用版本 |
-| `subject` | state / context | 学科/主题 |
-| `build_session_id` | state / context | 构建会话 ID |
-| `workflow` | `WorkflowContext.workflow_name` | 工作流名（如 `digest.docgen`） |
-| `lane` | graph 定义时指定 | 泳道名（如 `docgen`、`kg`、`unified`） |
-| `node` | graph 定义时指定 | 节点名（如 `docgen.targeted_research`） |
-
-### 5.2 业务上下文字段（非空时写入）
-
-| 字段 | 典型值 | 说明 |
-| --- | --- | --- |
-| `planner_session_id` | UUID | Planner 会话标识 |
-| `confirmed_plan_id` | UUID | 已确认方案标识 |
-| `digest_mode` | `sprint` / `systematic` | 消化模式 |
-| `course_type` | `sprint` / `systematic` | 课程类型 |
-| `retrieval_profile` | `docgen_sprint` / `docgen_systematic` / `planner_grounding` | 检索策略 |
-| `teaching_action` | `chapter_research` / `chapter_write` / `plan_course` / `docgen_build` | 教学动作 |
-| `asset_kind` | `mermaid` / `image` / `interactive_html` / `animation` | 资产类型 |
-| `chapter_index` | `0`, `1`, `2`... | 章节索引（fan-out 追踪） |
-| `tone` | `encouraging` / `professional` / `concise` | 写作语气 |
-
-### 5.3 Runtime 专属字段
-
-| 字段 | 说明 |
-| --- | --- |
-| `traced_unit_name` | 运行单元类名（如 `DocGenResearchRuntime`） |
-| `trace_namespace` | 命名空间（如 `workflow_runtime.docgen`） |
-| `trace_name` | 运行单元名（如 `research`） |
-| `runtime_name` | 同 `traced_unit_name`，在 LLM 调用时传入 |
-| `research_stage` | 研究阶段（`plan_sub_queries` / `purify_material`） |
-
-### 5.4 LLM Tier 字段
-
-| 字段 | 说明 |
-| --- | --- |
-| `llm_tier` | 请求层级 |
-| `llm_candidate_tier` | 当前候选层级 |
-| `llm_candidate_task_type` | 当前候选 TaskType |
-| `llm_fallback_from` | 降级前模型 |
-| `llm_fallback_to` | 降级后模型 |
-
-### 5.5 其他引擎字段
-
-| 字段 | 引擎 | 说明 |
-| --- | --- | --- |
-| `session_id` | interact / examine | 对话/考试会话 |
-| `job_id` | kg / ingest | 任务 ID |
-| `user_id` | 全局 | 用户标识 |
-| `file_id` | ingest | 文件 ID |
-| `exam_paper_id` | examine | 试卷 ID |
-
----
-
-## 6. Tags 全局字典
-
-Tags 用于在 LangSmith 中快速过滤和分组 trace。
-
-### 6.1 固定 Tags
-
-| Tag | 说明 |
-| --- | --- |
-| `aiteachme` | 全局标识，所有 span 都带 |
-| `workflow:{name}` | 工作流名，如 `workflow:digest.docgen` |
-| `lane:{name}` | 泳道名，如 `lane:docgen`、`lane:kg` |
-| `node:{lane}.{node}` | 节点全名，如 `node:docgen.targeted_research` |
-
-### 6.2 动态 Tags（非空时追加）
-
-| Tag 格式 | 示例 | 用途 |
-| --- | --- | --- |
-| `mode:{digest_mode}` | `mode:systematic` | 按消化模式过滤 |
-| `course:{course_type}` | `course:sprint` | 按课程类型过滤 |
-| `retrieval:{profile}` | `retrieval:docgen_systematic` | 按检索策略过滤 |
-| `teaching:{action}` | `teaching:chapter_research` | 按教学动作过滤 |
-| `asset:{kind}` | `asset:mermaid` | 按资产类型过滤 |
-| `chapter:{index}` | `chapter:0` | 按章节索引过滤 |
-
-### 6.3 Runtime 专属 Tags
-
-| Tag 格式 | 示例 | 说明 |
-| --- | --- | --- |
-| `{namespace}:{name}` | `workflow_runtime.docgen:research` | 标识具体运行单元 |
-
----
-
-## 7. 实际使用场景
-
-### 7.1 定位某次构建的完整 trace
-
-在 LangSmith 中搜索：
-- **Filter by tag**: `aiteachme` + `workflow:digest.unified`
-- **Filter by metadata**: `build_session_id = <your_id>`
-
-你会看到完整的 unified 构建树，包含所有子节点。
-
-### 7.2 对比 sprint vs systematic 的研究质量
-
-1. Filter by tag: `course:sprint` 或 `course:systematic`
-2. 选择 `docgen.targeted_research` 节点
-3. 对比 outputs 中的：
-   - `local_hits` vs `web_hits`（来源分布）
-   - `curated_source_count`（筛选后来源数）
-   - `compression_mode`（压缩策略）
-   - `applied_retrieval_profile`（实际检索策略）
-
-### 7.3 追踪某章的研究 → 写作全链路
-
-1. Filter by tag: `chapter:2`（第 3 章）
-2. 你会看到两个主要 span：
-   - `docgen.targeted_research`（研究阶段）
-   - `docgen.pedagogy_craft`（写作阶段）
-3. 展开研究阶段，可以看到：
-   - `workflow_runtime.docgen.research` runtime span
-   - 内部的 `generate_sub_queries` 和 `purify_material` LLM 调用
-4. 展开写作阶段，可以看到：
-   - `workflow_runtime.docgen.writer` runtime span
-   - 内部的章节写作 LLM 调用
-
-### 7.4 分析 LLM 降级情况
-
-1. 在 LangSmith 中搜索包含 `llm_fallback_from` metadata 的 span
-2. 查看 `llm_tier`、`llm_fallback_from`、`llm_fallback_to` 字段
-3. 统计哪些节点最容易发生降级
-
-### 7.5 检查富媒体生成效果
-
-1. Filter by tag: `asset:mermaid` 或 `asset:image`
-2. 查看 `enrich_document` 节点的 outputs：
-   - `mermaid_count`、`image_count`
-   - `asset_failures`（如有）
-
----
-
-## 8. 代码对照表
-
-| 功能 | 代码位置 | 说明 |
-| --- | --- | --- |
-| LangSmith 启用判断 | `shared/infra/tracing.py:langsmith_tracing_enabled` | 三条件检查 |
-| 创建 LangSmith span | `shared/infra/tracing.py:langsmith_trace` | 上下文管理器 |
-| LLM trace scope | `shared/infra/tracing.py:llm_trace_scope` | 设置嵌套 LLM 调用的环境上下文 |
-| Workflow scope | `shared/infra/tracing.py:langsmith_tracing_scope` | 工作流级 tracing 上下文 |
-| Metadata 构建 | `shared/infra/tracing.py:build_langsmith_metadata` | 标准化 metadata payload |
-| Tags 构建 | `shared/infra/tracing.py:build_langsmith_tags` | 标准化 tag 列表 |
-| Node span 包装 | `workflows/common/observability.py:wrap_workflow_node` | 节点层 span 创建 |
-| Digest node 包装 | `workflows/digest/observability.py:wrap_digest_node` | Digest 专用（委托给 wrap_workflow_node） |
-| Runtime span 基类 | `shared/infra/traced_execution.py:BaseTracedExecution` | 运行单元层 span 创建 |
-| Trace context | `shared/infra/traced_execution.py:TracedExecutionContext` | 业务上下文数据类 |
-| Node inputs 提取 | `workflows/common/observability.py:_node_trace_inputs` | 从 state 提取 trace inputs |
-| Node outputs 提取 | `workflows/common/observability.py:_node_trace_outputs` | 从 result 提取 trace outputs |
-| Runtime outputs 提取 | `shared/infra/traced_execution.py:_traced_execution_outputs` | 从 TracedExecutionResult 提取 |
-| LLM 调用追踪 | `shared/infra/tracing.py:LLMCallTracker` | 内存中的调用记录 |
-| Token 摘要 | `workflows/digest/observability.py:build_token_summary` | Digest 构建后的 token 报告 |
-
----
-
-## 9. langgraph.json 与 LangGraph Studio
-
-`backend/langgraph.json` 注册了所有可在 `langgraph dev` 中可视化的图：
-
-```json
-{
-  "ingest_fast_parse":     "workflows/ingest/graph.py:get_langgraph_dev_fast_parse_graph",
-  "ingest_deep_enhance":   "workflows/ingest/graph.py:build_deep_enhance_graph",
-  "digest_kg":             "workflows/digest/kg/graph.py:build_kg_digest_graph",
-  "digest_curriculum":     "workflows/digest/curriculum/graph.py:build_curriculum_derive_graph",
-  "digest_docgen":         "workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
-  "digest_planner":        "workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph",
-  "digest_unified":        "workflows/digest/unified/graph.py:get_langgraph_dev_unified_graph",
-  "interact_chat":         "workflows/interact/graph.py:get_langgraph_dev_interact_graph",
-  "examine_question_build":"workflows/examine/question_build_workflow.py:build_question_build_graph",
-  "examine_exam_grade":    "workflows/examine/exam_grade_workflow.py:build_exam_grade_graph",
-  "profile_pipeline":      "workflows/profile/graph.py:build_profile_pipeline_graph"
-}
+**内部做了什么：**
+
+1. `_build_graph_config()` — 构建 LangGraph invoke config:
+   ```python
+   config = {
+       "run_name": "digest.planner",
+       "tags": ["aiteachme", "workflow:digest.planner"],
+       "metadata": {
+           "app": "aiteachme-backend",
+           "workflow": "digest.planner",
+           "subject": "线性代数",
+           "build_session_id": "build-abc123",
+       },
+   }
+   ```
+2. `llm_trace_scope(...)` — 设置 ambient context
+3. `compiled.ainvoke(initial_state, config=config)` — LangGraph 自动创建 root span
+4. 异常捕获 → 返回 `WorkflowResult`
+
+### 2. node 接线 — `workflow_tracer().node()`
+
+```python
+from app.workflows.common import workflow_tracer
+
+def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
+    workflow = StateGraph(DocGenState)
+    trace = workflow_tracer(context=context, lane="docgen")
+
+    workflow.add_node(
+        "load_context",
+        trace.node(
+            build_load_context_node(context=context),
+            name="load_context",
+            timing_field="load_ms",  # 可选：自动计时并注入到 node 返回值
+        ),
+    )
+    workflow.add_node(
+        "finalize_assemble",
+        trace.node(
+            build_finalize_assemble_node(context=context),
+            name="finalize_assemble",
+        ),
+    )
+
+    workflow.add_edge("load_context", "finalize_assemble")
+    workflow.set_entry_point("load_context")
+    return workflow
 ```
 
-运行 `langgraph dev` 后可以：
-- 在 LangGraph Studio 中可视化图拓扑
-- 手动触发单个图执行
-- 实时查看 state 变化
-- 所有执行自动发送到 LangSmith（如已配置）
+**`trace.node(handler, name=...)` 内部做了什么：**
+
+1. 从 `state` 中提取 `subject`、`build_session_id`
+2. `tracing_context(metadata=..., tags=...)` — 丰富 LangGraph 自动 span 的上下文
+   ```python
+   # 自动注入到 LangGraph node span 的 metadata:
+   metadata = {
+       "workflow": "digest.docgen",
+       "lane": "docgen",
+       "node": "load_context",
+       "subject": "线性代数",
+       "build_session_id": "build-abc123",
+   }
+   # tags:
+   tags = ["workflow:digest.docgen", "node:docgen.load_context", "lane:docgen"]
+   ```
+3. `llm_trace_scope(...)` — 设置 ambient context，让嵌套的 infra LLM 调用知道当前在哪个 node
+4. 如果设了 `timing_field`，自动计时并注入到返回的 dict 中
+
+**它不创建额外的 LangSmith span**，避免了双重 span 问题。
+
+#### 装饰器写法（工厂函数内）
+
+```python
+def build_load_context_node(*, context: WorkflowContext):
+    trace = workflow_tracer(context=context, lane="planner")
+
+    @trace.node(name="load_context", timing_field="load_ms")
+    async def load_context_node(state):
+        # 这里写 node 逻辑
+        return {"loaded_data": data}
+
+    return load_context_node
+```
+
+两种写法（传 handler vs 装饰器）完全等价，选择你觉得更清晰的写法即可。
+
+### 3. prompt builder — `@traceable_run`
+
+```python
+from app.workflows.common import traceable_run
+
+@traceable_run(name="digest.docgen.writer_prompt", run_type="prompt")
+def build_writer_messages(*, subject: str, tone: str) -> list[dict]:
+    return [
+        {"role": "system", "content": f"你是一位教学文档作者，用{tone}语气写作。"},
+        {"role": "user", "content": f"请为「{subject}」撰写章节内容。"},
+    ]
+```
+
+`traceable_run` 就是 `langsmith.traceable` 的薄别名。你也可以直接用：
+
+```python
+from langsmith import traceable
+
+@traceable(name="digest.docgen.writer_prompt", run_type="prompt")
+def build_writer_messages(*, subject: str, tone: str) -> list[dict]:
+    ...
+```
+
+两种写法完全等价。`traceable_run` 的好处是签名里保留了 `workflow`, `lane` 等参数
+（内部会忽略），方便搜索和理解。
+
+#### 常用 `run_type`
+
+| run_type | 用于 |
+| --- | --- |
+| `"prompt"` | prompt builder / message 构造 |
+| `"chain"` | 多步组合逻辑 |
+| `"retriever"` | 检索/搜索函数 |
+| `"tool"` | 工具函数（默认值） |
+
+### 4. node 内关键步骤 — `tracked_step`
+
+```python
+from app.workflows.common import tracked_step
+
+async with tracked_step(
+    state,
+    name="web_retrieval",
+    kind="substep",                 # runtime stats 分类
+    phase="planner",                # 进度事件的 phase
+    running_message="正在搜索资料...",
+    completed_message="搜索完成。",
+    failed_message="搜索失败。",
+    trace_run_type="retriever",     # LangSmith span 类型
+    trace_inputs={"query_count": len(queries)},
+    trace_metadata={"source": "web"},
+) as step:
+    hits = await search_web(queries)
+    step.set_outputs(result_count=len(hits))
+```
+
+**`tracked_step` 同时管理三件事：**
+
+1. **runtime stats** — 自动记录 `record_step_start` / `record_step_end`
+2. **进度事件** — 如果设了 `phase` + message 参数，自动通过 `progress_callback` 推送进度
+3. **LangSmith 子 span** — 当 `kind != "node"` 时，创建一个 `langsmith_trace` 子 span
+
+`kind` 和 `trace_run_type` **不是一回事**：
+- `kind` 是项目内部 runtime stats 的分类
+- `trace_run_type` 决定 LangSmith 上这个 span 显示为什么类型
+
+详见 [TRACKED_STEP.md](./TRACKED_STEP.md)。
 
 ---
 
-## 10. 命名规范总结
+## `run_state_graph` vs `invoke_state_graph`
 
-### Span 命名
+| 函数 | 用途 | 入参 | 异常处理 |
+| --- | --- | --- | --- |
+| `run_state_graph(...)` | 主 workflow 入口 | 需要 `WorkflowContext` | 自动捕获异常并返回 `WorkflowResult` |
+| `invoke_state_graph(...)` | 子 graph 调用 | 直接传 `subject`、`build_session_id` 等 | 异常直接抛出 |
 
-| 层级 | 命名格式 | 示例 |
+两者都自动传 LangGraph config 和设置 `llm_trace_scope`。
+
+**什么时候用 `invoke_state_graph`：**
+- examine 模块的题目构建、评分等子 graph
+- 不需要 `WorkflowContext` 的独立 graph 调用
+
+---
+
+## infra 层保留哪些 trace
+
+默认只保留这几类共享边界：
+
+1. **LLM 调用包装** — `app/shared/infra/llm_support/` 中的 `acompletion` / `acompletion_structured`
+2. **Tool registry** — `ToolRegistry.execute()` 自动创建 tool span
+3. **retriever / reader** — 共享 IO 边界
+4. **`BaseTracedExecution`** — 长运行共享执行单元（如 DocGenWriterRuntime）
+
+普通 infra helper 默认不要为了 LangSmith 再单独加一层 decorator。
+如果需要在 infra 层新增 trace，先确认它属于上述 4 种共享边界之一。
+
+---
+
+## LangSmith trace 层级
+
+```text
+graph_run: "digest.docgen" (LangGraph 自动创建, config 传入 metadata/tags)
+  ├─ node: "load_context" (LangGraph 自动创建 + tracing_context 注入额外 metadata)
+  │    ├─ tracked_step: "web_retrieval" (kind=substep, trace_run_type=retriever)
+  │    └─ infra: acompletion (自动继承 ambient context: workflow/lane/node)
+  ├─ node: "plan_chapters" (LangGraph 自动创建)
+  │    ├─ tracked_step: "build_outline"
+  │    └─ infra: acompletion_structured
+  └─ node: "finalize_assemble" (LangGraph 自动创建)
+       └─ infra: acompletion
+```
+
+这正好满足"workflow 层统一收口，infra 层自动继承"的目标。
+
+---
+
+## 向后兼容
+
+### `trace.node(...)` 签名保留
+
+以下参数保留在签名中但已不再使用，可以安全删除：
+- `input_keys` — 以前用于过滤 state 中传给 LangSmith 的输入字段
+- `output_keys` — 以前用于过滤 state 中传给 LangSmith 的输出字段
+
+### `traceable_run(...)` 签名保留
+
+以下参数保留在签名中但内部忽略：
+- `workflow` / `workflow_name` / `context` / `lane`
+- `input_keys` / `output_keys` / `timing_field`
+
+保留它们是为了避免已有调用方需要改代码。
+
+---
+
+## 环境变量
+
+| 变量 | 必须 | 说明 |
 | --- | --- | --- |
-| Node span | `{lane}.{node_name}` | `docgen.targeted_research` |
-| Runtime span | `{trace_namespace}.{trace_name}` | `workflow_runtime.docgen.research` |
-| LLM span | 由 LiteLLM 自动命名 | `ChatCompletion` |
+| `LANGSMITH_TRACING=true` | 是 | 启用 LangSmith 追踪 |
+| `LANGSMITH_API_KEY` | 是 | LangSmith API 密钥 |
+| `LANGSMITH_PROJECT` | 否 | 项目名（默认 `AITeachMe`） |
+| `LANGSMITH_CAPTURE_INPUTS` | 否 | 是否记录 trace 输入预览；本地默认开启，云端默认关闭，只在你想覆盖默认策略时设置 |
+| `LANGSMITH_CAPTURE_OUTPUTS` | 否 | 是否记录 trace 输出预览；LLM / retriever / reader / tool / runtime 共用这套策略 |
+| `LANGSMITH_MAX_TEXT_CHARS` | 否 | 单个文本字段最大长度，超出会截断（默认 2000） |
 
-### 命名纪律
+补充说明：
 
-- workflow node 名称必须直接表达业务语义
-- workflow-local runtime 的 trace 命名必须落在 `workflow_runtime.*`，不伪装成 infra
-- trace 里必须能看见 planner session、confirmed plan、digest mode、retrieval profile、teaching action
-- graph 结构要让后续优化人员一眼看懂"主骨架"和"章节并发骨架"
+- 本地开发如果 `APP_MODE=local`，trace 输入输出预览默认开启；显式写环境变量只是覆盖默认值，不是必须每次都配。
+- `pytest` 默认不应把测试 trace 上传到正式 LangSmith project；仓库里的测试夹具会主动关闭这一点。
+- 输入输出预览遵循“关键事实优先”原则：保留 query、url、title、关键 snippet、研究轮次等诊断必需信息；不默认上传整页正文、通用 tool 大结果或运行时长文本正文。
 
+---
+
+## 迁移纪律
+
+以后新增或重构 workflow tracing 时，按下面的优先级判断用哪个接口：
+
+1. **这是 workflow root 吗？**
+   → 用 `run_state_graph(...)` 或 `invoke_state_graph(...)`
+
+2. **这是 graph node 吗？**
+   → 用 `trace = workflow_tracer(...); trace.node(...)`
+
+3. **这是稳定 prompt / helper 函数吗？**
+   → 用 `@traceable_run(...)` 或 `@traceable(...)`
+
+4. **这是 node 内关键步骤吗？**
+   → 用 `tracked_step(...)`
+
+5. **这是 infra 共享执行边界吗？**
+   → 才考虑在 infra 层保留或新增 trace
+
+**关键约束：不要在 workflow 层手动调用 `langsmith_trace()`、`annotate_traceable()`、
+`build_langsmith_extra()` 等底层函数。** 所有 workflow 追踪都应该通过上面 4 个入口完成。
+
+进一步约束：
+
+- 新增 workflow graph 时，`workflow.add_node(...)` 默认都应包在 `trace.node(...)` 外层。
+- 新增 workflow runtime 入口时，默认走 `run_state_graph(...)` / `invoke_state_graph(...)`，不要自己直接 `graph.compile().ainvoke(...)`。
+- 新增 prompt builder 时，默认加 `@traceable_run(..., run_type="prompt")`，不要裸写成无名 helper。
+- 新增 node 内多步逻辑时，优先用 `tracked_step(...)` 表达关键边界，不要在 node 里零散手写 LangSmith span。
+- **不要在新的 workflow 业务代码里直接调用 `llm_trace_scope(...)`。**
+  这个接口只应该留在 `workflows/common`、共享 runtime 桥接层或少数历史兼容代码里。
+
+你可以把它理解成一条 code review 红线：
+
+- 如果在 `app/workflows/**` 新代码里看到了 `langsmith_trace(...)`
+- 或 `annotate_traceable(...)`
+- 或 `build_langsmith_extra(...)`
+- 或直接手写 `tracing_context(...)`
+- 或直接手写 `llm_trace_scope(...)`
+
+那通常说明这段代码没有按规范接入，应该优先重写成 4 个统一入口之一。
+
+---
+
+## 新 Workflow 模板
+
+新增 workflow 时，推荐直接按下面这个骨架起手：
+
+```python
+from langgraph.graph import END, StateGraph
+
+from app.workflows.common import run_state_graph, tracked_step, workflow_tracer
+from app.workflows.common.context import WorkflowContext
+
+
+def build_demo_graph(*, context: WorkflowContext) -> StateGraph:
+    workflow = StateGraph(DemoState)
+    trace = workflow_tracer(context=context, lane="demo")
+
+    @trace.node(name="load_context")
+    async def load_context_node(state: DemoState) -> dict:
+        async with tracked_step(
+            state,
+            name="prepare_inputs",
+            kind="substep",
+            trace_run_type="tool",
+        ) as step:
+            payload = await prepare_inputs(...)
+            step.set_outputs(item_count=len(payload))
+        return {"payload": payload}
+
+    @trace.node(name="finalize")
+    async def finalize_node(state: DemoState) -> dict:
+        return {"done": True}
+
+    workflow.add_node("load_context", load_context_node)
+    workflow.add_node("finalize", finalize_node)
+    workflow.set_entry_point("load_context")
+    workflow.add_edge("load_context", "finalize")
+    workflow.add_edge("finalize", END)
+    return workflow
+
+
+async def run_demo_workflow(*, context: WorkflowContext, initial_state: DemoState):
+    return await run_state_graph(
+        workflow_name="demo.workflow",
+        graph_builder=lambda: build_demo_graph(context=context),
+        initial_state=initial_state,
+        context=context,
+    )
+```
+
+只要新代码大体长这样，trace 风格通常就不会跑偏。
+
+---
+
+## 一句话版本
+
+```
+workflow root  → run_state_graph（传 LangGraph config）
+workflow node  → workflow_tracer().node()（只设 ambient context）
+prompt/helper  → @traceable_run 或 @traceable
+node 内关键步骤 → tracked_step
+infra 层       → 只在共享执行边界保留 trace
+LangGraph 自动追踪每个 node — 不需要手动再创建 node span
+```

@@ -1,12 +1,80 @@
 """工具注册表。"""
 from __future__ import annotations
+
 import asyncio
 import json
+from collections.abc import Mapping
 from typing import Any
+
 import structlog
+
+from app.shared.infra.observability import (
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+    traceable_with_context,
+)
 from app.shared.infra.tools.definition import ToolDefinition
 
 logger = structlog.get_logger()
+
+
+def _tool_result_summary(result: Any) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "result_type": type(result).__name__,
+    }
+    if isinstance(result, dict):
+        summary["result_keys"] = sorted(str(key) for key in list(result.keys())[:6])
+    elif isinstance(result, (list, tuple, set)):
+        summary["item_count"] = len(result)
+    return summary
+
+
+def _tool_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": str(inputs.get("tool_name") or ""),
+        "arguments": sanitize_langsmith_input(
+            dict(inputs.get("arguments") or {}),
+            field_name="arguments",
+        ),
+    }
+
+
+def _tool_trace_outputs(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        return {}
+    trace = payload.get("trace")
+    if isinstance(trace, Mapping):
+        return dict(trace)
+    return {}
+
+
+def _tool_trace_metadata(
+    _registry: "ToolRegistry",
+    *,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    tool_definition: ToolDefinition,
+    **_: Any,
+) -> dict[str, Any]:
+    del arguments
+    return {
+        "tool_name": tool_name,
+        "tool_source": tool_definition.source,
+        "tool_tags": list(tool_definition.tags),
+        "tool_is_async": tool_definition.is_async,
+    }
+
+
+def _tool_trace_tags(
+    _registry: "ToolRegistry",
+    *,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    tool_definition: ToolDefinition,
+    **_: Any,
+) -> list[str]:
+    del arguments
+    return [f"tool:{tool_name}", *[f"tool_tag:{tag}" for tag in list(tool_definition.tags)[:5]]]
 
 
 class ToolRegistry:
@@ -28,13 +96,46 @@ class ToolRegistry:
     def list_all(self) -> list[ToolDefinition]:
         return list(self._tools.values())
 
+    @traceable_with_context(
+        name="tool.execute",
+        run_type="tool",
+        process_inputs=_tool_trace_inputs,
+        process_outputs=_tool_trace_outputs,
+        name_factory=lambda self, *, tool_name, **_: f"tool.{tool_name}",
+        metadata_factory=_tool_trace_metadata,
+        tags_factory=_tool_trace_tags,
+    )
+    async def _run_traced_tool(
+        self,
+        *,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+        tool_definition: ToolDefinition,
+        langsmith_extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        del langsmith_extra
+        if tool_definition.is_async:
+            result = await tool_definition.handler(**dict(arguments))
+        else:
+            result = await asyncio.to_thread(tool_definition.handler, **dict(arguments))
+        return {
+            "result": result,
+            "trace": {
+                "success": True,
+                **sanitize_langsmith_output(_tool_result_summary(result), field_name="result_summary"),
+            },
+        }
+
     async def execute(self, name: str, **kwargs: Any) -> Any:
         td = self._tools.get(name)
         if td is None:
             raise ValueError(f"工具 `{name}` 未注册")
-        if td.is_async:
-            return await td.handler(**kwargs)
-        return await asyncio.to_thread(td.handler, **kwargs)
+        payload = await self._run_traced_tool(
+            tool_name=name,
+            arguments=dict(kwargs),
+            tool_definition=td,
+        )
+        return payload["result"]
 
     async def execute_tool_call(self, tool_call: dict) -> str:
         """执行 OpenAI 格式的 tool_call。"""

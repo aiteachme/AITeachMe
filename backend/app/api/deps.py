@@ -1,4 +1,4 @@
-﻿"""接口层公共依赖。"""
+"""接口层公共依赖。"""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import structlog
 from fastapi import Depends, Request, Response
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
+from app.shared.infra.runtime import get_guest_cookie_name, is_local_mode
 from app.shared.infra.exceptions import AITeachMeError
 from app.services.auth_service import (
     create_guest_user,
@@ -77,8 +77,7 @@ def _extract_bearer_token(request: Request) -> str | None:
 
 
 def _extract_guest_token(request: Request) -> str | None:
-    settings = get_settings()
-    raw = (request.cookies.get(settings.guest_cookie_name) or "").strip()
+    raw = (request.cookies.get(get_guest_cookie_name()) or "").strip()
     return raw or None
 
 
@@ -115,7 +114,6 @@ def get_current_user_context(
 ) -> CurrentUserContext:
     """返回当前运行时用户。优先 access token，其次 guest token。"""
 
-    settings = get_settings()
     device_key = _extract_device_key(request)
     token = _extract_bearer_token(request)
     guest_token = _extract_guest_token(request)
@@ -126,7 +124,7 @@ def get_current_user_context(
             context = CurrentUserContext(
                 user_id=user.id,
                 email=user.email,
-                is_local=settings.is_local_mode,
+                is_local=is_local_mode(),
                 device_key=(device_key or user.device_key),
                 is_authenticated=True,
                 auth_source="token",
@@ -157,7 +155,7 @@ def get_current_user_context(
                 context = CurrentUserContext(
                     user_id=user.id,
                     email=None,
-                    is_local=settings.is_local_mode,
+                    is_local=is_local_mode(),
                     device_key=(device_key or user.device_key),
                     is_authenticated=False,
                     auth_source="guest_token",
@@ -175,7 +173,7 @@ def get_current_user_context(
     context = CurrentUserContext(
         user_id=user.id,
         email=None,
-        is_local=settings.is_local_mode,
+        is_local=is_local_mode(),
         device_key=(device_key or user.device_key),
         is_authenticated=False,
         auth_source="guest_bootstrap",

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from app.utils.docgen_store import update_knowledge_build_status
+from app.workflows.common import workflow_tracer
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
     build_collect_drafts_node,
@@ -23,110 +24,110 @@ from app.workflows.digest.docgen.nodes import (
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.observability import wrap_digest_node
-
 
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the DocGen graph."""
 
     workflow = StateGraph(DocGenState)
+    trace = workflow_tracer(context=context, lane="docgen")
     workflow.add_node(
         "load_context",
-        wrap_digest_node(
+        trace.node(
             build_load_context_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="load_context",
+            name="load_context",
             timing_field="load_ms",
         ),
     )
     workflow.add_node(
         "targeted_research",
-        wrap_digest_node(
+        trace.node(
             build_targeted_research_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="targeted_research",
+            name="targeted_research",
         ),
     )
     workflow.add_node(
         "collect_materials",
-        wrap_digest_node(
+        trace.node(
             build_collect_materials_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="collect_materials",
+            name="collect_materials",
         ),
     )
     workflow.add_node(
         "resolve_titles",
-        wrap_digest_node(
+        trace.node(
             build_resolve_titles_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="resolve_titles",
+            name="resolve_titles",
         ),
     )
     workflow.add_node(
         "pedagogy_craft",
-        wrap_digest_node(
+        trace.node(
             build_pedagogy_craft_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="pedagogy_craft",
+            name="pedagogy_craft",
         ),
     )
     workflow.add_node(
         "collect_drafts",
-        wrap_digest_node(
+        trace.node(
             build_collect_drafts_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="collect_drafts",
+            name="collect_drafts",
         ),
     )
     workflow.add_node(
         "enrich_document",
-        wrap_digest_node(
+        trace.node(
             build_enrich_document_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="enrich_document",
+            name="enrich_document",
             timing_field="enrich_ms",
         ),
     )
     workflow.add_node(
         "inject_examine",
-        wrap_digest_node(
+        trace.node(
             build_inject_examine_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="inject_examine",
+            name="inject_examine",
             timing_field="examine_ms",
         ),
     )
     workflow.add_node(
         "finalize_assemble",
-        wrap_digest_node(
+        trace.node(
             build_finalize_assemble_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="docgen",
-            node_name="finalize_assemble",
+            name="finalize_assemble",
         ),
     )
 
     workflow.set_entry_point("load_context")
-    workflow.add_conditional_edges("load_context", route_after_load_context, {"continue": "targeted_research", "fail": END})
+    workflow.add_conditional_edges(
+        "load_context",
+        route_after_load_context,
+        {"continue": "targeted_research", "fail": END},
+    )
     workflow.add_edge("targeted_research", "collect_materials")
     workflow.add_edge("collect_materials", "resolve_titles")
-    workflow.add_conditional_edges("resolve_titles", build_craft_sends)
+    workflow.add_conditional_edges(
+        "resolve_titles",
+        build_craft_sends,
+        ["pedagogy_craft"],
+    )
     workflow.add_edge("pedagogy_craft", "collect_drafts")
-    workflow.add_conditional_edges("collect_drafts", route_after_step, {"continue": "enrich_document", "fail": END})
-    workflow.add_conditional_edges("enrich_document", route_after_step, {"continue": "inject_examine", "fail": END})
-    workflow.add_conditional_edges("inject_examine", route_after_step, {"continue": "finalize_assemble", "fail": END})
+    workflow.add_conditional_edges(
+        "collect_drafts",
+        route_after_step,
+        {"continue": "enrich_document", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "enrich_document",
+        route_after_step,
+        {"continue": "inject_examine", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "inject_examine",
+        route_after_step,
+        {"continue": "finalize_assemble", "fail": END},
+    )
     workflow.add_edge("finalize_assemble", END)
     return workflow
-
 
 def create_docgen_initial_state(
     *,
@@ -167,11 +168,11 @@ def create_docgen_initial_state(
     }
 
 
-def route_after_step(state: DocGenState) -> str:
+def route_after_step(state: DocGenState) -> Literal["fail", "continue"]:
     return "fail" if state.get("error") else "continue"
 
 
-def route_after_load_context(state: DocGenState) -> list[Send] | str:
+def route_after_load_context(state: DocGenState) -> list[Send] | Literal["fail"]:
     if state.get("error"):
         return "fail"
     return build_research_sends(state)
@@ -262,4 +263,5 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
+
 

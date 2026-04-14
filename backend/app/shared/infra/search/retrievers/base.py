@@ -6,10 +6,45 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from app.shared.infra.search.cache import get_retriever_runtime_cache
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.observability import (
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+    traceable_with_context,
+)
 
 _REGISTERED_RETRIEVER_TYPES: dict[str, type["BaseRetriever"]] = {}
+
+
+def _search_result_preview(results: list[SearchResult], *, limit: int = 3) -> list[dict[str, object]]:
+    preview: list[dict[str, object]] = []
+    for item in results[: max(1, limit)]:
+        preview.append(
+            {
+                "title": item.title,
+                "url": item.url,
+                "snippet": item.snippet,
+                "source": item.source,
+            }
+        )
+    return preview
+
+
+def _retriever_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    return {
+        "query": sanitize_langsmith_input(str(inputs.get("query") or ""), field_name="query"),
+        "max_results": int(inputs.get("max_results", 5) or 5),
+    }
+
+
+def _retriever_trace_outputs(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {}
+    trace = payload.get("trace")
+    if isinstance(trace, dict):
+        return dict(trace)
+    return {}
 
 
 def _normalize_registry_name(value: str) -> str:
@@ -49,6 +84,7 @@ class BaseRetriever(ABC):
     canonical_name: str = ""
     aliases: tuple[str, ...] = ()
     auto_register: bool = True
+    cacheable: bool = True
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -81,30 +117,53 @@ class BaseRetriever(ABC):
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         raise NotImplementedError
 
-    async def traced_search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        trace = get_llm_trace_context()
-        with langsmith_trace(
-            name=f"retriever.{self.name}",
-            run_type="retriever",
-            inputs={"query": query, "max_results": max_results},
-            subject=trace.subject,
-            build_session_id=trace.build_session_id,
-            workflow=trace.workflow,
-            lane=trace.lane,
-            node=trace.node,
-            extra_metadata={"retriever_name": self.name},
-            extra_tags=[f"retriever:{self.name}"],
-        ) as run:
+    @traceable_with_context(
+        name="retriever.search",
+        run_type="retriever",
+        process_inputs=_retriever_trace_inputs,
+        process_outputs=_retriever_trace_outputs,
+        name_factory=lambda self, query, max_results=5: f"retriever.{self.name}",
+        metadata_factory=lambda self, query, max_results=5: {"retriever_name": self.name},
+        tags_factory=lambda self, query, max_results=5: [f"retriever:{self.name}"],
+    )
+    async def _run_traced_search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        langsmith_extra: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        del langsmith_extra
+        if self.cacheable:
+            results, cache_status = await get_retriever_runtime_cache().get_or_compute(
+                payload={
+                    "retriever_name": self.name,
+                    "query": query,
+                    "max_results": int(max_results),
+                },
+                loader=lambda: self.search(query, max_results=max_results),
+            )
+        else:
             results = await self.search(query, max_results=max_results)
-            if run is not None:
-                run.end(
-                    outputs={
-                        "result_count": len(results),
-                        "unique_url_count": len({item.url for item in results if item.url}),
-                        "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
-                    }
-                )
-            return results
+            cache_status = "disabled"
+        return {
+            "results": results,
+            "trace": {
+                "result_count": len(results),
+                "unique_url_count": len({item.url for item in results if item.url}),
+                "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
+                "cache_status": cache_status,
+                "cache_hit": cache_status in {"hit", "shared"},
+                "results_preview": sanitize_langsmith_output(
+                    _search_result_preview(results, limit=2),
+                    field_name="results_preview",
+                ),
+            },
+        }
+
+    async def traced_search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        payload = await self._run_traced_search(query, max_results=max_results)
+        return list(payload.get("results") or [])
 
 
 __all__ = [

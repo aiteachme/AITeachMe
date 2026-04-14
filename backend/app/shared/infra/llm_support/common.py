@@ -12,9 +12,10 @@ import structlog
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.config import Settings, get_settings
-from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
+from app.shared.infra.env_support import get_env
+from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
-from app.shared.infra.tracing import LLMCallRecord, get_llm_trace_context, get_tracker
+from app.shared.infra.observability import LLMCallRecord, get_llm_trace_context, get_tracker
 
 logger = structlog.get_logger()
 
@@ -36,10 +37,13 @@ def build_completion_context(task_type: TaskType) -> CompletionContext:
     """Resolve config and credentials for one task-scoped LLM call."""
 
     settings = get_settings()
+    api_key = (get_env("LLM_API_KEY") or "").strip()
+    if not api_key:
+        raise MissingLLMApiKeyError()
     return CompletionContext(
         task_type=task_type,
         settings=settings,
-        api_key=settings.require_llm_api_key(),
+        api_key=api_key,
         profile=get_task_profile(task_type),
     )
 
@@ -140,7 +144,10 @@ def build_completion_kwargs(
     completion_kwargs = {
         "model": f"openai/{context.profile.model}",
         "messages": messages,
-        "api_base": context.settings.llm_base_url,
+        "api_base": (
+            get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ),
         "api_key": context.api_key,
         "timeout": context.profile.timeout_s,
         "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),

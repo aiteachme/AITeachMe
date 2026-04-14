@@ -81,28 +81,28 @@ def test_trigger_exam_generate_skips_question_build_for_sufficient_paper_invento
     )
 
     with patch(
-        "app.services.exams_service.exams_repo.get_published_curriculum_version",
+        "app.services.exams_service.paper_generation.exams_repo.get_published_curriculum_version",
         return_value=snapshot,
     ), patch(
-        "app.services.exams_service.build_exam_style_profile",
+        "app.services.exams_service.paper_generation.build_exam_style_profile",
         return_value=style_profile,
     ), patch(
-        "app.services.exams_service._resolve_requested_unit_scope",
+        "app.services.exams_service.paper_generation._resolve_requested_unit_scope",
         return_value=[11, 12, 13],
     ), patch(
-        "app.services.exams_service._resolve_auto_build_unit_ids",
+        "app.services.exams_service.paper_generation._resolve_auto_build_unit_ids",
         return_value=[11, 12, 13],
     ), patch(
-        "app.services.exams_service._count_effective_template_inventory",
+        "app.services.exams_service.paper_generation._count_effective_template_inventory",
         side_effect=[40, 40],
     ), patch(
-        "app.services.exams_service.trigger_question_build",
+        "app.services.exams_service.paper_generation.trigger_question_build",
         new_callable=AsyncMock,
     ) as build_mock, patch(
-        "app.services.exams_service.assemble_paper",
+        "app.services.exams_service.paper_generation.assemble_paper",
         return_value=paper,
     ) as assemble_mock, patch(
-        "app.services.exams_service.export_exam_paper_artifacts",
+        "app.services.exams_service.paper_generation.export_exam_paper_artifacts",
         return_value=_DummyExportResult(),
     ):
         result = asyncio.run(

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 
 logger = structlog.get_logger()
 
@@ -97,8 +98,12 @@ async def rerank_chunks(
     if not model or not chunks:
         return chunks
 
-    api_key = settings.rag_rerank_api_key or settings.llm_api_key
-    base_url = settings.rag_rerank_base_url or settings.llm_base_url
+    api_key = (get_env("RAG_RERANK_API_KEY") or get_env("LLM_API_KEY") or "").strip()
+    base_url = (
+        get_env("RAG_RERANK_BASE_URL")
+        or get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
     final_top_k = top_k or settings.rag_rerank_top_k
 
     if not api_key:

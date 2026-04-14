@@ -1,4 +1,4 @@
-"""Workflow-local research runtime for digest DocGen."""
+"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.traced_execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
@@ -52,14 +52,14 @@ _MODE_RESEARCH_STRATEGIES = {
 }
 
 
-class DocGenResearchRuntime(BaseTracedExecution):
+class DocGenChapterContextRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
         return "workflow_runtime.docgen"
 
     @property
     def trace_name(self) -> str:
-        return "research"
+        return "chapter_context"
 
     async def execute(
         self,
@@ -646,4 +646,4 @@ class DocGenResearchRuntime(BaseTracedExecution):
         return re.sub(r"\s+", "", str(value or "").strip()).casefold()
 
 
-__all__ = ["DocGenResearchRuntime"]
+__all__ = ["DocGenChapterContextRuntime"]

@@ -1,4 +1,4 @@
-"""Ingest workflow graph definitions — two-phase architecture.
+﻿"""Ingest workflow graph definitions — two-phase architecture.
 
 Phase 1 (Fast Parse): Traditional parsing, no LLM.
 Phase 2 (Deep Enhance): LLM Vision OCR, runs in background.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from langgraph.graph import END, StateGraph
 
 from app.workflows.common.context import WorkflowContext, create_langgraph_dev_context
-from app.workflows.common.observability import wrap_workflow_node
+from app.workflows.common import workflow_tracer
 from app.workflows.ingest.nodes.enhance import (
     build_deep_enhance_file_node,
     build_finalize_deep_enhance_node,
@@ -40,67 +40,54 @@ def build_fast_parse_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the Phase 1 fast-parse workflow (no LLM calls)."""
 
     workflow = StateGraph(IngestParseState)
+    trace = workflow_tracer(context=context, lane="fast_parse")
     workflow.add_node(
         "load_raw_file",
-        wrap_workflow_node(
+        trace.node(
             build_load_raw_file_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="load_raw_file",
+            name="load_raw_file",
         ),
     )
     workflow.add_node(
         "compute_fingerprint",
-        wrap_workflow_node(
+        trace.node(
             build_compute_fingerprint_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="compute_fingerprint",
+            name="compute_fingerprint",
         ),
     )
     workflow.add_node(
         "classify_file",
-        wrap_workflow_node(
+        trace.node(
             build_classify_file_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="classify_file",
+            name="classify_file",
         ),
     )
     workflow.add_node(
         "plan_parse",
-        wrap_workflow_node(
+        trace.node(
             build_plan_parse_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="plan_parse",
+            name="plan_parse",
         ),
     )
     workflow.add_node(
         "parse_file",
-        wrap_workflow_node(
+        trace.node(
             build_parse_file_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="parse_file",
+            name="parse_file",
         ),
     )
     workflow.add_node(
         "finalize_success",
-        wrap_workflow_node(
+        trace.node(
             build_finalize_success_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="finalize_success",
+            name="finalize_success",
         ),
     )
     workflow.add_node(
         "finalize_failure",
-        wrap_workflow_node(
+        trace.node(
             build_finalize_failure_node(context=context),
-            workflow_name=context.workflow_name,
-            lane="fast_parse",
-            node_name="finalize_failure",
+            name="finalize_failure",
         ),
     )
 
@@ -156,45 +143,37 @@ def build_fast_parse_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_edge("finalize_failure", END)
     return workflow
 
-
 def build_deep_enhance_graph() -> StateGraph:
     """Build the Phase 2 deep-enhance workflow (LLM Vision OCR)."""
 
     workflow = StateGraph(IngestEnhanceState)
+    trace = workflow_tracer(workflow="ingest.deep_enhance", lane="deep_enhance")
     workflow.add_node(
         "load_enhance_context",
-        wrap_workflow_node(
+        trace.node(
             build_load_enhance_context_node(),
-            workflow_name="ingest.deep_enhance",
-            lane="deep_enhance",
-            node_name="load_enhance_context",
+            name="load_enhance_context",
         ),
     )
     workflow.add_node(
         "deep_enhance_file",
-        wrap_workflow_node(
+        trace.node(
             build_deep_enhance_file_node(),
-            workflow_name="ingest.deep_enhance",
-            lane="deep_enhance",
-            node_name="deep_enhance_file",
+            name="deep_enhance_file",
         ),
     )
     workflow.add_node(
         "finalize_deep_enhance",
-        wrap_workflow_node(
+        trace.node(
             build_finalize_deep_enhance_node(),
-            workflow_name="ingest.deep_enhance",
-            lane="deep_enhance",
-            node_name="finalize_deep_enhance",
+            name="finalize_deep_enhance",
         ),
     )
     workflow.add_node(
         "finalize_enhance_failure",
-        wrap_workflow_node(
+        trace.node(
             build_finalize_enhance_failure_node(),
-            workflow_name="ingest.deep_enhance",
-            lane="deep_enhance",
-            node_name="finalize_enhance_failure",
+            name="finalize_enhance_failure",
         ),
     )
 
@@ -226,7 +205,6 @@ def build_deep_enhance_graph() -> StateGraph:
     workflow.add_edge("finalize_enhance_failure", END)
     return workflow
 
-
 # Legacy alias for backwards compatibility
 def build_parse_file_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the single-file ingest workflow (legacy alias for fast parse)."""
@@ -239,3 +217,4 @@ def get_langgraph_dev_fast_parse_graph() -> StateGraph:
     return build_fast_parse_graph(
         context=create_langgraph_dev_context("ingest.file.parse.langgraph_dev"),
     )
+

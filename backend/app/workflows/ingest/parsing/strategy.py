@@ -7,6 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.formats import (
@@ -53,7 +54,7 @@ def build_parse_plan(
 
     settings = get_settings()
     extension = resolve_parser_extension(file_path, normalize_extension(filetype))
-    allow_llm_vision = bool(settings.llm_api_key)
+    allow_llm_vision = bool(get_env("LLM_API_KEY"))
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_llm_vision)
     if not available_parsers:
         if is_image_extension(extension):

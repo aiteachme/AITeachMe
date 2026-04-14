@@ -6,10 +6,42 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from app.shared.infra.search.cache import get_reader_runtime_cache
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.tracing import get_llm_trace_context, langsmith_trace
+from app.shared.infra.observability import (
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+    traceable_with_context,
+)
 
 _REGISTERED_READER_TYPES: dict[str, type["BaseReader"]] = {}
+
+
+def _scraped_page_preview(page: ScrapedPage) -> dict[str, object]:
+    return {
+        "url": page.url,
+        "title": page.title,
+        "content_type": page.content_type,
+        "content_length": len(page.content),
+        "reader_name": page.reader_name,
+        "success": page.success,
+        "error": page.error or "",
+    }
+
+
+def _reader_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    return {
+        "url": sanitize_langsmith_input(str(inputs.get("url") or ""), field_name="url"),
+    }
+
+
+def _reader_trace_outputs(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {}
+    trace = payload.get("trace")
+    if isinstance(trace, dict):
+        return dict(trace)
+    return {}
 
 
 def _normalize_registry_name(value: str) -> str:
@@ -52,6 +84,7 @@ class BaseReader(ABC):
     aliases: tuple[str, ...] = ()
     auto_register: bool = True
     priority: int = 0
+    cacheable: bool = True
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -94,33 +127,57 @@ class BaseReader(ABC):
     async def read(self, url: str) -> ScrapedPage:
         raise NotImplementedError
 
-    async def traced_read(self, url: str) -> ScrapedPage:
-        trace = get_llm_trace_context()
-        with langsmith_trace(
-            name=f"reader.{self.name}",
-            run_type="tool",
-            inputs={"url": url},
-            subject=trace.subject,
-            build_session_id=trace.build_session_id,
-            workflow=trace.workflow,
-            lane=trace.lane,
-            node=trace.node,
-            extra_metadata={"reader_name": self.name},
-            extra_tags=[f"reader:{self.name}"],
-        ) as run:
+    @traceable_with_context(
+        name="reader.read",
+        run_type="tool",
+        process_inputs=_reader_trace_inputs,
+        process_outputs=_reader_trace_outputs,
+        name_factory=lambda self, url: f"reader.{self.name}",
+        metadata_factory=lambda self, url: {"reader_name": self.name},
+        tags_factory=lambda self, url: [f"reader:{self.name}"],
+    )
+    async def _run_traced_read(
+        self,
+        url: str,
+        *,
+        langsmith_extra: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        del langsmith_extra
+        if self.cacheable:
+            result, cache_status = await get_reader_runtime_cache().get_or_compute(
+                payload={
+                    "reader_name": self.name,
+                    "url": url,
+                },
+                loader=lambda: self.read(url),
+            )
+        else:
             result = await self.read(url)
-            result.reader_name = result.reader_name or self.name
-            if run is not None:
-                run.end(
-                    outputs={
-                        "success": result.success,
-                        "content_length": len(result.content),
-                        "content_type": result.content_type,
-                        "reader_name": result.reader_name,
-                        "error": result.error or "",
-                    }
-                )
+            cache_status = "disabled"
+        result.reader_name = result.reader_name or self.name
+        return {
+            "result": result,
+            "trace": {
+                "success": result.success,
+                "content_length": len(result.content),
+                "content_type": result.content_type,
+                "reader_name": result.reader_name,
+                "error": result.error or "",
+                "cache_status": cache_status,
+                "cache_hit": cache_status in {"hit", "shared"},
+                "page_preview": sanitize_langsmith_output(
+                    _scraped_page_preview(result),
+                    field_name="page_preview",
+                ),
+            },
+        }
+
+    async def traced_read(self, url: str) -> ScrapedPage:
+        payload = await self._run_traced_read(url)
+        result = payload.get("result")
+        if isinstance(result, ScrapedPage):
             return result
+        return ScrapedPage(url=url, success=False, error="reader trace payload missing result")
 
 
 __all__ = [

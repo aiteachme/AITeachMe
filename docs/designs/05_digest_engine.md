@@ -1,4 +1,4 @@
-# 05. Digest 引擎 — 织网引擎技术文档
+﻿# 05. Digest 引擎 — 织网引擎技术文档
 
 > **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/digest/` 代码实现
 > **合并说明**: 本文档合并了原 `05a_digest_knowledge_document.md` 和 `05b_digest_knowledge_graph.md` 的内容。
@@ -726,12 +726,20 @@ LLM 调用: ✅ metadata (每章一次)
 
 ## 10. 可观测性
 
-所有 Digest 节点均通过 `wrap_digest_node()` 包装，自动记录：
-- `timing_field`: 每节点耗时 (ms)
-- Token 统计: 通过 `build_token_summary(build_session_id, lane)` 聚合
-- 慢操作追踪: `add_slow_item()` 记录最慢的 chunk/unit
+Digest 的 LangSmith / runtime 观测统一按 `workflows/common` 的 4 个入口接入：
 
-运行时产出的 `timing_summary` 和 `token_summary` 写入 State 并通过 structlog 输出。
+- `run_state_graph(...)`：workflow 根 span
+- `workflow_tracer(...).node(...)`：workflow node 的默认接入方式
+- `@traceable_run(...)`：稳定 prompt / helper / retriever
+- `tracked_step(...)`：node 内部关键步骤、progress、runtime stats
+
+运行时统计不再依赖旧式 node wrapper 自动塞大块状态，而是：
+
+- 通过 `tracked_step(...)` 写入简洁 steps 列表
+- 通过 `build_token_summary(build_session_id, lane)` 聚合 token 统计
+- 通过 `add_slow_item()` 记录最慢 chunk / chapter / unit
+
+LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dump 整份 state。
 
 ---
 

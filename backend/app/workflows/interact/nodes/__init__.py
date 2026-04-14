@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.workflows.interact.nodes.execution import build_select_execution_mode_node
 from app.workflows.interact.nodes.history import build_load_history_state_node
 from app.workflows.interact.nodes.persist import build_persist_turn_node
 from app.workflows.interact.nodes.prompt import build_prompt_node
@@ -10,6 +11,7 @@ from app.workflows.interact.nodes.strategy import build_select_teaching_strategy
 from app.workflows.interact.nodes.stream import build_stream_answer_node
 
 __all__ = [
+    "build_select_execution_mode_node",
     "build_load_history_state_node",
     "build_persist_turn_node",
     "build_prompt_node",

@@ -23,7 +23,8 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlmodel import Session, SQLModel, func, select
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import (
     ChatMessage,
@@ -568,8 +569,7 @@ def _import_table(
             instance.file_path = f"{new_slug}/raw_files/{new_id}{ext}"
             instance.markdown_path = cs.raw_markdown_key(new_slug, new_id)
             instance.asset_dir = cs.asset_prefix(new_slug, new_id).rstrip("/")
-            settings = get_settings()
-            instance.storage_backend = "s3" if settings.is_cloud_mode else "local"
+            instance.storage_backend = "s3" if is_cloud_mode() else "local"
         elif spec.name == "knowledge_document" and isinstance(new_id, int):
             instance.markdown_path = cs.knowledge_doc_key(new_slug, f"chapter_{instance.chapter_index}.md")
 
@@ -723,9 +723,8 @@ def _build_manifest(
     exported: dict[str, list[dict]],
     options: ExportOptions,
 ) -> _ExportManifest:
-    settings = get_settings()
     return _ExportManifest(
-        app_version=settings.app_version,
+        app_version=get_env("APP_VERSION", "0.2.0") or "0.2.0",
         exported_at=utcnow(),
         subject=_ManifestSubject(
             slug=subject.slug,

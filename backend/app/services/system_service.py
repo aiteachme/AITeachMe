@@ -1,8 +1,9 @@
-﻿"""系统信息服务层。"""
+"""系统信息服务层。"""
 
 from __future__ import annotations
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env_bool
+from app.shared.infra.runtime import get_app_version, resolve_app_mode
 from app.schemas.system import InitData, RuntimeUser
 
 
@@ -16,11 +17,11 @@ def build_init_data(
 ) -> InitData:
     """构造系统初始化数据。"""
 
-    settings = get_settings()
+    auth_enabled = get_env_bool("AUTH_ENABLED", True)
     return InitData(
-        mode=settings.resolved_app_mode,
-        auth_enabled=settings.auth_enabled,
-        auth_ready=settings.auth_ready,
+        mode=resolve_app_mode(),
+        auth_enabled=auth_enabled,
+        auth_ready=True,
         current_user=RuntimeUser(
             user_id=user_id,
             email=email,
@@ -29,12 +30,12 @@ def build_init_data(
             is_authenticated=is_authenticated,
         ),
         feature_flags={
-            "auth": settings.auth_enabled,
+            "auth": auth_enabled,
             "files": True,
             "knowledge": True,
             "chat": True,
             "exam": True,
             "profile": True,
         },
-        version=settings.app_version,
+        version=get_app_version(),
     )

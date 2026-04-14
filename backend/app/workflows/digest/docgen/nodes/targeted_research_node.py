@@ -1,4 +1,4 @@
-﻿"""Targeted research node for the DocGen lane."""
+"""Targeted research node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.traced_execution import TracedExecutionContext
+from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.workflows.common.context import WorkflowContext
-from app.workflows.digest.docgen.runtime import DocGenResearchRuntime as ResearchConductor
+from app.workflows.digest.docgen.runtime import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     publish_docgen_progress,
@@ -21,6 +21,8 @@ from app.workflows.digest.docgen.nodes.common import (
     resolve_docgen_retrieval_profile,
 )
 from app.workflows.digest.docgen.state import DocGenState
+
+ChapterContextRuntime = DocGenChapterContextRuntime
 
 
 def _extract_external_source_preview(source_details: list[dict[str, object]]) -> tuple[list[str], list[str]]:
@@ -82,7 +84,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
                 "stage": "researching",
                 "chapter_index": chapter_index,
                 "title": chapter_title,
-                "summary": f"{chapter_title} 开始研究，正在检索资料与整理上下文。",
+                "summary": f"{chapter_title} 开始构建章节上下文，正在整理资料并准备写作输入。",
                 "created_at": utcnow(),
             },
         )
@@ -99,8 +101,12 @@ def build_targeted_research_node(*, context: WorkflowContext):
             teaching_action=str(state.get("teaching_action") or "chapter_research"),
             chapter_index=chapter_index,
         )
-        researcher_cls = resolve_docgen_dependency("ResearchConductor", ResearchConductor, owner_module=__name__)
-        researcher = researcher_cls(traced_context)
+        chapter_context_runtime_cls = resolve_docgen_dependency(
+            "ChapterContextRuntime",
+            ChapterContextRuntime,
+            owner_module=__name__,
+        )
+        chapter_context_builder = chapter_context_runtime_cls(traced_context)
         shared_inputs = state.get("shared_inputs")
         section_packets = list(getattr(shared_inputs, "section_packets", []) or [])
         queries = [
@@ -110,7 +116,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
         ]
         if not queries:
             queries = [chapter_title]
-        result = await researcher.run(
+        result = await chapter_context_builder.run(
             queries=queries[: max(1, int(get_settings().docgen_max_research_queries))],
             local_rag_subject=state["subject"],
             local_sections=section_packets,
@@ -194,7 +200,7 @@ def build_targeted_research_node(*, context: WorkflowContext):
                 "stage": "research_completed",
                 "chapter_index": chapter_index,
                 "title": chapter_title,
-                "summary": f"{chapter_title} 研究完成，本地命中 {chapter_material['local_hits']}，外部命中 {chapter_material['web_hits']}，整理来源 {len(chapter_material['sources'])}。",  # noqa: E501
+                "summary": f"{chapter_title} 章节上下文构建完成，本地命中 {chapter_material['local_hits']}，外部命中 {chapter_material['web_hits']}，整理来源 {len(chapter_material['sources'])}。",  # noqa: E501
                 "created_at": utcnow(),
                 "domains": domains,
                 "source_titles": source_titles,
@@ -227,4 +233,3 @@ def build_targeted_research_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_targeted_research_node"]
-

@@ -4,7 +4,14 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.shared.infra.config import Settings
+from app.shared.infra.storage.config import (
+    resolve_dogecloud_api_access_key,
+    resolve_dogecloud_api_secret_key,
+    resolve_dogecloud_space_name,
+    resolve_s3_addressing_style,
+    resolve_s3_credential_mode,
+    s3_uses_dogecloud_tmp_token,
+)
 from app.shared.infra.storage.s3_store import S3ArtifactStore
 
 
@@ -23,73 +30,56 @@ def _build_fake_urlopen(payload: dict[str, object]) -> MagicMock:
     return context_manager
 
 
-def test_settings_default_s3_addressing_style_is_virtual() -> None:
-    settings = Settings.model_construct(
-        s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
-    )
-
-    assert settings.resolved_s3_addressing_style == "virtual"
+def test_settings_default_s3_addressing_style_is_virtual(monkeypatch) -> None:
+    monkeypatch.delenv("S3_ADDRESSING_STYLE", raising=False)
+    assert resolve_s3_addressing_style() == "virtual"
 
 
-def test_settings_respect_explicit_s3_addressing_style() -> None:
-    settings = Settings.model_construct(
-        s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
-        s3_addressing_style="path",
-    )
-
-    assert settings.resolved_s3_addressing_style == "path"
+def test_settings_respect_explicit_s3_addressing_style(monkeypatch) -> None:
+    monkeypatch.setenv("S3_ADDRESSING_STYLE", "path")
+    assert resolve_s3_addressing_style() == "path"
 
 
-def test_settings_fallback_to_virtual_for_invalid_s3_addressing_style() -> None:
-    settings = Settings.model_construct(
-        s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
-        s3_addressing_style="invalid",
-    )
-
-    assert settings.resolved_s3_addressing_style == "virtual"
+def test_settings_fallback_to_virtual_for_invalid_s3_addressing_style(monkeypatch) -> None:
+    monkeypatch.setenv("S3_ADDRESSING_STYLE", "invalid")
+    assert resolve_s3_addressing_style() == "virtual"
 
 
-def test_settings_auto_detect_dogecloud_tmp_token_mode() -> None:
-    settings = Settings.model_construct(
-        dogecloud_api_access_key="doge-ak",
-        dogecloud_api_secret_key="doge-sk",
-    )
+def test_settings_auto_detect_dogecloud_tmp_token_mode(monkeypatch) -> None:
+    monkeypatch.setenv("DOGECLOUD_API_ACCESS_KEY", "doge-ak")
+    monkeypatch.setenv("DOGECLOUD_API_SECRET_KEY", "doge-sk")
 
-    assert settings.resolved_s3_credential_mode == "dogecloud_tmp_token"
-    assert settings.s3_uses_dogecloud_tmp_token is True
+    assert resolve_s3_credential_mode() == "dogecloud_tmp_token"
+    assert s3_uses_dogecloud_tmp_token() is True
 
 
-def test_settings_reuse_s3_keys_for_dogecloud_api_when_explicit_mode_enabled() -> None:
-    settings = Settings.model_construct(
-        s3_credential_mode="dogecloud_tmp_token",
-        s3_access_key="doge-ak",
-        s3_secret_key="doge-sk",
-    )
+def test_settings_reuse_s3_keys_for_dogecloud_api_when_explicit_mode_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("S3_CREDENTIAL_MODE", "dogecloud_tmp_token")
+    monkeypatch.setenv("S3_ACCESS_KEY", "doge-ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "doge-sk")
+    monkeypatch.delenv("DOGECLOUD_API_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("DOGECLOUD_API_SECRET_KEY", raising=False)
 
-    assert settings.resolved_dogecloud_api_access_key == "doge-ak"
-    assert settings.resolved_dogecloud_api_secret_key == "doge-sk"
-
-
-def test_settings_prefer_explicit_dogecloud_space_name() -> None:
-    settings = Settings.model_construct(
-        s3_bucket="underlying-s3-bucket",
-        dogecloud_space_name="my-space-name",
-    )
-
-    assert settings.resolved_dogecloud_space_name == "my-space-name"
+    assert resolve_dogecloud_api_access_key() == "doge-ak"
+    assert resolve_dogecloud_api_secret_key() == "doge-sk"
 
 
-def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_client() -> None:
-    settings = Settings.model_construct(
-        s3_bucket="demo-bucket",
-        s3_endpoint="https://cos.ap-shanghai.myqcloud.com",
-        s3_access_key="demo-ak",
-        s3_secret_key="demo-sk",
-        s3_session_token="demo-session-token",
-        s3_region="ap-shanghai",
-        s3_addressing_style="virtual",
-        s3_public_base_url="https://cdn.example.com",
-    )
+def test_settings_prefer_explicit_dogecloud_space_name(monkeypatch) -> None:
+    monkeypatch.setenv("S3_BUCKET", "underlying-s3-bucket")
+    monkeypatch.setenv("DOGECLOUD_SPACE_NAME", "my-space-name")
+
+    assert resolve_dogecloud_space_name() == "my-space-name"
+
+
+def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_client(monkeypatch) -> None:
+    monkeypatch.setenv("S3_BUCKET", "demo-bucket")
+    monkeypatch.setenv("S3_ENDPOINT", "https://cos.ap-shanghai.myqcloud.com")
+    monkeypatch.setenv("S3_ACCESS_KEY", "demo-ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "demo-sk")
+    monkeypatch.setenv("S3_SESSION_TOKEN", "demo-session-token")
+    monkeypatch.setenv("S3_REGION", "ap-shanghai")
+    monkeypatch.setenv("S3_ADDRESSING_STYLE", "virtual")
+    monkeypatch.setenv("S3_PUBLIC_BASE_URL", "https://cdn.example.com")
 
     captured_kwargs: dict[str, object] = {}
 
@@ -99,7 +89,7 @@ def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_cli
         return _build_fake_boto_client()
 
     with patch("app.shared.infra.storage.s3_store.boto3.client", side_effect=_fake_client):
-        S3ArtifactStore(settings)
+        S3ArtifactStore()
 
     assert captured_kwargs["endpoint_url"] == "https://cos.ap-shanghai.myqcloud.com"
     assert captured_kwargs["region_name"] == "ap-shanghai"
@@ -107,18 +97,18 @@ def test_s3_artifact_store_passes_addressing_style_and_session_token_to_boto_cli
     assert captured_kwargs["config"].s3["addressing_style"] == "virtual"
 
 
-def test_s3_artifact_store_fetches_dogecloud_tmp_credentials_before_initializing_boto_client() -> None:
-    settings = Settings.model_construct(
-        s3_bucket="underlying-s3-bucket",
-        s3_endpoint="https://placeholder.invalid",
-        s3_access_key="doge-ak",
-        s3_secret_key="doge-sk",
-        s3_region="ap-shanghai",
-        s3_credential_mode="dogecloud_tmp_token",
-        dogecloud_space_name="demo-space",
-        dogecloud_tmp_token_channel="OSS_FULL",
-        dogecloud_tmp_token_scope="*",
-    )
+def test_s3_artifact_store_fetches_dogecloud_tmp_credentials_before_initializing_boto_client(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("S3_BUCKET", "underlying-s3-bucket")
+    monkeypatch.setenv("S3_ENDPOINT", "https://placeholder.invalid")
+    monkeypatch.setenv("S3_ACCESS_KEY", "doge-ak")
+    monkeypatch.setenv("S3_SECRET_KEY", "doge-sk")
+    monkeypatch.setenv("S3_REGION", "ap-shanghai")
+    monkeypatch.setenv("S3_CREDENTIAL_MODE", "dogecloud_tmp_token")
+    monkeypatch.setenv("DOGECLOUD_SPACE_NAME", "demo-space")
+    monkeypatch.setenv("DOGECLOUD_TMP_TOKEN_CHANNEL", "OSS_FULL")
+    monkeypatch.setenv("DOGECLOUD_TMP_TOKEN_SCOPE", "*")
     captured_kwargs: dict[str, object] = {}
     payload = {
         "code": 200,
@@ -145,7 +135,7 @@ def test_s3_artifact_store_fetches_dogecloud_tmp_credentials_before_initializing
 
     with patch("app.shared.infra.storage.s3_store.urlopen", return_value=_build_fake_urlopen(payload)) as mock_urlopen:
         with patch("app.shared.infra.storage.s3_store.boto3.client", side_effect=_fake_client):
-            S3ArtifactStore(settings)
+            S3ArtifactStore()
 
     request = mock_urlopen.call_args.args[0]
     request_body = json.loads(request.data.decode("utf-8"))

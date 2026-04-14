@@ -15,7 +15,11 @@ from app.shared.infra.database import managed_session
 from app.teaching.documents import resolve_effective_chapter_title
 from app.teaching.documents import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import get_content_store, run_store_sync
-from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_source_details
+from app.shared.infra.tools.builtin.markdown_processing import (
+    build_reference_section,
+    count_words,
+    normalize_source_details,
+)
 from app.utils.docgen_store import (
     KnowledgeDocsManifest,
     clear_current_published_knowledge_docs_files,
@@ -52,6 +56,50 @@ def _demote_markdown_headings(markdown: str, *, levels: int) -> str:
     return "\n".join(lines).strip()
 
 
+def _normalize_heading_text(value: str) -> str:
+    return " ".join(str(value or "").split()).strip().casefold()
+
+
+def _dedupe_curriculum_path(curriculum_path: list[str], *, chapter_title: str) -> list[str]:
+    deduped: list[str] = []
+    seen_texts: set[str] = set()
+    normalized_chapter_title = _normalize_heading_text(chapter_title)
+    for item in curriculum_path:
+        cleaned = " ".join(str(item or "").split()).strip()
+        if not cleaned:
+            continue
+        normalized = _normalize_heading_text(cleaned)
+        if normalized in seen_texts:
+            continue
+        deduped.append(cleaned)
+        seen_texts.add(normalized)
+    if deduped and _normalize_heading_text(deduped[-1]) == normalized_chapter_title:
+        deduped.pop()
+    return deduped
+
+
+def _chapter_merge_score(chapter: dict) -> tuple[int, int, int, int]:
+    markdown = str(chapter.get("markdown") or "")
+    summary = str(chapter.get("summary") or "")
+    source_count = len(list(chapter.get("source_details") or []))
+    return (
+        1 if markdown.strip() else 0,
+        count_words(markdown),
+        source_count,
+        len(summary),
+    )
+
+
+def _dedupe_chapter_metadatas(chapters: list[dict]) -> list[dict]:
+    best_by_index: dict[int, dict] = {}
+    for chapter in chapters:
+        chapter_index = int(chapter.get("chapter_index", 0) or 0)
+        existing = best_by_index.get(chapter_index)
+        if existing is None or _chapter_merge_score(chapter) >= _chapter_merge_score(existing):
+            best_by_index[chapter_index] = chapter
+    return [best_by_index[index] for index in sorted(best_by_index)]
+
+
 
 def build_merged_markdown(
     chapters: list[dict],
@@ -60,20 +108,30 @@ def build_merged_markdown(
 ) -> str:
     """Merge chapter markdown into the published knowledge-doc layout."""
 
+    deduped_chapters = _dedupe_chapter_metadatas(chapters)
+    include_sources = bool((document_context or {}).get("include_sources", True))
     overview = build_learning_document_overview(
         subject=str((document_context or {}).get("subject") or "未命名学科"),
+        subject_display_name=str((document_context or {}).get("subject_display_name") or ""),
         digest_mode=str((document_context or {}).get("digest_mode") or ""),
         tone=str((document_context or {}).get("tone") or ""),
         user_goal=str((document_context or {}).get("user_goal") or ""),
         plan_summary=str((document_context or {}).get("plan_summary") or ""),
         source_strategy=str((document_context or {}).get("source_strategy") or ""),
-        chapters=chapters,
+        chapters=deduped_chapters,
     )
     separator = "\n\n---\n\n"
     body: list[str] = [overview.strip()]
-    for chapter in chapters:
+    all_source_details: list[dict[str, object]] = []
+    for chapter in deduped_chapters:
         markdown = str(chapter.get("markdown", "")).strip()
-        curriculum_path = [str(item).strip() for item in chapter.get("curriculum_path", []) if str(item).strip()]
+        chapter_index = int(chapter.get("chapter_index", 0) or 0) or None
+        chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
+        curriculum_path = _dedupe_curriculum_path(
+            [str(item).strip() for item in chapter.get("curriculum_path", []) if str(item).strip()],
+            chapter_title=chapter_title,
+        )
+        all_source_details.extend(list(chapter.get("source_details") or []))
         if curriculum_path:
             body.extend(
                 f"{'#' * min(6, index + 2)} {section}"
@@ -83,6 +141,10 @@ def build_merged_markdown(
             body.append(_demote_markdown_headings(markdown, levels=len(curriculum_path) + 1))
         else:
             body.append(_demote_markdown_headings(markdown, levels=1))
+    if include_sources:
+        reference_block = build_reference_section(all_source_details).strip()
+        if reference_block:
+            body.append(reference_block)
     return separator.join(body).strip() + "\n"
 
 
@@ -174,7 +236,9 @@ async def stage_knowledge_docs(
         return StagedKnowledgeDocs()
 
     cs = get_content_store()
-    sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+    sorted_chapters = _dedupe_chapter_metadatas(
+        sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+    )
     built_paths: list[tuple[int, str]] = []
     write_tasks: list[asyncio.Task[None]] = []
 
@@ -225,7 +289,9 @@ def publish_staged_knowledge_docs(
         return []
 
     cs = get_content_store()
-    sorted_chapters = sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+    sorted_chapters = _dedupe_chapter_metadatas(
+        sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
+    )
     with managed_session() as session:
         latest_version_no = docgen_repo.get_latest_version_no(session, subject)
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
@@ -333,4 +399,3 @@ def publish_staged_knowledge_docs(
             created_docs.append(doc)
 
     return [doc.id for doc in created_docs if doc.id is not None]
-

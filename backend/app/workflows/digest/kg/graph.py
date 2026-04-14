@@ -1,4 +1,4 @@
-"""Digest knowledge-graph workflow graph and initial state."""
+﻿"""Digest knowledge-graph workflow graph and initial state."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from collections.abc import Awaitable, Callable
 
 from langgraph.graph import END, StateGraph
 
+from app.workflows.common import workflow_tracer
 from app.workflows.digest.kg.finalize_nodes import build_finalize_graph_node, fail_node
-from app.workflows.digest.observability import wrap_digest_node
 from app.workflows.digest.kg.prepare_nodes import (
     acquire_lock_node,
     cluster_node,
@@ -36,95 +36,78 @@ def build_kg_digest_graph(
     """Build the LangGraph workflow for digest graph construction."""
 
     workflow = StateGraph(KGDigestState)
+    trace = workflow_tracer(workflow="digest.graph", lane="kg")
     workflow.add_node(
         "acquire_lock",
-        wrap_digest_node(
+        trace.node(
             acquire_lock_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="acquire_lock",
+            name="acquire_lock",
             timing_field="acquire_lock_ms",
         ),
     )
     workflow.add_node(
         "prepare",
-        wrap_digest_node(
+        trace.node(
             prepare_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="prepare",
+            name="prepare",
             timing_field="prepare_ms",
         ),
     )
     workflow.add_node(
         "extract",
-        wrap_digest_node(
+        trace.node(
             extract_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="extract",
+            name="extract",
             timing_field="extract_ms",
         ),
     )
     workflow.add_node(
         "cluster",
-        wrap_digest_node(
+        trace.node(
             cluster_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="cluster",
+            name="cluster",
             timing_field="cluster_ms",
         ),
     )
     workflow.add_node(
         "resolve_nodes",
-        wrap_digest_node(
+        trace.node(
             resolve_nodes_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="resolve_nodes",
+            name="resolve_nodes",
             timing_field="resolve_nodes_ms",
         ),
     )
     workflow.add_node(
         "resolve_edges",
-        wrap_digest_node(
+        trace.node(
             resolve_edges_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="resolve_edges",
+            name="resolve_edges",
             timing_field="resolve_edges_ms",
         ),
     )
     workflow.add_node(
         "analyze_impact",
-        wrap_digest_node(
+        trace.node(
             analyze_impact_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="analyze_impact",
+            name="analyze_impact",
             timing_field="impact_ms",
         ),
     )
     workflow.add_node(
         "finalize_graph",
-        wrap_digest_node(
+        trace.node(
             build_finalize_graph_node(
                 trigger_curriculum_derive=trigger_curriculum_derive or _noop_curriculum_trigger,
             ),
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="finalize_graph",
+            name="finalize_graph",
             timing_field="finalize_ms",
         ),
     )
     workflow.add_node(
         "fail",
-        wrap_digest_node(
+        trace.node(
             fail_node,
-            workflow_name="digest.graph",
-            lane="kg",
-            node_name="fail",
+            name="fail",
         ),
     )
 
@@ -190,7 +173,6 @@ def build_kg_digest_graph(
     workflow.add_edge("fail", END)
     return workflow
 
-
 def create_graph_digest_initial_state(
     *,
     subject: str,
@@ -234,3 +216,4 @@ __all__ = [
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
+

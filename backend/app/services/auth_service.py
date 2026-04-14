@@ -1,4 +1,4 @@
-﻿"""Authentication service: device-aware guest and email/password login."""
+"""Authentication service: device-aware guest and email/password login."""
 
 from __future__ import annotations
 
@@ -21,8 +21,18 @@ from fastapi import Response
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import (
+    get_env,
+    get_env_bool,
+    get_env_int,
+)
 from app.shared.infra.exceptions import AITeachMeError, AuthDisabledError
+from app.shared.infra.runtime import (
+    get_guest_cookie_name,
+    is_local_mode,
+    resolve_guest_cookie_samesite,
+    resolve_guest_cookie_secure,
+)
 from app.models import EmailVerificationCode, User
 from app.repositories.user_repo import (
     attach_device_key,
@@ -57,9 +67,12 @@ def _as_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _auth_token_secret() -> str:
+    return get_env("AUTH_TOKEN_SECRET", "aiteachme-dev-token-secret") or "aiteachme-dev-token-secret"
+
+
 def ensure_auth_enabled() -> None:
-    settings = get_settings()
-    if not settings.auth_enabled:
+    if not get_env_bool("AUTH_ENABLED", True):
         raise AuthDisabledError()
 
 
@@ -101,7 +114,7 @@ def _normalize_verification_code(raw_code: str) -> str:
 
 
 def _hash_email_verification_code(*, email: str, purpose: str, code: str) -> str:
-    secret = get_settings().auth_token_secret
+    secret = _auth_token_secret()
     payload = f"{purpose}:{email}:{code}:{secret}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
@@ -249,12 +262,11 @@ class _AddressFamilySMTP_SSL(smtplib.SMTP_SSL):
 
 
 def _ensure_smtp_ready() -> None:
-    settings = get_settings()
-    host = (settings.smtp_host or "").strip()
-    from_email = (settings.smtp_from_email or "").strip()
-    username = (settings.smtp_username or "").strip()
-    password = settings.smtp_password or ""
-    _normalize_smtp_address_family(settings.smtp_address_family)
+    host = (get_env("SMTP_HOST") or "").strip()
+    from_email = (get_env("SMTP_FROM_EMAIL") or "").strip()
+    username = (get_env("SMTP_USERNAME") or "").strip()
+    password = get_env("SMTP_PASSWORD", "") or ""
+    _normalize_smtp_address_family(get_env("SMTP_ADDRESS_FAMILY", "ipv4"))
 
     if not host or not from_email:
         raise AITeachMeError(
@@ -268,7 +280,7 @@ def _ensure_smtp_ready() -> None:
             status_code=503,
             error_code="AUTH_SMTP_NOT_CONFIGURED",
         )
-    if settings.smtp_use_ssl and settings.smtp_use_starttls:
+    if get_env_bool("SMTP_USE_SSL", True) and get_env_bool("SMTP_USE_STARTTLS", False):
         raise AITeachMeError(
             detail="SMTP_USE_SSL 与 SMTP_USE_STARTTLS 不能同时开启。",
             status_code=503,
@@ -277,17 +289,16 @@ def _ensure_smtp_ready() -> None:
 
 
 def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: int) -> None:
-    settings = get_settings()
     _ensure_smtp_ready()
 
-    host = (settings.smtp_host or "").strip()
-    port = settings.smtp_port
-    username = (settings.smtp_username or "").strip() or None
-    password = settings.smtp_password or ""
-    from_email = (settings.smtp_from_email or "").strip()
-    from_name = settings.smtp_from_name.strip() or "AITeachMe"
-    address_family = _normalize_smtp_address_family(settings.smtp_address_family)
-    timeout_s = max(3, settings.smtp_timeout_s)
+    host = (get_env("SMTP_HOST") or "").strip()
+    port = get_env_int("SMTP_PORT", 465)
+    username = (get_env("SMTP_USERNAME") or "").strip() or None
+    password = get_env("SMTP_PASSWORD", "") or ""
+    from_email = (get_env("SMTP_FROM_EMAIL") or "").strip()
+    from_name = (get_env("SMTP_FROM_NAME", "AITeachMe") or "AITeachMe").strip() or "AITeachMe"
+    address_family = _normalize_smtp_address_family(get_env("SMTP_ADDRESS_FAMILY", "ipv4"))
+    timeout_s = max(3, get_env_int("SMTP_TIMEOUT_S", 15))
     ttl_min = max(1, int(round(ttl_seconds / 60)))
 
     msg = EmailMessage()
@@ -313,7 +324,9 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
     ssl_context = ssl.create_default_context()
     started_at = time.perf_counter()
     to_domain = to_email.rsplit("@", 1)[-1].lower() if "@" in to_email else None
-    smtp_mode = "ssl" if settings.smtp_use_ssl else ("starttls" if settings.smtp_use_starttls else "plain")
+    smtp_use_ssl = get_env_bool("SMTP_USE_SSL", True)
+    smtp_use_starttls = get_env_bool("SMTP_USE_STARTTLS", False)
+    smtp_mode = "ssl" if smtp_use_ssl else ("starttls" if smtp_use_starttls else "plain")
     logger.info(
         "email_verification_send_started",
         to_domain=to_domain,
@@ -324,7 +337,7 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
         smtp_timeout_s=timeout_s,
     )
     try:
-        if settings.smtp_use_ssl:
+        if smtp_use_ssl:
             with _AddressFamilySMTP_SSL(
                 timeout=timeout_s,
                 address_family=address_family,
@@ -383,7 +396,7 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
                 smtp_port=port,
                 elapsed_ms=int((time.perf_counter() - ehlo_started) * 1000),
             )
-            if settings.smtp_use_starttls:
+            if smtp_use_starttls:
                 starttls_started = time.perf_counter()
                 client.starttls(context=ssl_context)
                 client.ehlo()
@@ -460,7 +473,6 @@ def send_register_email_verification_code(
     email: str,
 ) -> SendEmailCodeData:
     ensure_auth_enabled()
-    settings = get_settings()
     normalized_email = _normalize_email(email)
 
     existing = get_user_by_email(session, normalized_email)
@@ -472,7 +484,7 @@ def send_register_email_verification_code(
         )
 
     now = utcnow()
-    resend_interval_s = max(1, settings.auth_email_code_resend_interval_s)
+    resend_interval_s = max(1, get_env_int("AUTH_EMAIL_CODE_RESEND_INTERVAL_S", 60))
     latest = _query_latest_pending_verification(
         session,
         email=normalized_email,
@@ -488,7 +500,7 @@ def send_register_email_verification_code(
                 error_code="AUTH_EMAIL_CODE_RATE_LIMITED",
             )
 
-    ttl_s = max(60, settings.auth_email_code_ttl_s)
+    ttl_s = max(60, get_env_int("AUTH_EMAIL_CODE_TTL_S", 600))
     code = f"{secrets.randbelow(1_000_000):06d}"
     code_hash = _hash_email_verification_code(
         email=normalized_email,
@@ -526,7 +538,6 @@ def _consume_register_email_code(
     email: str,
     verification_code: str,
 ) -> None:
-    settings = get_settings()
     now = utcnow()
     code = _normalize_verification_code(verification_code)
 
@@ -553,7 +564,7 @@ def _consume_register_email_code(
             error_code="AUTH_EMAIL_CODE_EXPIRED",
         )
 
-    max_attempts = max(1, settings.auth_email_code_max_attempts)
+    max_attempts = max(1, get_env_int("AUTH_EMAIL_CODE_MAX_ATTEMPTS", 5))
     if latest.attempt_count >= max_attempts:
         latest.consumed_at = now
         latest.updated_at = now
@@ -637,19 +648,18 @@ def verify_password(password: str, encoded: str | None) -> bool:
 
 
 def issue_access_token(*, user: User, device_key: str | None = None) -> str:
-    settings = get_settings()
     now = int(time.time())
     payload = {
         "sub": user.id,
         "email": user.email,
         "device_key": (device_key or user.device_key),
         "iat": now,
-        "exp": now + max(60, settings.auth_token_ttl_hours * 3600),
+        "exp": now + max(60, get_env_int("AUTH_TOKEN_TTL_HOURS", 24 * 30) * 3600),
     }
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     payload_b64 = _b64url_encode(payload_json)
     signature = hmac.new(
-        settings.auth_token_secret.encode("utf-8"),
+        _auth_token_secret().encode("utf-8"),
         payload_b64.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -657,18 +667,17 @@ def issue_access_token(*, user: User, device_key: str | None = None) -> str:
 
 
 def issue_guest_token(*, user_id: str) -> str:
-    settings = get_settings()
     now = int(time.time())
     payload = {
         "sub": user_id,
         "typ": _GUEST_TOKEN_KIND,
         "iat": now,
-        "exp": now + max(60, settings.guest_token_ttl_hours * 3600),
+        "exp": now + max(60, get_env_int("GUEST_TOKEN_TTL_HOURS", 24 * 30) * 3600),
     }
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     payload_b64 = _b64url_encode(payload_json)
     signature = hmac.new(
-        settings.auth_token_secret.encode("utf-8"),
+        _auth_token_secret().encode("utf-8"),
         payload_b64.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -676,14 +685,13 @@ def issue_guest_token(*, user_id: str) -> str:
 
 
 def decode_access_token(token: str) -> dict[str, object] | None:
-    settings = get_settings()
     try:
         payload_b64, signature_b64 = token.split(".", 1)
     except ValueError:
         return None
 
     expected = hmac.new(
-        settings.auth_token_secret.encode("utf-8"),
+        _auth_token_secret().encode("utf-8"),
         payload_b64.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -708,14 +716,13 @@ def decode_access_token(token: str) -> dict[str, object] | None:
 
 
 def decode_guest_token(token: str) -> dict[str, object] | None:
-    settings = get_settings()
     try:
         payload_b64, signature_b64 = token.split(".", 1)
     except ValueError:
         return None
 
     expected = hmac.new(
-        settings.auth_token_secret.encode("utf-8"),
+        _auth_token_secret().encode("utf-8"),
         payload_b64.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -805,15 +812,14 @@ def build_logout_guest_user(session: Session, *, device_key: str | None) -> User
 
 
 def set_guest_cookie(response: Response, *, guest_token: str) -> None:
-    settings = get_settings()
-    max_age = max(60, settings.guest_token_ttl_hours * 3600)
+    max_age = max(60, get_env_int("GUEST_TOKEN_TTL_HOURS", 24 * 30) * 3600)
     response.set_cookie(
-        key=settings.guest_cookie_name,
+        key=get_guest_cookie_name(),
         value=guest_token,
         max_age=max_age,
         httponly=True,
-        secure=settings.resolved_guest_cookie_secure,
-        samesite=settings.resolved_guest_cookie_samesite,
+        secure=resolve_guest_cookie_secure(),
+        samesite=resolve_guest_cookie_samesite(),
         path="/",
     )
 
@@ -907,16 +913,15 @@ def build_auth_session_data(
     user: User,
     access_token: str | None,
 ) -> AuthSessionData:
-    settings = get_settings()
     return AuthSessionData(
-        auth_enabled=settings.auth_enabled,
-        auth_ready=settings.auth_ready,
+        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_ready=True,
         token_type="bearer",
         access_token=access_token,
         current_user=RuntimeUser(
             user_id=user.id,
             email=user.email,
-            is_local=settings.is_local_mode,
+            is_local=is_local_mode(),
             device_key=user.device_key,
             is_authenticated=user.is_registered,
         ),
@@ -924,19 +929,18 @@ def build_auth_session_data(
 
 
 def build_guest_session_data(*, user: User | None) -> AuthSessionData:
-    settings = get_settings()
     runtime_user: RuntimeUser | None = None
     if user is not None:
         runtime_user = RuntimeUser(
             user_id=user.id,
             email=user.email,
-            is_local=settings.is_local_mode,
+            is_local=is_local_mode(),
             device_key=user.device_key,
             is_authenticated=user.is_registered,
         )
     return AuthSessionData(
-        auth_enabled=settings.auth_enabled,
-        auth_ready=settings.auth_ready,
+        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_ready=True,
         token_type="bearer",
         access_token=None,
         current_user=runtime_user,
@@ -950,19 +954,16 @@ def build_session_from_context(
     device_key: str | None,
     is_authenticated: bool,
 ) -> AuthSessionData:
-    settings = get_settings()
     return AuthSessionData(
-        auth_enabled=settings.auth_enabled,
-        auth_ready=settings.auth_ready,
+        auth_enabled=get_env_bool("AUTH_ENABLED", True),
+        auth_ready=True,
         token_type="bearer",
         access_token=None,
         current_user=RuntimeUser(
             user_id=user_id,
             email=email,
-            is_local=settings.is_local_mode,
+            is_local=is_local_mode(),
             device_key=device_key,
             is_authenticated=is_authenticated,
         ),
     )
-
-

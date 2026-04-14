@@ -1,19 +1,14 @@
-/* ------------------------------------------------------------------ */
-/*  BuildView — Gemini Deep Research Canvas-first build view           */
-/*  Center: live-updating document canvas with typewriter effect       */
-/*  Left sidebar: compact timeline + metrics                           */
-/* ------------------------------------------------------------------ */
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Sparkles } from "lucide-react";
+
 import { cn } from "../../lib/utils";
-import type { KnowledgeBuildPreview, KnowledgeBuildMetrics } from "./types";
 import type { FileRecord } from "../../api/generated/model";
-import { BuildProcessTimeline, useBuildTimelineSteps } from "./BuildProcessTimeline";
+import type { KnowledgeBuildMetrics, KnowledgeBuildPreview } from "./types";
 import { BuildChapterProgress } from "./BuildChapterProgress";
-import { BuildResearchSources } from "./BuildResearchSources";
 import { BuildMaterialPipeline } from "./BuildMaterialPipeline";
+import { BuildProcessTimeline, useBuildTimelineSteps } from "./BuildProcessTimeline";
+import { BuildResearchSources } from "./BuildResearchSources";
 
 interface Props {
   isFetching: boolean;
@@ -27,8 +22,13 @@ interface Props {
   className?: string;
 }
 
-/* ---- Compact inline metrics ---- */
-function InlineMetrics({ metrics, preview }: { metrics: KnowledgeBuildMetrics | null; preview: KnowledgeBuildPreview | null }) {
+function InlineMetrics({
+  metrics,
+  preview,
+}: {
+  metrics: KnowledgeBuildMetrics | null;
+  preview: KnowledgeBuildPreview | null;
+}) {
   const parts: string[] = [];
   const chunks = preview?.total_chunks;
   if (chunks && chunks > 0) parts.push(`${preview?.processed_chunks ?? 0}/${chunks} 分片`);
@@ -36,22 +36,26 @@ function InlineMetrics({ metrics, preview }: { metrics: KnowledgeBuildMetrics | 
   if (nodes && nodes > 0) parts.push(`${nodes} 节点`);
   const calls = metrics?.llm_total_calls;
   if (calls && calls > 0) parts.push(`${calls} 调用`);
-  const lat = metrics?.llm_avg_latency_ms;
-  if (lat && lat > 0) parts.push(lat < 1000 ? `${Math.round(lat)}ms` : `${(lat / 1000).toFixed(1)}s`);
-  if (parts.length === 0) return null;
+  const latency = metrics?.llm_avg_latency_ms;
+  if (latency && latency > 0) {
+    parts.push(latency < 1000 ? `${Math.round(latency)}ms` : `${(latency / 1000).toFixed(1)}s`);
+  }
+  if (parts.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-stone-400">
-      {parts.map((p) => (
-        <span key={p} className="inline-flex items-center gap-0.5">
-          <span className="w-1 h-1 rounded-full bg-stone-300 inline-block" />
-          {p}
+      {parts.map((part) => (
+        <span key={part} className="inline-flex items-center gap-0.5">
+          <span className="inline-block h-1 w-1 rounded-full bg-stone-300" />
+          {part}
         </span>
       ))}
     </div>
   );
 }
 
-/* ---- Live Document Canvas ---- */
 function DocumentCanvas({
   draftExcerpt,
   chapterTitles,
@@ -73,8 +77,8 @@ function DocumentCanvas({
         className="flex flex-col items-center justify-center py-20 text-center"
       >
         <div className="relative">
-          <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center">
-            <Loader2 className="w-5 h-5 text-stone-400 animate-spin" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100">
+            <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
           </div>
           <motion.div
             className="absolute -inset-2 rounded-2xl border border-sky-300/30"
@@ -83,12 +87,11 @@ function DocumentCanvas({
           />
         </div>
         <p className="mt-5 text-[13px] text-stone-500">正在准备知识文档...</p>
-        <p className="mt-1 text-[11px] text-stone-400">AI 正在分析材料，预计 3-10 分钟</p>
+        <p className="mt-1 text-[11px] text-stone-400">AI 正在分析资料，预计 3-10 分钟</p>
       </motion.div>
     );
   }
 
-  /* Render a document-like canvas */
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -96,10 +99,8 @@ function DocumentCanvas({
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="relative"
     >
-      {/* Document surface */}
-      <div className="rounded-xl border border-stone-200/70 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_-8px_rgba(0,0,0,0.06)] overflow-hidden">
-        {/* Thin gradient top bar — indicates "writing in progress" */}
-        <div className="h-[2px] bg-stone-100 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-stone-200/70 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_-8px_rgba(0,0,0,0.06)]">
+        <div className="h-[2px] overflow-hidden bg-stone-100">
           <motion.div
             className="h-full bg-gradient-to-r from-sky-400 via-blue-400 to-sky-400"
             animate={{ x: ["-100%", "100%"] }}
@@ -109,21 +110,19 @@ function DocumentCanvas({
         </div>
 
         <div className="px-7 py-6 md:px-10 md:py-8">
-          {/* Document title — first chapter or plan summary */}
-          {chapterTitles.length > 0 && (
+          {chapterTitles.length > 0 ? (
             <motion.h1
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-xl font-semibold text-stone-800 tracking-tight leading-tight"
+              className="text-xl font-semibold leading-tight tracking-tight text-stone-800"
               style={{ fontFamily: "var(--font-serif)" }}
             >
               {chapterTitles[0]}
             </motion.h1>
-          )}
+          ) : null}
 
-          {/* Plan summary as opening paragraph */}
-          {planSummary && (
+          {planSummary ? (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -133,13 +132,12 @@ function DocumentCanvas({
             >
               {planSummary}
             </motion.p>
-          )}
+          ) : null}
 
-          {/* Chapter outline as section headings */}
-          {chapterTitles.length > 1 && (
+          {chapterTitles.length > 1 ? (
             <div className="mt-5 space-y-1.5">
-              {chapterTitles.slice(1).map((title, i) => {
-                const chapter = (chapters ?? [])[i + 1];
+              {chapterTitles.slice(1).map((title, index) => {
+                const chapter = (chapters ?? [])[index + 1];
                 const isActive = chapter?.status === "drafting" || chapter?.status === "researching";
                 const isDone = chapter?.status === "completed" || chapter?.status === "drafted";
 
@@ -148,63 +146,58 @@ function DocumentCanvas({
                     key={title}
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 + i * 0.08 }}
+                    transition={{ delay: 0.3 + index * 0.08 }}
                     className="flex items-center gap-2.5 py-1"
                   >
-                    <span className={cn(
-                      "w-1.5 h-1.5 rounded-full shrink-0 transition-colors",
-                      isDone ? "bg-emerald-400" : isActive ? "bg-sky-400 animate-pulse" : "bg-stone-300",
-                    )} />
-                    <span className={cn(
-                      "text-[13px] font-medium",
-                      isActive ? "text-sky-700" : isDone ? "text-stone-700" : "text-stone-400",
-                    )}
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full transition-colors",
+                        isDone ? "bg-emerald-400" : isActive ? "animate-pulse bg-sky-400" : "bg-stone-300",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-[13px] font-medium",
+                        isActive ? "text-sky-700" : isDone ? "text-stone-700" : "text-stone-400",
+                      )}
                       style={{ fontFamily: "var(--font-serif)" }}
                     >
                       {title}
                     </span>
-                    {isActive && (
-                      <span className="text-[10px] text-sky-500 bg-sky-50 px-1.5 py-0.5 rounded">撰写中</span>
-                    )}
+                    {isActive ? (
+                      <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-500">撰写中</span>
+                    ) : null}
                   </motion.div>
                 );
               })}
             </div>
-          )}
+          ) : null}
 
-          {/* Live draft excerpt — the main canvas content */}
-          {draftExcerpt && (
+          {draftExcerpt ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="mt-6 pt-5 border-t border-stone-100"
+              className="mt-6 border-t border-stone-100 pt-5"
             >
               <pre
-                className="whitespace-pre-wrap text-[13.5px] leading-[2] text-stone-600 max-h-[320px] overflow-y-auto"
+                className="max-h-[320px] overflow-y-auto whitespace-pre-wrap text-[13.5px] leading-[2] text-stone-600"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
                 {draftExcerpt}
-                <motion.span
-                  className="inline-block w-[2px] h-[15px] bg-sky-500 ml-0.5 align-middle rounded-sm animate-blink"
-                />
+                <motion.span className="ml-0.5 inline-block h-[15px] w-[2px] animate-blink rounded-sm bg-sky-500 align-middle" />
               </pre>
             </motion.div>
-          )}
+          ) : null}
 
-          {/* Bottom fade — indicates more content coming */}
-          {draftExcerpt && (
-            <div className="h-12 -mt-12 relative z-10 bg-gradient-to-t from-white to-transparent pointer-events-none" />
-          )}
+          {draftExcerpt ? (
+            <div className="relative z-10 -mt-12 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+          ) : null}
         </div>
       </div>
     </motion.div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Main BuildView                                                     */
-/* ------------------------------------------------------------------ */
 
 export function BuildView({
   isFetching,
@@ -223,7 +216,32 @@ export function BuildView({
   const chapterTitles = buildPreview?.latest_chapter_titles ?? [];
   const draftExcerpt = buildPreview?.draft_excerpt?.trim() ?? "";
   const planSummary = buildPreview?.plan_summary?.trim() ?? "";
-  const [showDetails, setShowDetails] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 1024,
+  );
+  const [showDetails, setShowDetails] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 1024,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      const nextIsDesktop = window.innerWidth >= 1024;
+      setIsDesktop(nextIsDesktop);
+      if (nextIsDesktop) {
+        setShowDetails(true);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const showDetailPanels = isDesktop || showDetails;
 
   return (
     <motion.div
@@ -232,17 +250,15 @@ export function BuildView({
       transition={{ duration: 0.4 }}
       className={cn("mx-auto w-full max-w-[1100px] py-6", className)}
     >
-      {/* Compact header row */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.35 }}
         className="mb-5 flex items-center gap-3"
       >
-        {/* Pulsing icon */}
         <div className="relative shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md shadow-sky-500/15">
-            <Sparkles className="w-4 h-4 text-white" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-sky-500/15">
+            <Sparkles className="h-4 w-4 text-white" />
           </div>
           <motion.div
             className="absolute -inset-1 rounded-xl border border-sky-400/25"
@@ -251,15 +267,13 @@ export function BuildView({
           />
         </div>
 
-        {/* Status + progress inline */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-stone-800 truncate">{statusText}</p>
-            {isFetching && <Loader2 className="w-3 h-3 animate-spin text-stone-300 shrink-0" />}
-            <span className="text-[11px] font-semibold text-sky-600 ml-auto shrink-0">{Math.round(progress)}%</span>
+            <p className="truncate text-sm font-medium text-stone-800">{statusText}</p>
+            {isFetching ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-stone-300" /> : null}
+            <span className="ml-auto shrink-0 text-[11px] font-semibold text-sky-600">{Math.round(progress)}%</span>
           </div>
-          {/* Slim progress bar */}
-          <div className="mt-1.5 h-[3px] rounded-full bg-stone-100 overflow-hidden">
+          <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-stone-100">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
@@ -267,16 +281,13 @@ export function BuildView({
               className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-500"
             />
           </div>
-          {/* Inline metrics */}
           <div className="mt-1.5">
             <InlineMetrics metrics={buildMetrics} preview={buildPreview} />
           </div>
         </div>
       </motion.div>
 
-      {/* Two-column: Timeline sidebar + Document Canvas */}
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-5">
-        {/* Left — Compact timeline */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
         <motion.div
           initial={{ opacity: 0, x: -12 }}
           animate={{ opacity: 1, x: 0 }}
@@ -284,23 +295,15 @@ export function BuildView({
           className="lg:sticky lg:top-6 lg:self-start"
         >
           <BuildProcessTimeline steps={timelineSteps} />
-
-          {/* Material pipeline — compact below timeline */}
-          <BuildMaterialPipeline
-            files={sourceFiles}
-            isFetching={sourceFilesFetching}
-            className="mt-4"
-          />
+          <BuildMaterialPipeline files={sourceFiles} isFetching={sourceFilesFetching} className="mt-4" />
         </motion.div>
 
-        {/* Right — Document canvas (main focus) */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.18, duration: 0.4 }}
           className="space-y-4"
         >
-          {/* The live document */}
           <DocumentCanvas
             draftExcerpt={draftExcerpt}
             chapterTitles={chapterTitles}
@@ -308,21 +311,27 @@ export function BuildView({
             chapters={chapters}
           />
 
-          {/* Expandable details section */}
-          {(chapters.length > 0 || events.length > 0) && (
+          {(chapters.length > 0 || events.length > 0) ? (
             <div>
-              <button
-                onClick={() => setShowDetails(!showDetails)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-400 hover:text-stone-600 transition-colors"
-              >
-                {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                {showDetails ? "收起详情" : "查看研究详情"}
-                {chapters.length > 0 && <span className="text-stone-300">· {chapters.length} 章</span>}
-                {events.length > 0 && <span className="text-stone-300">· {events.length} 来源</span>}
-              </button>
+              {isDesktop ? (
+                <div className="text-[11px] font-medium text-stone-400">
+                  研究详情 路 {chapters.length} 章{events.length > 0 ? ` 路 ${events.length} 条来源` : ""}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowDetails((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-400 transition-colors hover:text-stone-600"
+                >
+                  {showDetailPanels ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  {showDetailPanels ? "收起详情" : "查看研究详情"}
+                  {chapters.length > 0 ? <span className="text-stone-300">路 {chapters.length} 章</span> : null}
+                  {events.length > 0 ? <span className="text-stone-300">路 {events.length} 条来源</span> : null}
+                </button>
+              )}
 
-              <AnimatePresence>
-                {showDetails && (
+              <AnimatePresence initial={false}>
+                {showDetailPanels ? (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
@@ -330,15 +339,15 @@ export function BuildView({
                     transition={{ duration: 0.25, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="pt-3 space-y-4">
+                    <div className="space-y-4 pt-3">
                       <BuildChapterProgress chapters={chapters} />
                       <BuildResearchSources events={events} />
                     </div>
                   </motion.div>
-                )}
+                ) : null}
               </AnimatePresence>
             </div>
-          )}
+          ) : null}
         </motion.div>
       </div>
     </motion.div>

@@ -6,6 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -19,14 +20,15 @@ class BingRetriever(BaseRetriever):
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         settings = get_settings()
-        if not settings.bing_api_key:
+        api_key = (get_env("BING_API_KEY") or "").strip()
+        if not api_key:
             return []
         try:
             async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
                 response = await client.get(
                     "https://api.bing.microsoft.com/v7.0/search",
                     params={"q": query, "count": max_results},
-                    headers={"Ocp-Apim-Subscription-Key": settings.bing_api_key},
+                    headers={"Ocp-Apim-Subscription-Key": api_key},
                 )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior

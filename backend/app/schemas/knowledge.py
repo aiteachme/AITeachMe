@@ -610,18 +610,16 @@ class BuildPlannerChapterPlanResponse(BaseModel):
     media_hints: dict[str, list[str]] = Field(default_factory=dict)
 
 
-class BuildPlannerNodeTimingResponse(BaseModel):
-    node_name: str
-    lane: str = "planner"
-    workflow: str = "digest.planner"
-    elapsed_ms: int = 0
+class BuildPlannerStepStatsResponse(BaseModel):
+    name: str
+    kind: Literal["node", "tool", "substep", "llm"] = "substep"
     status: str = "ok"
+    elapsed_ms: int = 0
 
 
 class BuildPlannerRuntimeStatsResponse(BaseModel):
-    workflow_elapsed_ms: int = 0
-    node_timings_ms: dict[str, int] = Field(default_factory=dict)
-    node_events: list[BuildPlannerNodeTimingResponse] = Field(default_factory=list)
+    elapsed_ms: int = 0
+    steps: list[BuildPlannerStepStatsResponse] = Field(default_factory=list)
     fallback_used: bool = False
     generation_mode: str | None = None
 

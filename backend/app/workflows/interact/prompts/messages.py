@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from app.schemas.llm import ASSISTANT, ChatMessage, USER
+from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.token_budget import ContextWindowManager
-from app.shared.infra.prompt_loader import populate_prompt
-from app.schemas.llm import ASSISTANT, ChatMessage, USER
-from app.workflows.interact.prompts import SYSTEM_PROMPT_TUTOR
-from app.workflows.interact.support.strategies import build_strategy_instruction
+from app.workflows.common import traceable_run
+from app.workflows.interact.prompts.prompts import SYSTEM_PROMPT_TUTOR, get_strategy_instruction
 from app.workflows.interact.support.types import (
     MistakeSummary,
     RecentMessage,
@@ -16,6 +16,7 @@ from app.workflows.interact.support.types import (
 )
 
 
+@traceable_run(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
     subject: str,
@@ -35,7 +36,7 @@ def build_chat_messages(
     system_prompt = populate_prompt(
         SYSTEM_PROMPT_TUTOR,
         subject=subject,
-        teaching_strategy=build_strategy_instruction(strategy_mode),
+        teaching_strategy=get_strategy_instruction(strategy_mode),
         weak_points_context=_format_weak_points_context(weak_points),
         mistakes_context=_format_mistakes_context(recent_mistakes),
         selected_context=_format_selected_context(selected_context, source_chunk_id),
@@ -100,3 +101,9 @@ def _format_selected_context(selected_context: str | None, source_chunk_id: int 
     if source_chunk_id is None:
         return selected_context
     return f"[chunk_id={source_chunk_id}]\n{selected_context}"
+
+
+__all__ = [
+    "build_chat_messages",
+    "format_retrieval_context_item",
+]

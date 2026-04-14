@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
-from app.shared.infra.tracing import llm_trace_scope
+from app.shared.infra.observability import llm_trace_scope
 from app.models import Difficulty, QuestionTemplate, QuestionType
 from app.repositories import exams_repo
 from app.repositories.knowledge import curriculum_repo
@@ -306,7 +306,7 @@ async def _try_llm_generate_templates(
             unit_name=context.unit_name,
             error=str(exc),
         )
-        return None
+        raise
 
 
 def _find_node_context(
@@ -686,19 +686,28 @@ async def build_question_templates(
     )
 
     templates_to_create: list[QuestionTemplate] = []
-    llm_generated_unit_count = 0
-    fallback_unit_count = 0
+    llm_generated_payloads: list[tuple[UnitExamContext, list[_GeneratedTemplateItem]]] = []
+    failed_units: list[tuple[int, str]] = []
     for context, result in zip(pending_contexts, generated_results):
-        if isinstance(result, Exception) or result is None:
-            fallback_unit_count += 1
-            generated_items = _build_deterministic_templates(
-                context,
-                questions_per_unit=questions_per_unit,
-            )
-        else:
-            llm_generated_unit_count += 1
-            generated_items = result
+        if isinstance(result, Exception):
+            failed_units.append((context.unit_id, str(result)))
+            continue
+        if result is None:
+            failed_units.append((context.unit_id, "question_builder_llm_returned_empty_result"))
+            continue
+        llm_generated_payloads.append((context, result))
 
+    if failed_units:
+        logger.error(
+            "question_builder_generation_failed",
+            subject=subject,
+            failed_unit_ids=[unit_id for unit_id, _ in failed_units],
+            failed_unit_count=len(failed_units),
+        )
+        details = "; ".join(f"unit={unit_id}: {message}" for unit_id, message in failed_units)
+        raise RuntimeError(f"question_builder_generation_failed: {details}")
+
+    for context, generated_items in llm_generated_payloads:
         templates_to_create.extend(
             _prepare_template_drafts(
                 context,
@@ -728,7 +737,6 @@ async def build_question_templates(
         "question_builder_persist_complete",
         subject=subject,
         created_count=len(templates_to_create),
-        llm_generated_unit_count=llm_generated_unit_count,
-        fallback_unit_count=fallback_unit_count,
+        llm_generated_unit_count=len(llm_generated_payloads),
     )
     return templates_to_create
