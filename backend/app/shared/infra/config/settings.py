@@ -87,14 +87,9 @@ class Settings(BaseModel):
     rag_rerank_top_k: int = 3
 
     llm_model_reason: str | None = None
-    llm_model_fast: str | None = None
+    llm_model_light: str | None = None
     llm_model_extract: str | None = None
     kg_extract_max_parallelism: int = 20
-
-    @property
-    def llm_model_light(self) -> str | None:
-        """Legacy alias — use llm_model_fast instead."""
-        return self.llm_model_fast
 
     @property
     def embedding_dim(self) -> int:

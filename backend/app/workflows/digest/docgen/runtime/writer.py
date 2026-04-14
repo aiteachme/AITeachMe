@@ -170,46 +170,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             },
         )
 
-    def _fallback_markdown(self, *, title: str, objective: str, dense_context: str, digest_mode: str) -> str:
-        body = dense_context.strip()[:5000] or "当前没有足够的外部研究素材，本章基于已确认的构建方案与现有知识进行整理。"
-        summary_line = f"学习目标：{objective}" if objective else "学习目标：先把本章最核心的概念、方法和应用场景讲清楚。"
-        normalized_mode = str(digest_mode or "").strip().lower()
-        if normalized_mode == "sprint":
-            return (
-                f"# {title}\n\n"
-                f"> [!TIP]\n> {summary_line}\n\n"
-                "## 这一章到底在考什么\n\n"
-                "- 先判断本章解决的核心问题是什么，再去记结论和题型。\n"
-                "- 做题时优先识别概念、条件和常见问法，不要只盯公式表面。\n\n"
-                "## 先把核心概念讲清楚\n\n"
-                f"{body}\n\n"
-                "## 典型题怎么想怎么做\n\n"
-                "1. 先识别题目在考哪一个概念、性质或方法。\n"
-                "2. 再判断解题需要满足哪些前提条件。\n"
-                "3. 最后回到步骤、结论和失分点，形成稳定套路。\n\n"
-                "## 最容易混淆和失分的地方\n\n"
-                "- 不要只背结论，要同时记住适用条件和不能硬套的场景。\n"
-                "- 若题目换了问法，要回到本质而不是照抄模板步骤。\n\n"
-                "## 本章最后压缩回看\n\n"
-                "- 用一句话讲清本章最关键的判断依据。\n"
-                "- 说出一个最常见题型和一个最容易错的点。\n"
-            )
-        return (
-            f"# {title}\n\n"
-            f"> [!IMPORTANT]\n> {summary_line}\n\n"
-            "## 这一章要解决什么问题\n\n"
-            "- 先明确本章讨论对象、问题背景和学习目标。\n\n"
-            "## 核心定义与结构先讲清楚\n\n"
-            f"{body}\n\n"
-            "## 关键推理是怎样成立的\n\n"
-            "- 先交代前提，再说明结论，最后解释推理链条如何展开。\n\n"
-            "## 例子或应用如何落地\n\n"
-            "- 用一个典型例子把抽象结构落到具体场景里。\n\n"
-            "## 本章最后要带走什么\n\n"
-            "- 总结本章最核心的定义、关系和使用边界。\n"
-            "- 说明它与上一章、下一章之间怎么衔接。\n"
-        )
-
     async def _repair_heading_structure(
         self,
         *,
@@ -243,7 +203,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             repaired = await llm(
                 messages,
                 task_type=TaskType.DOCGEN_LIGHT,
-                tier="fast",
+                tier="light",
                 extra_metadata=self.context.trace_metadata(
                     chapter_index=chapter_index,
                     substep="heading_repair",

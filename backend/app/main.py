@@ -165,9 +165,10 @@ def _log_infra_diagnostics(settings) -> None:
 
     lines.append("")
     lines.append("  [TEACHING]")
+    lines.append(f"    Reason Model           : {settings.llm_model_reason or settings.llm_model}")
     lines.append(f"    Primary Model          : {settings.llm_model}")
     lines.append(f"    Light Model            : {settings.llm_model_light or settings.llm_model}")
-    lines.append(f"    Extract Model          : {settings.llm_model_extract or settings.llm_model}")
+    lines.append(f"    Extract Override       : {settings.llm_model_extract or '(uses light)'}")
     lines.append(f"    Embedding Model        : {settings.embedding_model}")
     lines.append(f"    OCR Model              : {settings.ocr_model or settings.llm_model}")
     lines.append(

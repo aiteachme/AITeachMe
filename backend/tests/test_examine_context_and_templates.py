@@ -7,7 +7,7 @@ import pytest
 from sqlmodel import select
 
 from app.models import Curriculum, Difficulty, KnowledgeNode, QuestionTemplate, TeachingUnit
-from app.services.exams_service import _resolve_requested_unit_scope
+from app.services.exams_service._helpers import _resolve_requested_unit_scope
 from app.utils.time import utcnow
 from app.workflows.examine.context import (
     ExamStyleProfile,

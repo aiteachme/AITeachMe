@@ -23,10 +23,10 @@ class _DummyExportResult:
 
 def test_build_exam_style_profile_injects_default_paper_exam_prompt() -> None:
     with patch(
-        "app.workflows.examine.context._load_subject_profile_for_exam",
+        "app.workflows.examine.style_profile._load_subject_profile_for_exam",
         return_value=None,
     ), patch(
-        "app.workflows.examine.context._load_user_profile_for_exam",
+        "app.workflows.examine.style_profile._load_user_profile_for_exam",
         return_value=None,
     ):
         style = build_exam_style_profile(
@@ -43,10 +43,10 @@ def test_build_exam_style_profile_injects_default_paper_exam_prompt() -> None:
 
 def test_build_exam_style_profile_keeps_explicit_style_prompt() -> None:
     with patch(
-        "app.workflows.examine.context._load_subject_profile_for_exam",
+        "app.workflows.examine.style_profile._load_subject_profile_for_exam",
         return_value=None,
     ), patch(
-        "app.workflows.examine.context._load_user_profile_for_exam",
+        "app.workflows.examine.style_profile._load_user_profile_for_exam",
         return_value=None,
     ):
         style = build_exam_style_profile(

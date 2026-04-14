@@ -1,4 +1,4 @@
-﻿## 十、LangSmith 全链路可观测性
+## 十、LangSmith 全链路可观测性
 
 > 目标：保证这轮算法升级不是”黑盒优化”，而是每一步都能被看见、被比较、被定位。
 > 最后更新：2026-04-13
@@ -294,7 +294,7 @@ Mermaid、image、interactive_html 已作为独立 sidecar runtime 可见；
 
 看：
 
-- `strategic / smart / fast` 占比
+- `reason / primary / light` 占比
 - fallback 频率
 - 哪些节点最容易降级
 

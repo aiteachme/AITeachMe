@@ -1,4 +1,4 @@
-﻿"""Planner graph."""
+"""Planner graph."""
 
 from __future__ import annotations
 
@@ -263,7 +263,7 @@ async def _generate_planner_titles(
     payload = await acompletion_with_fallback(
         messages,
         task_type=TaskType.DOCGEN_LIGHT,
-        tier="fast",
+        tier="light",
         response_model=_PlannerChapterTitlePayload,
         temperature=0.1,
         max_tokens=240,

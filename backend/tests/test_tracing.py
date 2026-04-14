@@ -25,6 +25,8 @@ from app.shared.infra.observability import (
     normalize_langsmith_run_type,
 )
 from app.shared.infra.observability import tracing as tracing_module
+from app.shared.infra.observability import tracker as tracker_module
+from app.shared.infra.observability import scope as scope_module
 from app.shared.infra.tools import registry as registry_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
 from app.workflows.common import runtime_stats as runtime_stats_module
@@ -152,7 +154,7 @@ def test_langsmith_capture_respects_explicit_config_flags(monkeypatch) -> None:
 
 def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
     monkeypatch.setattr(
-        tracing_module,
+        tracker_module,
         "get_settings",
         lambda: Settings(_env_file=None, llm_observability_max_records=2),
     )
@@ -167,7 +169,7 @@ def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
 
 def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     monkeypatch.setattr(
-        tracing_module,
+        scope_module,
         "get_settings",
         lambda: Settings(tracing_enabled=True),
     )

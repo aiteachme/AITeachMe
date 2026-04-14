@@ -9,7 +9,7 @@ output quality, and throughput cost:
 - **primary** – 常用模型：the everyday workhorse model with balanced
                 quality and cost. Used for content creation, question
                 generation, grading, interactive chat, and vision OCR.
-- **fast**    – 快速模型：lightweight, high-throughput, low-cost model.
+- **light**  – 轻量模型：lightweight, high-throughput, low-cost model.
                 Used for batch extraction, classification, summarisation,
                 and auxiliary annotation tasks.
 
@@ -35,29 +35,29 @@ from .text import acompletion
 
 logger = structlog.get_logger(__name__)
 
-LLMTier = Literal["reason", "primary", "fast"]
+LLMTier = Literal["reason", "primary", "light"]
 T = TypeVar("T")
 
 # ── TaskType → Tier mapping ────────────────────────────────────────
 #
 #   reason  : REASONING
 #   primary : DOCGEN, GENERATE, GRADE, CHAT, VISION, DEFAULT
-#   fast    : DOCGEN_LIGHT, EXTRACT, SUMMARIZE, CLASSIFY
+#   light   : DOCGEN_LIGHT, EXTRACT, SUMMARIZE, CLASSIFY
 #
-# Key design decision: EXTRACT uses the *fast* tier because knowledge-
+# Key design decision: EXTRACT uses the *light* tier because knowledge-
 # graph extraction is a high-volume batch task (hundreds of LLM calls
 # per digest run); routing it through the primary model is wasteful.
 
 _TASK_TO_TIER: dict[TaskType, LLMTier] = {
     TaskType.REASONING: "reason",
     TaskType.DOCGEN: "primary",
-    TaskType.DOCGEN_LIGHT: "fast",
-    TaskType.EXTRACT: "fast",
+    TaskType.DOCGEN_LIGHT: "light",
+    TaskType.EXTRACT: "light",
     TaskType.GENERATE: "primary",
     TaskType.GRADE: "primary",
     TaskType.CHAT: "primary",
-    TaskType.SUMMARIZE: "fast",
-    TaskType.CLASSIFY: "fast",
+    TaskType.SUMMARIZE: "light",
+    TaskType.CLASSIFY: "light",
     TaskType.VISION: "primary",
     TaskType.DEFAULT: "primary",
 }

@@ -4,11 +4,12 @@
 # 三层模型策略:
 #   reason  – 推理模型 (深度推理、规划) — 留空则回退到 primary
 #   primary – 常用模型 (教学、出题、批改、对话)
-#   fast    – 快速模型 (批量抽取、分类、摘要) — 留空则回退到 primary
+#   light   – 轻量模型 (批量抽取、分类、摘要) — 留空则回退到 primary
 models:
   reason: ""
   primary: qwen-plus-latest
-  fast: ""
+  light: ""
+  
   extract: ""
   ocr: ""
   embedding: text-embedding-v4

@@ -2,24 +2,24 @@
 
 > 最后更新：2026-04-14
 >
-> **Tier 命名变更**：`strategic/smart/fast` → `reason/primary/fast`
-> 目标：在保证速度和质量的前提下，让 `Planner / Grounding / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪、可降级。
+> **Tier 命名**：`reason / primary / light`
+> 目标：在保证速度和质量的前提下，让 `Planner / Grounding / Writer / Asset` 走不同模型层级，同时保证 LangSmith 中可比较、可追踪。
 
 ---
 
 ## 2.1 当前代码基线
 
-当前仓库已经不是“只有 TaskType，没有 tier”。
+当前仓库已经不是"只有 TaskType，没有 tier"。
 真实实现是：
 
 - `TaskType` 仍然是模型任务语义
-- `llm_support/fallback.py` 已定义 `LLMTier = "reason" | "primary" | "fast"`
+- `llm_support/fallback.py` 已定义 `LLMTier = "reason" | "primary" | "light"`
 - `acompletion_with_fallback()` 同时接受 `task_type` 与可选 `tier`
 - `writer.py`、`mermaid_generator.py`、`resolve_titles_node.py` 已经在显式传 `tier`
 
 也就是说，当前正确理解应该是：
 
-> `TaskType` 负责说明“这是哪类任务”，`tier` 负责说明“这次更偏速度、质量还是规划脑”。
+> `TaskType` 负责说明"这是哪类任务"，`tier` 负责说明"这次更偏速度、质量还是规划脑"。
 
 ---
 
@@ -27,9 +27,9 @@
 
 | 层级 | 当前实现 | 主要场景 | 优先级 |
 | --- | --- | --- | --- |
-| `reason` | `TaskType.REASONING` 为主，fallback 到 `DOCGEN` / `DOCGEN_LIGHT` | 规划、子查询生成、Build Contract 收紧、缺口评估 | 推理深度优先 |
-| `primary` | `TaskType.DOCGEN` 为主，fallback 到 `DOCGEN_LIGHT` / `DEFAULT` | 章节写作、题目生成、批改、对话、OCR | 质量均衡 |
-| `fast` | `TaskType.DOCGEN_LIGHT` 为主，fallback 到 `DEFAULT` | KG 抽取、标题解析、分类、Mermaid 规划、轻量评估 | 吞吐/成本优先 |
+| `reason` | `TaskType.REASONING` 为主 | 规划、子查询生成、Build Contract 收紧、缺口评估 | 推理深度优先 |
+| `primary` | `TaskType.DOCGEN` 为主 | 章节写作、题目生成、批改、对话、OCR | 质量均衡 |
+| `light` | `TaskType.DOCGEN_LIGHT` 为主 | KG 抽取、标题解析、分类、Mermaid 规划、轻量评估 | 吞吐/成本优先 |
 
 ---
 
@@ -43,48 +43,38 @@
 ### Grounding / Retrieval
 
 - `generate_sub_queries`：`reason`
-- `assess_gaps`：`fast`
-- `purify_material`：`fast`
-- 目标：尽量把重质量用在“查什么”和“还缺什么”，不要把昂贵模型浪费在机械整理上
+- `assess_gaps`：`light`
+- `purify_material`：`light`
+- 目标：尽量把重质量用在"查什么"和"还缺什么"，不要把昂贵模型浪费在机械整理上
 
 ### Writer
 
 - `PedagogyWriter` 主写作：`primary`
-- 标题解析、块级修补：`fast`
+- 标题解析、块级修补：`light`
 - 目标：把长文本质量留给正文，把格式整理和补洞交给轻量模型
 
 ### Asset
 
-- Mermaid 规划：`fast`
-- 图片 prompt 规划：`fast`
+- Mermaid 规划：`light`
+- 图片 prompt 规划：`light`
 - 交互 HTML / 动画设计稿：`primary`
 - 目标：资产规划和最终正文分开，不让富媒体拖垮主链路
 
 ---
 
-## 2.4 当前 fallback 行为
+## 2.4 失败语义（Strict Mode）
 
-当前 `fallback.py` 的真实逻辑是按 `tier` 跑稳定降级链：
+当前 `fallback.py` 采用 **strict failure 模式**：
 
-| 请求层级 | 候选链 |
-| --- | --- |
-| `reason` | `REASONING -> DOCGEN -> DOCGEN_LIGHT` |
-| `primary` | `DOCGEN -> DOCGEN_LIGHT -> DEFAULT` |
-| `fast` | `DOCGEN_LIGHT -> DEFAULT` |
+- 没有 fallback chain — 一次调用失败就直接抛异常
+- 调用方（workflow node）决定是否 retry 或降级
+- LangSmith metadata 中始终记录 `llm_tier`、`llm_strict_mode=True`
 
-每次候选尝试都会在 LangSmith metadata 中记录：
+这样做的好处：
 
-- `llm_tier`
-- `llm_candidate_tier`
-- `llm_candidate_task_type`
-- `llm_fallback_from`
-- `llm_fallback_to`
-
-这意味着后续可以非常明确地看：
-
-- 哪些节点经常发生降级
-- 哪些 tier 配置过于乐观
-- 哪些阶段真正的瓶颈在模型，而不是检索或抓取
+- 不会静默降级导致质量下降而不自知
+- 日志和 LangSmith 中可以清晰看到"哪些节点的哪次调用失败了"
+- 产品逻辑不会因为 fallback 链里的 side-effect 而变得不可预测
 
 ---
 
@@ -98,7 +88,7 @@
 - 观测维度
 - 该任务本来属于哪类模型动作
 
-### 原则 2：只在确实需要“速度/质量偏置”时覆盖 `tier`
+### 原则 2：只在确实需要"速度/质量偏置"时覆盖 `tier`
 
 适合显式传 `tier` 的场景：
 
@@ -109,7 +99,7 @@
 不适合乱传 `tier` 的场景：
 
 - 所有节点都手动覆盖
-- 为了“看起来聪明”统一上 `reason`
+- 为了"看起来聪明"统一上 `reason`
 - 业务语义不清，只是碰运气调模型
 
 ### 原则 3：Planner 少而贵，Writer 稳而准，Asset 轻而快
@@ -129,7 +119,7 @@
 
 - 更重速度和得分信息密度
 - 研究补检索上限应更低
-- 允许更多 `fast` / `primary`
+- 允许更多 `light` / `primary`
 - 不建议大面积使用 `reason`
 
 ### `systematic`
@@ -145,7 +135,7 @@
 ### 借自 `gpt-researcher`
 
 - 三级模型概念
-- fallback 是“逻辑能力降级链”，不是简单换个模型名
+- tier 是"逻辑能力分层"，不是简单换个模型名
 
 ### 结合 AITeachMe 的改造
 
@@ -163,14 +153,14 @@
 
 - 文档失真
 - 观测难统一
-- fallback 失去比较意义
+- 对比分析失去意义
 
 ### 风险 2：`retrieval_profile` 和 `tier` 混淆
 
 二者不是一回事：
 
-- `retrieval_profile` 决定“去哪查”
-- `tier` 决定“用多贵的脑子整理”
+- `retrieval_profile` 决定"去哪查"
+- `tier` 决定"用多贵的脑子整理"
 
 ### 风险 3：富媒体抢正文预算
 
@@ -184,19 +174,19 @@
 | --- | --- |
 | Planner confirm / contract normalization | `reason` |
 | 章节 query planning | `reason` |
-| 章节 gap assessment | `fast` |
-| 研究笔记 purify | `fast` |
+| 章节 gap assessment | `light` |
+| 研究笔记 purify | `light` |
 | 正文写作 | `primary` |
-| 标题修正 / 轻量结构补全 | `fast` |
-| Mermaid / 图片 prompt 规划 | `fast` |
+| 标题修正 / 轻量结构补全 | `light` |
+| Mermaid / 图片 prompt 规划 | `light` |
 | 交互 HTML / 动画设计稿 | `primary` |
 
 ---
 
 ## 2.10 一句话结论
 
-对 AITeachMe 来说，三级模型策略的重点不是“分三个名字”，而是：
+对 AITeachMe 来说，三级模型策略的重点不是"分三个名字"，而是：
 
 - 把贵模型预算集中在规划和正文
 - 把轻量模型预算集中在整理和资产规划
-- 让所有降级都能在 LangSmith 中被清楚看见
+- 让所有调用都能在 LangSmith 中被清楚看见

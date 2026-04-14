@@ -14,7 +14,6 @@ from ._helpers import (
     ExamPaperDetail,
     QuestionBankItem,
     QuestionBuildResult,
-    _resolve_requested_unit_scope,
 )
 from .grading import submit_exam_answers, trigger_exam_grade
 from .paper_generation import trigger_exam_generate

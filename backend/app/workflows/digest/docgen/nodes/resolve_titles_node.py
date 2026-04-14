@@ -66,7 +66,7 @@ async def _resolve_material_title(material: dict[str, object], state: DocGenStat
     raw_title = await acompletion_with_fallback(
         messages,
         task_type=TaskType.DOCGEN_LIGHT,
-        tier="fast",
+        tier="light",
         max_tokens=48,
         temperature=0.2,
         extra_metadata={
