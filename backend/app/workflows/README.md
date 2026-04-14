@@ -383,6 +383,7 @@ workflow 级 tracing 的主入口在：
 
 进一步约定见：
 
+- [DEBUGGING.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/DEBUGGING.md)
 - [LANGSMITH.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/LANGSMITH.md)
 - [TRACKED_STEP.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/TRACKED_STEP.md)
 
