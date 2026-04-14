@@ -1188,6 +1188,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session",
@@ -1270,6 +1271,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans/latest": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Get the latest build planner session for this subject",
@@ -1342,6 +1344,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans/stream": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session with SSE progress",
@@ -1422,6 +1425,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback and regenerate the plan",
@@ -1513,6 +1517,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages/stream": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback with SSE progress",
@@ -1602,6 +1607,7 @@
     "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/confirm": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Confirm the current planner draft and freeze a build plan",
@@ -1683,6 +1689,7 @@
     "/api/v1/subjects/{subject}/knowledge/build": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Trigger docs and/or graph digest build",
@@ -1775,6 +1782,7 @@
     "/api/v1/subjects/{subject}/knowledge/docs": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Fetch knowledge docs and minimal build state",
@@ -1847,6 +1855,7 @@
     "/api/v1/subjects/{subject}/knowledge/overview": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Fetch aggregated knowledge overview",
@@ -1928,173 +1937,10 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "Fetch knowledge node detail",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GraphNodeDetailRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNodeDetailResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/chunks/context": {
-      "post": {
-        "tags": [
-          "knowledge"
-        ],
-        "summary": "Fetch source chunk context",
-        "operationId": "chunk_context_api_v1_subjects__subject__knowledge_chunks_context_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChunkContextRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ChunkContextResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/units/detail": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Fetch teaching unit detail",
@@ -2177,6 +2023,7 @@
     "/api/v1/subjects/{subject}/knowledge/study-plan": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Fetch or update the learner study plan",
@@ -2259,6 +2106,7 @@
     "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Manage taxonomy anchors",
@@ -2341,6 +2189,7 @@
     "/api/v1/subjects/{subject}/knowledge/clear": {
       "post": {
         "tags": [
+          "knowledge",
           "knowledge"
         ],
         "summary": "Clear knowledge artifacts for one subject",
@@ -2389,6 +2238,172 @@
           },
           "409": {
             "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch knowledge node detail",
+        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphNodeDetailRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNodeDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/chunks/context": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch source chunk context",
+        "operationId": "chunk_context_api_v1_subjects__subject__knowledge_chunks_context_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkContextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChunkContextResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {

@@ -19,13 +19,13 @@ from app.schemas.knowledge import (
     ThemeTreeNodeResponse,
     ThemeTreeResponse,
 )
-from app.services.knowledge.curriculum_service import (
+from app.services.knowledge_docs.curriculum_service import (
     get_current_curriculum_snapshot,
     get_current_prereq_dag,
     get_current_theme_tree,
     get_teaching_units,
 )
-from app.services.knowledge.graph_query_service import get_full_graph
+from app.services.knowledge_graph.module import KnowledgeGraphModule
 from app.services.subject_embedding_service import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
 
@@ -102,7 +102,7 @@ def get_knowledge_overview(
             prereq_dag = None
 
     if need_graph:
-        graph = get_full_graph(session, subject=subject)
+        graph = KnowledgeGraphModule(session=session).get_full_graph(subject=subject)
 
     if need_units:
         units = get_teaching_units(

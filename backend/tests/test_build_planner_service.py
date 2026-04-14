@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from app.models import IngestStatus, RawFile, Subject, TaskStatus
 from app.models.build_planner import BuildPlannerSession, ConfirmedBuildPlan
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest
-from app.services.knowledge.build_planner_service import (
+from app.services.knowledge_docs.build_planner_service import (
     append_build_planner_message_service,
     confirm_build_planner_session_service,
     create_build_planner_session_service,
@@ -95,7 +95,7 @@ def test_confirm_build_planner_session_creates_new_confirmed_plan_after_revision
     )
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=DummyWorkflowResult({"plan": first_plan, "plan_summary": first_plan["plan_summary"]})),
     ):
         create_response = asyncio.run(
@@ -115,7 +115,7 @@ def test_confirm_build_planner_session_creates_new_confirmed_plan_after_revision
     )
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=DummyWorkflowResult({"plan": revised_plan, "plan_summary": revised_plan["plan_summary"]})),
     ):
         revised_response = asyncio.run(
@@ -182,7 +182,7 @@ def test_create_build_planner_session_normalizes_dirty_workflow_payload(session:
     }
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=DummyWorkflowResult({"plan": dirty_plan, "plan_summary": dirty_plan["plan_summary"]})),
     ):
         response = asyncio.run(
@@ -313,7 +313,7 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
     }
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=DummyWorkflowResult(workflow_state)),
     ):
         response = asyncio.run(

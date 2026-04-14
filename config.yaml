@@ -11,7 +11,7 @@ models:
   # OCR 模型。留空回退主模型。
   ocr: ""
   # Embedding 模型。
-  embedding: text-embedding-v3
+  embedding: text-embedding-v4
   # 文生图模型。留空禁用。
   image_generation: ""
   # Mermaid 模型。留空禁用。

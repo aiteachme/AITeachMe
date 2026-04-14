@@ -1000,216 +1000,6 @@ export const useKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost = <TE
       return useMutation(getKnowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPostMutationOptions(options), queryClient);
     }
     /**
- * @summary Fetch knowledge node detail
- */
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200 = {
-  data: ApiResponseKnowledgeNodeDetailResponse
-  status: 200
-}
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200) & {
-  headers: Headers;
-};
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500) & {
-  headers: Headers;
-};
-
-export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError)
-
-export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl = (subject: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/knowledge/graph/nodes/detail`
-}
-
-export const graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = async (subject: string,
-    graphNodeDetailRequest: GraphNodeDetailRequest, options?: RequestInit): Promise<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse> => {
-  
-  return orvalApiClient<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse>(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      graphNodeDetailRequest,)
-  }
-);}
-  
-
-
-
-export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext> => {
-
-const mutationKey = ['graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-      
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, {subject: string;data: GraphNodeDetailRequest}> = (props) => {
-          const {subject,data} = props ?? {};
-
-          return  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject,data,requestOptions)
-        }
-
-
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationResult = NonNullable<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>>
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationBody = GraphNodeDetailRequest
-    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationError = ErrorResponse | HTTPValidationError
-
-    /**
- * @summary Fetch knowledge node detail
- */
-export const useGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>,
-        TError,
-        {subject: string;data: GraphNodeDetailRequest},
-        TContext
-      > => {
-      return useMutation(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions(options), queryClient);
-    }
-    /**
- * @summary Fetch source chunk context
- */
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse200 = {
-  data: ApiResponseChunkContextResponse
-  status: 200
-}
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseSuccess = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse200) & {
-  headers: Headers;
-};
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseError = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse400 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse404 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse422 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse500) & {
-  headers: Headers;
-};
-
-export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseSuccess | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseError)
-
-export const getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl = (subject: string,) => {
-
-
-  
-
-  return `/api/v1/subjects/${subject}/knowledge/chunks/context`
-}
-
-export const chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = async (subject: string,
-    chunkContextRequest: ChunkContextRequest, options?: RequestInit): Promise<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse> => {
-  
-  return orvalApiClient<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse>(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl(subject),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      chunkContextRequest,)
-  }
-);}
-  
-
-
-
-export const getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext> => {
-
-const mutationKey = ['chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-      
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, {subject: string;data: ChunkContextRequest}> = (props) => {
-          const {subject,data} = props ?? {};
-
-          return  chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost(subject,data,requestOptions)
-        }
-
-
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationResult = NonNullable<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>>
-    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationBody = ChunkContextRequest
-    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationError = ErrorResponse | HTTPValidationError
-
-    /**
- * @summary Fetch source chunk context
- */
-export const useChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>,
-        TError,
-        {subject: string;data: ChunkContextRequest},
-        TContext
-      > => {
-      return useMutation(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions(options), queryClient);
-    }
-    /**
  * @summary Fetch teaching unit detail
  */
 export type unitDetailApiV1SubjectsSubjectKnowledgeUnitsDetailPostResponse200 = {
@@ -1631,5 +1421,215 @@ export const useKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPost = <TError =
         TContext
       > => {
       return useMutation(getKnowledgeClearApiV1SubjectsSubjectKnowledgeClearPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Fetch knowledge node detail
+ */
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200 = {
+  data: ApiResponseKnowledgeNodeDetailResponse
+  status: 200
+}
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse200) & {
+  headers: Headers;
+};
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse400 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse404 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse422 | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse500) & {
+  headers: Headers;
+};
+
+export type graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse = (graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseSuccess | graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponseError)
+
+export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/graph/nodes/detail`
+}
+
+export const graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = async (subject: string,
+    graphNodeDetailRequest: GraphNodeDetailRequest, options?: RequestInit): Promise<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse> => {
+  
+  return orvalApiClient<graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostResponse>(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostUrl(subject),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      graphNodeDetailRequest,)
+  }
+);}
+  
+
+
+
+export const getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext> => {
+
+const mutationKey = ['graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, {subject: string;data: GraphNodeDetailRequest}> = (props) => {
+          const {subject,data} = props ?? {};
+
+          return  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject,data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationResult = NonNullable<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>>
+    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationBody = GraphNodeDetailRequest
+    export type GraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Fetch knowledge node detail
+ */
+export const useGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>, TError,{subject: string;data: GraphNodeDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost>>,
+        TError,
+        {subject: string;data: GraphNodeDetailRequest},
+        TContext
+      > => {
+      return useMutation(getGraphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Fetch source chunk context
+ */
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse200 = {
+  data: ApiResponseChunkContextResponse
+  status: 200
+}
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseSuccess = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse200) & {
+  headers: Headers;
+};
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseError = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse400 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse404 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse422 | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse500) & {
+  headers: Headers;
+};
+
+export type chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse = (chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseSuccess | chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponseError)
+
+export const getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl = (subject: string,) => {
+
+
+  
+
+  return `/api/v1/subjects/${subject}/knowledge/chunks/context`
+}
+
+export const chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = async (subject: string,
+    chunkContextRequest: ChunkContextRequest, options?: RequestInit): Promise<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse> => {
+  
+  return orvalApiClient<chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostResponse>(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostUrl(subject),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      chunkContextRequest,)
+  }
+);}
+  
+
+
+
+export const getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext> => {
+
+const mutationKey = ['chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, {subject: string;data: ChunkContextRequest}> = (props) => {
+          const {subject,data} = props ?? {};
+
+          return  chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost(subject,data,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationResult = NonNullable<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>>
+    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationBody = ChunkContextRequest
+    export type ChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Fetch source chunk context
+ */
+export const useChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>, TError,{subject: string;data: ChunkContextRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof chunkContextApiV1SubjectsSubjectKnowledgeChunksContextPost>>,
+        TError,
+        {subject: string;data: ChunkContextRequest},
+        TContext
+      > => {
+      return useMutation(getChunkContextApiV1SubjectsSubjectKnowledgeChunksContextPostMutationOptions(options), queryClient);
     }
     

@@ -8,7 +8,7 @@ from sqlmodel import Session
 from app.models import IngestStatus, RawFile, RetrievalChunk, Subject, TaskStatus
 from app.models.build_planner import ConfirmedBuildPlan
 from app.schemas.knowledge import KnowledgeBuildPrecheckConflictData, SubjectVectorStatusResponse
-from app.services.knowledge.digest_service import trigger_docgen_build
+from app.services.knowledge_docs.digest_service import trigger_docgen_build
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, SubjectBuildLockConflictError
 
 
@@ -126,18 +126,18 @@ def test_trigger_docgen_build_force_full_rebuild_clears_chunk_vector_metadata(
     )
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=conflict,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ), patch(
-        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        "app.services.knowledge_docs.digest_service.acquire_knowledge_build_lock",
         return_value=True,
     ), patch(
-        "app.services.knowledge.digest_service.clear_docgen_staging",
+        "app.services.knowledge_docs.digest_service.clear_docgen_staging",
     ), patch(
-        "app.services.knowledge.digest_service.update_knowledge_build_status",
+        "app.services.knowledge_docs.digest_service.update_knowledge_build_status",
     ):
         data, accepted_file_ids = trigger_docgen_build(
             session,
@@ -177,20 +177,20 @@ def test_trigger_docgen_build_calls_direct_clear_chunk_vector_metadata(session: 
     )
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=conflict,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ), patch(
-        "app.services.knowledge.digest_service.clear_chunk_vector_metadata",
+        "app.services.knowledge_docs.digest_service.clear_chunk_vector_metadata",
     ) as clear_mock, patch(
-        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        "app.services.knowledge_docs.digest_service.acquire_knowledge_build_lock",
         return_value=True,
     ), patch(
-        "app.services.knowledge.digest_service.clear_docgen_staging",
+        "app.services.knowledge_docs.digest_service.clear_docgen_staging",
     ), patch(
-        "app.services.knowledge.digest_service.update_knowledge_build_status",
+        "app.services.knowledge_docs.digest_service.update_knowledge_build_status",
     ):
         data, accepted_file_ids = trigger_docgen_build(
             session,
@@ -225,18 +225,18 @@ def test_trigger_docgen_build_uses_confirmed_plan_selection_and_prompt(session: 
     )
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=None,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ), patch(
-        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        "app.services.knowledge_docs.digest_service.acquire_knowledge_build_lock",
         return_value=True,
     ), patch(
-        "app.services.knowledge.digest_service.clear_docgen_staging",
+        "app.services.knowledge_docs.digest_service.clear_docgen_staging",
     ), patch(
-        "app.services.knowledge.digest_service.update_knowledge_build_status",
+        "app.services.knowledge_docs.digest_service.update_knowledge_build_status",
     ):
         data, accepted_file_ids = trigger_docgen_build(
             session,
@@ -273,18 +273,18 @@ def test_trigger_docgen_build_allows_search_only_docs_for_confirmed_plan(session
     )
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=None,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ), patch(
-        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        "app.services.knowledge_docs.digest_service.acquire_knowledge_build_lock",
         return_value=True,
     ), patch(
-        "app.services.knowledge.digest_service.clear_docgen_staging",
+        "app.services.knowledge_docs.digest_service.clear_docgen_staging",
     ), patch(
-        "app.services.knowledge.digest_service.update_knowledge_build_status",
+        "app.services.knowledge_docs.digest_service.update_knowledge_build_status",
     ):
         data, accepted_file_ids = trigger_docgen_build(
             session,
@@ -318,13 +318,13 @@ def test_trigger_docgen_build_rejects_building_confirmed_plan(session: Session) 
     )
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=None,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ), patch(
-        "app.services.knowledge.digest_service.acquire_knowledge_build_lock",
+        "app.services.knowledge_docs.digest_service.acquire_knowledge_build_lock",
         return_value=True,
     ) as lock_mock:
         with pytest.raises(SubjectBuildLockConflictError):
@@ -347,10 +347,10 @@ def test_trigger_docgen_build_requires_confirmed_plan_for_docs(session: Session)
     ready_file = _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_digest_missing_plan")
 
     with patch(
-        "app.services.knowledge.digest_service.inspect_subject_build_precheck",
+        "app.services.knowledge_docs.digest_service.inspect_subject_build_precheck",
         return_value=None,
     ), patch(
-        "app.services.knowledge.digest_service.resolve_subject_build_vector_status",
+        "app.services.knowledge_docs.digest_service.resolve_subject_build_vector_status",
         return_value=_vector_status(),
     ):
         with pytest.raises(ConfirmedBuildPlanRequiredError):

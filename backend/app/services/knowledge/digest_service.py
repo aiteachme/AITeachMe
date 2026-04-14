@@ -24,7 +24,10 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
-from app.services.knowledge.build_planner_service import get_confirmed_build_plan_service, mark_confirmed_build_plan_status
+from app.services.knowledge_docs.build_planner_service import (
+    get_confirmed_build_plan_service,
+    mark_confirmed_build_plan_status,
+)
 from app.services.subject_embedding_service import get_subject_vector_status_by_slug, inspect_subject_build_precheck, resolve_subject_build_vector_status
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
