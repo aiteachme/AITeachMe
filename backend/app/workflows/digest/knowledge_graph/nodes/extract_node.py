@@ -14,9 +14,9 @@ from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.knowledge_graph.services.candidate_identity import candidate_lookup_keys
-from app.workflows.digest.knowledge_graph.services.clusterer import cluster_candidates
-from app.workflows.digest.knowledge_graph.services.extractor import (
+from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
+from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
+from app.workflows.digest.knowledge_graph.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,

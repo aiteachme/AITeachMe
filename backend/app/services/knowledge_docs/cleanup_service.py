@@ -17,6 +17,11 @@ from app.models import (
     KnowledgeNode,
     QuestionTemplate,
     RetrievalChunk,
+    Curriculum,
+    TaxonomyAnchor,
+    TeachingUnit,
+    ThemeTreeNode,
+    UnitDependency,
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
@@ -110,7 +115,27 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject)).all())
     counts["knowledge_node"] = len(nodes)
 
+    curriculums = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
+    counts["curriculum"] = len(curriculums)
+
+    anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
+    counts["taxonomy_anchor"] = len(anchors)
+
+    units = list(session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject)).all())
+    counts["teaching_unit"] = len(units)
+
+    tree_nodes = list(session.exec(select(ThemeTreeNode).where(ThemeTreeNode.subject == subject)).all())
+    counts["theme_tree_node"] = len(tree_nodes)
+
+    dependencies = list(session.exec(select(UnitDependency).where(UnitDependency.subject == subject)).all())
+    counts["unit_dependency"] = len(dependencies)
+
     for model in (
+        UnitDependency,
+        ThemeTreeNode,
+        TaxonomyAnchor,
+        TeachingUnit,
+        Curriculum,
         KnowledgeDocument,
         KnowledgeEdge,
         KnowledgeNode,
@@ -124,4 +149,3 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
-

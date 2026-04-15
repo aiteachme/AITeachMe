@@ -21,6 +21,11 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Subject,
+    Curriculum,
+    TaxonomyAnchor,
+    TeachingUnit,
+    ThemeTreeNode,
+    UnitDependency,
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
@@ -37,9 +42,14 @@ _EXAM_KEYS = [
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
 _KNOWLEDGE_KEYS = [
+    "curriculum",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_node",
+    "taxonomy_anchor",
+    "teaching_unit",
+    "theme_tree_node",
+    "unit_dependency",
 ]
 
 
@@ -82,6 +92,11 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
+        "curriculum": _count_rows(session, Curriculum, Curriculum.subject == subject),
+        "taxonomy_anchor": _count_rows(session, TaxonomyAnchor, TaxonomyAnchor.subject == subject),
+        "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
+        "theme_tree_node": _count_rows(session, ThemeTreeNode, ThemeTreeNode.subject == subject),
+        "unit_dependency": _count_rows(session, UnitDependency, UnitDependency.subject == subject),
     }
 
 
@@ -210,6 +225,11 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
     # Use single-statement deletes for self-referential tables so SQLite checks
     # the foreign keys after the whole statement instead of per-row flush order.
     for model in (
+        UnitDependency,
+        ThemeTreeNode,
+        TaxonomyAnchor,
+        TeachingUnit,
+        Curriculum,
         KnowledgeDocument,
         KnowledgeEdge,
         KnowledgeNode,

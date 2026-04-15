@@ -10,7 +10,7 @@ from app.workflows.digest.graph import (
     build_kg_digest_graph,
 )
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
-from app.workflows.digest.prompts import KG_PROMPTS
+from app.workflows.digest.knowledge_graph.prompts import KG_PROMPTS
 from app.workflows.digest.unified.graph import build_unified_digest_graph
 
 PLANNER_PROMPTS = {
@@ -87,4 +87,3 @@ WORKFLOW_EXPORTS = (
         build_graph=_build_unified_graph_for_export,
     ),
 )
-

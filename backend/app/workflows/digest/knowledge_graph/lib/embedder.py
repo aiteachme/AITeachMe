@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 
-from app.workflows.digest.knowledge_graph.services.chunker import ChunkData
+from app.workflows.digest.knowledge_graph.lib.chunker import ChunkData
 from app.shared.infra.embedding import aembed_texts
 
 logger = structlog.get_logger()
@@ -27,4 +27,3 @@ async def embed_chunks(chunks: list[ChunkData]) -> list[list[float]]:
         embedding_dim=len(embeddings[0]) if embeddings else 0,
     )
     return embeddings
-

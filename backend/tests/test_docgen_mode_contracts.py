@@ -18,7 +18,8 @@ from app.teaching.documents import (
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.shared.metrics import DigestTokenSummary
 from app.workflows.digest.planner.lib.plans import build_fallback_plan
-from app.workflows.digest.prompts import build_docgen_writer_messages, build_planner_chapter_title_messages
+from app.workflows.digest.docgen.prompts import build_docgen_writer_messages
+from app.workflows.digest.planner.prompts import build_planner_chapter_title_messages
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 

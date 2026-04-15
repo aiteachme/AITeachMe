@@ -99,4 +99,3 @@ def _compute_graph_layer(session: Session, subject: str, impact: ImpactSet) -> N
     impact.candidate_recompute_node_ids = (
         one_hop_neighbor_ids | second_hop_node_ids
     ) - impact.changed_node_ids
-

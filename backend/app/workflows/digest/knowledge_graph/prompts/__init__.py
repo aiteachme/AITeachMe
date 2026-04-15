@@ -1,6 +1,6 @@
 """知识图谱候选抽取提示词。"""
 
-SYSTEM_PROMPT_KG_EXTRACT = """
+SYSTEM_PROMPT_KG_EXTRACT = r"""
 你是一名知识图谱构建助手。请从给定的学习资料文本片段中抽取知识节点和知识边。
 
 ## 节点类型（仅限以下 5 种）

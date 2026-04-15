@@ -58,7 +58,7 @@ docgen/
 
 - `docgen/` 已收口为 `graph.py + state.py + nodes/ + prompts/ + lib/`
 - 节点内部子逻辑统一放在 `lib/`，不再额外引入 `internal/` 夹层
-- 模块级 `digest.prompts` 只作为兼容门面，不再作为 docgen 的主依赖位置
+- prompt 主依赖位置是 `docgen/prompts/`，不再依赖模块级 `digest.prompts`
 
 ## 一句话总结
 
