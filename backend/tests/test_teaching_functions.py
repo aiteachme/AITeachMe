@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.teaching import list_teaching_functions, run_teaching_function
+from app.workflows.support.teaching_tools import list_teaching_functions, run_teaching_function
 
 
 def test_list_teaching_functions_returns_teaching_owned_catalog() -> None:

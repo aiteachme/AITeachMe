@@ -13,7 +13,7 @@ from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
-from app.services.file_service import (
+from app.workflows.support.files import (
     delete_files,
     list_subject_files,
     run_parse_files_background,

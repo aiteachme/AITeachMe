@@ -1,10 +1,10 @@
-"""系统信息服务层。"""
+"""System initialization queries."""
 
 from __future__ import annotations
 
+from app.schemas.system import InitData, RuntimeUser
 from app.shared.infra.env_support import get_env_bool
 from app.shared.infra.runtime import get_app_version, resolve_app_mode
-from app.schemas.system import InitData, RuntimeUser
 
 
 def build_init_data(
@@ -15,7 +15,7 @@ def build_init_data(
     device_key: str | None,
     is_authenticated: bool,
 ) -> InitData:
-    """构造系统初始化数据。"""
+    """Build frontend runtime initialization data."""
 
     auth_enabled = get_env_bool("AUTH_ENABLED", True)
     return InitData(

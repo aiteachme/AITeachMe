@@ -30,6 +30,19 @@ def test_shared_infra_does_not_import_teaching_or_services() -> None:
     assert violations == [], "shared.infra 出现了反向依赖:\n" + "\n".join(violations)
 
 
+def test_workflows_do_not_import_retired_business_layers() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    workflows_root = backend_root / "app" / "workflows"
+
+    violations: list[str] = []
+    for path in workflows_root.rglob("*.py"):
+        for module in _iter_import_modules(path):
+            if module.startswith("app.teaching") or module.startswith("app.services"):
+                violations.append(f"{path.relative_to(backend_root)} -> {module}")
+
+    assert violations == [], "workflows 出现了旧业务层反向依赖:\n" + "\n".join(violations)
+
+
 def test_build_planner_service_uses_planner_package_public_entry() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     target = backend_root / "app" / "services" / "knowledge_docs" / "build_planner_service.py"

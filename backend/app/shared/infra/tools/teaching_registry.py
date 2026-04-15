@@ -1,7 +1,6 @@
 """Canonical teaching-tool registry helpers.
 
 This module is the long-term home for teaching-owned tool registration.
-Legacy imports from ``app.teaching.teaching`` should re-export from here.
 """
 
 from __future__ import annotations

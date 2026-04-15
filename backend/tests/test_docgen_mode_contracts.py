@@ -10,7 +10,7 @@ from app.shared.infra.skills import (
     render_skill,
 )
 from app.shared.infra.tools import list_agent_tools
-from app.teaching.documents import (
+from app.workflows.digest._shared.pedagogy import (
     analyze_chapter_heading_quality,
     coerce_resolved_chapter_title,
     ensure_chapter_learning_scaffold,

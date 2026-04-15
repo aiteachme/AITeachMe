@@ -1,23 +1,20 @@
 # Infra 分层说明
 
-最后更新：2026-04-15
+最后更新：2026-04-16
 
 `app.shared.infra` 是后端共享基础设施层。它负责把数据库、存储、检索、工具、LLM、workflow runtime、observability 这些通用能力接稳，但不负责教学语义，也不负责业务流程编排。
 
 一句话理解：
 
-> `infra` 负责“能力怎么接”，`teaching` 负责“怎么教”，`workflows` 负责“流程怎么跑”。
+> `infra` 负责“能力怎么接”，`workflows` 负责“业务怎么跑、怎么教”。
 
 ## 当前边界
 
 推荐把依赖方向理解成：
 
 ```text
-api -> services
-services -> workflows
-services -> teaching
-workflows -> teaching
-services/workflows/teaching -> shared.infra -> shared.kernel
+api -> workflows -> repositories / shared.infra / models / schemas
+shared.infra -> shared.kernel
 ```
 
 两条硬边界：
@@ -31,10 +28,10 @@ services/workflows/teaching -> shared.infra -> shared.kernel
 
 ```text
 api/knowledge_docs.py
--> services/knowledge_docs/build_planner_service.py
+-> services/knowledge_docs/build_planner_service.py   # 迁移期入口，目标 digest/application/build_plans.py
 -> app.workflows.digest.planner
 -> confirmed_plan
--> services/knowledge_docs/digest_service.py
+-> services/knowledge_docs/digest_service.py          # 迁移期入口，目标 digest/application/builds.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 
@@ -43,7 +40,7 @@ api/knowledge_docs.py
 | 能力 | 当前稳定入口 | 对 planner / docgen 的作用 |
 | --- | --- | --- |
 | 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
-| 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索 |
+| 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索，并处理构建前向量配置确认 |
 | 工具 | `app.shared.infra.tools` | 统一工具注册表与执行入口 |
 | 技能 | `app.shared.infra.skills` | skillpack 渲染、推荐 tags |
 | workflow 支撑 | `app.shared.infra.workflow` | workflow root / node / progress |
@@ -126,7 +123,7 @@ workflow 作者通常不需要从这里直接导入。
 | `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
 | `embedding/` | canonical embedding 调用入口与框架适配 |
 | `search/` | 本地检索、retriever、reader、source curation |
-| `subject/` | 学科向量配置与只读能力 |
+| `subject/` | 学科向量配置、查询能力与构建前 precheck |
 | `mcp/` | MCP 协议接入与外部工具服务管理 |
 | `tools/` | 工具注册、执行、toolpack 加载 |
 | `skills/` | `SKILL.md` 风格技能包渲染与推荐 |
@@ -150,7 +147,7 @@ workflow 作者通常不需要从这里直接导入。
 
 - 离开具体业务还能成立，才可能是 `infra`
 - 如果在描述“流程顺序”，应该去 `workflows`
-- 如果在描述“教学表达”，应该去 `teaching`
+- 如果在描述“教学表达”，应该去对应 `workflows/<engine>/_shared` 或 `workflows/support`
 
 ## 阅读顺序
 

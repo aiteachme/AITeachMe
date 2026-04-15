@@ -100,7 +100,7 @@ async def run_parse_file_workflow(
                     metadata={"subject": subject, "file_id": file_id, "filename": raw_file.original_filename},
                 )
 
-            # file_service.py already set status=PROCESSING, ingest=CLASSIFYING
+            # File support already set status=PROCESSING, ingest=CLASSIFYING.
             # so we only need to clear the error message
             if raw_file.parse_error_message:
                 raw_file.parse_error_message = None
@@ -587,5 +587,4 @@ async def run_parse_file_workflow(
         except Exception:
             logger.exception("ingest_workflow_error_recovery_failed", file_id=file_id)
         return err_result("ingest_unhandled_error", str(exc), metadata={"subject": subject, "file_id": file_id})
-
 

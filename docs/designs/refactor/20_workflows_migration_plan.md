@@ -7,7 +7,7 @@
 ## 1. 迁移目标
 
 - 让 `workflows` 成为唯一业务层
-- 让 `services` 与 `teaching` 进入兼容退场期
+- 让 `services` 进入兼容退场期，并完成 `teaching` 源层退场
 - 先用 Digest 打样，再复制到其他引擎与 support 模块
 
 ## 2. 分阶段计划
@@ -18,7 +18,7 @@
 - 更新 `refactor/README.md`、`refactor.md`
 - 更新 `backend/app/workflows/STRUCTURE.md`
 - 更新 `backend/app/workflows/README.md`
-- 把 `backend/app/teaching/README.md` 改成 legacy 说明
+- 明确 `backend/app/teaching` 不再作为长期层存在
 
 ### Phase 1: 最小代码骨架落地
 
@@ -54,7 +54,7 @@
 ### Phase 5: 兼容层收缩
 
 - `services/` 只保留薄 shim，逐步标记 deprecated
-- `teaching/` 只保留 facade，逐步标记 deprecated
+- `teaching/` 源层已删除，不再保留 facade
 - 最后清理历史兼容目录和导入面
 
 ## 3. 首批优先级
@@ -80,14 +80,15 @@
 | `services/knowledge_graph/*` | `workflows/digest/application/*` / `digest/knowledge_graph/*` | 与 Digest 一起迁 |
 | `services/chats_service.py` | `workflows/interact/application/*` | 保持 SSE 口径不变 |
 | `services/exams_service/*` | `workflows/examine/application/*` | 保持组卷/判卷入口不变 |
-| `services/profile_service.py` | `workflows/profile/application/*` | 保持 overview 查询语义不变 |
-| `services/file_service.py` | `workflows/support/files` | support 模块 |
+| `services/profile_service.py` | `workflows/profile/application/mastery.py` | 已迁入 profile application |
+| `services/file_service.py` | `workflows/support/files` | 已迁入 support 模块 |
 | `services/subject_service.py` | `workflows/support/subjects` | support 模块 |
 | `services/auth_service.py` | `workflows/support/auth` | support 模块 |
-| `services/system_service.py` | `workflows/support/system` | support 模块 |
+| `services/system_service.py` | `workflows/support/system` | 已迁入 support 模块 |
 | `services/export_import_service.py` | `workflows/support/export_import` | support 模块 |
-| `teaching/runtime_config.py` | `workflows/digest/_shared/runtime_config.py` | Digest facade 已先落地 |
-| `teaching/documents/*` | `workflows/digest/_shared/pedagogy/*` | Digest facade 已先落地 |
+| `services/subject_embedding_service.py` | `shared.infra.subject.build_precheck` | 已迁入 infra subject |
+| `teaching/runtime_config.py` | `workflows/digest/_shared/runtime_config.py` | 已迁为真实实现 |
+| `teaching/documents/*` | `workflows/digest/_shared/pedagogy/*` | 已迁为真实实现 |
 | `teaching/teaching.py` | `shared.infra.tools.teaching_registry` | 已先落地 |
 | `teaching/tools.py` | `workflows/support/teaching_tools` | 已先落地 |
 
@@ -101,7 +102,7 @@
 
 对策：
 
-- 先保 shim
+- 大链路先保 shim；已确认无旧调用的小模块可直接删除旧入口
 - 新位置稳定后再改上层调用
 - 每迁完一块，再做一次 import 扫描
 
@@ -125,7 +126,7 @@
 
 对策：
 
-- 旧路径只做 import shim，不做新逻辑
+- 旧路径如需保留，只做 import shim，不做新逻辑；无调用的旧路径直接删除
 - README 标清 canonical 路径
 - 测试逐步转到新路径
 
@@ -146,7 +147,7 @@
 
 ### 行为验收
 
-- teaching tool 仍能通过旧 `app.teaching` 入口被枚举与执行
+- teaching tool 能通过 `app.workflows.support.teaching_tools` 入口被枚举与执行
 - `shared.infra.tools` 的 project tool module 自动加载不再依赖 `app.teaching.tools`
 - Digest 主线仍可正常读到 runtime_config / pedagogy 能力
 

@@ -13,7 +13,6 @@
 
 - [backend/app/shared/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/README.md)
 - [backend/app/shared/infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)
-- [backend/app/teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/teaching/README.md)
 - [backend/app/workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)
 - `docs/designs/refactor/*`
 
@@ -115,10 +114,9 @@ docs + scripts + infra = 配套工程与说明
 | 目录 | 作用 |
 | --- | --- |
 | `api/` | FastAPI 路由层 |
-| `services/` | 面向 API 的业务组合层 |
+| `services/` | 迁移期兼容层，正在逐步退出 |
 | `shared/` | 共享基础层，下面分 `kernel` 与 `infra` |
-| `teaching/` | 教学语义层 |
-| `workflows/` | 业务编排层 |
+| `workflows/` | 唯一业务层，承接业务用例、五大引擎编排与 support 模块 |
 | `models/` | 持久化模型 |
 | `repositories/` | 数据读写封装 |
 | `schemas/` | API / service / workflow 边界数据结构 |
@@ -128,9 +126,7 @@ docs + scripts + infra = 配套工程与说明
 
 ```text
 api        = 接 HTTP 请求
-services   = 组织业务调用和返回结果
-workflows  = 编排业务主链
-teaching   = 提供教学表达
+workflows  = 组织业务用例、编排业务主链、提供教学表达
 shared     = 提供共享基础能力
 ```
 
@@ -142,10 +138,10 @@ shared     = 提供共享基础能力
 
 ```text
 backend/app/api/knowledge_docs.py
--> backend/app/services/knowledge_docs/build_planner_service.py
+-> backend/app/services/knowledge_docs/build_planner_service.py       # 迁移期入口，目标是 digest/application/build_plans.py
 -> backend/app/workflows/digest/planner/
 -> confirmed_plan
--> backend/app/services/knowledge_docs/digest_service.py
+-> backend/app/services/knowledge_docs/digest_service.py              # 迁移期入口，目标是 digest/application/builds.py
 -> backend/app/workflows/digest.run_docgen_workflow
 ```
 
@@ -311,13 +307,13 @@ backend/app/api/knowledge_docs.py
 2. 本文
 3. `backend/app/shared/README.md`
 4. `backend/app/shared/infra/README.md`
-5. `backend/app/teaching/README.md`
-6. `backend/app/workflows/README.md`
+5. `backend/app/workflows/README.md`
+6. `backend/app/workflows/support/README.md`
 7. `backend/app/api/knowledge_docs.py`
 8. `backend/app/services/knowledge_docs/build_planner_service.py`
 9. `backend/app/services/knowledge_docs/digest_service.py`
 10. `backend/app/workflows/digest/planner/`
-11. `backend/app/workflows/digest/runtime.py`
+11. `backend/app/workflows/digest/docgen/`
 12. `frontend/src/App.tsx` 与 `frontend/src/pages/*`
 
 ## 11. 一句话总结

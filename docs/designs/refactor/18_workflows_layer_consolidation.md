@@ -20,7 +20,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `shared.infra` 继续只承接基础设施。
 - `repositories` 继续只承接持久化读写封装。
 - `app/services` 整体退出主架构，只保留迁移期 shim。
-- `app/teaching` 整体退出主架构，只保留迁移期 shim 与兼容 facade。
+- `app/teaching` 源层已退出并删除，教学语义拆入 workflows/support 与 shared.infra。
 
 ## 2. 为什么要收缩 `services`
 
@@ -57,7 +57,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - Digest 专属教学语义 -> `app.workflows.digest._shared.*`
 - 教学工具注册语义 -> `app.shared.infra.tools.teaching_registry`
 - 教学工具实现 -> `app.workflows.support.teaching_tools`
-- checker/memory/skill_tools -> 只保留兼容面，不再继续发展
+- checker/memory/skill_tools -> 删除正式角色；如确需兼容，落到测试或 infra-local facade，不恢复 `app.teaching`
 
 ## 4. 新边界下的职责表
 
@@ -69,7 +69,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `shared/infra/` | LLM、storage、search、tools、workflow support 等基础设施 | 业务用例 |
 | `models/` / `schemas/` | 持久化模型与边界数据结构 | 业务编排 |
 | `services/` | 迁移期兼容 | 正式新增业务逻辑 |
-| `teaching/` | 迁移期兼容 | 正式新增教学语义或工具实现 |
+| `teaching/` | 已移除 | 不再恢复为正式层或兼容层 |
 
 ## 5. 旧层到新层的总映射
 
@@ -90,7 +90,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `app.teaching.documents.*` | `app.workflows.digest._shared.pedagogy.*` |
 | `app.teaching.teaching` | `app.shared.infra.tools.teaching_registry` |
 | `app.teaching.tools` | `app.workflows.support.teaching_tools` |
-| `app.teaching.checker` / `memory` / `skill_tools` | 兼容层，最终收缩到 `shared.infra` 或删除 |
+| `app.teaching.checker` / `memory` / `skill_tools` | 已删除正式入口；需要的能力改走 `shared.infra` 或测试专用导入 |
 
 ## 6. 本轮已落地的最小代码对齐
 
@@ -101,13 +101,18 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - 新增 `app.workflows.support.teaching_tools`
 - 新增 `app.workflows.digest._shared.runtime_config`
 - 新增 `app.workflows.digest._shared.pedagogy`
+- 删除旧 `backend/app/teaching` 源层
+- `app.services.system_service` 已迁入 `app.workflows.support.system`
+- `app.services.file_service` 已迁入 `app.workflows.support.files`
+- `app.services.profile_service` 已迁入 `app.workflows.profile.application.mastery`
+- `app.services.subject_embedding_service` 已迁入 `app.shared.infra.subject.build_precheck`
 - Digest / Interact workflow 已消除对 `app.services` 的直接 import
-- Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `_shared` facade
+- Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `_shared` 真实实现
 
 注意：
 
-- 当前 `digest._shared` facade 仍委托到旧 `app.teaching` 实现，这是迁移期安排，不是最终形态
-- `services/` 与 `teaching/` 仍然存在，目的是保兼容，不是继续扩大
+- `services/` 仍然存在，目的是保迁移兼容，不是继续扩大
+- `teaching/` 不再作为源代码目录存在；不要为兼容重新创建该层
 
 ## 7. 一句话总结
 
@@ -116,4 +121,4 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `api` 只接请求
 - `workflows` 只管业务
 - `shared.infra` 只管能力
-- `services` 和 `teaching` 进入兼容退场期
+- `services` 进入兼容退场期，`teaching` 已完成源层退场

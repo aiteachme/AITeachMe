@@ -8,7 +8,7 @@ from app.api.deps import CurrentUserContext, get_current_user_context
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.system import InitData, InitRequest
-from app.services.system_service import build_init_data
+from app.workflows.support.system import build_init_data
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 

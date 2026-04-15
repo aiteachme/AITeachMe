@@ -1,4 +1,4 @@
-﻿"""Profile service layer."""
+"""Profile mastery application use cases."""
 
 from __future__ import annotations
 

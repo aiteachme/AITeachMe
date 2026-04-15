@@ -40,7 +40,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.observability import build_token_summary
 from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.unified import run_unified_digest_build
-from app.services.subject_embedding_service import inspect_subject_build_precheck, resolve_subject_build_vector_status
+from app.shared.infra.subject import inspect_subject_build_precheck, resolve_subject_build_vector_status
 
 logger = structlog.get_logger()
 

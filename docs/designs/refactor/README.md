@@ -36,7 +36,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `backend/app/workflows/STRUCTURE.md` — workflows 代码侧权威结构规范
 - `backend/app/shared/infra/workflow/__init__.py` — workflow 共用公共入口
 - `backend/app/workflows/README.md` — workflows 层总览
-- `backend/app/teaching/README.md` — legacy compatibility 说明
+- `backend/app/workflows/support/README.md` — support 模块说明
+- `backend/app/workflows/support/teaching_tools/README.md` — 教学工具 canonical 位置说明
 
 ## 开放问题
 

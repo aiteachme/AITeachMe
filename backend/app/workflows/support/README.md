@@ -24,6 +24,10 @@ workflows/support/<module>/
 
 ## 当前已落地模块
 
+- `files/`
+  文件上传、列表、删除与解析触发的 canonical 代码位置，承接原 `app.services.file_service`。
+- `system/`
+  系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
 - `teaching_tools/`
   教学工具实现的 canonical 代码位置。工具注册语义在 `app.shared.infra.tools.teaching_registry`，具体工具函数在这里。
 

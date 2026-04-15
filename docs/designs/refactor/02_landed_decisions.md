@@ -6,8 +6,8 @@
 ## 架构边界（已固定）
 
 - `shared/infra` = 基础设施（LLM / observability / storage / search / tools / skills / workflow support）
-- `teaching` = 教学语义（脚手架、表达块、teaching-owned 原子工具）
-- `workflows` = 五大业务引擎与 graph 编排主体
+- `workflows` = 唯一业务层，承接五大业务引擎、graph 编排主体与教学语义
+- `support` = `workflows` 下的非引擎业务模块区
 
 ## 扩展模型（已固定）
 
@@ -59,4 +59,4 @@ prompt / helper tracing 统一直接使用官方 `@traceable`。
 
 ## Teaching Tools（已落地）
 
-teaching tool 不是第二套工具系统，而是 canonical registry 中带教学语义的原子函数。注册在 `app.teaching.tools`，执行通过 `app.shared.infra.tools`。
+teaching tool 不是第二套工具系统，而是 canonical registry 中带教学语义的原子函数。工具注册语义在 `app.shared.infra.tools.teaching_registry`，具体实现位于 `app.workflows.support.teaching_tools`，执行通过 `app.shared.infra.tools`。

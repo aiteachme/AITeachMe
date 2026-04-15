@@ -1,4 +1,4 @@
-"""File service layer."""
+"""File support commands and query helpers."""
 
 from __future__ import annotations
 

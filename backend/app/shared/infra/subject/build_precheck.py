@@ -1,4 +1,4 @@
-"""Subject-scoped embedding binding and build-time vector helpers."""
+"""Subject-scoped embedding build precheck and resolution helpers."""
 
 from __future__ import annotations
 
@@ -19,24 +19,26 @@ from app.shared.infra.database import (
     vector_table_exists,
 )
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
-from app.shared.infra.subject import (
-    SUBJECT_VECTOR_PRECHECK_DETAIL_MAP,
-    RuntimeEmbeddingConfig,
+from app.shared.infra.subject.settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
-    SubjectVectorCapability,
     build_disabled_binding,
     build_enabled_binding,
-    build_subject_vector_status,
     get_legacy_vector_table_name,
-    get_runtime_embedding_config,
     get_subject_embedding_binding,
+    set_subject_embedding_binding,
+)
+from app.shared.infra.subject.vectors import (
+    SUBJECT_VECTOR_PRECHECK_DETAIL_MAP,
+    RuntimeEmbeddingConfig,
+    SubjectVectorCapability,
+    build_subject_vector_status,
+    get_runtime_embedding_config,
     get_subject_record_by_slug,
     get_subject_vector_capability,
     get_subject_vector_search_notice,
     get_subject_vector_status,
     get_subject_vector_status_by_slug,
-    set_subject_embedding_binding,
     should_generate_subject_embeddings,
 )
 
@@ -230,8 +232,6 @@ def resolve_subject_build_vector_status(
     if conflict is None:
         return get_subject_vector_status(session, subject)
 
-    # When runtime embeddings are available, auto-trigger rebuild for conflicts
-    # that can be resolved by rebinding and recreating the subject vector table.
     auto_rebuild_reasons = {
         "subject_not_bound",
         "embedding_model_mismatch",
