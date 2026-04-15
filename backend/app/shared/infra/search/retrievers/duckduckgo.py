@@ -157,7 +157,7 @@ class DuckDuckGoRetriever(BaseRetriever):
     async def _search_via_html(self, query: str, *, max_results: int) -> list[SearchResult]:
         settings = get_settings()
         async with httpx.AsyncClient(
-            timeout=settings.search_scrape_timeout_s,
+            timeout=settings.search_provider_timeout_s,
             follow_redirects=True,
             headers=_REQUEST_HEADERS,
         ) as client:
@@ -189,3 +189,4 @@ class DuckDuckGoRetriever(BaseRetriever):
 
 
 __all__ = ["DuckDuckGoRetriever", "_parse_duckduckgo_html_results"]
+

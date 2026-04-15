@@ -6,13 +6,14 @@ import functools
 import inspect
 import json
 import os
-
+import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal
 
+import httpx
 from langsmith import trace as langsmith_trace_run
 from langsmith import traceable
 from langsmith import tracing_context
@@ -60,15 +61,13 @@ class LLMTraceContext:
 
 
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
+_LANGSMITH_REACHABILITY_CACHE: dict[str, tuple[float, bool]] = {}
 
 
 def get_llm_trace_context() -> LLMTraceContext:
     """Return the current ambient LLM trace context."""
 
     return _TRACE_CONTEXT.get() or LLMTraceContext()
-
-
-# ── Environment and config helpers ────────────────────────────────────
 
 
 def langsmith_tracing_requested() -> bool:
@@ -82,6 +81,27 @@ def get_langsmith_project_name() -> str | None:
 
 def get_langsmith_max_text_chars() -> int:
     return max(32, get_env_int("LANGSMITH_MAX_TEXT_CHARS", 2000))
+
+
+def get_langsmith_endpoint() -> str:
+    value = (get_env("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com") or "").strip()
+    return value.rstrip("/")
+
+
+def get_langsmith_connect_timeout_s() -> float:
+    try:
+        value = float(get_env("LANGSMITH_CONNECT_TIMEOUT_S", "2") or "2")
+    except ValueError:
+        value = 2.0
+    return max(0.2, value)
+
+
+def get_langsmith_probe_ttl_s() -> float:
+    try:
+        value = float(get_env("LANGSMITH_PROBE_TTL_S", "60") or "60")
+    except ValueError:
+        value = 60.0
+    return max(5.0, value)
 
 
 def langsmith_capture_inputs_enabled() -> bool:
@@ -105,11 +125,39 @@ def _langsmith_api_key_present() -> bool:
     return False
 
 
+def _langsmith_endpoint_reachable() -> bool:
+    endpoint = get_langsmith_endpoint()
+    if not endpoint:
+        return False
+
+    now = time.monotonic()
+    cached = _LANGSMITH_REACHABILITY_CACHE.get(endpoint)
+    ttl = get_langsmith_probe_ttl_s()
+    if cached is not None and now - cached[0] < ttl:
+        return cached[1]
+
+    reachable = False
+    try:
+        with httpx.Client(timeout=get_langsmith_connect_timeout_s(), follow_redirects=True) as client:
+            response = client.get(f"{endpoint}/info")
+            reachable = response.is_success
+    except Exception:
+        reachable = False
+
+    _LANGSMITH_REACHABILITY_CACHE[endpoint] = (now, reachable)
+    return reachable
+
+
 def langsmith_tracing_enabled() -> bool:
     """Whether LangSmith tracing should be enabled for the current process."""
 
     settings = get_settings()
-    return settings.tracing_enabled and langsmith_tracing_requested() and _langsmith_api_key_present()
+    return (
+        settings.tracing_enabled
+        and langsmith_tracing_requested()
+        and _langsmith_api_key_present()
+        and _langsmith_endpoint_reachable()
+    )
 
 
 def normalize_langsmith_run_type(
@@ -336,9 +384,6 @@ def build_langsmith_extra(
     return extra
 
 
-# ── Trace context scopes ──────────────────────────────────────────────
-
-
 @contextmanager
 def llm_trace_scope(
     *,
@@ -473,9 +518,6 @@ def trace_substep(
         yield run
 
 
-# ── @traceable wrappers ───────────────────────────────────────────────
-
-
 def _merge_langsmith_extras(
     base: dict[str, Any] | None,
     override: dict[str, Any] | None,
@@ -572,6 +614,8 @@ def traceable_with_context(
                     kwargs=kwargs,
                 )
                 merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
+                if not langsmith_tracing_enabled():
+                    return await func(*args, **kwargs)
                 return await traced_func(*args, langsmith_extra=merged_extra, **kwargs)
 
             return async_wrapper
@@ -586,6 +630,8 @@ def traceable_with_context(
                 kwargs=kwargs,
             )
             merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
+            if not langsmith_tracing_enabled():
+                return func(*args, **kwargs)
             return traced_func(*args, langsmith_extra=merged_extra, **kwargs)
 
         return sync_wrapper

@@ -1,9 +1,10 @@
-﻿"""Lightweight concept grounding for planner outline quality."""
+"""Lightweight concept grounding for planner outline quality."""
 
 from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +16,7 @@ from app.shared.infra.search.types import SearchResult
 from app.teaching.runtime_config import get_teaching_runtime_config
 from app.shared.infra.workflow import tracked_step
 from app.workflows.digest.planner.models import _resolve_subject_display_name
+from app.workflows.digest.shared.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.shared.models import SharedInputs
 
 logger = structlog.get_logger(__name__)
@@ -159,18 +161,14 @@ def _resolve_external_retriever_names() -> list[str]:
     if not get_teaching_runtime_config().planner.allow_external_search:
         return []
     parse_retrievers = getattr(settings, "parse_retrievers", None)
+    profile = resolve_planner_retrieval_profile()
     if callable(parse_retrievers):
         return [
             name
-            for name in parse_retrievers(include_local_rag=False, include_fallback=True)
+            for name in parse_retrievers(profile=profile, include_local_rag=False, include_fallback=True)
             if name not in {"local_rag", "rag"}
         ]
-
-    primary = str(getattr(settings, "web_search_retriever", "duckduckgo") or "duckduckgo").strip().lower()
-    ordered = [primary] if primary else []
-    if primary not in {"duckduckgo", ""}:
-        ordered.append("duckduckgo")
-    return [name for name in ordered if name and name not in {"local_rag", "rag"}]
+    return ["wikipedia", "semantic_scholar", "arxiv", "duckduckgo"]
 
 
 async def _safe_search(
@@ -180,6 +178,7 @@ async def _safe_search(
     subject: str,
     local_sections: list[Any],
     max_results: int,
+    timeout_s: float,
 ) -> list[SearchResult]:
     try:
         retriever = get_retriever(
@@ -187,7 +186,18 @@ async def _safe_search(
             subject=subject if retriever_name in {"local_rag", "rag"} else None,
             local_sections=local_sections if retriever_name in {"local_rag", "rag"} else None,
         )
-        return await retriever.traced_search(query, max_results=max_results)
+        return await asyncio.wait_for(
+            retriever.traced_search(query, max_results=max_results),
+            timeout=max(0.1, timeout_s),
+        )
+    except TimeoutError:
+        logger.warning(
+            "planner_concept_search_timeout",
+            retriever=retriever_name,
+            query=query,
+            timeout_s=timeout_s,
+        )
+        return []
     except Exception as exc:
         logger.warning(
             "planner_concept_search_failed",
@@ -234,6 +244,7 @@ async def collect_planner_concept_briefing(
     shared_inputs: SharedInputs,
     latest_plan: dict[str, Any] | None = None,
 ) -> PlannerConceptBriefing:
+    settings = get_settings()
     queries = build_planner_concept_queries(
         subject=subject,
         user_goal=user_goal,
@@ -246,6 +257,10 @@ async def collect_planner_concept_briefing(
         )
 
     local_sections = list(shared_inputs.section_packets)
+    total_budget = max(1.0, float(settings.planner_grounding_timeout_s))
+    provider_budget = max(0.5, float(settings.search_provider_timeout_s))
+    started_at = time.monotonic()
+
     async with tracked_step(
         None,
         name="local_retrieval",
@@ -261,6 +276,7 @@ async def collect_planner_concept_briefing(
                 subject=subject,
                 local_sections=local_sections,
                 max_results=2,
+                timeout_s=min(provider_budget, total_budget),
             )
             for query in queries
         ]
@@ -285,12 +301,17 @@ async def collect_planner_concept_briefing(
             for index, query in enumerate(external_queries):
                 hits: list[SearchResult] = []
                 for retriever_name in external_retrievers:
+                    remaining = total_budget - (time.monotonic() - started_at)
+                    if remaining <= 0:
+                        logger.info("planner_concept_budget_exhausted", query=query, result_count=sum(len(x) for x in external_results))
+                        break
                     hits = await _safe_search(
                         retriever_name,
                         query=query,
                         subject=subject,
                         local_sections=local_sections,
                         max_results=2,
+                        timeout_s=min(provider_budget, remaining),
                     )
                     if hits:
                         break
@@ -376,5 +397,3 @@ __all__ = [
     "build_planner_concept_queries",
     "collect_planner_concept_briefing",
 ]
-
-

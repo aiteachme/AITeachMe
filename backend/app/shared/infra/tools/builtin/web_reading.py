@@ -6,12 +6,9 @@ import asyncio
 from collections.abc import Mapping
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.observability import sanitize_langsmith_input, traceable_with_context
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.observability import (
-    sanitize_langsmith_input,
-    traceable_with_context,
-)
 
 
 def _read_urls_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
@@ -24,6 +21,9 @@ def _read_urls_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
     max_workers = inputs.get("max_workers")
     if max_workers not in (None, ""):
         payload["max_workers"] = int(max_workers)
+    timeout_s = inputs.get("timeout_s")
+    if timeout_s not in (None, ""):
+        payload["timeout_s"] = float(timeout_s)
     return payload
 
 
@@ -41,14 +41,15 @@ def _read_urls_trace_outputs(payload: object) -> dict[str, object]:
     run_type="tool",
     process_inputs=_read_urls_trace_inputs,
     process_outputs=_read_urls_trace_outputs,
-    metadata_factory=lambda urls, max_workers=None, preferred_reader=None: {"tool_name": "read_urls"},
-    tags_factory=lambda urls, max_workers=None, preferred_reader=None: ["tool:read_urls"],
+    metadata_factory=lambda urls, max_workers=None, preferred_reader=None, timeout_s=None: {"tool_name": "read_urls"},
+    tags_factory=lambda urls, max_workers=None, preferred_reader=None, timeout_s=None: ["tool:read_urls"],
 )
 async def _run_traced_read_urls(
     urls: list[str],
     *,
     max_workers: int,
     preferred_reader: str | None,
+    timeout_s: float | None,
     langsmith_extra: dict[str, object] | None = None,
 ) -> dict[str, object]:
     del langsmith_extra
@@ -59,6 +60,8 @@ async def _run_traced_read_urls(
         async with semaphore:
             reader = get_reader_for_url(url, preferred=preferred_reader) if preferred_reader else get_reader_for_url(url)
             try:
+                if timeout_s is not None and timeout_s > 0:
+                    return await asyncio.wait_for(reader.traced_read(url), timeout=timeout_s)
                 return await reader.traced_read(url)
             except Exception as exc:  # pragma: no cover - reader backends are integration-heavy
                 return ScrapedPage(url=url, success=False, error=str(exc))
@@ -78,6 +81,7 @@ async def read_urls(
     *,
     max_workers: int | None = None,
     preferred_reader: str | None = None,
+    timeout_s: float | None = None,
 ) -> list[ScrapedPage]:
     """Read URLs concurrently with stable ordering and URL deduplication."""
 
@@ -91,6 +95,7 @@ async def read_urls(
         ordered_urls,
         max_workers=worker_count,
         preferred_reader=preferred_reader,
+        timeout_s=timeout_s or settings.search_read_timeout_s,
     )
     return list(payload.get("pages") or [])
 

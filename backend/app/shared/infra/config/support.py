@@ -26,12 +26,12 @@ RETRIEVER_ALIASES: dict[str, str] = {
     "wiki": "wikipedia",
 }
 RETRIEVER_PROFILES: dict[str, list[str]] = {
-    "planner_fast": ["local_rag", "wikipedia", "searxng", "bocha", "duckduckgo"],
-    "planner_grounding": ["local_rag", "wikipedia", "searxng", "bocha", "duckduckgo"],
-    "docgen_balanced": ["local_rag", "wikipedia", "searxng", "tavily", "bocha", "duckduckgo"],
-    "docgen_sprint": ["local_rag", "wikipedia", "searxng", "tavily", "bocha", "duckduckgo"],
-    "docgen_academic": ["local_rag", "wikipedia", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
-    "docgen_systematic": ["local_rag", "wikipedia", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
+    "planner_fast": ["local_rag", "tavily", "brave", "wikipedia", "semantic_scholar", "duckduckgo"],
+    "planner_grounding": ["local_rag", "tavily", "brave", "exa", "wikipedia", "semantic_scholar", "arxiv", "searxng", "duckduckgo"],
+    "docgen_balanced": ["local_rag", "tavily", "brave", "exa", "wikipedia", "searxng", "duckduckgo"],
+    "docgen_sprint": ["local_rag", "tavily", "brave", "wikipedia", "searxng", "duckduckgo"],
+    "docgen_academic": ["local_rag", "exa", "tavily", "semantic_scholar", "arxiv", "wikipedia", "searxng", "duckduckgo"],
+    "docgen_systematic": ["local_rag", "exa", "tavily", "brave", "semantic_scholar", "arxiv", "wikipedia", "searxng", "duckduckgo"],
 }
 
 CONFIG_YAML_FIELD_MAP: dict[str, str] = {
@@ -173,3 +173,4 @@ __all__ = [
     "normalize_retriever_name",
     "split_csv_names",
 ]
+

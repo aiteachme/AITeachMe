@@ -58,6 +58,8 @@ class Settings(BaseModel):
     docgen_max_parallel_chapters: int = 20
     docgen_io_parallelism: int = 20
     docgen_max_research_queries: int = 3
+    docgen_retrieval_timeout_s: float = 18.0
+    docgen_read_timeout_s: float = 12.0
 
     web_search_retriever: str = "duckduckgo"
     web_search_retrievers: str = ""
@@ -67,10 +69,14 @@ class Settings(BaseModel):
     local_rag_min_results: int = 2
     search_max_results_per_query: int = 5
     search_scrape_timeout_s: int = 20
+    search_provider_timeout_s: float = 6.0
+    search_total_timeout_s: float = 12.0
+    search_read_timeout_s: float = 10.0
 
     planner_default_tone: str = "encouraging"
     planner_default_digest_mode: str = "sprint"
     planner_allow_external_search: bool = True
+    planner_grounding_timeout_s: float = 10.0
     planner_sprint_min_chapters: int = 3
     planner_sprint_max_chapters: int = 6
     planner_sprint_target_length: str = "3000-5000字"
@@ -187,3 +193,4 @@ __all__ = [
     "Settings",
     "get_settings",
 ]
+
