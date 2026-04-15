@@ -110,7 +110,7 @@ infra  = 已经接上外部系统的共享能力
 通常放对应业务模块：
 
 - Digest 文档教学语义放 `app.workflows.digest._shared.pedagogy`
-- 可执行教学工具放 `app.workflows.support.teaching_tools`
+- 通用可执行教学工具放 `app.shared.infra.tools.builtin.teaching_tools`
 
 ### 情况 3：我想改某条业务流程
 

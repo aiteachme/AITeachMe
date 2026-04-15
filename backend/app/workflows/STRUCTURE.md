@@ -20,7 +20,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows/` 负责业务用例、图编排、模块级协调
 - `shared.infra/` 只负责基础设施
 - `app/services` 源层已移除，不再作为代码落点或兼容入口
-- `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、`support/teaching_tools` 与 `shared.infra.tools`
+- `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、workflow lane 或 `shared.infra.tools`
 
 ## 2. 顶层分区
 
@@ -151,7 +151,6 @@ workflows/support/<module>/
 - `subjects`
 - `system`
 - `export_import`
-- `teaching_tools`
 
 规则：
 
@@ -159,12 +158,12 @@ workflows/support/<module>/
 - 如果需要长链 AI 流程，只调用已有 engine 链路
 - 不在 support 里平行复制五大引擎的能力
 
-### 5.1 `teaching_tools` 分类规则
+### 5.1 teaching tool 分类规则
 
-`teaching_tools` 不是新的独立教学层，而是跨引擎复用的业务工具集合。
+teaching tool 不是新的独立教学层。当前通用实现是内置 tool，不再单独占用 `workflows/support/teaching_tools` 模块。
 
 - 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`
-- 需要暴露给 agent registry、且可被多个引擎复用的教学原子函数，放在 `workflows/support/teaching_tools`
+- 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`
 - 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`
 - 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/_shared/pedagogy`
 - 禁止为了“教学语义”重新创建 `app/teaching` 层
@@ -288,13 +287,12 @@ profile/
     files/
     system/
     subjects/
-    teaching_tools/
 ```
 
 说明：
 
 - `support/` 是新正式分区
-- 当前已落地 `auth/`、`export_import/`、`files/`、`system/`、`subjects/` 与 `teaching_tools/` 作为 support 模块模板示例
+- 当前已落地 `auth/`、`export_import/`、`files/`、`system/` 与 `subjects/` 作为 support 模块模板示例
 
 ## 9. 当前最重要的兼容规则
 

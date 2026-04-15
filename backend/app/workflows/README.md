@@ -25,7 +25,7 @@
 
 - `support`
 
-`support/` 用来承接原本不属于五大 AI 引擎、但仍然属于后端业务层的模块，例如 `system` 与 `teaching_tools`
+`support/` 用来承接原本不属于五大 AI 引擎、但仍然属于后端业务层的模块，例如 `system`、`auth` 与 `subjects`
 
 ## 当前 canonical 链路
 
@@ -48,8 +48,6 @@
   Digest 教学运行时配置 facade
 - `digest/_shared/pedagogy/`
   Digest 教学语义 facade
-- `support/teaching_tools/`
-  教学工具实现的 canonical 位置
 - `support/system/`
   系统初始化查询的 canonical 位置，承接原 `app.services.system_service`
 - `support/files/`
@@ -89,6 +87,6 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `app/services` 源层已移除，不再作为代码落点或兼容入口
 - `app/teaching` 源层已移除
 - `workflows` 内新业务代码禁止再直接 import `app.services.*` 与 `app.teaching.*`
-- 教学语义统一从 `digest/_shared`、`support/teaching_tools` 与 `shared.infra.tools` 进入
+- 教学语义统一从 `digest/_shared`、具体 workflow lane 与 `shared.infra.tools` 进入
 
 具体结构规则请统一看 [STRUCTURE.md](./STRUCTURE.md)。

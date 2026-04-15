@@ -56,7 +56,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 
 - Digest 专属教学语义 -> `app.workflows.digest._shared.*`
 - 教学工具注册语义 -> `app.shared.infra.tools.teaching_registry`
-- 教学工具实现 -> `app.workflows.support.teaching_tools`
+- 通用教学工具实现 -> `app.shared.infra.tools.builtin.teaching_tools`
 - checker/memory/skill_tools -> 删除正式角色；如确需兼容，落到测试或 infra-local facade，不恢复 `app.teaching`
 
 ## 4. 新边界下的职责表
@@ -89,16 +89,16 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `app.teaching.runtime_config` | `app.workflows.digest._shared.runtime_config` |
 | `app.teaching.documents.*` | `app.workflows.digest._shared.pedagogy.*` |
 | `app.teaching.teaching` | `app.shared.infra.tools.teaching_registry` |
-| `app.teaching.tools` | `app.workflows.support.teaching_tools` |
+| `app.teaching.tools` | `app.shared.infra.tools.builtin.teaching_tools` |
 | `app.teaching.checker` / `memory` / `skill_tools` | 已删除正式入口；需要的能力改走 `shared.infra` 或测试专用导入 |
 
 ## 6. 本轮已落地的最小代码对齐
 
 本轮先做最关键的一小步，避免“文档先飞、代码不跟”：
 
-- `shared.infra.tools.api` 的 project tool module 加载入口已经切到 `app.workflows.support.teaching_tools`
+- `shared.infra.tools.api` 的 project tool module 加载入口已经切到 `app.shared.infra.tools.builtin.teaching_tools`
 - 新增 `app.shared.infra.tools.teaching_registry`
-- 新增 `app.workflows.support.teaching_tools`
+- 新增 `app.shared.infra.tools.builtin.teaching_tools`
 - 新增 `app.workflows.digest._shared.runtime_config`
 - 新增 `app.workflows.digest._shared.pedagogy`
 - 删除旧 `backend/app/teaching` 源层

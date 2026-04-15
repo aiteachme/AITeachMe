@@ -1,4 +1,4 @@
-"""Teaching-focused callable tools."""
+"""Built-in teaching-focused callable tools."""
 
 from __future__ import annotations
 

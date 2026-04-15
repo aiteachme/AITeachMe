@@ -23,9 +23,8 @@
 ### Phase 1: 最小代码骨架落地
 
 - 新增 `workflows/support/`
-- 新增 `workflows/support/teaching_tools/`
 - 新增 `shared.infra.tools.teaching_registry`
-- 把 tool module 自动加载入口从 `app.teaching.tools` 切到 `app.workflows.support.teaching_tools`
+- 把 tool module 自动加载入口从 `app.teaching.tools` 切到 `app.shared.infra.tools.builtin.teaching_tools`
 - 新增 `digest/application/`
 - 新增 `digest/_shared/runtime_config.py`
 - 新增 `digest/_shared/pedagogy/`
@@ -33,7 +32,7 @@
 `teaching_tools` 的长期分类规则：
 
 - registry / sync / execution 机制归 `shared.infra.tools.teaching_registry`
-- 跨引擎复用、需要 agent registry 暴露的教学工具归 `workflows/support/teaching_tools`
+- 通用内置教学工具归 `shared.infra.tools.builtin.teaching_tools`
 - 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
 - Digest 文档专属教学表达归 `digest/_shared/pedagogy`
 
@@ -69,7 +68,7 @@
 本轮优先级已经固定：
 
 1. 文档规范
-2. `support/teaching_tools`
+2. `shared.infra.tools.builtin.teaching_tools`
 3. `digest/_shared/runtime_config` 与 `digest/_shared/pedagogy`
 4. `digest/planner` 与 `digest/docgen` 的应用用例迁移
 
@@ -97,7 +96,7 @@
 | `teaching/runtime_config.py` | `workflows/digest/_shared/runtime_config.py` | 已迁为真实实现 |
 | `teaching/documents/*` | `workflows/digest/_shared/pedagogy/*` | 已迁为真实实现 |
 | `teaching/teaching.py` | `shared.infra.tools.teaching_registry` | 已先落地 |
-| `teaching/tools.py` | `workflows/support/teaching_tools` | 已先落地 |
+| `teaching/tools.py` | `shared.infra.tools.builtin.teaching_tools` | 已迁为通用内置工具 |
 
 ## 5. 风险与对策
 
@@ -156,7 +155,7 @@
 
 ### 行为验收
 
-- teaching tool 能通过 `app.workflows.support.teaching_tools` 入口被枚举与执行
+- teaching tool 能通过 `app.shared.infra.tools` 入口被枚举与执行
 - `shared.infra.tools` 的 project tool module 自动加载不再依赖 `app.teaching.tools`
 - Digest 主线仍可正常读到 runtime_config / pedagogy 能力
 

@@ -129,7 +129,6 @@ workflows/support/<module>/
 - `subjects`
 - `system`
 - `export_import`
-- `teaching_tools`
 
 原则：
 
@@ -137,12 +136,12 @@ workflows/support/<module>/
 - 如果需要长链 AI 流程，直接调用已有 engine 链路
 - 不在 support 里平行造一套“伪引擎”
 
-### 4.1 `teaching_tools` 分类规则
+### 4.1 teaching tool 分类规则
 
-`teaching_tools` 不是独立教学层，而是跨引擎复用的业务工具集合。
+teaching tool 不是独立教学层。当前通用实现是内置 tool，不再单独占用 `workflows/support/teaching_tools` 模块。
 
 - 注册、枚举、执行与 registry sync 归 `shared.infra.tools.teaching_registry`
-- 跨引擎复用、需要 agent registry 暴露的教学工具实现归 `workflows/support/teaching_tools`
+- 通用内置教学工具实现归 `shared.infra.tools.builtin.teaching_tools`
 - 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
 - Digest 文档生成专属教学表达归 `digest/_shared/pedagogy`
 - 不恢复 `backend/app/teaching` 作为正式层或兼容层

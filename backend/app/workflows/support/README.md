@@ -6,7 +6,7 @@
 
 ## 目标
 
-- 放置 `auth`、`files`、`subjects`、`system`、`export_import`、`teaching_tools` 这类非引擎业务模块
+- 放置 `auth`、`files`、`subjects`、`system`、`export_import` 这类非引擎业务模块
 - 避免把这类逻辑重新塞回 `api/` 或 `shared.infra/`
 - 与 `ingest / digest / interact / examine / profile` 保持平级，但不强制使用 LangGraph
 
@@ -34,8 +34,6 @@ workflows/support/<module>/
   系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
 - `subjects/`
   学科注册、归属校验、删除预览与级联删除的 canonical 代码位置，承接原 `app.services.subject_service` 与 `subject_deletion_service`。
-- `teaching_tools/`
-  教学工具实现的 canonical 代码位置。工具注册语义在 `app.shared.infra.tools.teaching_registry`，具体工具函数在这里。
 
 ## 一句话总结
 

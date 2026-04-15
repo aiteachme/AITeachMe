@@ -37,7 +37,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `backend/app/shared/infra/workflow/__init__.py` — workflow 共用公共入口
 - `backend/app/workflows/README.md` — workflows 层总览
 - `backend/app/workflows/support/README.md` — support 模块说明
-- `backend/app/workflows/support/teaching_tools/README.md` — 教学工具 canonical 位置说明
+- `backend/app/shared/infra/tools/builtin/teaching_tools.py` — 通用内置教学工具实现
 
 ## 开放问题
 
