@@ -13,7 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
-from app.workflows.digest.docgen.publish import build_merged_markdown, publish_staged_knowledge_docs
+from app.workflows.digest.docgen.outputs import build_merged_markdown, publish_staged_knowledge_docs
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
@@ -370,7 +370,7 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
     )
     session.commit()
 
-    import app.workflows.digest.docgen.publish as publish_module
+    import app.workflows.digest.docgen.outputs as publish_module
 
     monkeypatch.setattr(publish_module, "get_content_store", lambda: fake_store)
     monkeypatch.setattr(publish_module, "run_store_sync", fake_run_store_sync)
