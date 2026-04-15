@@ -1,4 +1,4 @@
-"""Finalize nodes for ingest workflows.
+﻿"""Finalize nodes for ingest workflows.
 
 Reads DB: ``raw_file``.
 Writes DB: final ``raw_file`` success / failure state and ingest readiness.
@@ -214,3 +214,5 @@ def build_finalize_failure_node(*, context: WorkflowContext):
         return state
 
     return finalize_failure_node
+
+

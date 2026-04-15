@@ -64,7 +64,7 @@ shared/infra/search/
 - `local_rag`
   优先基于当前 subject 的本地 section / chunk 做检索，是上传资料驱动场景的第一入口。
 - `wikipedia`
-  基于官方 MediaWiki Search API 的免 key 检索，适合概念定义、知识背景和学科条目补充。
+  基于官方 MediaWiki Search API 的免 key 检索。当前仍保留实现，但默认 profile 已不再启用；如果确实需要，建议显式配置后再打开。
 - `duckduckgo`
   通用 Web 搜索，优先尝试 `duckduckgo_search` 包，缺包时退回 DuckDuckGo HTML / Lite 页面解析。
 - `searxng`
@@ -94,14 +94,15 @@ shared/infra/search/
 - `collect_planner_concept_briefing()`
   先用 `local_rag` 找上传资料里的 section。
 - 如果本地命中不够，再按 profile 顺序尝试外部 retriever。
-- 当前 planner 更偏“概念锚点补充”，不会把所有 URL 都深读一遍。
+- 当前 planner 更偏“概念锚点补充”，不会像 docgen 那样做完整 deep research。
+- 外部结果会先经过一轮轻量 `SourceCurator` 排序，再对少量高优先级 URL 做 `read_urls()`，避免只靠搜索 snippet 或首条结果就直接生成章节脉络。
 
 ### docgen
 
 - `DocGenChapterContextRuntime.execute()`
   先跑 `local_rag`。
 - 当 `local_hits < settings.local_rag_min_results` 时，才触发外部 retriever fallback。
-- 外部结果经过 `SourceCurator` 过滤后，再由 `read_urls()` 深读正文。
+- 外部结果经过 `SourceCurator` 过滤后，再由 `read_urls()` 深读正文；`SourceCurator` 当前已补了中文短语 / 词块相关性排序，不再只偏英文分词。
 - 深读结果再进入 `ContextCompressor`，最后变成章节写作用的 `dense_context`。
 
 ## 运行时缓存
@@ -129,7 +130,7 @@ LangSmith 侧会在 retriever / reader / traced execution span 输出：
 ## 配置建议
 
 - 完全无 key 的最小可用组合：
-  `local_rag + wikipedia + duckduckgo`
+  `local_rag + duckduckgo`
 - 想继续提升稳定性但不想买 API：
   再加一个自建或可信公共 `SearXNG` 实例。
 - 已有商业 key：

@@ -1,4 +1,4 @@
-"""Runtime entrypoints for digest workflows."""
+﻿"""Runtime entrypoints for digest workflows."""
 
 from __future__ import annotations
 
@@ -373,3 +373,5 @@ __all__ = [
     "run_docgen_workflow",
     "run_graph_digest_workflow",
 ]
+
+

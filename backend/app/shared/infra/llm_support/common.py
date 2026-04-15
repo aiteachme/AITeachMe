@@ -15,7 +15,8 @@ from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
-from app.shared.infra.observability import LLMCallRecord, get_llm_trace_context, get_tracker
+from app.shared.infra.observability.trace import get_llm_trace_context
+from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 
 logger = structlog.get_logger()
 
@@ -145,8 +146,7 @@ def build_completion_kwargs(
         "model": f"openai/{context.profile.model}",
         "messages": messages,
         "api_base": (
-            get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            get_env("LLM_BASE_URL")
         ),
         "api_key": context.api_key,
         "timeout": context.profile.timeout_s,

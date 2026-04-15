@@ -25,6 +25,7 @@ dependencies = [
     "pgvector>=0.3.0",
     "boto3>=1.34.0",
     "requests>=2.32.0",
+    "llama-index-core>=0.12.0",
 ]
 
 [tool.setuptools.packages.find]

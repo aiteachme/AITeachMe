@@ -1,4 +1,8 @@
-"""Workflow graph export metadata for diagram generation."""
+"""Internal helpers for optional workflow diagram exports.
+
+These types are not part of the normal workflow authoring surface.
+They only exist for offline documentation / diagram generation scripts.
+"""
 
 from __future__ import annotations
 
@@ -9,15 +13,17 @@ from typing import Any
 
 @dataclass(slots=True, frozen=True)
 class WorkflowGraphExport:
-    """A workflow graph that can be rendered directly from LangGraph."""
+    """Describe one graph for offline diagram/document generation."""
 
     key: str
     title: str
     description: str
     build_graph: Callable[[], Any]
-    # Send 动态边无法被 draw_mermaid 自动导出，
-    # 在此声明需要注入的额外边（格式："src --> dst" 或 "src -. label .-> dst"）
+    # Dynamic edges are not exported by ``draw_mermaid`` automatically.
+    # Declare any manual Mermaid edges here, for example:
+    # ``"src --> dst"`` or ``"src -. label .-> dst"``.
     extra_edges: tuple[str, ...] = field(default=())
     prompts: dict[str, str] = field(default_factory=dict)
 
 
+__all__ = ["WorkflowGraphExport"]

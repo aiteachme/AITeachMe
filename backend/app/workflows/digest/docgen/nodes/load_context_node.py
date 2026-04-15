@@ -1,4 +1,4 @@
-"""Load context node for the DocGen lane."""
+﻿"""Load context node for the DocGen lane."""
 
 from __future__ import annotations
 
@@ -191,3 +191,5 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
+
+

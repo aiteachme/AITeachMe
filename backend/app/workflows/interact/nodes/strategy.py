@@ -1,4 +1,4 @@
-"""Teaching strategy node builders for the interact workflow."""
+﻿"""Teaching strategy node builders for the interact workflow."""
 
 from __future__ import annotations
 
@@ -27,3 +27,5 @@ def build_select_teaching_strategy_node(*, context: WorkflowContext):
         }
 
     return select_strategy
+
+

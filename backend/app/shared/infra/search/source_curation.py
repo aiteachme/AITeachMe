@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from urllib.parse import urlparse
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
@@ -27,10 +28,37 @@ _BLACKLISTED_DOMAIN_MARKERS = (
     "docin.com",
 )
 
+_CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
+_LATIN_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_NORMALIZE_RE = re.compile(r"[\W_]+", re.UNICODE)
+
+
+def _normalize_text(text: str) -> str:
+    return _NORMALIZE_RE.sub("", str(text or "").strip().lower())
+
+
+def _build_cjk_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    for run in _CJK_RUN_RE.findall(str(text or "")):
+        normalized = run.strip()
+        if len(normalized) < 2:
+            continue
+        if len(normalized) <= 8:
+            tokens.append(normalized)
+        max_n = min(4, len(normalized))
+        for ngram_size in range(2, max_n + 1):
+            for index in range(len(normalized) - ngram_size + 1):
+                tokens.append(normalized[index : index + ngram_size])
+    return tokens
+
 
 def _tokenize(text: str) -> list[str]:
-    normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
-    return [token for token in normalized.split() if len(token) > 1]
+    normalized = str(text or "").strip().lower()
+    return [
+        token
+        for token in [*_LATIN_TOKEN_RE.findall(normalized), *_build_cjk_tokens(normalized)]
+        if len(token) > 1
+    ]
 
 
 def _domain_from_url(url: str) -> str:
@@ -111,15 +139,16 @@ class SourceCurator(BaseTracedExecution):
     def _rank_sources(self, *, query: str, sources: list[SearchResult]) -> list[SearchResult]:
         query_tokens = Counter(_tokenize(query))
 
-        def score(item: SearchResult) -> tuple[float, float, int, str]:
+        def score(item: SearchResult) -> tuple[float, float, float, float, int, str]:
             domain = _domain_from_url(item.url)
             credibility = self._credibility_score(item.url, domain=domain)
             lexical = self._lexical_score(query_tokens, item)
+            phrase = self._phrase_match_score(query, item)
             base_score = float(item.score or 0.0)
-            total = (base_score * 0.35) + (lexical * 0.45) + (credibility * 0.2)
+            total = (base_score * 0.2) + (lexical * 0.35) + (phrase * 0.3) + (credibility * 0.15)
             if item.url.startswith("local://"):
                 total += 0.8
-            return (total, lexical, len(item.snippet or ""), item.title.lower().strip())
+            return (total, phrase, lexical, credibility, len(item.snippet or ""), item.title.lower().strip())
 
         return sorted(sources, key=score, reverse=True)
 
@@ -137,10 +166,32 @@ class SourceCurator(BaseTracedExecution):
     def _lexical_score(self, query_tokens: Counter[str], item: SearchResult) -> float:
         if not query_tokens:
             return 0.0
-        text = f"{item.title} {item.snippet}"
-        item_tokens = Counter(_tokenize(text))
-        overlap = sum((query_tokens & item_tokens).values())
-        return overlap / max(1, sum(query_tokens.values()))
+        title_tokens = Counter(_tokenize(item.title))
+        snippet_tokens = Counter(_tokenize(item.snippet))
+        title_overlap = sum((query_tokens & title_tokens).values())
+        snippet_overlap = sum((query_tokens & snippet_tokens).values())
+        weighted_overlap = (title_overlap * 1.25) + (snippet_overlap * 0.75)
+        return min(1.0, weighted_overlap / max(1.0, float(sum(query_tokens.values()))))
+
+    def _phrase_match_score(self, query: str, item: SearchResult) -> float:
+        normalized_query = _normalize_text(query)
+        if len(normalized_query) < 2:
+            return 0.0
+
+        normalized_title = _normalize_text(item.title)
+        normalized_snippet = _normalize_text(item.snippet)
+        if normalized_query in normalized_title:
+            return 1.0
+        if normalized_query in normalized_snippet:
+            return 0.85
+
+        query_terms = list(dict.fromkeys(_tokenize(query)))
+        if not query_terms:
+            return 0.0
+        title_hits = sum(1 for term in query_terms if term in normalized_title)
+        snippet_hits = sum(1 for term in query_terms if term in normalized_snippet)
+        weighted_hits = (title_hits * 1.2) + (snippet_hits * 0.8)
+        return min(1.0, weighted_hits / max(1.0, float(len(query_terms))))
 
 
 __all__ = ["SourceCurator"]

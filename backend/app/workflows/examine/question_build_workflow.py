@@ -1,4 +1,4 @@
-"""Question build workflow based on LangGraph.
+﻿"""Question build workflow based on LangGraph.
 
 Reads DB: teaching units and graph-backed teaching context.
 Writes DB: question_template via downstream builder.
@@ -16,7 +16,6 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.observability import llm_trace_scope
 from app.models import QuestionTemplate
 from app.repositories.knowledge import curriculum_repo, kg_repo
 from app.shared.infra.workflow import workflow_tracer
@@ -117,31 +116,24 @@ async def generate_templates_node(
             warnings = list(state.get("warnings", []))
             questions_per_unit = int(state.get("questions_per_unit", 1))
 
-            with llm_trace_scope(
+            templates = await build_question_templates(
+                session,
                 subject=state["subject"],
-                build_session_id=str(state["job_id"]),
-                workflow="examine.question_build",
-                lane="question_build",
-                node="generate_templates",
-            ):
-                templates = await build_question_templates(
-                    session,
-                    subject=state["subject"],
-                    user_id=state.get("user_id", "local"),
-                    unit_ids=unit_ids,
-                    questions_per_unit=questions_per_unit,
-                    exam_mode=state.get("exam_mode", "web_practice"),
-                    preferred_question_types=list(state.get("preferred_question_types", [])),
-                    user_prompt=state.get("user_prompt"),
-                    focus_prompt=state.get("focus_prompt"),
-                    style_profile=state.get("style_profile"),
-                    curriculum_version_id=state.get("curriculum_version_id"),
-                    template_context_signature=state.get("template_context_signature"),
-                    context_locked=bool(state.get("context_locked")),
-                    scope_locked=bool(state.get("scope_locked")),
-                    focus_teaching_unit_ids=list(state.get("focus_teaching_unit_ids", [])),
-                    focus_node_ids=list(state.get("focus_node_ids", [])),
-                )
+                user_id=state.get("user_id", "local"),
+                unit_ids=unit_ids,
+                questions_per_unit=questions_per_unit,
+                exam_mode=state.get("exam_mode", "web_practice"),
+                preferred_question_types=list(state.get("preferred_question_types", [])),
+                user_prompt=state.get("user_prompt"),
+                focus_prompt=state.get("focus_prompt"),
+                style_profile=state.get("style_profile"),
+                curriculum_version_id=state.get("curriculum_version_id"),
+                template_context_signature=state.get("template_context_signature"),
+                context_locked=bool(state.get("context_locked")),
+                scope_locked=bool(state.get("scope_locked")),
+                focus_teaching_unit_ids=list(state.get("focus_teaching_unit_ids", [])),
+                focus_node_ids=list(state.get("focus_node_ids", [])),
+            )
             created_template_ids = [item.id for item in templates if item.id is not None]
             if not templates:
                 warnings.append("batch_generated_zero_templates")
@@ -381,4 +373,6 @@ class QuestionBuildWorkflow:
             focus_node_ids=focus_node_ids,
             session=session,
         )
+
+
 

@@ -1,10 +1,10 @@
-"""Workflow graph exports for digest workflows."""
+﻿"""Workflow graph exports for digest workflows."""
 
 from __future__ import annotations
 
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.digest.graph import (
     build_curriculum_derive_graph,
     build_docgen_graph,
@@ -48,13 +48,13 @@ def _build_unified_graph_for_export():
 
 
 _DOCGEN_SEND_EDGES = (
-    "load_context -. Send xN .-> targeted_research",
-    "resolve_titles -. Send xN .-> pedagogy_craft",
-    "pedagogy_craft --> collect_drafts",
-    "collect_drafts --> enrich_document",
-    "enrich_document --> inject_examine",
-    "inject_examine --> finalize_assemble",
-    "finalize_assemble --> __end__",
+    "load_context -. Send xN .-> research_chapters",
+    "finalize_titles -. Send xN .-> write_chapters",
+    "write_chapters --> merge_drafts",
+    "merge_drafts --> enrich_assets",
+    "enrich_assets --> append_practice",
+    "append_practice --> publish_document",
+    "publish_document --> __end__",
 )
 
 
@@ -94,3 +94,5 @@ WORKFLOW_EXPORTS = (
         build_graph=_build_unified_graph_for_export,
     ),
 )
+
+

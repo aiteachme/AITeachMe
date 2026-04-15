@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from app.shared.infra.observability import annotate_traceable
+from langsmith import traceable
 from app.teaching.documents.content_blocks import (
     build_glossary_section,
     build_learning_objectives_section,
@@ -201,7 +201,7 @@ def coerce_resolved_chapter_title(
     return current_title
 
 
-@annotate_traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
+@traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
 def build_chapter_title_resolution_messages(
     *,
     subject: str,
@@ -288,13 +288,13 @@ def build_document_overview(
     ]
     source_strategy_label = _source_strategy_label(source_strategy)
     if source_strategy_label:
-        lines.append(f"> 资料来源：{source_strategy_label}")
+        lines.append(f"> 资料策略：{source_strategy_label}")
     lines.extend(["", "## 这份文档怎么读", ""])
     lines.extend(f"- {item}" for item in _reading_guidance(normalized_mode))
     lines.extend(
         [
             "",
-            "## 章节安排",
+            "## 章节路线图",
             "",
             "| 章节 | 标题 | 学习重点 | 章节定位 |",
             "| --- | --- | --- | --- |",
@@ -850,6 +850,67 @@ def _insert_after_first_heading(markdown: str, block: str) -> str:
                 lines[:insertion_index] + ["", block.strip(), ""] + lines[insertion_index:]
             ).strip()
     return (block.strip() + "\n\n" + markdown.strip()).strip()
+
+
+# Rebind heading keywords and scaffold headings to the current planner/docgen
+# contract. We keep these overrides near the bottom so they win over any older
+# phrasing retained above for backward-compatibility during refactors.
+_SPRINT_HEADING_KEYWORDS = {
+    "guide": ("导读", "先看", "先拿下", "切入", "抓什么"),
+    "glossary": ("概念先对齐", "术语", "概念", "名词"),
+    "objectives": ("目标", "学完", "会什么", "做到"),
+    "main": ("得分抓手", "抓手", "重点", "核心"),
+    "drills": ("题怎么拆", "题型", "拆解", "做题", "例题"),
+    "memory": ("临考", "最该记", "速记", "速查", "记忆"),
+    "pitfalls": ("最容易错", "易错", "误区", "陷阱", "边界"),
+    "recap": ("最后 3 分钟", "回看", "复盘", "总结"),
+}
+_SYSTEMATIC_HEADING_KEYWORDS = {
+    "guide": ("先用什么视角进入", "导读", "进入", "切入", "主线"),
+    "glossary": ("关键概念先对齐", "术语", "概念", "名词"),
+    "objectives": ("学完", "应该会什么", "目标", "做到"),
+    "prereq": ("前要补什么", "前置", "准备", "基础"),
+    "motivation": ("为什么要学", "动机", "问题"),
+    "definitions": ("定义与结构", "定义", "结构", "框架"),
+    "reasoning": ("怎么走到应用", "推理", "应用", "证明"),
+    "map": ("在整门课里的位置", "位置", "地图", "全局"),
+    "extension": ("还能往哪里接", "延伸", "继续", "进阶"),
+    "recap": ("真正要带走什么", "带走", "总结", "回收"),
+}
+
+
+def _build_scaffold_headings(
+    *,
+    title: str,
+    required_elements: list[str],
+    digest_mode: str,
+) -> dict[str, str]:
+    normalized_mode = _normalize_mode(digest_mode)
+    short_title = _normalize_focus_fragment(title, max_length=10) or "本章"
+    focus = _pick_heading_focus(title, required_elements, fallback=short_title or "本章内容")
+    if normalized_mode == "sprint":
+        return {
+            "guide": "## 这章先拿下什么",
+            "glossary": "## 本章概念先对齐",
+            "objectives": "## 学完这章你要会什么",
+            "main": f"## {focus}的得分抓手",
+            "drills": "## 题怎么拆",
+            "memory": "## 临考前最该记什么",
+            "pitfalls": "## 最容易错在哪",
+            "recap": "## 考前最后 3 分钟回看什么",
+        }
+    return {
+        "guide": f"## 先用什么视角进入《{short_title}》",
+        "glossary": "## 关键概念先对齐",
+        "objectives": f"## 学完《{short_title}》后你应该会什么",
+        "prereq": f"## 学《{short_title}》前要补什么",
+        "motivation": f"## 为什么要学《{short_title}》",
+        "definitions": f"## {focus}的定义与结构",
+        "reasoning": f"## {focus}怎么走到应用",
+        "map": f"## 《{short_title}》在整门课里的位置",
+        "extension": f"## 学完《{short_title}》后还能往哪里接",
+        "recap": f"## 《{short_title}》真正要带走什么",
+    }
 
 
 __all__ = [

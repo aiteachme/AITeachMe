@@ -1,4 +1,4 @@
-"""Runtime entrypoints for the interact workflow."""
+﻿"""Runtime entrypoints for the interact workflow."""
 
 from __future__ import annotations
 
@@ -204,3 +204,5 @@ __all__ = [
     "run_interact_workflow",
     "stream_chat_workflow",
 ]
+
+

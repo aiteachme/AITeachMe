@@ -1,4 +1,4 @@
-"""Unified digest runtime entrypoint."""
+﻿"""Unified digest runtime entrypoint."""
 
 from __future__ import annotations
 
@@ -207,3 +207,5 @@ async def run_unified_digest_build(
         total_tokens=unified_token_summary.total_tokens,
     )
     return unified_result
+
+

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from app.shared.infra.observability import get_tracker
+from app.shared.infra.observability.llm_stats import get_tracker
 
 from .models import DigestTimingReport, DigestTokenSummary
 from .lane_summaries import (

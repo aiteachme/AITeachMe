@@ -1,434 +1,432 @@
-# Workflows 分层说明
+# Workflows 说明
 
-最后更新：2026-04-14
+最后更新：2026-04-15
 
-`backend/app/workflows/` 是业务编排层。
-这里负责把 `infra` 提供的能力、`teaching` 提供的教学语义、数据库状态和前端回调组织成真正可运行的业务流程。
+`backend/app/workflows/` 是业务编排层，负责把教学目标、领域规则和基础设施能力组织成可运行的 workflow。
 
-一句话理解：
-
-> `workflows` 负责“这轮业务流程怎么跑”。
-
-## 1. 它在系统里的位置
-
-当前推荐依赖方向：
+推荐依赖方向：
 
 ```text
 api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 ```
 
-这条链表示：
+## 一句话边界
 
-- `services` 是 API 的业务组合层。
-- `workflows` 是真正的流程编排层。
-- `workflows` 可以调用 `teaching` 和 `infra`。
-- `workflows` 不应该把底层能力重新复制一遍。
+- `workflows`
+  决定“这条业务流程怎么跑”
+- `teaching`
+  决定“怎么教、怎么表达”
+- `shared.infra`
+  提供 LLM、search、retriever、storage、workflow runtime、observability 等基础能力
 
-## 2. 先看 `workflows` 里现在有哪些引擎
+不要在 `workflows` 里再复制一套：
 
-当前目录：
+- tracing 系统
+- progress 生命周期框架
+- tool registry
+- execution 抽象框架
+- 底层存储 / 搜索接入
 
-```text
-workflows/
-├── common/
-├── ingest/
-├── digest/
-├── interact/
-├── examine/
-├── profile/
-├── LANGSMITH.md
-└── TRACKED_STEP.md
-```
+## 当前最重要的主链路
 
-可以这样理解：
-
-| 目录 | 负责什么 |
-| --- | --- |
-| `common/` | workflow 编写的公共基座 |
-| `ingest/` | 上传资料后的解析、增强、收口 |
-| `digest/` | 规划、知识文档、知识图谱、课程结构的构建主链 |
-| `interact/` | 伴读对话、策略路由、流式输出 |
-| `examine/` | 出题、组卷、评分、导出 |
-| `profile/` | 学习画像、弱点分析、复习计划 |
-
-## 3. 先读 `common/`，再看具体引擎
-
-对新同学来说，`common/` 是最重要的目录。
-因为它定义了“一个 workflow 在这个项目里应该怎么写”。
-
-### 3.1 `common/` 里最重要的文件
-
-- `context.py`
-  `WorkflowContext`，统一 workflow 名称、subject、event bus、metadata。
-- `runtime.py`
-  `run_state_graph(...)` 与 `invoke_state_graph(...)`，统一 LangGraph 调用方式。
-- `observability.py`
-  `workflow_tracer(...).node(...)` 和 `@traceable_run(...)`。
-- `runtime_stats.py`
-  `tracked_step(...)`、runtime step 记录和进度回调。
-- `events.py`
-  workflow 级事件总线实现。
-- `result.py`
-  `WorkflowResult`、`ok_result(...)`、`err_result(...)`。
-- `graph_export.py`
-  LangGraph dev / graph 导出相关辅助。
-
-### 3.2 新 workflow 默认应该用的公共入口
-
-团队现在应优先使用下面这组 API：
-
-- `run_state_graph(...)`
-- `workflow_tracer(...).node(...)`
-- `@traceable_run(...)`
-- `tracked_step(...)`
-
-如果新代码绕开这几套公共入口，后面 tracing、日志和 runtime stats 往往会不统一。
-
-## 4. 每个引擎现在实际长什么样
-
-### 4.1 `ingest/`
-
-`ingest` 负责把原始资料变成系统可以继续消费的结构化输入。
-
-当前主要目录和文件：
-
-- `runtime.py`
-  入口函数，当前是两阶段解析链路的核心。
-- `graph.py`、`state.py`
-  ingest graph 与状态定义。
-- `nodes/`
-  `file / parse / enhance / finalize` 等节点。
-- `parsing/`
-  真正的多格式解析实现，包含 PDF、DOCX、PPTX、图片、MinerU、OCR、canonicalizer 等。
-- `events.py`、`exports.py`、`recovery.py`
-  事件、导出和恢复辅助。
-
-一句话：
-
-- `ingest` 解决“资料怎么变成干净的 markdown、asset 和解析元数据”。
-
-### 4.2 `digest/`
-
-`digest` 是当前最复杂的 workflow 家族。
-它不是一个单独 graph，而是一组围绕“知识构建”展开的流程。
-
-#### 4.2.1 先记住 Digest 现在的主入口
-
-当前最重要的三条运行入口是：
-
-- `run_graph_digest_workflow(...)`
-- `run_docgen_workflow(...)`
-- `run_unified_digest_build(...)`
-
-其中：
-
-- `graph` 负责知识图谱相关构建
-- `docgen` 负责知识文档构建
-- `unified` 负责把文档、图谱、课程结构并到一条总构建链里
-
-#### 4.2.2 `digest/` 里的主要子目录
-
-| 目录 | 作用 |
-| --- | --- |
-| `planner/` | 构建方案草案、章节规划、研究查询规划 |
-| `docgen/` | 章节 research、写作、富媒体、练习注入、发布 |
-| `kg/` | 知识图谱节点解析、变更处理、图谱收口 |
-| `curriculum/` | 教学单元、主题树、先修 DAG |
-| `shared/` | Digest 家族内部共享输入、模型、准备逻辑 |
-| `unified/` | 当前知识构建主链的顶层 orchestrator |
-| `build/` | Unified 相关的兼容与协调层，不是新的主链入口 |
-| `prompts/` | Digest 专属 prompt 文本 |
-
-#### 4.2.3 `planner/` 是什么
-
-`planner/` 负责“构建前”的规划阶段，核心产物包括：
-
-- chapter plan
-- research queries
-- media plan
-- build constraints
-- confirmed plan
-
-它不是最终文档生成器，而是后续统一构建的合同来源。
-
-#### 4.2.4 `unified/` 是什么
-
-`unified/` 是当前 `build_type=all` 的主构建入口。
-服务层最终会调用：
-
-- `services/knowledge/digest_service.py`
-- `run_unified_build_background(...)`
-- `workflows.digest.unified.runtime.run_unified_digest_build(...)`
-
-当前 unified graph 的主阶段是：
+对当前产品来说，知识文档主链路是：
 
 ```text
-prepare_shared
--> run_parallel_lanes
--> derive_curriculum
--> publish_outputs
--> cleanup / fail
+api/knowledge_docs.py
+-> services/knowledge_docs/build_planner_service.py
+-> app.workflows.digest.planner
+-> confirmed_plan
+-> services/knowledge_docs/digest_service.py
+-> app.workflows.digest.run_docgen_workflow
 ```
 
-其中 `run_parallel_lanes` 会并行触发：
+可以拆成两个阶段理解：
 
-- `run_docgen_workflow(...)`
-- `run_graph_digest_workflow(...)`
+1. `planner`
+   把用户目标和资料整理成一个可确认的构建方案
+2. `docgen`
+   基于 confirmed plan 执行正式文档构建
 
-所以 unified 是“顶层总调度”，不是替代 docgen / kg 的单一实现。
+## workflow 作者现在只需要记住的入口
 
-#### 4.2.5 `docgen/` 是什么
-
-`docgen/` 是知识文档生成主链。
-
-当前 graph 主要阶段是：
-
-```text
-load_context
--> targeted_research
--> collect_materials
--> resolve_titles
--> pedagogy_craft
--> collect_drafts
--> enrich_document
--> inject_examine
--> finalize_assemble
+```python
+from app.shared.infra.workflow import (
+    emit_progress,
+    invoke_state_graph,
+    project_typed_dict_schema,
+    run_state_graph,
+    workflow_tracer,
+)
+from langsmith import traceable
 ```
 
-其中 `docgen/runtime/` 下放的是 workflow-local runtime 单元，例如：
+对应分工：
 
-- `chapter_context.py`
-  单章节 research micro-loop
-- `query_planning.py`
-  子查询规划
-- `writer.py`
-  章节写作
-- `assets.py`
-  富媒体 sidecar
+- `run_state_graph(...)` / `invoke_state_graph(...)`
+  workflow root 入口
+- `workflow_tracer(...).node(handler, ...)`
+  graph node 的统一接线方式
+- `emit_progress(...)`
+  前端进度事件
+- `project_typed_dict_schema(...)`
+  从主 `State` 投影出精简的 LangGraph Studio input/output schema
+- `@traceable`
+  prompt / helper / 小范围子逻辑 tracing
 
-这些 runtime 是业务实现，不是共享基础设施。
+进一步说明：
 
-#### 4.2.6 `kg/` 是什么
+- LangSmith 规范看 [LANGSMITH.md](./LANGSMITH.md)
+- 前端进度规范看 [PROGRESS.md](./PROGRESS.md)
+- 本地调试方式看 [DEBUGGING.md](./DEBUGGING.md)
+- 目录结构规范看 [STRUCTURE.md](./STRUCTURE.md)
+- planner 包内规范看 [digest/planner/README.md](./digest/planner/README.md)
+- docgen 包内规范看 [digest/docgen/README.md](./digest/docgen/README.md)
 
-`kg/` 负责知识图谱构建与收口。
+## 现在的观测层原则
 
-当前主要包括：
+仓库已经收口成两层语义：
 
-- `prepare_nodes.py`
-- `resolve_nodes.py`
-- `finalize_nodes.py`
-- `mutations.py`
-- `routes.py`
-- `services/`
+- `LangSmith trace`
+  给研发排障
+- `progress`
+  给前端展示
 
-它解决的是“知识节点和边如何从资料中抽取出来并更新到图里”。
+不要再引入第三套“本地 step trace / track 生命周期”。
 
-#### 4.2.7 `curriculum/` 是什么
+尤其注意：
 
-`curriculum/` 负责课程结构派生，包括：
+- LangSmith / LangGraph 原生已经会记录 span 层级和执行时间
+- 我们不应该再在 workflow 层重复维护一套 node/span 计时语义
+- 如果前端需要当前阶段，就发 `emit_progress(...)`
+- 如果研发需要定位 prompt / retriever / tool 问题，就看 LangSmith
 
-- Teaching Unit
-- Theme Tree
-- Prereq DAG
+## LangGraph Studio 的约束
 
-它依赖图谱结果，但目标是面向教学结构，而不是面向原始知识片段。
+Studio 很适合做 graph 调试，但不要把整个内部 state 都暴露给它。
 
-#### 4.2.8 `shared/` 是什么
+当前推荐模式是：
 
-`digest/shared/` 放 Digest 家族自己的共享合同。
+1. workflow 内部维护一个完整 `State`
+2. 如果需要给 Studio 收口表单，再从主 `State` 投影出精简的 `input_schema` / `output_schema`
+3. 不要为了 Studio 手写三份重复类型
 
-这里的共享范围是“Digest 内部复用”，不是整个后端通用。
+典型写法：
+
+```python
+class ExampleState(TypedDict, total=False):
+    subject: str
+    file_ids: list[int]
+    plan: dict[str, Any]
+    error: str | None
+
+
+ExampleGraphInput = project_typed_dict_schema(
+    ExampleState,
+    name="ExampleGraphInput",
+    fields=["subject", "file_ids"],
+)
+
+ExampleGraphOutput = project_typed_dict_schema(
+    ExampleState,
+    name="ExampleGraphOutput",
+    fields=["plan", "error"],
+)
+```
+
+这意味着：
+
+- `State` 仍然是唯一真相源
+- graph schema 只声明“要暴露哪些字段”
+- 不再重复维护第二第三份字段类型定义
+
+## `exports.py` 现在怎么理解
+
+如果现在主要用 `langgraph dev` / Studio 看图，那么：
+
+- `exports.py` 不是 workflow 标准链路必需文件
+- `exports.py` 也不是 `langgraph dev` 的依赖入口
+- 真正的开发调试入口是 `backend/langgraph.json` 里的 graph 注册
+
+`exports.py` 现在只保留一个可选职责：
+
+- 给离线图文导出脚本提供补充元信息
+- 例如更友好的标题、描述、prompt 指纹、动态边的显示覆盖
+
+也就是说：
+
+- 日常开发看图，优先 `langgraph dev`
+- 只有你们明确需要生成静态 Mermaid / Markdown 架构文档时，才需要 `exports.py`
+
+如果一个 workflow 没有静态导出需求，可以没有 `exports.py`。
+
+## workflow 标准链路最少需要什么
+
+对一个正常的 workflow 包，最少推荐保留这些文件：
+
+| 文件 | 是否必需 | 作用 |
+| --- | --- | --- |
+| `__init__.py` | 必需 | 对外稳定入口 |
+| `state.py` | 必需 | graph state 定义 |
+| `graph.py` | 必需 | LangGraph 图定义 |
+| `runtime.py` | 必需 | 运行入口，负责 root 调用与初始 state |
+
+然后按复杂度再决定是否拆出：
+
+| 目录或文件 | 是否常见 | 作用 |
+| --- | --- | --- |
+| `prompts/` | 常见 | workflow 专属 prompt builder / 模板 |
+| `nodes/` | 中大型 workflow 强烈推荐 | 把每个 node handler 单独拆文件 |
+| `runtime/` | 中大型 workflow 常见 | workflow-local runtime helper |
+| `services/` | 可选 | 仅限本 workflow 内部复用的服务逻辑 |
+| `routes.py` / `routers.py` | 可选 | 复杂条件路由单独抽离 |
+| `models.py` | 可选 | payload / draft / normalize / contract |
+| `exports.py` | 可选 | 仅给离线图文导出脚本 |
+
+## 模块层、链路层、实现层
+
+建议把 `workflows` 目录按三层来理解：
+
+### 1. 模块层
+
+模块层回答的是：
+
+- 这是哪个引擎
+- 对外稳定入口是什么
+- 这个引擎下面有哪些子链路
+
 例如：
 
-- shared input prepare
-- 章节分段
-- semantic title 辅助
-- source hint / asset indexer
-- build contracts / models
+- `digest/`
+- `ingest/`
+- `interact/`
+- `examine/`
+- `profile/`
 
-### 4.3 `interact/`
+### 2. 链路层
 
-`interact` 负责伴读式对话。
+链路层回答的是：
 
-当前主要结构：
+- 这条 workflow 主链怎么跑
+- 这条子链的 graph、state、runtime 入口在哪
 
-- `runtime.py`
-  interact 的对外运行入口与 SSE 流式封装。
-- `graph.py`、`state.py`
-  interact graph 与状态。
+例如在 `digest/` 下：
+
+- `planner/`
+- `docgen/`
+- `kg/`
+- `curriculum/`
+- `unified/`
+
+也就是说：
+
+- 模块层是“哪个引擎”
+- 链路层是“这个引擎下的哪条具体 workflow”
+
+### 3. 实现层
+
+实现层回答的是：
+
+- 这条链路里的 node、prompt、局部 runtime、局部 service 分别在哪
+
+常见目录就是：
+
 - `nodes/`
-  history、retrieval、strategy、prompt、execution、stream、persist 等节点。
-- `support/`
-  节点下沉的执行辅助，例如 retrieval、execution、streaming、strategies。
 - `prompts/`
-  interact 专属 prompt。
+- `runtime/`
+- `services/`
+- `models.py`
 
-一句话：
+推荐理解方式：
 
-- `interact` 解决“在对话里如何引导用户、如何检索上下文、如何流式回传结果”。
+```text
+模块层    -> digest / ingest / interact / examine / profile
+链路层    -> planner / docgen / kg / curriculum / unified
+实现层    -> nodes / prompts / runtime / services / models
+```
 
-### 4.4 `examine/`
+## `prompts/`、`nodes/`、`runtime/` 应该怎么分
 
-`examine` 负责考试链路。
+### `prompts/`
 
-当前主要内容：
+放这些内容：
 
-- `question_builder.py`
-- `paper_assembler.py`
-- `paper_exporter.py`
-- `answer_grader.py`
-- `exam_grade_workflow.py`
-- `graph.py`、`state.py`
-- `prompts/`
+- prompt builder
+- prompt 常量
+- message 拼装 helper
 
-另外还有一个重要点：
+不要放：
 
-- `runtime.py` 里保留了一个从纯文本直接生成试题的 helper，主要用于 playground / debug，不是考试主链的全部实现。
+- graph 路由
+- 节点副作用
+- 数据库 / 检索调用
 
-### 4.5 `profile/`
+### `nodes/`
 
-`profile` 负责学习画像。
+放这些内容：
 
-当前主要内容：
+- 一个 graph node 的 handler 构造函数
+- 节点内的直接业务编排逻辑
+- 节点级 progress 发射
 
-- `runtime.py`
-  学习报告建议等 runtime helper。
-- `graph.py`、`state.py`
-  profile graph。
-- `weakness_analyzer.py`
-- `mastery_updater.py`
-- `review_scheduler.py`
-- `subject_profile.py`
-- `user_profile.py`
-- `prompts/`
+推荐原则：
 
-一句话：
+- graph 里的 node 名，尽量和这里的文件名 / builder 名一致
+- 例如 graph 里叫 `research_chapters`，文件最好也叫 `research_chapters_node.py`
 
-- `profile` 解决“用户学得怎么样，接下来应该怎么复习”。
+### `runtime/`
 
-## 5. `runtime.py`、`runtime/`、`graph.py` 怎么区分
+放这些内容：
 
-这是新同学最容易混的点。
+- workflow-local 的执行帮助器
+- 会被多个 node 复用，但又不适合沉到 `shared.infra` 的能力
 
-### 5.1 `workflows/<engine>/runtime.py`
+例如：
 
-通常是该引擎对外暴露的高层入口。
+- chapter context 组织
+- query planning
+- writer runtime
+- assets runtime
 
-例子：
+### `services/`
 
-- `ingest/runtime.py`
-- `interact/runtime.py`
-- `digest/runtime.py`
-- `profile/runtime.py`
+只放：
 
-这些文件负责把 graph、事件、context、结果收口成可调用的入口函数。
+- 这个 workflow 内部的局部领域服务
 
-### 5.2 `workflows/<engine>/<subflow>/runtime/`
+不要把 `services/` 当成“什么都能塞的杂物间”。
 
-这是 workflow-local runtime 单元目录。
+如果某个能力已经跨 workflow 复用，应该重新评估是否该进入 `shared.infra` 或 `teaching`。
 
-例子：
+## 文件命名规范建议
 
-- `digest/docgen/runtime/chapter_context.py`
-- `digest/docgen/runtime/query_planning.py`
-- `digest/docgen/runtime/writer.py`
-- `digest/docgen/runtime/assets.py`
+为了让目录更见名知意，推荐：
 
-它们通常是：
+- graph 节点名使用业务动作名
+- node builder 名与节点名对齐
+- node 文件名也与节点名对齐
 
-- 多步逻辑
-- 强依赖当前 workflow 语义
-- 可能复用 `BaseTracedExecution`
-- 但本质上还是业务实现
+推荐例子：
 
-### 5.3 `graph.py`
+```text
+graph node: research_chapters
+builder: build_research_chapters_node(...)
+file: nodes/research_chapters_node.py
+```
 
-`graph.py` 负责定义 LangGraph 本身：
+不推荐继续长期保留这种“图里已经改名，但文件还停留在旧实现名”的状态：
 
-- 节点有哪些
-- 边怎么连
-- 条件路由怎么走
-- 初始状态怎么创建
+```text
+graph node: research_chapters
+file: nodes/targeted_research_node.py
+```
 
-简单说：
+这种情况短期能运行，但长期会让目录结构越来越难懂。
 
-- `graph.py` 定义流程图
-- `runtime.py` 暴露运行入口
-- `runtime/` 承载流程里的复杂执行单元
+## `digest.planner` 怎么看
 
-## 6. Prompt 应该放哪里
+稳定入口：
 
-当前规则很明确：
+```python
+from app.workflows.digest.planner import (
+    normalize_planner_payload,
+    run_build_planner_workflow,
+)
+```
 
-- workflow 专属 prompt 放 `workflows/<engine>/prompts/`
-- prompt 变量填充可以调用 `shared.infra.prompt_loader`
-- 但 prompt 文本的归属仍然是 workflow 自己
+当前 `planner/` 目录大致分工：
 
-这能避免把业务 prompt 又塞回 `infra`。
+| 文件 | 作用 |
+| --- | --- |
+| `__init__.py` | planner 对外公共入口 |
+| `runtime.py` | planner workflow 运行入口 |
+| `graph.py` | planner graph 定义 |
+| `models.py` | planner draft / payload 规范化 |
+| `concept_grounding.py` | 规划前的轻量 grounding |
+| `state.py` | planner graph state 与 Studio 字段投影 |
 
-## 7. LangSmith 和可观测性怎么接
+planner 当前图比较小，只有 3 个顶层节点：
 
-workflow 级 tracing 的主入口在：
+- `load_context`
+- `ground_concepts`
+- `draft_plan`
 
-- `shared/infra/workflow/runtime.py`
-- `shared/infra/workflow/observability.py`
-- `shared/infra/workflow/runtime_stats.py`
+这也是当前最适合先调的 digest workflow。
 
-团队现在应优先使用：
+## `digest.docgen` 怎么看
 
-- `run_state_graph(...)`
-- `workflow_tracer(...).node(...)`
-- `@traceable_run(...)`
-- `tracked_step(...)`
+当前稳定入口仍然是：
 
-进一步约定见：
+```python
+from app.workflows.digest import run_docgen_workflow
+```
 
-- [DEBUGGING.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/DEBUGGING.md)
-- [LANGSMITH.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/LANGSMITH.md)
-- [TRACKED_STEP.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe/backend/app/workflows/TRACKED_STEP.md)
+`docgen/` 更偏内部实现目录，不是推荐给服务层直接深依赖的“公共接口面”。
 
-## 8. 哪些东西不应该放进 `workflows`
+目录大致分工：
 
-下面这些内容不要回流到 `workflows`：
+| 目录或文件 | 作用 |
+| --- | --- |
+| `graph.py` | docgen graph 定义 |
+| `state.py` | docgen graph 状态 |
+| `nodes/` | research、write、merge、publish 等节点 |
+| `runtime/` | chapter context、writer、assets 等 workflow-local runtime |
+| `services/` | docgen lane 内部服务辅助 |
+| `publish.py` | 构建产物收口与发布辅助 |
 
-- 底层数据库、存储、LLM、retriever、reader 接入
-- 通用 tool registry、skillpack registry
-- 教学表达本身
-- 可以脱离当前 workflow 独立存在的共享基础能力
+## workflow 公共支撑放哪里
+
+workflow 公共能力统一放在 `app.shared.infra.workflow`。
+
+当前推荐导入面：
+
+```python
+from app.shared.infra.workflow import (
+    WorkflowContext,
+    emit_progress,
+    invoke_state_graph,
+    project_typed_dict_schema,
+    run_state_graph,
+    workflow_tracer,
+)
+```
+
+如果真的需要离线图文导出类型，再单独从：
+
+```python
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+```
+
+导入。
+
+## 什么不该放进 workflows
+
+下面这些内容不要继续回流到 `workflows`：
+
+- 数据库、对象存储、reader、retriever、LLM 的底层接入
+- 通用 tool registry / skillpack registry
+- LangSmith 私有 helper
+- 第二套 progress / tracing 框架
+- teaching 表达本身
 
 判断方法：
 
-- 如果你在决定“这轮流程怎么跑”，放 `workflows`
-- 如果你在决定“怎么教”，放 `teaching`
-- 如果你在决定“能力怎么接”，放 `infra`
+- 在决定“这条流程怎么跑”，放 `workflows`
+- 在决定“怎么教”，放 `teaching`
+- 在决定“能力怎么接”，放 `shared.infra`
 
-## 9. 新代码放置速查
+## 推荐阅读顺序
 
-| 需求 | 更合适的目录 |
-| --- | --- |
-| 新增一个 Digest graph 节点 | `workflows/digest/...` |
-| 新增一个 Interact 检索策略节点 | `workflows/interact/nodes` 或 `support` |
-| 新增一个 DocGen 章节 runtime 单元 | `workflows/digest/docgen/runtime/` |
-| 新增一个 workflow 公共 tracing helper | `shared/infra/workflow` |
-| 新增一个教学脚手架函数 | `teaching/documents` |
-| 新增一个共享 retriever | `shared.infra.search` |
+第一次读当前知识文档主链，建议按下面顺序：
 
-## 10. 阅读建议
+1. `backend/app/api/knowledge_docs.py`
+2. `backend/app/services/knowledge_docs/build_planner_service.py`
+3. `backend/app/workflows/digest/planner/__init__.py`
+4. `backend/app/workflows/digest/planner/runtime.py`
+5. `backend/app/workflows/digest/planner/graph.py`
+6. `backend/app/services/knowledge_docs/digest_service.py`
+7. `backend/app/workflows/digest/runtime.py`
+8. `backend/app/workflows/digest/docgen/graph.py`
 
-第一次读 `workflows`，建议顺序如下：
+## 一句话总结
 
-1. `common/__init__.py`
-2. `common/context.py`
-3. `common/runtime.py`
-4. `common/observability.py`
-5. `common/runtime_stats.py`
-6. `digest/runtime.py` 与 `digest/unified/runtime.py`
-7. `digest/docgen/graph.py`
-8. `interact/runtime.py`
-9. `examine/graph.py`
-10. `profile/graph.py`
-
-## 11. 一句话总结
-
-`workflows` 是业务编排层。
-它负责把 `infra` 的能力和 `teaching` 的教学语义组织成一条真正能运行、能观测、能收口的流程。
+`workflows` 是业务编排层。对当前知识文档主线来说，planner 负责把用户目标和资料整理成 confirmed plan，docgen 负责按这个契约执行正式构建；观测层已经明确拆成两件事：LangSmith trace 给研发排障，progress 给前端展示。`exports.py` 已经降级为可选的离线导出附加能力，不再是 workflow 标准链路的一部分。

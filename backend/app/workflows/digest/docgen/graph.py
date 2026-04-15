@@ -1,4 +1,4 @@
-"""DocGen LangGraph definition."""
+﻿"""DocGen LangGraph definition."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from app.utils.docgen_store import update_knowledge_build_status
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
-    build_collect_drafts_node,
-    build_collect_materials_node,
-    build_enrich_document_node,
-    build_finalize_assemble_node,
-    build_inject_examine_node,
+    build_append_practice_node,
+    build_enrich_assets_node,
     build_load_context_node,
-    build_pedagogy_craft_node,
-    build_resolve_titles_node,
-    build_targeted_research_node,
+    build_merge_drafts_node,
+    build_merge_research_node,
+    build_finalize_titles_node,
+    build_publish_document_node,
+    build_research_chapters_node,
+    build_write_chapters_node,
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
@@ -39,61 +39,61 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
-        "targeted_research",
+        "research_chapters",
         trace.node(
-            build_targeted_research_node(context=context),
-            name="targeted_research",
+            build_research_chapters_node(context=context),
+            name="research_chapters",
         ),
     )
     workflow.add_node(
-        "collect_materials",
+        "merge_research",
         trace.node(
-            build_collect_materials_node(context=context),
-            name="collect_materials",
+            build_merge_research_node(context=context),
+            name="merge_research",
         ),
     )
     workflow.add_node(
-        "resolve_titles",
+        "finalize_titles",
         trace.node(
-            build_resolve_titles_node(context=context),
-            name="resolve_titles",
+            build_finalize_titles_node(context=context),
+            name="finalize_titles",
         ),
     )
     workflow.add_node(
-        "pedagogy_craft",
+        "write_chapters",
         trace.node(
-            build_pedagogy_craft_node(context=context),
-            name="pedagogy_craft",
+            build_write_chapters_node(context=context),
+            name="write_chapters",
         ),
     )
     workflow.add_node(
-        "collect_drafts",
+        "merge_drafts",
         trace.node(
-            build_collect_drafts_node(context=context),
-            name="collect_drafts",
+            build_merge_drafts_node(context=context),
+            name="merge_drafts",
         ),
     )
     workflow.add_node(
-        "enrich_document",
+        "enrich_assets",
         trace.node(
-            build_enrich_document_node(context=context),
-            name="enrich_document",
+            build_enrich_assets_node(context=context),
+            name="enrich_assets",
             timing_field="enrich_ms",
         ),
     )
     workflow.add_node(
-        "inject_examine",
+        "append_practice",
         trace.node(
-            build_inject_examine_node(context=context),
-            name="inject_examine",
+            build_append_practice_node(context=context),
+            name="append_practice",
             timing_field="examine_ms",
         ),
     )
     workflow.add_node(
-        "finalize_assemble",
+        "publish_document",
         trace.node(
-            build_finalize_assemble_node(context=context),
-            name="finalize_assemble",
+            build_publish_document_node(context=context),
+            name="publish_document",
         ),
     )
 
@@ -101,32 +101,32 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         "load_context",
         route_after_load_context,
-        {"continue": "targeted_research", "fail": END},
+        {"continue": "research_chapters", "fail": END},
     )
-    workflow.add_edge("targeted_research", "collect_materials")
-    workflow.add_edge("collect_materials", "resolve_titles")
+    workflow.add_edge("research_chapters", "merge_research")
+    workflow.add_edge("merge_research", "finalize_titles")
     workflow.add_conditional_edges(
-        "resolve_titles",
+        "finalize_titles",
         build_craft_sends,
-        ["pedagogy_craft"],
+        ["write_chapters"],
     )
-    workflow.add_edge("pedagogy_craft", "collect_drafts")
+    workflow.add_edge("write_chapters", "merge_drafts")
     workflow.add_conditional_edges(
-        "collect_drafts",
+        "merge_drafts",
         route_after_step,
-        {"continue": "enrich_document", "fail": END},
-    )
-    workflow.add_conditional_edges(
-        "enrich_document",
-        route_after_step,
-        {"continue": "inject_examine", "fail": END},
+        {"continue": "enrich_assets", "fail": END},
     )
     workflow.add_conditional_edges(
-        "inject_examine",
+        "enrich_assets",
         route_after_step,
-        {"continue": "finalize_assemble", "fail": END},
+        {"continue": "append_practice", "fail": END},
     )
-    workflow.add_edge("finalize_assemble", END)
+    workflow.add_conditional_edges(
+        "append_practice",
+        route_after_step,
+        {"continue": "publish_document", "fail": END},
+    )
+    workflow.add_edge("publish_document", END)
     return workflow
 
 def create_docgen_initial_state(
@@ -186,7 +186,7 @@ def build_research_sends(state: DocGenState) -> list[Send]:
     total = len(assignments)
     return [
         Send(
-            "targeted_research",
+            "research_chapters",
             {
                 "subject": state["subject"],
                 "requested_at": state["requested_at"],
@@ -217,7 +217,7 @@ def build_craft_sends(state: DocGenState) -> list[Send]:
     total = len(materials)
     return [
         Send(
-            "pedagogy_craft",
+            "write_chapters",
             {
                 "subject": state["subject"],
                 "requested_at": state["requested_at"],
@@ -246,22 +246,25 @@ def get_langgraph_dev_docgen_graph() -> StateGraph:
 
 
 __all__ = [
-    "build_collect_drafts_node",
-    "build_collect_materials_node",
+    "build_append_practice_node",
     "build_craft_sends",
     "build_docgen_graph",
-    "build_enrich_document_node",
-    "build_inject_examine_node",
+    "build_enrich_assets_node",
     "build_load_context_node",
-    "build_pedagogy_craft_node",
-    "build_resolve_titles_node",
+    "build_merge_drafts_node",
+    "build_merge_research_node",
+    "build_publish_document_node",
+    "build_research_chapters_node",
+    "build_finalize_titles_node",
     "build_research_sends",
-    "build_targeted_research_node",
+    "build_write_chapters_node",
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_load_context",
     "route_after_step",
     "update_knowledge_build_status",
 ]
+
+
 
 

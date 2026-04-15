@@ -29,7 +29,7 @@ class ArxivRetriever(BaseRetriever):
             f"?search_query=all:{quote_plus(query)}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
         )
         try:
-            async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
                 response = await client.get(api_url)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
@@ -77,3 +77,4 @@ def _extract_entry_url(entry: ElementTree.Element) -> str:
 
 
 __all__ = ["ArxivRetriever"]
+

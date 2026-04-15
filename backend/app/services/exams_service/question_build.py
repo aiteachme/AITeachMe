@@ -7,7 +7,7 @@ import json
 import structlog
 from sqlmodel import Session
 
-from app.shared.infra.observability import llm_trace_scope
+from app.shared.infra.observability.trace import llm_trace_scope
 from app.utils.time import utcnow
 from app.workflows.examine.context import ExamStyleProfile
 from app.workflows.examine.question_build_workflow import QuestionBuildWorkflow

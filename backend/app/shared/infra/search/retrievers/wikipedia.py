@@ -57,7 +57,7 @@ class WikipediaRetriever(BaseRetriever):
         results: list[SearchResult] = []
 
         async with httpx.AsyncClient(
-            timeout=settings.search_scrape_timeout_s,
+            timeout=settings.search_provider_timeout_s,
             follow_redirects=True,
             headers=_REQUEST_HEADERS,
         ) as client:
@@ -125,3 +125,4 @@ class WikipediaRetriever(BaseRetriever):
 
 
 __all__ = ["WikipediaRetriever"]
+

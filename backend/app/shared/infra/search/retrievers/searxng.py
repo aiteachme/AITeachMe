@@ -27,7 +27,7 @@ class SearXngRetriever(BaseRetriever):
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s, follow_redirects=True) as client:
                 response = await client.get(
                     f"{base_url}/search",
                     params={
@@ -63,3 +63,4 @@ class SearXngRetriever(BaseRetriever):
 
 
 __all__ = ["SearXngRetriever"]
+

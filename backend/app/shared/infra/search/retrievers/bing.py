@@ -1,4 +1,4 @@
-﻿"""Optional Bing retriever."""
+"""Optional Bing retriever."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class BingRetriever(BaseRetriever):
         if not api_key:
             return []
         try:
-            async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
                 response = await client.get(
                     "https://api.bing.microsoft.com/v7.0/search",
                     params={"q": query, "count": max_results},
@@ -48,3 +48,4 @@ class BingRetriever(BaseRetriever):
 
 
 __all__ = ["BingRetriever"]
+

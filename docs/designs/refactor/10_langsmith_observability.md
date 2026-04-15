@@ -1,56 +1,106 @@
-# LangSmith 可观测性 — 待完成部分
+# LangSmith 可观测性
 
-> 最后更新：2026-04-14
->
-> 已落地：4 个 tracing 入口、业务 ID 统一、node metadata 输出、lane summary 聚合。
-> 详细实现文档：`backend/app/workflows/LANGSMITH.md`、`backend/app/workflows/TRACKED_STEP.md`。
-> 本文档只保留待建设的 dashboard 和待补强的观测点。
+> 最后更新：2026-04-15
 
----
+这份文档只保留当前收口后的核心原则，不再混讲 track / step / progress。
 
-## 1. 待建设 Dashboard
+## 收口目标
 
-### Dashboard 1：Docs Lane 总览
+全仓观测层只保留两层语义：
 
-- build 总耗时、节点耗时占比、失败率
+- `LangSmith trace`
+  给研发排障
+- `progress`
+  给前端展示
 
-### Dashboard 2：模式对比
+它们是两套不同的消费者，不再共享同一套 step 生命周期。
 
-- `sprint / systematic` 平均耗时、平均字数、平均练习数、平均媒体数
+## 代码分层
 
-### Dashboard 3：Research 质量
+### Trace
 
-- `requested_profile / applied_profile` 对比
-- local / edu_web / academic / general 命中分布
-- `gaps_remaining`、`curated_source_count`
+- 底层实现：`backend/app/shared/infra/observability/trace.py`
+- workflow 公开入口：
+  - `run_state_graph(...)`
+  - `invoke_state_graph(...)`
+  - `workflow_tracer(...).node(handler, ...)`
+  - 官方 `@traceable`
 
-### Dashboard 4：LLM tier 分布
+### Progress
 
-- `reason / primary / light` 占比
-- fallback 频率
-- 哪些节点最容易降级
+- 最小 helper：`backend/app/shared/infra/workflow/progress.py`
+- 公开入口：`emit_progress(...)`
 
-### Dashboard 5：Asset sidecar
+## 当前固定规范
 
-- Mermaid / image 成功率
-- interactive / animation 调用频率
-- asset 对总耗时的影响
+### 1. workflow root
 
----
+用 `run_state_graph(...)` / `invoke_state_graph(...)`
 
-## 2. 待补强的观测点
+### 2. workflow node
 
-- research round 收益衰减可视化
-- gap 类型统计（按学科/模式维度）
-- cache 命中率按学科 / profile / lane 的聚合视图
-- cache 对总耗时和 round 数的真实收益分析
-- animation 真正接入后的独立观测（当前仅预留位）
+用 `workflow_tracer(...).node(handler, ...)`
 
----
+### 3. prompt / helper
 
-## 3. 验收标准（不变）
+直接用官方 `@traceable`
 
-1. 打开 LangSmith，能一眼看懂主流程与章节 fan-out
-2. 任意一章的 research round、writer、asset 都能独立定位
-3. 能对比 `requested_profile` 和 `applied_profile`
-4. 能比较不同课程模式、不同 research 深度、不同 asset 策略的效果
+### 4. 前端进度
+
+只用 `emit_progress(...)`
+
+## 不再作为公开规范的能力
+
+下面这些不再属于 workflow 作者入口：
+
+- `traceable_run`
+- `tracked_step`
+- `record_step_start`
+- `record_step_end`
+- `runtime_steps`
+- `annotate_traceable`
+
+下面这些仍可留在 infra，但不再对 workflow 作者公开：
+
+- `traceable_with_context`
+- `llm_trace_scope`
+- `langsmith_trace`
+- `trace_substep`
+- `build_langsmith_extra`
+
+## 为什么这么做
+
+因为 LangSmith / LangGraph 原生已经负责：
+
+- trace 树层级
+- root / node 时间
+- span 嵌套结构
+- trace 诊断可视化
+
+仓库如果再维护第二套本地 trace 生命周期，只会带来：
+
+- 重复 node span
+- 本地 trace / LangSmith trace 不一致
+- workflow 作者需要记更多概念
+
+## planner 的兼容策略
+
+planner 当前仍保留 `runtime_stats`，但只作为兼容摘要：
+
+- `elapsed_ms`
+- `generation_mode`
+- `steps`
+
+其中 `steps` 只允许是顶层 node 摘要：
+
+- `load_context`
+- `ground_concepts`
+- `draft_plan`
+
+这不是 tracing 系统，只是给前端展示最多 3 个顶层节点耗时。
+
+## 相关文档
+
+- `backend/app/workflows/LANGSMITH.md`
+- `backend/app/workflows/PROGRESS.md`
+- `backend/app/workflows/README.md`

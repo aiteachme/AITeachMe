@@ -20,7 +20,6 @@ from typing import Any, AsyncGenerator
 import structlog
 
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.observability import get_tracer
 
 logger = structlog.get_logger()
 
@@ -110,15 +109,12 @@ async def run_agent_loop(
     cfg = config or AgentLoopConfig()
     ensure_project_tool_modules_loaded()
     registry = get_tool_registry()
-    tracer = get_tracer()
-    span = tracer.start_span("agent_loop")
 
     # 构建可用工具列表
     available_tools = _get_tool_definitions(registry, tools)
     if not available_tools:
         # 无可用工具 → 直接走普通补全（极简路径）
         answer = await acompletion(messages, task_type=cfg.task_type)
-        tracer.end_span(span.span_id)
         return AgentLoopResult(final_answer=answer, iterations=1)
 
     all_tool_calls: list[ToolCallRecord] = []
@@ -139,7 +135,6 @@ async def run_agent_loop(
 
         # 2. 没有 tool_calls → LLM 给出了最终回答
         if not tool_calls:
-            tracer.end_span(span.span_id)
             return AgentLoopResult(
                 final_answer=message.content or "",
                 iterations=iteration,
@@ -162,7 +157,6 @@ async def run_agent_loop(
 
     # 安全阀：达到最大迭代次数
     logger.warning("agent_loop_max_iterations", max=cfg.max_iterations)
-    tracer.end_span(span.span_id)
 
     # 最后一轮强制普通补全获取回答
     final_answer = await acompletion(current_messages, task_type=cfg.task_type)

@@ -139,10 +139,7 @@ export interface SseErrorPayload {
 export interface SseStatusPayload {
   stage?: string;
   detail?: string;
-  phase?: string;
   step?: string;
-  status?: string;
-  message?: string;
   elapsed_ms?: number;
 }
 
@@ -192,9 +189,7 @@ function normalizeSseEvent(
   }
   if (
     typeof payload.stage === "string" ||
-    typeof payload.phase === "string" ||
     typeof payload.step === "string" ||
-    typeof payload.message === "string" ||
     typeof payload.elapsed_ms === "number" ||
     typeof payload.detail === "string"
   ) {

@@ -1,15 +1,13 @@
-"""Canonical execution contracts for shared traced units."""
+﻿"""Shared execution contracts for workflow-owned long-running units."""
 
-from app.shared.infra.execution.traced import (
+from app.shared.infra.execution.units import (
     BaseTracedExecution,
     TracedExecutionContext,
     TracedExecutionResult,
-    _traced_execution_outputs,
 )
 
 __all__ = [
     "BaseTracedExecution",
     "TracedExecutionContext",
     "TracedExecutionResult",
-    "_traced_execution_outputs",
 ]

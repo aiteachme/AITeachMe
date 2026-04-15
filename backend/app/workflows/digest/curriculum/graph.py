@@ -1,4 +1,4 @@
-"""Digest curriculum workflow graph and initial state."""
+﻿"""Digest curriculum workflow graph and initial state."""
 
 from __future__ import annotations
 
@@ -120,4 +120,6 @@ __all__ = [
     "build_curriculum_derive_graph",
     "create_curriculum_derive_initial_state",
 ]
+
+
 

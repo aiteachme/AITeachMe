@@ -8,7 +8,7 @@ from collections.abc import Iterable
 
 from app.shared.infra.search.cache import get_reader_runtime_cache
 from app.shared.infra.search.types import ScrapedPage
-from app.shared.infra.observability import (
+from app.shared.infra.observability.trace import (
     sanitize_langsmith_input,
     sanitize_langsmith_output,
     traceable_with_context,

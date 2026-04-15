@@ -9,13 +9,13 @@ import re
 from collections import defaultdict
 
 import structlog
+from langsmith import traceable
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
-from app.shared.infra.observability import llm_trace_scope
 from app.models import Difficulty, QuestionTemplate, QuestionType
 from app.repositories import exams_repo
 from app.repositories.knowledge import curriculum_repo
@@ -269,6 +269,7 @@ def _build_deterministic_templates(
     return drafts
 
 
+@traceable(name="examine.question_builder.generate_templates_for_unit", run_type="chain")
 async def _try_llm_generate_templates(
     context: UnitExamContext,
     *,
@@ -286,17 +287,11 @@ async def _try_llm_generate_templates(
 
     try:
         async with semaphore:
-            with llm_trace_scope(
-                subject=context.subject,
-                workflow="examine.generate",
-                lane="question_build",
-                node=f"unit_{context.unit_id}",
-            ):
-                payload = await acompletion_structured(
-                    response_model=_GeneratedTemplatePayload,
-                    messages=[{"role": SYSTEM, "content": prompt}],
-                    task_type=TaskType.GENERATE,
-                )
+            payload = await acompletion_structured(
+                response_model=_GeneratedTemplatePayload,
+                messages=[{"role": SYSTEM, "content": prompt}],
+                task_type=TaskType.GENERATE,
+            )
         return payload.questions
     except Exception as exc:  # noqa: BLE001
         logger.warning(

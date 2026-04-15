@@ -35,7 +35,7 @@ class TavilyRetriever(BaseRetriever):
             "api_key": api_key,
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
                 response = await client.post("https://api.tavily.com/search", json=payload)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
@@ -56,3 +56,4 @@ class TavilyRetriever(BaseRetriever):
 
 
 __all__ = ["TavilyRetriever"]
+

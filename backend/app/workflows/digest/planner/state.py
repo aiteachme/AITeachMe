@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from app.shared.infra.workflow import project_typed_dict_schema
 from app.workflows.digest.shared.models import SharedInputs
 
 
@@ -29,12 +30,48 @@ class BuildPlannerState(TypedDict, total=False):
     plan: dict[str, Any]
     plan_summary: str
     workflow_elapsed_ms: int
-    runtime_steps: list[dict[str, Any]]
-    _runtime_step_starts: dict[str, float]
+    load_ms: int
+    ground_ms: int
+    draft_ms: int
     planner_generation_mode: str
     progress_callback: Any
     token_callback: Any
     error: str | None
 
 
-__all__ = ["BuildPlannerState"]
+BuildPlannerGraphInput = project_typed_dict_schema(
+    BuildPlannerState,
+    name="BuildPlannerGraphInput",
+    fields=[
+        "subject",
+        "file_ids",
+        "user_goal",
+        "digest_mode",
+        "tone",
+        "selected_skillpacks",
+    ],
+)
+
+
+BuildPlannerGraphOutput = project_typed_dict_schema(
+    BuildPlannerState,
+    name="BuildPlannerGraphOutput",
+    fields=[
+        "plan",
+        "plan_summary",
+        "digest_mode",
+        "planner_generation_mode",
+        "workflow_elapsed_ms",
+        "load_ms",
+        "ground_ms",
+        "draft_ms",
+        "error",
+    ],
+)
+
+
+__all__ = [
+    "BuildPlannerGraphInput",
+    "BuildPlannerGraphOutput",
+    "BuildPlannerState",
+]

@@ -1,4 +1,4 @@
-"""轻量的进程内领域事件总线。"""
+﻿"""Lightweight in-process workflow event bus."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 
 @runtime_checkable
 class WorkflowEvent(Protocol):
-    """领域事件协议。"""
+    """Protocol implemented by workflow events."""
 
     event_name: ClassVar[str]
     subject: str
@@ -26,7 +26,7 @@ EventHandler = Callable[[WorkflowEvent], Awaitable[None] | None]
 
 @dataclass(slots=True)
 class LoggedWorkflowEvent:
-    """通用日志事件。"""
+    """Generic event used for workflow log payloads."""
 
     event_name: ClassVar[str] = "workflow.logged"
 
@@ -36,18 +36,18 @@ class LoggedWorkflowEvent:
 
 
 class InProcessEventBus:
-    """基于内存的轻量事件总线。"""
+    """Simple in-memory event bus for one process."""
 
     def __init__(self) -> None:
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
 
     def subscribe(self, event_name: str, handler: EventHandler) -> None:
-        """注册事件处理器。"""
+        """Register one handler for an event name."""
 
         self._handlers[event_name].append(handler)
 
     async def publish(self, event: WorkflowEvent) -> None:
-        """发布单个事件。"""
+        """Publish one event."""
 
         logger.info(
             "workflow_event_published",
@@ -60,8 +60,7 @@ class InProcessEventBus:
                 await result
 
     async def publish_all(self, events: Iterable[WorkflowEvent]) -> None:
-        """批量发布事件。"""
+        """Publish multiple events in sequence."""
 
         for event in events:
             await self.publish(event)
-

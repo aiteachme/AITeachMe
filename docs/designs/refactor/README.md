@@ -1,6 +1,6 @@
 # Digest Refactor 总览
 
-> 最后更新：2026-04-14
+> 最后更新：2026-04-15
 
 本目录是 Digest refactor 的设计入口。本轮 refactor 已完成"边界收敛 + 主链路打通 + 最小可观测性统一"，后续重点是质量做深和跨引擎协同。
 
@@ -13,15 +13,15 @@
 | `06_retrieval_strategy.md` | 检索策略 — 待完成的学科化 profile、持久化缓存、本地语料库 |
 | `08_migration_plan.md` | 迁移计划 — Phase 0-5 状态总表与开发优先级 |
 | `09_execution_plan.md` | 执行计划 — 待办批次 A-D |
-| `10_langsmith_observability.md` | LangSmith 可观测性 — 待建设的 dashboard 和观测点 |
+| `10_langsmith_observability.md` | LangSmith 可观测性 — trace 与 progress 的极简分层 |
 | `13_interact_agent_modes.md` | Interact 执行模式 — 待扩展的 agent mode 和工具白名单 |
 | `14_llamaindex_migration.md` | LlamaIndex 渐进式迁移方案 — adapter 层设计、分阶段实施计划 |
 
 代码侧实现文档：
 
 - `backend/app/workflows/LANGSMITH.md` — LangSmith 代码级规范
-- `backend/app/workflows/TRACKED_STEP.md` — workflow step 规范
-- `backend/app/workflows/common/__init__.py` — workflow authoring 入口
+- `backend/app/workflows/PROGRESS.md` — workflow 前端进度规范
+- `backend/app/shared/infra/workflow/__init__.py` — workflow 共用公共入口
 - `backend/app/workflows/README.md` — workflows 层总览
 - `backend/app/teaching/README.md` — teaching 层总览
 

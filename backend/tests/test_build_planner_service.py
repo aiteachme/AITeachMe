@@ -299,21 +299,8 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
         "plan": plan,
         "plan_summary": plan["plan_summary"],
         "workflow_elapsed_ms": 345,
-        "runtime_steps": [
-            {
-                "name": "load_context",
-                "kind": "node",
-                "elapsed_ms": 32,
-                "status": "ok",
-            },
-            {
-                "name": "draft_plan",
-                "kind": "node",
-                "elapsed_ms": 280,
-                "status": "ok",
-            },
-        ],
-        "fallback_used": False,
+        "load_ms": 32,
+        "draft_ms": 280,
         "planner_generation_mode": "stream_plaintext",
     }
 
@@ -348,7 +335,7 @@ def test_create_build_planner_session_marks_session_failed_when_workflow_result_
     _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_plan_create_failed")
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=FailingWorkflowResult(RuntimeError("planner llm failed"))),
     ):
         with pytest.raises(RuntimeError, match="planner llm failed"):
@@ -386,7 +373,7 @@ def test_append_build_planner_message_marks_session_failed_when_workflow_result_
     )
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=DummyWorkflowResult({"plan": plan, "plan_summary": plan["plan_summary"]})),
     ):
         created = asyncio.run(
@@ -399,7 +386,7 @@ def test_append_build_planner_message_marks_session_failed_when_workflow_result_
         )
 
     with patch(
-        "app.services.knowledge.build_planner_service.run_build_planner_workflow",
+        "app.services.knowledge_docs.build_planner_service.run_build_planner_workflow",
         new=AsyncMock(return_value=FailingWorkflowResult(RuntimeError("planner append llm failed"))),
     ):
         with pytest.raises(RuntimeError, match="planner append llm failed"):

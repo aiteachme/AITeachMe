@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
+
+from langsmith import traceable
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
@@ -162,7 +166,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         coverage_score = 0.0
         gaps_remaining: list[str] = []
         stop_reason = "round_cap"
-        merged_results: list[SearchResult] = []
         curated_results: list[SearchResult] = []
         curator_metadata: dict[str, Any] = {}
         documents: list[str] = []
@@ -172,8 +175,15 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         page_cache: dict[str, ScrapedPage] = {}
         previous_score = 0.0
         previous_curated_count = 0
+        retrieval_started_at = time.monotonic()
+        retrieval_budget_s = max(1.0, float(settings.docgen_retrieval_timeout_s))
+        provider_budget_s = max(0.5, float(settings.search_provider_timeout_s))
 
         for round_index in range(1, int(strategy["max_rounds"]) + 1):
+            if time.monotonic() - retrieval_started_at >= retrieval_budget_s:
+                stop_reason = "retrieval_budget_exhausted"
+                break
+
             round_queries = self._take_round_queries(
                 pending_queries,
                 executed_queries=executed_queries,
@@ -183,49 +193,29 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 stop_reason = "query_queue_exhausted"
                 break
 
-            round_local_hits = 0
-            round_web_hits = 0
-            round_fallback_queries: list[str] = []
-            for query in round_queries:
-                executed_queries.append(query)
-                local_results = self._filter_search_results(
-                    await local_retriever.traced_search(query, max_results=query_limit)
-                )
-                self._record_retriever_call(
-                    retriever_stats,
-                    retriever_name=local_retriever.name,
-                    query=query,
-                    results=local_results,
-                )
-                local_hits += len(local_results)
-                round_local_hits += len(local_results)
-                combined_results = list(local_results)
-
-                if len(local_results) < settings.local_rag_min_results:
-                    fallback_queries.append(query)
-                    round_fallback_queries.append(query)
-                    expanded_queries = enrich_queries_for_education([query], domain=search_domain)
-                    for retriever in other_retrievers:
-                        for expanded_query in expanded_queries:
-                            provider_results = self._filter_search_results(
-                                await retriever.traced_search(expanded_query, max_results=query_limit)
-                            )
-                            self._record_retriever_call(
-                                retriever_stats,
-                                retriever_name=retriever.name,
-                                query=expanded_query,
-                                results=provider_results,
-                            )
-                            if provider_results:
-                                web_hits += len(provider_results)
-                                round_web_hits += len(provider_results)
-                                combined_results.extend(provider_results)
-                            if len(self._dedupe_results(combined_results)) >= query_limit:
-                                break
-                        if len(self._dedupe_results(combined_results)) >= query_limit:
-                            break
-
-                all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
+            round_result = await self._run_research_round(
+                round_index=round_index,
+                round_queries=round_queries,
+                search_domain=search_domain,
+                query_limit=query_limit,
+                settings=settings,
+                local_retriever=local_retriever,
+                other_retrievers=other_retrievers,
+                local_hits_total=local_hits,
+                web_hits_total=web_hits,
+                fallback_queries_total=fallback_queries,
+                executed_queries=executed_queries,
+                retriever_stats=retriever_stats,
+                all_results=all_results,
+                retrieval_started_at=retrieval_started_at,
+                retrieval_budget_s=retrieval_budget_s,
+                provider_budget_s=provider_budget_s,
+            )
+            local_hits = int(round_result["local_hits_total"])
+            web_hits = int(round_result["web_hits_total"])
+            round_local_hits = int(round_result["round_local_hits"])
+            round_web_hits = int(round_result["round_web_hits"])
+            round_fallback_queries = list(round_result["round_fallback_queries"])
 
             merged_results = self._dedupe_results(
                 self._filter_search_results(all_results),
@@ -236,7 +226,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 sources=merged_results,
                 max_results=max(query_limit * 2, len(executed_queries) * 2),
             )
-            documents, read_url_count = await self._collect_documents(curated_results, page_cache=page_cache)
+            documents, read_url_count = await self._collect_documents(
+                curated_results,
+                page_cache=page_cache,
+                read_timeout_s=float(settings.docgen_read_timeout_s),
+            )
             if not documents:
                 documents = [item.to_text() for item in curated_results if item.to_text().strip()]
 
@@ -363,11 +357,135 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             },
         )
 
+    @traceable(name="docgen.chapter_context.research_round", run_type="chain")
+    async def _run_research_round(
+        self,
+        *,
+        round_index: int,
+        round_queries: list[str],
+        search_domain: str,
+        query_limit: int,
+        settings,
+        local_retriever,
+        other_retrievers: list[Any],
+        local_hits_total: int,
+        web_hits_total: int,
+        fallback_queries_total: list[str],
+        executed_queries: list[str],
+        retriever_stats: dict[str, dict[str, Any]],
+        all_results: list[SearchResult],
+        retrieval_started_at: float,
+        retrieval_budget_s: float,
+        provider_budget_s: float,
+    ) -> dict[str, Any]:
+        round_local_hits = 0
+        round_web_hits = 0
+        round_fallback_queries: list[str] = []
+
+        for query in round_queries:
+            executed_queries.append(query)
+            local_results = self._filter_search_results(
+                await self._search_with_budget(
+                    local_retriever,
+                    query=query,
+                    max_results=query_limit,
+                    provider_budget_s=provider_budget_s,
+                    retrieval_started_at=retrieval_started_at,
+                    retrieval_budget_s=retrieval_budget_s,
+                )
+            )
+            self._record_retriever_call(
+                retriever_stats,
+                retriever_name=local_retriever.name,
+                query=query,
+                results=local_results,
+            )
+            local_hits_total += len(local_results)
+            round_local_hits += len(local_results)
+            combined_results = list(local_results)
+
+            if len(local_results) < settings.local_rag_min_results:
+                fallback_queries_total.append(query)
+                round_fallback_queries.append(query)
+                expanded_queries = enrich_queries_for_education([query], domain=search_domain)
+                for retriever in other_retrievers:
+                    for expanded_query in expanded_queries:
+                        provider_results = self._filter_search_results(
+                            await self._search_with_budget(
+                                retriever,
+                                query=expanded_query,
+                                max_results=query_limit,
+                                provider_budget_s=provider_budget_s,
+                                retrieval_started_at=retrieval_started_at,
+                                retrieval_budget_s=retrieval_budget_s,
+                            )
+                        )
+                        self._record_retriever_call(
+                            retriever_stats,
+                            retriever_name=retriever.name,
+                            query=expanded_query,
+                            results=provider_results,
+                        )
+                        if provider_results:
+                            web_hits_total += len(provider_results)
+                            round_web_hits += len(provider_results)
+                            combined_results.extend(provider_results)
+                        if len(self._dedupe_results(combined_results)) >= query_limit:
+                            break
+                    if len(self._dedupe_results(combined_results)) >= query_limit:
+                        break
+
+            all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
+
+        return {
+            "local_hits_total": local_hits_total,
+            "web_hits_total": web_hits_total,
+            "round_local_hits": round_local_hits,
+            "round_web_hits": round_web_hits,
+            "round_fallback_queries": round_fallback_queries,
+        }
+
+    async def _search_with_budget(
+        self,
+        retriever,
+        *,
+        query: str,
+        max_results: int,
+        provider_budget_s: float,
+        retrieval_started_at: float,
+        retrieval_budget_s: float,
+    ) -> list[SearchResult]:
+        remaining = retrieval_budget_s - (time.monotonic() - retrieval_started_at)
+        if remaining <= 0:
+            return []
+        try:
+            return await asyncio.wait_for(
+                retriever.traced_search(query, max_results=max_results),
+                timeout=max(0.1, min(provider_budget_s, remaining)),
+            )
+        except TimeoutError:
+            self.logger.warning(
+                "docgen_retriever_timeout",
+                retriever=retriever.name,
+                query=query,
+                timeout_s=min(provider_budget_s, max(0.1, remaining)),
+            )
+            return []
+        except Exception as exc:
+            self.logger.warning(
+                "docgen_retriever_failed",
+                retriever=retriever.name,
+                query=query,
+                error=str(exc),
+            )
+            return []
+
     async def _collect_documents(
         self,
         results: Iterable[SearchResult],
         *,
         page_cache: dict[str, ScrapedPage] | None = None,
+        read_timeout_s: float | None = None,
     ) -> tuple[list[str], int]:
         documents: list[str] = []
         external_results: list[SearchResult] = []
@@ -387,7 +505,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         cache = page_cache if page_cache is not None else {}
         urls_to_fetch = [item.url for item in external_results if item.url not in cache]
         if urls_to_fetch:
-            pages = await read_urls(urls_to_fetch)
+            pages = await read_urls(
+                urls_to_fetch,
+                max_workers=min(len(urls_to_fetch), get_settings().docgen_io_parallelism),
+                timeout_s=read_timeout_s,
+            )
             for page in pages:
                 cache[page.url] = page
         page_map = cache
@@ -548,7 +670,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
     ) -> dict[str, Any]:
         normalized_context = self._normalize_text_blob(dense_context)
         normalized_titles = self._normalize_text_blob("\n".join(item.title for item in curated_results))
-        coverage_targets = self._coverage_targets(required_elements=required_elements, objective=objective, digest_mode=digest_mode)
+        coverage_targets = self._coverage_targets(
+            required_elements=required_elements,
+            objective=objective,
+            digest_mode=digest_mode,
+        )
         if not coverage_targets:
             return {
                 "coverage_score": 1.0,

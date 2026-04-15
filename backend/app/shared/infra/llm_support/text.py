@@ -5,13 +5,12 @@ from __future__ import annotations
 import asyncio
 import time
 
-import litellm
-
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.observability import langsmith_trace
+from app.shared.infra.observability.trace import langsmith_trace
 
+from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
     build_completion_kwargs,
@@ -24,6 +23,8 @@ from .common import (
     track_call,
 )
 from .observability import _end_langsmith_trace, _langsmith_trace_kwargs, _resolved_trace_model
+
+litellm = load_litellm()
 
 
 async def acompletion(

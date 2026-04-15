@@ -1,8 +1,4 @@
-"""LangGraph 运行时薄封装。
-
-Simplified: passes LangGraph config for native tracing instead of
-manually wrapping with ``_annotate_traceable``.
-"""
+"""Workflow runtime helpers for LangGraph-based workflows."""
 
 from __future__ import annotations
 
@@ -12,7 +8,9 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.observability import (
+from app.shared.infra.observability.trace import (
+    build_langsmith_metadata,
+    build_langsmith_tags,
     get_langsmith_project_name,
     langsmith_tracing_enabled,
     llm_trace_scope,
@@ -31,38 +29,29 @@ def _build_graph_config(
     lane: str = "",
     extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a LangGraph invoke config that auto-propagates to LangSmith."""
+    """Build LangGraph invoke config that propagates to LangSmith."""
 
-    metadata: dict[str, Any] = {
-        "app": "aiteachme-backend",
-        "workflow": workflow_name,
-    }
-    if subject:
-        metadata["subject"] = subject
-    if build_session_id:
-        metadata["build_session_id"] = build_session_id
-    if lane:
-        metadata["lane"] = lane
-    if extra_metadata:
-        metadata.update(
-            {k: v for k, v in extra_metadata.items() if v not in (None, "", [], {})}
-        )
-
-    tags = ["aiteachme", f"workflow:{workflow_name}"]
-    if lane:
-        tags.append(f"lane:{lane}")
+    metadata = build_langsmith_metadata(
+        subject=subject,
+        build_session_id=build_session_id,
+        workflow=workflow_name,
+        lane=lane,
+        extra_metadata=extra_metadata,
+    )
+    tags = build_langsmith_tags(
+        workflow=workflow_name,
+        lane=lane,
+    )
 
     config: dict[str, Any] = {
         "run_name": workflow_name,
         "tags": tags,
         "metadata": metadata,
     }
-
     if langsmith_tracing_enabled():
         project_name = get_langsmith_project_name()
         if project_name:
             config["project_name"] = project_name
-
     return config
 
 
@@ -86,7 +75,7 @@ async def invoke_state_graph(
     lane: str = "",
     extra_metadata: dict[str, Any] | None = None,
 ) -> Any:
-    """Execute a StateGraph directly while preserving shared tracing context."""
+    """Execute a StateGraph directly while preserving shared trace context."""
 
     config = _build_graph_config(
         workflow_name=workflow_name,
@@ -113,7 +102,7 @@ async def run_state_graph(
     initial_state: Any,
     context: WorkflowContext,
 ) -> WorkflowResult[Any]:
-    """执行一次 LangGraph StateGraph。"""
+    """Run one LangGraph workflow and normalize result handling."""
 
     workflow_logger = context.get_logger()
     started_at = perf_counter()
@@ -121,7 +110,6 @@ async def run_state_graph(
 
     build_session_id = str(context.metadata.get("build_session_id", ""))
     lane = str(context.metadata.get("lane", "") or "")
-
     config = _build_graph_config(
         workflow_name=workflow_name,
         subject=context.subject,
@@ -164,3 +152,4 @@ async def run_state_graph(
             str(exc),
             metadata={"workflow_name": workflow_name},
         )
+

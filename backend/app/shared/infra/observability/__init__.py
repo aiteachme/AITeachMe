@@ -1,65 +1,37 @@
-"""Canonical tracing and in-memory LLM observability helpers."""
+"""Minimal public observability entrypoints.
 
-from app.shared.infra.observability.tracing import (
-    LLMCallRecord,
-    LLMCallTracker,
+Workflow authors should not import from this package directly. The public
+workflow-facing API lives in ``app.shared.infra.workflow`` and prompt helpers
+should use ``langsmith.traceable`` directly.
+
+This package only re-exports the small set of trace primitives that remain
+legitimately shared across infra and service orchestration code. Infra-private
+helpers such as sanitizers, dynamic ``traceable`` wrappers, and LLM stats live
+in their submodules and should be imported from there explicitly.
+"""
+
+from app.shared.infra.observability.trace import (
     LLMTraceContext,
-    LangSmithRunType,
-    Span,
-    Tracer,
-    annotate_traceable,
-    build_langsmith_extra,
     build_langsmith_metadata,
     build_langsmith_tags,
-    get_langsmith_max_text_chars,
     get_langsmith_project_name,
     get_llm_trace_context,
-    get_tracer,
-    get_tracker,
-    langsmith_capture_inputs_enabled,
-    langsmith_capture_outputs_enabled,
     langsmith_trace,
     langsmith_tracing_enabled,
     langsmith_tracing_requested,
     langsmith_tracing_scope,
     llm_trace_scope,
-    normalize_langsmith_run_type,
-    sanitize_langsmith_input,
-    sanitize_langsmith_output,
-    sanitize_langsmith_text,
-    sanitize_langsmith_value,
-    trace_substep,
-    traceable_with_context,
 )
 
 __all__ = [
-    "LLMCallRecord",
-    "LLMCallTracker",
     "LLMTraceContext",
-    "LangSmithRunType",
-    "Span",
-    "Tracer",
-    "annotate_traceable",
-    "build_langsmith_extra",
     "build_langsmith_metadata",
     "build_langsmith_tags",
-    "get_langsmith_max_text_chars",
     "get_langsmith_project_name",
     "get_llm_trace_context",
-    "get_tracer",
-    "get_tracker",
-    "langsmith_capture_inputs_enabled",
-    "langsmith_capture_outputs_enabled",
     "langsmith_trace",
     "langsmith_tracing_enabled",
     "langsmith_tracing_requested",
     "langsmith_tracing_scope",
     "llm_trace_scope",
-    "normalize_langsmith_run_type",
-    "sanitize_langsmith_input",
-    "sanitize_langsmith_output",
-    "sanitize_langsmith_text",
-    "sanitize_langsmith_value",
-    "trace_substep",
-    "traceable_with_context",
 ]

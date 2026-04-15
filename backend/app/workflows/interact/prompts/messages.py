@@ -1,12 +1,13 @@
-"""Prompt assembly for the interact workflow."""
+﻿"""Prompt assembly for the interact workflow."""
 
 from __future__ import annotations
+
+from langsmith import traceable
 
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
-from app.shared.infra.token_budget import ContextWindowManager
-from app.shared.infra.workflow import traceable_run
+from app.shared.infra.llm_support.context_window import ContextWindowManager
 from app.workflows.interact.prompts.prompts import SYSTEM_PROMPT_TUTOR, get_strategy_instruction
 from app.workflows.interact.support.types import (
     MistakeSummary,
@@ -16,7 +17,7 @@ from app.workflows.interact.support.types import (
 )
 
 
-@traceable_run(name="interact.build_chat_messages", run_type="prompt")
+@traceable(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
     subject: str,
@@ -41,16 +42,13 @@ def build_chat_messages(
         mistakes_context=_format_mistakes_context(recent_mistakes),
         selected_context=_format_selected_context(selected_context, source_chunk_id),
     )
-    history_messages = manager.truncate_messages(
-        messages=[
-            {
-                "role": ASSISTANT if item.role == "assistant" else USER,
-                "content": item.content,
-            }
-            for item in recent_messages
-        ],
-        max_tokens=manager.budget.chat_history,
-    )
+    history_messages = [
+        {
+            "role": ASSISTANT if item.role == "assistant" else USER,
+            "content": item.content,
+        }
+        for item in recent_messages
+    ]
     retrieval_chunks = [format_retrieval_context_item(result) for result in retrieval_results]
     return manager.build_context(
         system_prompt=system_prompt,
@@ -107,3 +105,5 @@ __all__ = [
     "build_chat_messages",
     "format_retrieval_context_item",
 ]
+
+

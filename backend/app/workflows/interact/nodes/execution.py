@@ -1,4 +1,4 @@
-"""Execution mode node builders for the interact workflow."""
+﻿"""Execution mode node builders for the interact workflow."""
 
 from __future__ import annotations
 
@@ -33,3 +33,5 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_select_execution_mode_node"]
+
+

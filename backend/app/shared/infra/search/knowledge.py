@@ -1,4 +1,4 @@
-﻿"""Knowledge retrieval primitives kept under the search namespace.
+"""Knowledge retrieval primitives kept under the search namespace.
 
 `search` in this project is broader than classic RAG:
 - web retrievers discover candidate URLs and snippets
@@ -7,6 +7,12 @@
 
 This module groups the local knowledge retrieval contracts so we do not keep
 similarly named retrieval files split between `infra/` root and `infra/search/`.
+
+.. deprecated::
+    ``RetrievalPipeline`` is replaced by the LlamaIndex-based
+    ``ATMKnowledgeRetriever`` in ``llamaindex_adapter/retriever.py``.
+    ``RetrievedChunk``, ``RetrievalConfig`` and ``rerank_chunks()`` remain
+    as shared data contracts.
 """
 
 from __future__ import annotations
@@ -111,7 +117,9 @@ async def rerank_chunks(
         return chunks
 
     try:
-        import litellm
+        from app.shared.infra.llm_support.litellm_loader import load_litellm
+
+        litellm = load_litellm()
 
         documents = [chunk.content[:2000] for chunk in chunks]
         response = await litellm.arerank(
@@ -151,4 +159,3 @@ __all__ = [
     "RetrievalPipeline",
     "rerank_chunks",
 ]
-

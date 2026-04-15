@@ -1,4 +1,4 @@
-"""Finalize and failure nodes for the graph lane."""
+﻿"""Finalize and failure nodes for the graph lane."""
 
 from __future__ import annotations
 
@@ -267,3 +267,5 @@ __all__ = [
     "fail_node",
     "trigger_curriculum_derive_safe",
 ]
+
+
