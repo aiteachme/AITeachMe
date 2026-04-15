@@ -9,8 +9,8 @@ This module groups the local knowledge retrieval contracts so we do not keep
 similarly named retrieval files split between `infra/` root and `infra/search/`.
 
 .. deprecated::
-    ``RetrievalPipeline`` is replaced by the LlamaIndex-based
-    ``ATMKnowledgeRetriever`` in ``llamaindex_adapter/retriever.py``.
+    ``RetrievalPipeline`` is replaced by the LlamaIndex-managed subject index
+    in ``llamaindex_index/manager.py``.
     ``RetrievedChunk``, ``RetrievalConfig`` and ``rerank_chunks()`` remain
     as shared data contracts.
 """

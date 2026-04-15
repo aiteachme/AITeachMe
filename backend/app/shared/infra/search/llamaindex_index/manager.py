@@ -147,15 +147,14 @@ def _load_postgres_store():
         ) from exc
 
     settings = get_settings()
-    url = make_url(_sync_database_url())
+    sync_url = make_url(_sync_database_url()).set(drivername="postgresql+psycopg2")
+    async_url = sync_url.set(drivername="postgresql+asyncpg")
     return PGVectorStore.from_params(
-        database=url.database or "",
-        host=url.host or "localhost",
-        password=url.password or "",
-        port=url.port or 5432,
-        user=url.username or "",
+        connection_string=sync_url,
+        async_connection_string=async_url,
         table_name=_POSTGRES_TABLE_NAME,
         embed_dim=settings.embedding_dim,
+        use_jsonb=True,
         hnsw_kwargs={
             "hnsw_m": 16,
             "hnsw_ef_construction": 64,
@@ -289,7 +288,7 @@ def count_indexed_chunks(subject: str, chunk_ids: list[int]) -> int:
     if not normalized_subject or not normalized_ids:
         return 0
     if is_cloud_mode():
-        return len(normalized_ids)
+        return 0
 
     vector_store = _load_local_store(normalized_subject)
     return sum(1 for node_id in normalized_ids if node_id in vector_store.data.embedding_dict)

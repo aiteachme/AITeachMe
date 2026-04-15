@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+import types
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
@@ -170,3 +172,45 @@ def test_search_knowledge_uses_llamaindex_index_end_to_end(monkeypatch) -> None:
     assert len(chunks) == 1
     assert chunks[0].title == "向量空间"
     assert chunks[0].source == "llamaindex"
+
+
+def test_cloud_postgres_store_uses_safe_connection_urls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakePGVectorStore:
+        @classmethod
+        def from_params(cls, **kwargs):
+            captured.update(kwargs)
+            return cls()
+
+    llama_index_pkg = types.ModuleType("llama_index")
+    vector_stores_pkg = types.ModuleType("llama_index.vector_stores")
+    postgres_pkg = types.ModuleType("llama_index.vector_stores.postgres")
+    postgres_pkg.PGVectorStore = FakePGVectorStore
+
+    monkeypatch.setitem(sys.modules, "llama_index", llama_index_pkg)
+    monkeypatch.setitem(sys.modules, "llama_index.vector_stores", vector_stores_pkg)
+    monkeypatch.setitem(sys.modules, "llama_index.vector_stores.postgres", postgres_pkg)
+    monkeypatch.setattr(manager, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(
+        manager,
+        "get_env",
+        lambda name, default=None: "postgresql+psycopg://user:p%40ss@example.com:5432/atm"
+        if name == "DATABASE_URL"
+        else default,
+    )
+
+    store = manager._load_postgres_store()
+
+    assert isinstance(store, FakePGVectorStore)
+    assert captured["connection_string"].drivername == "postgresql+psycopg2"
+    assert captured["connection_string"].password == "p@ss"
+    assert captured["async_connection_string"].drivername == "postgresql+asyncpg"
+    assert captured["table_name"] == "atm_llamaindex_rag"
+    assert captured["use_jsonb"] is True
+
+
+def test_cloud_count_indexed_chunks_is_conservative(monkeypatch) -> None:
+    monkeypatch.setattr(manager, "is_cloud_mode", lambda: True)
+
+    assert count_indexed_chunks("subj_cloud", [1, 2]) == 0

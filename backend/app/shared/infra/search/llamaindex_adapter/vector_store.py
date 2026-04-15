@@ -42,7 +42,7 @@ class _ExtractedChunk:
 
 
 class ATMVectorStore(BasePydanticVectorStore):
-    """LlamaIndex VectorStore backed by the existing sqlite-vec / pgvector tables."""
+    """LlamaIndex VectorStore compatibility wrapper over the managed subject index."""
 
     subject: str = ""
     stores_text: bool = True
