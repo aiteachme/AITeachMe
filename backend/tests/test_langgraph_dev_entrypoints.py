@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -107,3 +107,14 @@ def test_langgraph_json_registers_digest_planner() -> None:
 
     assert planner_graph is not None
     assert planner_graph["path"] == "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph"
+<<<<<<< HEAD
+=======
+
+
+def test_digest_workflow_exports_include_planner_before_unified() -> None:
+    keys = [export.key for export in DIGEST_WORKFLOW_EXPORTS]
+
+    assert "digest_planner" in keys
+    assert keys.index("digest_planner") < keys.index("digest_unified")
+
+>>>>>>> dev_wzx

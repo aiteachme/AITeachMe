@@ -1,4 +1,5 @@
-﻿"""Preparation and extraction nodes for the graph lane."""
+﻿"""Knowledge graph extract node."""
+
 
 from __future__ import annotations
 
@@ -13,21 +14,20 @@ from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.kg.services.candidate_identity import candidate_lookup_keys
-from app.workflows.digest.kg.services.clusterer import cluster_candidates
-from app.workflows.digest.kg.services.extractor import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import candidate_lookup_keys
+from app.workflows.digest.knowledge_graph.services.clusterer import cluster_candidates
+from app.workflows.digest.knowledge_graph.services.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,
     has_conceptual_content,
 )
 from app.workflows.digest.observability import add_slow_item
-from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
-
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
@@ -246,76 +246,6 @@ async def _extract_doc_summary_candidates(
         await cancel_tasks_and_drain(tasks)
         raise
     return extracted_summary_count, extracted_node_count, extracted_edge_count
-
-
-async def acquire_lock_node(state: KGDigestState) -> KGDigestState:
-    """Acquire a subject-scoped graph build lock."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        digest_logger.info("kg_workflow_acquire_lock_started")
-        acquired = kg_repo.acquire_subject_build_lock(
-            session,
-            state["subject"],
-            state["job_id"],
-        )
-        if not acquired:
-            digest_logger.warning("kg_workflow_lock_conflict")
-            return {**state, "lock_acquired": False, "error": "lock_conflict"}
-
-        update_job_progress(
-            session,
-            job_id=state["job_id"],
-            job_type="graph",
-            progress=5,
-            current_step="acquire_lock",
-        )
-        kg_repo.update_digest_job(session, state["job_id"], status="processing")
-        digest_logger.info("kg_workflow_acquire_lock_completed")
-        return {**state, "lock_acquired": True}
-
-
-async def prepare_node(state: KGDigestState) -> KGDigestState:
-    """Load canonical chunk ids from the unified build session."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        try:
-            build_session_id = state.get("build_session_id", "")
-            if not build_session_id:
-                return {**state, "error": "missing_build_session_id"}
-
-            unified_session = get_unified_build_session(build_session_id)
-            materialized = unified_session.materialized
-            chunk_ids = list(materialized.chunk_ids)
-            if not chunk_ids:
-                return {**state, "error": "no_ready_digest_inputs"}
-
-            update_job_progress(
-                session,
-                job_id=state["job_id"],
-                job_type="graph",
-                progress=10,
-                current_step="prepare",
-            )
-            digest_logger.info(
-                "kg_workflow_prepare_complete",
-                build_session_id=build_session_id,
-                document_count=len(materialized.document_ids),
-                chunk_count=len(chunk_ids),
-                source_file_ids=materialized.source_file_ids,
-            )
-            return {
-                **state,
-                "shared_inputs": unified_session.shared_inputs,
-                "chunk_ids": chunk_ids,
-                "chunk_uid_to_chunk_id": dict(materialized.chunk_uid_to_chunk_id),
-                "chunk_id_to_chunk_uid": dict(materialized.chunk_id_to_chunk_uid),
-            }
-        except Exception as exc:
-            digest_logger.error("kg_workflow_prepare_failed", error=str(exc), exc_info=True)
-            return {**state, "error": f"prepare_failed: {exc}"}
-
 
 async def extract_node(state: KGDigestState) -> KGDigestState:
     """Extract candidate nodes and edges chunk by chunk with controlled parallelism."""
@@ -676,75 +606,4 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             digest_logger.error("kg_workflow_extract_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"extract_failed: {exc}"}
 
-
-async def cluster_node(state: KGDigestState) -> KGDigestState:
-    """Cluster candidate nodes within the current batch."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        try:
-            results = state.get("candidates", [])
-            chunk_ids = state.get("chunk_ids", [])
-            digest_logger.info(
-                "kg_cluster_started",
-                result_count=len(results),
-                chunk_count=len(chunk_ids),
-            )
-
-            all_pairs = [
-                (node, chunk_id)
-                for chunk_id, result in zip(chunk_ids, results)
-                for node in result.nodes
-            ]
-            if not all_pairs:
-                update_job_progress(
-                    session,
-                    job_id=state["job_id"],
-                    job_type="graph",
-                    progress=50,
-                    current_step="cluster",
-                )
-                return {
-                    **state,
-                    "clustered_candidates": [],
-                    "candidate_lookup_to_cluster_id": {},
-                }
-
-            clustered, lookup_to_cluster = await cluster_candidates(all_pairs)
-            build_session_id = state.get("build_session_id", "")
-            if build_session_id:
-                unified_session = get_unified_build_session(build_session_id)
-                early_snapshot = _build_early_topic_snapshot(state, clustered)
-                unified_session.publish_topic_anchor_snapshot(early_snapshot)
-
-            update_job_progress(
-                session,
-                job_id=state["job_id"],
-                job_type="graph",
-                progress=50,
-                current_step="cluster",
-            )
-            digest_logger.info(
-                "kg_workflow_cluster_complete",
-                input_candidates=len(all_pairs),
-                cluster_count=len(clustered),
-                early_topic_anchor_count=len(early_snapshot.anchors) if build_session_id else 0,
-            )
-            return {
-                **state,
-                "clustered_candidates": clustered,
-                "candidate_lookup_to_cluster_id": lookup_to_cluster,
-            }
-        except Exception as exc:
-            digest_logger.error("kg_workflow_cluster_failed", error=str(exc), exc_info=True)
-            return {**state, "error": f"cluster_failed: {exc}"}
-
-
-__all__ = [
-    "acquire_lock_node",
-    "cluster_node",
-    "extract_node",
-    "prepare_node",
-]
-
-
+__all__ = ["extract_node"]

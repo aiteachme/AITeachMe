@@ -1,4 +1,4 @@
-"""Candidate extraction for digest graph workflow."""
+﻿"""Candidate extraction for digest graph workflow."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
-from app.workflows.digest.kg.services.candidate_identity import build_candidate_stable_id
-from app.workflows.digest.kg.services.chunker import QuestionBlock, parse_question_blocks
+from app.workflows.digest.knowledge_graph.services.candidate_identity import build_candidate_stable_id
+from app.workflows.digest.knowledge_graph.services.chunker import QuestionBlock, parse_question_blocks
 from app.workflows.digest.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
 from app.workflows.digest.shared.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
@@ -839,3 +839,4 @@ __all__ = [
     "extract_candidates",
     "has_conceptual_content",
 ]
+

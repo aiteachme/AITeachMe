@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from importlib import import_module
 
-__all__ = ["curriculum_repo", "exams_repo", "kg_repo", "knowledge_repo", "profile_repo"]
+__all__ = ["exams_repo", "kg_repo", "knowledge_repo", "profile_repo"]
 
 _ATTR_TO_MODULE = {
-    "curriculum_repo": "app.repositories.knowledge.curriculum_repo",
     "exams_repo": "app.repositories.exams_repo",
     "kg_repo": "app.repositories.knowledge.kg_repo",
     "knowledge_repo": "app.repositories.knowledge.knowledge_repo",

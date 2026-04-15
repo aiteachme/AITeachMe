@@ -17,7 +17,7 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.runtime import DocGenAssetRuntime
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type, resolve_docgen_dependency
-from app.workflows.digest.docgen.publish import build_merged_markdown
+from app.workflows.digest.docgen.outputs import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 

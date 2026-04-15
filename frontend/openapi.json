@@ -1937,89 +1937,6 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/units/detail": {
-      "post": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Fetch teaching unit detail",
-        "operationId": "unit_detail_api_v1_subjects__subject__knowledge_units_detail_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnitDetailRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_TeachingUnitDetailResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/subjects/{subject}/knowledge/study-plan": {
       "post": {
         "tags": [
@@ -2056,89 +1973,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_StudyPlanResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "业务校验未通过。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/knowledge/taxonomy/anchors": {
-      "post": {
-        "tags": [
-          "knowledge",
-          "knowledge"
-        ],
-        "summary": "Manage taxonomy anchors",
-        "operationId": "taxonomy_anchors_api_v1_subjects__subject__knowledge_taxonomy_anchors_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AnchorManageRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_list_TaxonomyAnchorResponse__"
                 }
               }
             }
@@ -3038,13 +2872,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/generate": {
-      "post": {
+    "/api/v1/subjects/{subject}/exams/": {
+      "put": {
         "tags": [
           "exams"
         ],
-        "summary": "Trigger exam generation",
-        "operationId": "api_trigger_exam_generate_api_v1_subjects__subject__exams_generate_post",
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__put",
         "parameters": [
           {
             "name": "subject",
@@ -3056,33 +2890,14 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExamGenerateRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamGenerateResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Exams Offline Root Api V1 Subjects  Subject  Exams  Put"
                 }
               }
             }
@@ -3097,8 +2912,49 @@
               }
             }
           },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Root Api V1 Subjects  Subject  Exams  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3107,8 +2963,151 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Root Api V1 Subjects  Subject  Exams  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Root Api V1 Subjects  Subject  Exams  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_root_api_v1_subjects__subject__exams__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Root Api V1 Subjects  Subject  Exams  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3130,13 +3129,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/history": {
-      "post": {
+    "/api/v1/subjects/{subject}/exams/{path}": {
+      "put": {
         "tags": [
           "exams"
         ],
-        "summary": "Paginated exam history",
-        "operationId": "api_get_exam_history_api_v1_subjects__subject__exams_history_post",
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__put",
         "parameters": [
           {
             "name": "subject",
@@ -3148,26 +3147,12 @@
             }
           },
           {
-            "name": "page",
-            "in": "query",
-            "required": false,
+            "name": "path",
+            "in": "path",
+            "required": true,
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 20,
-              "title": "Size"
+              "type": "string",
+              "title": "Path"
             }
           }
         ],
@@ -3177,17 +3162,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_ExamHistoryItem__"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Exams Offline Path Api V1 Subjects  Subject  Exams  Path  Put"
                 }
               }
             }
@@ -3202,8 +3178,238 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Path Api V1 Subjects  Subject  Exams  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Path Api V1 Subjects  Subject  Exams  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Path Api V1 Subjects  Subject  Exams  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Exams feature offline",
+        "operationId": "exams_offline_path_api_v1_subjects__subject__exams__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Exams Offline Path Api V1 Subjects  Subject  Exams  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3225,13 +3431,13 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/question-bank": {
-      "post": {
+    "/api/v1/subjects/{subject}/profile/": {
+      "put": {
         "tags": [
-          "exams"
+          "profile"
         ],
-        "summary": "Question bank view",
-        "operationId": "api_get_question_bank_api_v1_subjects__subject__exams_question_bank_post",
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__put",
         "parameters": [
           {
             "name": "subject",
@@ -3249,33 +3455,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_list_QuestionBankItemResponse__"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Profile Offline Root Api V1 Subjects  Subject  Profile  Put"
                 }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3295,15 +3482,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}": {
-      "post": {
+      },
+      "patch": {
         "tags": [
-          "exams"
+          "profile"
         ],
-        "summary": "Exam paper detail",
-        "operationId": "api_get_exam_detail_api_v1_subjects__subject__exams__exam_paper_id__post",
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__put",
         "parameters": [
           {
             "name": "subject",
@@ -3313,16 +3498,6 @@
               "type": "string",
               "title": "Subject"
             }
-          },
-          {
-            "name": "exam_paper_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Exam Paper Id"
-            }
           }
         ],
         "responses": {
@@ -3331,33 +3506,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Profile Offline Root Api V1 Subjects  Subject  Profile  Put"
                 }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3377,311 +3533,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/delete": {
-      "post": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Delete exam paper",
-        "operationId": "api_delete_exam_api_v1_subjects__subject__exams__exam_paper_id__delete_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "exam_paper_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Exam Paper Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDeleteResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/submit": {
-      "post": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Submit exam answers",
-        "operationId": "api_submit_exam_api_v1_subjects__subject__exams__exam_paper_id__submit_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "exam_paper_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Exam Paper Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExamSubmitRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/grade": {
-      "post": {
-        "tags": [
-          "exams"
-        ],
-        "summary": "Trigger exam grading",
-        "operationId": "api_trigger_exam_grade_api_v1_subjects__subject__exams__exam_paper_id__grade_post",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "exam_paper_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Exam Paper Id"
-            }
-          },
-          {
-            "name": "regrade",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Regrade"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ExamGradeResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/profile/mastery": {
+      },
       "get": {
         "tags": [
           "profile"
         ],
-        "summary": "Mastery overview",
-        "operationId": "api_get_mastery_overview_api_v1_subjects__subject__profile_mastery_get",
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__put",
         "parameters": [
           {
             "name": "subject",
@@ -3699,33 +3557,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_MasteryOverviewResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Profile Offline Root Api V1 Subjects  Subject  Profile  Put"
                 }
               }
             }
           },
           "404": {
             "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3745,251 +3584,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/subjects/{subject}/profile/mastery/unit/{teaching_unit_id}": {
-      "get": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Unit mastery detail",
-        "operationId": "api_get_unit_mastery_detail_api_v1_subjects__subject__profile_mastery_unit__teaching_unit_id__get",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "teaching_unit_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Teaching Unit Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_MasteryStateResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/profile/mastery/node/{knowledge_node_id}": {
-      "get": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Node mastery detail",
-        "operationId": "api_get_node_mastery_detail_api_v1_subjects__subject__profile_mastery_node__knowledge_node_id__get",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          },
-          {
-            "name": "knowledge_node_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Knowledge Node Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_MasteryStateResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/profile/review/tasks": {
-      "get": {
-        "tags": [
-          "profile"
-        ],
-        "summary": "Pending review tasks",
-        "operationId": "api_get_review_tasks_api_v1_subjects__subject__profile_review_tasks_get",
-        "parameters": [
-          {
-            "name": "subject",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Subject"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_list_ReviewTaskResponse__"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subjects/{subject}/profile/review/tasks/{task_id}/complete": {
+      },
       "post": {
         "tags": [
           "profile"
         ],
-        "summary": "Complete review task",
-        "operationId": "api_complete_review_task_api_v1_subjects__subject__profile_review_tasks__task_id__complete_post",
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__put",
         "parameters": [
           {
             "name": "subject",
@@ -3999,16 +3600,6 @@
               "type": "string",
               "title": "Subject"
             }
-          },
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "title": "Task Id"
-            }
           }
         ],
         "responses": {
@@ -4017,17 +3608,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ReviewTaskResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "null",
+                  "title": "Response Profile Offline Root Api V1 Subjects  Subject  Profile  Put"
                 }
               }
             }
@@ -4042,8 +3624,351 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_root_api_v1_subjects__subject__profile__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Root Api V1 Subjects  Subject  Profile  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/profile/{path}": {
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Path Api V1 Subjects  Subject  Profile  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Path Api V1 Subjects  Subject  Profile  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Path Api V1 Subjects  Subject  Profile  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Path Api V1 Subjects  Subject  Profile  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Profile feature offline",
+        "operationId": "profile_offline_path_api_v1_subjects__subject__profile__path__put",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Response Profile Offline Path Api V1 Subjects  Subject  Profile  Path  Put"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
             "content": {
               "application/json": {
                 "schema": {
@@ -4434,81 +4359,6 @@
         "title": "AliasItem",
         "description": "Node alias item."
       },
-      "AnchorManageRequest": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "title": "Action",
-            "description": "list / create / update / delete"
-          },
-          "anchor_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Anchor Id",
-            "description": "Anchor ID for update/delete."
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title",
-            "description": "Anchor title for create/update."
-          },
-          "anchor_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Anchor Type",
-            "description": "teacher_defined / syllabus / textbook_toc / graph_discovered"
-          },
-          "parent_anchor_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Anchor Id",
-            "description": "Parent anchor ID."
-          },
-          "order_index": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Order Index",
-            "description": "Order index."
-          }
-        },
-        "type": "object",
-        "required": [
-          "action"
-        ],
-        "title": "AnchorManageRequest",
-        "description": "Taxonomy anchor management request."
-      },
       "ApiResponse_AuthSessionData_": {
         "properties": {
           "code": {
@@ -4849,142 +4699,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_ExamGenerateResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExamGenerateResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ExamGenerateResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_ExamGradeResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExamGradeResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ExamGradeResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_ExamPaperDeleteResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExamPaperDeleteResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ExamPaperDeleteResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_ExamPaperDetailResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExamPaperDetailResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ExamPaperDetailResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_ExportPreviewData_": {
         "properties": {
           "code": {
@@ -5291,74 +5005,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_MasteryOverviewResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MasteryOverviewResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[MasteryOverviewResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_MasteryStateResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MasteryStateResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[MasteryStateResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_PaginatedData_ChatMessageItem__": {
         "properties": {
           "code": {
@@ -5461,40 +5107,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_PaginatedData_ExamHistoryItem__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_ExamHistoryItem_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[ExamHistoryItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_PaginatedData_SubjectItem__": {
         "properties": {
           "code": {
@@ -5523,40 +5135,6 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[SubjectItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_ReviewTaskResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReviewTaskResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[ReviewTaskResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -5767,40 +5345,6 @@
           "message": "ok"
         }
       },
-      "ApiResponse_TeachingUnitDetailResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TeachingUnitDetailResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[TeachingUnitDetailResponse]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
       "ApiResponse_Union_BuildPlannerSessionResponse__NoneType__": {
         "properties": {
           "code": {
@@ -5867,120 +5411,6 @@
         },
         "type": "object",
         "title": "ApiResponse[list[CoursePackageItem]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_list_QuestionBankItemResponse__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/QuestionBankItemResponse"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data",
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[list[QuestionBankItemResponse]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_list_ReviewTaskResponse__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ReviewTaskResponse"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data",
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[list[ReviewTaskResponse]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_list_TaxonomyAnchorResponse__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/TaxonomyAnchorResponse"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data",
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[list[TaxonomyAnchorResponse]]",
         "example": {
           "code": 0,
           "data": {},
@@ -6058,7 +5488,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "description": "上传 .atmx 导出包。"
           },
@@ -6086,7 +5516,7 @@
           "files": {
             "items": {
               "type": "string",
-              "contentMediaType": "application/octet-stream"
+              "format": "binary"
             },
             "type": "array",
             "title": "Files"
@@ -6218,23 +5648,118 @@
       },
       "BuildPlannerConfirmResponse": {
         "properties": {
-          "session_id": {
+          "planner_session_id": {
             "type": "string",
-            "title": "Session Id"
+            "title": "Planner Session Id"
           },
-          "plan_id": {
+          "confirmed_plan_id": {
             "type": "string",
-            "title": "Plan Id"
+            "title": "Confirmed Plan Id"
           },
-          "plan": {
-            "$ref": "#/components/schemas/BuildPlannerPlanResponse"
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "digest_mode": {
+            "type": "string",
+            "title": "Digest Mode"
+          },
+          "tone": {
+            "type": "string",
+            "title": "Tone"
+          },
+          "selected_file_uids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected File Uids"
+          },
+          "selected_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Selected File Ids"
+          },
+          "user_goal": {
+            "type": "string",
+            "title": "User Goal"
+          },
+          "plan_summary": {
+            "type": "string",
+            "title": "Plan Summary"
+          },
+          "chapter_plan": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerChapterPlanResponse"
+            },
+            "type": "array",
+            "title": "Chapter Plan"
+          },
+          "research_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Research Queries"
+          },
+          "selected_skillpacks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Skillpacks"
+          },
+          "media_plan": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Media Plan"
+          },
+          "build_constraints": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Build Constraints"
+          },
+          "plan_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Plan Json"
+          },
+          "status_history": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Status History"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
           }
         },
         "type": "object",
         "required": [
-          "session_id",
-          "plan_id",
-          "plan"
+          "planner_session_id",
+          "confirmed_plan_id",
+          "subject",
+          "status",
+          "digest_mode",
+          "tone",
+          "user_goal",
+          "plan_summary",
+          "created_at",
+          "updated_at"
         ],
         "title": "BuildPlannerConfirmResponse"
       },
@@ -6253,7 +5778,7 @@
               }
             ],
             "title": "File Uids",
-            "description": "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner 会优先使用已解析内容，不足时退化到文件名与资料元信息。"
+            "description": "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed."
           },
           "user_goal": {
             "type": "string",
@@ -6451,6 +5976,8 @@
         ],
         "title": "BuildPlannerPlanResponse"
       },
+<<<<<<< HEAD
+=======
       "BuildPlannerRuntimeStatsResponse": {
         "properties": {
           "elapsed_ms": {
@@ -6480,11 +6007,16 @@
         "type": "object",
         "title": "BuildPlannerRuntimeStatsResponse"
       },
+>>>>>>> origin/main
       "BuildPlannerSessionResponse": {
         "properties": {
           "session_id": {
             "type": "string",
             "title": "Session Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
           },
           "title": {
             "type": "string",
@@ -6494,7 +6026,11 @@
             "type": "string",
             "title": "Status"
           },
-          "plan": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "latest_plan": {
             "$ref": "#/components/schemas/BuildPlannerPlanResponse"
           },
           "turns": {
@@ -6504,26 +6040,32 @@
             "type": "array",
             "title": "Turns"
           },
-          "runtime_stats": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BuildPlannerRuntimeStatsResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
           }
         },
         "type": "object",
         "required": [
           "session_id",
+          "subject",
           "title",
           "status",
-          "plan"
+          "revision",
+          "latest_plan",
+          "created_at",
+          "updated_at"
         ],
         "title": "BuildPlannerSessionResponse"
       },
+<<<<<<< HEAD
+=======
       "BuildPlannerStepStatsResponse": {
         "properties": {
           "name": {
@@ -6547,6 +6089,7 @@
         ],
         "title": "BuildPlannerStepStatsResponse"
       },
+>>>>>>> origin/main
       "BuildPlannerTurnResponse": {
         "properties": {
           "id": {
@@ -7398,12 +6941,12 @@
           "filename": {
             "type": "string",
             "title": "Filename",
-            "description": "文件名。"
+            "description": "Package filename."
           },
           "subject_name": {
             "type": "string",
             "title": "Subject Name",
-            "description": "学科名称（从 manifest 读取）。"
+            "description": "Subject name from manifest."
           },
           "file_size_bytes": {
             "type": "integer",
@@ -7436,75 +6979,7 @@
           "subject_name"
         ],
         "title": "CoursePackageItem",
-        "description": "共享课程目录中的一个 `.atmx` 文件。"
-      },
-      "CurriculumSnapshotResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "version_no": {
-            "type": "integer",
-            "title": "Version No"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "theme_tree_version_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Version Id"
-          },
-          "prereq_dag_version_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prereq Dag Version Id"
-          },
-          "syllabus_version_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Syllabus Version Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "version_no",
-          "status",
-          "created_at"
-        ],
-        "title": "CurriculumSnapshotResponse",
-        "description": "Current curriculum snapshot response."
+        "description": "One `.atmx` package listed from shared courses folder."
       },
       "DocGenBuildData": {
         "properties": {
@@ -7641,7 +7116,7 @@
               "all"
             ],
             "title": "Build Type",
-            "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
+            "description": "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only, 'all' for unified build.",
             "default": "all"
           },
           "confirmed_plan_id": {
@@ -7654,7 +7129,7 @@
               }
             ],
             "title": "Confirmed Plan Id",
-            "description": "Planner 生成并确认后的构建方案 ID。`docs` 和 `all` 构建必须提供该字段；提供后会以方案冻结的文件选择、章节规划和用户目标作为正式构建契约。"
+            "description": "Planner-generated and confirmed build plan ID. `docs` and `all` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and user goal."
           }
         },
         "type": "object",
@@ -7908,775 +7383,48 @@
         "title": "EvidenceSummary",
         "description": "Evidence summary used in node detail."
       },
-      "ExamGenerateRequest": {
-        "properties": {
-          "exam_mode": {
-            "type": "string",
-            "title": "Exam Mode",
-            "description": "Exam mode: web_practice | paper_exam (legacy values are compatible)."
-          },
-          "difficulty": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Difficulty",
-            "description": "Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty."
-          },
-          "user_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Prompt",
-            "description": "Optional user prompt for general generation hints."
-          },
-          "style_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Style Prompt",
-            "description": "Optional prompt that describes the desired paper style."
-          },
-          "focus_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus Prompt",
-            "description": "Optional prompt describing key focus areas."
-          },
-          "sample_file_uids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sample File Uids",
-            "description": "Optional uploaded sample-paper file UIDs."
-          },
-          "num_questions": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 200.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Num Questions",
-            "description": "Optional target question count."
-          },
-          "theme_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Node Id",
-            "description": "Optional theme tree node scope."
-          },
-          "teaching_unit_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Teaching Unit Ids",
-            "description": "Optional teaching unit scope."
-          }
-        },
-        "type": "object",
-        "required": [
-          "exam_mode"
-        ],
-        "title": "ExamGenerateRequest",
-        "description": "Trigger exam generation request."
-      },
-      "ExamGenerateResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "exam_mode": {
-            "type": "string",
-            "title": "Exam Mode"
-          },
-          "num_questions": {
-            "type": "integer",
-            "title": "Num Questions"
-          },
-          "exam_paper_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exam Paper Id"
-          },
-          "theme_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Theme Tree Node Id"
-          },
-          "teaching_unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Teaching Unit Ids"
-          },
-          "sample_file_uids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Sample File Uids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "created_at",
-          "updated_at",
-          "subject",
-          "user_id",
-          "exam_mode",
-          "num_questions"
-        ],
-        "title": "ExamGenerateResponse"
-      },
-      "ExamGradeResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "exam_paper_id": {
-            "type": "integer",
-            "title": "Exam Paper Id"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score"
-          },
-          "states_updated": {
-            "type": "integer",
-            "title": "States Updated"
-          },
-          "tasks_created": {
-            "type": "integer",
-            "title": "Tasks Created"
-          },
-          "mastery_consumed": {
-            "type": "boolean",
-            "title": "Mastery Consumed"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "created_at",
-          "updated_at",
-          "exam_paper_id",
-          "states_updated",
-          "tasks_created",
-          "mastery_consumed"
-        ],
-        "title": "ExamGradeResponse"
-      },
-      "ExamHistoryItem": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "exam_mode": {
-            "type": "string",
-            "title": "Exam Mode"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "total_items": {
-            "type": "integer",
-            "title": "Total Items"
-          },
-          "score_obtained": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Obtained"
-          },
-          "total_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Score"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "submitted_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Submitted At"
-          },
-          "graded_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Graded At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "user_id",
-          "exam_mode",
-          "status",
-          "total_items",
-          "created_at"
-        ],
-        "title": "ExamHistoryItem"
-      },
-      "ExamNodeLinkResponse": {
-        "properties": {
-          "knowledge_node_id": {
-            "type": "integer",
-            "title": "Knowledge Node Id"
-          },
-          "knowledge_node_name": {
-            "type": "string",
-            "title": "Knowledge Node Name"
-          },
-          "coverage_weight": {
-            "type": "number",
-            "title": "Coverage Weight"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
-          "mastery_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mastery Score"
-          }
-        },
-        "type": "object",
-        "required": [
-          "knowledge_node_id",
-          "knowledge_node_name",
-          "coverage_weight",
-          "role"
-        ],
-        "title": "ExamNodeLinkResponse"
-      },
-      "ExamPaperDeleteResponse": {
-        "properties": {
-          "deleted": {
-            "type": "boolean",
-            "title": "Deleted"
-          },
-          "exam_paper_id": {
-            "type": "integer",
-            "title": "Exam Paper Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "deleted",
-          "exam_paper_id"
-        ],
-        "title": "ExamPaperDeleteResponse"
-      },
-      "ExamPaperDetailResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "exam_mode": {
-            "type": "string",
-            "title": "Exam Mode"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "total_items": {
-            "type": "integer",
-            "title": "Total Items"
-          },
-          "score_obtained": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Obtained"
-          },
-          "total_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Score"
-          },
-          "submitted_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Submitted At"
-          },
-          "graded_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Graded At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "selection_context": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Selection Context"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ExamPaperItemResponse"
-            },
-            "type": "array",
-            "title": "Items"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "user_id",
-          "exam_mode",
-          "status",
-          "total_items",
-          "created_at"
-        ],
-        "title": "ExamPaperDetailResponse"
-      },
-      "ExamPaperItemResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "item_order": {
-            "type": "integer",
-            "title": "Item Order"
-          },
-          "question_template_id": {
-            "type": "integer",
-            "title": "Question Template Id"
-          },
-          "question_type": {
-            "type": "string",
-            "title": "Question Type"
-          },
-          "difficulty": {
-            "type": "string",
-            "title": "Difficulty"
-          },
-          "stem": {
-            "type": "string",
-            "title": "Stem"
-          },
-          "options": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Options"
-          },
-          "correct_answer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Correct Answer"
-          },
-          "explanation": {
-            "type": "string",
-            "title": "Explanation"
-          },
-          "teaching_unit_id": {
-            "type": "integer",
-            "title": "Teaching Unit Id"
-          },
-          "node_links": {
-            "items": {
-              "$ref": "#/components/schemas/ExamNodeLinkResponse"
-            },
-            "type": "array",
-            "title": "Node Links"
-          },
-          "user_answer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Answer"
-          },
-          "is_correct": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Correct"
-          },
-          "score_obtained": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Obtained"
-          },
-          "score_max": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Max"
-          },
-          "error_cause_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Cause Label"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "item_order",
-          "question_template_id",
-          "question_type",
-          "difficulty",
-          "stem",
-          "explanation",
-          "teaching_unit_id"
-        ],
-        "title": "ExamPaperItemResponse"
-      },
-      "ExamSubmitAnswerItem": {
-        "properties": {
-          "exam_paper_item_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exam Paper Item Id",
-            "description": "Exam paper item ID."
-          },
-          "item_order": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Item Order",
-            "description": "Fallback key: item order."
-          },
-          "answer": {
-            "type": "string",
-            "title": "Answer",
-            "description": "User answer."
-          }
-        },
-        "type": "object",
-        "required": [
-          "answer"
-        ],
-        "title": "ExamSubmitAnswerItem",
-        "description": "One submitted answer item."
-      },
-      "ExamSubmitRequest": {
-        "properties": {
-          "answers": {
-            "items": {
-              "$ref": "#/components/schemas/ExamSubmitAnswerItem"
-            },
-            "type": "array",
-            "title": "Answers",
-            "description": "Submitted answers."
-          }
-        },
-        "type": "object",
-        "title": "ExamSubmitRequest",
-        "description": "Submit exam answers request."
-      },
       "ExportOptions": {
         "properties": {
           "include_raw_files": {
             "type": "boolean",
             "title": "Include Raw Files",
-            "description": "是否包含原始上传文件（PDF/DOCX 等）。关闭后可大幅减小体积。",
+            "description": "Include original uploaded files such as PDF/DOCX.",
             "default": true
           },
           "include_raw_markdowns": {
             "type": "boolean",
             "title": "Include Raw Markdowns",
-            "description": "是否包含解析后的原始 Markdown。",
+            "description": "Include parsed raw markdown files.",
             "default": true
           },
           "include_knowledge_docs": {
             "type": "boolean",
             "title": "Include Knowledge Docs",
-            "description": "是否包含构建后的知识文档（chapter_*.md 等）。",
+            "description": "Include generated knowledge docs.",
             "default": true
           },
           "include_chat_history": {
             "type": "boolean",
             "title": "Include Chat History",
-            "description": "是否包含对话记录。",
+            "description": "Include chat history.",
             "default": true
           },
           "include_exam_history": {
             "type": "boolean",
             "title": "Include Exam History",
-            "description": "是否包含题库与考试记录。",
+            "description": "Include question templates and exam history.",
             "default": true
           },
           "include_profile": {
             "type": "boolean",
             "title": "Include Profile",
-            "description": "是否包含学习画像。",
+            "description": "Include user knowledge profile states.",
             "default": true
           }
         },
         "type": "object",
         "title": "ExportOptions",
-        "description": "导出选项（请求体）。"
+        "description": "Export options payload."
       },
       "ExportPreviewData": {
         "properties": {
@@ -8704,7 +7452,7 @@
           "stats"
         ],
         "title": "ExportPreviewData",
-        "description": "导出预览响应。"
+        "description": "Export preview payload."
       },
       "ExportPreviewStats": {
         "properties": {
@@ -8733,11 +7481,6 @@
             "title": "Knowledge Edge Count",
             "default": 0
           },
-          "teaching_unit_count": {
-            "type": "integer",
-            "title": "Teaching Unit Count",
-            "default": 0
-          },
           "question_template_count": {
             "type": "integer",
             "title": "Question Template Count",
@@ -8761,7 +7504,7 @@
         },
         "type": "object",
         "title": "ExportPreviewStats",
-        "description": "导出预览统计。"
+        "description": "Export preview counters."
       },
       "FileAssetItem": {
         "properties": {
@@ -9306,12 +8049,12 @@
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "导入后的学科外部标识。"
+            "description": "Imported subject external id."
           },
           "subject_name": {
             "type": "string",
             "title": "Subject Name",
-            "description": "导入后的学科名称。"
+            "description": "Imported subject name."
           },
           "imported_counts": {
             "additionalProperties": {
@@ -9334,7 +8077,7 @@
           "subject_name"
         ],
         "title": "ImportResultData",
-        "description": "导入结果响应。"
+        "description": "Import result payload."
       },
       "IncidentEdgeItem": {
         "properties": {
@@ -9580,7 +8323,7 @@
             },
             "type": "array",
             "title": "Recent Events",
-            "description": "Recent research / writing / publishing events for the current build."
+            "description": "Recent research / writing / publishing events for this build."
           },
           "latest_chapter_titles": {
             "items": {
@@ -9884,36 +8627,6 @@
             "format": "date-time",
             "title": "Generated At"
           },
-          "snapshot": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CurriculumSnapshotResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "theme_tree": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ThemeTreeResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "prereq_dag": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PrereqDagResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "graph": {
             "anyOf": [
               {
@@ -9923,13 +8636,6 @@
                 "type": "null"
               }
             ]
-          },
-          "units": {
-            "items": {
-              "$ref": "#/components/schemas/TeachingUnitResponse"
-            },
-            "type": "array",
-            "title": "Units"
           },
           "stats": {
             "$ref": "#/components/schemas/KnowledgeOverviewStats"
@@ -9994,21 +8700,6 @@
             "type": "integer",
             "title": "Edge Count",
             "default": 0
-          },
-          "unit_count": {
-            "type": "integer",
-            "title": "Unit Count",
-            "default": 0
-          },
-          "theme_node_count": {
-            "type": "integer",
-            "title": "Theme Node Count",
-            "default": 0
-          },
-          "dependency_count": {
-            "type": "integer",
-            "title": "Dependency Count",
-            "default": 0
           }
         },
         "type": "object",
@@ -10047,173 +8738,6 @@
         "title": "LogoutRequest",
         "description": "登出请求。",
         "example": {}
-      },
-      "MasteryOverviewResponse": {
-        "properties": {
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "weak_unit_count": {
-            "type": "integer",
-            "title": "Weak Unit Count"
-          },
-          "weak_node_count": {
-            "type": "integer",
-            "title": "Weak Node Count"
-          },
-          "unit_states": {
-            "items": {
-              "$ref": "#/components/schemas/MasteryStateResponse"
-            },
-            "type": "array",
-            "title": "Unit States"
-          },
-          "node_states": {
-            "items": {
-              "$ref": "#/components/schemas/MasteryStateResponse"
-            },
-            "type": "array",
-            "title": "Node States"
-          },
-          "subject_profile": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubjectProfileSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "user_profile": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UserProfileSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject",
-          "user_id",
-          "weak_unit_count",
-          "weak_node_count"
-        ],
-        "title": "MasteryOverviewResponse"
-      },
-      "MasteryStateResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "target_kind": {
-            "type": "string",
-            "title": "Target Kind"
-          },
-          "teaching_unit_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Teaching Unit Id"
-          },
-          "knowledge_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Knowledge Node Id"
-          },
-          "mastery_score": {
-            "type": "number",
-            "title": "Mastery Score"
-          },
-          "confidence_score": {
-            "type": "number",
-            "title": "Confidence Score"
-          },
-          "stability_score": {
-            "type": "number",
-            "title": "Stability Score"
-          },
-          "forgetting_due_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Forgetting Due At"
-          },
-          "review_priority": {
-            "type": "number",
-            "title": "Review Priority"
-          },
-          "total_attempts": {
-            "type": "integer",
-            "title": "Total Attempts"
-          },
-          "correct_attempts": {
-            "type": "integer",
-            "title": "Correct Attempts"
-          },
-          "last_attempt_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Attempt At"
-          },
-          "state_version": {
-            "type": "integer",
-            "title": "State Version"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "target_kind",
-          "mastery_score",
-          "confidence_score",
-          "stability_score",
-          "review_priority",
-          "total_attempts",
-          "correct_attempts",
-          "state_version",
-          "updated_at"
-        ],
-        "title": "MasteryStateResponse"
       },
       "NodeRevisionItem": {
         "properties": {
@@ -10371,50 +8895,6 @@
         ],
         "title": "PaginatedData[ChatThreadTurnItem]"
       },
-      "PaginatedData_ExamHistoryItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ExamHistoryItem"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[ExamHistoryItem]"
-      },
       "PaginatedData_SubjectItem_": {
         "properties": {
           "items": {
@@ -10459,115 +8939,6 @@
         ],
         "title": "PaginatedData[SubjectItem]"
       },
-      "PrereqDagResponse": {
-        "properties": {
-          "version_id": {
-            "type": "integer",
-            "title": "Version Id"
-          },
-          "version_no": {
-            "type": "integer",
-            "title": "Version No"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "dependencies": {
-            "items": {
-              "$ref": "#/components/schemas/UnitDependencyItem"
-            },
-            "type": "array",
-            "title": "Dependencies"
-          }
-        },
-        "type": "object",
-        "required": [
-          "version_id",
-          "version_no",
-          "subject",
-          "status",
-          "created_at"
-        ],
-        "title": "PrereqDagResponse",
-        "description": "Current published prereq DAG response."
-      },
-      "QuestionBankItemResponse": {
-        "properties": {
-          "question_template_id": {
-            "type": "integer",
-            "title": "Question Template Id"
-          },
-          "stem": {
-            "type": "string",
-            "title": "Stem"
-          },
-          "question_type": {
-            "type": "string",
-            "title": "Question Type"
-          },
-          "difficulty": {
-            "type": "string",
-            "title": "Difficulty"
-          },
-          "teaching_unit_id": {
-            "type": "integer",
-            "title": "Teaching Unit Id"
-          },
-          "times_asked": {
-            "type": "integer",
-            "title": "Times Asked"
-          },
-          "last_asked_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Last Asked At"
-          },
-          "last_exam_paper_id": {
-            "type": "integer",
-            "title": "Last Exam Paper Id"
-          },
-          "knowledge_points": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Knowledge Points"
-          },
-          "style_summary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Style Summary"
-          }
-        },
-        "type": "object",
-        "required": [
-          "question_template_id",
-          "stem",
-          "question_type",
-          "difficulty",
-          "teaching_unit_id",
-          "times_asked",
-          "last_asked_at",
-          "last_exam_paper_id"
-        ],
-        "title": "QuestionBankItemResponse"
-      },
       "RegisterRequest": {
         "properties": {
           "email": {
@@ -10602,121 +8973,6 @@
           "password": "change-me",
           "verification_code": "123456"
         }
-      },
-      "ReviewTaskResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "target_kind": {
-            "type": "string",
-            "title": "Target Kind"
-          },
-          "teaching_unit_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Teaching Unit Id"
-          },
-          "knowledge_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Knowledge Node Id"
-          },
-          "priority": {
-            "type": "number",
-            "title": "Priority"
-          },
-          "scheduled_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduled At"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "interval_days": {
-            "type": "integer",
-            "title": "Interval Days"
-          },
-          "ease_factor": {
-            "type": "number",
-            "title": "Ease Factor"
-          },
-          "repetition_count": {
-            "type": "integer",
-            "title": "Repetition Count"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "source_exam_paper_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Exam Paper Id"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "user_id",
-          "subject",
-          "target_kind",
-          "priority",
-          "status",
-          "interval_days",
-          "ease_factor",
-          "repetition_count",
-          "updated_at"
-        ],
-        "title": "ReviewTaskResponse"
       },
       "RuntimeUser": {
         "properties": {
@@ -11284,137 +9540,6 @@
         ],
         "title": "SubjectNameSuggestionResponse"
       },
-      "SubjectProfileSummary": {
-        "properties": {
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Generated At"
-          },
-          "avg_unit_mastery": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg Unit Mastery"
-          },
-          "avg_node_mastery": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg Node Mastery"
-          },
-          "weak_unit_count": {
-            "type": "integer",
-            "title": "Weak Unit Count",
-            "default": 0
-          },
-          "weak_node_count": {
-            "type": "integer",
-            "title": "Weak Node Count",
-            "default": 0
-          },
-          "pending_review_count": {
-            "type": "integer",
-            "title": "Pending Review Count",
-            "default": 0
-          },
-          "due_review_count": {
-            "type": "integer",
-            "title": "Due Review Count",
-            "default": 0
-          },
-          "preferred_question_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Preferred Question Types"
-          },
-          "recommended_question_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recommended Question Types"
-          },
-          "recommended_exam_mode": {
-            "type": "string",
-            "title": "Recommended Exam Mode",
-            "default": "web_practice"
-          },
-          "recommended_question_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recommended Question Count"
-          },
-          "difficulty_focus": {
-            "type": "string",
-            "title": "Difficulty Focus",
-            "default": "medium"
-          },
-          "focus_teaching_unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Focus Teaching Unit Ids"
-          },
-          "focus_node_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Focus Node Ids"
-          },
-          "question_type_accuracy": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Question Type Accuracy"
-          },
-          "difficulty_accuracy": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Difficulty Accuracy"
-          },
-          "notes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject",
-          "generated_at"
-        ],
-        "title": "SubjectProfileSummary"
-      },
       "SubjectUpdateRequest": {
         "properties": {
           "subject_id": {
@@ -11496,566 +9621,6 @@
         "title": "TaskStatusValue",
         "description": "任务状态。"
       },
-      "TaxonomyAnchorResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "anchor_type": {
-            "type": "string",
-            "title": "Anchor Type"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "parent_anchor_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Anchor Id"
-          },
-          "order_index": {
-            "type": "integer",
-            "title": "Order Index"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "is_system": {
-            "type": "boolean",
-            "title": "Is System"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "anchor_type",
-          "title",
-          "order_index",
-          "confidence",
-          "is_system",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "TaxonomyAnchorResponse",
-        "description": "Taxonomy anchor response."
-      },
-      "TeachingUnitDetailResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "canonical_name": {
-            "type": "string",
-            "title": "Canonical Name"
-          },
-          "normalized_name": {
-            "type": "string",
-            "title": "Normalized Name"
-          },
-          "member_signature": {
-            "type": "string",
-            "title": "Member Signature"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "current_revision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitRevisionItem"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "members": {
-            "items": {
-              "$ref": "#/components/schemas/UnitMembershipItem"
-            },
-            "type": "array",
-            "title": "Members"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "canonical_name",
-          "normalized_name",
-          "member_signature",
-          "status",
-          "confidence",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "TeachingUnitDetailResponse",
-        "description": "Teaching-unit detail response."
-      },
-      "TeachingUnitResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "canonical_name": {
-            "type": "string",
-            "title": "Canonical Name"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "subject",
-          "canonical_name",
-          "status",
-          "confidence",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "TeachingUnitResponse",
-        "description": "Teaching-unit list item."
-      },
-      "ThemeTreeNodeResponse": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "tree_version_id": {
-            "type": "integer",
-            "title": "Tree Version Id"
-          },
-          "anchor_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Anchor Id"
-          },
-          "parent_tree_node_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Tree Node Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "node_type": {
-            "type": "string",
-            "title": "Node Type"
-          },
-          "order_index": {
-            "type": "integer",
-            "title": "Order Index"
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/ThemeTreeNodeResponse"
-            },
-            "type": "array",
-            "title": "Children"
-          },
-          "units": {
-            "items": {
-              "$ref": "#/components/schemas/TreeUnitItem"
-            },
-            "type": "array",
-            "title": "Units"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "tree_version_id",
-          "title",
-          "node_type",
-          "order_index",
-          "summary"
-        ],
-        "title": "ThemeTreeNodeResponse",
-        "description": "Theme-tree node response."
-      },
-      "ThemeTreeResponse": {
-        "properties": {
-          "version_id": {
-            "type": "integer",
-            "title": "Version Id"
-          },
-          "version_no": {
-            "type": "integer",
-            "title": "Version No"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "tree": {
-            "items": {
-              "$ref": "#/components/schemas/ThemeTreeNodeResponse"
-            },
-            "type": "array",
-            "title": "Tree"
-          }
-        },
-        "type": "object",
-        "required": [
-          "version_id",
-          "version_no",
-          "subject",
-          "status",
-          "created_at"
-        ],
-        "title": "ThemeTreeResponse",
-        "description": "Current published theme tree response."
-      },
-      "TreeUnitItem": {
-        "properties": {
-          "teaching_unit_id": {
-            "type": "integer",
-            "title": "Teaching Unit Id"
-          },
-          "canonical_name": {
-            "type": "string",
-            "title": "Canonical Name"
-          },
-          "membership_role": {
-            "type": "string",
-            "title": "Membership Role"
-          },
-          "membership_source": {
-            "type": "string",
-            "title": "Membership Source"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "type": "object",
-        "required": [
-          "teaching_unit_id",
-          "canonical_name",
-          "membership_role",
-          "membership_source",
-          "score"
-        ],
-        "title": "TreeUnitItem",
-        "description": "Teaching-unit mount info in theme tree."
-      },
-      "UnitDependencyItem": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "source_unit_id": {
-            "type": "integer",
-            "title": "Source Unit Id"
-          },
-          "source_unit_name": {
-            "type": "string",
-            "title": "Source Unit Name"
-          },
-          "target_unit_id": {
-            "type": "integer",
-            "title": "Target Unit Id"
-          },
-          "target_unit_name": {
-            "type": "string",
-            "title": "Target Unit Name"
-          },
-          "dependency_type": {
-            "type": "string",
-            "title": "Dependency Type"
-          },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "supporting_edge_count": {
-            "type": "integer",
-            "title": "Supporting Edge Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "source_unit_id",
-          "source_unit_name",
-          "target_unit_id",
-          "target_unit_name",
-          "dependency_type",
-          "confidence",
-          "supporting_edge_count"
-        ],
-        "title": "UnitDependencyItem",
-        "description": "Dependency edge item in prereq DAG."
-      },
-      "UnitDetailRequest": {
-        "properties": {
-          "unit_id": {
-            "type": "integer",
-            "title": "Unit Id",
-            "description": "Teaching unit ID."
-          }
-        },
-        "type": "object",
-        "required": [
-          "unit_id"
-        ],
-        "title": "UnitDetailRequest",
-        "description": "Teaching-unit detail query."
-      },
-      "UnitMembershipItem": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "knowledge_node_id": {
-            "type": "integer",
-            "title": "Knowledge Node Id"
-          },
-          "node_canonical_name": {
-            "type": "string",
-            "title": "Node Canonical Name"
-          },
-          "node_type": {
-            "type": "string",
-            "title": "Node Type"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "knowledge_node_id",
-          "node_canonical_name",
-          "node_type",
-          "role",
-          "score"
-        ],
-        "title": "UnitMembershipItem",
-        "description": "Teaching-unit membership item."
-      },
-      "UnitRevisionItem": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "learning_objectives": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Learning Objectives"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "summary"
-        ],
-        "title": "UnitRevisionItem",
-        "description": "Current revision for a teaching unit."
-      },
-      "UserProfileSummary": {
-        "properties": {
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Generated At"
-          },
-          "active_subject_count": {
-            "type": "integer",
-            "title": "Active Subject Count",
-            "default": 0
-          },
-          "active_subject_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Active Subject Ids"
-          },
-          "recent_subject_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recent Subject Ids"
-          },
-          "preferred_question_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Preferred Question Types"
-          },
-          "preferred_exam_modes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Preferred Exam Modes"
-          },
-          "dominant_exam_mode": {
-            "type": "string",
-            "title": "Dominant Exam Mode",
-            "default": "web_practice"
-          },
-          "explanation_style": {
-            "type": "string",
-            "title": "Explanation Style",
-            "default": "balanced"
-          },
-          "pace_preference": {
-            "type": "string",
-            "title": "Pace Preference",
-            "default": "steady"
-          },
-          "consistency_level": {
-            "type": "string",
-            "title": "Consistency Level",
-            "default": "building"
-          },
-          "pending_review_count": {
-            "type": "integer",
-            "title": "Pending Review Count",
-            "default": 0
-          },
-          "due_review_count": {
-            "type": "integer",
-            "title": "Due Review Count",
-            "default": 0
-          },
-          "notes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "user_id",
-          "generated_at"
-        ],
-        "title": "UserProfileSummary"
-      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -12079,13 +9644,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

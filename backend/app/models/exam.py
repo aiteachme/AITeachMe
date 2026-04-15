@@ -10,21 +10,21 @@ from app.utils.time import utcnow
 
 
 class QuestionTemplate(SQLModel, table=True):
-    """Reusable question template derived from a teaching unit."""
+    """Reusable question template derived from knowledge-node scope."""
 
     __tablename__ = "question_template"
     __table_args__ = (
         UniqueConstraint(
             "subject",
-            "teaching_unit_id",
+            "knowledge_node_id",
             "stem_hash",
-            name="uq_template_subject_unit_stem",
+            name="uq_template_subject_node_stem",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    teaching_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
+    knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     question_type: str
     difficulty: str
     stem: str
@@ -36,11 +36,6 @@ class QuestionTemplate(SQLModel, table=True):
     selection_hints_json: str = Field(default="{}")
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
-    curriculum_version_id: int | None = Field(
-        default=None,
-        foreign_key="curriculum.id",
-        index=True,
-    )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -54,7 +49,6 @@ class ExamPaper(SQLModel, table=True):
     subject: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
-    curriculum_version_id: int = Field(foreign_key="curriculum.id", index=True)
     status: str = Field(default="draft", index=True)
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)
@@ -83,7 +77,7 @@ class ExamPaperItem(SQLModel, table=True):
     options_snapshot_json: str | None = Field(default=None)
     answer_snapshot: str
     explanation_snapshot: str
-    teaching_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
+    knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     node_refs_json: str = Field(default="[]")
     difficulty: str
     question_type: str

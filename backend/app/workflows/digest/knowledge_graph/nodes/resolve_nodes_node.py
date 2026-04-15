@@ -1,4 +1,5 @@
-"""Resolve graph candidates against the compressed graph schema."""
+﻿"""Knowledge graph resolve-nodes node."""
+
 
 from __future__ import annotations
 
@@ -15,39 +16,37 @@ from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
-from app.workflows.digest.kg.mutations import (
+from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
     create_edge_evidence,
     create_new_node,
     create_node_evidence,
     create_updated_revision,
 )
-from app.workflows.digest.kg.services.candidate_identity import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import (
     build_candidate_name_key,
     candidate_lookup_keys,
     normalize_scope_name,
 )
-from app.workflows.digest.kg.services.embedding_cache import (
+from app.workflows.digest.knowledge_graph.services.embedding_cache import (
     compute_embedding_text_hash,
     load_subject_embedding_cache,
     write_subject_embedding_cache,
 )
-from app.workflows.digest.kg.services.impact_analyzer import analyze_impact
-from app.workflows.digest.kg.services.resolver import (
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import analyze_impact
+from app.workflows.digest.knowledge_graph.services.resolver import (
     ResolveResult,
     compute_edge_confidence,
     resolve_edge,
 )
-from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
 
 _PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
 _SECONDARY_NODE_TYPES = {"Definition", "Example"}
 _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
-
-@dataclass(slots=True)
 class ExistingNodeRecord:
     node: KnowledgeNode
     summary: str
@@ -526,165 +525,4 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             digest_logger.error("kg_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
-
-async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
-    """Resolve candidate edges against the current graph."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        try:
-            all_candidate_edges = state.get("all_candidate_edges", [])
-            subject = state["subject"]
-            job_id = state["job_id"]
-            candidate_lookup_to_resolved_node_id = state.get("candidate_lookup_to_resolved_node_id", {})
-            candidate_lookup_to_cluster_id = state.get("candidate_lookup_to_cluster_id", {})
-            cluster_id_to_resolved_node_id = state.get("cluster_id_to_resolved_node_id", {})
-            new_edge_ids: list[int] = []
-            updated_edge_ids: list[int] = []
-            pending_write_count = 0
-            persist_started_at = perf_counter()
-            unresolved_endpoint_count = 0
-
-            def _commit_pending_writes() -> None:
-                nonlocal pending_write_count
-                if pending_write_count <= 0:
-                    return
-                session.commit()
-                pending_write_count = 0
-
-            for edge_candidate, chunk_id in all_candidate_edges:
-                matched_edge, is_new, confidence = resolve_edge(
-                    session,
-                    edge_candidate,
-                    subject,
-                    candidate_lookup_to_resolved_node_id,
-                    candidate_lookup_to_cluster_id,
-                    cluster_id_to_resolved_node_id,
-                )
-                if matched_edge is None:
-                    unresolved_endpoint_count += 1
-                    continue
-
-                if is_new:
-                    edge = kg_repo.create_knowledge_edge(session, matched_edge, auto_commit=False)
-                    edge_id = edge.id
-                    if edge_id is None:
-                        continue
-                    kg_repo.create_edge_revision(
-                        session,
-                        EdgeRevision(
-                            edge_id=edge_id,
-                            revision_no=1,
-                            description=edge_candidate.description,
-                            weight=edge.weight,
-                            confidence=confidence,
-                            revision_reason="new_evidence",
-                            is_current=True,
-                        ),
-                        auto_commit=False,
-                    )
-                    edge.current_revision_id = edge_id
-                    edge.confidence = confidence
-                    edge.updated_at = utcnow()
-                    session.add(edge)
-                    create_edge_evidence(
-                        session,
-                        subject=subject,
-                        edge_id=edge_id,
-                        chunk_id=chunk_id,
-                        job_id=job_id,
-                        auto_commit=False,
-                    )
-                    pending_write_count += 3
-                    new_edge_ids.append(edge_id)
-                else:
-                    edge_id = matched_edge.id
-                    if edge_id is None:
-                        continue
-                    create_edge_evidence(
-                        session,
-                        subject=subject,
-                        edge_id=edge_id,
-                        chunk_id=chunk_id,
-                        job_id=job_id,
-                        auto_commit=False,
-                    )
-                    active_evidence_count = kg_repo.count_active_evidence(session, "edge", edge_id)
-                    matched_edge.confidence = compute_edge_confidence(active_evidence_count)
-                    matched_edge.updated_at = utcnow()
-                    session.add(matched_edge)
-                    pending_write_count += 2
-                    updated_edge_ids.append(edge_id)
-
-                if (len(new_edge_ids) + len(updated_edge_ids)) % 25 == 0:
-                    _commit_pending_writes()
-
-            _commit_pending_writes()
-            edge_persist_ms = int((perf_counter() - persist_started_at) * 1000)
-            update_job_progress(
-                session,
-                job_id=job_id,
-                job_type="graph",
-                progress=75,
-                current_step="resolve_edges",
-            )
-            kg_repo.update_digest_job(
-                session,
-                job_id,
-                edges_added=len(new_edge_ids),
-                edges_updated=len(updated_edge_ids),
-            )
-            digest_logger.info(
-                "kg_workflow_resolve_edges_complete",
-                new_edges=len(new_edge_ids),
-                updated_edges=len(updated_edge_ids),
-            )
-            return {
-                **state,
-                "new_edge_ids": new_edge_ids,
-                "updated_edge_ids": updated_edge_ids,
-                "edge_persist_ms": edge_persist_ms,
-                "unresolved_endpoint_count": unresolved_endpoint_count,
-            }
-        except Exception as exc:
-            digest_logger.error("kg_workflow_resolve_edges_failed", error=str(exc), exc_info=True)
-            return {**state, "error": f"resolve_edges_failed: {exc}"}
-
-
-async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
-    """Compute the affected curriculum scope from graph changes."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        try:
-            impact = analyze_impact(
-                session,
-                state["subject"],
-                new_node_ids=state.get("new_node_ids", []),
-                updated_node_ids=state.get("updated_node_ids", []),
-                merged_node_ids=state.get("merged_node_ids", []),
-                split_node_ids=[],
-            )
-            update_job_progress(
-                session,
-                job_id=state["job_id"],
-                job_type="graph",
-                progress=85,
-                current_step="analyze_impact",
-            )
-            digest_logger.info(
-                "kg_workflow_impact_complete",
-                changed_nodes=len(impact.changed_node_ids),
-                affected_units=len(impact.affected_unit_ids),
-            )
-            return {**state, "impact_set": impact}
-        except Exception as exc:
-            digest_logger.error("kg_workflow_analyze_impact_failed", error=str(exc), exc_info=True)
-            return {**state, "error": f"analyze_impact_failed: {exc}"}
-
-
-__all__ = [
-    "analyze_impact_node",
-    "resolve_edges_node",
-    "resolve_nodes_node",
-]
+__all__ = ["resolve_nodes_node"]

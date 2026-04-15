@@ -1,4 +1,4 @@
-"""Storage helpers for knowledge-doc build artifacts."""
+﻿"""Storage helpers for knowledge-doc build artifacts."""
 
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ _STAGE_PROGRESS = {
     "injecting_examine": 84,
     "doc_lane_staged": 90,
     "graph_ready": 92,
-    "curriculum_deriving": 94,
     "publishing": 97,
     "completed": 100,
     "failed": 0,
@@ -48,7 +47,6 @@ _STAGE_DESCRIPTION = {
     "injecting_examine": "正在注入练习与自检内容。",
     "doc_lane_staged": "文档草稿已暂存，等待统一发布。",
     "graph_ready": "知识图谱已就绪。",
-    "curriculum_deriving": "正在推导课程结构。",
     "publishing": "正在发布最终知识文档。",
     "completed": "知识文档构建完成。",
     "failed": "知识文档构建失败。",

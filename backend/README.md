@@ -1,13 +1,10 @@
-# AiTeachMe Backend
+﻿# AiTeachMe Backend
 
-本目录是 AITeachMe 的后端服务，基于 FastAPI + SQLModel，面向“本地优先”的 AI 助教场景。
-
-## 当前接口形态
-
+鏈洰褰曟槸 AITeachMe 鐨勫悗绔湇鍔★紝鍩轰簬 FastAPI + SQLModel锛岄潰鍚戔€滄湰鍦颁紭鍏堚€濈殑 AI 鍔╂暀鍦烘櫙銆?
+## 褰撳墠鎺ュ彛褰㈡€?
 - `GET /api/health`
-- 业务接口以 `POST` 为主，少量稳定读取接口使用 `GET`
-- JSON 接口统一返回：
-
+- 涓氬姟鎺ュ彛浠?`POST` 涓轰富锛屽皯閲忕ǔ瀹氳鍙栨帴鍙ｄ娇鐢?`GET`
+- JSON 鎺ュ彛缁熶竴杩斿洖锛?
 ```json
 {
   "code": 0,
@@ -16,9 +13,9 @@
 }
 ```
 
-- `chat/send` 仍然保留原生 SSE，不包 `ApiResponse`
+- `chat/send` 浠嶇劧淇濈暀鍘熺敓 SSE锛屼笉鍖?`ApiResponse`
 
-## 主要资源
+## 涓昏璧勬簮
 
 - `subjects`
 - `files`
@@ -27,7 +24,7 @@
 - `exam`
 - `profile`
 
-新增的动作接口：
+鏂板鐨勫姩浣滄帴鍙ｏ細
 
 - `files/retry`
 - `files/delete`
@@ -36,19 +33,18 @@
 - `chat/clear`
 - `exam/delete`
 
-## 快速启动
+## 蹇€熷惎鍔?
+### 1. 瀹夎渚濊禆
 
-### 1. 安装依赖
-
-要求：Python `3.11+`
+瑕佹眰锛歅ython `3.11+`
 
 ```bash
 pip install -e .
 ```
 
-### 2. 配置 `.env`
+### 2. 閰嶇疆 `.env`
 
-至少需要：
+鑷冲皯闇€瑕侊細
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -56,26 +52,20 @@ APP_MODE=local
 AUTH_ENABLED=false
 ```
 
-### 3. 启动服务
+### 3. 鍚姩鏈嶅姟
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-首次启动时若缺少 SQLite 相关 Python 依赖，服务会自动尝试安装并继续启动。
-数据库文件会自动创建在 `data/aiteachme.db`。
-如果检测到 schema 过期，服务会自动备份旧库并重建新库。
+棣栨鍚姩鏃惰嫢缂哄皯 SQLite 鐩稿叧 Python 渚濊禆锛屾湇鍔′細鑷姩灏濊瘯瀹夎骞剁户缁惎鍔ㄣ€?鏁版嵁搴撴枃浠朵細鑷姩鍒涘缓鍦?`data/aiteachme.db`銆?濡傛灉妫€娴嬪埌 schema 杩囨湡锛屾湇鍔′細鑷姩澶囦唤鏃у簱骞堕噸寤烘柊搴撱€?
+## LangGraph Dev 璋冭瘯
 
-## LangGraph Dev 调试
-
-后端现在额外提供了一组只用于调试的 LangGraph 入口，配置文件在 `backend/langgraph.json`。
-
-可调试的 graph 包括：
-
+鍚庣鐜板湪棰濆鎻愪緵浜嗕竴缁勫彧鐢ㄤ簬璋冭瘯鐨?LangGraph 鍏ュ彛锛岄厤缃枃浠跺湪 `backend/langgraph.json`銆?
+鍙皟璇曠殑 graph 鍖呮嫭锛?
 - `ingest_fast_parse`
 - `ingest_deep_enhance`
 - `digest_kg`
-- `digest_curriculum`
 - `digest_docgen`
 - `digest_unified`
 - `interact_chat`
@@ -83,28 +73,22 @@ uvicorn app.main:app --reload --port 8000
 - `examine_exam_grade`
 - `profile_pipeline`
 
-这些 graph 由 `langgraph.json` 直接指向各自 workflow 模块内的图定义或轻量调试工厂函数，不替换原有 FastAPI / service 调用链，也不需要再维护一个单独的汇总入口文件。
+杩欎簺 graph 鐢?`langgraph.json` 鐩存帴鎸囧悜鍚勮嚜 workflow 妯″潡鍐呯殑鍥惧畾涔夋垨杞婚噺璋冭瘯宸ュ巶鍑芥暟锛屼笉鏇挎崲鍘熸湁 FastAPI / service 璋冪敤閾撅紝涔熶笉闇€瑕佸啀缁存姢涓€涓崟鐙殑姹囨€诲叆鍙ｆ枃浠躲€?
+### 浣跨敤璇存槑
 
-### 使用说明
-
-1. 使用 Python `3.11+`
-2. 在 `backend/` 目录运行：
-
+1. 浣跨敤 Python `3.11+`
+2. 鍦?`backend/` 鐩綍杩愯锛?
 ```bash
 pip install -e .
 langgraph dev --config langgraph.json
 ```
 
-### 说明
+### 璇存槑
 
-- `backend` 现在将 Python 版本要求收敛为 `3.11+`，这样 `pip install -e .` 会一并安装 LangGraph Dev 所需依赖。
-- `interact_chat` 使用的是“非生产 SSE 外壳”的调试图，目的是在 Studio 里直接观察完整 state，而不改变线上聊天接口行为。
-- `profile_pipeline` 是为调试新增的可执行 graph；原有 `profile` 概览图仍然保留。
-
+- `backend` 鐜板湪灏?Python 鐗堟湰瑕佹眰鏀舵暃涓?`3.11+`锛岃繖鏍?`pip install -e .` 浼氫竴骞跺畨瑁?LangGraph Dev 鎵€闇€渚濊禆銆?- `interact_chat` 浣跨敤鐨勬槸鈥滈潪鐢熶骇 SSE 澶栧３鈥濈殑璋冭瘯鍥撅紝鐩殑鏄湪 Studio 閲岀洿鎺ヨ瀵熷畬鏁?state锛岃€屼笉鏀瑰彉绾夸笂鑱婂ぉ鎺ュ彛琛屼负銆?- `profile_pipeline` 鏄负璋冭瘯鏂板鐨勫彲鎵ц graph锛涘師鏈?`profile` 姒傝鍥句粛鐒朵繚鐣欍€?
 ### LangSmith
 
-如果希望在 LangSmith 中直接查看 workflow 与 LLM 调用链路，可额外配置：
-
+濡傛灉甯屾湜鍦?LangSmith 涓洿鎺ユ煡鐪?workflow 涓?LLM 璋冪敤閾捐矾锛屽彲棰濆閰嶇疆锛?
 ```env
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=lsv2_xxx
@@ -113,15 +97,13 @@ LANGSMITH_CAPTURE_INPUTS=true
 LANGSMITH_CAPTURE_OUTPUTS=true
 ```
 
-当前约定下，workflow 统一运行入口和共享 infra trace 边界会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。
-`LANGSMITH_CAPTURE_INPUTS / LANGSMITH_CAPTURE_OUTPUTS` 现在不仅影响 LLM span，也会影响 retriever / reader / tool / runtime 的输入输出预览；在 `APP_MODE=local` 下默认开启，显式配置只用于覆盖默认策略。
+褰撳墠绾﹀畾涓嬶紝workflow 缁熶竴杩愯鍏ュ彛鍜屽叡浜?infra trace 杈圭晫浼氳嚜鍔ㄧ户鎵?tracing 涓婁笅鏂囷紝鍥犳涓嶉渶瑕佸湪姣忎釜涓氬姟鑺傜偣閲岄噸澶嶆墜鍐欒娴嬩唬鐮併€?`LANGSMITH_CAPTURE_INPUTS / LANGSMITH_CAPTURE_OUTPUTS` 鐜板湪涓嶄粎褰卞搷 LLM span锛屼篃浼氬奖鍝?retriever / reader / tool / runtime 鐨勮緭鍏ヨ緭鍑洪瑙堬紱鍦?`APP_MODE=local` 涓嬮粯璁ゅ紑鍚紝鏄惧紡閰嶇疆鍙敤浜庤鐩栭粯璁ょ瓥鐣ャ€?
+## 鎵嬪姩楠岃瘉
 
-## 手动验证
-
-查看以下文档：
-
+鏌ョ湅浠ヤ笅鏂囨。锛?
 - [docs/design.md](./docs/design.md)
 - [docs/local-dev.md](./docs/local-dev.md)
 - [docs/manual-testing.md](./docs/manual-testing.md)
 - [docs/implementation-log.md](./docs/implementation-log.md)
 - [playground/README.md](./playground/README.md)
+

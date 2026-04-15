@@ -1,4 +1,4 @@
-"""批内候选聚类：基于 normalized_name + embedding 相似度的批内去重聚类。"""
+﻿"""批内候选聚类：基于 normalized_name + embedding 相似度的批内去重聚类。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import re
 
 import structlog
 
-from app.workflows.digest.kg.services.candidate_identity import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import (
     bucket_scope,
     candidate_lookup_keys,
     token_bucket,
 )
-from app.workflows.digest.kg.services.extractor import CandidateNode
+from app.workflows.digest.knowledge_graph.services.extractor import CandidateNode
 from app.shared.infra.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 
@@ -166,3 +166,4 @@ async def cluster_candidates(
         bucket_count=len(bucket_to_indices),
     )
     return clustered, candidate_lookup_to_cluster_id
+

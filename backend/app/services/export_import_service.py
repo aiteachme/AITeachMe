@@ -29,7 +29,6 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import (
     ChatMessage,
     ChatSession,
-    Curriculum,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
@@ -39,10 +38,6 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Subject,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
     UserKnowledgeState,
 )
 from app.schemas.export_import import (
@@ -88,7 +83,6 @@ class _ManifestStats(BaseModel):
     knowledge_document_count: int = 0
     knowledge_node_count: int = 0
     knowledge_edge_count: int = 0
-    teaching_unit_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0
@@ -163,44 +157,17 @@ TABLE_REGISTRY: list[_TableSpec] = [
             "target_node_id": "knowledge_node",
         },
     ),
-    _TableSpec("teaching_unit", TeachingUnit),
-    _TableSpec(
-        "taxonomy_anchor",
-        TaxonomyAnchor,
-        fk_remap={"parent_anchor_id": "taxonomy_anchor"},
-    ),
-    _TableSpec("curriculum", Curriculum),
-    _TableSpec(
-        "theme_tree_node",
-        ThemeTreeNode,
-        fk_remap={
-            "tree_version_id": "curriculum",
-            "anchor_id": "taxonomy_anchor",
-            "parent_tree_node_id": "theme_tree_node",
-        },
-    ),
-    _TableSpec(
-        "unit_dependency",
-        UnitDependency,
-        fk_remap={
-            "dag_version_id": "curriculum",
-            "source_unit_id": "teaching_unit",
-            "target_unit_id": "teaching_unit",
-        },
-    ),
     _TableSpec(
         "question_template",
         QuestionTemplate,
         fk_remap={
-            "teaching_unit_id": "teaching_unit",
-            "curriculum_version_id": "curriculum",
+            "knowledge_node_id": "knowledge_node",
         },
         optional_group="exam",
     ),
     _TableSpec(
         "exam_paper",
         ExamPaper,
-        fk_remap={"curriculum_version_id": "curriculum"},
         optional_group="exam",
     ),
     _TableSpec(
@@ -212,7 +179,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
         fk_remap={
             "exam_paper_id": "exam_paper",
             "question_template_id": "question_template",
-            "teaching_unit_id": "teaching_unit",
+            "knowledge_node_id": "knowledge_node",
         },
         optional_group="exam",
     ),
@@ -220,7 +187,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
         "user_knowledge_state",
         UserKnowledgeState,
         fk_remap={
-            "teaching_unit_id": "teaching_unit",
             "knowledge_node_id": "knowledge_node",
             "source_exam_paper_id": "exam_paper",
         },
@@ -262,7 +228,6 @@ def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug),
         knowledge_node_count=_count(session, KnowledgeNode, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
-        teaching_unit_count=_count(session, TeachingUnit, subject_slug),
         question_template_count=_count(session, QuestionTemplate, subject_slug),
         exam_paper_count=_count(session, ExamPaper, subject_slug),
         chat_session_count=_count(session, ChatSession, subject_slug),
@@ -735,7 +700,6 @@ def _build_manifest(
             knowledge_document_count=len(exported.get("knowledge_document", [])),
             knowledge_node_count=len(exported.get("knowledge_node", [])),
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
-            teaching_unit_count=len(exported.get("teaching_unit", [])),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),

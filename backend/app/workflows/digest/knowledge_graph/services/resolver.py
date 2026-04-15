@@ -1,4 +1,4 @@
-"""Node and edge resolution helpers for the digest knowledge graph."""
+﻿"""Node and edge resolution helpers for the digest knowledge graph."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.utils.kg_helpers import normalize_name
-from app.workflows.digest.kg.services.candidate_identity import build_candidate_name_key
-from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
-from app.workflows.digest.kg.services.extractor import CandidateEdge
+from app.workflows.digest.knowledge_graph.services.candidate_identity import build_candidate_name_key
+from app.workflows.digest.knowledge_graph.services.clusterer import ClusteredCandidate
+from app.workflows.digest.knowledge_graph.services.extractor import CandidateEdge
 from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_ENTITY_MATCH,
     USER_PROMPT_KG_ENTITY_MATCH,
@@ -488,3 +488,4 @@ __all__ = [
     "resolve_edge",
     "resolve_node",
 ]
+

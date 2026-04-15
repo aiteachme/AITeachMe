@@ -1,15 +1,13 @@
-import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "../api/generated/knowledge";
+﻿import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "../api/generated/knowledge";
 import type { KnowledgeOverviewRequest, KnowledgeOverviewResponse } from "../api/generated/model";
 import { unwrapOrvalResponse } from "./unwrapOrvalResponse";
 
 export type KnowledgeOverviewSection = NonNullable<KnowledgeOverviewRequest["include"]>[number];
 
 export const OVERVIEW_INCLUDE_PRESETS = {
-  wordCloud: ["graph"],
-  themeTree: ["theme_tree"],
-  prereqDag: ["prereq_dag", "units"],
-  knowledgeGraph: ["graph"],
-  profileMappings: ["graph", "units"],
+  wordCloud: ["graph", "stats"],
+  knowledgeGraph: ["graph", "stats"],
+  profileMappings: ["graph", "stats"],
 } as const satisfies Record<string, readonly KnowledgeOverviewSection[]>;
 
 export function buildKnowledgeOverviewQueryKey(
@@ -27,16 +25,25 @@ export async function fetchKnowledgeOverview(
     full: false,
     include: [...include],
   });
+
   return (
     unwrapOrvalResponse<KnowledgeOverviewResponse>(raw) ?? {
       subject: subjectId,
       generated_at: new Date().toISOString(),
-      snapshot: null,
-      theme_tree: null,
-      prereq_dag: null,
       graph: null,
-      units: [],
-      stats: undefined,
+      stats: {
+        node_count: 0,
+        edge_count: 0,
+      },
+      vector_status: {
+        mode: "enabled",
+        notice: null,
+        embedding_model: null,
+        vector_table: null,
+      },
+      planner_session_id: null,
+      confirmed_plan_id: null,
+      digest_mode: null,
     }
   );
 }

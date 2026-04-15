@@ -1,4 +1,4 @@
-"""导入导出 API 请求/响应 Schema。"""
+﻿"""Import/export request and response schemas."""
 
 from __future__ import annotations
 
@@ -7,31 +7,25 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-# ---------------------------------------------------------------------------
-# Export
-# ---------------------------------------------------------------------------
-
-
 class ExportOptions(BaseModel):
-    """导出选项（请求体）。"""
+    """Export options payload."""
 
-    include_raw_files: bool = Field(default=True, description="是否包含原始上传文件（PDF/DOCX 等）。关闭后可大幅减小体积。")
-    include_raw_markdowns: bool = Field(default=True, description="是否包含解析后的原始 Markdown。")
-    include_knowledge_docs: bool = Field(default=True, description="是否包含构建后的知识文档（chapter_*.md 等）。")
-    include_chat_history: bool = Field(default=True, description="是否包含对话记录。")
-    include_exam_history: bool = Field(default=True, description="是否包含题库与考试记录。")
-    include_profile: bool = Field(default=True, description="是否包含学习画像。")
+    include_raw_files: bool = Field(default=True, description="Include original uploaded files such as PDF/DOCX.")
+    include_raw_markdowns: bool = Field(default=True, description="Include parsed raw markdown files.")
+    include_knowledge_docs: bool = Field(default=True, description="Include generated knowledge docs.")
+    include_chat_history: bool = Field(default=True, description="Include chat history.")
+    include_exam_history: bool = Field(default=True, description="Include question templates and exam history.")
+    include_profile: bool = Field(default=True, description="Include user knowledge profile states.")
 
 
 class ExportPreviewStats(BaseModel):
-    """导出预览统计。"""
+    """Export preview counters."""
 
     raw_file_count: int = 0
     total_raw_file_size_bytes: int = 0
     knowledge_document_count: int = 0
     knowledge_node_count: int = 0
     knowledge_edge_count: int = 0
-    teaching_unit_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0
@@ -39,7 +33,7 @@ class ExportPreviewStats(BaseModel):
 
 
 class ExportPreviewData(BaseModel):
-    """导出预览响应。"""
+    """Export preview payload."""
 
     subject_id: str
     subject_name: str
@@ -47,36 +41,26 @@ class ExportPreviewData(BaseModel):
     estimated_size_bytes: int = 0
 
 
-# ---------------------------------------------------------------------------
-# Import
-# ---------------------------------------------------------------------------
-
-
 class ImportOptions(BaseModel):
-    """导入选项（请求体）。"""
+    """Import options payload."""
 
-    new_subject_name: str | None = Field(default=None, description="自定义导入学科名。")
+    new_subject_name: str | None = Field(default=None, description="Optional custom subject name after import.")
 
 
 class ImportResultData(BaseModel):
-    """导入结果响应。"""
+    """Import result payload."""
 
-    subject_id: str = Field(description="导入后的学科外部标识。")
-    subject_name: str = Field(description="导入后的学科名称。")
+    subject_id: str = Field(description="Imported subject external id.")
+    subject_name: str = Field(description="Imported subject name.")
     imported_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Course packages (shared folder)
-# ---------------------------------------------------------------------------
-
-
 class CoursePackageItem(BaseModel):
-    """共享课程目录中的一个 `.atmx` 文件。"""
+    """One `.atmx` package listed from shared courses folder."""
 
-    filename: str = Field(description="文件名。")
-    subject_name: str = Field(description="学科名称（从 manifest 读取）。")
+    filename: str = Field(description="Package filename.")
+    subject_name: str = Field(description="Subject name from manifest.")
     file_size_bytes: int = Field(default=0)
     exported_at: datetime | None = Field(default=None)
     stats: dict[str, int] = Field(default_factory=dict)

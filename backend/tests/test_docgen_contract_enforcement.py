@@ -13,7 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
-from app.workflows.digest.docgen.publish import build_merged_markdown, publish_staged_knowledge_docs
+from app.workflows.digest.docgen.outputs import build_merged_markdown, publish_staged_knowledge_docs
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile

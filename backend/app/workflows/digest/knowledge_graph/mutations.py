@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
+from app.workflows.digest.knowledge_graph.services.clusterer import ClusteredCandidate
 from app.models.knowledge import DocumentChunk
 from app.models.knowledge_graph import (
     EvidenceLink,
@@ -215,3 +215,4 @@ __all__ = [
     "create_node_evidence",
     "create_updated_revision",
 ]
+
