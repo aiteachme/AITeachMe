@@ -5,6 +5,14 @@ from __future__ import annotations
 from app.shared.infra.tools.teaching_registry import teaching_function
 
 
+def _coerce_problem_count(value: object, *, default: int = 3, minimum: int = 1, maximum: int = 5) -> int:
+    try:
+        parsed = int(value or default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
 @teaching_function(
     "solve_step_by_step",
     "按教学化步骤拆解一道题，输出思路、关键判断与自检提醒。",
@@ -33,7 +41,7 @@ async def solve_step_by_step(problem: str, subject: str = "通用学科") -> str
 )
 async def generate_similar_problems(problem: str, count: int = 3) -> str:
     cleaned_problem = " ".join(str(problem or "").split()).strip() or "请补充原题"
-    total = max(1, min(int(count or 3), 5))
+    total = _coerce_problem_count(count)
     lines = [f"原题：{cleaned_problem}", "", "建议生成这些同类练习：", ""]
     for index in range(1, total + 1):
         lines.append(f"{index}. 保持核心方法不变，但替换条件、数字或问法，观察解题入口是否仍然成立。")

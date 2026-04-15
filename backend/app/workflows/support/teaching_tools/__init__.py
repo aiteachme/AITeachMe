@@ -1,6 +1,7 @@
 """Canonical teaching-tool package."""
 
-from app.workflows.support.teaching_tools import commands as _commands
+# Import commands for registration side effects.
+from app.workflows.support.teaching_tools import commands as _commands  # noqa: F401
 from app.workflows.support.teaching_tools.commands import (
     compare_concepts,
     explain_formula,
@@ -14,7 +15,6 @@ from app.workflows.support.teaching_tools.queries import (
 )
 
 __all__ = [
-    "_commands",
     "compare_concepts",
     "explain_formula",
     "generate_similar_problems",

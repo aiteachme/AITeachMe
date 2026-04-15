@@ -26,3 +26,11 @@ def test_run_teaching_function_executes_registered_teaching_tool() -> None:
     assert "??" in result
     assert "维度" in result
     assert "核心定义" in result
+
+
+def test_generate_similar_problems_tolerates_non_numeric_count() -> None:
+    result = asyncio.run(run_teaching_function("generate_similar_problems", problem="例题", count="many"))
+
+    assert "原题：例题" in result
+    assert "1." in result
+    assert "3." in result
