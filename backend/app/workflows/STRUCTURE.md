@@ -19,7 +19,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `api/` 只接 HTTP、依赖注入、请求响应转换、SSE Response 包装
 - `workflows/` 负责业务用例、图编排、模块级协调
 - `shared.infra/` 只负责基础设施
-- `app/services` 只保留迁移期兼容，不再作为新增代码的正式落点
+- `app/services` 源层已移除，不再作为代码落点或兼容入口
 - `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、`support/teaching_tools` 与 `shared.infra.tools`
 
 ## 2. 顶层分区
@@ -261,6 +261,7 @@ interact/
 examine/
   __init__.py
   README.md
+  application/
   question_build/
   exam_grade/
   _shared/                 # 未来确有复用时再建立
@@ -282,6 +283,7 @@ profile/
   support/
     __init__.py
     README.md
+    auth/
     export_import/
     files/
     system/
@@ -292,14 +294,14 @@ profile/
 说明：
 
 - `support/` 是新正式分区
-- 当前已落地 `export_import/`、`files/`、`system/`、`subjects/` 与 `teaching_tools/` 作为 support 模块模板示例
+- 当前已落地 `auth/`、`export_import/`、`files/`、`system/`、`subjects/` 与 `teaching_tools/` 作为 support 模块模板示例
 
 ## 9. 当前最重要的兼容规则
 
 - `workflows` 业务链路与 application 新代码不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 新代码不再直接 import `app.teaching.*`
 - `digest/_shared/runtime_config.py` 与 `digest/_shared/pedagogy/` 是真实实现落点，不再委托 `app.teaching`
-- 旧 `services/` 只保迁移期 shim；已迁移且确认无调用的小 service 直接删除，不再补旧路径 shim
+- 旧 `services/` 源层已删除，不再补旧路径 shim
 - `teaching/` 源层已删除，任何新代码不得恢复该目录或导入面
 - 如果新业务代码仍然跨回旧层，视为结构违规
 

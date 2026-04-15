@@ -508,8 +508,15 @@ class BuildPlannerSessionResponse(BaseModel):
     revision: int
     latest_plan: BuildPlannerPlanResponse
     turns: list[BuildPlannerTurnResponse] = Field(default_factory=list)
+    runtime_stats: BuildPlannerRuntimeStatsResponse | None = None
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def plan(self) -> BuildPlannerPlanResponse:
+        """Backward-compatible alias for older callers."""
+
+        return self.latest_plan
 
 
 class BuildPlannerConfirmResponse(BaseModel):
@@ -532,3 +539,15 @@ class BuildPlannerConfirmResponse(BaseModel):
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def session_id(self) -> str:
+        """Backward-compatible alias for older callers."""
+
+        return self.planner_session_id
+
+    @property
+    def plan_id(self) -> str:
+        """Backward-compatible alias for older callers."""
+
+        return self.confirmed_plan_id

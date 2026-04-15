@@ -19,8 +19,8 @@ from app.schemas.knowledge import (
     KnowledgeNodeDetailResponse,
     KnowledgeNodeResponse,
 )
-from app.services.knowledge_graph.build import KnowledgeGraphBuildService
-from app.services.knowledge_graph.query import KnowledgeGraphQueryService
+from app.workflows.digest.application.knowledge_graph.build import KnowledgeGraphBuildService
+from app.workflows.digest.application.knowledge_graph.query import KnowledgeGraphQueryService
 
 
 class KnowledgeGraphModule:
@@ -134,4 +134,3 @@ class KnowledgeGraphModule:
 
 
 __all__ = ["KnowledgeGraphModule"]
-

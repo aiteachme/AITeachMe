@@ -124,4 +124,3 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
-

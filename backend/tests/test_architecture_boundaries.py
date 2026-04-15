@@ -3,17 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_DELETED_LAYER_MODULES = ("app.teaching",)
-_MIGRATED_SERVICE_MODULES = (
-    "app.services.chats_service",
-    "app.services.export_import_service",
-    "app.services.file_service",
-    "app.services.profile_service",
-    "app.services.subject_deletion_service",
-    "app.services.subject_embedding_service",
-    "app.services.subject_service",
-    "app.services.system_service",
-)
+_DELETED_LAYER_MODULES = ("app.teaching", "app.services")
 
 
 def _iter_import_modules(path: Path) -> list[str]:
@@ -59,23 +49,15 @@ def test_deleted_layers_and_migrated_services_are_not_imported() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     removed_paths = [
         backend_root / "app" / "teaching",
-        backend_root / "app" / "services" / "chats_service.py",
-        backend_root / "app" / "services" / "export_import_service.py",
-        backend_root / "app" / "services" / "file_service.py",
-        backend_root / "app" / "services" / "profile_service.py",
-        backend_root / "app" / "services" / "subject_deletion_service.py",
-        backend_root / "app" / "services" / "subject_embedding_service.py",
-        backend_root / "app" / "services" / "subject_service.py",
-        backend_root / "app" / "services" / "system_service.py",
+        backend_root / "app" / "services",
     ]
     assert [str(path.relative_to(backend_root)) for path in removed_paths if path.exists()] == []
 
-    retired_modules = (*_DELETED_LAYER_MODULES, *_MIGRATED_SERVICE_MODULES)
     violations: list[str] = []
     for root in (backend_root / "app", backend_root / "tests"):
         for path in root.rglob("*.py"):
             for module in _iter_import_modules(path):
-                if any(module == retired or module.startswith(f"{retired}.") for retired in retired_modules):
+                if any(module == retired or module.startswith(f"{retired}.") for retired in _DELETED_LAYER_MODULES):
                     violations.append(f"{path.relative_to(backend_root)} -> {module}")
 
     assert violations == [], "发现已删除/已迁移旧入口 import:\n" + "\n".join(violations)
@@ -83,7 +65,7 @@ def test_deleted_layers_and_migrated_services_are_not_imported() -> None:
 
 def test_build_planner_service_uses_planner_package_public_entry() -> None:
     backend_root = Path(__file__).resolve().parents[1]
-    target = backend_root / "app" / "services" / "knowledge_docs" / "build_planner_service.py"
+    target = backend_root / "app" / "workflows" / "digest" / "application" / "knowledge_docs" / "build_planner_service.py"
     imports = set(_iter_import_modules(target))
 
     forbidden = {

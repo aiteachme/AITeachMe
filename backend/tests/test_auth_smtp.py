@@ -5,7 +5,7 @@ import socket
 import pytest
 
 from app.shared.infra.exceptions import AITeachMeError
-from app.services.auth_service import (
+from app.workflows.support.auth.commands import (
     _normalize_smtp_address_family,
     _resolve_smtp_target_addresses,
 )

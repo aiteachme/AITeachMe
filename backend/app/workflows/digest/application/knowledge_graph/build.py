@@ -30,7 +30,7 @@ class KnowledgeGraphBuildService:
         confirmed_plan_id: str | None,
         build_type: str = "all",
     ) -> tuple[DocGenBuildData, list[int]]:
-        from app.services.knowledge_docs.digest_service import trigger_docgen_build
+        from app.workflows.digest.application.knowledge_docs.digest_service import trigger_docgen_build
 
         return trigger_docgen_build(
             self._session,
@@ -44,7 +44,7 @@ class KnowledgeGraphBuildService:
         )
 
     def get_build_result(self, *, subject: str) -> DocGenGetResponse:
-        from app.services.knowledge_docs.digest_service import get_docgen_result
+        from app.workflows.digest.application.knowledge_docs.digest_service import get_docgen_result
 
         return get_docgen_result(self._session, subject=subject)
 
@@ -56,7 +56,7 @@ class KnowledgeGraphBuildService:
         prompt: str | None,
         requested_at: datetime,
     ) -> None:
-        from app.services.knowledge_graph.digest_service import run_graph_build_background
+        from app.workflows.digest.application.knowledge_graph.digest_service import run_graph_build_background
 
         await run_graph_build_background(
             subject=subject,
@@ -71,7 +71,7 @@ class KnowledgeGraphBuildService:
         subject: str,
         file_ids: list[int],
     ) -> None:
-        from app.services.knowledge_graph.digest_service import run_graph_digest_background
+        from app.workflows.digest.application.knowledge_graph.digest_service import run_graph_digest_background
 
         await run_graph_digest_background(subject=subject, file_ids=file_ids)
 
@@ -86,7 +86,7 @@ class KnowledgeGraphBuildService:
         confirmed_plan_id: str | None = None,
         user_id: str | None = None,
     ) -> None:
-        from app.services.knowledge_docs.digest_service import run_unified_build_background
+        from app.workflows.digest.application.knowledge_docs.digest_service import run_unified_build_background
 
         await run_unified_build_background(
             subject=subject,

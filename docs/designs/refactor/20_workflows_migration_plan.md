@@ -7,7 +7,7 @@
 ## 1. 迁移目标
 
 - 让 `workflows` 成为唯一业务层
-- 让 `services` 进入兼容退场期，并完成 `teaching` 源层退场
+- 完成 `services` 与 `teaching` 源层退场
 - 先用 Digest 打样，再复制到其他引擎与 support 模块
 
 ## 2. 分阶段计划
@@ -60,10 +60,9 @@
 
 ### Phase 5: 兼容层收缩
 
-- 大链路 `services/` 先保留薄 shim，逐步标记 deprecated
-- 已迁移且确认无旧 import 的小 service 直接删除，不再补旧路径 shim
+- `services/` 源层已删除，不再保留 shim
 - `teaching/` 源层已删除，不再保留 facade
-- 最后清理历史兼容目录和导入面
+- 后续禁止为兼容重新创建 `app.services` 或 `app.teaching`
 
 ## 3. 首批优先级
 
@@ -84,14 +83,14 @@
 
 | 当前模块 | 迁移方向 | 备注 |
 | --- | --- | --- |
-| `services/knowledge_docs/*` | `workflows/digest/application/*` | 首批主线 |
-| `services/knowledge_graph/*` | `workflows/digest/application/*` / `digest/knowledge_graph/*` | 与 Digest 一起迁 |
+| `services/knowledge_docs/*` | `workflows/digest/application/knowledge_docs/*` | 已迁入 Digest application |
+| `services/knowledge_graph/*` | `workflows/digest/application/knowledge_graph/*` | 已迁入 Digest application |
 | `services/chats_service.py` | `workflows/interact/application/chats.py` | 已迁入 interact application，SSE 口径不变 |
-| `services/exams_service/*` | `workflows/examine/application/*` | 保持组卷/判卷入口不变 |
+| `services/exams_service/*` | `workflows/examine/application/*` | 已迁入 examine application |
 | `services/profile_service.py` | `workflows/profile/application/mastery.py` | 已迁入 profile application |
 | `services/file_service.py` | `workflows/support/files` | 已迁入 support 模块 |
 | `services/subject_service.py` / `subject_deletion_service.py` | `workflows/support/subjects` | 已迁入 support 模块 |
-| `services/auth_service.py` | `workflows/support/auth` | support 模块 |
+| `services/auth_service.py` | `workflows/support/auth` | 已迁入 support 模块 |
 | `services/system_service.py` | `workflows/support/system` | 已迁入 support 模块 |
 | `services/export_import_service.py` | `workflows/support/export_import` | 已迁入 support 模块 |
 | `services/subject_embedding_service.py` | `shared.infra.subject.build_precheck` | 已迁入 infra subject |
@@ -106,12 +105,11 @@
 
 风险：
 
-- API、测试、脚本仍引用旧 `services` / `teaching`
+- API、测试、脚本重新引用旧 `services` / `teaching`
 
 对策：
 
-- 大链路先保 shim；已确认无旧调用的小模块可直接删除旧入口
-- 新位置稳定后再改上层调用
+- 不保 shim；发现旧导入就直接改到 canonical 新入口
 - 每迁完一块，再做一次 import 扫描
 
 ### 5.2 模块级巨石反弹
@@ -151,7 +149,8 @@
 - `workflows` 业务链路与 application 不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 不再直接 import `app.teaching.*`
 - `backend/app/teaching` 不存在，且不再通过 shim 恢复
-- 已迁移的 `chats_service / export_import_service / file_service / profile_service / subject_service / subject_deletion_service / subject_embedding_service / system_service` 不再出现旧路径 import
+- `backend/app/services` 不存在，且不再通过 shim 恢复
+- 已迁移的 `auth_service / chats_service / exams_service / export_import_service / file_service / profile_service / subject_service / subject_deletion_service / subject_embedding_service / system_service` 不再出现旧路径 import
 - 新规范里明确允许 `application/`
 - support 模块与 engine 模块边界清晰
 

@@ -24,4 +24,3 @@ def manage_taxonomy_anchors(
 ) -> list[TaxonomyAnchorResponse]:
     del session, subject, action, anchor_id, title, anchor_type, parent_anchor_id, order_index
     return []
-

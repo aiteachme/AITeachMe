@@ -5,7 +5,7 @@ from starlette.requests import Request
 
 from app.api.deps import get_current_user_context
 from app.repositories.user_repo import attach_device_key, create_user, get_user_by_id
-from app.services.auth_service import (
+from app.workflows.support.auth import (
     build_logout_guest_user,
     create_guest_user,
     issue_guest_token,

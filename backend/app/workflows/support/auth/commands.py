@@ -1,4 +1,4 @@
-"""Authentication service: device-aware guest and email/password login."""
+"""Authentication support commands: device-aware guest and email/password login."""
 
 from __future__ import annotations
 

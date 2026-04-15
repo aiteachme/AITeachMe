@@ -119,4 +119,3 @@ __all__ = [
     "build_study_plan",
     "handle_study_plan_request",
 ]
-

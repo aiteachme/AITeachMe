@@ -9,7 +9,7 @@ from app.schemas.knowledge import (
     KnowledgeOverviewResponse,
     KnowledgeOverviewStats,
 )
-from app.services.knowledge_graph.module import KnowledgeGraphModule
+from app.workflows.digest.application.knowledge_graph.module import KnowledgeGraphModule
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
 

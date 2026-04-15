@@ -19,7 +19,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
   - 与 `shared.infra` 的能力组合
 - `shared.infra` 继续只承接基础设施。
 - `repositories` 继续只承接持久化读写封装。
-- `app/services` 整体退出主架构，只保留迁移期 shim。
+- `app/services` 源层已退出并删除，不再保留迁移期 shim。
 - `app/teaching` 源层已退出并删除，教学语义拆入 workflows/support 与 shared.infra。
 
 ## 2. 为什么要收缩 `services`
@@ -68,7 +68,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `repositories/` | 数据读写封装 | 业务流程判断 |
 | `shared/infra/` | LLM、storage、search、tools、workflow support 等基础设施 | 业务用例 |
 | `models/` / `schemas/` | 持久化模型与边界数据结构 | 业务编排 |
-| `services/` | 迁移期兼容 | 正式新增业务逻辑 |
+| `services/` | 已移除 | 不再恢复为正式层或兼容层 |
 | `teaching/` | 已移除 | 不再恢复为正式层或兼容层 |
 
 ## 5. 旧层到新层的总映射
@@ -103,18 +103,22 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - 新增 `app.workflows.digest._shared.pedagogy`
 - 删除旧 `backend/app/teaching` 源层
 - `app.services.system_service` 已迁入 `app.workflows.support.system`
+- `app.services.auth_service` 已迁入 `app.workflows.support.auth`
 - `app.services.file_service` 已迁入 `app.workflows.support.files`
 - `app.services.profile_service` 已迁入 `app.workflows.profile.application.mastery`
 - `app.services.subject_service` 与 `subject_deletion_service` 已迁入 `app.workflows.support.subjects`
 - `app.services.chats_service` 已迁入 `app.workflows.interact.application.chats`
 - `app.services.export_import_service` 已迁入 `app.workflows.support.export_import`
+- `app.services.exams_service.*` 已迁入 `app.workflows.examine.application`
 - `app.services.subject_embedding_service` 已迁入 `app.shared.infra.subject.build_precheck`
-- Digest / Interact workflow 已消除对 `app.services` 的直接 import
+- `app.services.knowledge_docs.*` 与 `app.services.knowledge_graph.*` 已迁入 `app.workflows.digest.application.*`
+- 删除旧 `backend/app/services` 源层
+- 所有 workflow 与 API 代码已消除对 `app.services` 的直接 import
 - Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `_shared` 真实实现
 
 注意：
 
-- `services/` 仍然存在，目的是保迁移兼容，不是继续扩大
+- `services/` 不再作为源代码目录存在；不要为兼容重新创建该层
 - `teaching/` 不再作为源代码目录存在；不要为兼容重新创建该层
 
 ## 7. 一句话总结
@@ -124,4 +128,4 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `api` 只接请求
 - `workflows` 只管业务
 - `shared.infra` 只管能力
-- `services` 进入兼容退场期，`teaching` 已完成源层退场
+- `services` 和 `teaching` 均已完成源层退场

@@ -8,8 +8,7 @@ from app.workflows.support.teaching_tools.commands import (
     generate_similar_problems,
     solve_step_by_step,
 )
-from app.workflows.support.teaching_tools.queries import (
-    list_registered_teaching_tools,
+from app.shared.infra.tools.teaching_registry import (
     list_teaching_functions,
     run_teaching_function,
 )
@@ -18,7 +17,6 @@ __all__ = [
     "compare_concepts",
     "explain_formula",
     "generate_similar_problems",
-    "list_registered_teaching_tools",
     "list_teaching_functions",
     "run_teaching_function",
     "solve_step_by_step",

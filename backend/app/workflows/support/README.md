@@ -24,6 +24,8 @@ workflows/support/<module>/
 
 ## 当前已落地模块
 
+- `auth/`
+  访客身份、邮箱注册登录、token 与验证码的 canonical 代码位置，承接原 `app.services.auth_service`。
 - `export_import/`
   学科级课程包导入导出的 canonical 代码位置，承接原 `app.services.export_import_service`。
 - `files/`

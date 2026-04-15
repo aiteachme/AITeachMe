@@ -33,7 +33,7 @@ from app.workflows.interact.application import (
     list_chat_threads,
     list_chat_sessions,
 )
-from app.services.auth_service import set_guest_cookie_for_user
+from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])

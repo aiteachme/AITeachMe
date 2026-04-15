@@ -222,7 +222,7 @@ digest/
 ## 8. 兼容策略
 
 - 模块根 `__init__.py` 继续提供稳定导入面
-- 历史 `services/` 对大链路仅保留迁移期 shim；已迁移且无调用的小 service 直接删除
+- 历史 `services/` 源层已删除，不再作为兼容入口恢复
 - 历史 `teaching/` 源层已删除，不再作为兼容入口恢复
 - 历史链路兼容文件允许存在，但必须在 README 与结构规范里明确标注为 compatibility-only
 

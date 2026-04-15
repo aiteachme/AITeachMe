@@ -58,6 +58,10 @@
   Profile 面向 API 的掌握度与复习任务用例落点
 - `interact/application/`
   Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点
+- `support/auth/`
+  访客身份、邮箱注册登录、token 与验证码的 canonical 位置
+- `support/export_import/`
+  学科级课程包导入导出的 canonical 位置
 
 ## 最重要的调用入口
 
@@ -82,7 +86,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 
 这意味着：
 
-- `app/services` 不再是长期正式架构层，当前只允许迁移期 shim
+- `app/services` 源层已移除，不再作为代码落点或兼容入口
 - `app/teaching` 源层已移除
 - `workflows` 内新业务代码禁止再直接 import `app.services.*` 与 `app.teaching.*`
 - 教学语义统一从 `digest/_shared`、`support/teaching_tools` 与 `shared.infra.tools` 进入

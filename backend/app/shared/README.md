@@ -131,7 +131,7 @@ infra  = 已经接上外部系统的共享能力
 
 不建议：
 
-- `services` 直接 import 某个 workflow 的内部私有模块
+- 重新创建 `app.services` 或从旧 service 路径导入
 - `workflows` 自己再复制一套 LLM、trace / track、Tool Registry
 
 ## 8. 新成员阅读顺序

@@ -198,6 +198,36 @@ def _log_planner_runtime(
     )
 
 
+def _session_response(
+    record: BuildPlannerSession,
+    *,
+    subject: str,
+    selected_file_uids: list[str],
+    plan: dict[str, Any],
+    turns: list[BuildPlannerTurn],
+    runtime_stats: BuildPlannerRuntimeStatsResponse | None,
+) -> BuildPlannerSessionResponse:
+    return BuildPlannerSessionResponse(
+        session_id=record.id,
+        subject=subject,
+        title=record.title,
+        status=record.status,
+        revision=len(turns),
+        latest_plan=_plan_response(
+            subject=subject,
+            selected_file_uids=selected_file_uids,
+            session_id=record.id,
+            confirmed_plan_id=record.confirmed_plan_id,
+            status=record.status,
+            plan=plan,
+        ),
+        turns=[_turn_response(turn) for turn in turns],
+        runtime_stats=runtime_stats,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
 def _normalize_persisted_plan(
     plan: dict[str, Any] | None,
     *,
@@ -311,19 +341,12 @@ async def create_build_planner_session_service(
             plan_json=plan,
         ),
     )
-    response = BuildPlannerSessionResponse(
-        session_id=record.id,
-        title=record.title,
-        status=record.status,
-        plan=_plan_response(
-            subject=subject.slug,
-            selected_file_uids=file_uids,
-            session_id=record.id,
-            confirmed_plan_id=record.confirmed_plan_id,
-            status=record.status,
-            plan=plan,
-        ),
-        turns=[_turn_response(user_turn), _turn_response(assistant_turn)],
+    response = _session_response(
+        record,
+        subject=subject.slug,
+        selected_file_uids=file_uids,
+        plan=plan,
+        turns=[user_turn, assistant_turn],
         runtime_stats=runtime_stats,
     )
     _log_planner_runtime(subject=subject.slug, session_id=record.id, runtime_stats=runtime_stats)
@@ -417,19 +440,12 @@ async def append_build_planner_message_service(
         for turn in list_planner_turns(session, session_id=session_id)
     ]
     file_uids = _file_uids_from_ids(session, subject=subject.slug, file_ids=list(record.selected_file_ids_json))
-    response = BuildPlannerSessionResponse(
-        session_id=record.id,
-        title=record.title,
-        status=record.status,
-        plan=_plan_response(
-            subject=subject.slug,
-            selected_file_uids=file_uids,
-            session_id=record.id,
-            confirmed_plan_id=record.confirmed_plan_id,
-            status=record.status,
-            plan=plan,
-        ),
-        turns=response_turns,
+    response = _session_response(
+        record,
+        subject=subject.slug,
+        selected_file_uids=file_uids,
+        plan=plan,
+        turns=list_planner_turns(session, session_id=session_id),
         runtime_stats=runtime_stats,
     )
     _log_planner_runtime(subject=subject.slug, session_id=record.id, runtime_stats=runtime_stats)
@@ -489,16 +505,25 @@ def confirm_build_planner_session_service(
     record = update_planner_session(session, record)
     file_uids = _file_uids_from_ids(session, subject=subject.slug, file_ids=list(record.selected_file_ids_json))
     return BuildPlannerConfirmResponse(
-        session_id=record.id,
-        plan_id=confirmed.id,
-        plan=_plan_response(
-            subject=subject.slug,
-            selected_file_uids=file_uids,
-            session_id=record.id,
-            confirmed_plan_id=confirmed.id,
-            status=record.status,
-            plan=plan_payload,
-        ),
+        planner_session_id=record.id,
+        confirmed_plan_id=confirmed.id,
+        subject=subject.slug,
+        status=record.status,
+        digest_mode=confirmed.digest_mode,
+        tone=confirmed.tone,
+        selected_file_uids=file_uids,
+        selected_file_ids=list(confirmed.selected_file_ids_json),
+        user_goal=confirmed.user_goal,
+        plan_summary=confirmed.plan_summary,
+        chapter_plan=list(plan_payload.get("chapter_plan") or []),
+        research_queries=list(plan_payload.get("research_queries") or []),
+        selected_skillpacks=list(plan_payload.get("selected_skillpacks") or []),
+        media_plan=dict(plan_payload.get("media_plan") or {}),
+        build_constraints=dict(plan_payload.get("build_constraints") or {}),
+        plan_json=plan_payload,
+        status_history=[confirmed.status, record.status],
+        created_at=confirmed.created_at,
+        updated_at=confirmed.updated_at,
     )
 
 
@@ -565,19 +590,12 @@ def get_latest_planner_session_service(
         session, subject=subject.slug, file_ids=list(record.selected_file_ids_json or [])
     )
 
-    return BuildPlannerSessionResponse(
-        session_id=record.id,
-        title=record.title,
-        status=record.status,
-        plan=_plan_response(
-            subject=subject.slug,
-            selected_file_uids=file_uids,
-            session_id=record.id,
-            confirmed_plan_id=record.confirmed_plan_id,
-            status=record.status,
-            plan=plan_payload,
-        ),
-        turns=[_turn_response(turn) for turn in turns],
+    return _session_response(
+        record,
+        subject=subject.slug,
+        selected_file_uids=file_uids,
+        plan=plan_payload,
+        turns=turns,
         runtime_stats=None,
     )
 

@@ -12,8 +12,6 @@
   负责教学工具的注册、枚举、执行与 registry 同步
 - `workflows/support/teaching_tools/commands.py`
   负责教学工具本体实现
-- `workflows/support/teaching_tools/queries.py`
-  负责查询型门面
 
 ## 为什么放在 support
 

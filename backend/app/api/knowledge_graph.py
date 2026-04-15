@@ -19,7 +19,7 @@ from app.schemas.knowledge import (
     GraphNodeDetailRequest,
     KnowledgeNodeDetailResponse,
 )
-from app.services.knowledge_graph.module import KnowledgeGraphModule
+from app.workflows.digest.application.knowledge_graph.module import KnowledgeGraphModule
 from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(tags=["knowledge"])

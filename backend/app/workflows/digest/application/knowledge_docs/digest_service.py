@@ -24,7 +24,7 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildStatusResponse,
 )
-from app.services.knowledge_docs.build_planner_service import (
+from app.workflows.digest.application.knowledge_docs.build_planner_service import (
     get_confirmed_build_plan_service,
     mark_confirmed_build_plan_status,
 )

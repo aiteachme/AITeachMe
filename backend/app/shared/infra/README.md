@@ -28,10 +28,10 @@ shared.infra -> shared.kernel
 
 ```text
 api/knowledge_docs.py
--> services/knowledge_docs/build_planner_service.py   # 迁移期入口，目标 digest/application/build_plans.py
+-> workflows/digest/application/knowledge_docs/build_planner_service.py
 -> app.workflows.digest.planner
 -> confirmed_plan
--> services/knowledge_docs/digest_service.py          # 迁移期入口，目标 digest/application/builds.py
+-> workflows/digest/application/knowledge_docs/digest_service.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 
