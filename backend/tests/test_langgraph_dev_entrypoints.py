@@ -41,7 +41,7 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
     assert {"load_context", "draft_plan"}.issubset(
         _node_ids(get_langgraph_dev_planner_graph())
     )
-    assert {"load_context", "targeted_research", "finalize_assemble"}.issubset(
+    assert {"load_context", "research_chapters", "publish_document"}.issubset(
         _node_ids(get_langgraph_dev_docgen_graph())
     )
     assert {"prepare_shared", "run_parallel_lanes", "publish_outputs"}.issubset(

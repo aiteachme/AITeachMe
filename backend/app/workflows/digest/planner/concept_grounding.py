@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any
 
 import structlog
+from langsmith import traceable
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.execution import TracedExecutionContext
@@ -220,6 +221,31 @@ async def _safe_search(
         return []
 
 
+@traceable(name="planner.grounding.query_batch", run_type="chain")
+async def _run_planner_query_batch(
+    *,
+    query: str,
+    retriever_names: list[str],
+    subject: str,
+    local_sections: list[Any],
+    max_results: int,
+    timeout_s: float,
+) -> list[list[SearchResult]]:
+    return await asyncio.gather(
+        *(
+            _safe_search(
+                retriever_name,
+                query=query,
+                subject=subject,
+                local_sections=local_sections,
+                max_results=max_results,
+                timeout_s=timeout_s,
+            )
+            for retriever_name in retriever_names
+        )
+    )
+
+
 async def _prioritize_external_results(
     *,
     subject: str,
@@ -320,18 +346,20 @@ async def collect_planner_concept_briefing(
     started_at = time.monotonic()
 
     local_started_at = perf_counter()
-    local_tasks = [
-        _safe_search(
-            "local_rag",
-            query=query,
-            subject=subject,
-            local_sections=local_sections,
-            max_results=2,
-            timeout_s=min(provider_budget, total_budget),
+    local_results_nested = await asyncio.gather(
+        *(
+            _run_planner_query_batch(
+                query=query,
+                retriever_names=["local_rag"],
+                subject=subject,
+                local_sections=local_sections,
+                max_results=2,
+                timeout_s=min(provider_budget, total_budget),
+            )
+            for query in queries
         )
-        for query in queries
-    ]
-    local_results = await asyncio.gather(*local_tasks)
+    )
+    local_results = [items[0] if items else [] for items in local_results_nested]
     logger.info(
         "planner_concept_local_retrieval_completed",
         subject=subject,
@@ -347,20 +375,21 @@ async def collect_planner_concept_briefing(
         web_started_at = perf_counter()
         for index, query in enumerate(external_queries):
             hits: list[SearchResult] = []
-            for retriever_name in external_retrievers:
-                remaining = total_budget - (time.monotonic() - started_at)
-                if remaining <= 0:
-                    logger.info("planner_concept_budget_exhausted", query=query, result_count=sum(len(x) for x in external_results))
-                    break
-                hits = await _safe_search(
-                    retriever_name,
-                    query=query,
-                    subject=subject,
-                    local_sections=local_sections,
-                    max_results=2,
-                    timeout_s=min(provider_budget, remaining),
-                )
-                if hits:
+            remaining = total_budget - (time.monotonic() - started_at)
+            if remaining <= 0:
+                logger.info("planner_concept_budget_exhausted", query=query, result_count=sum(len(x) for x in external_results))
+                break
+            provider_hits = await _run_planner_query_batch(
+                query=query,
+                retriever_names=external_retrievers,
+                subject=subject,
+                local_sections=local_sections,
+                max_results=2,
+                timeout_s=min(provider_budget, remaining),
+            )
+            for batch in provider_hits:
+                if batch:
+                    hits = batch
                     break
             external_results[index] = hits
         logger.info(

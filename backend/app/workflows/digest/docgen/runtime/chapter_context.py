@@ -9,6 +9,8 @@ from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
 
+from langsmith import traceable
+
 from app.shared.infra.config import get_settings
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support.routing import TaskType
@@ -191,63 +193,29 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 stop_reason = "query_queue_exhausted"
                 break
 
-            round_local_hits = 0
-            round_web_hits = 0
-            round_fallback_queries: list[str] = []
-            for query in round_queries:
-                executed_queries.append(query)
-                local_results = self._filter_search_results(
-                    await self._search_with_budget(
-                        local_retriever,
-                        query=query,
-                        max_results=query_limit,
-                        provider_budget_s=provider_budget_s,
-                        retrieval_started_at=retrieval_started_at,
-                        retrieval_budget_s=retrieval_budget_s,
-                    )
-                )
-                self._record_retriever_call(
-                    retriever_stats,
-                    retriever_name=local_retriever.name,
-                    query=query,
-                    results=local_results,
-                )
-                local_hits += len(local_results)
-                round_local_hits += len(local_results)
-                combined_results = list(local_results)
-
-                if len(local_results) < settings.local_rag_min_results:
-                    fallback_queries.append(query)
-                    round_fallback_queries.append(query)
-                    expanded_queries = enrich_queries_for_education([query], domain=search_domain)
-                    for retriever in other_retrievers:
-                        for expanded_query in expanded_queries:
-                            provider_results = self._filter_search_results(
-                                await self._search_with_budget(
-                                    retriever,
-                                    query=expanded_query,
-                                    max_results=query_limit,
-                                    provider_budget_s=provider_budget_s,
-                                    retrieval_started_at=retrieval_started_at,
-                                    retrieval_budget_s=retrieval_budget_s,
-                                )
-                            )
-                            self._record_retriever_call(
-                                retriever_stats,
-                                retriever_name=retriever.name,
-                                query=expanded_query,
-                                results=provider_results,
-                            )
-                            if provider_results:
-                                web_hits += len(provider_results)
-                                round_web_hits += len(provider_results)
-                                combined_results.extend(provider_results)
-                            if len(self._dedupe_results(combined_results)) >= query_limit:
-                                break
-                        if len(self._dedupe_results(combined_results)) >= query_limit:
-                            break
-
-                all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
+            round_result = await self._run_research_round(
+                round_index=round_index,
+                round_queries=round_queries,
+                search_domain=search_domain,
+                query_limit=query_limit,
+                settings=settings,
+                local_retriever=local_retriever,
+                other_retrievers=other_retrievers,
+                local_hits_total=local_hits,
+                web_hits_total=web_hits,
+                fallback_queries_total=fallback_queries,
+                executed_queries=executed_queries,
+                retriever_stats=retriever_stats,
+                all_results=all_results,
+                retrieval_started_at=retrieval_started_at,
+                retrieval_budget_s=retrieval_budget_s,
+                provider_budget_s=provider_budget_s,
+            )
+            local_hits = int(round_result["local_hits_total"])
+            web_hits = int(round_result["web_hits_total"])
+            round_local_hits = int(round_result["round_local_hits"])
+            round_web_hits = int(round_result["round_web_hits"])
+            round_fallback_queries = list(round_result["round_fallback_queries"])
 
             merged_results = self._dedupe_results(
                 self._filter_search_results(all_results),
@@ -388,6 +356,94 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 "recommended_tool_tags": recommended_tool_tags,
             },
         )
+
+    @traceable(name="docgen.chapter_context.research_round", run_type="chain")
+    async def _run_research_round(
+        self,
+        *,
+        round_index: int,
+        round_queries: list[str],
+        search_domain: str,
+        query_limit: int,
+        settings,
+        local_retriever,
+        other_retrievers: list[Any],
+        local_hits_total: int,
+        web_hits_total: int,
+        fallback_queries_total: list[str],
+        executed_queries: list[str],
+        retriever_stats: dict[str, dict[str, Any]],
+        all_results: list[SearchResult],
+        retrieval_started_at: float,
+        retrieval_budget_s: float,
+        provider_budget_s: float,
+    ) -> dict[str, Any]:
+        round_local_hits = 0
+        round_web_hits = 0
+        round_fallback_queries: list[str] = []
+
+        for query in round_queries:
+            executed_queries.append(query)
+            local_results = self._filter_search_results(
+                await self._search_with_budget(
+                    local_retriever,
+                    query=query,
+                    max_results=query_limit,
+                    provider_budget_s=provider_budget_s,
+                    retrieval_started_at=retrieval_started_at,
+                    retrieval_budget_s=retrieval_budget_s,
+                )
+            )
+            self._record_retriever_call(
+                retriever_stats,
+                retriever_name=local_retriever.name,
+                query=query,
+                results=local_results,
+            )
+            local_hits_total += len(local_results)
+            round_local_hits += len(local_results)
+            combined_results = list(local_results)
+
+            if len(local_results) < settings.local_rag_min_results:
+                fallback_queries_total.append(query)
+                round_fallback_queries.append(query)
+                expanded_queries = enrich_queries_for_education([query], domain=search_domain)
+                for retriever in other_retrievers:
+                    for expanded_query in expanded_queries:
+                        provider_results = self._filter_search_results(
+                            await self._search_with_budget(
+                                retriever,
+                                query=expanded_query,
+                                max_results=query_limit,
+                                provider_budget_s=provider_budget_s,
+                                retrieval_started_at=retrieval_started_at,
+                                retrieval_budget_s=retrieval_budget_s,
+                            )
+                        )
+                        self._record_retriever_call(
+                            retriever_stats,
+                            retriever_name=retriever.name,
+                            query=expanded_query,
+                            results=provider_results,
+                        )
+                        if provider_results:
+                            web_hits_total += len(provider_results)
+                            round_web_hits += len(provider_results)
+                            combined_results.extend(provider_results)
+                        if len(self._dedupe_results(combined_results)) >= query_limit:
+                            break
+                    if len(self._dedupe_results(combined_results)) >= query_limit:
+                        break
+
+            all_results.extend(self._dedupe_results(combined_results, max_results=query_limit))
+
+        return {
+            "local_hits_total": local_hits_total,
+            "web_hits_total": web_hits_total,
+            "round_local_hits": round_local_hits,
+            "round_web_hits": round_web_hits,
+            "round_fallback_queries": round_fallback_queries,
+        }
 
     async def _search_with_budget(
         self,
