@@ -124,6 +124,27 @@ def test_build_subject_vector_status_hides_notice_for_unbound_ready_runtime() ->
     assert status.notice is None
 
 
+def test_runtime_embedding_config_reports_missing_cloud_llamaindex_dependency() -> None:
+    from app.shared.infra.subject.vectors import get_runtime_embedding_config
+
+    def fake_get_env(name: str, default: str | None = None) -> str | None:
+        if name == "LLM_API_KEY":
+            return "test-key"
+        return default
+
+    with patch("app.shared.infra.subject.vectors.is_cloud_mode", return_value=True), patch(
+        "app.shared.infra.subject.vectors.get_env",
+        side_effect=fake_get_env,
+    ), patch(
+        "importlib.util.find_spec",
+        side_effect=ModuleNotFoundError("llama_index.vector_stores"),
+    ):
+        runtime = get_runtime_embedding_config()
+
+    assert runtime.available is False
+    assert runtime.reason == "llamaindex_postgres_unavailable"
+
+
 def test_resolve_subject_build_vector_status_disable_marks_subject_disabled() -> None:
     session = _make_session()
     subject = _seed_subject(session, subject_slug="subj_embed_disable")
@@ -167,17 +188,8 @@ def test_resolve_subject_build_vector_status_rebuild_rebinds_subject() -> None:
         "app.services.subject_embedding_service.get_runtime_embedding_config",
         return_value=runtime,
     ), patch(
-        "app.services.subject_embedding_service.get_engine",
-        return_value=object(),
-    ), patch(
-        "app.services.subject_embedding_service.reset_subject_vec_table",
-    ) as reset_mock, patch(
-        "app.services.subject_embedding_service.vector_table_exists",
-        return_value=True,
-    ), patch(
-        "app.services.subject_embedding_service.get_vector_table_dim",
-        return_value=1024,
-    ):
+        "app.shared.infra.search.llamaindex_index.clear_subject_index",
+    ) as clear_mock:
         status = resolve_subject_build_vector_status(
             session,
             subject=subject,
@@ -189,6 +201,7 @@ def test_resolve_subject_build_vector_status_rebuild_rebinds_subject() -> None:
     assert binding.mode.value == "enabled"
     assert binding.embedding_model == "text-embedding-v4"
     assert binding.embedding_dim == 1024
+    assert binding.vector_table == "llamaindex://local/subj_embed_rebuild/rag_index"
     assert status.mode == "enabled"
     assert status.embedding_model == "text-embedding-v4"
-    reset_mock.assert_called_once()
+    clear_mock.assert_called_once_with(subject.slug)

@@ -9,9 +9,8 @@ from __future__ import annotations
 import structlog
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
-from app.services.subject_embedding_service import get_subject_vector_search_notice
-from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
+from app.shared.infra.search import search_knowledge
+from app.shared.infra.subject import get_subject_vector_search_notice
 from app.workflows.interact.support.types import RetrievedContext
 
 logger = structlog.get_logger(__name__)
@@ -27,8 +26,7 @@ async def retrieve_context(
 ) -> list[RetrievedContext]:
     """Retrieve prompt-ready context chunks for one chat question.
 
-    This function uses the LlamaIndex-based retriever which internally
-    bridges to the same sqlite-vec / pgvector storage.
+    This function uses the LlamaIndex-managed subject index.
     """
 
     normalized_query = query.strip()
@@ -45,26 +43,22 @@ async def retrieve_context(
         )
         return []
 
-    retriever = build_knowledge_retriever(subject=subject, top_k=top_k)
-    nodes = await retriever.aretrieve(normalized_query)
+    chunks = await search_knowledge(normalized_query, subject, top_k=top_k)
 
     results: list[RetrievedContext] = []
-    for node_with_score in nodes:
-        node = node_with_score.node
-        score = node_with_score.score or 0.0
-        metadata = node.metadata or {}
-
+    for chunk in chunks:
+        score = float(chunk.score)
         # Filter by strict minimum threshold
         if score < similarity_threshold:
             continue
 
         results.append(
             RetrievedContext(
-                chunk_id=int(metadata.get("chunk_id", 0)),
-                document_id=int(metadata.get("document_id", 0)),
-                title=str(metadata.get("title", "")),
-                header_path=str(metadata.get("header_path", "")),
-                content=node.get_content(),
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                title=chunk.title,
+                header_path=chunk.header_path,
+                content=chunk.content,
                 score=score,
                 low_relevance=score < similarity_threshold * 1.5,
             )
@@ -74,7 +68,7 @@ async def retrieve_context(
         "interact_retrieval_done",
         subject=subject,
         query_len=len(normalized_query),
-        node_count=len(nodes),
+        node_count=len(chunks),
         result_count=len(results),
     )
     return results

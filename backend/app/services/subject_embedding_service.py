@@ -13,9 +13,7 @@ from app.schemas.knowledge import (
     SubjectVectorStatusResponse,
 )
 from app.shared.infra.database import (
-    get_engine,
     get_vector_table_dim,
-    reset_subject_vec_table,
     vector_table_exists,
 )
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
@@ -44,6 +42,11 @@ logger = structlog.get_logger()
 
 _USER_DISABLED_REASON = "user_selected_disable_after_precheck"
 _PRECHECK_DETAIL_MAP = SUBJECT_VECTOR_PRECHECK_DETAIL_MAP
+_LLAMAINDEX_REF_PREFIX = "llamaindex://"
+
+
+def _is_llamaindex_index_ref(value: str | None) -> bool:
+    return bool(value and value.startswith(_LLAMAINDEX_REF_PREFIX))
 
 
 def _count_rows_for_chunk_ids(
@@ -181,27 +184,28 @@ def inspect_subject_build_precheck(
             requires_full_rebuild=True,
         )
 
-    connection = session.connection()
-    if not vector_table_exists(connection, binding.vector_table):
-        return _build_precheck_conflict(
-            reason="vector_table_missing",
-            binding=binding,
-            runtime=runtime,
-            requires_full_rebuild=True,
-        )
+    if not _is_llamaindex_index_ref(binding.vector_table):
+        connection = session.connection()
+        if not vector_table_exists(connection, binding.vector_table):
+            return _build_precheck_conflict(
+                reason="vector_table_missing",
+                binding=binding,
+                runtime=runtime,
+                requires_full_rebuild=True,
+            )
 
-    table_dim = get_vector_table_dim(connection, binding.vector_table)
-    if (
-        table_dim is not None
-        and binding.embedding_dim is not None
-        and table_dim != binding.embedding_dim
-    ):
-        return _build_precheck_conflict(
-            reason="vector_table_dimension_mismatch",
-            binding=binding,
-            runtime=runtime,
-            requires_full_rebuild=True,
-        )
+        table_dim = get_vector_table_dim(connection, binding.vector_table)
+        if (
+            table_dim is not None
+            and binding.embedding_dim is not None
+            and table_dim != binding.embedding_dim
+        ):
+            return _build_precheck_conflict(
+                reason="vector_table_dimension_mismatch",
+                binding=binding,
+                runtime=runtime,
+                requires_full_rebuild=True,
+            )
 
     return None
 
@@ -293,11 +297,9 @@ def resolve_subject_build_vector_status(
         ),
     )
     save_subject(session, subject)
-    reset_subject_vec_table(
-        get_engine(),
-        subject=subject.slug,
-        embedding_dim=runtime.embedding_dim,
-    )
+    from app.shared.infra.search.llamaindex_index import clear_subject_index
+
+    clear_subject_index(subject.slug)
     status = get_subject_vector_status(session, subject)
 
     if auto_rebuild_reason is not None:
