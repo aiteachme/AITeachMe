@@ -12,7 +12,7 @@ from app.workflows.digest.docgen.nodes.common import (
     publish_docgen_progress,
     resolve_docgen_dependency,
 )
-from app.workflows.digest.docgen.publish import build_merged_markdown
+from app.workflows.digest.docgen.internal.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -35,8 +35,8 @@ def _dedupe_drafts_by_chapter(drafts: list[dict]) -> list[dict]:
     return [best_by_index[index] for index in sorted(best_by_index)]
 
 
-def build_collect_drafts_node(*, context: WorkflowContext):
-    async def collect_drafts_node(state: DocGenState) -> dict:
+def build_merge_drafts_node(*, context: WorkflowContext):
+    async def merge_drafts_node(state: DocGenState) -> dict:
         drafts = _dedupe_drafts_by_chapter(
             sorted(
                 list(state.get("chapter_drafts", [])),
@@ -119,7 +119,7 @@ def build_collect_drafts_node(*, context: WorkflowContext):
                 "word_count": sum(int(item.get("word_count", 0) or 0) for item in chapter_metadatas),
             },
         )
-        context.get_logger().bind(node="collect_drafts").info(
+        context.get_logger().bind(node="merge_drafts").info(
             "docgen_draft_collection_completed",
             chapter_count=len(chapter_metadatas),
         )
@@ -129,9 +129,6 @@ def build_collect_drafts_node(*, context: WorkflowContext):
             "enriched_markdown": merged_markdown,
         }
 
-    return collect_drafts_node
+    return merge_drafts_node
 
-
-__all__ = ["build_collect_drafts_node"]
-
-
+__all__ = ["build_merge_drafts_node"]

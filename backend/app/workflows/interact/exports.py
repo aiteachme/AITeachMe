@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.infra.workflow import WorkflowGraphExport
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.interact.graph import get_langgraph_dev_interact_graph
 from app.workflows.interact.prompts.prompts import PROMPTS
 

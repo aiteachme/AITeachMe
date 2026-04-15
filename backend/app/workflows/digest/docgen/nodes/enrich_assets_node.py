@@ -15,14 +15,14 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 from app.utils.docgen_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.runtime import DocGenAssetRuntime
+from app.workflows.digest.docgen.internal import DocGenAssetRuntime
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress, resolve_docgen_course_type, resolve_docgen_dependency
-from app.workflows.digest.docgen.publish import build_merged_markdown
+from app.workflows.digest.docgen.internal.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def build_enrich_document_node(*, context: WorkflowContext):
-    async def enrich_document_node(state: DocGenState) -> dict:
+def build_enrich_assets_node(*, context: WorkflowContext):
+    async def enrich_assets_node(state: DocGenState) -> dict:
         chapter_metadatas = sorted(
             deepcopy(list(state.get("chapter_metadatas", []))),
             key=lambda item: item.get("chapter_index", 0),
@@ -133,9 +133,6 @@ def build_enrich_document_node(*, context: WorkflowContext):
             "asset_summary": asset_summary,
         }
 
-    return enrich_document_node
+    return enrich_assets_node
 
-
-__all__ = ["build_enrich_document_node"]
-
-
+__all__ = ["build_enrich_assets_node"]

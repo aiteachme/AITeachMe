@@ -13,7 +13,7 @@ from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     publish_docgen_progress,
 )
-from app.workflows.digest.docgen.publish import build_merged_markdown
+from app.workflows.digest.docgen.internal.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -83,8 +83,8 @@ def _build_practice_layer(chapter_metadatas: list[dict], *, digest_mode: str) ->
     return questions, review_prompts
 
 
-def build_inject_examine_node(*, context: WorkflowContext):
-    async def inject_examine_node(state: DocGenState) -> dict:
+def build_append_practice_node(*, context: WorkflowContext):
+    async def append_practice_node(state: DocGenState) -> dict:
         chapter_metadatas = sorted(
             deepcopy(list(state.get("chapter_metadatas", []))),
             key=lambda item: item.get("chapter_index", 0),
@@ -165,9 +165,6 @@ def build_inject_examine_node(*, context: WorkflowContext):
             "practice_count": practice_count,
         }
 
-    return inject_examine_node
+    return append_practice_node
 
-
-__all__ = ["build_inject_examine_node"]
-
-
+__all__ = ["build_append_practice_node"]

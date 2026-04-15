@@ -11,13 +11,13 @@ from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.docgen.runtime import DocGenChapterContextRuntime
-from app.workflows.digest.docgen.runtime.query_planning import (
+from app.workflows.digest.docgen.internal import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.internal.query_planning import (
     ResearchSubQueryPlan,
     generate_gap_queries,
     generate_sub_queries,
 )
-from app.workflows.digest.docgen.graph import build_resolve_titles_node, build_targeted_research_node
+from app.workflows.digest.docgen.graph import build_finalize_titles_node, build_research_chapters_node
 
 
 class FakeRetriever:
@@ -199,11 +199,11 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ):
         result = asyncio.run(
@@ -246,14 +246,14 @@ def test_research_conductor_applies_retrieval_profile_to_factory() -> None:
         captured.update(kwargs)
         return [local_retriever, web_retriever]
 
-    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
         new=fake_get_retrievers_for_subject,
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.get_configured_retriever_names",
+        "app.workflows.digest.docgen.internal.chapter_context.get_configured_retriever_names",
         new=lambda **_kwargs: ["local_rag", "tavily", "arxiv", "semantic_scholar"],
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ):
         result = asyncio.run(
@@ -313,14 +313,14 @@ def test_research_conductor_falls_back_to_web_reading_and_purifies() -> None:
         del max_workers, timeout_s
         return [reader.pages[url] for url in urls]
 
-    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.read_urls",
+        "app.workflows.digest.docgen.internal.chapter_context.read_urls",
         new=fake_read_urls,
     ):
         result = asyncio.run(
@@ -393,14 +393,14 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
             for url in urls
         ]
 
-    with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.runtime.chapter_context.read_urls",
+        "app.workflows.digest.docgen.internal.chapter_context.read_urls",
         new=fake_read_urls,
     ):
         result = asyncio.run(
@@ -420,7 +420,7 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
     assert "worked example" in " ".join(result.metadata["gaps_remaining"]).lower()
 
 
-def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
+def test_research_chapters_node_passes_chapter_focus_into_skill() -> None:
     captured: dict[str, object] = {}
 
     class FakeChapterContextRuntime:
@@ -449,7 +449,7 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
                 },
             )
 
-    node = build_targeted_research_node(context=create_langgraph_dev_context("digest.docgen.test"))
+    node = build_research_chapters_node(context=create_langgraph_dev_context("digest.docgen.test"))
     state = {
         "subject": "demo",
         "requested_at": datetime.utcnow(),
@@ -469,7 +469,7 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
     }
 
     with patch(
-        "app.workflows.digest.docgen.nodes.targeted_research_node.ChapterContextRuntime",
+        "app.workflows.digest.docgen.nodes.research_chapters_node.ChapterContextRuntime",
         new=FakeChapterContextRuntime,
     ):
         result = asyncio.run(node(state))
@@ -499,8 +499,8 @@ def test_targeted_research_node_passes_chapter_focus_into_skill() -> None:
     assert result["llm_calls_total"] == 1
 
 
-def test_resolve_titles_node_generates_resolved_title_from_research_context() -> None:
-    node = build_resolve_titles_node(context=create_langgraph_dev_context("digest.docgen.title_test"))
+def test_finalize_titles_node_generates_resolved_title_from_research_context() -> None:
+    node = build_finalize_titles_node(context=create_langgraph_dev_context("digest.docgen.title_test"))
     state = {
         "subject": "demo",
         "requested_at": datetime.utcnow(),
@@ -528,22 +528,22 @@ def test_resolve_titles_node_generates_resolved_title_from_research_context() ->
     }
 
     with patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.acompletion_with_fallback",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.acompletion_with_fallback",
         new=AsyncMock(return_value="多元函数的变化率直觉"),
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.update_knowledge_build_status",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.update_knowledge_build_status",
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.append_knowledge_build_recent_event",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.append_knowledge_build_recent_event",
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.upsert_knowledge_build_chapter_progress",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.upsert_knowledge_build_chapter_progress",
     ):
         result = asyncio.run(node(state))
 
     assert result["chapter_materials"][0]["resolved_title"] == "多元函数的变化率直觉"
 
 
-def test_resolve_titles_node_raises_when_llm_fails() -> None:
-    node = build_resolve_titles_node(context=create_langgraph_dev_context("digest.docgen.title_test"))
+def test_finalize_titles_node_raises_when_llm_fails() -> None:
+    node = build_finalize_titles_node(context=create_langgraph_dev_context("digest.docgen.title_test"))
     state = {
         "subject": "demo",
         "requested_at": datetime.utcnow(),
@@ -571,14 +571,14 @@ def test_resolve_titles_node_raises_when_llm_fails() -> None:
     }
 
     with patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.acompletion_with_fallback",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.acompletion_with_fallback",
         new=AsyncMock(side_effect=RuntimeError("title llm failed")),
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.update_knowledge_build_status",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.update_knowledge_build_status",
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.append_knowledge_build_recent_event",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.append_knowledge_build_recent_event",
     ), patch(
-        "app.workflows.digest.docgen.nodes.resolve_titles_node.upsert_knowledge_build_chapter_progress",
+        "app.workflows.digest.docgen.nodes.finalize_titles_node.upsert_knowledge_build_chapter_progress",
     ):
         with pytest.raises(RuntimeError, match="title llm failed"):
             asyncio.run(node(state))

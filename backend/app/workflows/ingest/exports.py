@@ -1,11 +1,12 @@
-﻿"""Workflow graph exports for ingest workflows."""
+"""Workflow graph exports for ingest workflows."""
 
 from __future__ import annotations
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
-from app.shared.infra.workflow import WorkflowGraphExport
-from app.workflows.ingest.graph import build_parse_file_graph, build_deep_enhance_graph
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+from app.workflows.ingest.deep_enhance.graph import build_deep_enhance_graph
+from app.workflows.ingest.fast_parse.graph import build_fast_parse_graph
 from app.workflows.ingest.prompts.prompts import PROMPTS
 
 
@@ -16,7 +17,17 @@ def _build_export_parse_graph():
         event_bus=InProcessEventBus(),
         metadata={},
     )
-    return build_parse_file_graph(context=context)
+    return build_fast_parse_graph(context=context)
+
+
+def _build_export_deep_enhance_graph():
+    context = WorkflowContext(
+        workflow_name="ingest.deep_enhance.export",
+        subject="diagram-preview",
+        event_bus=InProcessEventBus(),
+        metadata={},
+    )
+    return build_deep_enhance_graph(context=context)
 
 
 WORKFLOW_EXPORTS = (
@@ -31,9 +42,7 @@ WORKFLOW_EXPORTS = (
         key="ingest_deep_enhance",
         title="Ingest Deep Enhance Workflow",
         description="Background deep OCR and enhancement workflow.",
-        build_graph=build_deep_enhance_graph,
+        build_graph=_build_export_deep_enhance_graph,
         prompts=PROMPTS,
     ),
 )
-
-

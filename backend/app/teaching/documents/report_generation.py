@@ -132,11 +132,13 @@ def is_usable_resolved_chapter_title(title: str) -> bool:
         return True
     if len(cleaned) < 3 or len(cleaned) > 28:
         return False
-    if not re.search(r"[\u3400-\u9fff]", cleaned):
+    if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
         return False
     if looks_like_legacy_template_title(cleaned):
         return False
     if re.fullmatch(r"第\s*\d+\s*章", cleaned):
+        return False
+    if re.fullmatch(r"(?i)chapter\s*\d+", cleaned):
         return False
     return True
 

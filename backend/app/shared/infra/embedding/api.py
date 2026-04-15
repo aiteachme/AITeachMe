@@ -12,14 +12,15 @@ from __future__ import annotations
 import asyncio
 import time
 
-import litellm
 import structlog
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
+from app.shared.infra.llm_support.litellm_loader import load_litellm
 
 logger = structlog.get_logger()
+litellm = load_litellm()
 
 # 全局：让 litellm 尽可能丢弃不支持的参数
 litellm.drop_params = True

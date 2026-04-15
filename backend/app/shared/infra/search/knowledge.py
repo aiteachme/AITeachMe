@@ -117,7 +117,9 @@ async def rerank_chunks(
         return chunks
 
     try:
-        import litellm
+        from app.shared.infra.llm_support.litellm_loader import load_litellm
+
+        litellm = load_litellm()
 
         documents = [chunk.content[:2000] for chunk in chunks]
         response = await litellm.arerank(
@@ -157,4 +159,3 @@ __all__ = [
     "RetrievalPipeline",
     "rerank_chunks",
 ]
-

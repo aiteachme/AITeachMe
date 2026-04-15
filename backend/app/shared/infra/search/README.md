@@ -83,7 +83,7 @@ shared/infra/search/
 2. `search.factory.get_retrievers_for_subject()`
    按 profile 把名字解析成 retriever 实例。
 3. workflow 调用 retriever
-   `planner/concept_grounding.py` 和 `digest/docgen/runtime/chapter_context.py` 会逐个执行 retriever。
+   `planner/runtime/grounding.py` 和 `digest/docgen/runtime/chapter_context.py` 会逐个执行 retriever。
 4. `readers/`
    当 retriever 返回外部 URL 后，再由 `read_urls()` 选择合适 reader 把网页 / PDF / DOCX / PPTX 读出来。
 

@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
-from app.workflows.digest.docgen.runtime import DocGenAssetRuntime
+from app.workflows.digest.docgen.nodes.append_practice_node import build_append_practice_node
+from app.workflows.digest.docgen.internal import DocGenAssetRuntime
 
 
 def test_docgen_asset_runtime_processes_interactive_placeholder() -> None:
@@ -24,8 +24,8 @@ def test_docgen_asset_runtime_processes_interactive_placeholder() -> None:
     assert "交互推导卡" in rendered
 
 
-def test_inject_examine_node_generates_mode_aware_practice_layers() -> None:
-    node = build_inject_examine_node(context=create_langgraph_dev_context("digest.docgen.practice_test"))
+def test_append_practice_node_generates_mode_aware_practice_layers() -> None:
+    node = build_append_practice_node(context=create_langgraph_dev_context("digest.docgen.practice_test"))
     base_state = {
         "subject": "demo",
         "requested_at": datetime.utcnow(),
@@ -47,11 +47,11 @@ def test_inject_examine_node_generates_mode_aware_practice_layers() -> None:
     }
 
     with patch(
-        "app.workflows.digest.docgen.nodes.inject_examine_node.update_knowledge_build_status"
+        "app.workflows.digest.docgen.nodes.append_practice_node.update_knowledge_build_status"
     ), patch(
-        "app.workflows.digest.docgen.nodes.inject_examine_node.append_knowledge_build_recent_event"
+        "app.workflows.digest.docgen.nodes.append_practice_node.append_knowledge_build_recent_event"
     ), patch(
-        "app.workflows.digest.docgen.nodes.inject_examine_node.publish_docgen_progress",
+        "app.workflows.digest.docgen.nodes.append_practice_node.publish_docgen_progress",
         new=AsyncMock(),
     ):
         sprint_result = asyncio.run(node({**base_state, "digest_mode": "sprint"}))

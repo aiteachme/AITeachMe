@@ -6,13 +6,12 @@ import asyncio
 import time
 from typing import AsyncGenerator
 
-import litellm
-
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.observability.trace import langsmith_trace
 
+from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
     build_completion_kwargs,
@@ -30,6 +29,8 @@ from .observability import (
     _record_new_token_event,
     _resolved_trace_model,
 )
+
+litellm = load_litellm()
 
 
 async def acompletion_stream(

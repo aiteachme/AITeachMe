@@ -2,7 +2,7 @@
 
 最后更新：2026-04-15
 
-`backend/app/workflows/` 是后端业务编排层，负责把五大引擎组织成真正可运行的 workflow。
+`backend/app/workflows/` 是业务编排层，负责把五大引擎组织成真正可运行的 workflow。
 
 推荐依赖方向：
 
@@ -10,23 +10,55 @@
 api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 ```
 
-边界只记三句话：
+## 一句话边界
 
-- `workflows` 决定“这条业务流程怎么跑”
-- `teaching` 决定“怎么教、怎么表达”
-- `shared.infra` 提供 LLM、storage、search、observability、workflow runtime 等基础能力
+- `workflows`
+  决定“这条业务流程怎么跑”
+- `teaching`
+  决定“怎么教、怎么表达”
+- `shared.infra`
+  提供 LLM、search、storage、workflow runtime、observability 等基础能力
+
+## workflow 作者现在只需要记住的入口
+
+```python
+from app.shared.infra.workflow import (
+    emit_progress,
+    invoke_state_graph,
+    project_typed_dict_schema,
+    run_state_graph,
+    workflow_tracer,
+)
+from langsmith import traceable
+```
+
+分工：
+
+- `run_state_graph(...)` / `invoke_state_graph(...)`
+  workflow root 入口
+- `workflow_tracer(...).node(handler, ...)`
+  graph node 接线
+- `emit_progress(...)`
+  前端进度事件
+- `project_typed_dict_schema(...)`
+  从主 `State` 投影 LangGraph Studio 输入输出字段
+- `@traceable`
+  prompt / helper tracing
 
 ## 先读哪几份文档
 
-- 总体组织规范：[ARCHITECTURE.md](./ARCHITECTURE.md)
-- Digest 模块示例：[digest/README.md](./digest/README.md)
-- LangSmith 接法：[LANGSMITH.md](./LANGSMITH.md)
-- 前端 progress 事件：[PROGRESS.md](./PROGRESS.md)
-- 本地调试方式：[DEBUGGING.md](./DEBUGGING.md)
+- 总体结构规范：[STRUCTURE.md](./STRUCTURE.md)
+- LangSmith 规范：[LANGSMITH.md](./LANGSMITH.md)
+- Progress 规范：[PROGRESS.md](./PROGRESS.md)
+- 调试指南：[DEBUGGING.md](./DEBUGGING.md)
+- Digest 模块说明：[digest/README.md](./digest/README.md)
+- Planner 链路说明：[digest/planner/README.md](./digest/planner/README.md)
+- DocGen 链路说明：[digest/docgen/README.md](./digest/docgen/README.md)
+- Ingest 模块说明：[ingest/README.md](./ingest/README.md)
 
-## 当前最重要的真实主链路
+## 当前最重要的主链路
 
-当前知识文档主线是：
+知识文档主线是：
 
 ```text
 api/knowledge_docs.py
@@ -37,23 +69,23 @@ api/knowledge_docs.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 
-也就是：
+可以拆成两个阶段理解：
 
 1. `planner`
-   先生成并修订 confirmed plan
+   把用户目标和资料整理成 confirmed plan
 2. `docgen`
-   再按 confirmed plan 执行正式知识文档构建
+   基于 confirmed plan 执行正式文档构建
 
 ## 当前最值得记住的组织结论
 
-- `workflows` 下先按“模块”组织，再按“链路”组织
-- `prompts` 统一放模块层
-- 轻量链路用文件模式，复杂链路用文件夹模式
-- 多链路模块根目录的 `graph.py / runtime.py / state.py` 只做聚合，不继续堆链路实现
+- 先按“模块层”组织，再按“链路层”组织
+- `prompts/` 是资源层，`nodes/` 是顶层节点层，`runtime/` 是局部执行层
+- 图上的业务动作名、builder 名、文件名尽量一致
+- 多链路模块根目录的 `graph.py / state.py / __init__.py` 只做聚合，不继续堆链路实现
 
-具体规则见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+具体规则见 [STRUCTURE.md](./STRUCTURE.md)。
 
 ## 一句话总结
 
-`workflows` 是业务编排层；当前知识文档主线优先看 `digest.planner -> confirmed_plan -> digest.docgen`，后续所有模块都按统一的“模块/链路/prompts/runtime/nodes”规范继续收口。
+`workflows` 是业务编排层；当前知识文档主线优先看 `digest.planner -> confirmed_plan -> digest.docgen`，后续 `planner / docgen / ingest` 都按统一的模块层、链路层、节点层规范继续收口。
 

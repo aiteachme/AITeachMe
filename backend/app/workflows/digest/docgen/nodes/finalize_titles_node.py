@@ -89,8 +89,8 @@ async def _resolve_material_title(material: dict[str, object], state: DocGenStat
     return resolved
 
 
-def build_resolve_titles_node(*, context: WorkflowContext):
-    async def resolve_titles_node(state: DocGenState) -> dict:
+def build_finalize_titles_node(*, context: WorkflowContext):
+    async def finalize_titles_node(state: DocGenState) -> dict:
         materials = sorted(
             deepcopy(list(state.get("chapter_materials", []))),
             key=lambda item: item.get("chapter_index", 0),
@@ -155,9 +155,7 @@ def build_resolve_titles_node(*, context: WorkflowContext):
         )
         return {"chapter_materials": resolved_materials}
 
-    return resolve_titles_node
+    return finalize_titles_node
 
-
-__all__ = ["build_resolve_titles_node"]
-
+__all__ = ["build_finalize_titles_node"]
 
