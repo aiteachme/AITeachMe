@@ -11,8 +11,11 @@ from typing import Any
 import structlog
 
 from app.shared.infra.config import get_settings
+from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_retriever
-from app.shared.infra.search.types import SearchResult
+from app.shared.infra.search.types import ScrapedPage, SearchResult
+from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.teaching.runtime_config import get_teaching_runtime_config
 from app.shared.infra.workflow import tracked_step
 from app.workflows.digest.planner.models import _resolve_subject_display_name
@@ -24,6 +27,8 @@ logger = structlog.get_logger(__name__)
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _TITLE_SPLIT_RE = re.compile(r"\s*[-—|｜:：]\s*")
 _SPACE_SPLIT_RE = re.compile(r"\s+")
+_PLANNER_WEB_READ_LIMIT = 2
+_PLANNER_PAGE_PREVIEW_CHARS = 180
 
 
 @dataclass(slots=True)
@@ -44,6 +49,7 @@ class PlannerConceptBriefing:
     evidence: list[PlannerConceptEvidence] = field(default_factory=list)
     local_hit_count: int = 0
     web_hit_count: int = 0
+    web_read_count: int = 0
 
 
 def _clean_text(value: Any) -> str:
@@ -78,6 +84,12 @@ def _truncate_text(value: str, *, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip("，。；：,. ") + "…"
+
+
+def _build_page_preview(page: ScrapedPage, *, fallback: str = "") -> str:
+    if page.success and page.content.strip():
+        return _truncate_text(page.content, limit=_PLANNER_PAGE_PREVIEW_CHARS)
+    return _truncate_text(fallback, limit=_PLANNER_PAGE_PREVIEW_CHARS)
 
 
 def _extract_topic_seed_from_goal(user_goal: str) -> str:
@@ -168,7 +180,7 @@ def _resolve_external_retriever_names() -> list[str]:
             for name in parse_retrievers(profile=profile, include_local_rag=False, include_fallback=True)
             if name not in {"local_rag", "rag"}
         ]
-    return ["wikipedia", "semantic_scholar", "arxiv", "duckduckgo"]
+    return ["searxng", "bocha", "duckduckgo"]
 
 
 async def _safe_search(
@@ -206,6 +218,65 @@ async def _safe_search(
             error=str(exc),
         )
         return []
+
+
+async def _prioritize_external_results(
+    *,
+    subject: str,
+    query: str,
+    results: list[list[SearchResult]],
+) -> list[SearchResult]:
+    flattened: list[SearchResult] = []
+    seen: set[str] = set()
+    for hits in results:
+        for hit in hits:
+            key = _clean_text(hit.url) or f"{_clean_text(hit.title)}::{_clean_text(hit.snippet)[:120]}"
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            flattened.append(hit)
+    if not flattened:
+        return []
+
+    curator = SourceCurator(TracedExecutionContext(subject=subject))
+    curated, _ = await curator.curate_sources(
+        query=query,
+        sources=flattened,
+        max_results=_PLANNER_WEB_READ_LIMIT,
+    )
+    return curated
+
+
+async def _read_external_pages(results: list[SearchResult]) -> dict[str, ScrapedPage]:
+    urls: list[str] = []
+    seen_urls: set[str] = set()
+    for hit in results:
+        url = _clean_text(hit.url)
+        if not url or url.startswith("local://") or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        urls.append(url)
+        if len(urls) >= _PLANNER_WEB_READ_LIMIT:
+            break
+
+    if not urls:
+        return {}
+
+    async with tracked_step(
+        None,
+        name="web_reading",
+        kind="substep",
+        trace_run_type="tool",
+        trace_metadata={"max_urls": _PLANNER_WEB_READ_LIMIT},
+        trace_inputs={"url_count": len(urls)},
+    ) as step:
+        pages = await read_urls(urls)
+        page_map = {page.url: page for page in pages if page.url}
+        step.set_outputs(
+            url_count=len(urls),
+            success_count=sum(1 for page in pages if page.success and page.content.strip()),
+        )
+        return page_map
 
 
 def _format_concept_briefing(
@@ -257,8 +328,8 @@ async def collect_planner_concept_briefing(
         )
 
     local_sections = list(shared_inputs.section_packets)
-    total_budget = max(1.0, float(settings.planner_grounding_timeout_s))
-    provider_budget = max(0.5, float(settings.search_provider_timeout_s))
+    total_budget = max(1.0, float(getattr(settings, "planner_grounding_timeout_s", 10.0)))
+    provider_budget = max(0.5, float(getattr(settings, "search_provider_timeout_s", 6.0)))
     started_at = time.monotonic()
 
     async with tracked_step(
@@ -286,7 +357,7 @@ async def collect_planner_concept_briefing(
             result_count=sum(len(items) for items in local_results),
         )
 
-    external_queries = [f"{query} 百科 定义" for query in queries[:2]]
+    external_queries = _dedupe_strings(queries[:2], limit=2)
     external_retrievers = _resolve_external_retriever_names()
     external_results: list[list[SearchResult]] = [[] for _ in external_queries]
     if external_queries and external_retrievers:
@@ -320,6 +391,12 @@ async def collect_planner_concept_briefing(
                 query_count=len(external_queries),
                 result_count=sum(len(items) for items in external_results),
             )
+    external_results_for_read = await _prioritize_external_results(
+        subject=subject,
+        query=" ".join(external_queries),
+        results=external_results,
+    )
+    external_pages = await _read_external_pages(external_results_for_read)
 
     display_subject = _resolve_subject_display_name(
         subject,
@@ -330,6 +407,7 @@ async def collect_planner_concept_briefing(
     topic_candidates: list[str] = []
     local_hit_count = 0
     web_hit_count = 0
+    web_read_count = 0
 
     for query, hits in zip(queries, local_results):
         for hit in hits[:2]:
@@ -354,18 +432,24 @@ async def collect_planner_concept_briefing(
         for hit in hits[:2]:
             if not hit.title and not hit.snippet:
                 continue
+            page = external_pages.get(hit.url)
             web_hit_count += 1
+            if page is not None and page.success and page.content.strip():
+                web_read_count += 1
             evidence.append(
                 PlannerConceptEvidence(
                     query=query,
-                    title=_clean_text(hit.title) or _truncate_text(hit.url, limit=36),
-                    snippet=_clean_text(hit.snippet),
+                    title=_clean_text(page.title if page is not None else "") or _clean_text(hit.title) or _truncate_text(hit.url, limit=36),
+                    snippet=_build_page_preview(page, fallback=hit.snippet) if page is not None else _truncate_text(hit.snippet, limit=_PLANNER_PAGE_PREVIEW_CHARS),
                     url=hit.url,
                     source=hit.source or "duckduckgo",
                     lane="web",
                 )
             )
-            topic = _extract_result_topic(hit.title, display_subject=display_subject)
+            topic = _extract_result_topic(
+                _clean_text(page.title if page is not None else "") or hit.title,
+                display_subject=display_subject,
+            )
             if topic:
                 topic_candidates.append(topic)
 
@@ -388,6 +472,7 @@ async def collect_planner_concept_briefing(
         evidence=evidence,
         local_hit_count=local_hit_count,
         web_hit_count=web_hit_count,
+        web_read_count=web_read_count,
     )
 
 

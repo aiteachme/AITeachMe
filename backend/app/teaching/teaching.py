@@ -8,6 +8,7 @@ from typing import Any
 from app.shared.infra.tools import (
     ensure_project_tool_modules_loaded,
     get_tool_registry,
+    register_tool_registry_sync_hook,
     run_agent_tool,
     tool,
 )
@@ -59,6 +60,9 @@ def sync_teaching_tool_registry() -> None:
             tags=list(item["tags"]),
             source="teaching",
         )(item["handler"])
+
+
+register_tool_registry_sync_hook(sync_teaching_tool_registry)
 
 
 def _resolve_category(tags: list[str]) -> str:

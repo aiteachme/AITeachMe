@@ -1,21 +1,20 @@
-"""Retrieval helpers for the interact workflow."""
+"""Retrieval helpers for the interact workflow.
+
+Uses the LlamaIndex adapter layer to retrieve knowledge chunks,
+replacing the previous hand-written RetrievalPipeline.
+"""
 
 from __future__ import annotations
 
+import structlog
 from sqlmodel import Session
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.search.knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
-from app.repositories.knowledge.knowledge_repo import vector_search
-from app.utils.presenters import require_id
+from app.services.subject_embedding_service import get_subject_vector_search_notice
+from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 from app.workflows.interact.support.types import RetrievedContext
 
-
-async def build_query_embedding(query: str) -> list[float]:
-    """Build the vector embedding used for retrieval."""
-
-    return (await aembed_texts([query]))[0]
+logger = structlog.get_logger(__name__)
 
 
 async def retrieve_context(
@@ -26,75 +25,59 @@ async def retrieve_context(
     top_k: int,
     similarity_threshold: float,
 ) -> list[RetrievedContext]:
-    """Retrieve prompt-ready context chunks for one chat question."""
+    """Retrieve prompt-ready context chunks for one chat question.
+
+    This function uses the LlamaIndex-based retriever which internally
+    bridges to the same sqlite-vec / pgvector storage.
+    """
 
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
 
-    settings = get_settings()
-    enable_rerank = bool(settings.rag_rerank_model)
-
-    query_embedding = await build_query_embedding(normalized_query)
-    pipeline = RetrievalPipeline(
-        vector_search_fn=lambda embedding, current_subject, current_top_k: _vector_search(
-            session=session,
-            query_embedding=embedding,
-            subject=current_subject,
-            top_k=current_top_k,
-        ),
-        rerank_fn=rerank_chunks if enable_rerank else None,
-    )
-    # When reranking, fetch more candidates for better recall
-    fetch_top_k = top_k * 3 if enable_rerank else top_k
-    chunks = await pipeline.retrieve(
-        normalized_query,
-        subject,
-        config=RetrievalConfig(
-            top_k=fetch_top_k,
-            similarity_threshold=similarity_threshold,
-            enable_keyword=False,
-            enable_rerank=enable_rerank,
-        ),
-        query_embedding=query_embedding,
-    )
-    # After rerank, trim to requested top_k
-    chunks = chunks[:top_k]
-    return [
-        RetrievedContext(
-            chunk_id=chunk.chunk_id,
-            document_id=chunk.document_id,
-            title=chunk.title,
-            header_path=chunk.header_path,
-            content=chunk.content,
-            score=chunk.score,
-            low_relevance=chunk.score < similarity_threshold,
+    # Check if vector search is available for this subject
+    search_notice = get_subject_vector_search_notice(session, subject_slug=subject)
+    if search_notice is not None:
+        logger.info(
+            "interact_retrieval_skipped",
+            subject=subject,
+            reason=search_notice,
         )
-        for chunk in chunks
-    ]
-
-
-async def _vector_search(
-    *,
-    session: Session,
-    query_embedding: list[float],
-    subject: str,
-    top_k: int,
-) -> list[RetrievedChunk]:
-    """Adapt repository vector search to the shared retrieval pipeline."""
-
-    if top_k <= 0:
         return []
 
-    results = vector_search(session, query_embedding, subject, top_k=top_k)
-    return [
-        RetrievedChunk(
-            chunk_id=require_id(result.chunk.id, "RetrievalChunk.id"),
-            document_id=result.chunk.document_id,
-            title=result.chunk.title,
-            header_path=result.chunk.header_path,
-            content=result.chunk.content,
-            score=result.score,
+    retriever = build_knowledge_retriever(subject=subject, top_k=top_k)
+    nodes = await retriever.aretrieve(normalized_query)
+
+    results: list[RetrievedContext] = []
+    for node_with_score in nodes:
+        node = node_with_score.node
+        score = node_with_score.score or 0.0
+        metadata = node.metadata or {}
+
+        # Filter by strict minimum threshold
+        if score < similarity_threshold:
+            continue
+
+        results.append(
+            RetrievedContext(
+                chunk_id=int(metadata.get("chunk_id", 0)),
+                document_id=int(metadata.get("document_id", 0)),
+                title=str(metadata.get("title", "")),
+                header_path=str(metadata.get("header_path", "")),
+                content=node.get_content(),
+                score=score,
+                low_relevance=score < similarity_threshold * 1.5,
+            )
         )
-        for result in results
-    ]
+
+    logger.info(
+        "interact_retrieval_done",
+        subject=subject,
+        query_len=len(normalized_query),
+        node_count=len(nodes),
+        result_count=len(results),
+    )
+    return results
+
+
+__all__ = ["retrieve_context"]

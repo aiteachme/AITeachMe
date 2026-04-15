@@ -2,287 +2,170 @@
 
 最后更新：2026-04-15
 
-`app.teaching` 是教学语义层。
-它负责回答：
+`app.teaching` 是教学语义层。它负责回答“怎么教、怎么解释、怎么组织教学表达”，但不负责数据库接入、工具注册表实现、workflow 编排或 API 控制流。
 
-- 这个系统应该怎样“教”用户
-- 教学表达应该长什么样
-- 教学工具应该提供什么能力
-- 教学上下文应该如何拼装
+一句话理解：
+> `teaching` 负责“教学表达是什么”，不是“底层能力怎么接”。
 
-它**不**负责：
+## 1. 当前边界
 
-- 数据库、存储、LLM、检索这些底层接入
-- trace / track 与 LangSmith 观测接入
-- workflow 共用 runtime / authoring 支撑
-- workflow graph 的编排
-- API 请求流程控制
-
-对新同学来说，先记住这句区分：
-
-> `teaching` 负责“怎么教”，不是负责“能力怎么接”或“流程怎么排”。
-
-## 1. 它在整体架构中的位置
-
-当前推荐依赖方向：
+推荐依赖方向：
 
 ```text
 api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 ```
 
-含义是：
+这条链里要特别注意：
 
-- `teaching` 建立在 `infra` 之上。
-- `teaching` 可以调用 `infra` 的 LLM、search、memory、tool registry。
-- `teaching` 不拥有独立的 observability 或 workflow 支撑实现。
-- `workflows` 再把 `teaching` 提供的教学语义组织成具体流程。
+- `teaching` 可以依赖 `shared.infra`
+- `workflows` 和 `services` 可以消费 `teaching`
+- `teaching` 不反向依赖 `workflows`
 
-## 2. 新同学先用这张“找东西地图”
+## 2. 这层和 Planner / DocGen 的关系
 
-| 我想找什么 | 应该先看哪里 |
+当前 planner-confirm-docgen 主线里，`teaching` 主要提供两类直接能力：
+
+| 目录或文件 | 对 planner / docgen 的作用 |
 | --- | --- |
-| 教学工具注册入口 | `teaching.py` |
-| 内置教学工具实现 | `tools.py` |
-| 教学上下文拼装 | `context.py` |
-| 教学配置投影 | `runtime_config.py` |
-| 教学文档脚手架 | `documents/` |
-| 学习报告与章节标题处理 | `documents/report_generation.py` |
-| 术语表、学习目标块 | `documents/content_blocks.py` |
-| 教学事件日志 | `app.shared.infra.events` |
-| checker 旧导入兼容 | `checker.py` |
-| 共享 memory 入口 | `memory/`、`app.shared.infra.memory` |
-| 历史 skill 导入兼容 | `skill_tools.py` |
+| `runtime_config.py` | 把项目配置投影成教学视角下的 planner/docgen 默认值 |
+| `documents/` | 提供章节脚手架、标题整理、overview / recap / 学习目标等教学表达组件 |
 
-## 3. `teaching` 里现在实际有哪些模块
+这两处是当前知识构建链最值得先看的 teaching 入口。
 
-### 3.1 `teaching.py`
+## 3. 公开入口怎么用
 
-这是教学工具层的主入口。
+### 3.1 `app.teaching`
 
-它做的事不是“自己实现一套工具系统”，而是：
+`teaching/__init__.py` 当前提供的是最轻的公共入口：
+
+```python
+from app.teaching import (
+    list_teaching_functions,
+    run_teaching_function,
+    teaching_function,
+)
+```
+
+适合上层只想消费 teaching tool 公共接口的场景。
+
+### 3.2 `teaching.py`
+
+`teaching.py` 是 teaching tool 的 canonical 业务入口。
+
+它负责：
 
 - 提供 `@teaching_function(...)`
-- 把 teaching-owned tool 注册到 `app.shared.infra.tools`
-- 提供 `list_teaching_functions()` 和 `run_teaching_function()`
+- 暴露 `list_teaching_functions()` 和 `run_teaching_function()`
+- 把 teaching-owned tool 挂到 `app.shared.infra.tools` 的统一注册表
+- 在模块加载时注册 tool registry sync hook，保证注册表重建后 teaching tool 能重新同步
 
-所以团队要明确：
+重要结论：
 
-- `teaching` 可以拥有工具语义
-- 但工具注册表本体仍然在 `infra.tools`
+- teaching 可以拥有“工具语义”
+- 真正的工具注册表仍然在 `infra.tools`
 
-### 3.2 `tools.py`
+## 4. `runtime_config.py` 的定位
 
-这里放教学工具的具体实现。
+`runtime_config.py` 不是在定义底层环境变量，而是在定义教学视角下如何解释这些配置。
 
-当前内置工具包括：
-
-- `solve_step_by_step`
-- `generate_similar_problems`
-- `explain_formula`
-- `compare_concepts`
-
-这些函数属于教学层，因为它们输出的是教学化结果；
-但它们的运行时注册与执行，仍然走 `infra.tools`。
-
-### 3.3 `context.py`
-
-这是教学上下文组装器。
-
-它负责把下面这些信息拼成一份适合 LLM 使用的教学消息列表：
-
-- 系统提示词
-- 用户画像
-- 本地知识片段
-- 历史记忆
-- 对话历史
-- 可用工具名
-
-它会调用：
-
-- `shared.infra.memory`
-- `shared.infra.search`
-
-但它之所以放在 `teaching`，是因为它的核心价值是“教学上下文怎么表达”，不是“底层搜索怎么接”。
-
-### 3.4 `runtime_config.py`
-
-这里负责把项目配置投影成教学层可直接消费的配置对象。
-
-当前最重要的是 planner 相关默认值，例如：
+当前最重要的内容是 planner / docgen 相关默认值，例如：
 
 - 默认语气 `tone`
 - 默认 digest 模式 `digest_mode`
-- `sprint` / `systematic` 各自的章节范围和目标篇幅
+- `sprint` / `systematic` 的章节范围
+- 目标篇幅和默认教学节奏
 
-这个文件不是在定义环境变量，而是在定义“教学视角下怎么解释这些配置”。
+如果想调整“构建方案默认更像冲刺复习还是系统梳理”，先看这里。
 
-### 3.5 `documents/`
+## 5. `documents/` 的定位
 
-这是教学表达最集中的目录。
+`documents/` 是 teaching 对 docgen 最直接的输入面。
 
-当前主要分成两部分：
+当前重点文件：
 
-- `content_blocks.py`
-  通用教学内容块，例如术语速览、学习目标对照。
-- `report_generation.py`
-  更复杂的教学文档与报告辅助，例如：
-  - 章节标题清洗与收敛
-  - 章节导学与 recap
-  - 文档概览生成
-  - 教学脚手架补齐
+- `documents/content_blocks.py`
+  教学块原语，例如术语速览、学习目标、对照块
+- `documents/report_generation.py`
+  标题收敛、章节导学、overview / recap 等更复杂的教学文档辅助
 
-如果你要改“章节该怎么讲、标题该怎么写、报告该怎么组织”，通常应该先看这里。
+这层表达的是：
 
-### 3.6 事件与记忆的真实归属
+- 标题该怎么落地
+- 一章应该先讲什么
+- 学习目标和 recap 应该怎样呈现得像“老师在讲”
 
-这一轮已经删掉：
+它不决定 docgen graph 先跑 research 还是先跑 writer。
 
-- `teaching/events.py`
-- `memory_compat.py`
+## 6. 其他目录怎么理解
 
-原因很简单：
+| 目录或文件 | 当前定位 |
+| --- | --- |
+| `tools.py` | teaching-owned 内建工具实现 |
+| `context.py` | 教学上下文组装，偏 teaching 语义表达 |
+| `checker.py` | 兼容 facade，底层 canonical checker 在 `shared.infra.checker` |
+| `memory/` | teaching 侧 facade，canonical memory 在 `shared.infra.memory` |
+| `skill_tools.py` | 历史兼容 shim，不作为新能力入口 |
 
-- 教学事件日志本来就是共享学习闭环能力，应该统一归 `app.shared.infra.events`
-- memory 的 canonical 实现本来就在 `app.shared.infra.memory`
-- 开发期继续保留第二套历史入口，只会让团队继续误判边界
+对这轮而言，`checker.py` 和 `memory/` 的结论很明确：
 
-现在团队应明确：
+- 保留兼容入口可以
+- 不要继续把它们发展成第二套底层系统
 
-- 事件日志入口看 `app.shared.infra.events`
-- 共享 memory 入口看 `app.shared.infra.memory`
-- `teaching/memory/` 只是面向 teaching 语义的 facade，不再是第二套实现
-
-### 3.7 `checker.py`
-
-这是 checker 的兼容 facade。
-它只是把：
-- `check_answer`
-- `check_exact`
-- `check_keywords`
-- `check_with_llm`
-- rubric 相关类型
-
-从 `shared.infra.checker` 重新暴露回教学侧旧入口。
-结论：
-- checker 的共享实现属于 `infra`
-- `teaching.checker` 只适合作为历史过渡入口，后续也应继续收敛
-
-### 3.8 `skill_tools.py`
-
-这是历史兼容 shim。
-
-它只是为了兼容旧的 skill 导入路径，把 `tools.py` 里的教学工具再导出一次。
-新代码不要继续往这里加能力。
-
-## 4. teaching tool、toolpack、skillpack 到底怎么区分
-
-这是最容易混的地方之一。
+## 7. Tool / Toolpack / Skillpack 要区分
 
 ### `teaching tool`
 
 - 真正可执行
-- 例如 `solve_step_by_step`
-- 最终注册进 `infra.tools` 的工具注册表
+- 由 `@teaching_function(...)` 定义
+- 最终注册进 `infra.tools` 的统一 registry
 
 ### `toolpack`
 
-- 一组外部工具扩展包
+- 一组外部工具扩展
 - 由 `shared.infra.tools.tool_loader` 加载
-- 是运行时扩展模型
+- 属于运行时扩展机制
 
 ### `skillpack`
 
-- `SKILL.md` 风格的提示策略包
-- 只提供 prompt guidance、默认值和推荐 tag
+- `SKILL.md` 风格提示策略包
+- 提供 prompt guidance、默认值、推荐 tag
 - 不执行代码
 
-结论：
+所以：
 
-- teaching-owned tool 仍然是 `tool`
-- skillpack 不是教学工具
-- toolpack 也不是教学工具目录的替代品
+- teaching tool 仍然是 tool
+- skillpack 不是 teaching tool
+- toolpack 也不是 `teaching/tools.py` 的替代品
 
-## 5. 真实调用链怎么理解
+## 8. 什么不该放进 Teaching
 
-### 5.1 教学工具的调用链
+下面这些内容不要放到 `teaching`：
 
-1. 在 `tools.py` 里用 `@teaching_function(...)` 定义工具
-2. `teaching.py` 内部转发到 `infra.tools.tool(...)`
-3. `infra.tools.registry.ToolRegistry` 统一注册
-4. 上层通过 `run_teaching_function(...)` 或 `run_agent_tool(...)` 执行
-
-这条链说明：
-
-- 教学语义在 `teaching`
-- 执行体系在 `infra`
-
-### 5.2 教学上下文的组装链
-
-`build_teaching_context(...)` 会：
-
-1. 读取用户画像
-2. 检索本地知识
-3. 回忆历史记忆
-4. 拼装成一组 LLM messages
-
-这里“用什么能力”来自 `infra`，但“最后怎么讲给学生”来自 `teaching`。
-
-### 5.3 Digest 对教学文档能力的复用
-
-DocGen 在生成章节时会复用 `teaching.documents` 中的能力，比如：
-
-- 标题清洗
-- 章节导学
-- 术语表块
-- 学习目标对照
-- recap / overview
-
-这说明 `teaching` 提供的是“教学原料”，`workflows` 决定这些原料何时被调用。
-
-## 6. 哪些东西不应该放进 `teaching`
-
-下面这些内容不要回流到 `teaching`：
-
-- 数据库、存储、LLM、retriever、reader、tracing 的底层接入
+- 数据库、存储、LLM、retriever、reader 的底层接入
 - workflow graph、state、node、router
 - workflow-local runtime
 - API 请求编排
-- 第二套 tool registry
-- 第二套 memory store
-- 第二套 checker engine
+- 第二套 tool registry / memory store / checker engine
 
-简单判断：
+判断方法：
 
-- 如果你在描述“能力怎么接”，它更像 `infra`
-- 如果你在描述“这轮流程怎么跑”，它更像 `workflows`
-- 如果你在描述“给学生看什么、怎么讲、怎么引导”，它更像 `teaching`
+- 在描述“怎么教”，放 `teaching`
+- 在描述“流程怎么跑”，放 `workflows`
+- 在描述“能力怎么接”，放 `shared.infra`
 
-## 7. 新代码放置速查
+## 9. 阅读顺序
 
-| 需求 | 更合适的目录 |
-| --- | --- |
-| 新增一个教学工具 | `teaching/tools.py` 或拆出新的 teaching tool 模块 |
-| 新增一个章节导学块 | `teaching/documents/content_blocks.py` |
-| 新增章节标题优化规则 | `teaching/documents/report_generation.py` |
-| 新增教学上下文拼装字段 | `teaching/context.py` |
-| 新增 planner 教学默认值 | `teaching/runtime_config.py` |
-| 新增共享 memory 存储能力 | `shared.infra.memory` |
-| 新增 workflow 节点 | `workflows/...` |
-
-## 8. 阅读建议
-
-第一次读 `teaching`，建议顺序如下：
+第一次读 `teaching`，建议按下面顺序：
 
 1. `teaching.py`
-2. `tools.py`
-3. `context.py`
-4. `runtime_config.py`
-5. `documents/__init__.py`
-6. `documents/content_blocks.py`
-7. `documents/report_generation.py`
-8. 最后再看 `checker.py`、`memory/`、`skill_tools.py` 这些兼容入口
+2. `runtime_config.py`
+3. `documents/__init__.py`
+4. `documents/content_blocks.py`
+5. `documents/report_generation.py`
+6. `tools.py`
+7. 最后再看 `checker.py`、`memory/`、`skill_tools.py`
 
-## 9. 一句话总结
+## 10. 一句话总结
 
 `teaching` 是教学语义层。
-它负责定义“怎么教、怎么解释、怎么组织教学表达”，但底层能力仍然来自 `infra`，流程编排仍然来自 `workflows`。
+它定义“怎么解释、怎么组织、怎么让知识更像老师在讲”，并把这些表达提供给 planner / docgen / interact；底层接入仍然来自 `infra`，流程顺序仍然来自 `workflows`。

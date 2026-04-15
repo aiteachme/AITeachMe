@@ -4,6 +4,7 @@
 - retrievers discover candidate sources
 - readers load URL content
 - knowledge retrieval searches the local subject corpus
+- llamaindex_adapter bridges to LlamaIndex components
 """
 
 from .api import get_knowledge_search_notice, search_knowledge, web_search
@@ -21,12 +22,16 @@ from .factory import (
     get_retrievers_for_subject,
 )
 from .knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
+from .llamaindex_adapter import ATMEmbedding, ATMKnowledgeRetriever, ATMVectorStore, build_knowledge_retriever
 from .readers import get_registered_reader_names
 from .retrievers import get_registered_retriever_names
 from .source_curation import SourceCurator
 from .types import ScrapedPage, SearchResult, WebSearchResult
 
 __all__ = [
+    "ATMEmbedding",
+    "ATMKnowledgeRetriever",
+    "ATMVectorStore",
     "ContextCompressor",
     "ContextManager",
     "RetrievalConfig",
@@ -36,6 +41,7 @@ __all__ = [
     "SearchResult",
     "SourceCurator",
     "WebSearchResult",
+    "build_knowledge_retriever",
     "get_compression_runtime_cache",
     "get_external_retriever_names",
     "get_reader_for_url",

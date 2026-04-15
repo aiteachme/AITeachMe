@@ -1,19 +1,21 @@
-﻿"""Public search helpers used by planner and docgen."""
+"""Public search helpers used by planner and docgen.
+
+The ``search_knowledge()`` function now uses the LlamaIndex adapter layer
+internally, while keeping the same public API contract.
+"""
 
 from __future__ import annotations
 
 import structlog
 from sqlmodel import Session
 
-from app.repositories.knowledge.knowledge_repo import vector_search
-from app.services.subject_embedding_service import get_subject_vector_search_notice
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import get_engine
-from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.search.knowledge import RetrievedChunk, rerank_chunks
+from app.shared.infra.search.knowledge import RetrievedChunk
+from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 from app.shared.infra.search.types import SearchResult
+from app.shared.infra.subject_vectors import get_subject_vector_search_notice
 from app.shared.infra.search.web import dispatch_web_search
-from app.utils.presenters import require_id
 
 logger = structlog.get_logger(__name__)
 
@@ -50,6 +52,13 @@ async def search_knowledge(
     top_k: int = 5,
     enable_rerank: bool = True,
 ) -> list[RetrievedChunk]:
+    """Search the local knowledge base using the LlamaIndex retriever.
+
+    This replaces the previous hand-written embed → vector_search → rerank
+    pipeline with the LlamaIndex adapter layer while keeping the same
+    return type (``list[RetrievedChunk]``).
+    """
+
     normalized_query = query.strip()
     normalized_subject = subject_id.strip()
     if not normalized_query or not normalized_subject or top_k <= 0:
@@ -61,21 +70,35 @@ async def search_knowledge(
         return []
 
     settings = get_settings()
+    should_rerank = enable_rerank and bool(settings.rag_rerank_model)
 
     try:
-        query_embedding = (await aembed_texts([normalized_query]))[0]
+        retriever = build_knowledge_retriever(
+            subject=normalized_subject,
+            top_k=top_k,
+            enable_rerank=should_rerank,
+        )
+        nodes = await retriever.aretrieve(normalized_query)
     except Exception as exc:
-        logger.warning("search_knowledge_embedding_failed", subject=normalized_subject, error=str(exc))
+        logger.warning("search_knowledge_failed", subject=normalized_subject, error=str(exc))
         return []
 
-    fetch_top_k = top_k * 2 if enable_rerank and settings.rag_rerank_model else top_k
-    chunks = await _vector_search(query_embedding=query_embedding, subject=normalized_subject, top_k=fetch_top_k)
-
-    if enable_rerank and chunks and settings.rag_rerank_model:
-        try:
-            chunks = await rerank_chunks(normalized_query, chunks, top_k=top_k)
-        except Exception as exc:
-            logger.warning("search_knowledge_rerank_failed", subject=normalized_subject, error=str(exc))
+    # Convert LlamaIndex nodes back to RetrievedChunk
+    chunks: list[RetrievedChunk] = []
+    for node_with_score in nodes:
+        node = node_with_score.node
+        metadata = node.metadata or {}
+        chunks.append(
+            RetrievedChunk(
+                chunk_id=int(metadata.get("chunk_id", 0)),
+                document_id=int(metadata.get("document_id", 0)),
+                title=str(metadata.get("title", "")),
+                header_path=str(metadata.get("header_path", "")),
+                content=node.get_content(),
+                score=node_with_score.score or 0.0,
+                source=str(metadata.get("source", "vector")),
+            )
+        )
 
     result = chunks[:top_k]
     logger.info(
@@ -85,32 +108,6 @@ async def search_knowledge(
         result_count=len(result),
     )
     return result
-
-
-async def _vector_search(
-    *,
-    query_embedding: list[float],
-    subject: str,
-    top_k: int,
-) -> list[RetrievedChunk]:
-    if top_k <= 0:
-        return []
-
-    engine = get_engine()
-    with Session(engine) as session:
-        results = vector_search(session, query_embedding, subject, top_k=top_k)
-        return [
-            RetrievedChunk(
-                chunk_id=require_id(result.chunk.id, "RetrievalChunk.id"),
-                document_id=result.chunk.document_id,
-                title=result.chunk.title,
-                header_path=result.chunk.header_path,
-                content=result.chunk.content,
-                score=result.score,
-                source="vector",
-            )
-            for result in results
-        ]
 
 
 __all__ = ["get_knowledge_search_notice", "search_knowledge", "web_search"]

@@ -46,8 +46,10 @@ from app.shared.infra.exceptions import (
 from app.teaching.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
-from app.workflows.digest.planner.models import normalize_planner_payload
-from app.workflows.digest.planner.runtime import run_build_planner_workflow
+from app.workflows.digest.planner import (
+    normalize_planner_payload,
+    run_build_planner_workflow,
+)
 
 logger = structlog.get_logger(__name__)
 
