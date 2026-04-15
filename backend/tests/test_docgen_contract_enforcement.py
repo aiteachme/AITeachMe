@@ -11,9 +11,12 @@ from sqlmodel import select
 from app.models.knowledge_doc import KnowledgeDoc
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.docgen.nodes.inject_examine_node import build_inject_examine_node
+from app.workflows.digest.docgen.nodes.append_practice_node import build_append_practice_node
 from app.workflows.digest.docgen.nodes.load_context_node import build_load_context_node
-from app.workflows.digest.docgen.outputs import build_merged_markdown, publish_staged_knowledge_docs
+from app.workflows.digest.docgen.internal.publish import (
+    build_merged_markdown,
+    publish_staged_knowledge_docs,
+)
 from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
@@ -229,7 +232,7 @@ def test_build_merged_markdown_uses_explicit_teaching_hook() -> None:
         captured.update(kwargs)
         return "# Hooked Overview"
 
-    with patch("app.workflows.digest.docgen.publish.build_learning_document_overview", new=fake_overview):
+    with patch("app.workflows.digest.docgen.internal.publish.build_learning_document_overview", new=fake_overview):
         merged = build_merged_markdown(
             [
                 {
@@ -254,7 +257,7 @@ def test_build_merged_markdown_uses_explicit_teaching_hook() -> None:
     assert merged.startswith("# Hooked Overview")
 
 
-def test_inject_examine_and_overview_prefer_resolved_title() -> None:
+def test_append_practice_and_overview_prefer_resolved_title() -> None:
     chapter_metadatas = [
         {
             "chapter_index": 1,
@@ -279,9 +282,9 @@ def test_inject_examine_and_overview_prefer_resolved_title() -> None:
             "source_strategy": "local_first",
         },
     )
-    node = build_inject_examine_node(context=create_langgraph_dev_context("digest.docgen.contract"))
-    with patch("app.workflows.digest.docgen.nodes.inject_examine_node.update_knowledge_build_status"), patch(
-        "app.workflows.digest.docgen.nodes.inject_examine_node.append_knowledge_build_recent_event"
+    node = build_append_practice_node(context=create_langgraph_dev_context("digest.docgen.contract"))
+    with patch("app.workflows.digest.docgen.nodes.append_practice_node.update_knowledge_build_status"), patch(
+        "app.workflows.digest.docgen.nodes.append_practice_node.append_knowledge_build_recent_event"
     ):
         result = asyncio.run(
             node(
@@ -370,7 +373,7 @@ def test_publish_staged_knowledge_docs_creates_new_version_and_supersedes_old(se
     )
     session.commit()
 
-    import app.workflows.digest.docgen.publish as publish_module
+    import app.workflows.digest.docgen.internal.publish as publish_module
 
     monkeypatch.setattr(publish_module, "get_content_store", lambda: fake_store)
     monkeypatch.setattr(publish_module, "run_store_sync", fake_run_store_sync)

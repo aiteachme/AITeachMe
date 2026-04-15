@@ -10,11 +10,11 @@ from app.shared.infra.search.types import SearchResult
 from app.shared.infra.tools.builtin.markdown_processing import append_reference_section, normalize_mermaid_blocks
 from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.graph import (
-    build_collect_drafts_node,
-    build_enrich_document_node,
-    build_pedagogy_craft_node,
+    build_enrich_assets_node,
+    build_merge_drafts_node,
+    build_write_chapters_node,
 )
-from app.workflows.digest.docgen.publish import (
+from app.workflows.digest.docgen.internal.publish import (
     _build_chapter_manifest,
     _build_source_scope,
     build_merged_markdown,
@@ -175,9 +175,9 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
 
     requested_at = datetime.utcnow()
     context = create_langgraph_dev_context("digest.docgen.source_test")
-    craft_node = build_pedagogy_craft_node(context=context)
-    collect_node = build_collect_drafts_node(context=context)
-    enrich_node = build_enrich_document_node(context=context)
+    craft_node = build_write_chapters_node(context=context)
+    collect_node = build_merge_drafts_node(context=context)
+    enrich_node = build_enrich_assets_node(context=context)
 
     craft_state = {
         "subject": "demo",
@@ -209,8 +209,8 @@ def test_docgen_chapter_metadata_preserves_research_fields_and_builds_overview()
         },
     }
 
-    with patch("app.workflows.digest.docgen.nodes.pedagogy_craft_node.PedagogyWriter", new=FakePedagogyWriter), patch(
-        "app.workflows.digest.docgen.nodes.collect_drafts_node.update_knowledge_build_status"
+    with patch("app.workflows.digest.docgen.nodes.write_chapters_node.PedagogyWriter", new=FakePedagogyWriter), patch(
+        "app.workflows.digest.docgen.nodes.merge_drafts_node.update_knowledge_build_status"
     ):
         craft_result = asyncio.run(craft_node(craft_state))
         collect_result = asyncio.run(

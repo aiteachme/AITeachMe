@@ -36,8 +36,9 @@ def test_build_planner_service_uses_planner_package_public_entry() -> None:
     imports = set(_iter_import_modules(target))
 
     forbidden = {
-        "app.workflows.digest.planner.models",
-        "app.workflows.digest.planner.runtime",
+        "app.workflows.digest.planner.contracts",
+        "app.workflows.digest.planner.runner",
+        "app.workflows.digest.planner.internal",
     }
 
     assert imports.isdisjoint(forbidden), (

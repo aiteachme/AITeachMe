@@ -54,10 +54,5 @@ def build_merge_research_node(*, context: WorkflowContext):
 
     return merge_research_node
 
-
-build_collect_materials_node = build_merge_research_node
-
-
-__all__ = ["build_merge_research_node", "build_collect_materials_node"]
-
+__all__ = ["build_merge_research_node"]
 

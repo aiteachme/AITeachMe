@@ -12,10 +12,8 @@ from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.examine.exam_grade_workflow import build_exam_grade_graph
 from app.workflows.examine.question_build_workflow import build_question_build_graph
-from app.workflows.ingest.graph import (
-    build_deep_enhance_graph,
-    get_langgraph_dev_fast_parse_graph,
-)
+from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
+from app.workflows.ingest.fast_parse.graph import get_langgraph_dev_fast_parse_graph
 from app.workflows.interact.graph import get_langgraph_dev_interact_graph
 from app.workflows.interact.nodes import stream as stream_module
 from app.workflows.profile.graph import build_profile_pipeline_graph
@@ -31,7 +29,7 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
         _node_ids(get_langgraph_dev_fast_parse_graph())
     )
     assert {"load_enhance_context", "deep_enhance_file", "finalize_deep_enhance"}.issubset(
-        _node_ids(build_deep_enhance_graph())
+        _node_ids(get_langgraph_dev_deep_enhance_graph())
     )
     assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(build_kg_digest_graph()))
     assert {"derive_units", "derive_theme_tree", "finalize_curriculum"}.issubset(
@@ -101,10 +99,22 @@ def test_interact_stream_node_supports_debug_mode(monkeypatch) -> None:
     assert result["stream_interrupted"] is False
 
 
-def test_langgraph_json_registers_digest_planner() -> None:
+def test_langgraph_json_registers_dev_entrypoints() -> None:
     payload = json.loads(Path("backend/langgraph.json").read_text(encoding="utf-8"))
+    ingest_fast_parse = payload["graphs"].get("ingest_fast_parse")
+    ingest_deep_enhance = payload["graphs"].get("ingest_deep_enhance")
     planner_graph = payload["graphs"].get("digest_planner")
 
+    assert ingest_fast_parse is not None
+    assert (
+        ingest_fast_parse["path"]
+        == "./app/workflows/ingest/fast_parse/graph.py:get_langgraph_dev_fast_parse_graph"
+    )
+    assert ingest_deep_enhance is not None
+    assert (
+        ingest_deep_enhance["path"]
+        == "./app/workflows/ingest/deep_enhance/graph.py:get_langgraph_dev_deep_enhance_graph"
+    )
     assert planner_graph is not None
     assert planner_graph["path"] == "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph"
 <<<<<<< HEAD

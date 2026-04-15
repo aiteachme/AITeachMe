@@ -2,19 +2,17 @@
 
 最后更新：2026-04-15
 
-`docgen/` 是知识文档主链的第二段。
+`docgen/` 是知识文档主链的第二段，负责根据 confirmed plan 真正生成知识文档。
 
-它负责基于 confirmed plan，把规划好的章节方案真正构建成知识文档。
+## 对外入口
 
-## 标准入口
-
-对上层来说，稳定入口仍然是：
+模块层稳定入口仍然是：
 
 ```python
 from app.workflows.digest import run_docgen_workflow
 ```
 
-如果只在 `docgen/` 包内部看图或调图，主要入口是：
+如果只在 `docgen/` 包内部调图或调试，主要入口是：
 
 - `build_docgen_graph(...)`
 - `create_docgen_initial_state(...)`
@@ -22,90 +20,83 @@ from app.workflows.digest import run_docgen_workflow
 
 ## 当前链路阶段
 
-docgen 当前主链路可以按业务阶段理解为：
+docgen 当前主链路按阶段可以理解为：
 
 1. `load_context`
-   读取 confirmed plan、shared inputs、构建上下文
 2. `research_chapters`
-   按章节并行研究
 3. `merge_research`
-   收拢章节研究结果
 4. `finalize_titles`
-   最终确认章节标题
 5. `write_chapters`
-   按章节并行写作
 6. `merge_drafts`
-   收拢章节草稿
 7. `enrich_assets`
-   补图、Mermaid、素材增强
 8. `append_practice`
-   追加练习内容
 9. `publish_document`
-   发布正式文档
 
 ## 目录职责
 
-| 文件或目录 | 作用 |
-| --- | --- |
-| `__init__.py` | 包内稳定入口 |
-| `graph.py` | graph 定义、send 路由、顶层 node 接线 |
-| `state.py` | docgen graph state |
-| `publish.py` | 文档发布收口 |
-| `nodes/` | 顶层 node builder |
-| `runtime/` | chapter context、writer、assets 等 workflow-local runtime |
-| `services/` | docgen 内部局部服务 |
+```text
+docgen/
+  __init__.py
+  README.md
+  graph.py
+  state.py
+  nodes/
+  runtime/
+    chapter_context.py
+    query_planning.py
+    writer.py
+    assets.py
+    publish.py
+```
 
-## 命名规范现状
+职责划分：
 
-docgen 现在已经先完成了一层规范化：
+- `graph.py`
+  只保留 graph wiring、Send 路由和 initial state。
+- `state.py`
+  只保留 DocGenState。
+- `nodes/`
+  只保留顶层 node builder。
+- `runtime/`
+  放 docgen 内部专项实现。
 
-- graph 节点名是业务动作名
-- graph 中调用的 builder 名也已经和业务动作名对齐
+## 为什么 docgen 没有 `runner.py`
 
-例如：
+这是刻意设计，不是缺失。
 
-- `research_chapters`
-- `build_research_chapters_node(...)`
+原因很简单：
 
-但需要说明的是：
+- docgen 的真实执行入口已经收口在模块层 `digest/runtime.py`
+- `docgen/` 自己主要承担的是“链路定义”和“链路内部实现”
+- 如果再硬放一个只会转发的 `runner.py`，职责反而会变糊
 
-- 部分底层文件名仍保留历史实现名
-- 例如旧的 `targeted_research_node.py`
+所以 docgen 这里的统一方式不是“为了对称也补一个 runner”，而是：
 
-当前做法是：
+- 有独立执行职责，才有 `runner.py`
+- 没有独立执行职责，就只保留 `graph.py + state.py + nodes/ + runtime/`
 
-- 先通过 `nodes/__init__.py` 提供业务化 builder 别名
-- 后续如果要继续收口，再单独做一次文件重命名重构
+## 为什么 `publish.py` 放进 `runtime/`
 
-## `nodes/`、`runtime/`、`services/` 的分工
+`publish.py` 并不是 root 稳定入口，它本质上是一组 docgen 内部发布实现：
 
-### `nodes/`
+- merged markdown 组装
+- staging outputs
+- manifest 写入
+- 最终 publish / persistence
 
-只负责顶层 graph node。
+这类文件如果直接挂在链路根目录，会让 root 目录变成“公开接口 + 内部实现”的混合层。
 
-它应该回答的是：
+现在统一后的约定是：
 
-- 这个 node 做什么
-- 接收什么 state
-- 返回什么 state patch
+- 链路 root 只放稳定入口
+- 特殊用途实现统一下沉到 `runtime/`
 
-### `runtime/`
+所以现在的阅读方式是：
 
-放会被多个 node 复用、但又不适合进 `shared.infra` 的 docgen 本地执行能力。
-
-例如：
-
-- `chapter_context.py`
-- `query_planning.py`
-- `writer.py`
-- `assets.py`
-
-### `services/`
-
-只保留 docgen 内部局部服务。
-
-如果未来某个能力已经跨 workflow 复用，就不该继续留在这里。
+- 看 `graph.py` 了解链路结构
+- 看 `nodes/` 了解顶层职责
+- 看 `runtime/` 了解专项实现
 
 ## 一句话总结
 
-docgen 是一个中大型 workflow，应该坚持“graph 看阶段、nodes 看顶层职责、runtime 看局部执行能力、services 只放少量内部服务”的分层方式，不要再把命名和职责混在一起。
+docgen 是中大型子链路，应该坚持“薄 root、薄 graph、清晰 node、专项 runtime”的组织方式；没有独立职责的层不要为了对称硬保留。

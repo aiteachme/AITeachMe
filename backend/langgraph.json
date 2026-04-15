@@ -5,11 +5,11 @@
   ],
   "graphs": {
     "ingest_fast_parse": {
-      "path": "./app/workflows/ingest/graph.py:get_langgraph_dev_fast_parse_graph",
+      "path": "./app/workflows/ingest/fast_parse/graph.py:get_langgraph_dev_fast_parse_graph",
       "description": "Ingest Phase 1 fast-parse workflow."
     },
     "ingest_deep_enhance": {
-      "path": "./app/workflows/ingest/graph.py:build_deep_enhance_graph",
+      "path": "./app/workflows/ingest/deep_enhance/graph.py:get_langgraph_dev_deep_enhance_graph",
       "description": "Ingest Phase 2 deep-enhance workflow."
     },
     "digest_kg": {
