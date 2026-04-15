@@ -14,7 +14,7 @@ from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
 from app.workflows.ingest.fast_parse.graph import get_langgraph_dev_fast_parse_graph
 from app.workflows.interact.chat.graph import get_langgraph_dev_interact_graph
-from app.workflows.interact.nodes import stream as stream_module
+from app.workflows.interact.chat.nodes import stream as stream_module
 
 _LEGACY_EXAMINE_CURRICULUM_AVAILABLE = all(
     hasattr(_models, name)

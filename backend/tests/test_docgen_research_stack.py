@@ -11,8 +11,8 @@ from app.shared.infra.search import ContextCompressor
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.docgen.internal import DocGenChapterContextRuntime
-from app.workflows.digest.docgen.internal.query_planning import (
+from app.workflows.digest.docgen.lib import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.lib.query_planning import (
     ResearchSubQueryPlan,
     generate_gap_queries,
     generate_sub_queries,
@@ -199,11 +199,11 @@ def test_research_conductor_skips_web_when_local_results_are_enough() -> None:
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.lib.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.lib.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.lib.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ):
         result = asyncio.run(
@@ -246,14 +246,14 @@ def test_research_conductor_applies_retrieval_profile_to_factory() -> None:
         captured.update(kwargs)
         return [local_retriever, web_retriever]
 
-    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.lib.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.lib.chapter_context.get_retrievers_for_subject",
         new=fake_get_retrievers_for_subject,
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.get_configured_retriever_names",
+        "app.workflows.digest.docgen.lib.chapter_context.get_configured_retriever_names",
         new=lambda **_kwargs: ["local_rag", "tavily", "arxiv", "semantic_scholar"],
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.lib.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ):
         result = asyncio.run(
@@ -313,14 +313,14 @@ def test_research_conductor_falls_back_to_web_reading_and_purifies() -> None:
         del max_workers, timeout_s
         return [reader.pages[url] for url in urls]
 
-    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.lib.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.lib.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.lib.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.read_urls",
+        "app.workflows.digest.docgen.lib.chapter_context.read_urls",
         new=fake_read_urls,
     ):
         result = asyncio.run(
@@ -393,14 +393,14 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
             for url in urls
         ]
 
-    with patch("app.workflows.digest.docgen.internal.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.get_retrievers_for_subject",
+    with patch("app.workflows.digest.docgen.lib.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
+        "app.workflows.digest.docgen.lib.chapter_context.get_retrievers_for_subject",
         new=lambda **_kwargs: [local_retriever, web_retriever],
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.generate_sub_queries",
+        "app.workflows.digest.docgen.lib.chapter_context.generate_sub_queries",
         new=no_sub_queries,
     ), patch(
-        "app.workflows.digest.docgen.internal.chapter_context.read_urls",
+        "app.workflows.digest.docgen.lib.chapter_context.read_urls",
         new=fake_read_urls,
     ):
         result = asyncio.run(

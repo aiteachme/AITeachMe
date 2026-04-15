@@ -1,6 +1,6 @@
 ﻿# 05. Digest 引擎 — 织网引擎技术文档
 
-> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/digest/` 代码实现
+> **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/digest/` 代码实现
 > **合并说明**: 本文档合并了原 `05a_digest_knowledge_document.md` 和 `05b_digest_knowledge_graph.md` 的内容。
 
 ---
@@ -9,13 +9,14 @@
 
 Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Ingest 产出的标准化 Markdown 材料加工为结构化的知识资产。
 
-**Digest 做三件事（三个子流程/Lane）：**
+**Digest 当前核心链路：**
 
 | Lane | 流程名 | 产物 | 触发方式 |
 |---|---|---|---|
-| **KG Lane** | `digest.graph` | 知识节点 + 知识边 + 证据链 | Digest Service 调度 |
-| **Curriculum Lane** | `digest.curriculum` | 教学单元 + 主题树 + 前置依赖 DAG | KG Lane finalize 自动触发 |
-| **Docs Lane** | `digest.docgen` | 知识文档（多章节 Markdown） | 与 KG Lane 并行运行 |
+| **Planner Lane** | `digest.planner` | confirmed plan 草案 | 用户确认构建方案前触发 |
+| **DocGen Lane** | `digest.docgen` | 知识文档（多章节 Markdown） | 统一构建或 docs-only 构建 |
+| **Knowledge Graph Lane** | `digest.knowledge_graph` | 知识节点 + 知识边 + 证据链 | 统一构建或 graph-only 构建 |
+| **Unified Lane** | `digest.unified` | 共享准备 + docgen + graph 编排结果 | Digest Service 后台任务 |
 
 **Digest 不做：**
 - ❌ 不处理原始文件（那是 Ingest 的事）
@@ -28,23 +29,16 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| Service | `backend/app/services/digest_service.py` | Digest 编排入口、触发 KG + Docs 并行 |
-| 统一运行时 | `backend/app/workflows/digest/runtime.py` | 三个子流程的 workflow runner |
-| 图定义(总) | `backend/app/workflows/digest/graph.py` | 导出三个子图 |
-| KG 子图 | `backend/app/workflows/digest/kg/graph.py` | KG Lane LangGraph 定义 |
-| KG 节点 | `backend/app/workflows/digest/kg/prepare_nodes.py` | 锁、准备、抽取、聚类 |
-| KG 解析 | `backend/app/workflows/digest/kg/resolve_nodes.py` | 节点/边解析、影响分析 |
-| KG 终态 | `backend/app/workflows/digest/kg/finalize_nodes.py` | 激活、触发 Curriculum |
-| Curriculum 子图 | `backend/app/workflows/digest/curriculum/graph.py` | Curriculum Lane 定义 |
-| Curriculum 节点 | `backend/app/workflows/digest/curriculum/nodes.py` | 单元/主题树/DAG 推导 |
-| Docs 子图 | `backend/app/workflows/digest/docs/graph.py` | Docs Lane 定义 (含 fan-out) |
-| Docs 节点 | `backend/app/workflows/digest/docs/nodes/` | load/cleanse/outline/draft/review/metadata/finalize |
-| 统一会话 | `backend/app/workflows/digest/unified/` | 跨 Lane 共享材料与状态 |
-| KG Prompt | `backend/app/workflows/digest/prompts/kg_prompts.py` | 抽取/对齐/命名/主题树 prompt |
-| Docs Prompt | `backend/app/workflows/digest/prompts/docgen_prompts.py` | 清洗/大纲/写作/审校/元数据 prompt |
-| Archetype Prompt | `backend/app/workflows/digest/prompts/archetype_prompts.py` | 4种原型写作 + 教学审校 prompt |
-| 事件定义 | `backend/app/workflows/digest/events.py` (各子模块) | Lane 级事件 |
-| 可观测性 | `backend/app/workflows/digest/observability.py` | 节点计时 + token 统计 |
+| Service | `backend/app/services/knowledge_docs/digest_service.py` | Digest 构建入口、后台任务调度 |
+| 模块入口 | `backend/app/workflows/digest/runtime.py` / `graph.py` | 历史兼容入口，指向真实链路 |
+| Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
+| DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
+| Knowledge Graph | `backend/app/workflows/digest/knowledge_graph/` | 知识图谱链路 |
+| Unified | `backend/app/workflows/digest/unified/` | 共享准备、DocGen 与 Knowledge Graph 编排 |
+| Shared | `backend/app/workflows/digest/shared/` | contracts / models / prepare / material_profile / metrics |
+| DocGen Prompt | `backend/app/workflows/digest/docgen/prompts/` | 研究、标题、写作、资产 prompt |
+| KG Prompt | `backend/app/workflows/digest/knowledge_graph/prompts/` | 抽取/对齐/命名/主题树 prompt |
+| Reporting | 各链路 `lib/reporting.py` | 构建摘要与 token/timing 诊断 |
 
 ---
 

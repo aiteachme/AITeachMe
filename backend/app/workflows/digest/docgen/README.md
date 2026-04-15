@@ -56,9 +56,9 @@ docgen/
 
 ## 迁移说明
 
-- 历史 `internal/` 目录仍保留兼容实现
-- 新代码优先依赖 `docgen.prompts` 与 `docgen.lib`
-- 模块级 `digest.prompts` 只作为兼容门面，不再作为 docgen 的主依赖位置
+- `docgen/` 已收口为 `graph.py + state.py + nodes/ + prompts/ + lib/`
+- 节点内部子逻辑统一放在 `lib/`，不再额外引入 `internal/` 夹层
+- prompt 主依赖位置是 `docgen/prompts/`，不再依赖模块级 `digest.prompts`
 
 ## 一句话总结
 

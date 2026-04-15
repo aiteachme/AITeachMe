@@ -1,6 +1,6 @@
 """Prompt builders used by DocGen chapter drafting."""
 
-from app.workflows.digest.prompts.docgen_prompts import (
+from app.workflows.digest.docgen.prompts.common import (
     build_docgen_heading_repair_messages,
     build_docgen_writer_messages,
 )

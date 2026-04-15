@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from app.workflows.interact.support.execution import (
+from app.workflows.interact.chat.lib.execution import (
     InteractExecutionMode,
     select_execution_mode,
 )
-from app.workflows.interact.support.retrieval import retrieve_context
-from app.workflows.interact.support.streaming import SSEEventEmitter, format_sse_event
-from app.workflows.interact.support.strategies import select_teaching_strategy
-from app.workflows.interact.support.types import (
+from app.workflows.interact.chat.lib.retrieval import retrieve_context
+from app.workflows.interact.chat.lib.streaming import SSEEventEmitter, format_sse_event
+from app.workflows.interact.chat.lib.strategies import select_teaching_strategy
+from app.workflows.interact.chat.lib.types import (
     MistakeSummary,
     RecentMessage,
     RetrievedContext,

@@ -20,7 +20,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows/` 负责业务用例、图编排、模块级协调
 - `shared.infra/` 只负责基础设施
 - `app/services` 源层已移除，不再作为代码落点或兼容入口
-- `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、workflow lane 或 `shared.infra.tools`
+- `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、具体 workflow lane 或 `shared.infra.tools`
 
 ## 2. 顶层分区
 
@@ -52,26 +52,16 @@ workflows/<module>/
   application/
   <lane_a>/
   <lane_b>/
-  _shared/                 # 可选，仅在真实跨链路复用时建立
+  shared/                  # 仅当 >=2 条链路真实复用时才建立
 ```
 
-### 3.1 `application/` 的职责
+`application/` 的职责：
 
-- 承接原 `app.services` 中面向 API 的业务用例
-- 负责组合多条链路
-- 负责模块级协调逻辑，例如：
-  - build lock
-  - background task
-  - SSE 事件装配
-  - 状态汇总与结果返回
+- 承接面向 API 的业务用例
+- 组合多条链路
+- 处理 build lock、background task、SSE 事件装配、状态汇总与结果返回等模块级协调
 
-明确禁止：
-
-- 不在 `application/` 里写 graph node
-- 不在 `application/` 里放 prompt 模板
-- 不在 `application/` 里直接堆基础设施实现
-
-### 3.2 模块根禁止新增
+模块根禁止新增：
 
 - 模块级 `services/`
 - 模块级 `prompts/`
@@ -97,38 +87,22 @@ workflows/<module>/<lane>/
   events.py                # 可选，仅当存在明确订阅方时保留
 ```
 
-### 4.1 各层职责
+各层职责：
 
-- `graph.py`
-  唯一图执行入口。负责：
-  - `build_<lane>_graph(...)`
-  - `create_<lane>_initial_state(...)`
-  - `run_<lane>_workflow(...)`
-  - 路由函数和 `Send` 编排
-- `state.py`
-  定义内部 `TypedDict State`，必要时同时放输入输出投影类型
-- `nodes/`
-  图上的顶层节点。一个节点一个文件
-- `prompts/`
-  prompt builder / template，不放节点逻辑
-- `lib/`
-  节点内部调用的子逻辑，例如 `writer.py`、`publish.py`、`grounding.py`
-- `events.py`
-  严格可选，只有存在明确订阅方时才保留
+- `graph.py` 是唯一图执行入口，负责 graph builder、初始状态构造、路由函数和 `Send` 编排
+- `state.py` 定义内部 `TypedDict State`，必要时同时放输入输出投影类型
+- `nodes/` 放图上的顶层节点，一个节点一个文件
+- `prompts/` 放 prompt builder / template，不放节点逻辑
+- `lib/` 放节点内部调用的子逻辑，例如 `writer.py`、`publish.py`、`grounding.py`
+- `events.py` 严格可选，只有存在明确订阅方时才保留
 
-### 4.2 链路目录明确禁止
+链路目录明确禁止：
 
 - `runner.py`
 - `contracts.py`
 - `runtime/`
 - `internal/`
 - `services/`
-
-含义：
-
-- 对外入口收口到 `graph.py`
-- 业务子逻辑统一收口到 `lib/`
-- 不再堆叠多层近义目录
 
 ## 5. Support 模块模板
 
@@ -158,9 +132,9 @@ workflows/support/<module>/
 - 如果需要长链 AI 流程，只调用已有 engine 链路
 - 不在 support 里平行复制五大引擎的能力
 
-### 5.1 teaching tool 分类规则
+## 6. Teaching Tool 规则
 
-teaching tool 不是新的独立教学层。当前通用实现是内置 tool，不再单独占用 `workflows/support/teaching_tools` 模块。
+teaching tool 不是新的独立教学层。当前通用实现是内置 tool，不单独占用 `workflows/support/teaching_tools` 模块。
 
 - 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`
 - 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`
@@ -168,42 +142,41 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/_shared/pedagogy`
 - 禁止为了“教学语义”重新创建 `app/teaching` 层
 
-## 6. `_shared/` 规则
+## 7. 模块级 `shared/` 规则
 
-只有被两条及以上链路真实复用的内容，才允许进入模块 `_shared/`
+只有被两条及以上链路真实复用的内容，才允许进入模块级 `shared/`。
 
-允许进入 `_shared/` 的典型内容：
+允许进入模块级 `shared/` 的典型内容：
 
-- Digest 的 contracts / models / prepare / pedagogy facade
-- Ingest 的 parsing / recovery / logging
+- Digest 的共享 contracts / models / prepare
+- Digest 的跨链路 metrics 基础模型与 token / slow-item 汇总
+- Ingest 的共享 parsing / recovery / logging
 
-不应进入 `_shared/` 的内容：
+不应进入模块级 `shared/` 的内容：
 
 - 只有一条链路使用的 helper
 - 单个节点的 prompt
 - 只为了“可能复用”而提前上提的代码
+- 链路自己的 reporting / summary builder，这类应放回对应链路 `lib/`
 
-## 7. 命名规范
+注意：`digest/_shared/` 不是通用共享层；它只保留当前真实存在的 Digest 教学语义入口，例如 `runtime_config.py` 与 `pedagogy/`。
 
-### 7.1 图与用例
+## 8. 命名与进度规则
 
 - graph builder：`build_<lane>_graph`
 - workflow runner：`run_<lane>_workflow`
 - application 文件：按 use case 命名，例如 `build_plans.py`、`builds.py`
+- 节点名与节点文件名使用小写蛇形，例如 `load_context.py`
+- prompt 文件名使用业务主题，例如 `write_chapters.py`
+- `lib/` 文件按主题命名，例如 `publish.py`、`writer.py`、`grounding.py`
+- planner SSE 进度主通路是 `emit_progress(...)`
+- 知识构建等待页主通路是 `update_knowledge_build_status(...)` 产生的轮询状态
+- reporting / metrics 只负责构建诊断摘要，不作为前端进度事件层
+- `events.py` 不是标准必选层；如果没有明确订阅方，不要为了“架构完整”额外定义事件层
 
-### 7.2 节点与文件
+## 9. 当前模块落位
 
-- 节点名：小写蛇形，例如 `load_context`
-- node builder：`build_<node_name>_node`
-- 节点文件名：`load_context.py`
-- prompt 文件名：`load_context.py`、`write_chapters.py`
-- `lib/` 文件按主题命名：`publish.py`、`writer.py`、`grounding.py`
-
-迁移期允许保留旧文件名兼容层，例如 `_node.py`、`internal/`，但新代码不再继续依赖这些命名。
-
-## 8. 当前模块落位
-
-### 8.1 digest
+### 9.1 digest
 
 ```text
 digest/
@@ -214,16 +187,19 @@ digest/
   docgen/
   knowledge_graph/
   unified/
-  _shared/
+  shared/
+  _shared/                 # 仅保留 runtime_config 与 pedagogy 等真实教学语义
 ```
 
 说明：
 
-- `planner/` 与 `docgen/` 是当前优先收口的主链路
-- `application/` 是 Digest 未来承接 planner/docgen API-facing 用例的位置
-- `_shared/` 目前除了 contracts/models/prepare，还承接 runtime_config 与 pedagogy facade
+- `application/` 承接 knowledge_docs / knowledge_graph 的 API-facing 用例
+- `planner/` 与 `docgen/` 是当前优先维护的主链路
+- `knowledge_graph/` 与 `unified/` 先对齐门面与命名
+- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics 等复用能力
+- 不再保留只转发到 `shared/` 的 `_shared` 空门面
 
-### 8.2 ingest
+### 9.2 ingest
 
 ```text
 ingest/
@@ -231,15 +207,20 @@ ingest/
   README.md
   fast_parse/
   deep_enhance/
-  _shared/
+  shared/
+    parsing/
+  runtime.py
+  recovery.py
 ```
 
 说明：
 
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
-- 模块根旧 `graph.py / runtime / state.py` 仍作为兼容层保留
+- `shared/parsing/` 是当前两条链路共享的解析实现
+- `runtime.py` 与 `recovery.py` 是模块级兼容/启动恢复入口
+- 不再保留只转发到 `shared/parsing/`、`recovery.py` 的 `_shared` 空门面
 
-### 8.3 interact
+### 9.3 interact
 
 ```text
 interact/
@@ -251,10 +232,11 @@ interact/
 
 说明：
 
-- `chat/` 是 canonical lane
+- `chat/` 是唯一真实链路，真实实现已收口到 `chat/`
 - `application/` 承接聊天列表、历史记录、SSE streaming 外壳等 API-facing 用例
+- 根目录旧 `graph.py / runtime.py / state.py / nodes/ / prompts/ / support/` 作为兼容层保留
 
-### 8.4 examine
+### 9.4 examine
 
 ```text
 examine/
@@ -263,10 +245,10 @@ examine/
   application/
   question_build/
   exam_grade/
-  _shared/                 # 未来确有复用时再建立
+  shared/                  # 未来确有复用时再建立
 ```
 
-### 8.5 profile
+### 9.5 profile
 
 ```text
 profile/
@@ -276,36 +258,29 @@ profile/
   pipeline/
 ```
 
-### 8.6 support
+### 9.6 support
 
 ```text
-  support/
-    __init__.py
-    README.md
-    auth/
-    export_import/
-    files/
-    system/
-    subjects/
+support/
+  __init__.py
+  README.md
+  auth/
+  export_import/
+  files/
+  system/
+  subjects/
 ```
 
-说明：
-
-- `support/` 是新正式分区
-- 当前已落地 `auth/`、`export_import/`、`files/`、`system/` 与 `subjects/` 作为 support 模块模板示例
-
-## 9. 当前最重要的兼容规则
+## 10. 当前最重要的兼容规则
 
 - `workflows` 业务链路与 application 新代码不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 新代码不再直接 import `app.teaching.*`
-- `digest/_shared/runtime_config.py` 与 `digest/_shared/pedagogy/` 是真实实现落点，不再委托 `app.teaching`
 - 旧 `services/` 源层已删除，不再补旧路径 shim
 - `teaching/` 源层已删除，任何新代码不得恢复该目录或导入面
 - 如果新业务代码仍然跨回旧层，视为结构违规
 
-## 10. 一句话总结
+## 11. 一句话总结
 
-`workflows` 的未来结构可以压缩成一句话：
-
-- 五大引擎：`application + lanes + _shared`
+- 五大引擎：`application + lanes + shared`
+- Digest 教学语义：`_shared/runtime_config.py + _shared/pedagogy/`
 - 支撑业务：`support/<module> = commands + queries (+ streams/lib)`

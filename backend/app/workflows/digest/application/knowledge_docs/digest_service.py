@@ -37,7 +37,7 @@ from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
-from app.workflows.digest.observability import build_token_summary
+from app.workflows.digest.shared.metrics import build_token_summary
 from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.unified import run_unified_digest_build
 from app.shared.infra.subject import inspect_subject_build_precheck, resolve_subject_build_vector_status

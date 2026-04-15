@@ -16,9 +16,9 @@ interact/
 
 说明：
 
-- `chat/` 是唯一真实链路
+- `chat/` 是唯一真实链路，真实实现已收口到 `chat/graph.py + chat/state.py + chat/nodes/ + chat/prompts/ + chat/lib/`
 - `application/` 承接聊天会话、历史记录与 SSE streaming 外壳等 API-facing 用例
-- 根目录旧 `graph.py / runtime.py / state.py / support/` 仍保留兼容导入面
+- 根目录旧 `graph.py / runtime.py / state.py / nodes/ / prompts/ / support/` 只保留兼容导入面
 
 上层稳定入口：
 

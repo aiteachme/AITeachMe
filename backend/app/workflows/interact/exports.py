@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
-from app.workflows.interact.graph import get_langgraph_dev_interact_graph
-from app.workflows.interact.prompts.prompts import PROMPTS
+from app.workflows.interact.chat.graph import get_langgraph_dev_interact_graph
+from app.workflows.interact.chat.prompts.prompts import PROMPTS
 
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
@@ -15,5 +15,4 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
-
 

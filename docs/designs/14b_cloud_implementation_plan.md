@@ -461,8 +461,8 @@ async def read_file_bytes(raw_file: RawFile) -> bytes:
 ### Step 3.3 — 改造 Ingest 工作流文件读取
 
 **关键文件**:
-- `backend/app/workflows/ingest/nodes/file.py` — 加载原始文件
-- `backend/app/workflows/ingest/nodes/enhance.py` — OCR增强
+- `backend/app/workflows/ingest/fast_parse/lib/file.py` — 加载原始文件
+- `backend/app/workflows/ingest/deep_enhance/lib/enhance.py` — OCR增强
 
 Ingest 需要本地 Path 来调用解析器（markitdown, pymupdf4llm）。
 
@@ -490,7 +490,7 @@ async def load_raw_file(state, ...):
 
 Ingest 产出：`raw_markdowns/{id}.md` 和 `assets/{id}/*`
 
-**文件**: `backend/app/workflows/ingest/nodes/finalize.py`
+**文件**: `backend/app/workflows/ingest/fast_parse/lib/finalize.py`
 
 ```python
 async def finalize_success(state, ...):
@@ -648,7 +648,7 @@ else:
 
 ### Step 3.9 — 改造 Interact 引擎的知识文档读取
 
-**文件**: `backend/app/workflows/interact/nodes/` 相关文件
+**文件**: `backend/app/workflows/interact/chat/nodes/` 相关文件
 
 Interact 引擎在构建 prompt 时可能读取知识文档内容。需要确保读取走 store 抽象。
 
@@ -846,8 +846,8 @@ Render 创建 PostgreSQL 后：
 | `backend/app/workflows/support/subjects/lib/deletion.py` | 删除走 store |
 | `backend/app/workflows/support/export_import/commands.py` | 导出导入走 store |
 | `backend/app/main.py` | 静态挂载条件化 + init_db 适配 |
-| `backend/app/workflows/ingest/nodes/file.py` | 文件加载走 store |
-| `backend/app/workflows/ingest/nodes/finalize.py` | 产物写回走 store |
+| `backend/app/workflows/ingest/fast_parse/lib/file.py` | 文件加载走 store |
+| `backend/app/workflows/ingest/fast_parse/lib/finalize.py` | 产物写回走 store |
 | `backend/app/workflows/digest/docs/publish.py` | 文档发布走 store |
 | `backend/pyproject.toml` | 新增 psycopg, pgvector, boto3 |
 
@@ -866,7 +866,7 @@ Render 创建 PostgreSQL 后：
 - `backend/app/repositories/profile_repo.py` — 可能有 SQLite 特有 SQL
 - `backend/app/workflows/digest/shared/prepare.py` — 文件读取
 - `backend/app/workflows/digest/kg/support.py` — 可能读取本地文件
-- `backend/app/workflows/interact/nodes/` — 知识文档读取
+- `backend/app/workflows/interact/chat/nodes/` — 知识文档读取
 
 ---
 

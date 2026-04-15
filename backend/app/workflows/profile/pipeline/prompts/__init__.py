@@ -1,5 +1,8 @@
-"""Compatibility wrapper exposing canonical profile pipeline prompts."""
+"""Profile pipeline prompt exports."""
 
-from app.workflows.profile.prompts import PROMPTS, SYSTEM_PROMPT_REPORT_SUGGESTIONS
+from app.workflows.profile.pipeline.prompts.report import (
+    PROMPTS,
+    SYSTEM_PROMPT_REPORT_SUGGESTIONS,
+)
 
 __all__ = ["PROMPTS", "SYSTEM_PROMPT_REPORT_SUGGESTIONS"]

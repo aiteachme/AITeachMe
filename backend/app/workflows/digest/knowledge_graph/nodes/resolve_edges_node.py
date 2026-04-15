@@ -23,18 +23,18 @@ from app.workflows.digest.knowledge_graph.mutations import (
     create_node_evidence,
     create_updated_revision,
 )
-from app.workflows.digest.knowledge_graph.services.candidate_identity import (
+from app.workflows.digest.knowledge_graph.lib.candidate_identity import (
     build_candidate_name_key,
     candidate_lookup_keys,
     normalize_scope_name,
 )
-from app.workflows.digest.knowledge_graph.services.embedding_cache import (
+from app.workflows.digest.knowledge_graph.lib.embedding_cache import (
     compute_embedding_text_hash,
     load_subject_embedding_cache,
     write_subject_embedding_cache,
 )
-from app.workflows.digest.knowledge_graph.services.impact_analyzer import analyze_impact
-from app.workflows.digest.knowledge_graph.services.resolver import (
+from app.workflows.digest.knowledge_graph.lib.impact_analyzer import analyze_impact
+from app.workflows.digest.knowledge_graph.lib.resolver import (
     ResolveResult,
     compute_edge_confidence,
     resolve_edge,

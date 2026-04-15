@@ -14,9 +14,9 @@ import structlog
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
-from app.workflows.digest.knowledge_graph.services.chunker import chunk_markdown
-from app.workflows.digest.knowledge_graph.services.cleaner import clean_markdown
-from app.workflows.digest.knowledge_graph.services.embedder import embed_chunks
+from app.workflows.digest.knowledge_graph.lib.chunker import chunk_markdown
+from app.workflows.digest.knowledge_graph.lib.cleaner import clean_markdown
+from app.workflows.digest.knowledge_graph.lib.embedder import embed_chunks
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models import RetrievalChunk
 import app.repositories.knowledge.knowledge_repo as knowledge_repo

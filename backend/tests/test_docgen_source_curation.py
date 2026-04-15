@@ -14,7 +14,7 @@ from app.workflows.digest.docgen.graph import (
     build_merge_drafts_node,
     build_write_chapters_node,
 )
-from app.workflows.digest.docgen.internal.publish import (
+from app.workflows.digest.docgen.lib.publish import (
     _build_chapter_manifest,
     _build_source_scope,
     build_merged_markdown,

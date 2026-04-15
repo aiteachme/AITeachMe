@@ -7,7 +7,7 @@ from app.workflows.profile.graph import (
     build_profile_pipeline_graph,
     build_profile_workflow_graph,
 )
-from app.workflows.profile.prompts.prompts import PROMPTS
+from app.workflows.profile.pipeline.prompts import PROMPTS
 
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
@@ -25,5 +25,4 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
-
 
