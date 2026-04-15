@@ -1,4 +1,4 @@
-﻿"""Per-lane digest summary builders (DocGen, KG)."""
+"""DocGen lane reporting helpers."""
 
 from __future__ import annotations
 
@@ -6,73 +6,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-
-from .models import DigestTokenSummary, SlowItemTiming
-
-
-def build_slow_items(
-    items: Sequence[Mapping[str, Any] | SlowItemTiming],
-    *,
-    top_k: int | None = None,
-) -> list[SlowItemTiming]:
-    """Normalize and trim slow item records."""
-
-    limit = _top_k(top_k)
-    normalized: list[SlowItemTiming] = []
-    for item in items:
-        if isinstance(item, SlowItemTiming):
-            normalized.append(item)
-            continue
-        normalized.append(
-            SlowItemTiming(
-                item_id=str(item.get("item_id") or item.get("chunk_id") or item.get("chapter_index") or item.get("title") or "item"),
-                title=str(item.get("title") or item.get("name") or item.get("chunk_title") or ""),
-                elapsed_ms=int(item.get("elapsed_ms", 0)),
-                metadata={
-                    key: value
-                    for key, value in item.items()
-                    if key not in {"item_id", "title", "name", "chunk_id", "chapter_index", "chunk_title", "elapsed_ms"}
-                },
-            )
-        )
-    normalized.sort(key=lambda entry: (-entry.elapsed_ms, entry.item_id))
-    return normalized[:limit]
-
-
-def add_slow_item(
-    items: list[dict[str, Any]],
-    *,
-    item_id: str,
-    title: str,
-    elapsed_ms: int,
-    metadata: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Append a slow item and keep only the slowest top-k entries."""
-
-    items.append(
-        {
-            "item_id": item_id,
-            "title": title,
-            "elapsed_ms": int(elapsed_ms),
-            **(metadata or {}),
-        }
-    )
-    items.sort(key=lambda item: (-int(item.get("elapsed_ms", 0)), str(item.get("item_id", ""))))
-    del items[_top_k() :]
-    return items
-
-
-def step_slow_items(step_map: Mapping[str, int], *, top_k: int | None = None) -> list[SlowItemTiming]:
-    """Turn a simple step->elapsed map into ranked slow items."""
-
-    return build_slow_items(
-        [
-            {"item_id": step_name, "title": step_name, "elapsed_ms": elapsed_ms}
-            for step_name, elapsed_ms in step_map.items()
-            if int(elapsed_ms) > 0
-        ],
-        top_k=top_k,
-    )
+from app.workflows.digest.shared.metrics import (
+    DigestTokenSummary,
+    build_lane_llm_rollup,
+    build_slow_items,
+)
 
 
 def build_docgen_lane_summary(
@@ -121,14 +59,23 @@ def build_docgen_lane_summary(
     final_markdown = str(state.get("enriched_markdown") or state.get("merged_markdown") or "")
     source_urls = [
         str(url)
-        for url in [*state.get("research_sources", []), *[source for chapter in chapter_metadatas for source in chapter.get("sources", [])]]
+        for url in [
+            *state.get("research_sources", []),
+            *[
+                source
+                for chapter in chapter_metadatas
+                for source in chapter.get("sources", [])
+            ],
+        ]
         if str(url).strip()
     ]
     total_sources = len(dict.fromkeys(source_urls))
     placeholder_count = sum(int(chapter.get("placeholder_count", 0)) for chapter in chapter_drafts)
     local_hit_count = sum(int(chapter.get("local_hits", 0) or 0) for chapter in chapter_materials)
     web_hit_count = sum(int(chapter.get("web_hits", 0) or 0) for chapter in chapter_materials)
-    fallback_chapter_count = sum(1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False)))
+    fallback_chapter_count = sum(
+        1 for chapter in chapter_materials if bool(chapter.get("fallback_used", False))
+    )
     curated_source_count = sum(int(chapter.get("curated_source_count", 0) or 0) for chapter in chapter_materials)
     trusted_source_count = sum(int(chapter.get("trusted_source_count", 0) or 0) for chapter in chapter_materials)
     retrieval_profiles = sorted(
@@ -239,7 +186,12 @@ def build_docgen_lane_summary(
         "mermaid": mermaid_block_count,
         "image": image_block_count,
         "interactive_html": interactive_block_count,
-        "animation": int(((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get("animation", 0) or 0),
+        "animation": int(
+            ((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get(
+                "animation", 0
+            )
+            or 0
+        ),
     }
     asset_count = int(state.get("asset_count", 0) or 0) or sum(asset_summary.values())
     practice_count = int(state.get("practice_count", 0) or 0) or sum(
@@ -356,72 +308,10 @@ def build_docgen_lane_summary(
         "docgen_total_tokens": token_summary.total_tokens,
         "docgen_tokens_by_task_type": token_summary.tokens_by_task_type,
         "docgen_tokens_by_model": token_summary.tokens_by_model,
-        **_lane_llm_rollup(token_summary),
+        **build_lane_llm_rollup(token_summary),
         "slowest_research_chapters_top_k": [item.model_dump() for item in research_items],
         "slowest_draft_chapters_top_k": [item.model_dump() for item in draft_items],
     }
-
-
-def build_kg_lane_summary(
-    state: Mapping[str, Any],
-    *,
-    token_summary: DigestTokenSummary,
-    status: str | None = None,
-    error_message: str | None = None,
-) -> dict[str, Any]:
-    """Create a KG lane summary payload."""
-
-    resolved_status = _resolve_status(state, status=status, error_message=error_message)
-    resolved_error = _resolve_error_message(state, error_message=error_message)
-    extract_tokens = int(token_summary.tokens_by_node.get("extract", 0))
-    resolve_tokens = int(token_summary.tokens_by_node.get("resolve_nodes", 0)) + int(
-        token_summary.tokens_by_node.get("resolve_edges", 0)
-    )
-    return {
-        "status": resolved_status,
-        "error_message": resolved_error,
-        "chunk_count": len(state.get("chunk_ids", [])),
-        "cluster_count": len(state.get("clustered_candidates", [])),
-        "resolved_node_count": int(state.get("resolved_node_count", 0)),
-        "active_node_count": int(state.get("active_node_count", 0)),
-        "active_edge_count": int(state.get("active_edge_count", 0)),
-        "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
-        "acquire_lock_ms": int(state.get("acquire_lock_ms", 0)),
-        "prepare_ms": int(state.get("prepare_ms", 0)),
-        "extract_ms": int(state.get("extract_ms", 0)),
-        "cluster_ms": int(state.get("cluster_ms", 0)),
-        "resolve_nodes_ms": int(state.get("resolve_nodes_ms", 0)),
-        "resolve_edges_ms": int(state.get("resolve_edges_ms", 0)),
-        "impact_ms": int(state.get("impact_ms", 0)),
-        "finalize_ms": int(state.get("finalize_ms", 0)),
-        "resolution_index_ms": int(state.get("resolution_index_ms", 0)),
-        "candidate_embedding_ms": int(state.get("candidate_embedding_ms", 0)),
-        "node_persist_ms": int(state.get("node_persist_ms", 0)),
-        "edge_persist_ms": int(state.get("edge_persist_ms", 0)),
-        "fast_path_chunk_count": int(state.get("fast_path_chunk_count", 0)),
-        "llm_extract_chunk_count": int(state.get("llm_extract_chunk_count", 0)),
-        "success_chunk_count": int(state.get("success_chunk_count", 0)),
-        "failed_chunk_count": int(state.get("failed_chunk_count", 0)),
-        "no_match_count": int(state.get("no_match_count", 0)),
-        "secondary_no_match_count": int(state.get("secondary_no_match_count", 0)),
-        "unresolved_endpoint_count": int(state.get("unresolved_endpoint_count", 0)),
-        "extract_total_tokens": extract_tokens,
-        "resolve_total_tokens": resolve_tokens,
-        **_lane_llm_rollup(token_summary),
-        "slowest_chunks_top_k": [item.model_dump() for item in build_slow_items(state.get("slowest_chunks", []))],
-    }
-
-
-
-# 鈹€鈹€ Private helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-
-
-def _top_k(value: int | None = None) -> int:
-    from app.shared.infra.config import get_settings
-
-    if value is not None:
-        return max(1, int(value))
-    return max(1, int(get_settings().digest_timing_top_k))
 
 
 def _resolve_status(
@@ -444,53 +334,6 @@ def _resolve_error_message(state: Mapping[str, Any], *, error_message: str | Non
     return resolved or None
 
 
-def _default_lane_status(state: Mapping[str, Any], *, final_status: str) -> str | None:
-    if state:
-        return None
-    if final_status == "completed":
-        return "ok"
-    return "skipped"
-
-
-def _lane_llm_rollup(token_summary: DigestTokenSummary) -> dict[str, Any]:
-    return {
-        "llm_total_calls": token_summary.total_calls,
-        "failed_llm_call_count": token_summary.failed_call_count,
-        "llm_total_latency_ms": token_summary.total_latency_ms,
-        "llm_avg_latency_ms": token_summary.avg_latency_ms,
-        "tokens_by_model": token_summary.tokens_by_model,
-        "tokens_by_task_type": token_summary.tokens_by_task_type,
-        "call_count_by_model": token_summary.call_count_by_model,
-        "call_count_by_task_type": token_summary.call_count_by_task_type,
-        "light_vs_heavy_model_mix": {
-            "light_model_call_count": token_summary.light_model_call_count,
-            "light_model_total_tokens": token_summary.light_model_total_tokens,
-            "heavy_model_call_count": token_summary.heavy_model_call_count,
-            "heavy_model_total_tokens": token_summary.heavy_model_total_tokens,
-        },
-        "task_type_mix_ratio": token_summary.task_type_mix_ratio,
-        "model_mix_ratio": token_summary.model_mix_ratio,
-    }
-
-
-def _lane_step_items(lane: str, step_map: Mapping[str, Any]) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
-    for step_name, elapsed_ms in step_map.items():
-        elapsed = int(elapsed_ms or 0)
-        if elapsed <= 0:
-            continue
-        items.append(
-            {
-                "item_id": f"{lane}.{step_name}",
-                "title": f"{lane}.{step_name}",
-                "elapsed_ms": elapsed,
-                "lane": lane,
-                "step": step_name,
-            }
-        )
-    return items
-
-
 def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     totals: dict[str, int] = {}
     for item in items:
@@ -502,3 +345,4 @@ def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     return {key: value for key, value in totals.items() if value > 0}
 
 
+__all__ = ["build_docgen_lane_summary"]

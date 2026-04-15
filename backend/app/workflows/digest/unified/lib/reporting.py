@@ -1,44 +1,19 @@
-"""Unified digest timing report builder."""
+"""Unified digest reporting helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
 
-from app.shared.infra.observability.llm_stats import get_tracker
-
-from .models import DigestTimingReport, DigestTokenSummary
-from .lane_summaries import (
-    build_docgen_lane_summary,
-    build_kg_lane_summary,
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
+from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
+from app.workflows.digest.shared.metrics import (
+    DigestTimingReport,
+    DigestTokenSummary,
+    build_lane_step_slow_items,
     build_slow_items,
-    _default_lane_status,
-    _lane_step_items,
+    build_token_summary,
 )
-
-
-def build_token_summary(
-    *,
-    build_session_id: str | None = None,
-    subject: str | None = None,
-    workflow: str | None = None,
-    lane: str | None = None,
-    node: str | None = None,
-) -> DigestTokenSummary:
-    """Build a typed token summary from the global tracker."""
-
-    from app.shared.infra.config import get_settings
-
-    if not get_settings().digest_token_summary_enabled:
-        return DigestTokenSummary()
-    raw_summary = get_tracker().get_summary(
-        build_session_id=build_session_id,
-        subject=subject,
-        workflow=workflow,
-        lane=lane,
-        node=node,
-    )
-    return DigestTokenSummary.model_validate(raw_summary)
 
 
 def build_unified_timing_report(
@@ -73,8 +48,8 @@ def build_unified_timing_report(
     )
     top_slowest_steps = build_slow_items(
         [
-            *_lane_step_items("unified", unified_steps),
-            *_lane_step_items(
+            *build_lane_step_slow_items("unified", unified_steps),
+            *build_lane_step_slow_items(
                 "docgen",
                 {
                     "load": docgen_summary.get("load_ms", 0),
@@ -86,7 +61,7 @@ def build_unified_timing_report(
                     "finalize": docgen_summary.get("finalize_ms", 0),
                 },
             ),
-            *_lane_step_items(
+            *build_lane_step_slow_items(
                 "kg",
                 {
                     "acquire_lock": kg_summary.get("acquire_lock_ms", 0),
@@ -137,3 +112,14 @@ def build_unified_timing_report(
         llm=llm_summary,
         top_slowest_steps=top_slowest_steps,
     )
+
+
+def _default_lane_status(state: Mapping[str, Any], *, final_status: str) -> str | None:
+    if state:
+        return None
+    if final_status == "completed":
+        return "ok"
+    return "skipped"
+
+
+__all__ = ["build_unified_timing_report"]

@@ -1,6 +1,6 @@
 # Workflows 结构规范
 
-最后更新：2026-04-15
+最后更新：2026-04-16
 
 本文是 `backend/app/workflows/` 的唯一权威结构文档。后续所有 workflow 模块都以这里为准收口。
 
@@ -32,7 +32,7 @@ workflows/<module>/
   README.md
   <lane_a>/
   <lane_b>/
-  _shared/                 # 仅当 >=2 条链路真实复用时才建立
+  shared/                  # 仅当 >=2 条链路真实复用时才建立
 ```
 
 模块根允许存在的内容：
@@ -40,7 +40,7 @@ workflows/<module>/
 - `__init__.py`
 - `README.md`
 - 各链路目录
-- 可选 `_shared/`
+- 可选 `shared/`
 - 兼容层文件：仅用于迁移期保留旧导入面，例如旧的 `graph.py`、`runtime.py`
 
 模块根不再作为新增代码的落点：
@@ -139,26 +139,30 @@ workflows/<module>/<lane>/
 
 迁移期允许保留旧文件名兼容层，例如 `_node.py`、`internal/`，但新代码不再继续依赖它们。
 
-## 5. `_shared/` 规则
+## 5. 模块级 `shared/` 规则
 
-只有被两条及以上链路真实复用的内容，才允许进入模块 `_shared/`。
+只有被两条及以上链路真实复用的内容，才允许进入模块级 `shared/`。
 
-允许进入 `_shared/` 的典型内容：
+允许进入模块级 `shared/` 的典型内容：
 
 - digest 的共享 contracts / models / prepare
-- ingest 的共享 parsing / recovery / logging
+- digest 的跨链路 metrics 基础模型与 token/slow-item 汇总
+- ingest 的共享 parsing / recovery / logging（如果后续确实收口为模块级共享层）
 
-不应进入 `_shared/` 的内容：
+不应进入模块级 `shared/` 的内容：
 
 - 只有一条链路使用的 helper
 - 单个节点的 prompt
 - 只为了“可能复用”而提前上提的代码
+- 链路自己的 reporting/summary builder，这类应放回对应链路 `lib/`
 
 ## 6. 事件与进度
 
 当前默认规则：
 
-- 前端进度展示主通路是 `emit_progress(...)`
+- planner SSE 进度主通路是 `emit_progress(...)`
+- 知识构建等待页主通路是 `update_knowledge_build_status(...)` 产生的轮询状态
+- reporting / metrics 只负责构建诊断摘要，不作为前端进度事件层
 - `events.py` 不是标准必选层
 - 如果没有明确订阅方，不要为了“架构完整”额外定义事件层
 
@@ -181,7 +185,7 @@ digest/
 
 - `planner/` 与 `docgen/` 是当前优先收口的主链路
 - `knowledge_graph/` 与 `unified/` 先对齐门面与命名
-- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / primitives 等复用能力
+- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / primitives / metrics 等复用能力
 - 不再保留只转发到 `shared/` 的 `_shared/` 空门面
 
 ### 7.2 ingest
@@ -225,7 +229,7 @@ examine/
   README.md
   question_build/
   exam_grade/
-  _shared/                 # 未来确有复用时再建立
+  shared/                  # 未来确有复用时再建立
 ```
 
 说明：

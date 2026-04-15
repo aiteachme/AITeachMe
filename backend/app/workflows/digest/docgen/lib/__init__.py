@@ -14,6 +14,7 @@ from app.workflows.digest.docgen.lib.query_planning import (
     generate_gap_queries,
     generate_sub_queries,
 )
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "DocGenChapterContextRuntime",
     "DocGenWriterRuntime",
     "build_merged_markdown",
+    "build_docgen_lane_summary",
     "build_research_focus_text",
     "dedupe_queries",
     "enrich_queries_for_education",

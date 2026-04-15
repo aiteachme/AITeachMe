@@ -22,7 +22,7 @@ from app.workflows.digest.knowledge_graph.services.extractor import (
     extract_candidates,
     has_conceptual_content,
 )
-from app.workflows.digest.observability import add_slow_item
+from app.workflows.digest.shared.metrics import add_slow_item
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain

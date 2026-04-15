@@ -23,7 +23,8 @@ digest/
 - `docgen/` 负责按 confirmed plan 生成知识文档
 - `knowledge_graph/` 负责知识图谱链路
 - `unified/` 负责编排共享准备、docgen、kg 等组合流程
-- `shared/` 是跨链路共用的 contracts / models / prepare / primitives 实现层
+- `shared/` 是跨链路共用的 contracts / models / prepare / primitives / metrics 实现层
+- 各链路自己的构建摘要放在对应链路 `lib/reporting.py`，不要再新增顶层 observability 伪链路
 
 ## 对外入口
 

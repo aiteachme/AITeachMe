@@ -24,6 +24,18 @@ from app.workflows.digest.shared.models import (
     SharedInputs,
     SourcePacket,
 )
+from app.workflows.digest.shared.metrics import (
+    DigestModelUsageSummary,
+    DigestTimingReport,
+    DigestTokenSummary,
+    SlowItemTiming,
+    add_slow_item,
+    build_lane_llm_rollup,
+    build_lane_step_slow_items,
+    build_slow_items,
+    build_token_summary,
+    step_slow_items,
+)
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
 
 __all__ = [
@@ -35,17 +47,27 @@ __all__ = [
     "DigestChapterContract",
     "DigestChapterMediaHints",
     "DigestConfirmedPlanContract",
+    "DigestModelUsageSummary",
+    "DigestTimingReport",
+    "DigestTokenSummary",
     "FastTopicHints",
     "normalize_digest_confirmed_plan_payload",
     "parse_digest_confirmed_plan_contract",
     "PLANNER_RETRIEVAL_PROFILE",
     "SectionPacket",
     "SharedInputs",
+    "SlowItemTiming",
     "SourcePacket",
     "SPRINT_COURSE_TYPE",
+    "add_slow_item",
+    "build_lane_llm_rollup",
+    "build_lane_step_slow_items",
+    "build_slow_items",
+    "build_token_summary",
     "prepare_shared_inputs",
     "resolve_digest_course_type",
     "resolve_digest_retrieval_profile",
     "resolve_planner_retrieval_profile",
     "resolve_teaching_action",
+    "step_slow_items",
 ]

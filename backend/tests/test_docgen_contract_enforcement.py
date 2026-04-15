@@ -17,7 +17,8 @@ from app.workflows.digest.docgen.lib.publish import (
     build_merged_markdown,
     publish_staged_knowledge_docs,
 )
-from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
+from app.workflows.digest.shared.metrics import DigestTokenSummary
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
 from app.workflows.digest.shared.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
 

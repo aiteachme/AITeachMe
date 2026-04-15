@@ -15,7 +15,8 @@ from app.teaching.documents import (
     coerce_resolved_chapter_title,
     ensure_chapter_learning_scaffold,
 )
-from app.workflows.digest.observability import DigestTokenSummary, build_docgen_lane_summary
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
+from app.workflows.digest.shared.metrics import DigestTokenSummary
 from app.workflows.digest.planner.lib.plans import build_fallback_plan
 from app.workflows.digest.prompts import build_docgen_writer_messages, build_planner_chapter_title_messages
 from app.workflows.digest.shared.contracts import parse_digest_confirmed_plan_contract
