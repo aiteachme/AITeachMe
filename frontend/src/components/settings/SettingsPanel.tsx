@@ -22,6 +22,7 @@ import {
   type ParserProvider,
   useSettings,
 } from "../../hooks/useSettings";
+import { apiClient, getApiErrorMessage } from "../../api/client";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,15 +40,48 @@ interface SectionConfig {
 
 type SaveState = "idle" | "saved";
 type ConnectionStatus = "idle" | "success" | "error";
+type SettingSource = "env" | "config" | "runtime";
+type SettingStatus = "configured" | "missing" | "default" | "disabled" | "enabled" | "runtime";
+
+interface SettingEntry {
+  key: string;
+  label: string;
+  source: SettingSource;
+  value?: unknown;
+  display_value?: string | null;
+  status: SettingStatus;
+  secret?: boolean;
+  description?: string;
+}
+
+interface SettingSection {
+  id: string;
+  label: string;
+  description: string;
+  entries: SettingEntry[];
+}
+
+interface SettingsOverviewData {
+  config_path: string;
+  mode: string;
+  sections: SettingSection[];
+  notes: string[];
+}
+
+interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}
 
 const DEFAULT_PROVIDER_BASE_URL = "https://api.openai.com/v1";
 
 const SECTIONS: SectionConfig[] = [
-  { id: "credentials", label: "接口与凭证", description: "上游模型接口与密钥", icon: KeyRound },
-  { id: "models", label: "模型配置", description: "主模型与辅助模型", icon: Bot },
-  { id: "parser", label: "解析与检索", description: "文档解析与召回策略", icon: Wrench },
-  { id: "generation", label: "生成参数", description: "采样、惩罚与输出", icon: SlidersHorizontal },
-  { id: "runtime", label: "运行与调试", description: "后端联调与性能控制", icon: Server },
+  { id: "credentials", label: "后端与凭证", description: ".env 生效状态与本机连接", icon: KeyRound },
+  { id: "models", label: "模型配置", description: "config.yaml 当前模型", icon: Bot },
+  { id: "parser", label: "解析与检索", description: "Ingest / Search 配置", icon: Wrench },
+  { id: "generation", label: "生成参数", description: "本机实验参数", icon: SlidersHorizontal },
+  { id: "runtime", label: "运行与调试", description: "存储、观测与本机偏好", icon: Server },
 ];
 
 function clamp(value: number, min: number, max: number): number {
@@ -230,6 +264,88 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
+function displaySettingValue(entry: SettingEntry): string {
+  if (entry.secret || /key|token|secret|password|database\.url/i.test(entry.key)) {
+    return entry.status === "configured" ? "已配置" : "未配置";
+  }
+  if (entry.display_value !== undefined && entry.display_value !== null) {
+    return entry.display_value;
+  }
+  if (entry.value === null || entry.value === undefined || entry.value === "") {
+    return "未配置";
+  }
+  if (typeof entry.value === "boolean") {
+    return entry.value ? "开启" : "关闭";
+  }
+  return String(entry.value);
+}
+
+function SettingSourcePill({ source }: { source: SettingSource }) {
+  const label = source === "env" ? ".env" : source === "config" ? "config.yaml" : "runtime";
+  return (
+    <span className="rounded-md bg-white border border-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">
+      {label}
+    </span>
+  );
+}
+
+function SettingStatusPill({ entry }: { entry: SettingEntry }) {
+  const configured = entry.status === "configured" || entry.status === "runtime" || entry.status === "enabled";
+  return (
+    <span
+      className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+        configured
+          ? "border-emerald-100 bg-emerald-50/80 text-emerald-700"
+          : "border-amber-100 bg-amber-50/80 text-amber-700"
+      }`}
+    >
+      {configured ? "已生效" : "未配置"}
+    </span>
+  );
+}
+
+function BackendSettingList({
+  entries,
+  loading,
+  error,
+}: {
+  entries: SettingEntry[];
+  loading: boolean;
+  error: string | null;
+}) {
+  if (loading) {
+    return <InfoCard text="正在读取后端 .env 与 config.yaml 当前生效配置..." />;
+  }
+  if (error) {
+    return <InfoCard text={error} variant="warning" />;
+  }
+  if (entries.length === 0) {
+    return <InfoCard text="后端暂未返回该分组配置。" />;
+  }
+  return (
+    <div className="space-y-2.5">
+      {entries.map((entry) => (
+        <div key={entry.key} className="rounded-xl border border-zinc-100 bg-zinc-50/40 px-4 py-3.5 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-zinc-700">{entry.label}</div>
+              <div className="mt-0.5 font-mono text-[11px] text-zinc-400">{entry.key}</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <SettingSourcePill source={entry.source} />
+              <SettingStatusPill entry={entry} />
+            </div>
+          </div>
+          <div className="rounded-md bg-white border border-zinc-200 px-2.5 py-1.5 font-mono text-[12px] text-zinc-800">
+            {displaySettingValue(entry)}
+          </div>
+          {entry.description ? <p className="text-[11px] leading-relaxed text-zinc-400">{entry.description}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Content transition wrapper ── */
 const contentVariants = {
   initial: { opacity: 0, y: 8 },
@@ -248,6 +364,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [settingsOverview, setSettingsOverview] = useState<SettingsOverviewData | null>(null);
+  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -258,7 +377,41 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
     setSaveState("idle");
     setConnectionStatus("idle");
     setConnectionMessage("");
+    setOverviewError(null);
   }, [isOpen, settings]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    async function loadSettingsOverview() {
+      setIsOverviewLoading(true);
+      setOverviewError(null);
+      try {
+        const response = await apiClient<ApiResponse<SettingsOverviewData>>({
+          url: "/api/v1/system/settings",
+          method: "POST",
+          data: {},
+        });
+        if (!cancelled) {
+          setSettingsOverview(response.data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOverviewError(getApiErrorMessage(error, "读取后端设置失败，请确认后端服务可用。"));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsOverviewLoading(false);
+        }
+      }
+    }
+
+    void loadSettingsOverview();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -275,6 +428,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
   );
   const hasChanges = JSON.stringify(draft) !== JSON.stringify(settings);
   const providerConfigured = draft.providerApiKey.trim().length > 0;
+  const backendSectionMap = useMemo(
+    () => Object.fromEntries((settingsOverview?.sections ?? []).map((section) => [section.id, section] as const)),
+    [settingsOverview],
+  );
+  const getBackendEntries = (...sectionIds: string[]) =>
+    sectionIds.flatMap((id) => backendSectionMap[id]?.entries ?? []);
 
   const patch = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -318,6 +477,26 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderCredentials = () => (
     <div className="space-y-6">
+      <InfoCard text="后端的模型服务地址、密钥、鉴权和部署模式来自 .env；页面只显示当前是否配置，不返回密钥明文。" />
+      <BackendSettingList
+        entries={getBackendEntries("runtime", "models").filter((entry) =>
+          [
+            "runtime.mode",
+            "runtime.app_mode_raw",
+            "runtime.version",
+            "auth.enabled",
+            "config.path",
+            "llm.base_url",
+            "llm.api_key",
+          ].includes(entry.key),
+        )}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+
+      <SectionDivider label="本机旧版直连设置" />
+      <InfoCard text="下面几项仅保存在当前浏览器，当前主要后端流程不会写回 .env 或 config.yaml。" variant="warning" />
+
       <FieldGroup label="模型服务地址（Base URL）">
         <TextInput
           value={draft.providerBaseUrl}
@@ -383,6 +562,27 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderModels = () => (
     <div className="space-y-6">
+      <InfoCard text="后端实际使用的模型来自 config.yaml。修改这些值请编辑 config.yaml 并重启后端。" />
+      <BackendSettingList
+        entries={getBackendEntries("models").filter((entry) =>
+          [
+            "models.primary",
+            "models.reason",
+            "models.light",
+            "models.extract",
+            "models.embedding",
+            "models.embedding_dim",
+            "models.ocr",
+            "models.mermaid",
+            "models.image_generation",
+          ].includes(entry.key),
+        )}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+
+      <SectionDivider label="本机实验模型" />
+
       <FieldGroup label="模型提供方标识" hint="用于标记上游 API 路由的供应商">
         <TextInput value={draft.modelProvider} onChange={(v) => patch("modelProvider", v)} />
       </FieldGroup>
@@ -406,6 +606,38 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderParser = () => (
     <div className="space-y-6">
+      <InfoCard text="资料解析和检索的全局默认值来自后端 config.yaml；上传时可用本机偏好临时指定 MinerU 参数。" />
+      <BackendSettingList
+        entries={getBackendEntries("ingest", "search").filter((entry) =>
+          [
+            "files.max_upload_size_mb",
+            "ingest.parse_concurrency",
+            "ingest.parser_timeout_s",
+            "mineru.api_token",
+            "ocr.api_key",
+            "rag.top_k",
+            "rag.similarity_threshold",
+            "rag.rerank_model",
+            "local_rag.priority",
+            "local_rag.min_results",
+            "web_search.retriever_profile",
+            "web_search.retrievers",
+            "search.parallel_retrievers",
+            "search.max_parallel_retrievers",
+            "search.fusion_k",
+            "search.tavily_key",
+            "search.brave_key",
+            "search.exa_key",
+            "search.searxng_url",
+            "reader.jina_enabled",
+          ].includes(entry.key),
+        )}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+
+      <SectionDivider label="本机上传偏好" />
+
       <FieldGroup label="解析引擎">
         <SelectInput
           value={draft.parserProvider}
@@ -502,6 +734,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderGeneration = () => (
     <div className="space-y-6">
+      <InfoCard text="这些生成参数目前是浏览器本机实验偏好；后端主流程的模型路由、温度和重试策略仍以代码与 config.yaml 为准。" variant="warning" />
       <SliderInput label="采样温度（Temperature）" value={draft.generationTemperature} onChange={(v) => patch("generationTemperature", v)} min={0} max={2} step={0.05} />
       <SliderInput label="核心采样（Top-P）" value={draft.generationTopP} onChange={(v) => patch("generationTopP", v)} min={0} max={1} step={0.01} />
 
@@ -532,6 +765,15 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
 
   const renderRuntime = () => (
     <div className="space-y-6">
+      <InfoCard text="存储、数据库、LangSmith、缓存和安全护栏由后端环境变量与 config.yaml 控制；下面先展示当前生效状态。" />
+      <BackendSettingList
+        entries={getBackendEntries("storage", "observability")}
+        loading={isOverviewLoading}
+        error={overviewError}
+      />
+
+      <SectionDivider label="本机联调" />
+
       <FieldGroup label="FastAPI 地址">
         <TextInput value={draft.apiUrl} onChange={(v) => patch("apiUrl", v)} placeholder="http://localhost:8000" />
       </FieldGroup>
