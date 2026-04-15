@@ -12,7 +12,6 @@ from app.shared.infra.storage import get_content_store
 from app.models import (
     ChatMessage,
     ChatSession,
-    Curriculum,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
@@ -22,10 +21,6 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Subject,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
@@ -42,14 +37,9 @@ _EXAM_KEYS = [
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
 _KNOWLEDGE_KEYS = [
-    "curriculum",
     "knowledge_document",
     "knowledge_edge",
     "knowledge_node",
-    "taxonomy_anchor",
-    "teaching_unit",
-    "theme_tree_node",
-    "unit_dependency",
 ]
 
 
@@ -90,16 +80,8 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
             .where(ExamPaper.subject == subject),
         ),
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
-        "curriculum": _count_rows(session, Curriculum, Curriculum.subject == subject),
-        "curriculum_version": 0,
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
         "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
-        "prereq_dag_version": 0,
-        "taxonomy_anchor": _count_rows(session, TaxonomyAnchor, TaxonomyAnchor.subject == subject),
-        "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
-        "theme_tree_version": 0,
-        "theme_tree_node": _count_rows(session, ThemeTreeNode, ThemeTreeNode.subject == subject),
-        "unit_dependency": _count_rows(session, UnitDependency, UnitDependency.subject == subject),
     }
 
 
@@ -229,13 +211,8 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
     # the foreign keys after the whole statement instead of per-row flush order.
     for model in (
         KnowledgeDocument,
-        ThemeTreeNode,
-        UnitDependency,
-        TaxonomyAnchor,
         KnowledgeEdge,
         KnowledgeNode,
-        TeachingUnit,
-        Curriculum,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
     session.commit()
@@ -280,4 +257,3 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
-

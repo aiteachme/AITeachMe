@@ -14,7 +14,6 @@ from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_
 from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.docgen.internal.publish import publish_staged_knowledge_docs
 from app.workflows.digest.runtime import (
-    run_curriculum_derive_workflow,
     run_docgen_workflow,
     run_graph_digest_workflow,
 )
@@ -46,13 +45,6 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
             build_parallel_lanes_node(context=context),
             name="run_parallel_lanes",
             timing_field="parallel_lanes_ms",
-        ),
-    )
-    workflow.add_node(
-        "derive_curriculum",
-        trace.node(
-            build_derive_curriculum_node(context=context),
-            name="derive_curriculum",
         ),
     )
     workflow.add_node(
@@ -88,12 +80,7 @@ def build_unified_digest_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         "run_parallel_lanes",
         route_after_parallel_lanes,
-        {"continue": "derive_curriculum", "publish_only": "publish_outputs", "fail": "fail"},
-    )
-    workflow.add_conditional_edges(
-        "derive_curriculum",
-        route_after_step,
-        {"continue": "publish_outputs", "fail": "fail"},
+        {"continue": "publish_outputs", "publish_only": "publish_outputs", "fail": "fail"},
     )
     workflow.add_conditional_edges(
         "publish_outputs",
@@ -131,7 +118,6 @@ def create_unified_initial_state(
         "digest_mode": digest_mode or "",
         "tone": tone or "",
         "graph_job_id": _new_runtime_job_id(),
-        "curriculum_job_id": _new_runtime_job_id(),
         "error": None,
     }
 
@@ -298,7 +284,6 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
                 doc_chapter_metadatas=chapter_metadatas,
                 event_bus=context.event_bus,
                 build_session_id=build_session_id,
-                trigger_curriculum_after_finalize=False,
             )
             return result, int((perf_counter() - started_at) * 1000)
 
@@ -362,81 +347,20 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
     return parallel_lanes_node
 
 
-def build_derive_curriculum_node(*, context: WorkflowContext):
-    async def derive_curriculum_node(state: UnifiedDigestState) -> UnifiedDigestState:
-        started_at = perf_counter()
-        logger = context.get_logger().bind(node="derive_curriculum")
-        kg_state = state.get("kg_state")
-        if kg_state is None:
-            return {**state, "error": "Unified curriculum missing graph state."}
-        if not _graph_is_ready(kg_state):
-            return {**state, "error": "Unified curriculum blocked: graph output is empty."}
-
-        logger.info(
-            "unified_curriculum_started",
-            curriculum_job_id=state["curriculum_job_id"],
-            graph_job_id=state["graph_job_id"],
-        )
-        update_knowledge_build_status(
-            state["subject"],
-            requested_at=state["requested_at"],
-            status="running",
-            stage="curriculum_deriving",
-            planner_session_id=state.get("planner_session_id") or None,
-            confirmed_plan_id=state.get("confirmed_plan_id") or None,
-            digest_mode=state.get("digest_mode") or None,
-            error_message=None,
-        )
-        curriculum_result = await run_curriculum_derive_workflow(
-            subject=state["subject"],
-            graph_job_id=state["graph_job_id"],
-            curriculum_job_id=state["curriculum_job_id"],
-            event_bus=context.event_bus,
-            impact_set=kg_state.get("impact_set"),
-            build_session_id=state.get("build_session_id"),
-        )
-        if curriculum_result.failed:
-            logger.warning("unified_curriculum_failed_non_fatal", error=curriculum_result.error.detail)
-            return {
-                **state,
-                "curriculum_state": {},
-                "curriculum_ms": int((perf_counter() - started_at) * 1000),
-            }
-
-        curriculum_state = curriculum_result.require_value()
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        logger.info(
-            "unified_curriculum_completed",
-            curriculum_job_id=state["curriculum_job_id"],
-            snapshot_id=curriculum_state.get("snapshot_id"),
-            elapsed_ms=elapsed_ms,
-        )
-        return {
-            **state,
-            "curriculum_state": curriculum_state,
-            "curriculum_ms": elapsed_ms,
-        }
-
-    return derive_curriculum_node
-
-
 def build_publish_outputs_node(*, context: WorkflowContext):
     async def publish_outputs_node(state: UnifiedDigestState) -> UnifiedDigestState:
         started_at = perf_counter()
         logger = context.get_logger().bind(node="publish_outputs")
         doc_state = state.get("doc_state", {})
-        curriculum_state = state.get("curriculum_state", {})
 
         chapter_metadatas = list(doc_state.get("chapter_metadatas", []))
         if not chapter_metadatas:
             logger.warning("unified_publish_no_docs_to_publish")
             return state
 
-        version_no = int(curriculum_state.get("curriculum_version_no") or 1)
         logger.info(
             "unified_publish_started",
             chapter_count=len(chapter_metadatas),
-            curriculum_version_no=version_no,
         )
         update_knowledge_build_status(
             state["subject"],
@@ -456,7 +380,7 @@ def build_publish_outputs_node(*, context: WorkflowContext):
             chapter_assignments=list(doc_state.get("chapter_assignments", [])),
             user_prompt=state.get("user_prompt"),
             requested_at=state["requested_at"],
-            version_no=version_no,
+            version_no=1,
             build_session_id=state.get("build_session_id"),
         )
         logger.info(

@@ -97,7 +97,6 @@ const STAGE_PROGRESS_FLOOR: Record<string, number> = {
   prepare_shared: 22,
   doc_lane_staged: 58,
   graph_ready: 74,
-  curriculum_deriving: 84,
   publishing: 93,
   completed: 100,
 };
@@ -107,7 +106,6 @@ const STAGE_PROGRESS_CAP: Record<string, number> = {
   prepare_shared: 42,
   doc_lane_staged: 76,
   graph_ready: 88,
-  curriculum_deriving: 95,
   publishing: 98,
   completed: 100,
 };
@@ -118,7 +116,6 @@ const STAGE_TEXT: Record<string, string> = {
   prepare_shared: "正在分析资料结构并准备共享输入",
   doc_lane_staged: "知识文档草稿已生成，等待统一发布",
   graph_ready: "知识图谱已就绪，正在推导课程结构",
-  curriculum_deriving: "正在整理教学单元、主题树与先修关系",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
   failed: "知识构建失败，请稍后重试",
@@ -708,3 +705,4 @@ export function DigestBuildStatusMeta({ subject }: { subject: string }) {
     </div>
   );
 }
+

@@ -1,11 +1,11 @@
-"""Manual playground for checking markdown chunk output."""
+﻿"""Manual playground for checking markdown chunk output."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from app.workflows.digest.kg.services.chunker import chunk_markdown
+from app.workflows.digest.knowledge_graph.services.chunker import chunk_markdown
 
 
 def main() -> None:
@@ -30,3 +30,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

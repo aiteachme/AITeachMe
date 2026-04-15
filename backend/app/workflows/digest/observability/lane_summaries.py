@@ -1,4 +1,4 @@
-"""Per-lane digest summary builders (DocGen, KG, Curriculum)."""
+﻿"""Per-lane digest summary builders (DocGen, KG)."""
 
 from __future__ import annotations
 
@@ -231,8 +231,8 @@ def build_docgen_lane_summary(
     image_block_count = int(state.get("image_block_count", 0) or 0)
     if image_block_count <= 0:
         image_block_count = sum(
-            int(str(chapter.get("markdown") or "").count("建议配图："))
-            + int(str(chapter.get("markdown") or "").count("配图建议占位："))
+            int(str(chapter.get("markdown") or "").count("建议配图"))
+            + int(str(chapter.get("markdown") or "").count("配图建议占位"))
             for chapter in chapter_metadatas
         )
     asset_summary = {
@@ -412,47 +412,8 @@ def build_kg_lane_summary(
     }
 
 
-def build_curriculum_lane_summary(
-    state: Mapping[str, Any],
-    *,
-    token_summary: DigestTokenSummary,
-    status: str | None = None,
-    error_message: str | None = None,
-) -> dict[str, Any]:
-    """Create a curriculum lane summary payload."""
 
-    resolved_status = _resolve_status(state, status=status, error_message=error_message)
-    resolved_error = _resolve_error_message(state, error_message=error_message)
-    return {
-        "status": resolved_status,
-        "error_message": resolved_error,
-        "curriculum_ready": bool(state.get("curriculum_ready")),
-        "derived_unit_count": len(state.get("derived_unit_ids", [])),
-        "created_unit_count": len(state.get("created_unit_ids", [])),
-        "updated_unit_count": len(state.get("updated_unit_ids", [])),
-        "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
-        "derive_units_ms": int(state.get("derive_units_ms", 0)),
-        "theme_tree_ms": int(state.get("theme_tree_ms", 0)),
-        "prereq_dag_ms": int(state.get("prereq_dag_ms", 0)),
-        "finalize_ms": int(state.get("finalize_ms", 0)),
-        "subgraph_load_ms": int(state.get("subgraph_load_ms", 0)),
-        "candidate_build_ms": int(state.get("candidate_build_ms", 0)),
-        "unit_naming_ms": int(state.get("unit_naming_ms", 0)),
-        "unit_persist_ms": int(state.get("unit_persist_ms", 0)),
-        "rule_named_unit_count": int(state.get("rule_named_unit_count", 0)),
-        "llm_named_unit_count": int(state.get("llm_named_unit_count", 0)),
-        "fallback_named_unit_count": int(state.get("fallback_named_unit_count", 0)),
-        "unit_naming_parallelism": int(state.get("unit_naming_parallelism", 0)),
-        "unit_naming_total_tokens": int(token_summary.tokens_by_node.get("derive_units", token_summary.total_tokens)),
-        "unit_naming_tokens_by_model": token_summary.tokens_by_model,
-        **_lane_llm_rollup(token_summary),
-        "slowest_unit_namings_top_k": [
-            item.model_dump() for item in build_slow_items(state.get("slowest_unit_namings", []))
-        ],
-    }
-
-
-# ── Private helpers ────────────────────────────────────────────────
+# 鈹€鈹€ Private helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _top_k(value: int | None = None) -> int:
@@ -539,3 +500,5 @@ def _sum_count_maps(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
                 continue
             totals[normalized] = totals.get(normalized, 0) + int(value or 0)
     return {key: value for key, value in totals.items() if value > 0}
+
+

@@ -140,15 +140,12 @@ async def run_unified_digest_build(
             shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
             doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
             kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-            curriculum_ms=int(final_state.get("curriculum_ms", 0)),
             timing_report=timing_report.model_dump(mode="json"),
             token_summary=unified_token_summary.model_dump(mode="json"),
         )
 
     doc_state = final_state.get("doc_state", {})
     kg_state = final_state.get("kg_state", {})
-    curriculum_state = final_state.get("curriculum_state", {})
-    curriculum_ready = bool(curriculum_state.get("curriculum_ready")) and curriculum_state.get("snapshot_id") is not None
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     timing_report = build_unified_timing_report(
@@ -170,12 +167,10 @@ async def run_unified_digest_build(
         chunk_count=len(kg_state.get("chunk_ids", [])),
         new_node_count=len(kg_state.get("new_node_ids", [])),
         new_edge_count=len(kg_state.get("new_edge_ids", [])),
-        curriculum_ready=curriculum_ready,
         elapsed_ms=elapsed_ms,
         shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
         doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
         kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
-        curriculum_ms=int(final_state.get("curriculum_ms", 0)),
         timing_report=timing_report.model_dump(mode="json"),
         token_summary=unified_token_summary.model_dump(mode="json"),
     )
@@ -187,7 +182,6 @@ async def run_unified_digest_build(
             chunk_count=unified_result.chunk_count,
             new_node_count=unified_result.new_node_count,
             new_edge_count=unified_result.new_edge_count,
-            curriculum_ready=unified_result.curriculum_ready,
             elapsed_ms=unified_result.elapsed_ms,
         )
     )
@@ -202,10 +196,8 @@ async def run_unified_digest_build(
         chunk_count=unified_result.chunk_count,
         new_node_count=unified_result.new_node_count,
         new_edge_count=unified_result.new_edge_count,
-        curriculum_ready=unified_result.curriculum_ready,
         elapsed_ms=unified_result.elapsed_ms,
         total_tokens=unified_token_summary.total_tokens,
     )
     return unified_result
-
 

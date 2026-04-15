@@ -6,7 +6,6 @@ from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.workflows.digest.graph import (
-    build_curriculum_derive_graph,
     build_docgen_graph,
     build_kg_digest_graph,
 )
@@ -82,17 +81,10 @@ WORKFLOW_EXPORTS = (
         prompts=KG_PROMPTS,
     ),
     WorkflowGraphExport(
-        key="digest_curriculum",
-        title="Digest Curriculum Workflow",
-        description="Curriculum derivation workflow built from digest graph impact.",
-        build_graph=build_curriculum_derive_graph,
-    ),
-    WorkflowGraphExport(
         key="digest_unified",
         title="Digest Unified Workflow",
-        description="Shared prepare, docgen lane, graph lane, consistency, repair, and curriculum.",
+        description="Shared prepare, docgen lane, graph lane, consistency, and repair.",
         build_graph=_build_unified_graph_for_export,
     ),
 )
-
 

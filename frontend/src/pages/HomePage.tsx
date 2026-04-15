@@ -98,7 +98,6 @@ interface ExportPreviewStats {
   knowledge_document_count: number;
   knowledge_node_count: number;
   knowledge_edge_count: number;
-  teaching_unit_count: number;
   question_template_count: number;
   exam_paper_count: number;
   chat_session_count: number;
@@ -376,7 +375,6 @@ function ExportModal({
                   { label: "知识文档", value: stats.knowledge_document_count, show: true },
                   { label: "知识图谱节点", value: stats.knowledge_node_count, show: true },
                   { label: "知识图谱边", value: stats.knowledge_edge_count, show: true },
-                  { label: "教学单元", value: stats.teaching_unit_count, show: true },
                   { label: "题目模板", value: stats.question_template_count, show: stats.question_template_count > 0 },
                   { label: "考试记录", value: stats.exam_paper_count, show: stats.exam_paper_count > 0 },
                   { label: "对话记录", value: stats.chat_session_count, show: stats.chat_session_count > 0 },

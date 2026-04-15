@@ -66,6 +66,5 @@ class DigestTimingReport(BaseModel):
     unified: dict[str, Any] = Field(default_factory=dict)
     docgen: dict[str, Any] = Field(default_factory=dict)
     kg: dict[str, Any] = Field(default_factory=dict)
-    curriculum: dict[str, Any] = Field(default_factory=dict)
     llm: DigestTokenSummary = Field(default_factory=DigestTokenSummary)
     top_slowest_steps: list[SlowItemTiming] = Field(default_factory=list)
