@@ -25,7 +25,7 @@ from app.shared.infra.execution.units import _traced_execution_outputs
 from app.shared.infra.tools import registry as registry_module
 from app.shared.infra.workflow import emit_progress, workflow_tracer
 from app.shared.infra.workflow.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
-from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
+from app.workflows.digest.docgen.internal import DocGenWriterRuntime
 
 
 @pytest.fixture(autouse=True)

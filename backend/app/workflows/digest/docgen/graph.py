@@ -250,12 +250,12 @@ __all__ = [
     "build_craft_sends",
     "build_docgen_graph",
     "build_enrich_assets_node",
+    "build_finalize_titles_node",
     "build_load_context_node",
     "build_merge_drafts_node",
     "build_merge_research_node",
     "build_publish_document_node",
     "build_research_chapters_node",
-    "build_finalize_titles_node",
     "build_research_sends",
     "build_write_chapters_node",
     "create_docgen_initial_state",
@@ -264,7 +264,5 @@ __all__ = [
     "route_after_step",
     "update_knowledge_build_status",
 ]
-
-
 
 

@@ -2,308 +2,310 @@
 
 最后更新：2026-04-15
 
-这份文档只讲一件事：
+本文是 `backend/app/workflows/` 的唯一权威结构文档。后续所有 workflow 模块都以这里为准收口。
 
-`backend/app/workflows/` 下一个 workflow 模块，推荐长成什么样，哪些文件是标准链路，哪些只是可选扩展。
+## 1. 目标
 
-## 一句话目标
+`workflows/` 负责组织业务编排，不负责承载 HTTP、数据库仓储、通用基础设施或教学原子能力本身。
 
-目录结构要做到三件事：
-
-1. 第一次看目录就知道主链路从哪进
-2. graph 节点名、文件名、builder 名尽量一致
-3. 不把“可选辅助文件”伪装成“标准必需文件”
-
-## 标准 workflow 最小模板
-
-一个正常的 workflow 包，最少推荐包含：
+推荐依赖方向：
 
 ```text
-module/
-├── __init__.py
-├── state.py
-├── graph.py
-└── runtime.py
+api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 ```
 
-职责：
+核心原则只有三条：
+
+1. 同一职责永远落在同一位置。
+2. 没有独立职责的层，不要为了对称硬造一层。
+3. 模块根只做聚合，链路目录才是唯一执行单元。
+
+## 2. 标准模板
+
+### 2.1 多链路模块
+
+适用于 `digest`、`ingest`、`examine` 这类一个模块下包含多条独立 workflow 链路的场景。
+
+```text
+workflows/<module>/
+  __init__.py
+  README.md
+  <lane_a>/
+  <lane_b>/
+  _shared/                 # 仅当 >=2 条链路真实复用时才建立
+```
+
+模块根允许存在的内容：
 
 - `__init__.py`
-  对外稳定入口，只暴露真正要给上层依赖的 API
-- `state.py`
-  graph state 定义
+- `README.md`
+- 各链路目录
+- 可选 `_shared/`
+- 兼容层文件：仅用于迁移期保留旧导入面，例如旧的 `graph.py`、`runtime.py`
+
+模块根不再作为新增代码的落点：
+
+- 不再新增模块级 `prompts/`
+- 不再新增模块级 `nodes/`
+- 不再新增模块级 `exports.py`
+- 不再新增模块级 `events.py`
+- 不再新增模块级 `services/`
+
+### 2.2 单链路模块
+
+适用于 `interact`、`profile` 这类对外看起来是一个模块，但内部只有一条真实执行链路的场景。
+
+```text
+workflows/<module>/
+  __init__.py
+  README.md
+  <lane>/
+```
+
+当前标准：
+
+- `interact/chat/`
+- `profile/pipeline/`
+
+## 3. 链路模板
+
+每条链路目录都遵循同一骨架：
+
+```text
+workflows/<module>/<lane>/
+  __init__.py
+  README.md
+  graph.py
+  state.py
+  nodes/
+  prompts/
+  lib/
+  events.py                # 可选，仅当存在明确订阅方时才保留
+```
+
+### 3.1 各层职责
+
+- `__init__.py`
+  对外稳定门面，只做 re-export。
+- `README.md`
+  说明这条链路做什么、有哪些节点、上层该从哪里调用。
 - `graph.py`
-  LangGraph 图定义、node 接线、路由拼装
-- `runtime.py`
-  workflow root 运行入口，负责 `run_state_graph(...)` 和初始 state
+  唯一的图执行入口。负责：
+  - `build_<lane>_graph(...)`
+  - `create_<lane>_initial_state(...)`
+  - `run_<lane>_workflow(...)`
+  - 路由函数和 `Send` 编排
+- `state.py`
+  定义这条链路的内部 `TypedDict State`，必要时同时放 Studio 输入输出投影类型和对外公开 DTO。
+- `nodes/`
+  图上的顶层节点。一个节点一个文件。
+- `prompts/`
+  只放 prompt builder / template，不放节点逻辑。
+- `lib/`
+  节点内部调用的子逻辑，例如 `writer.py`、`publish.py`、`grounding.py`。
+- `events.py`
+  严格可选。只有存在明确消费方时才保留。
 
-如果一个 workflow 连这四个文件都没有，就很难称为“结构清晰的独立 workflow 模块”。
+### 3.2 明确禁止
 
-## 常见扩展目录
+链路目录不再新增这些层：
 
-### `prompts/`
+- `runner.py`
+- `contracts.py`
+- `runtime/`
+- `internal/`
+- `services/`
 
-适合放：
+含义很明确：
 
-- prompt builder
-- prompt 模板
-- messages 组织 helper
+- 执行入口收回 `graph.py`
+- 对外类型收回 `state.py`
+- 业务子逻辑统一收回 `lib/`
 
-不适合放：
+## 4. 命名规范
 
-- graph 路由
-- node 副作用
-- DB / 检索 / 文件系统调用
+### 4.1 图与节点
 
-### `nodes/`
+- graph builder：`build_<lane>_graph`
+- workflow runner：`run_<lane>_workflow`
+- 节点名：小写蛇形，例如 `load_context`
+- node builder：`build_<node_name>_node`
 
-适合放：
+### 4.2 文件名
 
-- node builder
-- 单个 graph node 的 handler
-- 节点级业务编排逻辑
+- 节点文件名与节点名一致：`load_context.py`
+- prompt 文件名与对应节点一致：`load_context.py`
+- `lib/` 文件按主题命名：`publish.py`、`writer.py`、`grounding.py`
 
-推荐在这些场景拆 `nodes/`：
+迁移期允许保留旧文件名兼容层，例如 `_node.py`、`internal/`，但新代码不再继续依赖它们。
 
-- 顶层 node 数量 >= 4
-- 单个 `graph.py` 变得拥挤
-- 多个 node 已经明显有独立职责
+## 5. `_shared/` 规则
 
-### `runtime/`
+只有被两条及以上链路真实复用的内容，才允许进入模块 `_shared/`。
 
-适合放：
+允许进入 `_shared/` 的典型内容：
 
-- workflow-local runtime helper
-- 会被多个 node 复用，但又不应该下沉到 `shared.infra` 的逻辑
+- digest 的共享 contracts / models / prepare
+- ingest 的共享 parsing / recovery / logging
 
-例子：
+不应进入 `_shared/` 的内容：
 
-- chapter context 组织
-- query planning
-- writer runtime
-- assets runtime
+- 只有一条链路使用的 helper
+- 单个节点的 prompt
+- 只为了“可能复用”而提前上提的代码
 
-### `services/`
+## 6. 事件与进度
 
-只在下面这类情况使用：
+当前默认规则：
 
-- 某个 workflow 内部有少量局部领域服务
-- 这些逻辑不属于 graph 本身，也不适合扔进 `runtime/`
+- 前端进度展示主通路是 `emit_progress(...)`
+- `events.py` 不是标准必选层
+- 如果没有明确订阅方，不要为了“架构完整”额外定义事件层
 
-不建议：
+## 7. 当前模块落位
 
-- 把 `services/` 当成万能杂物间
-- 仅仅因为“文件大了”就把所有东西都丢进 `services/`
-
-### `models.py`
-
-适合放：
-
-- payload contract
-- normalize / coerce / merge helper
-- draft / response / typed payload model
-
-如果 state 本身已经很简单，不一定需要单独 `models.py`。
-
-### `routes.py` / `routers.py`
-
-只在路由逻辑很复杂时再拆。
-
-如果只是一个简单的 `route_after_step(...)`，直接放 `graph.py` 即可。
-
-### `exports.py`
-
-这是可选文件，不是标准链路。
-
-只在下面这类需求存在时保留：
-
-- 你们要生成离线 Mermaid / Markdown 架构图
-- 你们希望给静态导出补标题、描述、prompt 指纹、动态边覆盖
-
-如果平时只用 `langgraph dev` / Studio 看图，可以没有 `exports.py`。
-
-## 推荐目录示例
-
-### 小型 workflow
+### 7.1 digest
 
 ```text
-planner/
-├── __init__.py
-├── graph.py
-├── models.py
-├── runtime.py
-└── state.py
+digest/
+  __init__.py
+  README.md
+  planner/
+  docgen/
+  knowledge_graph/
+  unified/
+  _shared/
 ```
 
-适合：
+说明：
 
-- 顶层 node 不多
-- 局部 helper 数量有限
-- graph 仍然容易读
+- `planner/` 与 `docgen/` 是当前优先收口的主链路
+- `knowledge_graph/` 与 `unified/` 先对齐门面与命名
+- 历史 `shared/` 仍保留兼容；新代码优先走 `_shared/`
 
-当前典型样例：
-
-- `digest/planner/`
-
-### 中大型 workflow
+### 7.2 ingest
 
 ```text
-docgen/
-├── __init__.py
-├── graph.py
-├── publish.py
-├── runtime.py
-├── state.py
-├── nodes/
-├── prompts/
-├── runtime/
-└── services/
+ingest/
+  __init__.py
+  README.md
+  fast_parse/
+  deep_enhance/
+  _shared/
 ```
 
-适合：
+说明：
 
-- 顶层 node 较多
-- node 内部逻辑明显分工
-- 有 workflow-local runtime / service 复用
+- `run_parse_file_workflow(...)` 仍保留在模块层，作为跨两条链路的稳定入口
+- `fast_parse/` 与 `deep_enhance/` 是真实链路
+- 历史 `parsing/`、`recovery.py` 保留兼容；新代码优先走 `_shared/`
 
-当前典型样例：
-
-- `digest/docgen/`
-
-## 模块层与链路层
-
-不要把“模块”和“链路”混成一层。
-
-推荐把结构理解成：
+### 7.3 interact
 
 ```text
-workflows/
-├── 模块层
-│   ├── digest/
-│   ├── ingest/
-│   ├── interact/
-│   ├── examine/
-│   └── profile/
-│
-└── 链路层
-    └── 例如 digest/ 下继续拆：
-        ├── planner/
-        ├── docgen/
-        ├── kg/
-        ├── curriculum/
-        └── unified/
+interact/
+  __init__.py
+  README.md
+  chat/
 ```
 
-判断方法：
+说明：
 
-- `digest` 是模块层
-- `planner` / `docgen` 是链路层
-- `nodes/` / `prompts/` / `runtime/` 是实现层
+- `chat/` 是 canonical lane
+- 根目录旧 `graph.py / runtime.py / state.py / support/` 作为兼容层保留
 
-## 命名规范
-
-### graph 节点名
-
-推荐使用业务动作名，而不是历史实现名：
-
-- `load_context`
-- `ground_concepts`
-- `research_chapters`
-- `merge_research`
-- `write_chapters`
-- `publish_document`
-
-### node builder 名
-
-推荐直接和 graph 节点名对齐：
-
-```python
-build_research_chapters_node(...)
-build_merge_research_node(...)
-build_publish_document_node(...)
-```
-
-### node 文件名
-
-推荐也和 graph 节点名对齐：
+### 7.4 examine
 
 ```text
-nodes/research_chapters_node.py
-nodes/merge_research_node.py
-nodes/publish_document_node.py
+examine/
+  __init__.py
+  README.md
+  question_build/
+  exam_grade/
+  _shared/                 # 未来确有复用时再建立
 ```
 
-## 不推荐的命名状态
+说明：
 
-下面这种情况会越来越难维护：
+- `question_build/` 和 `exam_grade/` 是两条真实链路
+- 历史平铺文件先保留兼容导入面，逐步收口
+
+### 7.5 profile
 
 ```text
-graph node: research_chapters
-builder: build_targeted_research_node
-file: targeted_research_node.py
+profile/
+  __init__.py
+  README.md
+  pipeline/
 ```
 
-原因是：
+说明：
 
-- 图上看到的是一套名字
-- 目录里看到的是另一套名字
-- 新人很难快速建立映射
+- `pipeline/` 是唯一真实链路
+- 根目录旧 `graph.py / runtime.py / state.py` 保留兼容导入面
 
-短期可以兼容，长期应该收敛。
+## 8. 示例
 
-## `graph.py` 里应该保留什么
+### 8.1 planner
 
-`graph.py` 应该聚焦这些事情：
+```text
+digest/planner/
+  __init__.py
+  README.md
+  graph.py
+  state.py
+  nodes/
+    load_context.py
+    ground_concepts.py
+    draft_plan.py
+  prompts/
+    draft_plan.py
+  lib/
+    grounding.py
+    plans.py
+```
 
-- 声明 graph state
-- 注册 node
-- 组织边和条件路由
-- 提供 `get_langgraph_dev_*_graph()`
+### 8.2 docgen
 
-不建议在 `graph.py` 塞太多：
+```text
+digest/docgen/
+  __init__.py
+  README.md
+  graph.py
+  state.py
+  nodes/
+    load_context.py
+    research_chapters.py
+    merge_research.py
+    finalize_titles.py
+    write_chapters.py
+    merge_drafts.py
+    enrich_assets.py
+    append_practice.py
+    publish_document.py
+  prompts/
+    research_chapters.py
+    finalize_titles.py
+    write_chapters.py
+    assets.py
+  lib/
+    chapter_context.py
+    query_planning.py
+    writer.py
+    assets.py
+    publish.py
+```
 
-- 大段 prompt 构造
-- 大量模型 normalize 逻辑
-- 复杂检索 / 写作 helper
-- 大量与单个 node 强绑定的实现细节
+## 9. 迁移策略
 
-## `runtime.py` 里应该保留什么
+当前采用渐进式兼容迁移：
 
-`runtime.py` 应该聚焦：
+1. 先建立 canonical lane 目录。
+2. 模块根改为指向 canonical lane 的薄门面。
+3. `langgraph.json` 切到 canonical lane 的 `graph.py`。
+4. 文档改为只描述新骨架。
+5. 历史文件逐步降级为兼容层，最后再清理。
 
-- `WorkflowContext` 构造
-- `run_state_graph(...)`
-- 初始 state 构造
-- 对外稳定执行入口
+## 10. 一句话总结
 
-不要把大量节点内部逻辑堆到 `runtime.py`。
-
-## `__init__.py` 应该暴露什么
-
-只暴露上层真正应该依赖的稳定接口。
-
-推荐暴露：
-
-- `run_xxx_workflow`
-- `normalize_xxx_payload`
-- `build_xxx_graph`，如果确实需要给外部复用
-
-不推荐默认暴露：
-
-- 所有 node builder
-- 所有局部 helper
-- `WORKFLOW_EXPORTS`
-
-`WORKFLOW_EXPORTS` 属于可选离线导出能力，不应被当成 workflow 标准公开面。
-
-## LangGraph Studio 相关约束
-
-如果需要给 Studio 收口输入输出：
-
-- 用一个主 `State` 做唯一真相源
-- 用 `project_typed_dict_schema(...)` 投影出精简 schema
-- 不要为了 Studio 手写三份重复类型
-
-## 一句话总结
-
-workflow 目录结构的目标不是“把文件分得越多越高级”，而是让主链路、节点职责、可选辅助能力一眼就能看清楚。
+`workflows` 的未来结构只有一句话：模块根只聚合，链路目录才执行；链路里固定是 `graph.py + state.py + nodes/ + prompts/ + lib/`，`events.py` 仅在确实需要时才出现。

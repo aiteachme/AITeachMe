@@ -13,7 +13,7 @@ from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     publish_docgen_progress,
 )
-from app.workflows.digest.docgen.outputs import build_merged_markdown
+from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -167,10 +167,4 @@ def build_append_practice_node(*, context: WorkflowContext):
 
     return append_practice_node
 
-
-build_inject_examine_node = build_append_practice_node
-
-
-__all__ = ["build_append_practice_node", "build_inject_examine_node"]
-
-
+__all__ = ["build_append_practice_node"]

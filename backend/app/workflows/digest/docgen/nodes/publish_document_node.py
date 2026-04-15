@@ -10,7 +10,10 @@ from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_k
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
-from app.workflows.digest.docgen.outputs import publish_staged_knowledge_docs, stage_knowledge_docs
+from app.workflows.digest.docgen.lib.publish import (
+    publish_staged_knowledge_docs,
+    stage_knowledge_docs,
+)
 from app.workflows.digest.docgen.state import DocGenState
 
 logger = structlog.get_logger()
@@ -31,10 +34,10 @@ def _is_standalone_mode(state: DocGenState) -> bool:
         return True
 
 
-def build_finalize_assemble_node(*, context: WorkflowContext):
+def build_publish_document_node(*, context: WorkflowContext):
     """Build the final staging or publishing node for docs outputs."""
 
-    async def finalize_assemble_node(state: DocGenState) -> dict:
+    async def publish_document_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         node_logger = context.get_logger().bind(node="finalize_assemble")
         subject = state["subject"]
@@ -140,6 +143,7 @@ def build_finalize_assemble_node(*, context: WorkflowContext):
             "finalize_ms": finalize_ms,
         }
 
-    return finalize_assemble_node
+    return publish_document_node
 
 
+__all__ = ["build_publish_document_node"]

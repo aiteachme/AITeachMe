@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.workflow.context import create_langgraph_dev_context
-from app.workflows.digest.planner.concept_grounding import (
+from app.workflows.digest.planner.lib.grounding import (
     build_planner_concept_queries,
     collect_planner_concept_briefing,
 )
@@ -111,15 +111,15 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
             return list(responses.get((self.name, query), []))[:max_results]
 
     monkeypatch.setattr(
-        "app.workflows.digest.planner.concept_grounding.get_settings",
+        "app.workflows.digest.planner.lib.grounding.get_settings",
         lambda: SimpleNamespace(web_search_retriever="duckduckgo", planner_allow_external_search=True),
     )
     monkeypatch.setattr(
-        "app.workflows.digest.planner.concept_grounding.get_retriever",
+        "app.workflows.digest.planner.lib.grounding.get_retriever",
         lambda name, **kwargs: FakeRetriever(name),
     )
     monkeypatch.setattr(
-        "app.workflows.digest.planner.concept_grounding.read_urls",
+        "app.workflows.digest.planner.lib.grounding.read_urls",
         lambda urls: asyncio.sleep(
             0,
             result=[

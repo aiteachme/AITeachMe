@@ -15,13 +15,13 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "InteractWorkflowState": "app.workflows.interact.state",
-    "build_chat_messages": "app.workflows.interact.prompts",
-    "build_interact_workflow_graph": "app.workflows.interact.graph",
-    "create_interact_initial_state": "app.workflows.interact.runtime",
-    "format_sse_event": "app.workflows.interact.support",
-    "run_interact_workflow": "app.workflows.interact.runtime",
-    "stream_chat_workflow": "app.workflows.interact.runtime",
+    "InteractWorkflowState": "app.workflows.interact.chat.state",
+    "build_chat_messages": "app.workflows.interact.chat.prompts",
+    "build_interact_workflow_graph": "app.workflows.interact.chat.graph",
+    "create_interact_initial_state": "app.workflows.interact.chat.runtime",
+    "format_sse_event": "app.workflows.interact.chat.lib",
+    "run_interact_workflow": "app.workflows.interact.chat.runtime",
+    "stream_chat_workflow": "app.workflows.interact.chat.runtime",
 }
 
 

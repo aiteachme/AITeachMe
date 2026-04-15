@@ -10,7 +10,7 @@ from app.shared.infra.tools.builtin.markdown_processing import build_draft_excer
 from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_knowledge_build_chapter_progress
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.runtime import DocGenWriterRuntime as PedagogyWriter
+from app.workflows.digest.docgen.lib import DocGenWriterRuntime as PedagogyWriter
 from app.workflows.digest.docgen.nodes.common import (
     ensure_chapter_heading,
     get_effective_chapter_title,
@@ -171,11 +171,4 @@ def build_write_chapters_node(*, context: WorkflowContext):
 
     return write_chapters_node
 
-
-build_pedagogy_craft_node = build_write_chapters_node
-
-
-__all__ = ["build_write_chapters_node", "build_pedagogy_craft_node"]
-
-
-
+__all__ = ["build_write_chapters_node"]

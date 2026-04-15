@@ -12,7 +12,7 @@ from app.utils.docgen_store import update_knowledge_build_status
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
-from app.workflows.digest.docgen.outputs import publish_staged_knowledge_docs
+from app.workflows.digest.docgen.lib.publish import publish_staged_knowledge_docs
 from app.workflows.digest.runtime import (
     run_docgen_workflow,
     run_graph_digest_workflow,
@@ -436,5 +436,3 @@ def get_langgraph_dev_unified_graph() -> StateGraph:
     return build_unified_digest_graph(
         context=create_langgraph_dev_context("digest.unified.langgraph_dev"),
     )
-
-

@@ -12,7 +12,7 @@ from app.workflows.digest.docgen.nodes.common import (
     publish_docgen_progress,
     resolve_docgen_dependency,
 )
-from app.workflows.digest.docgen.outputs import build_merged_markdown
+from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -131,10 +131,4 @@ def build_merge_drafts_node(*, context: WorkflowContext):
 
     return merge_drafts_node
 
-
-build_collect_drafts_node = build_merge_drafts_node
-
-
-__all__ = ["build_merge_drafts_node", "build_collect_drafts_node"]
-
-
+__all__ = ["build_merge_drafts_node"]

@@ -157,10 +157,5 @@ def build_finalize_titles_node(*, context: WorkflowContext):
 
     return finalize_titles_node
 
-
-build_resolve_titles_node = build_finalize_titles_node
-
-
-__all__ = ["build_finalize_titles_node", "build_resolve_titles_node"]
-
+__all__ = ["build_finalize_titles_node"]
 

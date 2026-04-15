@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
-from app.workflows.digest.prompts.docgen_prompts import (
+from app.workflows.digest.docgen.prompts import (
     build_docgen_sub_query_messages,
     build_docgen_gap_query_messages,
 )
