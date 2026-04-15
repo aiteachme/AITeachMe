@@ -10,7 +10,6 @@ from app.shared.infra.exceptions import KnowledgeClearConflictError, SubjectBuil
 from app.models import (
     ChatMessage,
     ChatSession,
-    Curriculum,
     ExamPaper,
     ExamPaperItem,
     KnowledgeDocument,
@@ -18,10 +17,6 @@ from app.models import (
     KnowledgeNode,
     QuestionTemplate,
     RetrievalChunk,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
     UserKnowledgeState,
 )
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
@@ -109,24 +104,6 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     )
     counts["knowledge_document"] = len(knowledge_documents)
 
-    tree_nodes = list(session.exec(select(ThemeTreeNode).where(ThemeTreeNode.subject == subject)).all())
-    counts["theme_tree_node"] = len(tree_nodes)
-
-    dependencies = list(session.exec(select(UnitDependency).where(UnitDependency.subject == subject)).all())
-    counts["unit_dependency"] = len(dependencies)
-
-    curricula = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
-    counts["curriculum"] = len(curricula)
-    counts["curriculum_version"] = 0
-    counts["theme_tree_version"] = 0
-    counts["prereq_dag_version"] = 0
-
-    anchors = list(session.exec(select(TaxonomyAnchor).where(TaxonomyAnchor.subject == subject)).all())
-    counts["taxonomy_anchor"] = len(anchors)
-
-    units = list(session.exec(select(TeachingUnit).where(TeachingUnit.subject == subject)).all())
-    counts["teaching_unit"] = len(units)
-
     edges = list(session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all())
     counts["knowledge_edge"] = len(edges)
 
@@ -135,13 +112,8 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
     for model in (
         KnowledgeDocument,
-        ThemeTreeNode,
-        UnitDependency,
-        TaxonomyAnchor,
         KnowledgeEdge,
         KnowledgeNode,
-        TeachingUnit,
-        Curriculum,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
     session.commit()
@@ -152,5 +124,4 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
-
 

@@ -48,31 +48,6 @@ class DigestGraphFailedEvent:
 
 
 @dataclass(slots=True)
-class CurriculumDeriveCompletedEvent:
-    """Curriculum derive completed."""
-
-    event_name: ClassVar[str] = "digest.curriculum.completed"
-
-    subject: str
-    graph_job_id: int
-    curriculum_job_id: int
-    occurred_at: datetime = field(default_factory=utcnow)
-
-
-@dataclass(slots=True)
-class CurriculumDeriveFailedEvent:
-    """Curriculum derive failed."""
-
-    event_name: ClassVar[str] = "digest.curriculum.failed"
-
-    subject: str
-    graph_job_id: int
-    curriculum_job_id: int
-    error_message: str
-    occurred_at: datetime = field(default_factory=utcnow)
-
-
-@dataclass(slots=True)
 class DocGenRequestedEvent:
     """Knowledge docs build requested."""
 

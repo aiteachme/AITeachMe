@@ -1,157 +1,135 @@
-# 设计文档：知识图谱增量构建 + 多视图课程结构派生
+﻿# 璁捐鏂囨。锛氱煡璇嗗浘璋卞閲忔瀯寤?+ 澶氳鍥捐绋嬬粨鏋勬淳鐢?
+## 姒傝堪
 
-## 概述
+鏈璁″皢鐜版湁 Digest Engine 浠?鎵规鏋勫缓 DocSet"妯″紡閲嶆瀯涓?鐭ヨ瘑鍥捐氨鍨嬪閲忔瀯寤?+ 澶氳鍥捐绋嬬粨鏋勬淳鐢?妯″紡锛圙raph-grounded Multi-View Curriculum Derivation锛夈€?
+### 涓夊眰鏋舵瀯
 
-本设计将现有 Digest Engine 从"批次构建 DocSet"模式重构为"知识图谱型增量构建 + 多视图课程结构派生"模式（Graph-grounded Multi-View Curriculum Derivation）。
+- **搴曞眰 Knowledge Graph**锛氱煡璇嗕互鍥捐氨锛堣妭鐐?+ 杈?+ 璇佹嵁锛変负鐪熺浉婧愶紝涓ユ牸澧為噺鏇存柊銆傝妭鐐瑰唴瀹瑰畬鍏ㄧ敱 Revision 鎵胯浇锛孨ode 琛ㄤ粎瀛樿韩浠?+ 璺敱 + 鐘舵€?- **涓眰 Teaching Unit**锛氫粠鐭ヨ瘑鑺傜偣閫氳繃 graph-aware 鑱氱被鐢熸垚鏁欏鍗曞厓锛坙eaf-only锛屼笉鍚笂灞?module/chapter 灞傜骇锛夈€傝繖鏄绋嬬粍缁囧眰鐨勫熀鏈矑搴︹€斺€斾笉鍐嶆槸鏁ｄ贡鐨?Concept/Definition/Example 鐩存帴鎸傛爲锛岃€屾槸涓€缁勭揣瀵嗙浉鍏崇殑鐭ヨ瘑鐐圭粍鎴愮殑鏈€灏忓彲璁叉巿鍗曚綅銆備笂灞?module/chapter 缁撴瀯瀹屽叏鐢?ThemeTreeNode 绠＄悊
+- **涓婂眰 Curriculum Views**锛氫粠鏁欏鍗曞厓娲剧敓涓夌瑙嗗浘锛?  - **Theme Tree锛堜富棰樻爲锛?*锛氬眬閮ㄥ眰娆¤仛绫?+ Anchor 杞害鏉?+ LLM 鍛藉悕鏁寸悊锛岀敤浜庢祻瑙堜笌鐩綍瀵艰埅
+  - **Prerequisite DAG锛堝厛淇浘锛?*锛氫粠鍥捐氨 prerequisite_of / part_of / defined_by 杈硅仛鍚?+ 浼犻€掔害绠€ + 鍘荤幆锛岀敤浜庢暀瀛︿緷璧栧拰瀛︿範璺緞
+  - **Linear Syllabus锛堢嚎鎬уぇ绾诧級**锛欴AG 鎷撴墤鎺掑簭 + Theme Tree 灞傜骇绾︽潫 + LLM curriculum ordering锛圡VP-2锛?
+### 澧為噺鏋勫缓鐨勪弗鏍煎畾涔?
+**杈撳叆澧為噺**锛氫粎澶勭悊鏈鎸囧畾 file_ids 瀵瑰簲鐨勬柊澧?chunk銆?
+**鐭ヨ瘑澧為噺锛圛mpact Set锛?*锛氬綋鑺傜偣鍙戠敓鏂板/鍚堝苟/鎷嗗垎鏃讹紝浠ヤ笅瀵硅薄杩涘叆鍊欓€夐噸绠楅泦锛?- 涓?changed nodes 鐩搁偦鐨?edge锛?-hop锛?- edge 鍙︿竴绔妭鐐圭殑 summary 鍙兘闇€瑕佹洿鏂帮紙2-hop 鍊欓€夛級
+- 鍙楀奖鍝嶇殑 teaching units
+- 鍙?anchor 鍙樻洿褰卞搷鐨勫瓙鏍戦渶瑕侀噸鏂版淳鐢?- 鍙楀奖鍝嶇殑 unit dependencies 闇€瑕侀噸鏂拌绠?
+### 涓ら樁娈典换鍔℃ā鍨?
+- **GraphDigestJob**锛氬浘璋卞閲忔瀯寤猴紙鎶藉彇 鈫?鑱氱被 鈫?瀵归綈 鈫?褰卞搷闆嗗垎鏋愶級
+- **CurriculumDeriveJob**锛氳绋嬬粨鏋勬淳鐢燂紙鏁欏鍗曞厓鐢熸垚 鈫?涓婚鏍戞淳鐢?鈫?鍏堜慨 DAG 娲剧敓锛?
+鍥炬瀯寤哄畬鎴愬悗鍗冲彲瀵瑰鎻愪緵鍥炬煡璇紝璇剧▼缁撴瀯寮傛鍒锋柊銆?
+### 璁捐鍐崇瓥
 
-### 三层架构
-
-- **底层 Knowledge Graph**：知识以图谱（节点 + 边 + 证据）为真相源，严格增量更新。节点内容完全由 Revision 承载，Node 表仅存身份 + 路由 + 状态
-- **中层 Teaching Unit**：从知识节点通过 graph-aware 聚类生成教学单元（leaf-only，不含上层 module/chapter 层级）。这是课程组织层的基本粒度——不再是散乱的 Concept/Definition/Example 直接挂树，而是一组紧密相关的知识点组成的最小可讲授单位。上层 module/chapter 结构完全由 ThemeTreeNode 管理
-- **上层 Curriculum Views**：从教学单元派生三种视图：
-  - **Theme Tree（主题树）**：局部层次聚类 + Anchor 软约束 + LLM 命名整理，用于浏览与目录导航
-  - **Prerequisite DAG（先修图）**：从图谱 prerequisite_of / part_of / defined_by 边聚合 + 传递约简 + 去环，用于教学依赖和学习路径
-  - **Linear Syllabus（线性大纲）**：DAG 拓扑排序 + Theme Tree 层级约束 + LLM curriculum ordering（MVP-2）
-
-### 增量构建的严格定义
-
-**输入增量**：仅处理本次指定 file_ids 对应的新增 chunk。
-
-**知识增量（Impact Set）**：当节点发生新增/合并/拆分时，以下对象进入候选重算集：
-- 与 changed nodes 相邻的 edge（1-hop）
-- edge 另一端节点的 summary 可能需要更新（2-hop 候选）
-- 受影响的 teaching units
-- 受 anchor 变更影响的子树需要重新派生
-- 受影响的 unit dependencies 需要重新计算
-
-### 两阶段任务模型
-
-- **GraphDigestJob**：图谱增量构建（抽取 → 聚类 → 对齐 → 影响集分析）
-- **CurriculumDeriveJob**：课程结构派生（教学单元生成 → 主题树派生 → 先修 DAG 派生）
-
-图构建完成后即可对外提供图查询，课程结构异步刷新。
-
-### 设计决策
-
-| 决策 | 选择 | 理由 |
+| 鍐崇瓥 | 閫夋嫨 | 鐞嗙敱 |
 |------|------|------|
-| 工作流引擎 | LangGraph StateGraph | 与现有 digest workflow 一致，支持条件分支和状态传递 |
-| LLM 结构化输出 | Instructor + Pydantic | 已有 `acompletion_structured` 封装，零额外依赖 |
-| 实体对齐策略 | 分层策略：一级实体 vs 二级说明对象 | Topic/Concept/Method 以 name 为主标识；Definition/Example 以父实体 + 内容摘要为标识 |
-| 对齐判定 | EntityMatchDecision 7 值枚举 | 预留语义层级，MVP 先消费 EXACT/ALIAS/NO_MATCH |
-| 别名管理 | 独立 KnowledgeAlias 表 | 支持高效索引、单独记录来源/置信度/语言/状态 |
-| 节点内容 | Node 表仅存 identity + routing + status | 消除双写不一致风险，内容从 current_revision 读取 |
-| 中间组织层 | TeachingUnit（教学单元） | 知识节点直接挂树太细碎，中间需要最小可讲授单位 |
-| 教学单元生成 | graph-aware 聚类 + LLM 命名整理 | 距离函数结合 embedding、图关系、文档结构、类型兼容性 |
-| 课程视图 | Theme Tree + Prerequisite DAG + Linear Syllabus | 单一树无法同时表达主题分组、教学依赖和讲授顺序 |
-| Anchor 角色 | 软约束骨架（非硬分类目标） | 为主题树节点提供命名/排序/稳定约束，保留人工可控性又不压死自组织 |
-| 主题树挂载 | 挂 TeachingUnit（leaf-only）而非 KnowledgeNode | KnowledgeNode → TeachingUnit → ThemeTreeNode，上层 chapter/section 由 ThemeTreeNode 层级管理 |
-| 先修 DAG | 从图谱边聚合 + 传递约简 + 去环 | 不靠树，直接从知识依赖边提炼 |
-| 任务拆分 | GraphDigestJob + CurriculumDeriveJob | 图构建完成即可查询，课程结构异步刷新 |
-| 并发控制 | subject 级构建锁 + DB 唯一约束 + 乐观锁 | 防止重复触发、保证数据一致性 |
-| 数据库 | 同一学科 .db 文件新增表 | 与现有 All-in-SQLite 理念一致 |
+| 宸ヤ綔娴佸紩鎿?| LangGraph StateGraph | 涓庣幇鏈?digest workflow 涓€鑷达紝鏀寔鏉′欢鍒嗘敮鍜岀姸鎬佷紶閫?|
+| LLM 缁撴瀯鍖栬緭鍑?| Instructor + Pydantic | 宸叉湁 `acompletion_structured` 灏佽锛岄浂棰濆渚濊禆 |
+| 瀹炰綋瀵归綈绛栫暐 | 鍒嗗眰绛栫暐锛氫竴绾у疄浣?vs 浜岀骇璇存槑瀵硅薄 | Topic/Concept/Method 浠?name 涓轰富鏍囪瘑锛汥efinition/Example 浠ョ埗瀹炰綋 + 鍐呭鎽樿涓烘爣璇?|
+| 瀵归綈鍒ゅ畾 | EntityMatchDecision 7 鍊兼灇涓?| 棰勭暀璇箟灞傜骇锛孧VP 鍏堟秷璐?EXACT/ALIAS/NO_MATCH |
+| 鍒悕绠＄悊 | 鐙珛 KnowledgeAlias 琛?| 鏀寔楂樻晥绱㈠紩銆佸崟鐙褰曟潵婧?缃俊搴?璇█/鐘舵€?|
+| 鑺傜偣鍐呭 | Node 琛ㄤ粎瀛?identity + routing + status | 娑堥櫎鍙屽啓涓嶄竴鑷撮闄╋紝鍐呭浠?current_revision 璇诲彇 |
+| 涓棿缁勭粐灞?| TeachingUnit锛堟暀瀛﹀崟鍏冿級 | 鐭ヨ瘑鑺傜偣鐩存帴鎸傛爲澶粏纰庯紝涓棿闇€瑕佹渶灏忓彲璁叉巿鍗曚綅 |
+| 鏁欏鍗曞厓鐢熸垚 | graph-aware 鑱氱被 + LLM 鍛藉悕鏁寸悊 | 璺濈鍑芥暟缁撳悎 embedding銆佸浘鍏崇郴銆佹枃妗ｇ粨鏋勩€佺被鍨嬪吋瀹规€?|
+| 璇剧▼瑙嗗浘 | Theme Tree + Prerequisite DAG + Linear Syllabus | 鍗曚竴鏍戞棤娉曞悓鏃惰〃杈句富棰樺垎缁勩€佹暀瀛︿緷璧栧拰璁叉巿椤哄簭 |
+| Anchor 瑙掕壊 | 杞害鏉熼鏋讹紙闈炵‖鍒嗙被鐩爣锛?| 涓轰富棰樻爲鑺傜偣鎻愪緵鍛藉悕/鎺掑簭/绋冲畾绾︽潫锛屼繚鐣欎汉宸ュ彲鎺ф€у張涓嶅帇姝昏嚜缁勭粐 |
+| 涓婚鏍戞寕杞?| 鎸?TeachingUnit锛坙eaf-only锛夎€岄潪 KnowledgeNode | KnowledgeNode 鈫?TeachingUnit 鈫?ThemeTreeNode锛屼笂灞?chapter/section 鐢?ThemeTreeNode 灞傜骇绠＄悊 |
+| 鍏堜慨 DAG | 浠庡浘璋辫竟鑱氬悎 + 浼犻€掔害绠€ + 鍘荤幆 | 涓嶉潬鏍戯紝鐩存帴浠庣煡璇嗕緷璧栬竟鎻愮偧 |
+| 浠诲姟鎷嗗垎 | GraphDigestJob + CurriculumDeriveJob | 鍥炬瀯寤哄畬鎴愬嵆鍙煡璇紝璇剧▼缁撴瀯寮傛鍒锋柊 |
+| 骞跺彂鎺у埗 | subject 绾ф瀯寤洪攣 + DB 鍞竴绾︽潫 + 涔愯閿?| 闃叉閲嶅瑙﹀彂銆佷繚璇佹暟鎹竴鑷存€?|
+| 鏁版嵁搴?| 鍚屼竴瀛︾ .db 鏂囦欢鏂板琛?| 涓庣幇鏈?All-in-SQLite 鐞嗗康涓€鑷?|
 
-## 架构
+## 鏋舵瀯
 
 ```mermaid
 graph TB
-    subgraph "Source Layer（现有）"
+    subgraph "Source Layer锛堢幇鏈夛級"
         A[Ingest Engine] --> B[Document + DocumentChunk]
     end
 
-    subgraph "Extraction Layer（新增）"
-        B --> C[候选节点抽取<br/>extract_candidates]
-        B --> D[候选边抽取<br/>extract_candidate_edges]
+    subgraph "Extraction Layer锛堟柊澧烇級"
+        B --> C[鍊欓€夎妭鐐规娊鍙?br/>extract_candidates]
+        B --> D[鍊欓€夎竟鎶藉彇<br/>extract_candidate_edges]
     end
 
-    subgraph "Reconciliation Layer（新增）"
-        C --> C1[批内候选聚类<br/>intra-batch clustering]
-        C1 --> E[节点对齐<br/>Entity Resolution]
-        D --> F[边对齐<br/>Relation Resolution]
-        E --> IA[影响集分析<br/>Impact Analyzer]
+    subgraph "Reconciliation Layer锛堟柊澧烇級"
+        C --> C1[鎵瑰唴鍊欓€夎仛绫?br/>intra-batch clustering]
+        C1 --> E[鑺傜偣瀵归綈<br/>Entity Resolution]
+        D --> F[杈瑰榻?br/>Relation Resolution]
+        E --> IA[褰卞搷闆嗗垎鏋?br/>Impact Analyzer]
     end
 
-    subgraph "Graph Layer — GraphDigestJob 边界"
+    subgraph "Graph Layer 鈥?GraphDigestJob 杈圭晫"
         E --> G[KnowledgeNode<br/>+ KnowledgeRevision<br/>+ KnowledgeAlias<br/>+ EvidenceLink]
         F --> H[KnowledgeEdge<br/>+ EdgeRevision<br/>+ EvidenceLink]
         IA --> G
         IA --> H
     end
 
-    subgraph "Teaching Unit Layer — CurriculumDeriveJob 边界"
-        G --> TU[教学单元生成<br/>graph-aware clustering<br/>+ LLM 命名整理]
+    subgraph "Teaching Unit Layer 鈥?CurriculumDeriveJob 杈圭晫"
+        G --> TU[鏁欏鍗曞厓鐢熸垚<br/>graph-aware clustering<br/>+ LLM 鍛藉悕鏁寸悊]
         H --> TU
         TU --> TUR[TeachingUnit<br/>+ TeachingUnitRevision<br/>+ TeachingUnitMembership]
     end
 
-    subgraph "Curriculum Views Layer — CurriculumDeriveJob 边界"
-        TUR --> TT[主题树派生<br/>Theme Tree<br/>Anchor 软约束 + LLM 层级组织]
-        TUR --> PD[先修 DAG 派生<br/>Prerequisite DAG<br/>边聚合 + 传递约简 + 去环]
+    subgraph "Curriculum Views Layer 鈥?CurriculumDeriveJob 杈圭晫"
+        TUR --> TT[涓婚鏍戞淳鐢?br/>Theme Tree<br/>Anchor 杞害鏉?+ LLM 灞傜骇缁勭粐]
+        TUR --> PD[鍏堜慨 DAG 娲剧敓<br/>Prerequisite DAG<br/>杈硅仛鍚?+ 浼犻€掔害绠€ + 鍘荤幆]
         TT --> TTV[ThemeTreeVersion<br/>+ ThemeTreeNode<br/>+ UnitTreeMembership]
         PD --> PDV[PrereqDagVersion<br/>+ UnitDependency]
     end
 ```
 
-### 两阶段任务状态机
+### 涓ら樁娈典换鍔＄姸鎬佹満
 
 ```mermaid
 stateDiagram-v2
-    [*] --> acquire_lock: 触发增量构建
-    acquire_lock --> prepare: 获取 subject 构建锁
-    acquire_lock --> reject: 锁已被占用
-    reject --> [*]: 返回 CONFLICT
+    [*] --> acquire_lock: 瑙﹀彂澧為噺鏋勫缓
+    acquire_lock --> prepare: 鑾峰彇 subject 鏋勫缓閿?    acquire_lock --> reject: 閿佸凡琚崰鐢?    reject --> [*]: 杩斿洖 CONFLICT
 
-    prepare --> extract: 加载待处理 chunks
-    extract --> cluster: 候选节点 + 候选边抽取完成
-    cluster --> resolve_nodes: 批内聚类去重完成
-    resolve_nodes --> resolve_edges: 节点对齐完成
-    resolve_edges --> analyze_impact: 边对齐完成
-    analyze_impact --> finalize_graph: 影响集分析完成
-    finalize_graph --> [*]: GraphDigestJob 完成，释放锁，触发 CurriculumDeriveJob
+    prepare --> extract: 鍔犺浇寰呭鐞?chunks
+    extract --> cluster: 鍊欓€夎妭鐐?+ 鍊欓€夎竟鎶藉彇瀹屾垚
+    cluster --> resolve_nodes: 鎵瑰唴鑱氱被鍘婚噸瀹屾垚
+    resolve_nodes --> resolve_edges: 鑺傜偣瀵归綈瀹屾垚
+    resolve_edges --> analyze_impact: 杈瑰榻愬畬鎴?    analyze_impact --> finalize_graph: 褰卞搷闆嗗垎鏋愬畬鎴?    finalize_graph --> [*]: GraphDigestJob 瀹屾垚锛岄噴鏀鹃攣锛岃Е鍙?CurriculumDeriveJob
 
-    state "CurriculumDeriveJob（异步）" as curriculum {
-        [*] --> derive_units: 教学单元生成
-        derive_units --> derive_theme_tree: 主题树派生
-        derive_theme_tree --> derive_prereq_dag: 先修 DAG 派生
+    state "CurriculumDeriveJob锛堝紓姝ワ級" as curriculum {
+        [*] --> derive_units: 鏁欏鍗曞厓鐢熸垚
+        derive_units --> derive_theme_tree: 涓婚鏍戞淳鐢?        derive_theme_tree --> derive_prereq_dag: 鍏堜慨 DAG 娲剧敓
         derive_prereq_dag --> finalize_curriculum
         finalize_curriculum --> [*]
     }
 
-    extract --> fail: LLM 调用异常
-    resolve_nodes --> fail: 对齐异常
-    fail --> [*]: 记录错误，释放锁
+    extract --> fail: LLM 璋冪敤寮傚父
+    resolve_nodes --> fail: 瀵归綈寮傚父
+    fail --> [*]: 璁板綍閿欒锛岄噴鏀鹃攣
 ```
 
-### 引用链
-
+### 寮曠敤閾?
 ```
 api/knowledge.py
-  → services/knowledge_graph_service.py
-    → agents/digest/kg_workflow.py              (LangGraph — GraphDigestJob)
-      → agents/digest/kg_extractor.py           (LLM 候选抽取)
-      → agents/digest/kg_clusterer.py           (批内候选聚类去重)
-      → agents/digest/kg_resolver.py            (实体/关系对齐)
-      → agents/digest/kg_impact_analyzer.py     (影响集分析)
-    → agents/digest/curriculum_workflow.py       (LangGraph — CurriculumDeriveJob)
-      → agents/digest/unit_builder.py           (教学单元生成)
-      → agents/digest/theme_tree_builder.py     (主题树派生)
-      → agents/digest/prereq_dag_builder.py     (先修 DAG 派生)
-    → repositories/kg_repo.py                   (知识图谱数据访问)
-    → repositories/curriculum_repo.py           (课程结构数据访问)
+  鈫?services/knowledge_graph_service.py
+    鈫?agents/digest/knowledge_graph_workflow.py              (LangGraph 鈥?GraphDigestJob)
+      鈫?agents/digest/knowledge_graph_extractor.py           (LLM 鍊欓€夋娊鍙?
+      鈫?agents/digest/knowledge_graph_clusterer.py           (鎵瑰唴鍊欓€夎仛绫诲幓閲?
+      鈫?agents/digest/knowledge_graph_resolver.py            (瀹炰綋/鍏崇郴瀵归綈)
+      鈫?agents/digest/knowledge_graph_impact_analyzer.py     (褰卞搷闆嗗垎鏋?
+    鈫?agents/digest/curriculum_workflow.py       (LangGraph 鈥?CurriculumDeriveJob)
+      鈫?agents/digest/unit_builder.py           (鏁欏鍗曞厓鐢熸垚)
+      鈫?agents/digest/theme_tree_builder.py     (涓婚鏍戞淳鐢?
+      鈫?agents/digest/prereq_dag_builder.py     (鍏堜慨 DAG 娲剧敓)
+    鈫?repositories/kg_repo.py                   (鐭ヨ瘑鍥捐氨鏁版嵁璁块棶)
+    鈫?repositories/curriculum_repo.py           (璇剧▼缁撴瀯鏁版嵁璁块棶)
 ```
 
-## 组件与接口
+## 缁勪欢涓庢帴鍙?
+### 1. 鏁版嵁璁块棶灞傦細`repositories/kg_repo.py`
 
-### 1. 数据访问层：`repositories/kg_repo.py`
-
-负责知识图谱相关表的 CRUD 操作。
-
+璐熻矗鐭ヨ瘑鍥捐氨鐩稿叧琛ㄧ殑 CRUD 鎿嶄綔銆?
 ```python
-# === 构建锁 ===
+# === 鏋勫缓閿?===
 def acquire_subject_build_lock(session: Session, subject: str) -> bool
 def release_subject_build_lock(session: Session, subject: str) -> None
 
-# === 节点 CRUD ===
+# === 鑺傜偣 CRUD ===
 def create_knowledge_node(session: Session, node: KnowledgeNode) -> KnowledgeNode
 def get_knowledge_node_by_id(session: Session, node_id: int) -> KnowledgeNode | None
 def find_node_by_normalized_name(session: Session, subject: str, normalized_name: str, node_type: str) -> KnowledgeNode | None
@@ -159,44 +137,43 @@ def find_nodes_by_alias(session: Session, subject: str, alias: str, node_type: s
 def list_nodes_by_subject(session: Session, subject: str, *, node_type: str | None, status: str | None, limit: int, offset: int) -> tuple[list[KnowledgeNode], int]
 def get_node_with_current_revision(session: Session, node_id: int) -> tuple[KnowledgeNode, KnowledgeRevision] | None
 
-# === 别名 CRUD ===
+# === 鍒悕 CRUD ===
 def create_alias(session: Session, alias: KnowledgeAlias) -> KnowledgeAlias
 def find_alias(session: Session, subject: str, normalized_alias: str) -> list[KnowledgeAlias]
 def list_aliases_by_node(session: Session, node_id: int) -> list[KnowledgeAlias]
 
-# === 边 CRUD ===
+# === 杈?CRUD ===
 def create_knowledge_edge(session: Session, edge: KnowledgeEdge) -> KnowledgeEdge
 def find_edge(session: Session, source_node_id: int, target_node_id: int, edge_type: str) -> KnowledgeEdge | None
 def list_edges_by_node(session: Session, node_id: int) -> list[KnowledgeEdge]
 def list_edges_by_type(session: Session, subject: str, edge_type: str) -> list[KnowledgeEdge]
 
-# === 修订 ===
+# === 淇 ===
 def create_knowledge_revision(session: Session, revision: KnowledgeRevision) -> KnowledgeRevision
 def deactivate_old_revisions(session: Session, node_id: int) -> None
 def create_edge_revision(session: Session, revision: EdgeRevision) -> EdgeRevision
 def deactivate_old_edge_revisions(session: Session, edge_id: int) -> None
 
-# === 证据 ===
+# === 璇佹嵁 ===
 def create_evidence_link(session: Session, link: EvidenceLink) -> EvidenceLink
 def list_evidence_by_entity(session: Session, entity_type: str, entity_id: int, *, is_active: bool | None = True) -> list[EvidenceLink]
 def count_active_evidence(session: Session, entity_type: str, entity_id: int) -> int
 
-# === 任务 ===
+# === 浠诲姟 ===
 def create_digest_job(session: Session, job: GraphDigestJob) -> GraphDigestJob
 def update_digest_job(session: Session, job_id: int, **kwargs) -> GraphDigestJob | None
 ```
 
-### 2. 数据访问层：`repositories/curriculum_repo.py`
+### 2. 鏁版嵁璁块棶灞傦細`repositories/curriculum_repo.py`
 
-负责教学单元和课程视图相关表的 CRUD 操作。
-
+璐熻矗鏁欏鍗曞厓鍜岃绋嬭鍥剧浉鍏宠〃鐨?CRUD 鎿嶄綔銆?
 ```python
-# === 教学单元 ===
+# === 鏁欏鍗曞厓 ===
 def create_teaching_unit(session: Session, unit: TeachingUnit) -> TeachingUnit
 def get_teaching_unit_by_id(session: Session, unit_id: int) -> TeachingUnit | None
 def find_unit_by_signature(session: Session, subject: str, member_signature: str) -> TeachingUnit | None
 def find_units_overlapping_nodes(session: Session, subject: str, node_ids: list[int]) -> list[TeachingUnit]
-def find_unit_by_normalized_name(session: Session, subject: str, normalized_name: str) -> TeachingUnit | None  # 辅助搜索，非身份定位
+def find_unit_by_normalized_name(session: Session, subject: str, normalized_name: str) -> TeachingUnit | None  # 杈呭姪鎼滅储锛岄潪韬唤瀹氫綅
 def list_units_by_subject(session: Session, subject: str, *, status: str | None, limit: int, offset: int) -> tuple[list[TeachingUnit], int]
 def create_unit_revision(session: Session, revision: TeachingUnitRevision) -> TeachingUnitRevision
 def deactivate_old_unit_revisions(session: Session, unit_id: int) -> None
@@ -204,46 +181,44 @@ def create_unit_membership(session: Session, membership: TeachingUnitMembership)
 def list_memberships_by_unit(session: Session, unit_id: int) -> list[TeachingUnitMembership]
 def find_unit_by_node(session: Session, knowledge_node_id: int) -> TeachingUnit | None
 
-# === 锚点 ===
+# === 閿氱偣 ===
 def create_taxonomy_anchor(session: Session, anchor: TaxonomyAnchor) -> TaxonomyAnchor
 def list_anchors_by_subject(session: Session, subject: str) -> list[TaxonomyAnchor]
 def get_uncategorized_anchor(session: Session, subject: str) -> TaxonomyAnchor
 
-# === 主题树 ===
+# === 涓婚鏍?===
 def create_theme_tree_version(session: Session, version: ThemeTreeVersion) -> ThemeTreeVersion
 def get_current_theme_tree_version(session: Session, subject: str) -> ThemeTreeVersion | None
 def create_theme_tree_version_with_optimistic_lock(session: Session, subject: str, expected_prev_version_no: int) -> ThemeTreeVersion
 def create_theme_tree_node(session: Session, node: ThemeTreeNode) -> ThemeTreeNode
 def create_unit_tree_membership(session: Session, membership: UnitTreeMembership) -> UnitTreeMembership
 
-# === 先修 DAG ===
+# === 鍏堜慨 DAG ===
 def create_prereq_dag_version(session: Session, version: PrereqDagVersion) -> PrereqDagVersion
 def get_current_prereq_dag_version(session: Session, subject: str) -> PrereqDagVersion | None
 def create_unit_dependency(session: Session, dep: UnitDependency) -> UnitDependency
 def list_dependencies_by_version(session: Session, dag_version_id: int) -> list[UnitDependency]
 
-# === 课程任务 ===
+# === 璇剧▼浠诲姟 ===
 def create_curriculum_job(session: Session, job: CurriculumDeriveJob) -> CurriculumDeriveJob
 def update_curriculum_job(session: Session, job_id: int, **kwargs) -> CurriculumDeriveJob | None
 
-# === 课程快照 ===
+# === 璇剧▼蹇収 ===
 def create_curriculum_snapshot(session: Session, snapshot: CurriculumSnapshot) -> CurriculumSnapshot
 def get_current_curriculum_snapshot(session: Session, subject: str) -> CurriculumSnapshot | None
 def archive_old_snapshots(session: Session, subject: str) -> None
 ```
 
-### 3. LLM 抽取层：`agents/digest/kg_extractor.py`
+### 3. LLM 鎶藉彇灞傦細`agents/digest/knowledge_graph_extractor.py`
 
-使用 Instructor 结构化输出从 chunk 中抽取候选节点和候选边。
-
+浣跨敤 Instructor 缁撴瀯鍖栬緭鍑轰粠 chunk 涓娊鍙栧€欓€夎妭鐐瑰拰鍊欓€夎竟銆?
 ```python
 class CandidateNode(BaseModel):
     name: str
     node_type: Literal["Topic", "Concept", "Definition", "Method", "Example"]
     local_summary: str
     taxonomy_hint: str
-    parent_entity_name: str | None = None  # Definition/Example 的关联父实体名
-
+    parent_entity_name: str | None = None  # Definition/Example 鐨勫叧鑱旂埗瀹炰綋鍚?
 class CandidateEdge(BaseModel):
     source_name: str
     target_name: str
@@ -262,7 +237,7 @@ async def extract_candidates(
 ) -> ChunkExtractionResult
 ```
 
-### 4. 批内候选聚类：`agents/digest/kg_clusterer.py`
+### 4. 鎵瑰唴鍊欓€夎仛绫伙細`agents/digest/knowledge_graph_clusterer.py`
 
 ```python
 @dataclass
@@ -278,7 +253,7 @@ def cluster_candidates(
 ) -> list[ClusteredCandidate]
 ```
 
-### 5. 对齐层：`agents/digest/kg_resolver.py`
+### 5. 瀵归綈灞傦細`agents/digest/knowledge_graph_resolver.py`
 
 ```python
 class EntityMatchDecision(str, Enum):
@@ -321,22 +296,20 @@ def compute_edge_confidence(
     """confidence = min(max_confidence, 1 - 1/(1 + active_count)) - 0.1 * contradicting_count"""
 ```
 
-### 6. 影响集分析：`agents/digest/kg_impact_analyzer.py`
+### 6. 褰卞搷闆嗗垎鏋愶細`agents/digest/knowledge_graph_impact_analyzer.py`
 
 ```python
 @dataclass
 class ImpactSet:
-    # === 图谱层闭包 ===
-    changed_node_ids: set[int]              # 本次新增/合并/拆分的节点
-    affected_edge_ids: set[int]             # 与 changed nodes incident 的 active edges
-    candidate_recompute_node_ids: set[int]  # incident edges 对端的 2-hop nodes + evidence 失效影响 current_revision 的实体
-    # === 教学单元层闭包 ===
-    affected_unit_ids: set[int]             # 包含 changed nodes 的现有 units + 与 changed nodes 存在 part_of/defined_by/illustrated_by/prerequisite_of 强关系的邻接 units + 发生 merge/split 的 units
-    # === 树视图层闭包 ===
-    affected_anchor_ids: set[int]           # 受影响的锚点
-    affected_tree_node_ids: set[int]        # affected units 的 UnitTreeMembership 对应的 tree nodes + 其祖先路径 + 锚点变化涉及的 subtree
-    # === DAG 层闭包 ===
-    affected_dag_edge_ids: set[int]         # source_unit_id 或 target_unit_id 落在 affected_unit_ids 中的 dependency edges + 与被断边环路同一 SCC 的 dependency candidates
+    # === 鍥捐氨灞傞棴鍖?===
+    changed_node_ids: set[int]              # 鏈鏂板/鍚堝苟/鎷嗗垎鐨勮妭鐐?    affected_edge_ids: set[int]             # 涓?changed nodes incident 鐨?active edges
+    candidate_recompute_node_ids: set[int]  # incident edges 瀵圭鐨?2-hop nodes + evidence 澶辨晥褰卞搷 current_revision 鐨勫疄浣?    # === 鏁欏鍗曞厓灞傞棴鍖?===
+    affected_unit_ids: set[int]             # 鍖呭惈 changed nodes 鐨勭幇鏈?units + 涓?changed nodes 瀛樺湪 part_of/defined_by/illustrated_by/prerequisite_of 寮哄叧绯荤殑閭绘帴 units + 鍙戠敓 merge/split 鐨?units
+    # === 鏍戣鍥惧眰闂寘 ===
+    affected_anchor_ids: set[int]           # 鍙楀奖鍝嶇殑閿氱偣
+    affected_tree_node_ids: set[int]        # affected units 鐨?UnitTreeMembership 瀵瑰簲鐨?tree nodes + 鍏剁鍏堣矾寰?+ 閿氱偣鍙樺寲娑夊強鐨?subtree
+    # === DAG 灞傞棴鍖?===
+    affected_dag_edge_ids: set[int]         # source_unit_id 鎴?target_unit_id 钀藉湪 affected_unit_ids 涓殑 dependency edges + 涓庤鏂竟鐜矾鍚屼竴 SCC 鐨?dependency candidates
 
 def analyze_impact(
     session: Session,
@@ -348,20 +321,18 @@ def analyze_impact(
 ) -> ImpactSet
 ```
 
-### 7. 教学单元生成：`agents/digest/unit_builder.py`
+### 7. 鏁欏鍗曞厓鐢熸垚锛歚agents/digest/unit_builder.py`
 
-从知识图谱中通过 graph-aware 聚类生成教学单元。
-
+浠庣煡璇嗗浘璋变腑閫氳繃 graph-aware 鑱氱被鐢熸垚鏁欏鍗曞厓銆?
 ```python
 @dataclass
 class UnitCandidate:
-    """聚类产生的教学单元候选。"""
-    core_node_ids: list[int]            # 核心概念节点
-    support_node_ids: list[int]         # 支撑定义/方法节点
-    example_node_ids: list[int]         # 示例节点
-    bridge_node_ids: list[int]          # 前置桥接节点
-    cluster_score: float                # 聚类内聚度
-
+    """鑱氱被浜х敓鐨勬暀瀛﹀崟鍏冨€欓€夈€?""
+    core_node_ids: list[int]            # 鏍稿績姒傚康鑺傜偣
+    support_node_ids: list[int]         # 鏀拺瀹氫箟/鏂规硶鑺傜偣
+    example_node_ids: list[int]         # 绀轰緥鑺傜偣
+    bridge_node_ids: list[int]          # 鍓嶇疆妗ユ帴鑺傜偣
+    cluster_score: float                # 鑱氱被鍐呰仛搴?
 async def derive_teaching_units(
     session: Session,
     subject: str,
@@ -378,8 +349,7 @@ def compute_unit_distance(
 ) -> float
 ```
 
-**graph-aware 聚类距离函数**：
-
+**graph-aware 鑱氱被璺濈鍑芥暟**锛?
 ```
 dist(i, j) =
     a * semantic_distance(embedding_i, embedding_j)     # 0.30
@@ -389,35 +359,27 @@ dist(i, j) =
   + e * type_compatibility_penalty(i, j)                 # 0.10
 ```
 
-其中：
-- `semantic_distance`：embedding 余弦距离
-- `graph_relation_distance`：part_of / defined_by / illustrated_by 边越多距离越近
-- `co_outline_distance`：共现于同一 chunk/section 的节点距离更近
-- `prerequisite_penalty`：强 prerequisite 关系的两端不一定应合并（惩罚项）
-- `type_compatibility_penalty`：Concept + Definition + Example 容易聚在一起；Topic 倾向独立
+鍏朵腑锛?- `semantic_distance`锛歟mbedding 浣欏鸡璺濈
+- `graph_relation_distance`锛歱art_of / defined_by / illustrated_by 杈硅秺澶氳窛绂昏秺杩?- `co_outline_distance`锛氬叡鐜颁簬鍚屼竴 chunk/section 鐨勮妭鐐硅窛绂绘洿杩?- `prerequisite_penalty`锛氬己 prerequisite 鍏崇郴鐨勪袱绔笉涓€瀹氬簲鍚堝苟锛堟儵缃氶」锛?- `type_compatibility_penalty`锛欳oncept + Definition + Example 瀹规槗鑱氬湪涓€璧凤紱Topic 鍊惧悜鐙珛
 
-**聚类流程**：
-
+**鑱氱被娴佺▼**锛?
 ```mermaid
 flowchart TD
-    A[Impact Set 中受影响的 active 节点] --> B[提取局部子图<br/>changed nodes + 1-hop + 2-hop]
-    B --> C[计算 pairwise 距离矩阵]
-    C --> D[层次聚类<br/>agglomerative clustering]
-    D --> E[切割阈值 → leaf teaching units]
-    E --> F[为每个 teaching unit 分配角色<br/>core / support / example / bridge]
-    F --> G[LLM 命名整理<br/>单元名 + 摘要 + 学习目标]
+    A[Impact Set 涓彈褰卞搷鐨?active 鑺傜偣] --> B[鎻愬彇灞€閮ㄥ瓙鍥?br/>changed nodes + 1-hop + 2-hop]
+    B --> C[璁＄畻 pairwise 璺濈鐭╅樀]
+    C --> D[灞傛鑱氱被<br/>agglomerative clustering]
+    D --> E[鍒囧壊闃堝€?鈫?leaf teaching units]
+    E --> F[涓烘瘡涓?teaching unit 鍒嗛厤瑙掕壊<br/>core / support / example / bridge]
+    F --> G[LLM 鍛藉悕鏁寸悊<br/>鍗曞厓鍚?+ 鎽樿 + 瀛︿範鐩爣]
 ```
 
-**角色分配规则**：
-- `core`：cluster 中 node_type 为 Topic / Concept / Method 且 degree 最高的节点
-- `support`：与 core 节点有 defined_by / part_of 边的 Definition / Method 节点
-- `example`：与 core 节点有 illustrated_by 边的 Example 节点
-- `prerequisite_bridge`：与 core 节点有 prerequisite_of 边但属于其他 unit 的节点引用
+**瑙掕壊鍒嗛厤瑙勫垯**锛?- `core`锛歝luster 涓?node_type 涓?Topic / Concept / Method 涓?degree 鏈€楂樼殑鑺傜偣
+- `support`锛氫笌 core 鑺傜偣鏈?defined_by / part_of 杈圭殑 Definition / Method 鑺傜偣
+- `example`锛氫笌 core 鑺傜偣鏈?illustrated_by 杈圭殑 Example 鑺傜偣
+- `prerequisite_bridge`锛氫笌 core 鑺傜偣鏈?prerequisite_of 杈逛絾灞炰簬鍏朵粬 unit 鐨勮妭鐐瑰紩鐢?
+### 8. 涓婚鏍戞淳鐢燂細`agents/digest/theme_tree_builder.py`
 
-### 8. 主题树派生：`agents/digest/theme_tree_builder.py`
-
-基于 Anchor 软约束 + 教学单元层级结构派生主题树。
-
+鍩轰簬 Anchor 杞害鏉?+ 鏁欏鍗曞厓灞傜骇缁撴瀯娲剧敓涓婚鏍戙€?
 ```python
 async def derive_theme_tree(
     session: Session,
@@ -434,22 +396,19 @@ def compute_unit_membership_score(
 ) -> float
 ```
 
-**主题树派生算法**：
+**涓婚鏍戞淳鐢熺畻娉?*锛?
+**Step A锛氱敓鎴?Anchor Skeleton**
+- 鎸?anchor_type 浼樺厛绾ф帓搴忥細teacher_defined > syllabus > textbook_toc > graph_discovered > system
+- teacher_defined / syllabus 閿氱偣浣滀负楂樹紭鍏堢骇绾︽潫锛岀粨鏋勪繚鎸佷笉鍙?- graph_discovered 閿氱偣浠呬綔琛ュ厖
+- 纭繚"寰呭綊绫?绯荤粺閿氱偣濮嬬粓瀛樺湪
+- Anchor 涓嶅啀鏄?鎵€鏈夎妭鐐归兘瑕佸綊鍒颁竴涓?anchor 涓?锛岃€屾槸"涓轰富棰樻爲鑺傜偣鎻愪緵鍛藉悕銆佹帓搴忋€佸榻愬拰绋冲畾绾︽潫"
 
-**Step A：生成 Anchor Skeleton**
-- 按 anchor_type 优先级排序：teacher_defined > syllabus > textbook_toc > graph_discovered > system
-- teacher_defined / syllabus 锚点作为高优先级约束，结构保持不变
-- graph_discovered 锚点仅作补充
-- 确保"待归类"系统锚点始终存在
-- Anchor 不再是"所有节点都要归到一个 anchor 下"，而是"为主题树节点提供命名、排序、对齐和稳定约束"
-
-**Step B：将教学单元挂载到树**
-- 主题树挂载的是 TeachingUnit（leaf-only）而非 KnowledgeNode
-- TeachingUnit 只挂载到 ThemeTreeNode 的 theme / unit_bucket 层级节点
-- 上层 chapter / section 结构完全由 ThemeTreeNode 自身的 parent_tree_node_id 层级管理
-- 形成 KnowledgeNode → TeachingUnit → ThemeTreeNode(theme/unit_bucket) → ThemeTreeNode(section) → ThemeTreeNode(chapter) 的清晰分层
-
-**Step C：计算 membership_score（多源证据融合）**
+**Step B锛氬皢鏁欏鍗曞厓鎸傝浇鍒版爲**
+- 涓婚鏍戞寕杞界殑鏄?TeachingUnit锛坙eaf-only锛夎€岄潪 KnowledgeNode
+- TeachingUnit 鍙寕杞藉埌 ThemeTreeNode 鐨?theme / unit_bucket 灞傜骇鑺傜偣
+- 涓婂眰 chapter / section 缁撴瀯瀹屽叏鐢?ThemeTreeNode 鑷韩鐨?parent_tree_node_id 灞傜骇绠＄悊
+- 褰㈡垚 KnowledgeNode 鈫?TeachingUnit 鈫?ThemeTreeNode(theme/unit_bucket) 鈫?ThemeTreeNode(section) 鈫?ThemeTreeNode(chapter) 鐨勬竻鏅板垎灞?
+**Step C锛氳绠?membership_score锛堝婧愯瘉鎹瀺鍚堬級**
 
 ```
 membership_score(unit, anchor) =
@@ -461,27 +420,22 @@ membership_score(unit, anchor) =
   + w6 * taxonomy_hint_match(unit.taxonomy_hints, anchor.title)     # 0.05
 ```
 
-**Step D：确定归属（稳定规则）**
+**Step D锛氱‘瀹氬綊灞烇紙绋冲畾瑙勫垯锛?*
 
-归属优先级：
-1. `membership_source = "human_fixed"` → 绝对优先，自动派生不覆盖
-2. 锚点集不变时：
-   - score 最高且 > `membership_threshold`（默认 0.5）→ primary
-   - 前两名差距 < `stability_threshold`（默认 0.08）→ 保持上一版归属
-   - 所有 score < `membership_threshold` → 归入"待归类"池
-3. 锚点集变化时：受影响子树内的单元重新评估，未受影响子树保持不变
+褰掑睘浼樺厛绾э細
+1. `membership_source = "human_fixed"` 鈫?缁濆浼樺厛锛岃嚜鍔ㄦ淳鐢熶笉瑕嗙洊
+2. 閿氱偣闆嗕笉鍙樻椂锛?   - score 鏈€楂樹笖 > `membership_threshold`锛堥粯璁?0.5锛夆啋 primary
+   - 鍓嶄袱鍚嶅樊璺?< `stability_threshold`锛堥粯璁?0.08锛夆啋 淇濇寔涓婁竴鐗堝綊灞?   - 鎵€鏈?score < `membership_threshold` 鈫?褰掑叆"寰呭綊绫?姹?3. 閿氱偣闆嗗彉鍖栨椂锛氬彈褰卞搷瀛愭爲鍐呯殑鍗曞厓閲嶆柊璇勪及锛屾湭鍙楀奖鍝嶅瓙鏍戜繚鎸佷笉鍙?
+**Step E锛氱敓鎴?ThemeTreeVersion**
+- 浣跨敤涔愯閿佸垱寤烘柊鐗堟湰 `status="draft"`
+- **涓嶅湪姝ゅ褰掓。鏃х増鏈垨鍙戝竷鏂扮増鏈?*鈥斺€斿綊妗ｄ笌鍙戝竷缁熶竴鍦?`finalize_curriculum_node` 涓師瀛愬畬鎴愶紝閬垮厤"鏃х増鏈凡 archived 浣嗘柊鐗堟湰鏈?published"鐨勭獥鍙ｆ湡
+- 涓烘瘡涓?ThemeTreeNode 鐢熸垚 summary
+- "寰呭綊绫?姹犱綔涓哄浐瀹氭爲鑺傜偣濮嬬粓瀛樺湪
+- MVP 閲囩敤"閫昏緫灞€閮ㄩ噸绠?+ 瀛樺偍鍏ㄩ噺蹇収"鐨勭増鏈瓥鐣ワ細浠呭 Impact Set 褰卞搷鑼冨洿鍐呭璞￠噸鏂拌绠楋紝浣嗚惤搴撴椂鐢熸垚瀹屾暣鏂扮増鏈紝浠ョ畝鍖栨煡璇€佸洖婊氬拰鐗堟湰姣旇緝
 
-**Step E：生成 ThemeTreeVersion**
-- 使用乐观锁创建新版本 `status="draft"`
-- **不在此处归档旧版本或发布新版本**——归档与发布统一在 `finalize_curriculum_node` 中原子完成，避免"旧版本已 archived 但新版本未 published"的窗口期
-- 为每个 ThemeTreeNode 生成 summary
-- "待归类"池作为固定树节点始终存在
-- MVP 采用"逻辑局部重算 + 存储全量快照"的版本策略：仅对 Impact Set 影响范围内对象重新计算，但落库时生成完整新版本，以简化查询、回滚和版本比较
+### 9. 鍏堜慨 DAG 娲剧敓锛歚agents/digest/prereq_dag_builder.py`
 
-### 9. 先修 DAG 派生：`agents/digest/prereq_dag_builder.py`
-
-从知识图谱的依赖边聚合出教学单元级别的先修 DAG。
-
+浠庣煡璇嗗浘璋辩殑渚濊禆杈硅仛鍚堝嚭鏁欏鍗曞厓绾у埆鐨勫厛淇?DAG銆?
 ```python
 async def derive_prereq_dag(
     session: Session,
@@ -501,43 +455,33 @@ def transitive_reduction(edges: list[UnitDependencyCandidate]) -> list[UnitDepen
 def break_cycles(edges: list[UnitDependencyCandidate]) -> tuple[list[UnitDependencyCandidate], list[UnitDependencyCandidate]]
 ```
 
-**先修 DAG 派生算法**：
-
-**Step 1：收集节点级依赖边**
-- 从图谱中提取所有 active 的 prerequisite_of 边
-- 补充 part_of 边的约束传播（A part_of B → B 的前置也是 A 的前置）
-- defined_by 边采用保守策略：优先用于单元内聚合（帮助 Concept/Definition 进入同一 TeachingUnit）。仅当 Concept 与 Definition 已被分到不同 units，且同时满足以下条件时，才生成 unit-level dependency candidate：
-  - 两者之间存在高置信度 defined_by 关系（confidence > 0.7）
-  - 两 unit 没有被聚类并入的充分证据
-  - 有额外支持信号（如文档顺序、先修边、教师锚点提示）支持其教学顺序
-
-**Step 2：聚合为单元级依赖**
-- 当 unit A 内多个节点通过依赖边指向 unit B 内多个节点时，聚合为 UnitDependency(source=A, target=B)
+**鍏堜慨 DAG 娲剧敓绠楁硶**锛?
+**Step 1锛氭敹闆嗚妭鐐圭骇渚濊禆杈?*
+- 浠庡浘璋变腑鎻愬彇鎵€鏈?active 鐨?prerequisite_of 杈?- 琛ュ厖 part_of 杈圭殑绾︽潫浼犳挱锛圓 part_of B 鈫?B 鐨勫墠缃篃鏄?A 鐨勫墠缃級
+- defined_by 杈归噰鐢ㄤ繚瀹堢瓥鐣ワ細浼樺厛鐢ㄤ簬鍗曞厓鍐呰仛鍚堬紙甯姪 Concept/Definition 杩涘叆鍚屼竴 TeachingUnit锛夈€備粎褰?Concept 涓?Definition 宸茶鍒嗗埌涓嶅悓 units锛屼笖鍚屾椂婊¤冻浠ヤ笅鏉′欢鏃讹紝鎵嶇敓鎴?unit-level dependency candidate锛?  - 涓よ€呬箣闂村瓨鍦ㄩ珮缃俊搴?defined_by 鍏崇郴锛坈onfidence > 0.7锛?  - 涓?unit 娌℃湁琚仛绫诲苟鍏ョ殑鍏呭垎璇佹嵁
+  - 鏈夐澶栨敮鎸佷俊鍙凤紙濡傛枃妗ｉ『搴忋€佸厛淇竟銆佹暀甯堥敋鐐规彁绀猴級鏀寔鍏舵暀瀛﹂『搴?
+**Step 2锛氳仛鍚堜负鍗曞厓绾т緷璧?*
+- 褰?unit A 鍐呭涓妭鐐归€氳繃渚濊禆杈规寚鍚?unit B 鍐呭涓妭鐐规椂锛岃仛鍚堜负 UnitDependency(source=A, target=B)
 - confidence = weighted_sum(supporting_edge_confidences) / max_possible
-- supporting_edge_count = 支撑的知识边数量
-- 同一 unit 内部的依赖边不产生 UnitDependency
+- supporting_edge_count = 鏀拺鐨勭煡璇嗚竟鏁伴噺
+- 鍚屼竴 unit 鍐呴儴鐨勪緷璧栬竟涓嶄骇鐢?UnitDependency
 
-**Step 3：去环处理**
-- 检测聚合图中的环路（Tarjan 强连通分量算法）
-- 对每个 SCC，断开 confidence 最低的边
-- 记录被断开的边到 `derivation_metadata_json`，供人工审查
+**Step 3锛氬幓鐜鐞?*
+- 妫€娴嬭仛鍚堝浘涓殑鐜矾锛圱arjan 寮鸿繛閫氬垎閲忕畻娉曪級
+- 瀵规瘡涓?SCC锛屾柇寮€ confidence 鏈€浣庣殑杈?- 璁板綍琚柇寮€鐨勮竟鍒?`derivation_metadata_json`锛屼緵浜哄伐瀹℃煡
 
-**Step 4：传递约简（Transitive Reduction）**
-- 在已确认无环的 DAG 上执行传递约简
-- 如果 A → B → C 且 A → C 同时存在，移除 A → C（冗余边）
-- 保留直接依赖，移除可通过其他路径推导的间接依赖
+**Step 4锛氫紶閫掔害绠€锛圱ransitive Reduction锛?*
+- 鍦ㄥ凡纭鏃犵幆鐨?DAG 涓婃墽琛屼紶閫掔害绠€
+- 濡傛灉 A 鈫?B 鈫?C 涓?A 鈫?C 鍚屾椂瀛樺湪锛岀Щ闄?A 鈫?C锛堝啑浣欒竟锛?- 淇濈暀鐩存帴渚濊禆锛岀Щ闄ゅ彲閫氳繃鍏朵粬璺緞鎺ㄥ鐨勯棿鎺ヤ緷璧?
+> 娉ㄦ剰锛氬厛鍘荤幆鍐嶇害绠€锛屽洜涓?transitive reduction 鐨勫畾涔夊熀浜?DAG锛屽鍚幆鍥捐涓烘湭瀹氫箟銆?
+**Step 5锛氱敓鎴?PrereqDagVersion**
+- 鍒涘缓鏂扮増鏈?`status="draft"`
+- 浠呭 Impact Set 褰卞搷鑼冨洿鍐呯殑鍗曞厓閲嶆柊璁＄畻渚濊禆
+- MVP 閲囩敤"閫昏緫灞€閮ㄩ噸绠?+ 瀛樺偍鍏ㄩ噺蹇収"鐨勭増鏈瓥鐣ワ細浠呭 Impact Set 褰卞搷鑼冨洿鍐呭璞￠噸鏂拌绠楋紝浣嗚惤搴撴椂鐢熸垚瀹屾暣鏂扮増鏈紝浠ョ畝鍖栨煡璇€佸洖婊氬拰鐗堟湰姣旇緝
+- **鏃х増鏈綊妗ｄ笌鏂扮増鏈彂甯冪粺涓€鍦?`finalize_curriculum_node` 涓畬鎴?*锛宐uilder 闃舵鍙骇鍑?draft
 
-> 注意：先去环再约简，因为 transitive reduction 的定义基于 DAG，对含环图行为未定义。
-
-**Step 5：生成 PrereqDagVersion**
-- 创建新版本 `status="draft"`
-- 仅对 Impact Set 影响范围内的单元重新计算依赖
-- MVP 采用"逻辑局部重算 + 存储全量快照"的版本策略：仅对 Impact Set 影响范围内对象重新计算，但落库时生成完整新版本，以简化查询、回滚和版本比较
-- **旧版本归档与新版本发布统一在 `finalize_curriculum_node` 中完成**，builder 阶段只产出 draft
-
-### 10. LangGraph 工作流
-
-#### GraphDigestJob 状态机：`agents/digest/kg_workflow.py`
+### 10. LangGraph 宸ヤ綔娴?
+#### GraphDigestJob 鐘舵€佹満锛歚agents/digest/knowledge_graph_workflow.py`
 
 ```python
 class KGDigestState(TypedDict):
@@ -547,8 +491,8 @@ class KGDigestState(TypedDict):
     chunk_ids: list[int]
     candidates: list[ChunkExtractionResult]
     clustered_candidates: list[ClusteredCandidate]
-    candidate_name_to_cluster_id: dict[str, int]           # 候选名称 → 聚类代表 ID
-    candidate_name_to_resolved_node_id: dict[str, int]     # 候选名称 → 已对齐 KnowledgeNode ID
+    candidate_name_to_cluster_id: dict[str, int]           # 鍊欓€夊悕绉?鈫?鑱氱被浠ｈ〃 ID
+    candidate_name_to_resolved_node_id: dict[str, int]     # 鍊欓€夊悕绉?鈫?宸插榻?KnowledgeNode ID
     new_node_ids: list[int]
     updated_node_ids: list[int]
     merged_node_ids: list[int]
@@ -568,7 +512,7 @@ async def finalize_graph_node(state: KGDigestState) -> KGDigestState
 async def fail_node(state: KGDigestState) -> KGDigestState
 ```
 
-#### CurriculumDeriveJob 状态机：`agents/digest/curriculum_workflow.py`
+#### CurriculumDeriveJob 鐘舵€佹満锛歚agents/digest/curriculum_workflow.py`
 
 ```python
 class CurriculumDeriveState(TypedDict):
@@ -589,49 +533,43 @@ async def finalize_curriculum_node(state: CurriculumDeriveState) -> CurriculumDe
 async def fail_curriculum_node(state: CurriculumDeriveState) -> CurriculumDeriveState
 ```
 
-### 11. 服务层：`services/knowledge_graph_service.py`
+### 11. 鏈嶅姟灞傦細`services/knowledge_graph_service.py`
 
 ```python
 def trigger_digest_build(session: Session, *, subject: str, file_ids: list[int]) -> GraphDigestJob
 async def run_graph_digest_background(*, subject: str, job_id: int) -> None
 async def run_curriculum_derive_background(*, subject: str, graph_job_id: int, curriculum_job_id: int) -> None
 def get_digest_status(session: Session, *, subject: str, job_id: int) -> DigestStatusResponse
-    """聚合查询：返回 GraphDigestJob + 关联 CurriculumDeriveJob + 当前快照 ID。"""
+    """鑱氬悎鏌ヨ锛氳繑鍥?GraphDigestJob + 鍏宠仈 CurriculumDeriveJob + 褰撳墠蹇収 ID銆?""
 def get_graph_nodes(session: Session, *, subject: str, node_type: str | None, page: int, size: int) -> PaginatedData
 def get_graph_node_detail(session: Session, *, subject: str, node_id: int) -> dict
 def get_teaching_units(session: Session, *, subject: str, page: int, size: int) -> PaginatedData
 def get_teaching_unit_detail(session: Session, *, subject: str, unit_id: int) -> dict
 def get_current_theme_tree(session: Session, *, subject: str) -> dict
 def get_current_prereq_dag(session: Session, *, subject: str) -> dict
-def get_current_curriculum_snapshot(session: Session, *, subject: str) -> dict  # 返回当前 published 快照（tree + dag 组合版本）
-def manage_taxonomy_anchors(session: Session, *, subject: str, action: str, **kwargs) -> list[TaxonomyAnchor]
+def get_current_curriculum_snapshot(session: Session, *, subject: str) -> dict  # 杩斿洖褰撳墠 published 蹇収锛坱ree + dag 缁勫悎鐗堟湰锛?def manage_taxonomy_anchors(session: Session, *, subject: str, action: str, **kwargs) -> list[TaxonomyAnchor]
 ```
 
-### 12. API 层：`api/knowledge.py`（扩展现有路由）
+### 12. API 灞傦細`api/knowledge.py`锛堟墿灞曠幇鏈夎矾鐢憋級
 
 ```python
-POST /api/v1/subjects/{subject}/digest/build            # 触发增量构建
-POST /api/v1/subjects/{subject}/digest/status            # 查询聚合状态（GraphDigestJob + CurriculumDeriveJob + 当前快照）
-POST /api/v1/subjects/{subject}/graph/nodes/query        # 分页查询节点
-POST /api/v1/subjects/{subject}/graph/nodes/detail       # 节点详情（含所属 teaching unit）
-POST /api/v1/subjects/{subject}/units/query              # 分页查询教学单元
-POST /api/v1/subjects/{subject}/units/detail             # 教学单元详情
-POST /api/v1/subjects/{subject}/theme-tree/current       # 当前主题树
-POST /api/v1/subjects/{subject}/prereq-dag/current       # 当前先修 DAG
-POST /api/v1/subjects/{subject}/curriculum/current       # 当前课程快照（tree + dag 组合版本）
-POST /api/v1/subjects/{subject}/taxonomy/anchors         # 锚点管理
+POST /api/v1/subjects/{subject}/digest/build            # 瑙﹀彂澧為噺鏋勫缓
+POST /api/v1/subjects/{subject}/digest/status            # 鏌ヨ鑱氬悎鐘舵€侊紙GraphDigestJob + CurriculumDeriveJob + 褰撳墠蹇収锛?POST /api/v1/subjects/{subject}/graph/nodes/query        # 鍒嗛〉鏌ヨ鑺傜偣
+POST /api/v1/subjects/{subject}/graph/nodes/detail       # 鑺傜偣璇︽儏锛堝惈鎵€灞?teaching unit锛?POST /api/v1/subjects/{subject}/units/query              # 鍒嗛〉鏌ヨ鏁欏鍗曞厓
+POST /api/v1/subjects/{subject}/units/detail             # 鏁欏鍗曞厓璇︽儏
+POST /api/v1/subjects/{subject}/theme-tree/current       # 褰撳墠涓婚鏍?POST /api/v1/subjects/{subject}/prereq-dag/current       # 褰撳墠鍏堜慨 DAG
+POST /api/v1/subjects/{subject}/curriculum/current       # 褰撳墠璇剧▼蹇収锛坱ree + dag 缁勫悎鐗堟湰锛?POST /api/v1/subjects/{subject}/taxonomy/anchors         # 閿氱偣绠＄悊
 ```
 
-## 数据模型
+## 鏁版嵁妯″瀷
 
-### 现有表（保持不变）
+### 鐜版湁琛紙淇濇寔涓嶅彉锛?
+- `Document` 鈥?鏂囨。璁板綍
+- `DocumentChunk` 鈥?鏂囨。鍒囧潡
+- `DocumentOutlineNode` 鈥?鏂囨。澶х翰鑺傜偣
+- `chunk_embeddings` 鈥?sqlite-vec 鍚戦噺铏氳〃
 
-- `Document` — 文档记录
-- `DocumentChunk` — 文档切块
-- `DocumentOutlineNode` — 文档大纲节点
-- `chunk_embeddings` — sqlite-vec 向量虚表
-
-### 新增枚举：`models/enums.py`
+### 鏂板鏋氫妇锛歚models/enums.py`
 
 ```python
 class KGNodeType(str, Enum):
@@ -699,14 +637,14 @@ class AliasStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 class UnitMemberRole(str, Enum):
-    """教学单元成员角色。"""
+    """鏁欏鍗曞厓鎴愬憳瑙掕壊銆?""
     CORE = "core"
     SUPPORT = "support"
     EXAMPLE = "example"
     PREREQUISITE_BRIDGE = "prerequisite_bridge"
 
 class UnitStatus(str, Enum):
-    """教学单元状态。"""
+    """鏁欏鍗曞厓鐘舵€併€?""
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     MERGED = "merged"
@@ -729,10 +667,10 @@ class TreeVersionStatus(str, Enum):
     ARCHIVED = "archived"
 
 class ThemeTreeNodeType(str, Enum):
-    """主题树节点类型。THEME 对应知识图谱中 Topic 级别的主题分组，避免与 KGNodeType.TOPIC 混淆。"""
+    """涓婚鏍戣妭鐐圭被鍨嬨€俆HEME 瀵瑰簲鐭ヨ瘑鍥捐氨涓?Topic 绾у埆鐨勪富棰樺垎缁勶紝閬垮厤涓?KGNodeType.TOPIC 娣锋穯銆?""
     CHAPTER = "chapter"
     SECTION = "section"
-    THEME = "theme"              # 原 TOPIC，改名避免与 KGNodeType.TOPIC 混淆
+    THEME = "theme"              # 鍘?TOPIC锛屾敼鍚嶉伩鍏嶄笌 KGNodeType.TOPIC 娣锋穯
     UNIT_BUCKET = "unit_bucket"
     UNCATEGORIZED = "uncategorized"
 
@@ -746,7 +684,7 @@ class MembershipSource(str, Enum):
     HUMAN_FIXED = "human_fixed"
 
 class DependencyType(str, Enum):
-    """单元依赖类型。"""
+    """鍗曞厓渚濊禆绫诲瀷銆?""
     PREREQUISITE = "prerequisite"
     COREQUISITE = "corequisite"
 
@@ -757,10 +695,9 @@ class DigestJobStatus(str, Enum):
     FAILED = "failed"
 ```
 
-### 新增模型：`models/knowledge_graph.py`
+### 鏂板妯″瀷锛歚models/knowledge_graph.py`
 
-#### KnowledgeNode — 身份 + 路由 + 状态（不存内容）
-
+#### KnowledgeNode 鈥?韬唤 + 璺敱 + 鐘舵€侊紙涓嶅瓨鍐呭锛?
 ```python
 class KnowledgeNode(SQLModel, table=True):
     __tablename__ = "knowledge_node"
@@ -876,8 +813,8 @@ class EdgeRevision(SQLModel, table=True):
 
 ```python
 class EvidenceLink(SQLModel, table=True):
-    """证据链接。采用 polymorphic association（entity_type + entity_id），
-    DB 层不做外键强约束到 node/edge；完整性由服务层保证。"""
+    """璇佹嵁閾炬帴銆傞噰鐢?polymorphic association锛坋ntity_type + entity_id锛夛紝
+    DB 灞備笉鍋氬閿己绾︽潫鍒?node/edge锛涘畬鏁存€х敱鏈嶅姟灞備繚璇併€?""
     __tablename__ = "evidence_link"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -899,13 +836,13 @@ class EvidenceLink(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
-### 新增模型：`models/curriculum.py`
+### 鏂板妯″瀷锛歚models/curriculum.py`
 
-#### TeachingUnit — 教学单元
+#### TeachingUnit 鈥?鏁欏鍗曞厓
 
 ```python
 class TeachingUnit(SQLModel, table=True):
-    """教学单元：一组紧密相关的知识节点组成的最小可讲授单位（leaf-only）。"""
+    """鏁欏鍗曞厓锛氫竴缁勭揣瀵嗙浉鍏崇殑鐭ヨ瘑鑺傜偣缁勬垚鐨勬渶灏忓彲璁叉巿鍗曚綅锛坙eaf-only锛夈€?""
     __tablename__ = "teaching_unit"
     __table_args__ = (
         UniqueConstraint("subject", "member_signature",
@@ -916,8 +853,7 @@ class TeachingUnit(SQLModel, table=True):
     subject: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
-    member_signature: str = Field(index=True)        # 结构签名：排序后 core node ids 的 hash，用于稳定身份定位
-    status: str = Field(default="pending")           # UnitStatus
+    member_signature: str = Field(index=True)        # 缁撴瀯绛惧悕锛氭帓搴忓悗 core node ids 鐨?hash锛岀敤浜庣ǔ瀹氳韩浠藉畾浣?    status: str = Field(default="pending")           # UnitStatus
     confidence: float = Field(default=1.0)
     current_revision_id: int | None = Field(default=None)
     created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
@@ -939,7 +875,7 @@ class TeachingUnitRevision(SQLModel, table=True):
     revision_no: int
     title: str
     summary: str = ""
-    learning_objectives_json: str = Field(default="[]")  # JSON 数组，统一格式
+    learning_objectives_json: str = Field(default="[]")  # JSON 鏁扮粍锛岀粺涓€鏍煎紡
     revision_reason: str
     curriculum_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id")
     is_current: bool = Field(default=True)
@@ -950,7 +886,7 @@ class TeachingUnitRevision(SQLModel, table=True):
 
 ```python
 class TeachingUnitMembership(SQLModel, table=True):
-    """知识节点在教学单元中的归属。"""
+    """鐭ヨ瘑鑺傜偣鍦ㄦ暀瀛﹀崟鍏冧腑鐨勫綊灞炪€?""
     __tablename__ = "teaching_unit_membership"
     __table_args__ = (
         UniqueConstraint("unit_id", "knowledge_node_id", "role",
@@ -970,7 +906,7 @@ class TeachingUnitMembership(SQLModel, table=True):
 
 ```python
 class TaxonomyAnchor(SQLModel, table=True):
-    """分类锚点，作为软约束骨架。"""
+    """鍒嗙被閿氱偣锛屼綔涓鸿蒋绾︽潫楠ㄦ灦銆?""
     __tablename__ = "taxonomy_anchor"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1026,7 +962,7 @@ class ThemeTreeNode(SQLModel, table=True):
 
 ```python
 class UnitTreeMembership(SQLModel, table=True):
-    """教学单元在主题树中的归属。挂载 TeachingUnit 而非 KnowledgeNode。"""
+    """鏁欏鍗曞厓鍦ㄤ富棰樻爲涓殑褰掑睘銆傛寕杞?TeachingUnit 鑰岄潪 KnowledgeNode銆?""
     __tablename__ = "unit_tree_membership"
     __table_args__ = (
         UniqueConstraint("tree_version_id", "tree_node_id", "teaching_unit_id", "membership_role",
@@ -1065,7 +1001,7 @@ class PrereqDagVersion(SQLModel, table=True):
 
 ```python
 class UnitDependency(SQLModel, table=True):
-    """教学单元之间的先修依赖边。"""
+    """鏁欏鍗曞厓涔嬮棿鐨勫厛淇緷璧栬竟銆?""
     __tablename__ = "unit_dependency"
     __table_args__ = (
         UniqueConstraint("dag_version_id", "source_unit_id", "target_unit_id", "dependency_type",
@@ -1074,12 +1010,12 @@ class UnitDependency(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     dag_version_id: int = Field(foreign_key="prereq_dag_version.id", index=True)
-    source_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)  # 前置单元
-    target_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)  # 后续单元
+    source_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)  # 鍓嶇疆鍗曞厓
+    target_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)  # 鍚庣画鍗曞厓
     dependency_type: str = Field(default="prerequisite")  # DependencyType
     confidence: float = Field(default=0.5)
     supporting_edge_count: int = Field(default=0)
-    derivation_metadata_json: str = Field(default="{}")  # 派生元数据：supporting edge ids、cycle resolution 记录、confidence 聚合详情
+    derivation_metadata_json: str = Field(default="{}")  # 娲剧敓鍏冩暟鎹細supporting edge ids銆乧ycle resolution 璁板綍銆乧onfidence 鑱氬悎璇︽儏
     created_by_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
@@ -1093,7 +1029,7 @@ class GraphDigestJob(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
     idempotency_key: str = Field(index=True, unique=True)
-    # 幂等键生成规则：推荐由客户端传入；若服务端生成，则基于 subject + 排序后的 file_ids + 文件当前 chunk parse version 计算 hash，不混入 timestamp
+    # 骞傜瓑閿敓鎴愯鍒欙細鎺ㄨ崘鐢卞鎴风浼犲叆锛涜嫢鏈嶅姟绔敓鎴愶紝鍒欏熀浜?subject + 鎺掑簭鍚庣殑 file_ids + 鏂囦欢褰撳墠 chunk parse version 璁＄畻 hash锛屼笉娣峰叆 timestamp
     status: str = Field(default="pending")
     progress: int = Field(default=0)
     current_step: str | None = Field(default=None)
@@ -1107,8 +1043,7 @@ class GraphDigestJob(SQLModel, table=True):
     edges_added: int = Field(default=0)
     edges_updated: int = Field(default=0)
     curriculum_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id")
-    # CurriculumDeriveJob 在 finalize_graph_node 成功后创建，此字段回填关联
-    retry_of_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id")
+    # CurriculumDeriveJob 鍦?finalize_graph_node 鎴愬姛鍚庡垱寤猴紝姝ゅ瓧娈靛洖濉叧鑱?    retry_of_job_id: int | None = Field(default=None, foreign_key="graph_digest_job.id")
     error_message: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -1118,7 +1053,7 @@ class GraphDigestJob(SQLModel, table=True):
 
 ```python
 class CurriculumDeriveJob(SQLModel, table=True):
-    """课程结构派生任务（替代原 TreeDeriveJob）。"""
+    """璇剧▼缁撴瀯娲剧敓浠诲姟锛堟浛浠ｅ師 TreeDeriveJob锛夈€?""
     __tablename__ = "curriculum_derive_job"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1149,12 +1084,10 @@ class SubjectBuildLock(SQLModel, table=True):
     expires_at: datetime | None = Field(default=None)
 ```
 
-#### CurriculumSnapshot — 课程视图一致性快照
-
+#### CurriculumSnapshot 鈥?璇剧▼瑙嗗浘涓€鑷存€у揩鐓?
 ```python
 class CurriculumSnapshot(SQLModel, table=True):
-    """课程视图一致性快照：明确记录当前课程结构 = 哪个 tree version + 哪个 dag version 的组合。
-    解决 CurriculumDeriveJob 部分成功时 tree/dag 版本不一致的问题。"""
+    """璇剧▼瑙嗗浘涓€鑷存€у揩鐓э細鏄庣‘璁板綍褰撳墠璇剧▼缁撴瀯 = 鍝釜 tree version + 鍝釜 dag version 鐨勭粍鍚堛€?    瑙ｅ喅 CurriculumDeriveJob 閮ㄥ垎鎴愬姛鏃?tree/dag 鐗堟湰涓嶄竴鑷寸殑闂銆?""
     __tablename__ = "curriculum_snapshot"
     __table_args__ = (
         UniqueConstraint("subject", "version_no", name="uq_curriculum_snapshot_subject_version"),
@@ -1167,12 +1100,11 @@ class CurriculumSnapshot(SQLModel, table=True):
     curriculum_job_id: int = Field(foreign_key="curriculum_derive_job.id")
     theme_tree_version_id: int | None = Field(default=None, foreign_key="theme_tree_version.id")
     prereq_dag_version_id: int | None = Field(default=None, foreign_key="prereq_dag_version.id")
-    syllabus_version_id: int | None = Field(default=None)  # MVP-2 预留
+    syllabus_version_id: int | None = Field(default=None)  # MVP-2 棰勭暀
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
-### ER 关系图
-
+### ER 鍏崇郴鍥?
 ```mermaid
 erDiagram
     Document ||--o{ DocumentChunk : contains
@@ -1220,28 +1152,24 @@ erDiagram
     CurriculumSnapshot ||--o| PrereqDagVersion : references_dag
 ```
 
-### 关键设计约束与边界规则
+### 鍏抽敭璁捐绾︽潫涓庤竟鐣岃鍒?
+#### 鐗堟湰鍙戝竷璐ｄ换杈圭晫锛堢‖瑙勫垯锛?
+- `theme_tree_builder.py`锛氬彧鑳藉垱寤?draft version + ThemeTreeNode + UnitTreeMembership
+- `prereq_dag_builder.py`锛氬彧鑳藉垱寤?draft version + UnitDependency
+- `unit_builder.py`锛氬彧鑳藉垱寤?pending TeachingUnit + TeachingUnitRevision + TeachingUnitMembership
+- `finalize_curriculum_node`锛氬敮涓€鍏佽璋冪敤 publish/archive 鐨勫湴鏂?- **绂佹 builder 鍐呴儴璋冪敤浠讳綍 publish/archive helper锛涚浉鍏?helper 浠呬緵 finalize_curriculum_node 浣跨敤**
 
-#### 版本发布责任边界（硬规则）
+#### CurriculumDeriveJob 瑙﹀彂鏃跺簭
 
-- `theme_tree_builder.py`：只能创建 draft version + ThemeTreeNode + UnitTreeMembership
-- `prereq_dag_builder.py`：只能创建 draft version + UnitDependency
-- `unit_builder.py`：只能创建 pending TeachingUnit + TeachingUnitRevision + TeachingUnitMembership
-- `finalize_curriculum_node`：唯一允许调用 publish/archive 的地方
-- **禁止 builder 内部调用任何 publish/archive helper；相关 helper 仅供 finalize_curriculum_node 使用**
+CurriculumDeriveJob 鍦?`finalize_graph_node` 鎴愬姛鍚庡垱寤猴紙涓嶆槸鍦?GraphDigestJob 鍒涘缓鏃堕鍒涘缓锛夈€傛祦绋嬶細
+1. `finalize_graph_node` 鎵归噺婵€娲?pending 鈫?active锛岄噴鏀炬瀯寤洪攣
+2. 鍒涘缓 CurriculumDeriveJob 璁板綍
+3. 灏?`curriculum_job_id` 鍥炲～鍒?GraphDigestJob
+4. 寮傛璋冨害 `run_curriculum_derive_background`
 
-#### CurriculumDeriveJob 触发时序
+#### DigestStatusResponse 鑱氬悎鏌ヨ
 
-CurriculumDeriveJob 在 `finalize_graph_node` 成功后创建（不是在 GraphDigestJob 创建时预创建）。流程：
-1. `finalize_graph_node` 批量激活 pending → active，释放构建锁
-2. 创建 CurriculumDeriveJob 记录
-3. 将 `curriculum_job_id` 回填到 GraphDigestJob
-4. 异步调度 `run_curriculum_derive_background`
-
-#### DigestStatusResponse 聚合查询
-
-`digest/status` 接口返回聚合响应，而非单独的 GraphDigestJob：
-
+`digest/status` 鎺ュ彛杩斿洖鑱氬悎鍝嶅簲锛岃€岄潪鍗曠嫭鐨?GraphDigestJob锛?
 ```python
 class DigestStatusResponse(BaseModel):
     graph_job: GraphDigestJobResponse
@@ -1249,48 +1177,36 @@ class DigestStatusResponse(BaseModel):
     current_curriculum_snapshot_id: int | None
 ```
 
-#### 幂等键与构建锁的三层检查
+#### 骞傜瓑閿笌鏋勫缓閿佺殑涓夊眰妫€鏌?
+API 灞傚拰宸ヤ綔娴佸眰鍚勬湁鑱岃矗锛屾鏌ラ『搴忓涓嬶細
 
-API 层和工作流层各有职责，检查顺序如下：
+1. **骞傜瓑鍛戒腑**锛氬悓涓€涓?`idempotency_key` 鈫?鐩存帴杩斿洖宸叉湁 job 鈫?涓嶈涓哄啿绐?2. **杩愯涓啿绐?*锛氬瓨鍦ㄥ悓 subject 杩愯涓殑闈炲悓骞傜瓑 job 鈫?杩斿洖 409 Conflict
+3. **宸ヤ綔娴佹姠閿?*锛氬垱寤烘柊 job 鍚庯紝鐪熸鎵ц鏃跺啀鎶?`SubjectBuildLock` 鈫?鏈€缁堜竴鑷存€т繚闅滐紝闃茬珵鎬?
+> API 灞傛鏌?= 鍑忓皯鏄庢樉鍐茬獊璇锋眰锛涘伐浣滄祦鎶㈤攣 = 鏈€缁堜竴鑷存€т繚闅?
+#### defined_by 璺?unit 渚濊禆 MVP 鑼冨洿
 
-1. **幂等命中**：同一个 `idempotency_key` → 直接返回已有 job → 不视为冲突
-2. **运行中冲突**：存在同 subject 运行中的非同幂等 job → 返回 409 Conflict
-3. **工作流抢锁**：创建新 job 后，真正执行时再抢 `SubjectBuildLock` → 最终一致性保障，防竞态
+**MVP锛歞efined_by 涓嶅弬涓庤法 unit dependency 鐢熸垚銆?* 鐩稿叧淇濆畧绛栫暐锛堥珮缃俊搴?+ 鏃犺仛绫诲苟鍏ヨ瘉鎹?+ 棰濆鏀寔淇″彿锛変粎浣滀负鍚庣画澧炲己棰勭暀锛圡VP+1 22.4锛夛紝涓嶈繘鍏ュ綋鍓嶅疄鐜拌寖鍥淬€?
+#### cleanup_pending_by_job 鐨勭簿纭竻鐞?
+鎵€鏈夊彲琚?cleanup 鐨勮〃鍧囧寘鍚?`created_by_job_id` 瀛楁锛屾竻鐞嗘椂鎸夋瀛楁绮剧‘瀹氫綅锛?- `job_type="graph"`锛氭竻鐞?`created_by_job_id = job_id` 鐨?pending nodes/edges/revisions/aliases/evidence_links
+- `job_type="curriculum"`锛氭竻鐞?`created_by_job_id = job_id` 鐨?pending units/memberships/draft tree versions/draft dag versions/tree nodes/unit tree memberships/unit dependencies
 
-> API 层检查 = 减少明显冲突请求；工作流抢锁 = 最终一致性保障
+#### 鍊欓€夎仛绫诲埌杈硅В鏋愮殑鍚嶇О鏄犲皠锛圛ssue 17锛?
+`cluster_node` 鎴?`resolve_nodes_node` 闃舵闇€鐢熸垚浠ヤ笅鏄犲皠渚涘悗缁竟瑙ｆ瀽浣跨敤锛?- `candidate_name_to_cluster_id: dict[str, int]` 鈥?鍊欓€夊悕绉?鈫?鑱氱被浠ｈ〃 ID
+- `candidate_name_to_resolved_node_id: dict[str, int]` 鈥?鍊欓€夊悕绉?鈫?宸插榻愮殑 KnowledgeNode ID
 
-#### defined_by 跨 unit 依赖 MVP 范围
+杈硅В鏋愪紭鍏堢骇锛?1. 閫氳繃 `candidate_name_to_resolved_node_id` 鏌ユ壘锛坆atch 鍐呭凡瀵归綈鐨勮妭鐐癸級
+2. 閫氳繃 `candidate_name_to_cluster_id` 鏌ユ壘鑱氱被浠ｈ〃瀵瑰簲鐨?resolved node id
+3. Fallback锛氶€氳繃 `find_node_by_normalized_name` 鍦ㄥ凡鏈夊浘璋变腑鏌ユ壘
 
-**MVP：defined_by 不参与跨 unit dependency 生成。** 相关保守策略（高置信度 + 无聚类并入证据 + 额外支持信号）仅作为后续增强预留（MVP+1 22.4），不进入当前实现范围。
+#### 鎺ㄨ崘鍒嗛樁娈典氦浠?
+铏界劧褰撳墠璁捐瑕嗙洊瀹屾暣 MVP-1 鑼冨洿锛屽缓璁疄闄呬氦浠樻寜浠ヤ笅闃舵鎺ㄨ繘锛?- **Phase 1**锛欸raphDigestJob + KnowledgeNode/Edge/Revision/Evidence + 鍥捐氨鏌ヨ API
+- **Phase 2**锛歍eachingUnit + 鍗曞厓鏌ヨ API
+- **Phase 3**锛歍hemeTree + 涓婚鏍戞煡璇?API
+- **Phase 4**锛歅rereqDAG + CurriculumSnapshot + 瀹屾暣璇剧▼ e2e
 
-#### cleanup_pending_by_job 的精确清理
+### 鍏抽敭绠楁硶璁捐
 
-所有可被 cleanup 的表均包含 `created_by_job_id` 字段，清理时按此字段精确定位：
-- `job_type="graph"`：清理 `created_by_job_id = job_id` 的 pending nodes/edges/revisions/aliases/evidence_links
-- `job_type="curriculum"`：清理 `created_by_job_id = job_id` 的 pending units/memberships/draft tree versions/draft dag versions/tree nodes/unit tree memberships/unit dependencies
-
-#### 候选聚类到边解析的名称映射（Issue 17）
-
-`cluster_node` 或 `resolve_nodes_node` 阶段需生成以下映射供后续边解析使用：
-- `candidate_name_to_cluster_id: dict[str, int]` — 候选名称 → 聚类代表 ID
-- `candidate_name_to_resolved_node_id: dict[str, int]` — 候选名称 → 已对齐的 KnowledgeNode ID
-
-边解析优先级：
-1. 通过 `candidate_name_to_resolved_node_id` 查找（batch 内已对齐的节点）
-2. 通过 `candidate_name_to_cluster_id` 查找聚类代表对应的 resolved node id
-3. Fallback：通过 `find_node_by_normalized_name` 在已有图谱中查找
-
-#### 推荐分阶段交付
-
-虽然当前设计覆盖完整 MVP-1 范围，建议实际交付按以下阶段推进：
-- **Phase 1**：GraphDigestJob + KnowledgeNode/Edge/Revision/Evidence + 图谱查询 API
-- **Phase 2**：TeachingUnit + 单元查询 API
-- **Phase 3**：ThemeTree + 主题树查询 API
-- **Phase 4**：PrereqDAG + CurriculumSnapshot + 完整课程 e2e
-
-### 关键算法设计
-
-#### 1. normalized_name 生成算法
+#### 1. normalized_name 鐢熸垚绠楁硶
 
 ```python
 import re
@@ -1304,36 +1220,35 @@ def normalize_name(name: str) -> str:
     return text
 ```
 
-#### 2. Entity Resolution 分层递进流程
+#### 2. Entity Resolution 鍒嗗眰閫掕繘娴佺▼
 
 ```mermaid
 flowchart TD
-    A[ClusteredCandidate] --> B{节点类型?}
-    B -->|一级实体<br/>Topic/Concept/Method| C[名称中心策略]
-    B -->|二级说明对象<br/>Definition/Example| D[父实体+内容策略]
+    A[ClusteredCandidate] --> B{鑺傜偣绫诲瀷?}
+    B -->|涓€绾у疄浣?br/>Topic/Concept/Method| C[鍚嶇О涓績绛栫暐]
+    B -->|浜岀骇璇存槑瀵硅薄<br/>Definition/Example| D[鐖跺疄浣?鍐呭绛栫暐]
 
-    C --> C1{normalized_name<br/>精确匹配?}
-    C1 -->|命中| MATCH[EntityMatchDecision]
-    C1 -->|未命中| C2{KnowledgeAlias 表<br/>别名匹配?}
-    C2 -->|命中| MATCH
-    C2 -->|未命中| C3{embedding 相似度<br/>> threshold?}
-    C3 -->|否| NEW[NO_MATCH → 创建新节点]
-    C3 -->|是| C4[LLM 判断<br/>EntityMatchDecision]
+    C --> C1{normalized_name<br/>绮剧‘鍖归厤?}
+    C1 -->|鍛戒腑| MATCH[EntityMatchDecision]
+    C1 -->|鏈懡涓瓅 C2{KnowledgeAlias 琛?br/>鍒悕鍖归厤?}
+    C2 -->|鍛戒腑| MATCH
+    C2 -->|鏈懡涓瓅 C3{embedding 鐩镐技搴?br/>> threshold?}
+    C3 -->|鍚 NEW[NO_MATCH 鈫?鍒涘缓鏂拌妭鐐筣
+    C3 -->|鏄瘄 C4[LLM 鍒ゆ柇<br/>EntityMatchDecision]
     C4 -->|EXACT/ALIAS| MATCH
     C4 -->|NO_MATCH/UNSURE| NEW
 
-    D --> D1{parent_entity 已对齐?}
-    D1 -->|否| NEW
-    D1 -->|是| D2{同 parent 下<br/>内容语义相似度<br/>> threshold?}
-    D2 -->|是| MATCH
-    D2 -->|否| NEW
+    D --> D1{parent_entity 宸插榻?}
+    D1 -->|鍚 NEW
+    D1 -->|鏄瘄 D2{鍚?parent 涓?br/>鍐呭璇箟鐩镐技搴?br/>> threshold?}
+    D2 -->|鏄瘄 MATCH
+    D2 -->|鍚 NEW
 
-    MATCH --> E[追加 EvidenceLink<br/>+ 可选 KnowledgeRevision<br/>+ 注册新 Alias]
-    NEW --> F[创建 KnowledgeNode<br/>+ KnowledgeRevision<br/>+ KnowledgeAlias<br/>+ EvidenceLink]
+    MATCH --> E[杩藉姞 EvidenceLink<br/>+ 鍙€?KnowledgeRevision<br/>+ 娉ㄥ唽鏂?Alias]
+    NEW --> F[鍒涘缓 KnowledgeNode<br/>+ KnowledgeRevision<br/>+ KnowledgeAlias<br/>+ EvidenceLink]
 ```
 
-#### 3. 边置信度计算（非单调递增）
-
+#### 3. 杈圭疆淇″害璁＄畻锛堥潪鍗曡皟閫掑锛?
 ```python
 def compute_edge_confidence(
     active_evidence_count: int,
@@ -1347,10 +1262,9 @@ def compute_edge_confidence(
     return max(0.0, min(max_confidence, base - penalty))
 ```
 
-#### 4. 教学单元 graph-aware 聚类算法
+#### 4. 鏁欏鍗曞厓 graph-aware 鑱氱被绠楁硶
 
-**核心思想**：不是纯 embedding 聚类，而是结合图结构、文档结构和类型兼容性的多维距离聚类。
-
+**鏍稿績鎬濇兂**锛氫笉鏄函 embedding 鑱氱被锛岃€屾槸缁撳悎鍥剧粨鏋勩€佹枃妗ｇ粨鏋勫拰绫诲瀷鍏煎鎬х殑澶氱淮璺濈鑱氱被銆?
 ```python
 def compute_unit_distance(i, j, embeddings, edges, co_occurrence, weights=None):
     w = weights or DEFAULT_UNIT_DISTANCE_WEIGHTS
@@ -1363,243 +1277,187 @@ def compute_unit_distance(i, j, embeddings, edges, co_occurrence, weights=None):
     )
 ```
 
-**聚类切割**：
-- 使用 agglomerative clustering（层次聚类）
-- 切割阈值产生 leaf teaching units
-- 每个 teaching unit 内部按角色分配：core / support / example / bridge
-- 每个 leaf unit 由 LLM 命名
+**鑱氱被鍒囧壊**锛?- 浣跨敤 agglomerative clustering锛堝眰娆¤仛绫伙級
+- 鍒囧壊闃堝€间骇鐢?leaf teaching units
+- 姣忎釜 teaching unit 鍐呴儴鎸夎鑹插垎閰嶏細core / support / example / bridge
+- 姣忎釜 leaf unit 鐢?LLM 鍛藉悕
 
-**增量策略**：
-- 仅对 Impact Set 影响范围内的局部子图重新聚类
-- 未受影响的教学单元保持不变
-- 新节点优先尝试加入已有 unit（距离 < 阈值），否则形成新 unit
+**澧為噺绛栫暐**锛?- 浠呭 Impact Set 褰卞搷鑼冨洿鍐呯殑灞€閮ㄥ瓙鍥鹃噸鏂拌仛绫?- 鏈彈褰卞搷鐨勬暀瀛﹀崟鍏冧繚鎸佷笉鍙?- 鏂拌妭鐐逛紭鍏堝皾璇曞姞鍏ュ凡鏈?unit锛堣窛绂?< 闃堝€硷級锛屽惁鍒欏舰鎴愭柊 unit
 
-#### 5. 先修 DAG 派生算法
+#### 5. 鍏堜慨 DAG 娲剧敓绠楁硶
 
 ```python
 def derive_prereq_dag(session, subject, impact_set, prev_dag_version):
-    # Step 1: 收集节点级依赖边
+    # Step 1: 鏀堕泦鑺傜偣绾т緷璧栬竟
     prereq_edges = list_edges_by_type(session, subject, "prerequisite_of")
     part_of_edges = list_edges_by_type(session, subject, "part_of")
     defined_by_edges = list_edges_by_type(session, subject, "defined_by")
 
-    # Step 2: 聚合为单元级依赖
+    # Step 2: 鑱氬悎涓哄崟鍏冪骇渚濊禆
     unit_deps = aggregate_unit_dependencies(session, subject, unit_node_map)
 
-    # Step 3: 去环（必须先于传递约简，因为 transitive reduction 定义基于 DAG，对含环图行为未定义）
-    acyclic_edges, broken_edges = break_cycles(unit_deps)
+    # Step 3: 鍘荤幆锛堝繀椤诲厛浜庝紶閫掔害绠€锛屽洜涓?transitive reduction 瀹氫箟鍩轰簬 DAG锛屽鍚幆鍥捐涓烘湭瀹氫箟锛?    acyclic_edges, broken_edges = break_cycles(unit_deps)
 
-    # Step 4: 传递约简
+    # Step 4: 浼犻€掔害绠€
     reduced_edges = transitive_reduction(acyclic_edges)
 
-    # Step 5: 创建版本
+    # Step 5: 鍒涘缓鐗堟湰
     return create_prereq_dag_version(session, subject, reduced_edges)
 ```
 
-#### 6. 中间态一致性：staging/active 两层状态
-
+#### 6. 涓棿鎬佷竴鑷存€э細staging/active 涓ゅ眰鐘舵€?
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: 节点/边/单元创建
-    pending --> active: Job 完成，批量激活
-    active --> active: 后续增量更新
-    active --> merged: 合并操作
-    active --> deprecated: 废弃
-    pending --> [*]: Job 失败，清理 pending 数据
+    [*] --> pending: 鑺傜偣/杈?鍗曞厓鍒涘缓
+    pending --> active: Job 瀹屾垚锛屾壒閲忔縺娲?    active --> active: 鍚庣画澧為噺鏇存柊
+    active --> merged: 鍚堝苟鎿嶄綔
+    active --> deprecated: 搴熷純
+    pending --> [*]: Job 澶辫触锛屾竻鐞?pending 鏁版嵁
 ```
 
-- 构建中新创建的节点/边/单元默认 `status = "pending"`
-- GraphDigestJob 成功后批量将 pending 节点/边激活为 active
-- CurriculumDeriveJob 成功后批量将 pending 单元激活为 active
-- Job 失败时清理所有 pending 状态数据
-- 外部查询 API 默认只返回 active 状态的实体
+- 鏋勫缓涓柊鍒涘缓鐨勮妭鐐?杈?鍗曞厓榛樿 `status = "pending"`
+- GraphDigestJob 鎴愬姛鍚庢壒閲忓皢 pending 鑺傜偣/杈规縺娲讳负 active
+- CurriculumDeriveJob 鎴愬姛鍚庢壒閲忓皢 pending 鍗曞厓婵€娲讳负 active
+- Job 澶辫触鏃舵竻鐞嗘墍鏈?pending 鐘舵€佹暟鎹?- 澶栭儴鏌ヨ API 榛樿鍙繑鍥?active 鐘舵€佺殑瀹炰綋
 
-#### 7. LLM Prompt 设计
+#### 7. LLM Prompt 璁捐
 
-**候选知识抽取 Prompt：**
-
-```
-你是一名学科知识图谱构建助手。请从以下文档片段中抽取知识节点和知识关系。
-
-文档片段标题：{chunk_title}
-文档路径：{header_path}
-文档来源类型：{doc_source_type}
-文档内容：
-{chunk_content}
-
-要求：
-1. 节点类型限定为：Topic（主题）、Concept（概念）、Definition（定义）、Method（方法/算法）、Example（例题/示例）
-2. 边类型限定为：belongs_to_topic、prerequisite_of、defined_by、illustrated_by、part_of
-3. 每个节点需提供 name、node_type、local_summary、taxonomy_hint
-4. Definition/Example 类型还需提供 parent_entity_name
-5. 每条边需提供 source_name、target_name、edge_type、description
-6. 不要杜撰原文没有的知识点
-```
-
-**教学单元命名 Prompt：**
+**鍊欓€夌煡璇嗘娊鍙?Prompt锛?*
 
 ```
-你是一名教学设计助手。以下是一组紧密相关的知识节点，它们构成一个教学单元。
+浣犳槸涓€鍚嶅绉戠煡璇嗗浘璋辨瀯寤哄姪鎵嬨€傝浠庝互涓嬫枃妗ｇ墖娈典腑鎶藉彇鐭ヨ瘑鑺傜偣鍜岀煡璇嗗叧绯汇€?
+鏂囨。鐗囨鏍囬锛歿chunk_title}
+鏂囨。璺緞锛歿header_path}
+鏂囨。鏉ユ簮绫诲瀷锛歿doc_source_type}
+鏂囨。鍐呭锛?{chunk_content}
 
-核心概念：{core_nodes}
-支撑定义/方法：{support_nodes}
-示例：{example_nodes}
-
-请为这个教学单元生成：
-1. 单元名称（简洁、准确、适合作为课程目录标题）
-2. 单元摘要（一段话描述本单元的核心内容）
-3. 学习目标（2-4 条，以"学完本单元后，学生能够..."开头）
-4. 是否建议拆分为多个子单元（如果知识点跨度太大）
+瑕佹眰锛?1. 鑺傜偣绫诲瀷闄愬畾涓猴細Topic锛堜富棰橈級銆丆oncept锛堟蹇碉級銆丏efinition锛堝畾涔夛級銆丮ethod锛堟柟娉?绠楁硶锛夈€丒xample锛堜緥棰?绀轰緥锛?2. 杈圭被鍨嬮檺瀹氫负锛歜elongs_to_topic銆乸rerequisite_of銆乨efined_by銆乮llustrated_by銆乸art_of
+3. 姣忎釜鑺傜偣闇€鎻愪緵 name銆乶ode_type銆乴ocal_summary銆乼axonomy_hint
+4. Definition/Example 绫诲瀷杩橀渶鎻愪緵 parent_entity_name
+5. 姣忔潯杈归渶鎻愪緵 source_name銆乼arget_name銆乪dge_type銆乨escription
+6. 涓嶈鏉滄挵鍘熸枃娌℃湁鐨勭煡璇嗙偣
 ```
 
-**实体对齐判断 Prompt：**
+**鏁欏鍗曞厓鍛藉悕 Prompt锛?*
 
 ```
-你是一名知识图谱实体对齐助手。请判断以下两个知识节点的关系。
+浣犳槸涓€鍚嶆暀瀛﹁璁″姪鎵嬨€備互涓嬫槸涓€缁勭揣瀵嗙浉鍏崇殑鐭ヨ瘑鑺傜偣锛屽畠浠瀯鎴愪竴涓暀瀛﹀崟鍏冦€?
+鏍稿績姒傚康锛歿core_nodes}
+鏀拺瀹氫箟/鏂规硶锛歿support_nodes}
+绀轰緥锛歿example_nodes}
 
-候选节点：名称={candidate_name}，类型={candidate_type}，摘要={candidate_summary}
-已有节点：名称={existing_name}，类型={existing_type}，摘要={existing_summary}
+璇蜂负杩欎釜鏁欏鍗曞厓鐢熸垚锛?1. 鍗曞厓鍚嶇О锛堢畝娲併€佸噯纭€侀€傚悎浣滀负璇剧▼鐩綍鏍囬锛?2. 鍗曞厓鎽樿锛堜竴娈佃瘽鎻忚堪鏈崟鍏冪殑鏍稿績鍐呭锛?3. 瀛︿範鐩爣锛?-4 鏉★紝浠?瀛﹀畬鏈崟鍏冨悗锛屽鐢熻兘澶?.."寮€澶达級
+4. 鏄惁寤鸿鎷嗗垎涓哄涓瓙鍗曞厓锛堝鏋滅煡璇嗙偣璺ㄥ害澶ぇ锛?```
 
-请从以下选项中选择：EXACT / ALIAS / BROADER / NARROWER / RELATED_NOT_SAME / NO_MATCH / UNSURE
+**瀹炰綋瀵归綈鍒ゆ柇 Prompt锛?*
+
+```
+浣犳槸涓€鍚嶇煡璇嗗浘璋卞疄浣撳榻愬姪鎵嬨€傝鍒ゆ柇浠ヤ笅涓や釜鐭ヨ瘑鑺傜偣鐨勫叧绯汇€?
+鍊欓€夎妭鐐癸細鍚嶇О={candidate_name}锛岀被鍨?{candidate_type}锛屾憳瑕?{candidate_summary}
+宸叉湁鑺傜偣锛氬悕绉?{existing_name}锛岀被鍨?{existing_type}锛屾憳瑕?{existing_summary}
+
+璇蜂粠浠ヤ笅閫夐」涓€夋嫨锛欵XACT / ALIAS / BROADER / NARROWER / RELATED_NOT_SAME / NO_MATCH / UNSURE
 ```
 
-## 正确性属性（Correctness Properties）
-
+## 姝ｇ‘鎬у睘鎬э紙Correctness Properties锛?
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-### 属性测试优先级分层
+### 灞炴€ф祴璇曚紭鍏堢骇鍒嗗眰
 
-- **P0 必做**：normalize_name 幂等 (Property 5)、progress 单调 (Property 10)、DAG 无环 (Property 12)、教学单元核心唯一 (Property 2)、主题树归属唯一 (Property 3)
-- **P1 再做**：实体对齐可达性 (Property 6)、对齐必产证据 (Property 7)、文件范围限定 (Property 11)、证据完整性 (Property 9)
-- **P2 后续**：锚点稳定性 (Property 14)、归属稳定性 (Property 15)、向量 round-trip (Property 17)、版本归档不变式 (Property 16)
+- **P0 蹇呭仛**锛歯ormalize_name 骞傜瓑 (Property 5)銆乸rogress 鍗曡皟 (Property 10)銆丏AG 鏃犵幆 (Property 12)銆佹暀瀛﹀崟鍏冩牳蹇冨敮涓€ (Property 2)銆佷富棰樻爲褰掑睘鍞竴 (Property 3)
+- **P1 鍐嶅仛**锛氬疄浣撳榻愬彲杈炬€?(Property 6)銆佸榻愬繀浜ц瘉鎹?(Property 7)銆佹枃浠惰寖鍥撮檺瀹?(Property 11)銆佽瘉鎹畬鏁存€?(Property 9)
+- **P2 鍚庣画**锛氶敋鐐圭ǔ瀹氭€?(Property 14)銆佸綊灞炵ǔ瀹氭€?(Property 15)銆佸悜閲?round-trip (Property 17)銆佺増鏈綊妗ｄ笉鍙樺紡 (Property 16)
 
-### Property 1: 修订唯一当前版本不变式（Revision Singleton Invariant）
-
-对于任意 KnowledgeNode、KnowledgeEdge 或 TeachingUnit，在任何创建或更新操作完成后，该实体关联的修订记录中恰好有一条 `is_current = True`。
-
+### Property 1: 淇鍞竴褰撳墠鐗堟湰涓嶅彉寮忥紙Revision Singleton Invariant锛?
+瀵逛簬浠绘剰 KnowledgeNode銆並nowledgeEdge 鎴?TeachingUnit锛屽湪浠讳綍鍒涘缓鎴栨洿鏂版搷浣滃畬鎴愬悗锛岃瀹炰綋鍏宠仈鐨勪慨璁㈣褰曚腑鎭板ソ鏈変竴鏉?`is_current = True`銆?
 **Validates: Requirements 1.7, 1.8, 2.5**
 
-### Property 2: 教学单元核心唯一不变式（Unit Core Membership Uniqueness）
-
-对于任意 active 状态的 KnowledgeNode，其在所有 active 状态的 TeachingUnit 中 role="core" 的 TeachingUnitMembership 记录数量至多为 1。同一个 node 可以作为多个 unit 的 support / example / prerequisite_bridge，但作为 core 只能属于一个 active unit。
-
+### Property 2: 鏁欏鍗曞厓鏍稿績鍞竴涓嶅彉寮忥紙Unit Core Membership Uniqueness锛?
+瀵逛簬浠绘剰 active 鐘舵€佺殑 KnowledgeNode锛屽叾鍦ㄦ墍鏈?active 鐘舵€佺殑 TeachingUnit 涓?role="core" 鐨?TeachingUnitMembership 璁板綍鏁伴噺鑷冲涓?1銆傚悓涓€涓?node 鍙互浣滀负澶氫釜 unit 鐨?support / example / prerequisite_bridge锛屼絾浣滀负 core 鍙兘灞炰簬涓€涓?active unit銆?
 **Validates: Requirements 2.4**
 
-### Property 3: 主题树归属唯一不变式（Theme Tree Primary Membership Uniqueness）
-
-对于任意 TeachingUnit 和任意 ThemeTreeVersion，该单元在该树版本中 membership_role="primary" 的 UnitTreeMembership 记录数量至多为 1。
-
+### Property 3: 涓婚鏍戝綊灞炲敮涓€涓嶅彉寮忥紙Theme Tree Primary Membership Uniqueness锛?
+瀵逛簬浠绘剰 TeachingUnit 鍜屼换鎰?ThemeTreeVersion锛岃鍗曞厓鍦ㄨ鏍戠増鏈腑 membership_role="primary" 鐨?UnitTreeMembership 璁板綍鏁伴噺鑷冲涓?1銆?
 **Validates: Requirements 3.5**
 
-### Property 4: 候选抽取结构合规性（Extraction Output Validity）
-
-对于任意 ChunkExtractionResult，每个 CandidateNode 的 node_type 属于 {Topic, Concept, Definition, Method, Example}，每个 CandidateEdge 的 edge_type 属于 {belongs_to_topic, prerequisite_of, defined_by, illustrated_by, part_of}，且所有必填字段非空。
-
+### Property 4: 鍊欓€夋娊鍙栫粨鏋勫悎瑙勬€э紙Extraction Output Validity锛?
+瀵逛簬浠绘剰 ChunkExtractionResult锛屾瘡涓?CandidateNode 鐨?node_type 灞炰簬 {Topic, Concept, Definition, Method, Example}锛屾瘡涓?CandidateEdge 鐨?edge_type 灞炰簬 {belongs_to_topic, prerequisite_of, defined_by, illustrated_by, part_of}锛屼笖鎵€鏈夊繀濉瓧娈甸潪绌恒€?
 **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
-### Property 5: 名称规范化幂等性（Normalization Idempotence）
-
-对于任意字符串 name，`normalize_name(normalize_name(name)) == normalize_name(name)`。
-
+### Property 5: 鍚嶇О瑙勮寖鍖栧箓绛夋€э紙Normalization Idempotence锛?
+瀵逛簬浠绘剰瀛楃涓?name锛宍normalize_name(normalize_name(name)) == normalize_name(name)`銆?
 **Validates: Requirements 6.1**
 
-### Property 6: 实体对齐可达性（Entity Resolution Reachability）
-
-对于任意已存在的 KnowledgeNode，若一个 CandidateNode 的 normalized_name 与该节点的 normalized_name 相同，或出现在该节点的 KnowledgeAlias 表中，则 Entity Resolution 的结果 decision 必须为 EXACT 或 ALIAS。
-
+### Property 6: 瀹炰綋瀵归綈鍙揪鎬э紙Entity Resolution Reachability锛?
+瀵逛簬浠绘剰宸插瓨鍦ㄧ殑 KnowledgeNode锛岃嫢涓€涓?CandidateNode 鐨?normalized_name 涓庤鑺傜偣鐨?normalized_name 鐩稿悓锛屾垨鍑虹幇鍦ㄨ鑺傜偣鐨?KnowledgeAlias 琛ㄤ腑锛屽垯 Entity Resolution 鐨勭粨鏋?decision 蹇呴』涓?EXACT 鎴?ALIAS銆?
 **Validates: Requirements 6.1, 6.2**
 
-### Property 7: 对齐操作必产证据（Resolution Always Creates Evidence）
-
-对于任意节点对齐或边对齐操作的结果，系统都必须至少创建一条 EvidenceLink 记录。
-
+### Property 7: 瀵归綈鎿嶄綔蹇呬骇璇佹嵁锛圧esolution Always Creates Evidence锛?
+瀵逛簬浠绘剰鑺傜偣瀵归綈鎴栬竟瀵归綈鎿嶄綔鐨勭粨鏋滐紝绯荤粺閮藉繀椤昏嚦灏戝垱寤轰竴鏉?EvidenceLink 璁板綍銆?
 **Validates: Requirements 6.5, 6.6, 7.2, 7.3**
 
-### Property 8: 边置信度为证据函数（Edge Confidence as Evidence Function）
-
-对于任意 KnowledgeEdge，其 confidence 值等于 `compute_edge_confidence(active_evidence_count, contradicting_evidence_count)`。
-
+### Property 8: 杈圭疆淇″害涓鸿瘉鎹嚱鏁帮紙Edge Confidence as Evidence Function锛?
+瀵逛簬浠绘剰 KnowledgeEdge锛屽叾 confidence 鍊肩瓑浜?`compute_edge_confidence(active_evidence_count, contradicting_evidence_count)`銆?
 **Validates: Requirements 7.5**
 
-### Property 9: 图谱实体证据完整性不变式（Evidence Completeness Invariant）
-
-对于任意 active 状态的 KnowledgeNode 或 KnowledgeEdge，其关联的 is_active=True 的 EvidenceLink 数量 >= 1。
-
+### Property 9: 鍥捐氨瀹炰綋璇佹嵁瀹屾暣鎬т笉鍙樺紡锛圗vidence Completeness Invariant锛?
+瀵逛簬浠绘剰 active 鐘舵€佺殑 KnowledgeNode 鎴?KnowledgeEdge锛屽叾鍏宠仈鐨?is_active=True 鐨?EvidenceLink 鏁伴噺 >= 1銆?
 **Validates: Requirements 14.3, 14.4**
 
-### Property 10: 构建进度单调递增（Job Progress Monotonicity）
-
-对于任意处于 processing 状态的 GraphDigestJob 或 CurriculumDeriveJob，其 progress 字段在每次更新后 >= 更新前的值，完成时 = 100。
-
+### Property 10: 鏋勫缓杩涘害鍗曡皟閫掑锛圝ob Progress Monotonicity锛?
+瀵逛簬浠绘剰澶勪簬 processing 鐘舵€佺殑 GraphDigestJob 鎴?CurriculumDeriveJob锛屽叾 progress 瀛楁鍦ㄦ瘡娆℃洿鏂板悗 >= 鏇存柊鍓嶇殑鍊硷紝瀹屾垚鏃?= 100銆?
 **Validates: Requirements 8.4**
 
-### Property 11: 文件范围限定（File Scope Constraint）
-
-对于任意指定 file_ids 触发的增量构建，仅这些文件对应的 DocumentChunk 会被处理。
-
+### Property 11: 鏂囦欢鑼冨洿闄愬畾锛團ile Scope Constraint锛?
+瀵逛簬浠绘剰鎸囧畾 file_ids 瑙﹀彂鐨勫閲忔瀯寤猴紝浠呰繖浜涙枃浠跺搴旂殑 DocumentChunk 浼氳澶勭悊銆?
 **Validates: Requirements 8.6**
 
-### Property 12: 先修 DAG 无环性（Prerequisite DAG Acyclicity）
-
-对于任意 PrereqDagVersion，其包含的 UnitDependency 边构成的图是 DAG（无环）。
-
+### Property 12: 鍏堜慨 DAG 鏃犵幆鎬э紙Prerequisite DAG Acyclicity锛?
+瀵逛簬浠绘剰 PrereqDagVersion锛屽叾鍖呭惈鐨?UnitDependency 杈规瀯鎴愮殑鍥炬槸 DAG锛堟棤鐜級銆?
 **Validates: Requirements 4.3**
 
-### Property 13: 先修 DAG 传递约简（Prerequisite DAG Transitive Reduction）
-
-对于任意 PrereqDagVersion，若存在路径 A → B → C，则不应同时存在直接边 A → C。
-
+### Property 13: 鍏堜慨 DAG 浼犻€掔害绠€锛圥rerequisite DAG Transitive Reduction锛?
+瀵逛簬浠绘剰 PrereqDagVersion锛岃嫢瀛樺湪璺緞 A 鈫?B 鈫?C锛屽垯涓嶅簲鍚屾椂瀛樺湪鐩存帴杈?A 鈫?C銆?
 **Validates: Requirements 4.4**
 
-### Property 14: 锚点骨架优先级稳定性（Anchor Skeleton Priority Stability）
-
-对于任意主题树派生操作，若已存在 teacher_defined 或 syllabus 类型的 TaxonomyAnchor，则这些锚点在新生成的骨架中的父子结构和排序保持不变。
-
+### Property 14: 閿氱偣楠ㄦ灦浼樺厛绾хǔ瀹氭€э紙Anchor Skeleton Priority Stability锛?
+瀵逛簬浠绘剰涓婚鏍戞淳鐢熸搷浣滐紝鑻ュ凡瀛樺湪 teacher_defined 鎴?syllabus 绫诲瀷鐨?TaxonomyAnchor锛屽垯杩欎簺閿氱偣鍦ㄦ柊鐢熸垚鐨勯鏋朵腑鐨勭埗瀛愮粨鏋勫拰鎺掑簭淇濇寔涓嶅彉銆?
 **Validates: Requirements 10.2**
 
-### Property 15: 归属稳定性（Membership Stability Under Ambiguity）
-
-对于任意 TeachingUnit（排除 human_fixed），若其对前两名 ThemeTreeNode 的 membership_score 差距小于 stability_threshold，且锚点集未变化，则该单元在新版本树中的 primary membership 与上一版本保持一致。
-
+### Property 15: 褰掑睘绋冲畾鎬э紙Membership Stability Under Ambiguity锛?
+瀵逛簬浠绘剰 TeachingUnit锛堟帓闄?human_fixed锛夛紝鑻ュ叾瀵瑰墠涓ゅ悕 ThemeTreeNode 鐨?membership_score 宸窛灏忎簬 stability_threshold锛屼笖閿氱偣闆嗘湭鍙樺寲锛屽垯璇ュ崟鍏冨湪鏂扮増鏈爲涓殑 primary membership 涓庝笂涓€鐗堟湰淇濇寔涓€鑷淬€?
 **Validates: Requirements 10.6**
 
-### Property 16: 树版本归档不变式（Tree Version Archive Invariant）
-
-对于任意主题树或先修 DAG 派生操作，若派生前存在 status="published" 的版本，则派生完成后该版本的 status 变为 "archived"，新版本的 version_no 严格大于旧版本。
-
+### Property 16: 鏍戠増鏈綊妗ｄ笉鍙樺紡锛圱ree Version Archive Invariant锛?
+瀵逛簬浠绘剰涓婚鏍戞垨鍏堜慨 DAG 娲剧敓鎿嶄綔锛岃嫢娲剧敓鍓嶅瓨鍦?status="published" 鐨勭増鏈紝鍒欐淳鐢熷畬鎴愬悗璇ョ増鏈殑 status 鍙樹负 "archived"锛屾柊鐗堟湰鐨?version_no 涓ユ牸澶т簬鏃х増鏈€?
 **Validates: Requirements 10.9, 11.5**
 
-### Property 17: 向量检索往返兼容性（Embedding Round-Trip Compatibility）
-
-对于任意在增量构建中处理的 DocumentChunk，其 embedding 写入 chunk_embeddings 后，使用相同向量调用 vector_search 应能命中该 chunk。
-
+### Property 17: 鍚戦噺妫€绱㈠線杩斿吋瀹规€э紙Embedding Round-Trip Compatibility锛?
+瀵逛簬浠绘剰鍦ㄥ閲忔瀯寤轰腑澶勭悊鐨?DocumentChunk锛屽叾 embedding 鍐欏叆 chunk_embeddings 鍚庯紝浣跨敤鐩稿悓鍚戦噺璋冪敤 vector_search 搴旇兘鍛戒腑璇?chunk銆?
 **Validates: Requirements 13.1**
 
-### Property 18: 抽取容错连续性（Extraction Fault Tolerance）
-
-对于任意 chunk 列表，若其中部分 chunk 的 LLM 抽取调用失败，则其余 chunk 的抽取结果不受影响。
-
+### Property 18: 鎶藉彇瀹归敊杩炵画鎬э紙Extraction Fault Tolerance锛?
+瀵逛簬浠绘剰 chunk 鍒楄〃锛岃嫢鍏朵腑閮ㄥ垎 chunk 鐨?LLM 鎶藉彇璋冪敤澶辫触锛屽垯鍏朵綑 chunk 鐨勬娊鍙栫粨鏋滀笉鍙楀奖鍝嶃€?
 **Validates: Requirements 5.5**
 
-## 错误处理
+## 閿欒澶勭悊
 
-### 错误分类
+### 閿欒鍒嗙被
 
-| 错误类型 | 处理策略 | 影响范围 |
+| 閿欒绫诲瀷 | 澶勭悊绛栫暐 | 褰卞搷鑼冨洿 |
 |----------|----------|----------|
-| LLM 抽取调用失败 | 记录日志，跳过当前 chunk | 单个 chunk |
-| LLM 对齐判断失败 | 保守策略：标记为 NO_MATCH | 单个候选节点 |
-| LLM 单元命名失败 | 使用 core 节点名称作为 fallback | 单个教学单元 |
-| Embedding 生成失败 | 跳过 embedding 步骤，仅依赖名称/别名匹配 | 单个候选节点 |
-| 数据库写入失败 | 回滚事务，Job 状态设为 failed，清理 pending 数据 | 整个构建任务 |
-| 课程派生失败 | CurriculumDeriveJob 设为 failed，图谱数据保留 | 课程视图更新 |
-| 构建锁获取失败 | 返回 409 CONFLICT | 请求被拒绝 |
-| 乐观锁冲突 | 重试最多 3 次 | 版本创建 |
-| DAG 环路检测 | 断开最低置信度边，记录日志 | 单条依赖边 |
-| 唯一约束冲突 | 转为 exact_match 处理 | 单个节点/边 |
+| LLM 鎶藉彇璋冪敤澶辫触 | 璁板綍鏃ュ織锛岃烦杩囧綋鍓?chunk | 鍗曚釜 chunk |
+| LLM 瀵归綈鍒ゆ柇澶辫触 | 淇濆畧绛栫暐锛氭爣璁颁负 NO_MATCH | 鍗曚釜鍊欓€夎妭鐐?|
+| LLM 鍗曞厓鍛藉悕澶辫触 | 浣跨敤 core 鑺傜偣鍚嶇О浣滀负 fallback | 鍗曚釜鏁欏鍗曞厓 |
+| Embedding 鐢熸垚澶辫触 | 璺宠繃 embedding 姝ラ锛屼粎渚濊禆鍚嶇О/鍒悕鍖归厤 | 鍗曚釜鍊欓€夎妭鐐?|
+| 鏁版嵁搴撳啓鍏ュけ璐?| 鍥炴粴浜嬪姟锛孞ob 鐘舵€佽涓?failed锛屾竻鐞?pending 鏁版嵁 | 鏁翠釜鏋勫缓浠诲姟 |
+| 璇剧▼娲剧敓澶辫触 | CurriculumDeriveJob 璁句负 failed锛屽浘璋辨暟鎹繚鐣?| 璇剧▼瑙嗗浘鏇存柊 |
+| 鏋勫缓閿佽幏鍙栧け璐?| 杩斿洖 409 CONFLICT | 璇锋眰琚嫆缁?|
+| 涔愯閿佸啿绐?| 閲嶈瘯鏈€澶?3 娆?| 鐗堟湰鍒涘缓 |
+| DAG 鐜矾妫€娴?| 鏂紑鏈€浣庣疆淇″害杈癸紝璁板綍鏃ュ織 | 鍗曟潯渚濊禆杈?|
+| 鍞竴绾︽潫鍐茬獊 | 杞负 exact_match 澶勭悊 | 鍗曚釜鑺傜偣/杈?|
 
-### 新增异常类（`core/exceptions.py`）
-
+### 鏂板寮傚父绫伙紙`core/exceptions.py`锛?
 ```python
 class DigestJobNotFoundError(AITeachMeError):
     error_code = "DIGEST_JOB_NOT_FOUND"
@@ -1638,57 +1496,48 @@ class TreeVersionConflictError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 ```
 
-### 容错原则
+### 瀹归敊鍘熷垯
 
-1. **chunk 级容错**：单个 chunk 的 LLM 调用失败不影响其他 chunk
-2. **保守对齐**：UNSURE 时倾向创建新节点而非错误合并
-3. **staging/active 两层状态**：pending → active 批量激活，失败时清理
-4. **图谱与课程解耦**：GraphDigestJob 成功但 CurriculumDeriveJob 失败时，图谱数据保留
-5. **subject 级构建锁**：同一 subject 同时只允许一个 GraphDigestJob
-6. **幂等键防重复**：相同 idempotency_key 直接返回已有 job
-7. **DAG 去环容错**：环路不阻塞派生，断开最低置信度边并记录
+1. **chunk 绾у閿?*锛氬崟涓?chunk 鐨?LLM 璋冪敤澶辫触涓嶅奖鍝嶅叾浠?chunk
+2. **淇濆畧瀵归綈**锛歎NSURE 鏃跺€惧悜鍒涘缓鏂拌妭鐐硅€岄潪閿欒鍚堝苟
+3. **staging/active 涓ゅ眰鐘舵€?*锛歱ending 鈫?active 鎵归噺婵€娲伙紝澶辫触鏃舵竻鐞?4. **鍥捐氨涓庤绋嬭В鑰?*锛欸raphDigestJob 鎴愬姛浣?CurriculumDeriveJob 澶辫触鏃讹紝鍥捐氨鏁版嵁淇濈暀
+5. **subject 绾ф瀯寤洪攣**锛氬悓涓€ subject 鍚屾椂鍙厑璁镐竴涓?GraphDigestJob
+6. **骞傜瓑閿槻閲嶅**锛氱浉鍚?idempotency_key 鐩存帴杩斿洖宸叉湁 job
+7. **DAG 鍘荤幆瀹归敊**锛氱幆璺笉闃诲娲剧敓锛屾柇寮€鏈€浣庣疆淇″害杈瑰苟璁板綍
 
-## 模块/文件结构
+## 妯″潡/鏂囦欢缁撴瀯
 
 ```
 backend/
-├── app/
-│   ├── agents/digest/
-│   │   ├── kg_workflow.py              # LangGraph GraphDigestJob 状态机
-│   │   ├── curriculum_workflow.py      # LangGraph CurriculumDeriveJob 状态机
-│   │   ├── kg_extractor.py            # LLM 候选抽取
-│   │   ├── kg_clusterer.py            # 批内候选聚类去重
-│   │   ├── kg_resolver.py             # 实体/关系对齐
-│   │   ├── kg_impact_analyzer.py      # 影响集分析
-│   │   ├── unit_builder.py            # 教学单元生成（graph-aware 聚类）
-│   │   ├── theme_tree_builder.py      # 主题树派生
-│   │   ├── prereq_dag_builder.py      # 先修 DAG 派生
-│   │   └── prompts/
-│   │       └── kg_prompts.py          # 知识图谱 + 课程结构相关 prompt
-│   ├── models/
-│   │   ├── knowledge_graph.py         # 知识图谱模型
-│   │   ├── curriculum.py              # 教学单元 + 课程视图模型
-│   │   └── enums.py                   # 新增枚举（追加）
-│   ├── repositories/
-│   │   ├── kg_repo.py                 # 知识图谱数据访问层
-│   │   └── curriculum_repo.py         # 课程结构数据访问层
-│   ├── services/
-│   │   └── knowledge_graph_service.py # 知识图谱 + 课程结构服务层
-│   ├── schemas/
-│   │   └── knowledge_graph.py         # API schema
-│   └── api/
-│       └── knowledge.py               # 扩展现有路由
-└── tests/
-    ├── test_kg_models.py
-    ├── test_curriculum_models.py
-    ├── test_kg_extractor.py
-    ├── test_kg_clusterer.py
-    ├── test_kg_resolver.py
-    ├── test_kg_impact_analyzer.py
-    ├── test_unit_builder.py
-    ├── test_theme_tree_builder.py
-    ├── test_prereq_dag_builder.py
-    ├── test_kg_repo.py
-    ├── test_curriculum_repo.py
-    └── test_kg_properties.py          # 属性测试（所有 Property）
-```
+鈹溾攢鈹€ app/
+鈹?  鈹溾攢鈹€ agents/digest/
+鈹?  鈹?  鈹溾攢鈹€ kg_workflow.py              # LangGraph GraphDigestJob 鐘舵€佹満
+鈹?  鈹?  鈹溾攢鈹€ curriculum_workflow.py      # LangGraph CurriculumDeriveJob 鐘舵€佹満
+鈹?  鈹?  鈹溾攢鈹€ kg_extractor.py            # LLM 鍊欓€夋娊鍙?鈹?  鈹?  鈹溾攢鈹€ kg_clusterer.py            # 鎵瑰唴鍊欓€夎仛绫诲幓閲?鈹?  鈹?  鈹溾攢鈹€ kg_resolver.py             # 瀹炰綋/鍏崇郴瀵归綈
+鈹?  鈹?  鈹溾攢鈹€ kg_impact_analyzer.py      # 褰卞搷闆嗗垎鏋?鈹?  鈹?  鈹溾攢鈹€ unit_builder.py            # 鏁欏鍗曞厓鐢熸垚锛坓raph-aware 鑱氱被锛?鈹?  鈹?  鈹溾攢鈹€ theme_tree_builder.py      # 涓婚鏍戞淳鐢?鈹?  鈹?  鈹溾攢鈹€ prereq_dag_builder.py      # 鍏堜慨 DAG 娲剧敓
+鈹?  鈹?  鈹斺攢鈹€ prompts/
+鈹?  鈹?      鈹斺攢鈹€ kg_prompts.py          # 鐭ヨ瘑鍥捐氨 + 璇剧▼缁撴瀯鐩稿叧 prompt
+鈹?  鈹溾攢鈹€ models/
+鈹?  鈹?  鈹溾攢鈹€ knowledge_graph.py         # 鐭ヨ瘑鍥捐氨妯″瀷
+鈹?  鈹?  鈹溾攢鈹€ curriculum.py              # 鏁欏鍗曞厓 + 璇剧▼瑙嗗浘妯″瀷
+鈹?  鈹?  鈹斺攢鈹€ enums.py                   # 鏂板鏋氫妇锛堣拷鍔狅級
+鈹?  鈹溾攢鈹€ repositories/
+鈹?  鈹?  鈹溾攢鈹€ kg_repo.py                 # 鐭ヨ瘑鍥捐氨鏁版嵁璁块棶灞?鈹?  鈹?  鈹斺攢鈹€ curriculum_repo.py         # 璇剧▼缁撴瀯鏁版嵁璁块棶灞?鈹?  鈹溾攢鈹€ services/
+鈹?  鈹?  鈹斺攢鈹€ knowledge_graph_service.py # 鐭ヨ瘑鍥捐氨 + 璇剧▼缁撴瀯鏈嶅姟灞?鈹?  鈹溾攢鈹€ schemas/
+鈹?  鈹?  鈹斺攢鈹€ knowledge_graph.py         # API schema
+鈹?  鈹斺攢鈹€ api/
+鈹?      鈹斺攢鈹€ knowledge.py               # 鎵╁睍鐜版湁璺敱
+鈹斺攢鈹€ tests/
+    鈹溾攢鈹€ test_kg_models.py
+    鈹溾攢鈹€ test_curriculum_models.py
+    鈹溾攢鈹€ test_kg_extractor.py
+    鈹溾攢鈹€ test_kg_clusterer.py
+    鈹溾攢鈹€ test_kg_resolver.py
+    鈹溾攢鈹€ test_kg_impact_analyzer.py
+    鈹溾攢鈹€ test_unit_builder.py
+    鈹溾攢鈹€ test_theme_tree_builder.py
+    鈹溾攢鈹€ test_prereq_dag_builder.py
+    鈹溾攢鈹€ test_kg_repo.py
+    鈹溾攢鈹€ test_curriculum_repo.py
+    鈹斺攢鈹€ test_kg_properties.py          # 灞炴€ф祴璇曪紙鎵€鏈?Property锛?```
+

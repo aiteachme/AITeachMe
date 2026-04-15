@@ -26,21 +26,37 @@ class DocGenBuildRequest(BaseModel):
 
     file_uids: list[str] | None = Field(
         default=None,
-        description="Optional parsed raw file UIDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided.",
+        description=(
+            "Optional parsed raw file UIDs; omitted means auto-pick all available ready files for "
+            "the subject. Ignored when `confirmed_plan_id` is provided."
+        ),
     )
-    prompt: str | None = Field(default=None, description="Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is provided and the confirmed plan already freezes the build goal.")
+    prompt: str | None = Field(
+        default=None,
+        description=(
+            "Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is "
+            "provided and the confirmed plan already freezes the build goal."
+        ),
+    )
     embedding_resolution: Literal["rebuild", "disable"] | None = Field(
         default=None,
         description="Optional subject-level embedding resolution chosen after a precheck conflict.",
     )
     build_type: Literal["docs", "graph", "all"] = Field(
         default="all",
-        description="Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph + curriculum only, 'all' for unified build.",
+        description=(
+            "Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only, "
+            "'all' for unified build."
+        ),
     )
     confirmed_plan_id: str | None = Field(
         default=None,
-        description="Planner 生成并确认后的构建方案 ID。`docs` 和 `all` 构建必须提供该字段；提供后会以方案冻结的文件选择、章节规划和用户目标作为正式构建契约。",
+        description=(
+            "Planner-generated and confirmed build plan ID. `docs` and `all` builds require this field; "
+            "when provided, the build uses the frozen file selection, chapter plan, and user goal."
+        ),
     )
+
 
 class GraphNodesQueryRequest(PageParams):
     """Paginated graph node query."""
@@ -73,32 +89,6 @@ class ChunkContextRequest(BaseModel):
     chunk_id: int = Field(description="Document chunk ID.")
 
 
-class UnitsQueryRequest(PageParams):
-    """Paginated teaching-unit query."""
-
-    status: str | None = Field(default=None, description="Optional status filter; defaults to active.")
-
-
-class UnitDetailRequest(BaseModel):
-    """Teaching-unit detail query."""
-
-    unit_id: int = Field(description="Teaching unit ID.")
-
-
-class AnchorManageRequest(BaseModel):
-    """Taxonomy anchor management request."""
-
-    action: str = Field(description="list / create / update / delete")
-    anchor_id: int | None = Field(default=None, description="Anchor ID for update/delete.")
-    title: str | None = Field(default=None, description="Anchor title for create/update.")
-    anchor_type: str | None = Field(
-        default=None,
-        description="teacher_defined / syllabus / textbook_toc / graph_discovered",
-    )
-    parent_anchor_id: int | None = Field(default=None, description="Parent anchor ID.")
-    order_index: int | None = Field(default=None, description="Order index.")
-
-
 class KnowledgeBuildPrecheckConflictData(BaseModel):
     """Structured payload for one build-precheck conflict."""
 
@@ -107,8 +97,14 @@ class KnowledgeBuildPrecheckConflictData(BaseModel):
     subject_dim: int | None = Field(default=None, description="Subject-bound embedding dimension, if any.")
     runtime_model: str | None = Field(default=None, description="Current runtime embedding model, if any.")
     runtime_dim: int | None = Field(default=None, description="Current runtime embedding dimension, if any.")
-    requires_full_rebuild: bool = Field(default=False, description="Whether restoring vector mode requires a full rebuild.")
-    vector_enabled_after_continue: bool = Field(default=False, description="Whether vector mode stays enabled after continuing without rebuild.")
+    requires_full_rebuild: bool = Field(
+        default=False,
+        description="Whether restoring vector mode requires a full rebuild.",
+    )
+    vector_enabled_after_continue: bool = Field(
+        default=False,
+        description="Whether vector mode stays enabled after continuing without rebuild.",
+    )
 
 
 class SubjectVectorStatusResponse(BaseModel):
@@ -124,7 +120,10 @@ class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 
     accepted_file_uids: list[str] = Field(default_factory=list, description="Accepted ready raw file UIDs.")
-    prompt: str | None = Field(default=None, description="Effective user prompt for the docs build after planner overrides are applied.")
+    prompt: str | None = Field(
+        default=None,
+        description="Effective user prompt for the docs build after planner overrides are applied.",
+    )
     ready_file_count: int = Field(default=0, description="Current ready file count for this subject.")
     requested_at: datetime = Field(description="Build request timestamp.")
     vector_status: SubjectVectorStatusResponse = Field(
@@ -134,6 +133,7 @@ class DocGenBuildData(BaseModel):
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
+
 
 class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
@@ -191,7 +191,7 @@ class KnowledgeBuildPreviewResponse(BaseModel):
     sample_cards: list[BuildSampleCardResponse] = Field(default_factory=list, description="Small preview cards for the waiting UI.")
     plan_summary: str | None = Field(default=None, description="Confirmed build plan summary for the current build.")
     chapter_progress: list[BuildPreviewChapterProgressResponse] = Field(default_factory=list, description="Per-chapter progress for the current build.")
-    recent_events: list[BuildPreviewRecentEventResponse] = Field(default_factory=list, description="Recent research / writing / publishing events for the current build.")
+    recent_events: list[BuildPreviewRecentEventResponse] = Field(default_factory=list, description="Recent research / writing / publishing events for this build.")
     latest_chapter_titles: list[str] = Field(default_factory=list, description="Recently staged or published chapter titles.")
     draft_excerpt: str = Field(default="", description="Short excerpt from the current draft markdown, if any.")
 
@@ -250,6 +250,7 @@ class DocGenGetResponse(BaseModel):
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
+
 
 class KnowledgeNodeResponse(BaseModel):
     """Knowledge node list item."""
@@ -336,142 +337,6 @@ class KnowledgeNodeDetailResponse(BaseModel):
     updated_at: datetime
 
 
-class UnitMembershipItem(BaseModel):
-    """Teaching-unit membership item."""
-
-    id: int
-    knowledge_node_id: int
-    node_canonical_name: str
-    node_type: str
-    role: str
-    score: float
-
-
-class UnitRevisionItem(BaseModel):
-    """Current revision for a teaching unit."""
-
-    title: str
-    summary: str
-    learning_objectives: list[str] = Field(default_factory=list)
-
-
-class TeachingUnitResponse(BaseModel):
-    """Teaching-unit list item."""
-
-    id: int
-    subject: str
-    canonical_name: str
-    status: str
-    confidence: float
-    created_at: datetime
-    updated_at: datetime
-
-
-class TeachingUnitDetailResponse(BaseModel):
-    """Teaching-unit detail response."""
-
-    id: int
-    subject: str
-    canonical_name: str
-    normalized_name: str
-    member_signature: str
-    status: str
-    confidence: float
-    current_revision: UnitRevisionItem | None = None
-    members: list[UnitMembershipItem] = Field(default_factory=list)
-    created_at: datetime
-    updated_at: datetime
-
-
-class TaxonomyAnchorResponse(BaseModel):
-    """Taxonomy anchor response."""
-
-    id: int
-    subject: str
-    anchor_type: str
-    title: str
-    parent_anchor_id: int | None = None
-    order_index: int
-    confidence: float
-    is_system: bool
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class ThemeTreeNodeResponse(BaseModel):
-    """Theme-tree node response."""
-
-    id: int
-    tree_version_id: int
-    anchor_id: int | None = None
-    parent_tree_node_id: int | None = None
-    title: str
-    node_type: str
-    order_index: int
-    summary: str
-    children: list["ThemeTreeNodeResponse"] = Field(default_factory=list)
-    units: list["TreeUnitItem"] = Field(default_factory=list)
-
-
-class TreeUnitItem(BaseModel):
-    """Teaching-unit mount info in theme tree."""
-
-    teaching_unit_id: int
-    canonical_name: str
-    membership_role: str
-    membership_source: str
-    score: float
-
-
-class ThemeTreeResponse(BaseModel):
-    """Current published theme tree response."""
-
-    version_id: int
-    version_no: int
-    subject: str
-    status: str
-    created_at: datetime
-    tree: list[ThemeTreeNodeResponse] = Field(default_factory=list)
-
-
-class CurriculumSnapshotResponse(BaseModel):
-    """Current curriculum snapshot response."""
-
-    id: int
-    subject: str
-    version_no: int
-    status: str
-    theme_tree_version_id: int | None = None
-    prereq_dag_version_id: int | None = None
-    syllabus_version_id: int | None = None
-    created_at: datetime
-
-
-class UnitDependencyItem(BaseModel):
-    """Dependency edge item in prereq DAG."""
-
-    id: int
-    source_unit_id: int
-    source_unit_name: str
-    target_unit_id: int
-    target_unit_name: str
-    dependency_type: str
-    confidence: float
-    supporting_edge_count: int
-
-
-class PrereqDagResponse(BaseModel):
-    """Current published prereq DAG response."""
-
-    version_id: int
-    version_no: int
-    subject: str
-    status: str
-    created_at: datetime
-    dependencies: list[UnitDependencyItem] = Field(default_factory=list)
-
-
 class GraphEdgeResponse(BaseModel):
     """Graph edge item used by full-graph query."""
 
@@ -495,9 +360,6 @@ class KnowledgeOverviewStats(BaseModel):
 
     node_count: int = 0
     edge_count: int = 0
-    unit_count: int = 0
-    theme_node_count: int = 0
-    dependency_count: int = 0
 
 
 class KnowledgeOverviewResponse(BaseModel):
@@ -505,11 +367,7 @@ class KnowledgeOverviewResponse(BaseModel):
 
     subject: str
     generated_at: datetime
-    snapshot: CurriculumSnapshotResponse | None = None
-    theme_tree: ThemeTreeResponse | None = None
-    prereq_dag: PrereqDagResponse | None = None
     graph: FullGraphResponse | None = None
-    units: list[TeachingUnitResponse] = Field(default_factory=list)
     stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
     vector_status: SubjectVectorStatusResponse = Field(
         default_factory=SubjectVectorStatusResponse,
@@ -518,6 +376,7 @@ class KnowledgeOverviewResponse(BaseModel):
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
+
 
 class ClearKnowledgeResponse(BaseModel):
     """Knowledge clear response."""
@@ -571,14 +430,16 @@ class StudyPlanResponse(BaseModel):
     phases: list[StudyPlanPhaseResponse] = Field(default_factory=list)
 
 
-ThemeTreeNodeResponse.model_rebuild()
-
-
-
 class BuildPlannerCreateRequest(BaseModel):
     """Create a new planner session and generate the first plan draft."""
 
-    file_uids: list[str] | None = Field(default=None, description="Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner 会优先使用已解析内容，不足时退化到文件名与资料元信息。")
+    file_uids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; "
+            "planner prefers parsed content and falls back to filenames/metadata when needed."
+        ),
+    )
     user_goal: str = Field(description="Learner goal or requested document target.")
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     tone: str | None = Field(default=None, description="Optional requested writing tone.")
@@ -641,14 +502,33 @@ class BuildPlannerPlanResponse(BaseModel):
 
 class BuildPlannerSessionResponse(BaseModel):
     session_id: str
+    subject: str
     title: str
     status: str
-    plan: BuildPlannerPlanResponse
+    revision: int
+    latest_plan: BuildPlannerPlanResponse
     turns: list[BuildPlannerTurnResponse] = Field(default_factory=list)
-    runtime_stats: BuildPlannerRuntimeStatsResponse | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class BuildPlannerConfirmResponse(BaseModel):
-    session_id: str
-    plan_id: str
-    plan: BuildPlannerPlanResponse
+    planner_session_id: str
+    confirmed_plan_id: str
+    subject: str
+    status: str
+    digest_mode: str
+    tone: str
+    selected_file_uids: list[str] = Field(default_factory=list)
+    selected_file_ids: list[int] = Field(default_factory=list)
+    user_goal: str
+    plan_summary: str
+    chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
+    research_queries: list[str] = Field(default_factory=list)
+    selected_skillpacks: list[str] = Field(default_factory=list)
+    media_plan: dict[str, object] = Field(default_factory=dict)
+    build_constraints: dict[str, object] = Field(default_factory=dict)
+    plan_json: dict[str, object] = Field(default_factory=dict)
+    status_history: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime

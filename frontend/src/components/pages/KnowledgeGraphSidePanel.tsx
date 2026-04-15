@@ -1,10 +1,8 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+﻿import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
-  FolderTree,
-  GitBranch,
   Loader2,
   Network,
   Orbit,
@@ -31,17 +29,11 @@ import { Modal } from "../ui/Modal";
 const SemanticUniverse = lazy(() =>
   import("./SemanticUniverse").then((module) => ({ default: module.SemanticUniverse })),
 );
-const ThemeTreeView = lazy(() =>
-  import("./ThemeTreeView").then((module) => ({ default: module.ThemeTreeView })),
-);
-const PrereqDagView = lazy(() =>
-  import("./PrereqDagView").then((module) => ({ default: module.PrereqDagView })),
-);
 const KnowledgeGraphView = lazy(() =>
   import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
 );
 
-type KnowledgeViewTab = "semantic-universe" | "theme-tree" | "prereq-dag" | "knowledge-graph";
+type KnowledgeViewTab = "semantic-universe" | "knowledge-graph";
 
 const VIEW_TABS: Array<{
   id: KnowledgeViewTab;
@@ -51,27 +43,15 @@ const VIEW_TABS: Array<{
 }> = [
   {
     id: "semantic-universe",
-    label: "知识宇宙",
+    label: "语义宇宙",
     icon: <Orbit className="h-4 w-4" />,
     desc: "稳定的语义星图。",
   },
   {
-    id: "theme-tree",
-    label: "主题树",
-    icon: <FolderTree className="h-4 w-4" />,
-    desc: "课程目录视角。",
-  },
-  {
-    id: "prereq-dag",
-    label: "先修图",
-    icon: <GitBranch className="h-4 w-4" />,
-    desc: "依赖和学习顺序。",
-  },
-  {
     id: "knowledge-graph",
-    label: "专家图谱",
+    label: "知识图谱",
     icon: <Network className="h-4 w-4" />,
-    desc: "底层知识图谱。",
+    desc: "底层节点与关系图谱。",
   },
 ];
 
@@ -93,18 +73,7 @@ export function KnowledgeGraphSidePanel({
   const [activeTab, setActiveTab] = useState<KnowledgeViewTab>("semantic-universe");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  const overviewInclude = useMemo(() => {
-    switch (activeTab) {
-      case "theme-tree":
-        return OVERVIEW_INCLUDE_PRESETS.themeTree;
-      case "prereq-dag":
-        return OVERVIEW_INCLUDE_PRESETS.prereqDag;
-      case "knowledge-graph":
-      case "semantic-universe":
-      default:
-        return OVERVIEW_INCLUDE_PRESETS.wordCloud;
-    }
-  }, [activeTab]);
+  const overviewInclude = useMemo(() => OVERVIEW_INCLUDE_PRESETS.wordCloud, []);
 
   const {
     data: overview,
@@ -167,7 +136,7 @@ export function KnowledgeGraphSidePanel({
               type="button"
               onClick={() => setShowClearConfirm(true)}
               className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500"
-              title="清空当前学科的知识结构"
+              title="清空当前学科知识结构"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -203,24 +172,12 @@ export function KnowledgeGraphSidePanel({
           {!overviewLoading && !overviewIsError ? (
             <>
               {activeTab === "semantic-universe" ? (
-                <Suspense fallback={<TabFallback message="正在加载知识宇宙..." />}>
+                <Suspense fallback={<TabFallback message="正在加载语义宇宙..." />}>
                   <SemanticUniverse
                     subjectLabel={subjectLabel}
                     overviewGraph={overview?.graph ?? null}
                     height="calc(100vh - 20rem)"
                   />
-                </Suspense>
-              ) : null}
-
-              {activeTab === "theme-tree" ? (
-                <Suspense fallback={<TabFallback message="正在加载主题树..." />}>
-                  <ThemeTreeView overviewData={overview?.theme_tree ?? null} />
-                </Suspense>
-              ) : null}
-
-              {activeTab === "prereq-dag" ? (
-                <Suspense fallback={<TabFallback message="正在加载先修图..." />}>
-                  <PrereqDagView overviewDag={overview?.prereq_dag ?? null} overviewUnits={overview?.units ?? []} />
                 </Suspense>
               ) : null}
 
@@ -238,7 +195,7 @@ export function KnowledgeGraphSidePanel({
             <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
               <div className="text-sm text-rose-700">
-                <p>这会删除当前学科已经发布的知识图谱、教学单元、主题树、先修图以及相关快照。</p>
+                <p>这会删除当前学科已发布的知识文档和知识图谱相关结构。</p>
                 <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
               </div>
             </div>

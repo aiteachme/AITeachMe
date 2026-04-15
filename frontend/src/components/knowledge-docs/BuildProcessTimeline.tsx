@@ -88,7 +88,6 @@ const STAGE_TO_STEP_INDEX: Record<string, number> = {
   prepare_shared: 0,
   doc_lane_staged: 2,
   graph_ready: 3,
-  curriculum_deriving: 3,
   publishing: 4,
   completed: 5,
 };
