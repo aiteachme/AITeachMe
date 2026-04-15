@@ -185,7 +185,7 @@ digest/
 
 - `planner/` 与 `docgen/` 是当前优先收口的主链路
 - `knowledge_graph/` 与 `unified/` 先对齐门面与命名
-- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / primitives / metrics 等复用能力
+- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics 等复用能力
 - 不再保留只转发到 `shared/` 的 `_shared/` 空门面
 
 ### 7.2 ingest

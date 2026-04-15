@@ -2,9 +2,53 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, Field
 
-from app.workflows.digest.shared.primitives import DigestModeDecision, MaterialProfile
+
+class MaterialStats(BaseModel):
+    """Material-level statistics computed without LLM calls."""
+
+    total_sources: int = 0
+    total_sections: int = 0
+    total_chars: int = 0
+    formula_count: int = 0
+    formula_density: float = 0.0
+    exercise_count: int = 0
+    exercise_density: float = 0.0
+    image_count: int = 0
+    table_count: int = 0
+    ocr_noise_ratio: float = 0.0
+    source_overlap: float = 0.0
+
+
+class MaterialProfile(BaseModel):
+    """A compact profile for the current digest input set."""
+
+    subject: str = ""
+    sub_subjects: list[str] = Field(default_factory=list)
+    material_types: dict[str, int] = Field(default_factory=dict)
+    stats: MaterialStats = Field(default_factory=MaterialStats)
+    discipline: str = ""
+    difficulty_level: str = ""
+
+
+class DigestMode(str, Enum):
+    """Digest generation mode."""
+
+    SPRINT = "sprint"
+    SYSTEMATIC = "systematic"
+
+
+class DigestModeDecision(BaseModel):
+    """Mode decision shared by planner, docgen, and graph lanes."""
+
+    mode: DigestMode = DigestMode.SYSTEMATIC
+    confidence: float = 0.8
+    reason: str = ""
+    user_override: bool = False
+    evidence: dict[str, str] = Field(default_factory=dict)
 
 
 class SourcePacket(BaseModel):

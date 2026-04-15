@@ -19,7 +19,11 @@ from app.workflows.digest.shared.models import (
     AssetItem,
     AssetRegistry,
     ChunkIdentityMap,
+    DigestMode,
+    DigestModeDecision,
     FastTopicHints,
+    MaterialProfile,
+    MaterialStats,
     SectionPacket,
     SharedInputs,
     SourcePacket,
@@ -36,6 +40,11 @@ from app.workflows.digest.shared.metrics import (
     build_token_summary,
     step_slow_items,
 )
+from app.workflows.digest.shared.material_profile import (
+    build_material_profile,
+    compute_material_stats,
+    decide_digest_mode,
+)
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
 
 __all__ = [
@@ -47,10 +56,14 @@ __all__ = [
     "DigestChapterContract",
     "DigestChapterMediaHints",
     "DigestConfirmedPlanContract",
+    "DigestMode",
+    "DigestModeDecision",
     "DigestModelUsageSummary",
     "DigestTimingReport",
     "DigestTokenSummary",
     "FastTopicHints",
+    "MaterialProfile",
+    "MaterialStats",
     "normalize_digest_confirmed_plan_payload",
     "parse_digest_confirmed_plan_contract",
     "PLANNER_RETRIEVAL_PROFILE",
@@ -62,8 +75,11 @@ __all__ = [
     "add_slow_item",
     "build_lane_llm_rollup",
     "build_lane_step_slow_items",
+    "build_material_profile",
     "build_slow_items",
     "build_token_summary",
+    "compute_material_stats",
+    "decide_digest_mode",
     "prepare_shared_inputs",
     "resolve_digest_course_type",
     "resolve_digest_retrieval_profile",

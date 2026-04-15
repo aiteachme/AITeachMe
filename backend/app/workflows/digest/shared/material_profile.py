@@ -1,13 +1,6 @@
-"""材料画像与模式决策服务。
+"""Material profiling and digest mode decision helpers.
 
-Phase 0 的核心服务：
-1. compute_material_stats — 纯规则统计，0 API 调用
-2. decide_digest_mode — 综合判定 sprint / systematic
-3. build_material_profile — 主入口
-
-使用方式：
-    from app.workflows.digest.services.material_profiler import build_material_profile
-    profile = build_material_profile(source_packets, section_packets, subject_profile)
+These helpers are shared by multiple digest lanes through ``SharedInputs``.
 """
 
 from __future__ import annotations
@@ -16,12 +9,14 @@ import re
 
 import structlog
 
-from app.workflows.digest.shared.models import SectionPacket, SourcePacket, SubjectProfile
-from app.workflows.digest.shared.primitives import (
+from app.workflows.digest.shared.models import (
     DigestMode,
     DigestModeDecision,
     MaterialProfile,
     MaterialStats,
+    SectionPacket,
+    SourcePacket,
+    SubjectProfile,
 )
 
 logger = structlog.get_logger()

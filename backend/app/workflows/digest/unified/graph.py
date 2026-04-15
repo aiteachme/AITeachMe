@@ -18,7 +18,7 @@ from app.workflows.digest.runtime import (
     run_graph_digest_workflow,
 )
 from app.workflows.digest.shared.prepare import prepare_shared_inputs
-from app.workflows.digest.shared.primitives import DigestMode
+from app.workflows.digest.shared.models import DigestMode
 from app.workflows.digest.unified.materialize import materialize_shared_inputs
 from app.workflows.digest.unified.session import (
     create_unified_build_session,
