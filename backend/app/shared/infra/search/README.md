@@ -46,6 +46,8 @@ shared/infra/search/
 
 - `bs4`
   通用 HTML 页面读取。
+- `jina`
+  可选 Jina Reader。默认不启用，设置 `JINA_READER_ENABLED=true` 后参与自动 reader 选择；也可通过 preferred reader 显式指定。适合普通 HTML 抓取质量差、正文噪声重或动态页面较多的外部资料。
 - `pdf`
   远程 PDF 文本抽取。
 - `docx`
@@ -71,6 +73,8 @@ shared/infra/search/
   可选的 metasearch retriever，需要配置 `SEARXNG_BASE_URL` 或 `config.yaml` 中的 `searxng_base_url`。
 - `tavily` / `bing` / `bocha`
   这些属于 API 型检索器，需要用户提供 key。
+- `brave` / `exa`
+  这些属于 API 型检索器，适合补充高质量通用 Web 结果或语义搜索结果。
 - `arxiv` / `semantic_scholar`
   这两类更偏学术资料补充，不适合作为中文通用搜索引擎的完全替代。
 
@@ -127,6 +131,28 @@ LangSmith 侧会在 retriever / reader / traced execution span 输出：
 
 后续如果继续做持久化缓存、subject-aware 隔离或跨构建共享，再单独扩展这层策略；当前不在 workflow 里重复实现第二套缓存。
 
+## Web 检索调度策略
+
+`dispatch_web_search()` 现在只在 search 层内部做并发与融合，不改变 workflow 的业务编排：
+
+1. 先执行 `local_rag`，保证上传资料优先。
+2. 如果本地结果不足 `top_k`，外部 retriever 在总预算内并发执行。
+3. 多 provider 结果使用轻量 RRF（Reciprocal Rank Fusion）变体融合；重复 URL 会合并，多个 provider 同时命中的来源会获得更高分。
+4. 下游仍由 `SourceCurator`、reader、`ContextCompressor` 继续完成来源质量排序、正文读取和上下文压缩。
+
+相关配置可放在 `config.yaml`：
+
+```yaml
+search:
+  provider_timeout_s: 6.0
+  total_timeout_s: 12.0
+  parallel_retrievers: true
+  max_parallel_retrievers: 4
+  fusion_k: 60
+```
+
+之前效果和速度差的关键原因不是“少一个 provider”，而是检索链路过于串行、过早信任单 provider 的前几条结果、缺少融合。OpenAI / Gemini 级搜索体验本质上是“搜索 + 阅读 + 压缩 + 引用 + 生成”的组合；本层只解决候选来源发现与读取入口，生成和引用仍由上层 workflow 控制。
+
 ## 配置建议
 
 - 完全无 key 的最小可用组合：
@@ -134,4 +160,6 @@ LangSmith 侧会在 retriever / reader / traced execution span 输出：
 - 想继续提升稳定性但不想买 API：
   再加一个自建或可信公共 `SearXNG` 实例。
 - 已有商业 key：
-  再打开 `tavily / bocha / bing`，把它们放到 profile 前面即可。
+  再打开 `tavily / brave / exa / bing`，把它们放到 profile 前面即可。
+- 网页正文读取质量差：
+  打开 `JINA_READER_ENABLED=true`，必要时配置 `JINA_API_KEY` 提高限额。

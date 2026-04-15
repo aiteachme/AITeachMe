@@ -6,7 +6,7 @@ import httpx
 import structlog
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -26,17 +26,23 @@ class TavilyRetriever(BaseRetriever):
 
         payload = {
             "query": query,
-            "search_depth": "basic",
-            "topic": "general",
+            "search_depth": get_env("TAVILY_SEARCH_DEPTH", "basic") or "basic",
+            "topic": get_env("TAVILY_TOPIC", "general") or "general",
             "include_answer": False,
-            "include_raw_content": False,
+            "include_raw_content": get_env_bool("TAVILY_INCLUDE_RAW_CONTENT", False),
             "include_images": False,
             "max_results": max_results,
-            "api_key": api_key,
         }
         try:
             async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
-                response = await client.post("https://api.tavily.com/search", json=payload)
+                response = await client.post(
+                    "https://api.tavily.com/search",
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
             logger.warning("tavily_search_failed", error=str(exc), query=query)
@@ -47,7 +53,7 @@ class TavilyRetriever(BaseRetriever):
             SearchResult(
                 url=str(item.get("url") or ""),
                 title=str(item.get("title") or ""),
-                snippet=str(item.get("content") or ""),
+                snippet=str(item.get("raw_content") or item.get("content") or "")[:1000],
                 source=self.name,
             )
             for item in values

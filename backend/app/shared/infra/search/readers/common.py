@@ -13,10 +13,10 @@ from app.shared.infra.search.types import ScrapedPage
 _CORE_TITLE_QNAME = "{http://purl.org/dc/elements/1.1/}title"
 
 
-async def fetch_url(url: str) -> httpx.Response:
+async def fetch_url(url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s, follow_redirects=True) as client:
-        response = await client.get(url)
+        response = await client.get(url, headers=headers)
         response.raise_for_status()
         return response
 

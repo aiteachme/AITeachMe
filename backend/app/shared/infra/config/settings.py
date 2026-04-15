@@ -72,6 +72,9 @@ class Settings(BaseModel):
     search_provider_timeout_s: float = 6.0
     search_total_timeout_s: float = 12.0
     search_read_timeout_s: float = 10.0
+    search_parallel_retrievers: bool = True
+    search_max_parallel_retrievers: int = 4
+    search_fusion_k: int = 60
 
     planner_default_tone: str = "encouraging"
     planner_default_digest_mode: str = "sprint"
