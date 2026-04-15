@@ -14,7 +14,7 @@ from app.shared.infra.database import get_engine
 from app.shared.infra.search.knowledge import RetrievedChunk
 from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 from app.shared.infra.search.types import SearchResult
-from app.shared.infra.subject_vectors import get_subject_vector_search_notice
+from app.shared.infra.subject import get_subject_vector_search_notice
 from app.shared.infra.search.web import dispatch_web_search
 
 logger = structlog.get_logger(__name__)

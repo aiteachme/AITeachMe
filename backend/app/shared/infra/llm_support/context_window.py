@@ -52,7 +52,6 @@ class ContextWindowManager:
         if estimated <= max_tokens:
             return text
 
-        # 按比例截断
         max_chars = int(max_tokens * _CHARS_PER_TOKEN)
         return text[:max_chars] + "..."
 
@@ -70,7 +69,6 @@ class ContextWindowManager:
         if total <= max_tokens:
             return messages
 
-        # 从最新的消息开始保留
         result: list[dict] = []
         accumulated = 0
         for msg in reversed(messages):
@@ -104,22 +102,18 @@ class ContextWindowManager:
         budget = self._budget
         messages: list[dict] = []
 
-        # 1. System prompt
         truncated_system = self.truncate_text(system_prompt, budget.system_prompt)
         messages.append({"role": "system", "content": truncated_system})
 
-        # 2. Retrieval context（作为 system 追加）
         if retrieval_chunks:
             context_text = "\n\n".join(retrieval_chunks)
             truncated_context = self.truncate_text(context_text, budget.retrieval_context)
             messages[0]["content"] += f"\n\n参考资料：\n{truncated_context}"
 
-        # 3. Chat history
         if chat_history:
             truncated_history = self.truncate_messages(chat_history, budget.chat_history)
             messages.extend(truncated_history)
 
-        # 4. User query
         truncated_query = self.truncate_text(user_query, budget.user_query)
         messages.append({"role": "user", "content": truncated_query})
 
@@ -131,3 +125,6 @@ class ContextWindowManager:
             budget_total=budget.total,
         )
         return messages
+
+
+__all__ = ["ContextWindowManager", "TokenBudget"]

@@ -44,7 +44,7 @@ api/knowledge_docs.py
 | 能力 | 当前稳定入口 | 对 planner / docgen 的作用 |
 | --- | --- | --- |
 | 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
-| 向量状态 | `app.shared.infra.subject_vectors` | 判断学科向量是否可检索，给搜索层提供只读 gating |
+| 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索，给搜索层提供只读 gating |
 | 工具 | `app.shared.infra.tools` | 统一工具注册表、执行入口、registry sync hook |
 | 技能 | `app.shared.infra.skills` | skillpack 渲染、默认值、推荐 tag |
 | workflow 支撑 | `app.shared.infra.workflow` | `tracked_step`、`run_state_graph`、workflow context |
@@ -64,9 +64,9 @@ api/knowledge_docs.py
 | `config/`、`env_support.py`、`runtime/` | 读取环境、运行模式、项目配置、运行时路径 |
 | `database.py` | 数据库引擎、Session、向量表能力 |
 | `storage/` | 本地存储 / S3 / 统一内容存储接口 |
-| `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
+| `llm_support/` | 文本、结构化、流式、tool call、上下文窗口预算等 LLM 主入口 |
 | `search/` | 本地知识检索、retriever、reader、source curation |
-| `subject_vectors.py` | 学科向量状态的只读能力与提示文案 |
+| `subject/` | 学科向量配置与只读向量能力的稳定入口 |
 | `tools/` | 工具注册、执行、toolpack 加载 |
 | `skills/` | `SKILL.md` 风格技能包渲染与推荐 |
 | `memory/` | 共享记忆与学习档案 |
@@ -89,7 +89,7 @@ api/knowledge_docs.py
 这层现在已经收口为：
 
 - `search/api.py` 只依赖 `infra` 自己的只读向量能力
-- 向量 gating 通过 `subject_vectors.py` 提供，不再反向依赖 `services`
+- 向量 gating 通过 `subject/` 提供，不再反向依赖 `services`
 
 ### 4.2 `tools/`
 
@@ -158,9 +158,28 @@ from app.shared.infra.workflow import (
 - planner / docgen 要文件内容时，优先走统一内容存储接口
 - 不要在 workflow 里重新发明一套存储后端判断逻辑
 
-## 5. `subject_vectors.py` 的定位
+### 4.7 `llm_support/`
 
-`subject_vectors.py` 是这轮新增的只读向量能力模块，目的是把“能不能检索、应该提示什么”的逻辑下沉回 infra。
+`llm_support/` 除了 completion / structured / tool calls 之外，也承载和上下文窗口直接相关的 LLM 辅助工具。
+
+当前上下文预算与消息截断统一放在：
+
+- `app.shared.infra.llm_support.context_window`
+
+这类能力更接近 “LLM 输入怎么组织”，不再平铺在 `shared/infra` 根目录。
+
+## 5. `subject/` 的定位
+
+`subject/` 是这轮整理后的 subject 级 infra 子包，目的是把“学科设置怎么存”和“向量当前能不能用”收口到同一处，但仍然保持 settings / vectors 两层职责分离。
+
+其中：
+
+- `settings.py` 负责 `Subject.settings_json` 的结构化读写、binding 模型、vector table 命名
+- `vectors.py` 负责 runtime embedding snapshot、vector capability、status / notice / queryable 判定
+
+稳定导入面统一通过：
+
+- `app.shared.infra.subject`
 
 它适合承载：
 
@@ -206,7 +225,7 @@ from app.shared.infra.workflow import (
 3. `runtime/mode.py` 与 `runtime/paths.py`
 4. `database.py`
 5. `storage/content_store.py`
-6. `subject_vectors.py`
+6. `subject/`
 7. `search/__init__.py`
 8. `tools/__init__.py`
 9. `workflow/__init__.py`

@@ -207,6 +207,27 @@ backend/app/api/knowledge_docs.py
 
 - `backend/data/aiteachme.db`
 
+### 7.3 补充：subject 级 infra 能力现在怎么放
+
+`backend/app/shared/infra/` 里与学科向量相关的共享能力，当前已经收口到：
+
+- `backend/app/shared/infra/subject/settings.py`
+- `backend/app/shared/infra/subject/vectors.py`
+- 稳定导入面：`app.shared.infra.subject`
+
+这样做的目的是把：
+
+- `Subject.settings_json` 的结构化绑定
+- 运行时 embedding / vector capability 的只读判定
+
+放进同一个浅层子包，而不是继续把 subject 级向量能力散落在 `shared/infra/` 根目录。
+
+同时，交互链路里负责上下文窗口预算和消息截断的工具，当前位于：
+
+- `backend/app/shared/infra/llm_support/context_window.py`
+
+它属于 LLM 输入组织层，而不是 `shared/infra/` 根目录级别的通用杂项文件。
+
 ### 7.4 Subject 级运行时目录
 
 每个学科通常落在：

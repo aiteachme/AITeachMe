@@ -14,7 +14,7 @@ from app.shared.infra.database import (
     vector_table_exists,
 )
 from app.shared.infra.env_support import get_env
-from app.shared.infra.subject_settings import (
+from app.shared.infra.subject.settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
     get_subject_embedding_binding,

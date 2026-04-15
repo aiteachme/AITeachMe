@@ -160,7 +160,7 @@ from app.shared.infra.workflow import (
 尤其对 docgen 来说：
 
 - 标题、导学、recap 等教学表达来自 `app.teaching.documents`
-- 搜索、检索和向量 gating 来自 `app.shared.infra.search` / `subject_vectors`
+- 搜索、检索和向量 gating 来自 `app.shared.infra.search` / `app.shared.infra.subject`
 - docgen 自己只负责“这些能力什么时候被调用”
 
 ## 8. 什么不该放进 Workflows

@@ -19,26 +19,24 @@ from app.shared.infra.database import (
     vector_table_exists,
 )
 from app.shared.infra.exceptions import KnowledgeBuildPrecheckConflictError
-from app.shared.infra.subject_settings import (
-    SubjectEmbeddingBinding,
-    SubjectEmbeddingMode,
-    build_disabled_binding,
-    build_enabled_binding,
-    get_legacy_vector_table_name,
-    get_subject_embedding_binding,
-    set_subject_embedding_binding,
-)
-from app.shared.infra.subject_vectors import (
+from app.shared.infra.subject import (
     SUBJECT_VECTOR_PRECHECK_DETAIL_MAP,
     RuntimeEmbeddingConfig,
+    SubjectEmbeddingBinding,
+    SubjectEmbeddingMode,
     SubjectVectorCapability,
+    build_disabled_binding,
+    build_enabled_binding,
     build_subject_vector_status,
+    get_legacy_vector_table_name,
     get_runtime_embedding_config,
+    get_subject_embedding_binding,
     get_subject_record_by_slug,
     get_subject_vector_capability,
     get_subject_vector_search_notice,
     get_subject_vector_status,
     get_subject_vector_status_by_slug,
+    set_subject_embedding_binding,
     should_generate_subject_embeddings,
 )
 

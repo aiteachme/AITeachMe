@@ -44,3 +44,25 @@ def test_build_planner_service_uses_planner_package_public_entry() -> None:
         "build_planner_service 仍直接依赖 planner 内部模块: "
         + ", ".join(sorted(imports & forbidden))
     )
+
+
+def test_subject_package_re_exports_subject_vector_helpers() -> None:
+    from app.shared.infra.subject import (
+        build_subject_vector_table_name,
+        get_subject_vector_status_by_slug,
+        should_generate_subject_embeddings,
+    )
+
+    assert build_subject_vector_table_name("subj-demo") == "chunk_embeddings_subj_demo"
+    assert callable(get_subject_vector_status_by_slug)
+    assert callable(should_generate_subject_embeddings)
+
+
+def test_context_window_module_exports_budget_helpers() -> None:
+    from app.shared.infra.llm_support.context_window import (
+        ContextWindowManager,
+        TokenBudget,
+    )
+
+    assert TokenBudget().total == 4000
+    assert callable(ContextWindowManager.estimate_tokens)

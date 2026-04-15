@@ -30,7 +30,7 @@ from app.services.knowledge_docs.build_planner_service import (
 )
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import ConfirmedBuildPlanRequiredError, NoReadyFilesForDocGenError, RawFileNotFoundError, SubjectBuildLockConflictError
-from app.shared.infra.subject_vectors import get_subject_vector_status_by_slug
+from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.utils.docgen_store import KnowledgeBuildLock, acquire_knowledge_build_lock, clear_docgen_staging, read_knowledge_build_lock, read_knowledge_build_status, read_knowledge_manifest, release_knowledge_build_lock, update_knowledge_build_status
 from app.utils.job_helpers import cleanup_pending_by_subject

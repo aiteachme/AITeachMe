@@ -19,7 +19,7 @@ from app.shared.infra.database import (
     quote_sqlite_identifier,
     vector_table_exists,
 )
-from app.shared.infra.subject_settings import (
+from app.shared.infra.subject import (
     SubjectEmbeddingMode,
     build_subject_vector_table_name,
     get_legacy_vector_table_name,
@@ -710,4 +710,3 @@ def _sqlite_vector_search(
         score = 1.0 / (1.0 + distance) if distance >= 0 else 0.0
         results.append(ChunkSearchResult(chunk=chunk, score=score))
     return results
-
