@@ -139,9 +139,9 @@ def get_artifact_store() -> ArtifactStore:
 
 ## 阶段 2：数据库层 — PostgreSQL + pgvector
 
-### Step 2.1 — 重构 database.py 支持双数据库
+### Step 2.1 — 重构 `database/core.py` 支持双数据库
 
-**文件**: `backend/app/shared/infra/database.py`
+**文件**: `backend/app/shared/infra/database/core.py`
 
 核心改动：`get_engine()` 根据 `APP_MODE` 创建不同引擎。
 
@@ -191,7 +191,7 @@ def _build_postgres_engine(settings) -> sa.Engine:
 
 ### Step 2.2 — 重构 init_db() 支持双模式初始化
 
-**文件**: `backend/app/shared/infra/database.py`
+**文件**: `backend/app/shared/infra/database/core.py`
 
 ```python
 def init_db() -> None:
@@ -223,7 +223,7 @@ def _init_postgres_db(settings) -> None:
 
 ### Step 2.3 — 新增辅助函数判断数据库方言
 
-**文件**: `backend/app/shared/infra/database.py`
+**文件**: `backend/app/shared/infra/database/core.py`
 
 ```python
 def is_sqlite() -> bool:
@@ -350,7 +350,7 @@ def _postgres_search(session, query_embedding, subject, top_k, ...):
 
 ### Step 2.7 — 处理 SQLite 特有的 schema drift 逻辑
 
-**文件**: `backend/app/shared/infra/database.py`
+**文件**: `backend/app/shared/infra/database/core.py`
 
 `_ensure_local_sqlite_schema()` 和 `_inspect_sqlite_schema_drift()` 仅在 local 模式调用，cloud 模式跳过。已在 Step 2.2 中通过 `_init_local_sqlite_db` 隔离。
 
@@ -836,7 +836,7 @@ Render 创建 PostgreSQL 后：
 | 文件 | 改动内容 |
 |------|----------|
 | `backend/app/shared/infra/config.py` | 新增云端配置字段 |
-| `backend/app/shared/infra/database.py` | 双数据库引擎 + pgvector 初始化 |
+| `backend/app/shared/infra/database/core.py` | 双数据库引擎 + pgvector 初始化 |
 | `backend/app/shared/infra/runtime/paths.py` | cloud 模式下 data_dir 处理 |
 | `backend/app/utils/path_helpers.py` | 确保 storage_key 在 cloud 模式下正确 |
 | `backend/app/utils/docgen_store.py` | 文档读写走 store 抽象 |

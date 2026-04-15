@@ -22,14 +22,13 @@ from .factory import (
     get_retrievers_for_subject,
 )
 from .knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
-from .llamaindex_adapter import ATMEmbedding, ATMKnowledgeRetriever, ATMVectorStore, build_knowledge_retriever
+from .llamaindex_adapter import ATMKnowledgeRetriever, ATMVectorStore, build_knowledge_retriever
 from .readers import get_registered_reader_names
 from .retrievers import get_registered_retriever_names
 from .source_curation import SourceCurator
 from .types import ScrapedPage, SearchResult, WebSearchResult
 
 __all__ = [
-    "ATMEmbedding",
     "ATMKnowledgeRetriever",
     "ATMVectorStore",
     "ContextCompressor",

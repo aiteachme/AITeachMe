@@ -304,8 +304,13 @@ def test_research_conductor_falls_back_to_web_reading_and_purifies() -> None:
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
-        del max_workers
+    async def fake_read_urls(
+        urls: list[str],
+        *,
+        max_workers: int | None = None,
+        timeout_s: float | None = None,
+    ) -> list[ScrapedPage]:
+        del max_workers, timeout_s
         return [reader.pages[url] for url in urls]
 
     with patch("app.workflows.digest.docgen.runtime.chapter_context.LocalRAGRetriever", new=lambda **_kwargs: local_retriever), patch(
@@ -371,8 +376,13 @@ def test_research_conductor_enqueues_gap_queries_when_required_elements_are_miss
     async def no_sub_queries(*_args, **_kwargs) -> list[str]:
         return []
 
-    async def fake_read_urls(urls: list[str], *, max_workers: int | None = None) -> list[ScrapedPage]:
-        del max_workers
+    async def fake_read_urls(
+        urls: list[str],
+        *,
+        max_workers: int | None = None,
+        timeout_s: float | None = None,
+    ) -> list[ScrapedPage]:
+        del max_workers, timeout_s
         return [
             ScrapedPage(
                 url=url,

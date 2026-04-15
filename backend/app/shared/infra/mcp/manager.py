@@ -241,3 +241,6 @@ def get_mcp_manager() -> MCPManager:
     if _manager is None:
         _manager = MCPManager()
     return _manager
+
+
+__all__ = ["MCPManager", "MCPServer", "MCPTool", "get_mcp_manager"]

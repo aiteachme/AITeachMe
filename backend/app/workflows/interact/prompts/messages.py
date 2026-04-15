@@ -41,16 +41,13 @@ def build_chat_messages(
         mistakes_context=_format_mistakes_context(recent_mistakes),
         selected_context=_format_selected_context(selected_context, source_chunk_id),
     )
-    history_messages = manager.truncate_messages(
-        messages=[
-            {
-                "role": ASSISTANT if item.role == "assistant" else USER,
-                "content": item.content,
-            }
-            for item in recent_messages
-        ],
-        max_tokens=manager.budget.chat_history,
-    )
+    history_messages = [
+        {
+            "role": ASSISTANT if item.role == "assistant" else USER,
+            "content": item.content,
+        }
+        for item in recent_messages
+    ]
     retrieval_chunks = [format_retrieval_context_item(result) for result in retrieval_results]
     return manager.build_context(
         system_prompt=system_prompt,

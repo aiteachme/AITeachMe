@@ -66,3 +66,11 @@ def test_context_window_module_exports_budget_helpers() -> None:
 
     assert TokenBudget().total == 4000
     assert callable(ContextWindowManager.estimate_tokens)
+
+
+def test_search_package_does_not_re_export_embedding_adapter() -> None:
+    import app.shared.infra.embedding as embedding
+    import app.shared.infra.search as search
+
+    assert hasattr(embedding, "ATMEmbedding")
+    assert not hasattr(search, "ATMEmbedding")

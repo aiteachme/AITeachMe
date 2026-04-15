@@ -20,7 +20,7 @@ from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.search.llamaindex_adapter.embedding import ATMEmbedding
+from app.shared.infra.embedding import ATMEmbedding
 from app.shared.infra.search.llamaindex_adapter.reranker import ATMReranker
 from app.shared.infra.search.llamaindex_adapter.vector_store import ATMVectorStore
 
