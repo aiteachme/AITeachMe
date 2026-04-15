@@ -142,6 +142,12 @@ def build_disabled_binding(
     )
 
 
+def get_postgres_vector_ref() -> str:
+    """Return the canonical pgvector storage target."""
+
+    return _POSTGRES_VECTOR_REF
+
+
 __all__ = [
     "SubjectEmbeddingBinding",
     "SubjectEmbeddingMode",
@@ -149,16 +155,10 @@ __all__ = [
     "build_disabled_binding",
     "build_enabled_binding",
     "build_subject_vector_table_name",
-    "get_postgres_vector_ref",
     "dump_subject_settings",
     "get_legacy_vector_table_name",
+    "get_postgres_vector_ref",
     "get_subject_embedding_binding",
     "load_subject_settings",
     "set_subject_embedding_binding",
 ]
-
-
-def get_postgres_vector_ref() -> str:
-    """Return the canonical pgvector storage target."""
-
-    return _POSTGRES_VECTOR_REF

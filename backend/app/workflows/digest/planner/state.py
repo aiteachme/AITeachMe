@@ -29,8 +29,9 @@ class BuildPlannerState(TypedDict, total=False):
     plan: dict[str, Any]
     plan_summary: str
     workflow_elapsed_ms: int
-    runtime_steps: list[dict[str, Any]]
-    _runtime_step_starts: dict[str, float]
+    load_ms: int
+    ground_ms: int
+    draft_ms: int
     planner_generation_mode: str
     progress_callback: Any
     token_callback: Any

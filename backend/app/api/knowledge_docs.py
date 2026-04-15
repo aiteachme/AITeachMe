@@ -85,12 +85,7 @@ def _planner_stream_response(
             async def progress_callback(payload: dict[str, object]) -> None:
                 await emitter.emit_event(
                     "status",
-                    {
-                        **payload,
-                        "stage": str(payload.get("node_name") or "node"),
-                        "detail": str(payload.get("detail") or "").strip()
-                        or _planner_status_detail(payload),
-                    },
+                    payload,
                 )
 
             async def token_callback(token: str) -> None:
@@ -115,7 +110,6 @@ def _planner_stream_response(
                         else "Plan generated."
                     ),
                     "elapsed_ms": elapsed_ms,
-                    "workflow_elapsed_ms": elapsed_ms,
                 },
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})

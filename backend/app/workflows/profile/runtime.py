@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import structlog
+from langsmith import traceable
 
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
-from app.shared.infra.observability import llm_trace_scope
 from app.schemas.llm import SYSTEM, USER
 from app.workflows.profile.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 
@@ -20,6 +20,7 @@ _ADVISOR_SYSTEM_PROMPT = "\u4f60\u662f\u4e00\u540d\u5b66\u4e60\u987e\u95ee\u3002
 _BULLET_PREFIX_CHARS = "0123456789.\u3001- "
 
 
+@traceable(name="profile.generate_report_suggestions", run_type="chain")
 async def generate_report_suggestions(
     *,
     subject: str,
@@ -41,19 +42,13 @@ async def generate_report_suggestions(
         ),
     )
     try:
-        with llm_trace_scope(
-            subject=subject,
-            workflow="profile.report",
-            lane="profile",
-            node="generate_report_suggestions",
-        ):
-            result = await acompletion(
-                messages=[
-                    {"role": SYSTEM, "content": _ADVISOR_SYSTEM_PROMPT},
-                    {"role": USER, "content": prompt},
-                ],
-                task_type=TaskType.SUMMARIZE,
-            )
+        result = await acompletion(
+            messages=[
+                {"role": SYSTEM, "content": _ADVISOR_SYSTEM_PROMPT},
+                {"role": USER, "content": prompt},
+            ],
+            task_type=TaskType.SUMMARIZE,
+        )
         lines = [
             line.lstrip(_BULLET_PREFIX_CHARS).strip()
             for line in result.splitlines()

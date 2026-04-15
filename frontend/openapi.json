@@ -5976,6 +5976,38 @@
         ],
         "title": "BuildPlannerPlanResponse"
       },
+<<<<<<< HEAD
+=======
+      "BuildPlannerRuntimeStatsResponse": {
+        "properties": {
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "default": 0
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerStepStatsResponse"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "generation_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Mode"
+          }
+        },
+        "type": "object",
+        "title": "BuildPlannerRuntimeStatsResponse"
+      },
+>>>>>>> origin/main
       "BuildPlannerSessionResponse": {
         "properties": {
           "session_id": {
@@ -6032,6 +6064,32 @@
         ],
         "title": "BuildPlannerSessionResponse"
       },
+<<<<<<< HEAD
+=======
+      "BuildPlannerStepStatsResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "BuildPlannerStepStatsResponse"
+      },
+>>>>>>> origin/main
       "BuildPlannerTurnResponse": {
         "properties": {
           "id": {

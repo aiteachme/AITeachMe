@@ -1,69 +1,163 @@
-﻿# Infra 分层说明
+# Infra 分层说明
 
 最后更新：2026-04-15
 
-`app.shared.infra` 是后端共享基础设施层，负责提供可复用的底层能力，以及跨 workflow 共享的作者侧支撑，但不承载具体业务引擎实现。
+`app.shared.infra` 是后端共享基础设施层。它负责把数据库、存储、检索、工具、LLM、workflow runtime、observability 这些通用能力接稳，但不负责教学语义，也不负责业务流程编排。
 
 一句话理解：
-> `infra` 负责“通用能力怎么接”，`workflows` 负责“具体业务流程怎么跑”。
 
-## 重点入口
+> `infra` 负责“能力怎么接”，`teaching` 负责“怎么教”，`workflows` 负责“流程怎么跑”。
 
-- 配置与环境：`config/`、`env_support.py`、`runtime/`
-- 数据与存储：`database.py`、`storage/`
-- LLM 能力：`llm_support/`
-- 搜索与读取：`search/`
-- 工具与技能：`tools/`、`skills/`
-- 记忆：`memory/`
-- 观测：`observability/`
-- 执行契约：`execution/`
-- workflow 作者侧公共支撑：`workflow/`
+## 当前边界
 
-## observability 的新约定
+推荐把依赖方向理解成：
 
-`shared/infra/observability` 现在只保留两类主模块：
+```text
+api -> services
+services -> workflows
+services -> teaching
+workflows -> teaching
+services/workflows/teaching -> shared.infra -> shared.kernel
+```
 
-- `trace.py`
-  - LangSmith tracing
-  - ambient trace context
-  - `@traceable` wrapper
-  - metadata / tags 构建
-  - 输入输出脱敏
-- `track.py`
-  - 内存态 LLM call tracking
-  - 轻量 span 记录
+两条硬边界：
 
-也就是说，底层 trace / track 只有这一套真实实现，不再在别的包里重复实现第二套。
+- `app.shared.infra` 不直接 import `app.teaching`
+- `app.shared.infra` 不直接 import `app.services`
 
-## workflow 包的定位
+## 与 Planner / DocGen 的关系
 
-`shared/infra/workflow/` 是共享的 workflow authoring / runtime 支撑层，不是业务 workflow 本身。
+当前知识文档主线是：
 
-业务代码默认应从 `app.shared.infra.workflow` 导入公共接口；
-`authoring.py`、`steps.py`、`runtime.py` 等文件属于实现分工，不应成为业务层首选导入路径。
+```text
+api/knowledge_docs.py
+-> services/knowledge_docs/build_planner_service.py
+-> app.workflows.digest.planner
+-> confirmed_plan
+-> services/knowledge_docs/digest_service.py
+-> app.workflows.digest.run_docgen_workflow
+```
 
-它只放这些公共能力：
+`infra` 给这条链路提供的是：
 
-- `context.py`：`WorkflowContext`
-- `events.py`：轻量事件总线
-- `runtime.py`：`run_state_graph()` / `invoke_state_graph()`
-- `steps.py`：`tracked_step()` 与 runtime steps
-- `authoring.py`：`workflow_tracer`、`WorkflowGraphExport`、`traceable_run`
-- `result.py`：`WorkflowResult`
-- `types.py`：基础类型别名
+| 能力 | 当前稳定入口 | 对 planner / docgen 的作用 |
+| --- | --- | --- |
+| 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
+| 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索 |
+| 工具 | `app.shared.infra.tools` | 统一工具注册表与执行入口 |
+| 技能 | `app.shared.infra.skills` | skillpack 渲染、推荐 tags |
+| workflow 支撑 | `app.shared.infra.workflow` | workflow root / node / progress |
+| 执行契约 | `app.shared.infra.execution` | 长执行单元共享边界 |
+| 存储 | `app.shared.infra.storage` | 统一文件读写与内容存储 |
+| 观测 | `app.shared.infra.observability` | LangSmith tracing 与 LLM 统计底层实现 |
 
-## execution 的定位
+重点是：
 
-`execution/units.py` 是共享执行契约层，用于长运行或可复用执行单元。
-它属于 infra，因为这里表达的是“统一执行边界”，不是某条具体 workflow 的 runtime。
+- planner / docgen 可以依赖 `infra`
+- `infra` 不反向感知 planner / docgen 的业务语义
 
-## 与 workflows 的边界
+## workflow / observability 公开接口
 
-- `app.workflows` 只保留业务引擎：`ingest`、`digest`、`interact`、`examine`、`profile`
-- `app.shared.infra.workflow` 提供 workflow 共用作者侧支撑
-- `app.shared.infra.observability` 提供唯一的底层 trace / track 能力
-- `app.shared.infra.execution` 提供共享执行单元契约
+现在 workflow 相关公开接口已经极简收口。
+
+### `app.shared.infra.workflow`
+
+推荐导入面：
+
+```python
+from app.shared.infra.workflow import (
+    WorkflowContext,
+    WorkflowGraphExport,
+    emit_progress,
+    invoke_state_graph,
+    run_state_graph,
+    workflow_tracer,
+)
+```
+
+分工：
+
+- `run_state_graph(...)` / `invoke_state_graph(...)`
+  workflow root 入口
+- `workflow_tracer(...).node(handler, ...)`
+  workflow node 接线
+- `emit_progress(...)`
+  前端阶段事件
+
+### `app.shared.infra.observability`
+
+这个包现在只保留极小的公共 trace 原语。
+
+workflow 作者通常不需要从这里直接导入。
+
+如果是 infra 或服务编排层，才会少量使用：
+
+- `langsmith_trace`
+- `langsmith_tracing_scope`
+- `llm_trace_scope`
+
+像下面这些能力虽然仍存在，但属于 infra-private：
+
+- `traceable_with_context`
+- LangSmith sanitizer helpers
+- `build_langsmith_extra`
+- `trace_substep`
+
+应该直接从子模块导入，而不是继续把它们当成包级公开 API。
+
+## 当前最重要的目录
+
+| 目录或文件 | 作用 |
+| --- | --- |
+| `config/`、`env_support.py`、`runtime/` | 运行模式、配置、环境变量、路径 |
+| `database/` | 数据库引擎、Session、向量表能力 |
+| `storage/` | 本地存储 / S3 / 内容存储接口 |
+| `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
+| `embedding/` | canonical embedding 调用入口与框架适配 |
+| `search/` | 本地检索、retriever、reader、source curation |
+| `subject/` | 学科向量配置与只读能力 |
+| `mcp/` | MCP 协议接入与外部工具服务管理 |
+| `tools/` | 工具注册、执行、toolpack 加载 |
+| `skills/` | `SKILL.md` 风格技能包渲染与推荐 |
+| `memory/` | 共享记忆与学习档案 |
+| `workflow/` | workflow authoring/runtime/progress 公共支撑 |
+| `execution/` | 共享执行契约与安全边界 |
+| `observability/` | LangSmith tracing 与 LLM 统计底层实现 |
+
+## 什么不该放进 Infra
+
+下面这些内容不要继续回流到 `infra`：
+
+- workflow graph、state、node、router、subgraph
+- workflow 专属 runtime
+- teaching documents、教学表达块、教学上下文拼装
+- 业务场景专属 prompt
+- 某条业务链自己的兜底策略
+- 第二套 tool registry / tracing / progress 框架
+
+判断方法很简单：
+
+- 离开具体业务还能成立，才可能是 `infra`
+- 如果在描述“流程顺序”，应该去 `workflows`
+- 如果在描述“教学表达”，应该去 `teaching`
+
+## 阅读顺序
+
+第一次读 `infra`，建议按下面顺序：
+
+1. `env_support.py`
+2. `config/settings.py`
+3. `runtime/mode.py` 与 `runtime/paths.py`
+4. `database/__init__.py`
+5. `llm_support/__init__.py`
+6. `embedding/__init__.py`
+7. `storage/content_store.py`
+8. `subject/`
+9. `search/__init__.py`
+10. `tools/__init__.py`
+11. `workflow/__init__.py`
+12. `observability/__init__.py` 与 `execution/__init__.py`
 
 ## 一句话总结
 
-`infra` 负责共享能力和统一边界；`workflows` 只负责具体业务编排。
+`infra` 是共享能力接入层。它要尽量稳定、可复用、无业务反向依赖，为 planner / docgen 等上层链路提供可靠底座，但不替它们决定教学策略或流程顺序。

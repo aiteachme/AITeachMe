@@ -31,7 +31,6 @@ EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
         "真题 解析",
     ],
     "knowledge": [
-        "site:wikipedia.org",
         "site:baike.baidu.com",
         "site:mathworld.wolfram.com",
     ],

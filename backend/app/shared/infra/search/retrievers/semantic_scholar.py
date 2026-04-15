@@ -32,7 +32,7 @@ class SemanticScholarRetriever(BaseRetriever):
         if api_key:
             headers["x-api-key"] = api_key
         try:
-            async with httpx.AsyncClient(timeout=settings.search_scrape_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
                 response = await client.get(_SEMANTIC_SCHOLAR_URL, params=params, headers=headers)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior
@@ -67,3 +67,4 @@ class SemanticScholarRetriever(BaseRetriever):
 
 
 __all__ = ["SemanticScholarRetriever"]
+

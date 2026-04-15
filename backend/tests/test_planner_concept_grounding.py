@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from app.shared.infra.search.types import SearchResult
+from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.planner.concept_grounding import (
     build_planner_concept_queries,
@@ -85,7 +85,7 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
                 source="local_rag",
             )
         ],
-        ("duckduckgo", f"{queries[0]} 百科 定义"): [
+        ("duckduckgo", queries[0]): [
             SearchResult(
                 url="https://example.com/gaodengshuxue",
                 title="高等数学 - 百度百科",
@@ -93,7 +93,7 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
                 source="duckduckgo",
             )
         ],
-        ("duckduckgo", f"{queries[1]} 百科 定义"): [
+        ("duckduckgo", queries[1]): [
             SearchResult(
                 url="https://example.com/jixian",
                 title="极限 - 百度百科",
@@ -118,6 +118,26 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
         "app.workflows.digest.planner.concept_grounding.get_retriever",
         lambda name, **kwargs: FakeRetriever(name),
     )
+    monkeypatch.setattr(
+        "app.workflows.digest.planner.concept_grounding.read_urls",
+        lambda urls: asyncio.sleep(
+            0,
+            result=[
+                ScrapedPage(
+                    url="https://example.com/gaodengshuxue",
+                    title="高等数学 - 百度百科",
+                    content="高等数学研究函数、极限、微分和积分的基础理论，并强调这些概念之间的结构关系。",
+                    success=True,
+                ),
+                ScrapedPage(
+                    url="https://example.com/jixian",
+                    title="极限 - 百度百科",
+                    content="极限描述变量在某个过程中逐步逼近目标值，是连续与导数的前置概念。",
+                    success=True,
+                ),
+            ],
+        ),
+    )
 
     briefing = asyncio.run(
         collect_planner_concept_briefing(
@@ -129,11 +149,13 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
 
     assert briefing.local_hit_count == 2
     assert briefing.web_hit_count == 2
+    assert briefing.web_read_count == 2
     assert "快速概念检索锚点：" in briefing.briefing
     assert "[本地/local_rag]" in briefing.briefing
     assert "[外部/duckduckgo]" in briefing.briefing
     assert "建议优先覆盖的概念锚点" in briefing.briefing
     assert "极限" in briefing.topic_hints
+    assert "结构关系" in briefing.briefing
 
 
 def test_planner_graph_compiles_with_ground_concepts_node() -> None:

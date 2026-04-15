@@ -34,7 +34,7 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/shared/infra/database.py` | `get_engine()` 按 `APP_MODE` 分支创建 SQLite/PostgreSQL 引擎（`_build_sqlite_engine` / `_build_postgres_engine`）；`init_db()` 拆分为 `_init_local_sqlite_db()` + `_init_postgres_db()`；新增 `is_sqlite()`, `is_postgres()` 辅助函数；`is_vec_ready()` 在 PostgreSQL 下始终返回 True；`_init_postgres_db()` 自动创建 pgvector 扩展、`retrieval_chunk.embedding` 向量列和 HNSW 索引 |
+| `backend/app/shared/infra/database/core.py` | `get_engine()` 按 `APP_MODE` 分支创建 SQLite/PostgreSQL 引擎（`_build_sqlite_engine` / `_build_postgres_engine`）；`init_db()` 拆分为 `_init_local_sqlite_db()` + `_init_postgres_db()`；新增 `is_sqlite()`, `is_postgres()` 辅助函数；`is_vec_ready()` 在 PostgreSQL 下始终返回 True；`_init_postgres_db()` 自动创建 pgvector 扩展、`retrieval_chunk.embedding` 向量列和 HNSW 索引 |
 | `backend/app/repositories/knowledge/knowledge_repo.py` | `bulk_insert_embeddings()` 拆分为 `_pg_bulk_insert_embeddings()` + `_sqlite_bulk_insert_embeddings()`；`vector_search()` 拆分为 `_pg_vector_search()`（余弦相似度 `<=>` 操作符）+ `_sqlite_vector_search()`（`MATCH` 操作符）；`delete_embeddings_by_chunk_ids()` PostgreSQL 分支将 embedding 列置 NULL |
 | `backend/app/repositories/profile_repo.py` | `upsert_knowledge_state()` 从硬编码 `sqlite_insert` 改为按 `is_postgres()` 分支使用 `pg_insert` / `sqlite_insert` |
 

@@ -10,7 +10,7 @@ from app.schemas.knowledge import (
     KnowledgeOverviewStats,
 )
 from app.services.knowledge_graph.module import KnowledgeGraphModule
-from app.services.subject_embedding_service import get_subject_vector_status_by_slug
+from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
 
 _DEFAULT_OVERVIEW_SECTIONS = {

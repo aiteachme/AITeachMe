@@ -156,7 +156,7 @@
 
 ### 4.1 数据库现状
 
-数据库实现位于 `app/shared/infra/database.py`：
+数据库实现位于 `app/shared/infra/database/core.py`（稳定导入面仍是 `app.shared.infra.database`）：
 
 - `get_engine()` 已按 `APP_MODE` 自动选择 SQLite 或 PostgreSQL
 - `init_db()` 已按方言初始化（SQLite + sqlite-vec / PostgreSQL + pgvector）
@@ -309,7 +309,7 @@ ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径�
 
 主要文件：
 
-- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 
 应拆出：
 
@@ -403,7 +403,7 @@ EMBEDDING_MODEL=text-embedding-v3
 必改核心文件通常包括：
 
 - [`config.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/config.py)
-- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 - [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`raw_file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/raw_file.py)
@@ -443,7 +443,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 主要涉及：
 
-- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 - [`knowledge_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/knowledge/knowledge_repo.py)
 - [`profile.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/profile.py)
 
@@ -474,7 +474,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 高优先级文件通常包括：
 
-- [`database.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/database.py)
+- [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 - [`knowledge_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/knowledge/knowledge_repo.py)
 - [`profile_repo.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/repositories/profile_repo.py)
 - [`profile.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/models/profile.py)

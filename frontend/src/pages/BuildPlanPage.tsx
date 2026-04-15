@@ -66,7 +66,6 @@ const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
 
 interface PlannerRuntimeStep {
   name: string;
-  kind: "node" | "tool" | "substep" | "llm";
   elapsed_ms: number;
   status?: string;
 }
@@ -171,14 +170,6 @@ function formatPlannerNodeLabel(stepName: string): string {
       return "概念预检索";
     case "draft_plan":
       return "生成方案";
-    case "prepare_shared_inputs":
-      return "准备资料上下文";
-    case "concept_grounding":
-      return "补充概念锚点";
-    case "plan_prompt_build":
-      return "构建规划提示词";
-    case "planner_stream_generate":
-      return "流式生成草案";
     default:
       return stepName;
   }
@@ -188,7 +179,7 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
   if (!runtimeStats) {
     return [];
   }
-  return (runtimeStats.steps ?? []).map((step) => [step.name, step.elapsed_ms]);
+  return (runtimeStats.steps ?? []).slice(0, 3).map((step) => [step.name, step.elapsed_ms]);
 }
 
 function extractPlannerPreviewText(raw: string): string {
@@ -250,15 +241,12 @@ function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在生成构建方案...";
   }
-  if (typeof payload.message === "string" && payload.message.trim()) {
-    return payload.message.trim();
-  }
   if (typeof payload.detail === "string" && payload.detail.trim()) {
     return payload.detail.trim();
   }
   if (typeof payload.step === "string" && payload.step.trim()) {
     const label = formatPlannerNodeLabel(payload.step.trim());
-    return payload.status === "failed" ? `${label} 失败。` : `${label} 进行中...`;
+    return `${label} 进行中...`;
   }
   return "正在生成构建方案...";
 }
@@ -1184,7 +1172,6 @@ export function BuildPlanPage() {
                                     总耗时 {formatElapsedMs(message.runtimeStats.elapsed_ms)}
                                   </span>
                                   {listPlannerNodeTimings(message.runtimeStats)
-                                    .slice(0, 4)
                                     .map(([nodeName, elapsedMs]) => (
                                       <span
                                         key={`${message.id}-${nodeName}`}

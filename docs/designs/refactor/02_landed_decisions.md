@@ -36,20 +36,26 @@
 - Asset sidecar：Mermaid / image / interactive HTML 最小执行链已落地
 - Mode awareness：`sprint / systematic` 已进入 contract、research、writer、practice layer
 
-## Workflow Tracing（已落地）
+## Workflow Observability（已落地）
 
-统一收口为 4 个入口：
+统一收口为两层语义：
 
-1. `run_state_graph(...)` — graph 执行
-2. `workflow_tracer(...).node(...)` — node 装饰
-3. `@traceable_run(...)` — 稳定 prompt/helper/retriever
-4. `tracked_step(...)` — node 内部子步骤
+1. `LangSmith trace` — 给研发排障
+2. `progress` — 给前端展示
+
+workflow 作者当前只保留 3 个公开入口：
+
+1. `run_state_graph(...)` / `invoke_state_graph(...)`
+2. `workflow_tracer(...).node(handler, ...)`
+3. `emit_progress(...)`
+
+prompt / helper tracing 统一直接使用官方 `@traceable`。
 
 补充边界：
 
-- 底层 tracing / tracking 的真实实现统一在 `app.shared.infra.observability`
-- `app.shared.infra.workflow` 只保留 workflow authoring / runtime 支撑
-- `workflow_tracer`、`traceable_run`、`WorkflowGraphExport` 的实现位于 `app.shared.infra.workflow.authoring`，业务侧公共入口统一是 `app.shared.infra.workflow`
+- 底层 tracing 的真实实现统一在 `app.shared.infra.observability`
+- `app.shared.infra.workflow` 只保留 workflow authoring / runtime / progress 支撑
+- `traceable_with_context`、`llm_trace_scope` 等能力保留在 infra-private 边界，不再作为 workflow 公开规范
 
 ## Teaching Tools（已落地）
 

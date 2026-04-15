@@ -81,7 +81,10 @@ async def acompletion_with_fallback(
     """Run one text or structured completion with strict failure semantics."""
 
     resolved_tier = tier or resolve_llm_tier(task_type)
-    from app.shared.infra.observability import get_llm_trace_context, langsmith_tracing_scope
+    from app.shared.infra.observability.trace import (
+        get_llm_trace_context,
+        langsmith_tracing_scope,
+    )
 
     trace = get_llm_trace_context()
     metadata = {

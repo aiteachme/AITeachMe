@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import structlog
 
 from app.shared.infra.tools.tool_loader import load_external_toolpacks
@@ -16,15 +18,42 @@ _PROJECT_TOOL_MODULES = (
     "app.teaching.tools",
 )
 _project_tool_modules_loaded = False
+_tool_registry_sync_hooks: list[Callable[[], None]] = []
+
+
+def register_tool_registry_sync_hook(hook: Callable[[], None]) -> None:
+    """Register one sync hook for project-owned tool catalogs.
+
+    Hooks are called after project tool modules finish loading and whenever
+    callers ask the shared layer to re-sync against a recreated registry.
+    """
+
+    if hook in _tool_registry_sync_hooks:
+        return
+
+    _tool_registry_sync_hooks.append(hook)
+
+    if _project_tool_modules_loaded:
+        try:
+            hook()
+        except Exception as exc:  # pragma: no cover - defensive sync path
+            logger.warning(
+                "tool_registry_sync_hook_failed",
+                hook=getattr(hook, "__name__", repr(hook)),
+                error=str(exc),
+            )
 
 
 def _sync_project_owned_registrations() -> None:
-    try:
-        from app.teaching.teaching import sync_teaching_tool_registry
-
-        sync_teaching_tool_registry()
-    except Exception as exc:  # pragma: no cover - defensive sync path
-        logger.warning("project_tool_registry_sync_failed", error=str(exc))
+    for hook in list(_tool_registry_sync_hooks):
+        try:
+            hook()
+        except Exception as exc:  # pragma: no cover - defensive sync path
+            logger.warning(
+                "tool_registry_sync_hook_failed",
+                hook=getattr(hook, "__name__", repr(hook)),
+                error=str(exc),
+            )
 
 
 def ensure_project_tool_modules_loaded() -> None:
@@ -67,5 +96,6 @@ async def run_agent_tool(name: str, **kwargs):
 __all__ = [
     "ensure_project_tool_modules_loaded",
     "list_agent_tools",
+    "register_tool_registry_sync_hook",
     "run_agent_tool",
 ]

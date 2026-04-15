@@ -46,8 +46,10 @@ from app.shared.infra.exceptions import (
 from app.teaching.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
-from app.workflows.digest.planner.models import normalize_planner_payload
-from app.workflows.digest.planner.runtime import run_build_planner_workflow
+from app.workflows.digest.planner import (
+    normalize_planner_payload,
+    run_build_planner_workflow,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -155,22 +157,25 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
         return None
 
     steps: list[BuildPlannerStepStatsResponse] = []
-    for item in list(final_state.get("runtime_steps") or []):
-        if not isinstance(item, dict):
+    for name, field_name in (
+        ("load_context", "load_ms"),
+        ("ground_concepts", "ground_ms"),
+        ("draft_plan", "draft_ms"),
+    ):
+        elapsed_ms = int(final_state.get(field_name, 0) or 0)
+        if elapsed_ms <= 0:
             continue
         steps.append(
             BuildPlannerStepStatsResponse(
-                name=str(item.get("name") or ""),
-                kind=str(item.get("kind") or "substep"),
-                elapsed_ms=int(item.get("elapsed_ms", 0) or 0),
-                status=str(item.get("status") or "ok"),
+                name=name,
+                elapsed_ms=elapsed_ms,
+                status="ok",
             )
         )
 
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
         steps=steps,
-        fallback_used=False,
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
 
