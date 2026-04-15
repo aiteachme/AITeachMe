@@ -174,14 +174,15 @@ digest/
   docgen/
   knowledge_graph/
   unified/
-  _shared/
+  shared/
 ```
 
 说明：
 
 - `planner/` 与 `docgen/` 是当前优先收口的主链路
 - `knowledge_graph/` 与 `unified/` 先对齐门面与命名
-- 历史 `shared/` 仍保留兼容；新代码优先走 `_shared/`
+- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / primitives 等复用能力
+- 不再保留只转发到 `shared/` 的 `_shared/` 空门面
 
 ### 7.2 ingest
 
@@ -191,14 +192,16 @@ ingest/
   README.md
   fast_parse/
   deep_enhance/
-  _shared/
+  parsing/
+  recovery.py
 ```
 
 说明：
 
 - `run_parse_file_workflow(...)` 仍保留在模块层，作为跨两条链路的稳定入口
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
-- 历史 `parsing/`、`recovery.py` 保留兼容；新代码优先走 `_shared/`
+- `parsing/` 是当前两条链路共享的解析实现，`recovery.py` 是启动恢复入口
+- 不再保留只转发到 `parsing/`、`recovery.py` 的 `_shared/` 空门面
 
 ### 7.3 interact
 
