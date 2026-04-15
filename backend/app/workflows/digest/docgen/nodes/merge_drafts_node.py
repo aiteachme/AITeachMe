@@ -12,7 +12,7 @@ from app.workflows.digest.docgen.nodes.common import (
     publish_docgen_progress,
     resolve_docgen_dependency,
 )
-from app.workflows.digest.docgen.internal.publish import build_merged_markdown
+from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 

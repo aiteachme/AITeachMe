@@ -20,13 +20,13 @@ from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.web_reading import read_urls
-from app.workflows.digest.docgen.internal.query_planning import (
+from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
     enrich_queries_for_education,
     generate_sub_queries,
 )
-from app.workflows.digest.prompts import build_docgen_research_purify_messages
+from app.workflows.digest.docgen.prompts import build_docgen_research_purify_messages
 
 _LOW_VALUE_SOURCE_MARKERS = (
     "baidu.com/zhidao",

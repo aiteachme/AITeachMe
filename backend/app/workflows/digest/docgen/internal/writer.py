@@ -15,7 +15,10 @@ from app.teaching.documents import (
     ensure_chapter_learning_scaffold,
     resolve_effective_chapter_title,
 )
-from app.workflows.digest.prompts import build_docgen_heading_repair_messages, build_docgen_writer_messages
+from app.workflows.digest.docgen.prompts import (
+    build_docgen_heading_repair_messages,
+    build_docgen_writer_messages,
+)
 
 _PLACEHOLDER_TOKEN_MAP = {
     "mermaid": "[MERMAID:",

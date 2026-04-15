@@ -1,12 +1,12 @@
-"""Planner internal helpers."""
+"""Planner lane-local helpers."""
 
-from app.workflows.digest.planner.internal.grounding import (
+from app.workflows.digest.planner.lib.grounding import (
     PlannerConceptBriefing,
     PlannerConceptEvidence,
     build_planner_concept_queries,
     collect_planner_concept_briefing,
 )
-from app.workflows.digest.planner.internal.plans import (
+from app.workflows.digest.planner.lib.plans import (
     BuildPlannerDraft,
     PlannerChapterPlan,
     build_fallback_plan,

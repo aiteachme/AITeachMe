@@ -16,14 +16,17 @@ from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
 from app.teaching.documents import coerce_resolved_chapter_title
-from app.workflows.digest.planner.internal.plans import (
+from app.workflows.digest.planner.lib.plans import (
     _dedupe_chapter_plan_titles,
     _resolve_subject_display_name,
     build_fallback_plan,
     normalize_planner_draft,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.prompts import build_planner_chapter_title_messages, build_planner_prompt
+from app.workflows.digest.planner.prompts import (
+    build_planner_chapter_title_messages,
+    build_planner_prompt,
+)
 from app.workflows.digest.shared.contracts import (
     resolve_digest_course_type,
     resolve_planner_retrieval_profile,

@@ -8,7 +8,7 @@ Stable public surface:
 - `get_langgraph_dev_docgen_graph`
 
 Implementation details such as concrete node builders stay inside
-`docgen.graph`, `docgen.nodes`, and `docgen.runtime`.
+`docgen.graph`, `docgen.nodes`, `docgen.prompts`, and `docgen.lib`.
 """
 
 from app.workflows.digest.docgen.graph import (

@@ -10,7 +10,7 @@ from app.utils.docgen_store import append_knowledge_build_recent_event, upsert_k
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.nodes.common import get_effective_chapter_title, publish_docgen_progress
-from app.workflows.digest.docgen.internal.publish import (
+from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
     stage_knowledge_docs,
 )

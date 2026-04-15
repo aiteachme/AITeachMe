@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.internal.grounding import collect_planner_concept_briefing
+from app.workflows.digest.planner.lib.grounding import collect_planner_concept_briefing
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.shared.models import SharedInputs
 
