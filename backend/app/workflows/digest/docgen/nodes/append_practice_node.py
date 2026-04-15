@@ -13,7 +13,7 @@ from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     publish_docgen_progress,
 )
-from app.workflows.digest.docgen.internal.publish import build_merged_markdown
+from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 

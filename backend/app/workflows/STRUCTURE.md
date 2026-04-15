@@ -2,205 +2,277 @@
 
 最后更新：2026-04-15
 
-`backend/app/workflows/` 下所有模块和链路，统一遵守本规范。
+本文是 `backend/app/workflows/` 的唯一权威结构文档。后续所有 workflow 模块都以这里为准收口。
 
-## 三层结构
+## 1. 目标
 
-```text
-workflows/
-  digest/                 ← 模块层（对齐五大引擎：ingest/digest/interact/examine/profile）
-    planner/              ← 链路层（一条可独立跑的 graph）
-    docgen/               ← 链路层
-```
+`workflows/` 负责组织业务编排，不负责承载 HTTP、数据库仓储、通用基础设施或教学原子能力本身。
 
-- **模块层**：五大引擎，一个模块 = 一个引擎
-- **链路层**：模块内一条独立的 workflow graph
-- **节点层**：链路里的一步 graph node
-
-## 核心原则
-
-1. 相同职责永远落在相同位置。
-2. 没有这类职责，就不要为了对称硬造一层。
-3. 链路 root 只放稳定入口和数据骨架，业务逻辑全部下沉。
-
----
-
-## 模块标准模板
+推荐依赖方向：
 
 ```text
-module_name/
-  __init__.py              # lazy-import 各链路对外 API
-  README.md                # 模块定位 + 链路清单 + 主链路说明（≤60 行）
-  lane_a/                  # 链路
-  lane_b/                  # 链路
-  _shared/                 # 可选：仅当 ≥2 条链路真共享时建
-    <topic>.py
+api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
 ```
 
-### 模块根强制约束
+核心原则只有三条：
 
-**只允许**：`__init__.py`、`README.md`、链路子目录、可选 `_shared/`。
+1. 同一职责永远落在同一位置。
+2. 没有独立职责的层，不要为了对称硬造一层。
+3. 模块根只做聚合，链路目录才是唯一执行单元。
 
-**禁止**：
-- ❌ `graph.py` / `state.py` / `runtime.py`（这些是链路级概念）
-- ❌ `events.py` / `exports.py`（对外走 `__init__.py`，事件进链路或 `_shared/`）
-- ❌ `prompts/` / `services/`（prompts 归链路；service 层属 `app/services/`）
-- ❌ 散落的业务文件
+## 2. 标准模板
 
-### `_shared/` 的硬规则
+### 2.1 多链路模块
 
-只有**被 ≥2 条链路真用到**的代码才进 `_shared/`。只 1 条链路用就必须下沉到那条链路的 `lib/`。这是防止 `_shared/` 变成垃圾桶的唯一办法。
-
-前缀下划线表示"模块私有"——外部不应该直接 `from digest._shared import ...`，要用就走链路对外 API。
-
-### 跨链路共享类型
-
-默认**不上提**。下游链路直接 `from ..producer_lane import SomeType`。更常见的情况是 service 层做胶水，两条链路互不感知。
-
----
-
-## 链路标准模板
+适用于 `digest`、`ingest`、`examine` 这类一个模块下包含多条独立 workflow 链路的场景。
 
 ```text
-lane/
-  __init__.py              # 对外门面：re-export run_*、公开类型、normalize 函数
-  README.md                # 链路说明（≤60 行）
-  graph.py                 # build_graph + run_workflow + 路由
-  state.py                 # State TypedDict + Input/Output schema + 对外 Pydantic 类型
-  events.py                # 可选：链路专属 progress 事件
-  nodes/                   # graph 节点实现
-    <action>.py
-  prompts/                 # 调 LLM 的 prompt builder / template
-    <action>.py
-  lib/                     # 节点调用的业务子逻辑
-    <topic>.py
-```
-
-### 各文件/目录职责
-
-| 位置 | 职责 |
-|---|---|
-| `__init__.py` | 对外稳定 API 的门面。re-export `run_xxx_workflow`、公开 Pydantic 类型、normalize 函数等。不写业务逻辑。 |
-| `graph.py` | 定义 `StateGraph`：节点注册、边、路由、Send 编排。同时提供 `run_xxx_workflow(...)` 作为执行入口（构造 `WorkflowContext`、初始 state、调 `run_state_graph`）。 |
-| `state.py` | 定义 `XxxState`（节点间流动的 TypedDict）+ `XxxInput`/`XxxOutput`（LangGraph Studio 投影）。如有对外 Pydantic 类型（service 层用）也放这里。 |
-| `nodes/` | 每个 graph 节点一个文件，文件名 = graph 节点名。导出 `build_<name>_node(*, context)`。 |
-| `prompts/` | 每个调 LLM 的节点一个文件，文件名和 `nodes/` 对齐。只放 prompt builder 和 template。 |
-| `lib/` | 节点调用的业务子逻辑，按主题命名（`publish.py`、`writer.py`、`grounding.py`）。链路太大时 `lib/` 内可按主题再分子目录。 |
-| `events.py` | 可选。链路专属的 progress 事件枚举和构造函数。 |
-
-### 链路根强制约束
-
-**禁止**：
-- ❌ `runner.py`（执行入口收进 `graph.py`）
-- ❌ `contracts.py`（对外类型收进 `state.py` + `__init__.py` re-export）
-- ❌ `internal/` / `runtime/` / `services/`（业务子逻辑全进 `lib/`）
-- ❌ 链路根直接挂 `publish.py` / `writer.py` / `grounding.py` 等业务文件
-- ❌ `nodes/common.py` 之外的任何 `nodes/` 直接挂非 node 文件
-
----
-
-## 命名硬规则
-
-| 对象 | 规则 | 例 |
-|---|---|---|
-| graph 节点名 | 小写蛇形，业务动作 | `load_context`, `draft_plan` |
-| node 文件 | `<节点名>.py`（不加 `_node` 后缀） | `draft_plan.py` |
-| node builder | `build_<节点名>_node` | `build_draft_plan_node` |
-| prompt 文件 | 和 node 文件同名 | `draft_plan.py` |
-| lib 文件 | 主题名词 | `writer.py`, `publish.py` |
-| 执行入口函数 | `run_<lane>_workflow` | `run_docgen_workflow` |
-| 图 builder 函数 | `build_<lane>_graph` | `build_docgen_graph` |
-
-三者（graph 节点名 / nodes 文件名 / builder 名）必须一一对应，肉眼可查。
-
----
-
-## 执行入口：`run_*` 放在 `graph.py` 里
-
-**不要**单独建 `runner.py`。执行入口函数直接放 `graph.py`，和 `build_graph` 做邻居。
-
-```python
-# graph.py
-def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
-    ...
-
-async def run_build_planner_workflow(*, subject, file_ids, ...) -> WorkflowResult[...]:
-    context = WorkflowContext(workflow_name="digest.planner", ...)
-    return await run_state_graph(
-        workflow_name="digest.planner",
-        graph_builder=lambda: build_planner_graph(context=context),
-        initial_state=create_planner_initial_state(...),
-        context=context,
-    )
-```
-
-理由：两者都是"以整张图为对象的顶层操作"（定义形状 vs 触发执行），配对自然。
-
----
-
-## 对外暴露：`__init__.py` 门面
-
-链路 `__init__.py` 只做 re-export：
-
-```python
-from app.workflows.digest.planner.graph import (
-    build_planner_graph,
-    run_build_planner_workflow,
-    get_langgraph_dev_planner_graph,
-)
-from app.workflows.digest.planner.state import (
-    BuildPlannerDraft,
-    PlannerChapterPlan,
-    normalize_planner_draft,
-    normalize_planner_payload,
-)
-
-__all__ = [
-    "BuildPlannerDraft",
-    "PlannerChapterPlan",
-    "build_planner_graph",
-    "get_langgraph_dev_planner_graph",
-    "normalize_planner_draft",
-    "normalize_planner_payload",
-    "run_build_planner_workflow",
-]
-```
-
-模块 `__init__.py` 再把链路 `__init__.py` 的东西 lazy re-export 一层，让上层可以：
-
-```python
-from app.workflows.digest import run_build_planner_workflow, run_docgen_workflow
-```
-
----
-
-## 示例：planner（小链路）
-
-```text
-planner/
+workflows/<module>/
   __init__.py
   README.md
-  graph.py                 # build_planner_graph + run_build_planner_workflow
-  state.py                 # BuildPlannerState + Input/Output + BuildPlannerDraft + normalize_*
+  <lane_a>/
+  <lane_b>/
+  _shared/                 # 仅当 >=2 条链路真实复用时才建立
+```
+
+模块根允许存在的内容：
+
+- `__init__.py`
+- `README.md`
+- 各链路目录
+- 可选 `_shared/`
+- 兼容层文件：仅用于迁移期保留旧导入面，例如旧的 `graph.py`、`runtime.py`
+
+模块根不再作为新增代码的落点：
+
+- 不再新增模块级 `prompts/`
+- 不再新增模块级 `nodes/`
+- 不再新增模块级 `exports.py`
+- 不再新增模块级 `events.py`
+- 不再新增模块级 `services/`
+
+### 2.2 单链路模块
+
+适用于 `interact`、`profile` 这类对外看起来是一个模块，但内部只有一条真实执行链路的场景。
+
+```text
+workflows/<module>/
+  __init__.py
+  README.md
+  <lane>/
+```
+
+当前标准：
+
+- `interact/chat/`
+- `profile/pipeline/`
+
+## 3. 链路模板
+
+每条链路目录都遵循同一骨架：
+
+```text
+workflows/<module>/<lane>/
+  __init__.py
+  README.md
+  graph.py
+  state.py
+  nodes/
+  prompts/
+  lib/
+  events.py                # 可选，仅当存在明确订阅方时才保留
+```
+
+### 3.1 各层职责
+
+- `__init__.py`
+  对外稳定门面，只做 re-export。
+- `README.md`
+  说明这条链路做什么、有哪些节点、上层该从哪里调用。
+- `graph.py`
+  唯一的图执行入口。负责：
+  - `build_<lane>_graph(...)`
+  - `create_<lane>_initial_state(...)`
+  - `run_<lane>_workflow(...)`
+  - 路由函数和 `Send` 编排
+- `state.py`
+  定义这条链路的内部 `TypedDict State`，必要时同时放 Studio 输入输出投影类型和对外公开 DTO。
+- `nodes/`
+  图上的顶层节点。一个节点一个文件。
+- `prompts/`
+  只放 prompt builder / template，不放节点逻辑。
+- `lib/`
+  节点内部调用的子逻辑，例如 `writer.py`、`publish.py`、`grounding.py`。
+- `events.py`
+  严格可选。只有存在明确消费方时才保留。
+
+### 3.2 明确禁止
+
+链路目录不再新增这些层：
+
+- `runner.py`
+- `contracts.py`
+- `runtime/`
+- `internal/`
+- `services/`
+
+含义很明确：
+
+- 执行入口收回 `graph.py`
+- 对外类型收回 `state.py`
+- 业务子逻辑统一收回 `lib/`
+
+## 4. 命名规范
+
+### 4.1 图与节点
+
+- graph builder：`build_<lane>_graph`
+- workflow runner：`run_<lane>_workflow`
+- 节点名：小写蛇形，例如 `load_context`
+- node builder：`build_<node_name>_node`
+
+### 4.2 文件名
+
+- 节点文件名与节点名一致：`load_context.py`
+- prompt 文件名与对应节点一致：`load_context.py`
+- `lib/` 文件按主题命名：`publish.py`、`writer.py`、`grounding.py`
+
+迁移期允许保留旧文件名兼容层，例如 `_node.py`、`internal/`，但新代码不再继续依赖它们。
+
+## 5. `_shared/` 规则
+
+只有被两条及以上链路真实复用的内容，才允许进入模块 `_shared/`。
+
+允许进入 `_shared/` 的典型内容：
+
+- digest 的共享 contracts / models / prepare
+- ingest 的共享 parsing / recovery / logging
+
+不应进入 `_shared/` 的内容：
+
+- 只有一条链路使用的 helper
+- 单个节点的 prompt
+- 只为了“可能复用”而提前上提的代码
+
+## 6. 事件与进度
+
+当前默认规则：
+
+- 前端进度展示主通路是 `emit_progress(...)`
+- `events.py` 不是标准必选层
+- 如果没有明确订阅方，不要为了“架构完整”额外定义事件层
+
+## 7. 当前模块落位
+
+### 7.1 digest
+
+```text
+digest/
+  __init__.py
+  README.md
+  planner/
+  docgen/
+  knowledge_graph/
+  unified/
+  _shared/
+```
+
+说明：
+
+- `planner/` 与 `docgen/` 是当前优先收口的主链路
+- `knowledge_graph/` 与 `unified/` 先对齐门面与命名
+- 历史 `shared/` 仍保留兼容；新代码优先走 `_shared/`
+
+### 7.2 ingest
+
+```text
+ingest/
+  __init__.py
+  README.md
+  fast_parse/
+  deep_enhance/
+  _shared/
+```
+
+说明：
+
+- `run_parse_file_workflow(...)` 仍保留在模块层，作为跨两条链路的稳定入口
+- `fast_parse/` 与 `deep_enhance/` 是真实链路
+- 历史 `parsing/`、`recovery.py` 保留兼容；新代码优先走 `_shared/`
+
+### 7.3 interact
+
+```text
+interact/
+  __init__.py
+  README.md
+  chat/
+```
+
+说明：
+
+- `chat/` 是 canonical lane
+- 根目录旧 `graph.py / runtime.py / state.py / support/` 作为兼容层保留
+
+### 7.4 examine
+
+```text
+examine/
+  __init__.py
+  README.md
+  question_build/
+  exam_grade/
+  _shared/                 # 未来确有复用时再建立
+```
+
+说明：
+
+- `question_build/` 和 `exam_grade/` 是两条真实链路
+- 历史平铺文件先保留兼容导入面，逐步收口
+
+### 7.5 profile
+
+```text
+profile/
+  __init__.py
+  README.md
+  pipeline/
+```
+
+说明：
+
+- `pipeline/` 是唯一真实链路
+- 根目录旧 `graph.py / runtime.py / state.py` 保留兼容导入面
+
+## 8. 示例
+
+### 8.1 planner
+
+```text
+digest/planner/
+  __init__.py
+  README.md
+  graph.py
+  state.py
   nodes/
     load_context.py
     ground_concepts.py
     draft_plan.py
   prompts/
-    draft_plan.py          # 只有 draft_plan 调 LLM
+    draft_plan.py
   lib/
     grounding.py
     plans.py
 ```
 
-## 示例：docgen（中型链路）
+### 8.2 docgen
 
 ```text
-docgen/
+digest/docgen/
   __init__.py
   README.md
-  graph.py                 # build_docgen_graph + Send 编排 + run_docgen_workflow
-  state.py                 # DocGenState
+  graph.py
+  state.py
   nodes/
     load_context.py
     research_chapters.py
@@ -215,6 +287,7 @@ docgen/
     research_chapters.py
     finalize_titles.py
     write_chapters.py
+    assets.py
   lib/
     chapter_context.py
     query_planning.py
@@ -223,8 +296,16 @@ docgen/
     publish.py
 ```
 
----
+## 9. 迁移策略
 
-## 一句话总结
+当前采用渐进式兼容迁移：
 
-`workflows/` 是"模块层 + 链路层"的两级组织。模块根只保留 `__init__.py`/`README.md`/链路/`_shared/`；链路 root 只保留 `__init__.py`/`README.md`/`graph.py`/`state.py`；业务子逻辑下沉到 `lib/`，prompt 独立 `prompts/`。相同职责永远落在相同位置，没有独立职责的层不要硬建。
+1. 先建立 canonical lane 目录。
+2. 模块根改为指向 canonical lane 的薄门面。
+3. `langgraph.json` 切到 canonical lane 的 `graph.py`。
+4. 文档改为只描述新骨架。
+5. 历史文件逐步降级为兼容层，最后再清理。
+
+## 10. 一句话总结
+
+`workflows` 的未来结构只有一句话：模块根只聚合，链路目录才执行；链路里固定是 `graph.py + state.py + nodes/ + prompts/ + lib/`，`events.py` 仅在确实需要时才出现。

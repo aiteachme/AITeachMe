@@ -1,23 +1,24 @@
-"""Digest planner package.
+"""Digest planner workflow lane public surface."""
 
-Stable public surface:
-
-- `run_build_planner_workflow`
-- `normalize_planner_draft`
-- `normalize_planner_payload`
-"""
-
-from app.workflows.digest.planner.contracts import (
+from app.workflows.digest.planner.graph import (
+    build_planner_graph,
+    create_planner_initial_state,
+    get_langgraph_dev_planner_graph,
+    run_build_planner_workflow,
+)
+from app.workflows.digest.planner.lib.plans import (
     BuildPlannerDraft,
     PlannerChapterPlan,
     normalize_planner_draft,
     normalize_planner_payload,
 )
-from app.workflows.digest.planner.runner import run_build_planner_workflow
 
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
+    "build_planner_graph",
+    "create_planner_initial_state",
+    "get_langgraph_dev_planner_graph",
     "normalize_planner_draft",
     "normalize_planner_payload",
     "run_build_planner_workflow",

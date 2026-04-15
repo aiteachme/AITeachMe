@@ -1,4 +1,4 @@
-﻿{
+{
   "python_version": "3.11",
   "dependencies": [
     "."
@@ -29,19 +29,19 @@
       "description": "Digest unified build workflow."
     },
     "interact_chat": {
-      "path": "./app/workflows/interact/graph.py:get_langgraph_dev_interact_graph",
+      "path": "./app/workflows/interact/chat/graph.py:get_langgraph_dev_interact_graph",
       "description": "Interact chat workflow without the production SSE shell."
     },
     "examine_question_build": {
-      "path": "./app/workflows/examine/question_build_workflow.py:build_question_build_graph",
+      "path": "./app/workflows/examine/question_build/graph.py:build_question_build_graph",
       "description": "Examine question template build workflow."
     },
     "examine_exam_grade": {
-      "path": "./app/workflows/examine/exam_grade_workflow.py:build_exam_grade_graph",
+      "path": "./app/workflows/examine/exam_grade/graph.py:build_exam_grade_graph",
       "description": "Examine exam grading workflow."
     },
     "profile_pipeline": {
-      "path": "./app/workflows/profile/graph.py:build_profile_pipeline_graph",
+      "path": "./app/workflows/profile/pipeline/graph.py:build_profile_pipeline_graph",
       "description": "Executable profile pipeline for mastery, review, weakness, and summary refresh."
     }
   },

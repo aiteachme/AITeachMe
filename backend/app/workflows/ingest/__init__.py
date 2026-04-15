@@ -17,14 +17,14 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "IngestEnhanceState": "app.workflows.ingest.state",
-    "IngestParseState": "app.workflows.ingest.state",
-    "build_deep_enhance_graph": "app.workflows.ingest.graph",
-    "build_fast_parse_graph": "app.workflows.ingest.graph",
+    "IngestEnhanceState": "app.workflows.ingest.deep_enhance.state",
+    "IngestParseState": "app.workflows.ingest.fast_parse.state",
+    "build_deep_enhance_graph": "app.workflows.ingest.deep_enhance.graph",
+    "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "build_parse_file_graph": "app.workflows.ingest.graph",
     "create_parse_file_initial_state": "app.workflows.ingest.runtime",
-    "get_langgraph_dev_deep_enhance_graph": "app.workflows.ingest.graph",
-    "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.graph",
+    "get_langgraph_dev_deep_enhance_graph": "app.workflows.ingest.deep_enhance.graph",
+    "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "run_parse_file_workflow": "app.workflows.ingest.runtime",
 }
 

@@ -1,0 +1,5 @@
+"""Prompt builders used by DocGen asset enrichment."""
+
+from app.workflows.digest.prompts.docgen_prompts import build_docgen_mermaid_prompt
+
+__all__ = ["build_docgen_mermaid_prompt"]

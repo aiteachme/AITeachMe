@@ -7,7 +7,6 @@ from importlib import import_module
 __all__ = [
     "DocGenState",
     "KGDigestState",
-    "build_curriculum_derive_graph",
     "build_docgen_graph",
     "build_kg_digest_graph",
     "build_unified_digest_graph",
@@ -22,7 +21,6 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "DocGenState": "app.workflows.digest.state",
     "KGDigestState": "app.workflows.digest.state",
-    "build_curriculum_derive_graph": "app.workflows.digest.graph",
     "build_docgen_graph": "app.workflows.digest.graph",
     "build_kg_digest_graph": "app.workflows.digest.graph",
     "build_unified_digest_graph": "app.workflows.digest.unified.graph",
