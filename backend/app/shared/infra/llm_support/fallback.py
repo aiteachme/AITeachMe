@@ -103,7 +103,6 @@ async def acompletion_with_fallback(
             lane=trace.lane,
             node=trace.node,
             extra_metadata=metadata,
-            extra_tags=[f"tier:{resolved_tier}", f"candidate:{task_type.value}"],
         ):
             if response_model is not None:
                 return await acompletion_structured(

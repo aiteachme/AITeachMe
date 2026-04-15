@@ -6,18 +6,13 @@
  * OpenAPI spec version: 0.2.0
  */
 import {
-  useQuery
+  useMutation
 } from '@tanstack/react-query';
 import type {
-  DataTag,
-  DefinedInitialDataOptions,
-  DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
-  QueryFunction,
-  QueryKey,
-  UndefinedInitialDataOptions,
-  UseQueryOptions,
-  UseQueryResult
+  UseMutationOptions,
+  UseMutationResult
 } from '@tanstack/react-query';
 
 import type {
@@ -36,31 +31,31 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 /**
  * @summary Profile feature offline
  */
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse200 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse404 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse422 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponseSuccess = (profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse200) & {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200) & {
   headers: Headers;
 };
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponseError = (profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse404 | profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse422) & {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 | profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422) & {
   headers: Headers;
 };
 
-export type profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse = (profileOfflineRootApiV1SubjectsSubjectProfilePatchResponseSuccess | profileOfflineRootApiV1SubjectsSubjectProfilePatchResponseError)
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess | profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError)
 
-export const getProfileOfflineRootApiV1SubjectsSubjectProfilePatchUrl = (subject: string,) => {
+export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl = (subject: string,) => {
 
 
   
@@ -68,12 +63,12 @@ export const getProfileOfflineRootApiV1SubjectsSubjectProfilePatchUrl = (subject
   return `/api/v1/subjects/${subject}/profile/`
 }
 
-export const profileOfflineRootApiV1SubjectsSubjectProfilePatch = async (subject: string, options?: RequestInit): Promise<profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse> => {
+export const profileOfflineRootApiV1SubjectsSubjectProfilePost = async (subject: string, options?: RequestInit): Promise<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse> => {
   
-  return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfilePatchResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfilePatchUrl(subject),
+  return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl(subject),
   {      
     ...options,
-    method: 'GET'
+    method: 'PATCH'
     
     
   }
@@ -82,107 +77,78 @@ export const profileOfflineRootApiV1SubjectsSubjectProfilePatch = async (subject
 
 
 
+export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext> => {
 
-export const getProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryKey = (subject: string,) => {
-    return [
-    `/api/v1/subjects/${subject}/profile/`
-    ] as const;
-    }
+const mutationKey = ['profileOfflineRootApiV1SubjectsSubjectProfilePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
 
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, {subject: string}> = (props) => {
+          const {subject} = props ?? {};
+
+          return  profileOfflineRootApiV1SubjectsSubjectProfilePost(subject,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>>
     
-export const getProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryOptions = <TData = Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
-) => {
+    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationError = ErrorResponse | HTTPValidationError
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryKey(subject);
-
-  
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>> = ({ signal }) => profileOfflineRootApiV1SubjectsSubjectProfilePatch(subject, { signal, ...requestOptions });
-
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type ProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryResult = NonNullable<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>>
-export type ProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryError = ErrorResponse | HTTPValidationError
-
-
-export function useProfileOfflineRootApiV1SubjectsSubjectProfilePatch<TData = Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>,
-          TError,
-          Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useProfileOfflineRootApiV1SubjectsSubjectProfilePatch<TData = Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>,
-          TError,
-          Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useProfileOfflineRootApiV1SubjectsSubjectProfilePatch<TData = Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-/**
+    /**
  * @summary Profile feature offline
  */
-
-export function useProfileOfflineRootApiV1SubjectsSubjectProfilePatch<TData = Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getProfileOfflineRootApiV1SubjectsSubjectProfilePatchQueryOptions(subject,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-/**
+export const useProfileOfflineRootApiV1SubjectsSubjectProfilePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>,
+        TError,
+        {subject: string},
+        TContext
+      > => {
+      return useMutation(getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions(options), queryClient);
+    }
+    /**
  * @summary Profile feature offline
  */
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse200 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse404 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse422 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponseSuccess = (profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse200) & {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200) & {
   headers: Headers;
 };
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponseError = (profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse404 | profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse422) & {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422) & {
   headers: Headers;
 };
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse = (profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponseSuccess | profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponseError)
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError)
 
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchUrl = (subject: string,
+export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl = (subject: string,
     path: string,) => {
 
 
@@ -191,13 +157,13 @@ export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchUrl = (sub
   return `/api/v1/subjects/${subject}/profile/${path}`
 }
 
-export const profileOfflinePathApiV1SubjectsSubjectProfilePathPatch = async (subject: string,
-    path: string, options?: RequestInit): Promise<profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse> => {
+export const profileOfflinePathApiV1SubjectsSubjectProfilePathPost = async (subject: string,
+    path: string, options?: RequestInit): Promise<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse> => {
   
-  return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathPatchResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchUrl(subject,path),
+  return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl(subject,path),
   {      
     ...options,
-    method: 'GET'
+    method: 'PATCH'
     
     
   }
@@ -206,82 +172,48 @@ export const profileOfflinePathApiV1SubjectsSubjectProfilePathPatch = async (sub
 
 
 
+export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext> => {
 
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryKey = (subject: string,
-    path: string,) => {
-    return [
-    `/api/v1/subjects/${subject}/profile/${path}`
-    ] as const;
-    }
+const mutationKey = ['profileOfflinePathApiV1SubjectsSubjectProfilePathPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
 
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, {subject: string;path: string}> = (props) => {
+          const {subject,path} = props ?? {};
+
+          return  profileOfflinePathApiV1SubjectsSubjectProfilePathPost(subject,path,requestOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>>
     
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryOptions = <TData = Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
-    path: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
-) => {
+    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationError = ErrorResponse | HTTPValidationError
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryKey(subject,path);
-
-  
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>> = ({ signal }) => profileOfflinePathApiV1SubjectsSubjectProfilePathPatch(subject,path, { signal, ...requestOptions });
-
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(subject && path), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryResult = NonNullable<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>>
-export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryError = ErrorResponse | HTTPValidationError
-
-
-export function useProfileOfflinePathApiV1SubjectsSubjectProfilePathPatch<TData = Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    path: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>,
-          TError,
-          Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useProfileOfflinePathApiV1SubjectsSubjectProfilePathPatch<TData = Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    path: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>,
-          TError,
-          Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useProfileOfflinePathApiV1SubjectsSubjectProfilePathPatch<TData = Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    path: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-/**
+    /**
  * @summary Profile feature offline
  */
-
-export function useProfileOfflinePathApiV1SubjectsSubjectProfilePathPatch<TData = Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError = ErrorResponse | HTTPValidationError>(
- subject: string,
-    path: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPatch>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getProfileOfflinePathApiV1SubjectsSubjectProfilePathPatchQueryOptions(subject,path,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
+export const useProfileOfflinePathApiV1SubjectsSubjectProfilePathPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>,
+        TError,
+        {subject: string;path: string},
+        TContext
+      > => {
+      return useMutation(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions(options), queryClient);
+    }
+    

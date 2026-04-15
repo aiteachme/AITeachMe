@@ -11,6 +11,7 @@ from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.observability.llm_stats import LLMCallRecord, LLMCallTracker
 from app.shared.infra.observability.trace import (
+    build_langsmith_tags,
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,
@@ -364,6 +365,18 @@ def test_normalize_langsmith_run_type_falls_back_to_tool() -> None:
     assert normalize_langsmith_run_type("prompt") == "prompt"
     assert normalize_langsmith_run_type("retriever") == "retriever"
     assert normalize_langsmith_run_type("not-a-run-type") == "tool"
+
+
+def test_langsmith_tags_stay_sparse() -> None:
+    tags = build_langsmith_tags(
+        workflow="digest.docgen",
+        lane="docgen",
+        node="research_chapters",
+        extra_tags=["task:docgen", "task:docgen"],
+    )
+
+    assert tags == ["aiteachme", "workflow:digest.docgen", "lane:docgen", "task:docgen"]
+    assert "node:research_chapters" not in tags
 
 
 def test_tool_registry_traced_runner_builds_tool_trace_payload() -> None:

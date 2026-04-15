@@ -290,21 +290,8 @@ def _traced_execution_tags(
     runner: BaseTracedExecution,
     **_: Any,
 ) -> list[str]:
-    tag_namespace = str(runner.trace_namespace or "traced_execution").strip(". ")
-    tags = [f"{tag_namespace}:{runner.trace_name}"]
-    if runner.context.digest_mode:
-        tags.append(f"mode:{runner.context.digest_mode}")
-    if runner.context.course_type:
-        tags.append(f"course:{runner.context.course_type}")
-    if runner.context.retrieval_profile:
-        tags.append(f"retrieval:{runner.context.retrieval_profile}")
-    if runner.context.teaching_action:
-        tags.append(f"teaching:{runner.context.teaching_action}")
-    if runner.context.asset_kind:
-        tags.append(f"asset:{runner.context.asset_kind}")
-    if runner.context.chapter_index is not None:
-        tags.append(f"chapter:{runner.context.chapter_index}")
-    return tags
+    del runner
+    return []
 
 
 def _traced_execution_inputs(kwargs: Mapping[str, Any]) -> dict[str, Any]:

@@ -313,13 +313,18 @@ def build_langsmith_tags(
     node: str = "",
     extra_tags: Sequence[str] | None = None,
 ) -> list[str]:
+    """Build sparse LangSmith tags.
+
+    Keep tags low-cardinality for filtering. Detailed dimensions such as
+    subject, build_session_id, node, mode, retrieval profile, or chapter index
+    belong in metadata.
+    """
+
     tags = ["aiteachme"]
     if workflow:
         tags.append(f"workflow:{workflow}")
     if lane:
         tags.append(f"lane:{lane}")
-    if node:
-        tags.append(f"node:{node}")
     if extra_tags:
         tags.extend(str(tag) for tag in extra_tags if str(tag))
     return list(dict.fromkeys(tags))
