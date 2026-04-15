@@ -86,14 +86,14 @@
 | --- | --- | --- |
 | `services/knowledge_docs/*` | `workflows/digest/application/*` | 首批主线 |
 | `services/knowledge_graph/*` | `workflows/digest/application/*` / `digest/knowledge_graph/*` | 与 Digest 一起迁 |
-| `services/chats_service.py` | `workflows/interact/application/*` | 保持 SSE 口径不变 |
+| `services/chats_service.py` | `workflows/interact/application/chats.py` | 已迁入 interact application，SSE 口径不变 |
 | `services/exams_service/*` | `workflows/examine/application/*` | 保持组卷/判卷入口不变 |
 | `services/profile_service.py` | `workflows/profile/application/mastery.py` | 已迁入 profile application |
 | `services/file_service.py` | `workflows/support/files` | 已迁入 support 模块 |
-| `services/subject_service.py` | `workflows/support/subjects` | support 模块 |
+| `services/subject_service.py` / `subject_deletion_service.py` | `workflows/support/subjects` | 已迁入 support 模块 |
 | `services/auth_service.py` | `workflows/support/auth` | support 模块 |
 | `services/system_service.py` | `workflows/support/system` | 已迁入 support 模块 |
-| `services/export_import_service.py` | `workflows/support/export_import` | support 模块 |
+| `services/export_import_service.py` | `workflows/support/export_import` | 已迁入 support 模块 |
 | `services/subject_embedding_service.py` | `shared.infra.subject.build_precheck` | 已迁入 infra subject |
 | `teaching/runtime_config.py` | `workflows/digest/_shared/runtime_config.py` | 已迁为真实实现 |
 | `teaching/documents/*` | `workflows/digest/_shared/pedagogy/*` | 已迁为真实实现 |
@@ -151,7 +151,7 @@
 - `workflows` 业务链路与 application 不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 不再直接 import `app.teaching.*`
 - `backend/app/teaching` 不存在，且不再通过 shim 恢复
-- 已迁移的 `file_service / profile_service / subject_embedding_service / system_service` 不再出现旧路径 import
+- 已迁移的 `chats_service / export_import_service / file_service / profile_service / subject_service / subject_deletion_service / subject_embedding_service / system_service` 不再出现旧路径 import
 - 新规范里明确允许 `application/`
 - support 模块与 engine 模块边界清晰
 

@@ -557,7 +557,7 @@ async def read_chapter(subject, chapter_index, title) -> str:
 
 ### Step 3.6 — 改造 Subject 删除清理
 
-**文件**: `backend/app/services/subject_deletion_service.py`
+**文件**: `backend/app/workflows/support/subjects/lib/deletion.py`
 
 当前：`shutil.rmtree(subject_dir)`
 
@@ -623,7 +623,7 @@ def _register_static_mounts(app: FastAPI) -> None:
 
 ### Step 3.8 — 改造 Export/Import
 
-**文件**: `backend/app/services/export_import_service.py`
+**文件**: `backend/app/workflows/support/export_import/commands.py`
 
 Export 时读取文件：
 ```python
@@ -842,9 +842,9 @@ Render 创建 PostgreSQL 后：
 | `backend/app/utils/docgen_store.py` | 文档读写走 store 抽象 |
 | `backend/app/models/raw_file.py` | storage_key 在 cloud 模式下的语义 |
 | `backend/app/repositories/knowledge/knowledge_repo.py` | 向量写入/检索按方言分支 |
-| `backend/app/services/file_service.py` | 文件上传走 store |
-| `backend/app/services/subject_deletion_service.py` | 删除走 store |
-| `backend/app/services/export_import_service.py` | 导出导入走 store |
+| `backend/app/workflows/support/files/commands.py` | 文件上传走 store |
+| `backend/app/workflows/support/subjects/lib/deletion.py` | 删除走 store |
+| `backend/app/workflows/support/export_import/commands.py` | 导出导入走 store |
 | `backend/app/main.py` | 静态挂载条件化 + init_db 适配 |
 | `backend/app/workflows/ingest/nodes/file.py` | 文件加载走 store |
 | `backend/app/workflows/ingest/nodes/finalize.py` | 产物写回走 store |

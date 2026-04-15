@@ -520,8 +520,8 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 主要涉及：
 
-- [`file_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/file_service.py)
-- [`subject_deletion_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/subject_deletion_service.py)
+- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - ingest workflow 相关文件
 - digest docs publish 相关文件
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
@@ -546,8 +546,8 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 高优先级文件通常包括：
 
-- [`file_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/file_service.py)
-- [`subject_deletion_service.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/services/subject_deletion_service.py)
+- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`runtime.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/runtime.py)
 - [`file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/nodes/file.py)

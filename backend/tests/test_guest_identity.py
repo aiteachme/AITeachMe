@@ -11,7 +11,7 @@ from app.services.auth_service import (
     issue_guest_token,
     resolve_guest_user_from_token,
 )
-from app.services.subject_service import create_subject_record, get_subject_record
+from app.workflows.support.subjects import create_subject_record, get_subject_record
 from app.shared.infra.runtime import (
     resolve_app_mode,
     resolve_guest_cookie_samesite,

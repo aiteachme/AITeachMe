@@ -1,4 +1,4 @@
-"""Chat service adapters."""
+"""Interact chat application use cases."""
 
 from __future__ import annotations
 

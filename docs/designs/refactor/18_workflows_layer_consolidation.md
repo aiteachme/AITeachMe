@@ -105,6 +105,9 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `app.services.system_service` 已迁入 `app.workflows.support.system`
 - `app.services.file_service` 已迁入 `app.workflows.support.files`
 - `app.services.profile_service` 已迁入 `app.workflows.profile.application.mastery`
+- `app.services.subject_service` 与 `subject_deletion_service` 已迁入 `app.workflows.support.subjects`
+- `app.services.chats_service` 已迁入 `app.workflows.interact.application.chats`
+- `app.services.export_import_service` 已迁入 `app.workflows.support.export_import`
 - `app.services.subject_embedding_service` 已迁入 `app.shared.infra.subject.build_precheck`
 - Digest / Interact workflow 已消除对 `app.services` 的直接 import
 - Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `_shared` 真实实现

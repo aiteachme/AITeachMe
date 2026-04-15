@@ -56,6 +56,8 @@
   文件上传、列表、删除与解析触发的 canonical 位置，承接原 `app.services.file_service`
 - `profile/application/`
   Profile 面向 API 的掌握度与复习任务用例落点
+- `interact/application/`
+  Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点
 
 ## 最重要的调用入口
 

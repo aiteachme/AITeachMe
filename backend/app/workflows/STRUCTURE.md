@@ -246,13 +246,14 @@ ingest/
 interact/
   __init__.py
   README.md
+  application/
   chat/
 ```
 
 说明：
 
 - `chat/` 是 canonical lane
-- 后续 API-facing 用例进入 `interact/application/`
+- `application/` 承接聊天列表、历史记录、SSE streaming 外壳等 API-facing 用例
 
 ### 8.4 examine
 
@@ -281,15 +282,17 @@ profile/
   support/
     __init__.py
     README.md
+    export_import/
     files/
     system/
+    subjects/
     teaching_tools/
 ```
 
 说明：
 
 - `support/` 是新正式分区
-- 当前已落地 `files/`、`system/` 与 `teaching_tools/` 作为 support 模块模板示例
+- 当前已落地 `export_import/`、`files/`、`system/`、`subjects/` 与 `teaching_tools/` 作为 support 模块模板示例
 
 ## 9. 当前最重要的兼容规则
 

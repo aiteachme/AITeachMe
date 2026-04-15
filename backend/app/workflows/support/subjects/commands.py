@@ -13,7 +13,7 @@ from app.repositories.subject_repo import (
 )
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.subject import SubjectDeleteData, SubjectDeletePreviewData, SubjectItem
-from app.services.subject_deletion_service import (
+from app.workflows.support.subjects.lib.deletion import (
     build_subject_delete_preview,
     delete_subject_with_all_content,
 )

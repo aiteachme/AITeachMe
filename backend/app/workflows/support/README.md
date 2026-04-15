@@ -24,10 +24,14 @@ workflows/support/<module>/
 
 ## 当前已落地模块
 
+- `export_import/`
+  学科级课程包导入导出的 canonical 代码位置，承接原 `app.services.export_import_service`。
 - `files/`
   文件上传、列表、删除与解析触发的 canonical 代码位置，承接原 `app.services.file_service`。
 - `system/`
   系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
+- `subjects/`
+  学科注册、归属校验、删除预览与级联删除的 canonical 代码位置，承接原 `app.services.subject_service` 与 `subject_deletion_service`。
 - `teaching_tools/`
   教学工具实现的 canonical 代码位置。工具注册语义在 `app.shared.infra.tools.teaching_registry`，具体工具函数在这里。
 

@@ -44,8 +44,8 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/services/file_service.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
-| `backend/app/services/subject_deletion_service.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
+| `backend/app/workflows/support/files/commands.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
+| `backend/app/workflows/support/subjects/lib/deletion.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
 | `backend/app/main.py` | `_register_static_mounts()` 仅在 local 模式挂载 `/_assets` 静态文件 |
 
 **未完成的文件（阶段3剩余工作）：**
@@ -111,7 +111,7 @@ else:
 
 ### 3.4 改造 Export/Import（未开始）
 
-**`backend/app/services/export_import_service.py`**
+**`backend/app/workflows/support/export_import/commands.py`**
 
 - Export 时读取文件：cloud 模式用 `store.read_bytes(storage_key)` + `zf.writestr(arcname, data)`
 - Import 时写入文件：cloud 模式用 `store.write_file(storage_key, extracted_path)`

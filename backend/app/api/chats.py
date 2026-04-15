@@ -24,7 +24,7 @@ from app.schemas.chats import (
     ChatSessionListRequest,
 )
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
-from app.services.chats_service import (
+from app.workflows.interact.application import (
     chat_stream,
     clear_chat_history,
     create_session,
@@ -34,7 +34,7 @@ from app.services.chats_service import (
     list_chat_sessions,
 )
 from app.services.auth_service import set_guest_cookie_for_user
-from app.services.subject_service import get_subject_record
+from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/chats", tags=["chats"])
 

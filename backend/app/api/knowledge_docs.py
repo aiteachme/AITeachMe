@@ -47,7 +47,7 @@ from app.services.knowledge_docs.digest_service import (
 from app.services.knowledge_docs.overview_service import get_knowledge_overview
 from app.services.knowledge_docs.study_plan_service import handle_study_plan_request
 from app.services.knowledge_graph.digest_service import run_graph_build_background
-from app.services.subject_service import get_subject_record
+from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.support.streaming import SSEEventEmitter
 
 router = APIRouter(tags=["knowledge"])

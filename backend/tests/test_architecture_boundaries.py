@@ -5,9 +5,13 @@ from pathlib import Path
 
 _DELETED_LAYER_MODULES = ("app.teaching",)
 _MIGRATED_SERVICE_MODULES = (
+    "app.services.chats_service",
+    "app.services.export_import_service",
     "app.services.file_service",
     "app.services.profile_service",
+    "app.services.subject_deletion_service",
     "app.services.subject_embedding_service",
+    "app.services.subject_service",
     "app.services.system_service",
 )
 
@@ -55,9 +59,13 @@ def test_deleted_layers_and_migrated_services_are_not_imported() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     removed_paths = [
         backend_root / "app" / "teaching",
+        backend_root / "app" / "services" / "chats_service.py",
+        backend_root / "app" / "services" / "export_import_service.py",
         backend_root / "app" / "services" / "file_service.py",
         backend_root / "app" / "services" / "profile_service.py",
+        backend_root / "app" / "services" / "subject_deletion_service.py",
         backend_root / "app" / "services" / "subject_embedding_service.py",
+        backend_root / "app" / "services" / "subject_service.py",
         backend_root / "app" / "services" / "system_service.py",
     ]
     assert [str(path.relative_to(backend_root)) for path in removed_paths if path.exists()] == []

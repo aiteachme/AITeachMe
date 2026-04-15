@@ -19,7 +19,7 @@ from app.workflows.support.files import (
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
 )
-from app.services.subject_service import get_subject_record
+from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
 
