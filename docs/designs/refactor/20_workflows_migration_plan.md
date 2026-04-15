@@ -30,6 +30,13 @@
 - 新增 `digest/_shared/runtime_config.py`
 - 新增 `digest/_shared/pedagogy/`
 
+`teaching_tools` 的长期分类规则：
+
+- registry / sync / execution 机制归 `shared.infra.tools.teaching_registry`
+- 跨引擎复用、需要 agent registry 暴露的教学工具归 `workflows/support/teaching_tools`
+- 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
+- Digest 文档专属教学表达归 `digest/_shared/pedagogy`
+
 ### Phase 2: 清理 workflow 反向依赖
 
 - 去掉 `workflows -> app.services.*`
@@ -53,7 +60,8 @@
 
 ### Phase 5: 兼容层收缩
 
-- `services/` 只保留薄 shim，逐步标记 deprecated
+- 大链路 `services/` 先保留薄 shim，逐步标记 deprecated
+- 已迁移且确认无旧 import 的小 service 直接删除，不再补旧路径 shim
 - `teaching/` 源层已删除，不再保留 facade
 - 最后清理历史兼容目录和导入面
 
@@ -142,6 +150,8 @@
 
 - `workflows` 业务链路与 application 不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 不再直接 import `app.teaching.*`
+- `backend/app/teaching` 不存在，且不再通过 shim 恢复
+- 已迁移的 `file_service / profile_service / subject_embedding_service / system_service` 不再出现旧路径 import
 - 新规范里明确允许 `application/`
 - support 模块与 engine 模块边界清晰
 

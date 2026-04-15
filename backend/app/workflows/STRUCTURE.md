@@ -159,6 +159,16 @@ workflows/support/<module>/
 - 如果需要长链 AI 流程，只调用已有 engine 链路
 - 不在 support 里平行复制五大引擎的能力
 
+### 5.1 `teaching_tools` 分类规则
+
+`teaching_tools` 不是新的独立教学层，而是跨引擎复用的业务工具集合。
+
+- 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`
+- 需要暴露给 agent registry、且可被多个引擎复用的教学原子函数，放在 `workflows/support/teaching_tools`
+- 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`
+- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/_shared/pedagogy`
+- 禁止为了“教学语义”重新创建 `app/teaching` 层
+
 ## 6. `_shared/` 规则
 
 只有被两条及以上链路真实复用的内容，才允许进入模块 `_shared/`
@@ -271,6 +281,7 @@ profile/
   support/
     __init__.py
     README.md
+    files/
     system/
     teaching_tools/
 ```
@@ -278,14 +289,15 @@ profile/
 说明：
 
 - `support/` 是新正式分区
-- 当前已落地 `system/` 与 `teaching_tools/` 作为 support 模块模板示例
+- 当前已落地 `files/`、`system/` 与 `teaching_tools/` 作为 support 模块模板示例
 
 ## 9. 当前最重要的兼容规则
 
 - `workflows` 业务链路与 application 新代码不再直接 import `app.services.*`
 - `workflows` 业务链路与 application 新代码不再直接 import `app.teaching.*`
 - `digest/_shared/runtime_config.py` 与 `digest/_shared/pedagogy/` 是真实实现落点，不再委托 `app.teaching`
-- 旧 `services/` 只保迁移期 shim；`teaching/` 源层已删除
+- 旧 `services/` 只保迁移期 shim；已迁移且确认无调用的小 service 直接删除，不再补旧路径 shim
+- `teaching/` 源层已删除，任何新代码不得恢复该目录或导入面
 - 如果新业务代码仍然跨回旧层，视为结构违规
 
 ## 10. 一句话总结

@@ -137,6 +137,16 @@ workflows/support/<module>/
 - 如果需要长链 AI 流程，直接调用已有 engine 链路
 - 不在 support 里平行造一套“伪引擎”
 
+### 4.1 `teaching_tools` 分类规则
+
+`teaching_tools` 不是独立教学层，而是跨引擎复用的业务工具集合。
+
+- 注册、枚举、执行与 registry sync 归 `shared.infra.tools.teaching_registry`
+- 跨引擎复用、需要 agent registry 暴露的教学工具实现归 `workflows/support/teaching_tools`
+- 单条链路私有教学逻辑归对应 lane 的 `nodes/` 或 `lib/`
+- Digest 文档生成专属教学表达归 `digest/_shared/pedagogy`
+- 不恢复 `backend/app/teaching` 作为正式层或兼容层
+
 ## 5. `_shared/` 规则
 
 只有真实被两条及以上链路复用的内容，才允许进入模块 `_shared/`
@@ -212,7 +222,7 @@ digest/
 ## 8. 兼容策略
 
 - 模块根 `__init__.py` 继续提供稳定导入面
-- 历史 `services/` 仅保留迁移期 shim
+- 历史 `services/` 对大链路仅保留迁移期 shim；已迁移且无调用的小 service 直接删除
 - 历史 `teaching/` 源层已删除，不再作为兼容入口恢复
 - 历史链路兼容文件允许存在，但必须在 README 与结构规范里明确标注为 compatibility-only
 

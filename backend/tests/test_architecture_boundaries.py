@@ -3,6 +3,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+_DELETED_LAYER_MODULES = ("app.teaching",)
+_MIGRATED_SERVICE_MODULES = (
+    "app.services.file_service",
+    "app.services.profile_service",
+    "app.services.subject_embedding_service",
+    "app.services.system_service",
+)
+
 
 def _iter_import_modules(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
@@ -41,6 +49,28 @@ def test_workflows_do_not_import_retired_business_layers() -> None:
                 violations.append(f"{path.relative_to(backend_root)} -> {module}")
 
     assert violations == [], "workflows 出现了旧业务层反向依赖:\n" + "\n".join(violations)
+
+
+def test_deleted_layers_and_migrated_services_are_not_imported() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    removed_paths = [
+        backend_root / "app" / "teaching",
+        backend_root / "app" / "services" / "file_service.py",
+        backend_root / "app" / "services" / "profile_service.py",
+        backend_root / "app" / "services" / "subject_embedding_service.py",
+        backend_root / "app" / "services" / "system_service.py",
+    ]
+    assert [str(path.relative_to(backend_root)) for path in removed_paths if path.exists()] == []
+
+    retired_modules = (*_DELETED_LAYER_MODULES, *_MIGRATED_SERVICE_MODULES)
+    violations: list[str] = []
+    for root in (backend_root / "app", backend_root / "tests"):
+        for path in root.rglob("*.py"):
+            for module in _iter_import_modules(path):
+                if any(module == retired or module.startswith(f"{retired}.") for retired in retired_modules):
+                    violations.append(f"{path.relative_to(backend_root)} -> {module}")
+
+    assert violations == [], "发现已删除/已迁移旧入口 import:\n" + "\n".join(violations)
 
 
 def test_build_planner_service_uses_planner_package_public_entry() -> None:
