@@ -49,6 +49,11 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "digest_mode",
         "tone",
         "selected_skillpacks",
+        "planner_session_id",
+        "message_history",
+        "latest_plan",
+        "progress_callback",
+        "token_callback",
     ],
 )
 

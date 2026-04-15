@@ -1,6 +1,6 @@
 # 06. Interact 引擎 — 伴读引擎技术文档
 
-> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/interact/` 代码实现
+> **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/interact/` 代码实现
 
 ---
 
@@ -24,16 +24,12 @@ Interact（伴读引擎）是 AITeachMe 的**实时教学交互核心**，负责
 |---|---|---|
 | API | `backend/app/api/interact.py` | 对话 SSE 端点 |
 | Service | `backend/app/services/interact_service.py` | 会话管理、调度 |
-| Workflow Graph | `backend/app/workflows/interact/graph.py` | LangGraph 图定义 |
-| Workflow Runtime | `backend/app/workflows/interact/runtime.py` | 运行入口 |
-| Workflow State | `backend/app/workflows/interact/state.py` | 状态类型 |
-| Node: History | `backend/app/workflows/interact/nodes/history.py` | 加载历史 |
-| Node: Retrieval | `backend/app/workflows/interact/nodes/retrieval.py` | RAG 检索 |
-| Node: Strategy | `backend/app/workflows/interact/nodes/strategy.py` | 策略选择 |
-| Node: Prompt | `backend/app/workflows/interact/nodes/prompt.py` | 消息组装 |
-| Node: Stream | `backend/app/workflows/interact/nodes/stream.py` | LLM 流式调用 |
-| Node: Persist | `backend/app/workflows/interact/nodes/persist.py` | 结果持久化 |
-| Prompt 模板 | `backend/app/workflows/interact/prompts/prompts.py` | System prompt |
+| Workflow Graph | `backend/app/workflows/interact/chat/graph.py` | LangGraph 图定义 |
+| Workflow Runtime | `backend/app/workflows/interact/chat/runtime.py` | 运行入口 |
+| Workflow State | `backend/app/workflows/interact/chat/state.py` | 状态类型 |
+| Nodes | `backend/app/workflows/interact/chat/nodes/` | history/retrieval/strategy/prompt/stream/persist |
+| Prompt 模板 | `backend/app/workflows/interact/chat/prompts/prompts.py` | System prompt |
+| Helpers | `backend/app/workflows/interact/chat/lib/` | streaming / retrieval / execution / strategy |
 
 ---
 
@@ -84,7 +80,7 @@ graph TD
 
 ### Node 1: `load_history_state`
 
-> 文件: `backend/app/workflows/interact/nodes/history.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/history.py`
 
 ```
 输入: subject, user_id, session_id
@@ -106,7 +102,7 @@ graph TD
 
 ### Node 2: `retrieve_context`
 
-> 文件: `backend/app/workflows/interact/nodes/retrieval.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/retrieval.py`
 
 ```
 输入: subject, question, search_notice (可选)
@@ -129,7 +125,7 @@ graph TD
 
 ### Node 3: `select_teaching_strategy`
 
-> 文件: `backend/app/workflows/interact/nodes/strategy.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/strategy.py`
 
 ```
 输入: question, retrieved_chunks, weak_points
@@ -147,7 +143,7 @@ graph TD
 
 ### Node 4: `build_prompt`
 
-> 文件: `backend/app/workflows/interact/nodes/prompt.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/prompt.py`
 
 ```
 输入: subject, question, chat_history, retrieved_chunks, weak_points,
@@ -166,7 +162,7 @@ graph TD
 
 ### Node 5: `stream_answer`
 
-> 文件: `backend/app/workflows/interact/nodes/stream.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/stream.py`
 
 ```
 输入: prompt_messages, sse_queue
@@ -190,7 +186,7 @@ LLM 调用: ✅ chat streaming
 
 ### Node 6: `persist_turn`
 
-> 文件: `backend/app/workflows/interact/nodes/persist.py`
+> 文件: `backend/app/workflows/interact/chat/nodes/persist.py`
 
 ```
 输入: subject, user_id, session_id, question, answer
@@ -208,7 +204,7 @@ LLM 调用: ✅ chat streaming
 
 ## 6. Prompt 模板全文
 
-> 文件: `backend/app/workflows/interact/prompts/prompts.py`
+> 文件: `backend/app/workflows/interact/chat/prompts/prompts.py`
 
 ### `TUTOR_SYSTEM_PROMPT`
 

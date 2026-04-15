@@ -9,11 +9,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.shared.infra.config import get_settings
-from app.teaching.documents import (
+from app.workflows.digest._shared.pedagogy import (
     clean_generated_chapter_title,
     is_usable_resolved_chapter_title,
 )
-from app.teaching.runtime_config import (
+from app.workflows.digest._shared.runtime_config import (
     get_planner_mode_runtime_config,
     get_teaching_runtime_config,
 )

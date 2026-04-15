@@ -44,8 +44,8 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/services/file_service.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
-| `backend/app/services/subject_deletion_service.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
+| `backend/app/workflows/support/files/commands.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
+| `backend/app/workflows/support/subjects/lib/deletion.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
 | `backend/app/main.py` | `_register_static_mounts()` 仅在 local 模式挂载 `/_assets` 静态文件 |
 
 **未完成的文件（阶段3剩余工作）：**
@@ -71,16 +71,16 @@
 
 **需要改的文件和改法：**
 
-1. **`backend/app/workflows/ingest/nodes/file.py`** — 加载原始文件
+1. **`backend/app/workflows/ingest/fast_parse/lib/file.py`** — 加载原始文件
    - 找到读取 `raw_file.file_path` 的地方
    - cloud 模式下用 `store.materialize_to_temp(raw_file.file_path, temp_dir)` 获取本地副本
    - 解析器（markitdown, pymupdf4llm）需要本地 Path，所以必须先下载
 
-2. **`backend/app/workflows/ingest/nodes/finalize.py`** — 写回解析产物
+2. **`backend/app/workflows/ingest/fast_parse/lib/finalize.py`** — 写回解析产物
    - 找到写入 markdown 和 assets 的地方
    - cloud 模式下用 `store.write_bytes()` 写 markdown，`store.write_file()` 写 assets
 
-3. **`backend/app/workflows/ingest/nodes/enhance.py`** — OCR 增强
+3. **`backend/app/workflows/ingest/deep_enhance/lib/enhance.py`** — OCR 增强
    - 同样需要 `materialize_to_temp()` 获取本地副本
 
 **改造模式统一为：**
@@ -111,7 +111,7 @@ else:
 
 ### 3.4 改造 Export/Import（未开始）
 
-**`backend/app/services/export_import_service.py`**
+**`backend/app/workflows/support/export_import/commands.py`**
 
 - Export 时读取文件：cloud 模式用 `store.read_bytes(storage_key)` + `zf.writestr(arcname, data)`
 - Import 时写入文件：cloud 模式用 `store.write_file(storage_key, extracted_path)`

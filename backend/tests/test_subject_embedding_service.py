@@ -6,14 +6,15 @@ import sqlalchemy as sa
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.shared.infra.subject import get_legacy_vector_table_name, get_subject_embedding_binding
-from app.models import RawFile, RetrievalChunk, Subject, User
-from app.services.subject_embedding_service import (
+from app.shared.infra.subject import (
     RuntimeEmbeddingConfig,
     build_subject_vector_status,
+    get_legacy_vector_table_name,
+    get_subject_embedding_binding,
     inspect_subject_build_precheck,
     resolve_subject_build_vector_status,
 )
+from app.models import RawFile, RetrievalChunk, Subject, User
 
 
 def _make_session() -> Session:
@@ -95,10 +96,10 @@ def test_inspect_subject_build_precheck_returns_legacy_conflict() -> None:
     )
 
     with patch(
-        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        "app.shared.infra.subject.build_precheck.get_runtime_embedding_config",
         return_value=runtime,
     ), patch(
-        "app.services.subject_embedding_service.vector_table_exists",
+        "app.shared.infra.subject.build_precheck.vector_table_exists",
         return_value=True,
     ):
         conflict = inspect_subject_build_precheck(session, subject=subject)
@@ -157,7 +158,7 @@ def test_resolve_subject_build_vector_status_disable_marks_subject_disabled() ->
     )
 
     with patch(
-        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        "app.shared.infra.subject.build_precheck.get_runtime_embedding_config",
         return_value=runtime,
     ):
         status = resolve_subject_build_vector_status(
@@ -185,7 +186,7 @@ def test_resolve_subject_build_vector_status_rebuild_rebinds_subject() -> None:
     )
 
     with patch(
-        "app.services.subject_embedding_service.get_runtime_embedding_config",
+        "app.shared.infra.subject.build_precheck.get_runtime_embedding_config",
         return_value=runtime,
     ), patch(
         "app.shared.infra.search.llamaindex_index.clear_subject_index",

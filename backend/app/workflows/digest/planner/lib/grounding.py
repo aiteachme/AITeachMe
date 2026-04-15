@@ -18,7 +18,7 @@ from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
-from app.teaching.runtime_config import get_teaching_runtime_config
+from app.workflows.digest._shared.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
 from app.workflows.digest.shared.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.shared.models import SharedInputs
@@ -298,26 +298,18 @@ def _format_concept_briefing(
     evidence: list[PlannerConceptEvidence],
     topic_hints: list[str],
 ) -> str:
-    if not evidence:
-        return "暂无额外概念检索结果，可先依据资料主题、章节提示和用户目标规划。"
-
-    grouped: dict[str, list[PlannerConceptEvidence]] = {query: [] for query in queries}
-    for item in evidence:
-        grouped.setdefault(item.query, []).append(item)
-
     lines = ["快速概念检索锚点："]
-    for query in queries:
-        hits = grouped.get(query) or []
-        if not hits:
-            continue
-        lines.append(f"- 检索词：{query}")
-        for hit in hits[:3]:
-            lane_label = "本地" if hit.lane == "local" else "外部"
-            lines.append(
-                f"  - [{lane_label}/{hit.source}] {hit.title}：{_truncate_text(hit.snippet, limit=88)}"
-            )
+    if queries:
+        lines.append(f"- 本轮概念校准检索词：{'；'.join(queries[:4])}")
     if topic_hints:
-        lines.append(f"建议优先覆盖的概念锚点：{'、'.join(topic_hints[:8])}")
+        lines.append(f"- 建议优先覆盖的概念锚点：{'、'.join(topic_hints[:8])}")
+    if evidence:
+        local_count = sum(1 for item in evidence if item.lane == "local")
+        web_count = sum(1 for item in evidence if item.lane != "local")
+        lines.append(f"- 已完成概念校准：本地资料 {local_count} 条，外部校验 {web_count} 条。")
+        lines.append("- 注意：外部网页仅用于校验概念范围，不能把网站名、作者名、网页标题写进研究任务。")
+    if len(lines) == 1:
+        return "暂无额外概念检索结果，可先依据资料主题、章节提示和用户目标规划。"
     return "\n".join(lines)
 
 
@@ -454,13 +446,6 @@ async def collect_planner_concept_briefing(
                     lane="web",
                 )
             )
-            topic = _extract_result_topic(
-                _clean_text(page.title if page is not None else "") or hit.title,
-                display_subject=display_subject,
-            )
-            if topic:
-                topic_candidates.append(topic)
-
     topic_hints = _dedupe_strings(
         [
             *_clean_and_filter_topics(shared_inputs.subject_profile.key_topics),

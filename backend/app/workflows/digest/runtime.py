@@ -22,11 +22,9 @@ from app.workflows.digest.graph import (
     create_docgen_initial_state,
     create_graph_digest_initial_state,
 )
-from app.workflows.digest.observability import (
-    build_docgen_lane_summary,
-    build_kg_lane_summary,
-    build_token_summary,
-)
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
+from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
+from app.workflows.digest.shared.metrics import build_token_summary
 from app.workflows.digest.state import DocGenState, KGDigestState
 
 

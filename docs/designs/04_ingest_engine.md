@@ -1,6 +1,6 @@
-# 04. Ingest 引擎 — 透视引擎技术文档
+﻿# 04. Ingest 引擎 — 透视引擎技术文档
 
-> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/ingest/` 代码实现
+> **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/ingest/` 代码实现
 
 ---
 
@@ -30,14 +30,17 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | Workflow Graph | `backend/app/workflows/ingest/graph.py` | LangGraph 图定义 |
 | Workflow Runtime | `backend/app/workflows/ingest/runtime.py` | 两阶段运行入口 |
 | Workflow State | `backend/app/workflows/ingest/state.py` | 状态类型定义 |
-| Workflow Nodes | `backend/app/workflows/ingest/nodes/` | LangGraph 节点实现 |
-| 解析分类器 | `backend/app/workflows/ingest/parsing/classifier.py` | 文件分类 |
-| 解析策略 | `backend/app/workflows/ingest/parsing/strategy.py` | 解析计划生成 |
-| 解析编排器 | `backend/app/workflows/ingest/parsing/orchestrator.py` | Phase 1 / Phase 2 路由 |
-| 传统解析器 | `backend/app/workflows/ingest/parsing/pdf.py` 等 | 各格式解析实现 |
-| Markdown 规范化 | `backend/app/workflows/ingest/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
-| OCR 增强 | `backend/app/workflows/ingest/parsing/asset_ocr.py` | LLM Vision OCR |
-| Prompt 模板 | `backend/app/workflows/ingest/prompts/prompts.py` | OCR prompt 中/英文版 |
+| Fast Parse 节点 | `backend/app/workflows/ingest/fast_parse/nodes/` | Phase 1 LangGraph 节点 |
+| Fast Parse Helper | `backend/app/workflows/ingest/fast_parse/lib/` | Phase 1 节点内部实现 |
+| Deep Enhance 节点 | `backend/app/workflows/ingest/deep_enhance/nodes/` | Phase 2 LangGraph 节点 |
+| Deep Enhance Helper | `backend/app/workflows/ingest/deep_enhance/lib/` | Phase 2 节点内部实现 |
+| 解析分类器 | `backend/app/workflows/ingest/shared/parsing/classifier.py` | 文件分类 |
+| 解析策略 | `backend/app/workflows/ingest/shared/parsing/strategy.py` | 解析计划生成 |
+| 解析编排器 | `backend/app/workflows/ingest/shared/parsing/orchestrator.py` | Phase 1 / Phase 2 路由 |
+| 传统解析器 | `backend/app/workflows/ingest/shared/parsing/pdf.py` 等 | 各格式解析实现 |
+| Markdown 规范化 | `backend/app/workflows/ingest/shared/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
+| OCR 增强 | `backend/app/workflows/ingest/shared/parsing/asset_ocr.py` | LLM Vision OCR |
+| Prompt 模板 | `backend/app/workflows/ingest/shared/parsing/prompts.py` | OCR prompt 中/英文版 |
 | 事件定义 | `backend/app/workflows/ingest/events.py` | 领域事件 |
 | 主要业务表 | `raw_file` + `raw_file_asset` | 文件元数据与资产记录 |
 
@@ -225,7 +228,7 @@ graph TD
 
 ### 6.1 分类器 `classify_file()`
 
-> 文件: `backend/app/workflows/ingest/parsing/classifier.py`
+> 文件: `backend/app/workflows/ingest/shared/parsing/classifier.py`
 
 **输入：** `file_path: Path`, `filetype: str`
 **输出：** `ClassificationResult`
@@ -277,7 +280,7 @@ class ClassificationResult(BaseModel):
 
 ### 6.2 解析策略 `build_parse_plan()`
 
-> 文件: `backend/app/workflows/ingest/parsing/strategy.py`
+> 文件: `backend/app/workflows/ingest/shared/parsing/strategy.py`
 
 **输入：** `file_path`, `filetype`, `file_size_bytes`, `classification`
 **输出：** `ParsePlan`
@@ -533,7 +536,7 @@ Phase 2 在后台 asyncio Task 中执行，不阻塞 HTTP 响应。
 
 ## 8. Prompt 模板
 
-> 文件: `backend/app/workflows/ingest/prompts/prompts.py`
+> 文件: `backend/app/workflows/ingest/shared/parsing/prompts.py`
 
 Ingest 只在 Phase 2 LLM Vision OCR 中使用 Prompt。以下是完整的 Prompt 模板：
 

@@ -19,7 +19,7 @@ from app.schemas.auth import (
     SendEmailCodeRequest,
 )
 from app.schemas.common import ApiResponse, ok_response
-from app.services.auth_service import (
+from app.workflows.support.auth import (
     build_logout_guest_user,
     build_session_from_context,
     login_user,

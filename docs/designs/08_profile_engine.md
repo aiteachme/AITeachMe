@@ -1,6 +1,6 @@
 # 08. Profile 引擎 — 画像引擎技术文档
 
-> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/profile/` 代码实现
+> **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/profile/` 代码实现
 
 ---
 
@@ -34,7 +34,7 @@ Profile（画像引擎）是 AITeachMe 的**学习状态中枢**，负责把考�
 | 学科画像 | `backend/app/workflows/profile/subject_profile.py` | 学科级聚合与推荐 |
 | 用户画像 | `backend/app/workflows/profile/user_profile.py` | 用户级跨学科聚合 |
 | 事件定义 | `backend/app/workflows/profile/events.py` | 画像事件 |
-| Prompt 模板 | `backend/app/workflows/profile/prompts/` | 分析类 prompt |
+| Prompt 模板 | `backend/app/workflows/profile/pipeline/prompts/` | 分析类 prompt |
 
 ---
 

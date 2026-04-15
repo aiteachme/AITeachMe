@@ -15,7 +15,7 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
-from app.teaching.documents import coerce_resolved_chapter_title
+from app.workflows.digest._shared.pedagogy import coerce_resolved_chapter_title
 from app.workflows.digest.planner.lib.plans import (
     _dedupe_chapter_plan_titles,
     _resolve_subject_display_name,
@@ -39,6 +39,10 @@ _SUBJECT_SLUG_INLINE_RE = re.compile(r"\bsubj_[a-z0-9]+\b", re.IGNORECASE)
 _TASK_LINE_RE = re.compile(r"^\((\d+)\)\s*(.+)$")
 _HEADER_LINES = {"研究任务", "研究网站", "分析结果", "生成报告"}
 _LEADING_VERB_RE = re.compile(r"^(?:梳理|理解|调研|整理|分析|掌握|比较|构建|明确|总结|回顾|聚焦|说明|建立|打通|认识|学习|覆盖|提炼)")
+_SOURCE_NOISE_RE = re.compile(
+    r"(百度百科|维基百科|知乎|CSDN|博客|网页|网站|链接|来源|搜索结果|DuckDuckGo|SearXNG|Bocha|林子雨|人工智能通识)",
+    re.IGNORECASE,
+)
 
 
 class _PlannerChapterTitleItem(BaseModel):
@@ -79,6 +83,8 @@ def _extract_preview_tasks(raw_text: str) -> list[str]:
             continue
         text = _clean_preview_line(match.group(2))
         if not text:
+            continue
+        if _SOURCE_NOISE_RE.search(text):
             continue
         key = text.casefold()
         if key in seen:
@@ -324,7 +330,8 @@ def _build_fast_planner_prompt(base_prompt: str) -> str:
         "生成报告\n"
         "4. 每条研究任务控制在 18 到 36 个中文字符之间，务必具体、可检索、可执行。\n"
         "5. 任务必须强依赖当前主题、用户目标和资料提示，不要输出空泛模板。\n"
-        "6. 不要解释你的思路，不要额外加前言、后记、总结段落。"
+        "6. 禁止把网页名、作者名、书名或搜索结果标题写进任务，例如“百度百科”“知乎”“林子雨”“人工智能通识”。\n"
+        "7. 不要解释你的思路，不要额外加前言、后记、总结段落。"
     )
 
 

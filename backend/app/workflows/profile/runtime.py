@@ -9,7 +9,7 @@ from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import SYSTEM, USER
-from app.workflows.profile.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
+from app.workflows.profile.pipeline.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 
 logger = structlog.get_logger()
 

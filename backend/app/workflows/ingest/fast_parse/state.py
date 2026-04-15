@@ -1,11 +1,11 @@
-"""State for the ingest fast-parse chain."""
+﻿"""State for the ingest fast-parse chain."""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
-from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.strategy import ParsePlan
+from app.workflows.ingest.shared.parsing.classifier import ClassificationResult
+from app.workflows.ingest.shared.parsing.strategy import ParsePlan
 
 
 class IngestParseState(TypedDict, total=False):

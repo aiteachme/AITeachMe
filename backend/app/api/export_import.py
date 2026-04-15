@@ -19,7 +19,7 @@ from app.schemas.export_import import (
     ImportOptions,
     ImportResultData,
 )
-from app.services.export_import_service import (
+from app.workflows.support.export_import import (
     export_subject,
     get_courses_dir_path,
     import_subject,

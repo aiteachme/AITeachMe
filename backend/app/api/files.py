@@ -13,13 +13,13 @@ from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
-from app.services.file_service import (
+from app.workflows.support.files import (
     delete_files,
     list_subject_files,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
 )
-from app.services.subject_service import get_subject_record
+from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(prefix="/api/v1/subjects/{subject}/files", tags=["files"])
 

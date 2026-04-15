@@ -19,8 +19,8 @@ from app.schemas.knowledge import (
     GraphNodeDetailRequest,
     KnowledgeNodeDetailResponse,
 )
-from app.services.knowledge_graph.module import KnowledgeGraphModule
-from app.services.subject_service import get_subject_record
+from app.workflows.digest.application.knowledge_graph.module import KnowledgeGraphModule
+from app.workflows.support.subjects import get_subject_record
 
 router = APIRouter(tags=["knowledge"])
 
@@ -59,4 +59,3 @@ async def chunk_context(
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     kg = KnowledgeGraphModule(session=session)
     return ok_response(kg.get_chunk_context(subject=normalized, chunk_id=body.chunk_id))
-

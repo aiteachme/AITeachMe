@@ -282,5 +282,5 @@ def _langsmith_trace_kwargs(
             attempt=attempt,
             mode=mode,
         ),
-        "extra_tags": [f"task:{task_type.value}", f"mode:{mode}"],
+        "extra_tags": [f"task:{task_type.value}"],
     }

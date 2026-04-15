@@ -22,6 +22,11 @@ from app.shared.infra.subject.settings import (
 )
 
 if TYPE_CHECKING:
+    from app.shared.infra.subject.build_precheck import (
+        inspect_subject_build_precheck,
+        resolve_subject_build_vector_status,
+        subject_uses_legacy_vector_storage,
+    )
     from app.shared.infra.subject.vectors import (
         RuntimeEmbeddingConfig,
         SUBJECT_VECTOR_PRECHECK_DETAIL_MAP,
@@ -49,9 +54,19 @@ _VECTOR_EXPORTS = {
     "get_subject_vector_status_by_slug",
     "should_generate_subject_embeddings",
 }
+_BUILD_PRECHECK_EXPORTS = {
+    "inspect_subject_build_precheck",
+    "resolve_subject_build_vector_status",
+    "subject_uses_legacy_vector_storage",
+}
 
 
 def __getattr__(name: str) -> Any:
+    if name in _BUILD_PRECHECK_EXPORTS:
+        module = import_module("app.shared.infra.subject.build_precheck")
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
     if name not in _VECTOR_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -83,7 +98,10 @@ __all__ = [
     "get_subject_vector_search_notice",
     "get_subject_vector_status",
     "get_subject_vector_status_by_slug",
+    "inspect_subject_build_precheck",
     "load_subject_settings",
+    "resolve_subject_build_vector_status",
     "set_subject_embedding_binding",
     "should_generate_subject_embeddings",
+    "subject_uses_legacy_vector_storage",
 ]

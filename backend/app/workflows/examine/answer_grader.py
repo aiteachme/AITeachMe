@@ -21,7 +21,7 @@ from app.workflows.examine.context import (
     build_grading_knowledge_context,
     read_knowledge_doc_text,
 )
-from app.workflows.examine.prompts import (
+from app.workflows.examine.exam_grade.prompts import (
     SYSTEM_PROMPT_ERROR_CAUSE_LABEL,
     SYSTEM_PROMPT_SHORT_ANSWER_GRADE,
 )

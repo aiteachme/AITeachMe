@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.workflow.context import create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes.append_practice_node import build_append_practice_node
-from app.workflows.digest.docgen.internal import DocGenAssetRuntime
+from app.workflows.digest.docgen.lib import DocGenAssetRuntime
 
 
 def test_docgen_asset_runtime_processes_interactive_placeholder() -> None:

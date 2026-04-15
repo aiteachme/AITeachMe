@@ -274,14 +274,14 @@ POST /api/v1/subjects/import   — 上传并导入 .atmx 文件
 | 类型 | 文件 | 职责 |
 | --- | --- | --- |
 | **[NEW]** | `app/schemas/export_import.py` | API 请求/响应 Schema（仅 API 面） |
-| **[NEW]** | `app/services/export_import_service.py` | 核心业务逻辑 + manifest 内部模型 + TABLE_REGISTRY |
+| **[NEW]** | `app/workflows/support/export_import/commands.py` | 核心业务逻辑 + manifest 内部模型 + TABLE_REGISTRY |
 | **[NEW]** | `app/api/export_import.py` | API 路由（导出预览 / 导出下载 / 导入上传） |
 | **[MODIFY]** | `app/main.py` | 注册新 router |
 
 文件放置遵循现有分层规范：
 
 - `schemas/` 仅放 API 契约模型
-- `.atmx` 内部格式模型（`_ExportManifest` 等）以私有类形式放在 service 内部，不外溢到 API 面
+- `.atmx` 内部格式模型（`_ExportManifest` 等）以私有类形式放在 support command 内部，不外溢到 API 面
 - `TABLE_REGISTRY` 是导入导出的唯一配置源；新增/修改表时只需更新注册表
 
 ### 8.1 TABLE_REGISTRY 设计

@@ -12,7 +12,7 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
-from app.workflows.digest.services.material_profiler import (
+from app.workflows.digest.shared.material_profile import (
     build_material_profile,
     decide_digest_mode,
 )

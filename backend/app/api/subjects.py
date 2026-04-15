@@ -18,7 +18,7 @@ from app.schemas.subject import (
     SubjectNameSuggestionResponse,
     SubjectUpdateRequest,
 )
-from app.services.subject_service import (
+from app.workflows.support.subjects import (
     create_subject_record,
     delete_subject_record,
     list_subject_records,

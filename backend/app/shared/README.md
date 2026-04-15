@@ -1,6 +1,6 @@
 # Shared 层说明
 
-最后更新：2026-04-15
+最后更新：2026-04-16
 
 `app.shared` 是后端的共享基础层。
 它负责收拢那些“离开具体业务依然成立，而且多个模块都会复用”的能力，让上层代码有稳定入口。
@@ -14,14 +14,14 @@
 当前推荐依赖方向：
 
 ```text
-api -> services -> workflows -> teaching -> shared.infra -> shared.kernel
+api -> workflows -> repositories / shared.infra / models / schemas
 ```
 
 这条链表示：
 
-- 越往右越底层、越稳定。
-- 越往左越接近具体业务和用户请求。
-- 右边的层不要反向依赖左边的业务语义。
+- `api` 只接 HTTP 请求。
+- `workflows` 是唯一业务层。
+- `shared.infra` 和 `shared.kernel` 提供可复用底座，不反向依赖业务层。
 
 ## 2. `shared` 里有哪些层
 
@@ -78,13 +78,13 @@ infra  = 已经接上外部系统的共享能力
 
 - 某个 workflow 专属的 graph、state、node、router
 - 某个 workflow 专属的 runtime
-- 教学表达本身，例如章节脚手架、教学块、教学上下文组织
+- 引擎专属教学表达，例如 Digest 章节脚手架、教学块、教学上下文组织
 - 某条业务链专属的 prompt 文本
 - “先做什么、后做什么、失败后怎么补救”的业务编排逻辑
 
 对应落点应该是：
 
-- 教学语义放 `app.teaching`
+- 引擎专属教学语义放对应 `app.workflows.<module>._shared`
 - 业务编排放 `app.workflows`
 
 ## 6. 新同学最常见的判断题
@@ -107,7 +107,10 @@ infra  = 已经接上外部系统的共享能力
 - 新增章节导学块
 - 新增教学上下文拼装规则
 
-通常放 `app.teaching`。
+通常放对应业务模块：
+
+- Digest 文档教学语义放 `app.workflows.digest._shared.pedagogy`
+- 通用可执行教学工具放 `app.shared.infra.tools.builtin.teaching_tools`
 
 ### 情况 3：我想改某条业务流程
 
@@ -128,8 +131,8 @@ infra  = 已经接上外部系统的共享能力
 
 不建议：
 
-- `services` 直接 import 某个 workflow 的内部私有模块
-- `teaching` 或 `workflows` 自己再复制一套 LLM、trace / track、Tool Registry
+- 重新创建 `app.services` 或从旧 service 路径导入
+- `workflows` 自己再复制一套 LLM、trace / track、Tool Registry
 
 ## 8. 新成员阅读顺序
 
@@ -137,12 +140,11 @@ infra  = 已经接上外部系统的共享能力
 
 1. 本文件，先建立 `kernel / infra` 的边界。
 2. [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)，看共享基础设施怎么分层。
-3. [teaching/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/teaching/README.md)，看教学语义放在哪里。
+3. [workflows/STRUCTURE.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/STRUCTURE.md)，看业务层如何分区。
 4. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)，看真正的业务流程怎么编排。
 
 ## 9. 一句话总结
 
 - `kernel` 放原语。
 - `infra` 放共享基础设施。
-- `teaching` 放“怎么教”。
-- `workflows` 放“这轮流程怎么跑”。
+- `workflows` 放业务用例、引擎编排，以及“怎么教”的业务语义。

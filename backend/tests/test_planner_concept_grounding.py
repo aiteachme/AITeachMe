@@ -10,6 +10,7 @@ from app.workflows.digest.planner.lib.grounding import (
     collect_planner_concept_briefing,
 )
 from app.workflows.digest.planner.graph import build_planner_graph
+from app.workflows.digest.planner.state import BuildPlannerGraphInput
 from app.workflows.digest.shared.models import FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
 
 
@@ -151,11 +152,10 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
     assert briefing.web_hit_count == 2
     assert briefing.web_read_count == 2
     assert "快速概念检索锚点：" in briefing.briefing
-    assert "[本地/local_rag]" in briefing.briefing
-    assert "[外部/duckduckgo]" in briefing.briefing
+    assert "外部网页仅用于校验概念范围" in briefing.briefing
+    assert "百度百科" not in briefing.briefing
     assert "建议优先覆盖的概念锚点" in briefing.briefing
     assert "极限" in briefing.topic_hints
-    assert "结构关系" in briefing.briefing
 
 
 def test_planner_graph_compiles_with_ground_concepts_node() -> None:
@@ -168,3 +168,11 @@ def test_planner_graph_compiles_with_ground_concepts_node() -> None:
     assert "load_context" in node_ids
     assert "ground_concepts" in node_ids
     assert "draft_plan" in node_ids
+
+
+def test_planner_input_schema_keeps_stream_callbacks() -> None:
+    annotations = BuildPlannerGraphInput.__annotations__
+
+    assert "progress_callback" in annotations
+    assert "token_callback" in annotations
+    assert "planner_session_id" in annotations

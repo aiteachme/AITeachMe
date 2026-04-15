@@ -13,7 +13,7 @@ from sqlmodel import Session
 from app.shared.infra.database import managed_session
 from app.shared.infra.runtime import get_guest_cookie_name, is_local_mode
 from app.shared.infra.exceptions import AITeachMeError
-from app.services.auth_service import (
+from app.workflows.support.auth import (
     create_guest_user,
     resolve_guest_user_from_token,
     resolve_user_from_token,

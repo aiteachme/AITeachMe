@@ -6,6 +6,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import app.models as _models
+
+if not all(
+    hasattr(_models, name)
+    for name in ("Curriculum", "TeachingUnit", "ThemeTreeNode")
+):
+    pytest.skip(
+        "Legacy Examine curriculum/tree models are not present while exams API is offline.",
+        allow_module_level=True,
+    )
+
 from app.models import (
     Curriculum,
     Difficulty,

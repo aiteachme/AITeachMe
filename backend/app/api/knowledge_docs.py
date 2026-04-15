@@ -30,25 +30,25 @@ from app.schemas.knowledge import (
     StudyPlanRequest,
     StudyPlanResponse,
 )
-from app.services.knowledge_docs.build_planner_service import (
+from app.workflows.digest.application.knowledge_docs.build_planner_service import (
     append_build_planner_message_service,
     confirm_build_planner_session_service,
     create_build_planner_session_service,
     get_latest_planner_session_service,
 )
-from app.services.auth_service import set_guest_cookie_for_user
-from app.services.knowledge_docs.cleanup_service import clear_subject_knowledge
-from app.services.knowledge_docs.digest_service import (
+from app.workflows.support.auth import set_guest_cookie_for_user
+from app.workflows.digest.application.knowledge_docs.cleanup_service import clear_subject_knowledge
+from app.workflows.digest.application.knowledge_docs.digest_service import (
     get_docgen_result,
     run_docgen_background,
     run_unified_build_background,
     trigger_docgen_build,
 )
-from app.services.knowledge_docs.overview_service import get_knowledge_overview
-from app.services.knowledge_docs.study_plan_service import handle_study_plan_request
-from app.services.knowledge_graph.digest_service import run_graph_build_background
-from app.services.subject_service import get_subject_record
-from app.workflows.interact.support.streaming import SSEEventEmitter
+from app.workflows.digest.application.knowledge_docs.overview_service import get_knowledge_overview
+from app.workflows.digest.application.knowledge_docs.study_plan_service import handle_study_plan_request
+from app.workflows.digest.application.knowledge_graph.digest_service import run_graph_build_background
+from app.workflows.support.subjects import get_subject_record
+from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 
 router = APIRouter(tags=["knowledge"])
 
@@ -58,10 +58,15 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     elapsed_ms = int(payload.get("elapsed_ms", 0) or 0)
     status = str(payload.get("status") or "ok").strip() or "ok"
     if node_name:
+        node_label = {
+            "load_context": "读取目标与资料",
+            "ground_concepts": "校准核心概念",
+            "draft_plan": "生成构建方案",
+        }.get(node_name, node_name)
         if status == "failed":
-            return f"{node_name} failed in {elapsed_ms} ms."
-        return f"{node_name} finished in {elapsed_ms} ms."
-    return "Generating build plan..."
+            return f"{node_label}失败，用时 {elapsed_ms} ms。"
+        return f"{node_label}完成，用时 {elapsed_ms} ms。"
+    return "正在生成构建方案..."
 
 
 def _planner_stream_response(
@@ -78,7 +83,7 @@ def _planner_stream_response(
                 "status",
                 {
                     "stage": "accepted",
-                    "detail": "Request accepted. Reading files and user goal.",
+                    "detail": "请求已受理，正在读取学习目标与资料。",
                 },
             )
 
@@ -105,9 +110,9 @@ def _planner_stream_response(
                 {
                     "stage": "completed",
                     "detail": (
-                        f"Plan generated in {elapsed_ms} ms."
+                        f"构建方案已生成，用时 {elapsed_ms} ms。"
                         if runtime_stats is not None
-                        else "Plan generated."
+                        else "构建方案已生成。"
                     ),
                     "elapsed_ms": elapsed_ms,
                 },

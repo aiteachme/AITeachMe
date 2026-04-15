@@ -24,12 +24,22 @@ class UserKnowledgeState(SQLModel, table=True):
             sqlite_where=sa.text("knowledge_node_id IS NOT NULL"),
             postgresql_where=sa.text("knowledge_node_id IS NOT NULL"),
         ),
+        sa.Index(
+            "uq_user_knowledge_state_unit",
+            "user_id",
+            "subject",
+            "teaching_unit_id",
+            unique=True,
+            sqlite_where=sa.text("teaching_unit_id IS NOT NULL"),
+            postgresql_where=sa.text("teaching_unit_id IS NOT NULL"),
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", index=True)
     subject: str = Field(index=True)
-    knowledge_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
+    teaching_unit_id: int | None = Field(default=None, index=True)
+    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
     mastery_score: float = Field(default=0.0, ge=0.0, le=1.0)
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     stability_score: float = Field(default=0.0, ge=0.0, le=1.0)

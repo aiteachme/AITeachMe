@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.workflows.digest.docgen.internal.assets import _MermaidPlaceholderRuntime
-from app.workflows.digest.docgen.internal.writer import DocGenWriterRuntime
+from app.workflows.digest.docgen.lib.assets import _MermaidPlaceholderRuntime
+from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 
 
 def test_docgen_writer_runtime_raises_when_main_llm_fails() -> None:
@@ -50,7 +50,7 @@ def test_mermaid_placeholder_runtime_raises_when_llm_fails() -> None:
     )
 
     with patch(
-        "app.workflows.digest.docgen.internal.assets.get_settings",
+        "app.workflows.digest.docgen.lib.assets.get_settings",
         return_value=SimpleNamespace(
             mermaid_generation_enabled=True,
             mermaid_generation_model="",

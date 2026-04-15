@@ -31,7 +31,7 @@ from app.workflows.examine.context import (
     template_matches_request_context,
     truncate_text,
 )
-from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
+from app.workflows.examine.question_build.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
 
 logger = structlog.get_logger()
 

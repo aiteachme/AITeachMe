@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.system_service import build_settings_overview_data
+from app.workflows.support.system import build_settings_overview_data
 from app.shared.infra.config import get_settings
 
 

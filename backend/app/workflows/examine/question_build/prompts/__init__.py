@@ -1,5 +1,13 @@
-"""Compatibility wrapper exposing question-build prompts."""
+"""Question-build prompt exports."""
 
-from app.workflows.examine.prompts import PROMPTS
+from app.workflows.examine.question_build.prompts.generate import (
+    PROMPTS,
+    SYSTEM_PROMPT_EXAM_GENERATE,
+    SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT,
+)
 
-__all__ = ["PROMPTS"]
+__all__ = [
+    "PROMPTS",
+    "SYSTEM_PROMPT_EXAM_GENERATE",
+    "SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT",
+]

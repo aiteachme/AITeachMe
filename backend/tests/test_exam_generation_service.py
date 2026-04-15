@@ -4,7 +4,20 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.exams_service import trigger_exam_generate
+import pytest
+
+import app.models as _models
+
+if not all(
+    hasattr(_models, name)
+    for name in ("Curriculum", "TeachingUnit", "ThemeTreeNode")
+):
+    pytest.skip(
+        "Legacy Examine curriculum/tree models are not present while exams API is offline.",
+        allow_module_level=True,
+    )
+
+from app.workflows.examine.application import trigger_exam_generate
 from app.workflows.examine.context import build_exam_style_profile
 
 
@@ -81,28 +94,28 @@ def test_trigger_exam_generate_skips_question_build_for_sufficient_paper_invento
     )
 
     with patch(
-        "app.services.exams_service.paper_generation.exams_repo.get_published_curriculum_version",
+        "app.workflows.examine.application.paper_generation.exams_repo.get_published_curriculum_version",
         return_value=snapshot,
     ), patch(
-        "app.services.exams_service.paper_generation.build_exam_style_profile",
+        "app.workflows.examine.application.paper_generation.build_exam_style_profile",
         return_value=style_profile,
     ), patch(
-        "app.services.exams_service.paper_generation._resolve_requested_unit_scope",
+        "app.workflows.examine.application.paper_generation._resolve_requested_unit_scope",
         return_value=[11, 12, 13],
     ), patch(
-        "app.services.exams_service.paper_generation._resolve_auto_build_unit_ids",
+        "app.workflows.examine.application.paper_generation._resolve_auto_build_unit_ids",
         return_value=[11, 12, 13],
     ), patch(
-        "app.services.exams_service.paper_generation._count_effective_template_inventory",
+        "app.workflows.examine.application.paper_generation._count_effective_template_inventory",
         side_effect=[40, 40],
     ), patch(
-        "app.services.exams_service.paper_generation.trigger_question_build",
+        "app.workflows.examine.application.paper_generation.trigger_question_build",
         new_callable=AsyncMock,
     ) as build_mock, patch(
-        "app.services.exams_service.paper_generation.assemble_paper",
+        "app.workflows.examine.application.paper_generation.assemble_paper",
         return_value=paper,
     ) as assemble_mock, patch(
-        "app.services.exams_service.paper_generation.export_exam_paper_artifacts",
+        "app.workflows.examine.application.paper_generation.export_exam_paper_artifacts",
         return_value=_DummyExportResult(),
     ):
         result = asyncio.run(

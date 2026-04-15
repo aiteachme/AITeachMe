@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.models.raw_file import RawFile
-from app.services.file_service import build_file_record
+from app.workflows.support.files import build_file_record
 
 
 def test_build_file_record_marks_cloud_markdown_ready_without_local_file() -> None:
