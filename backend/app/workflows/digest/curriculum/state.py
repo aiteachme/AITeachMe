@@ -1,10 +1,10 @@
-"""Digest curriculum workflow state types."""
+﻿"""Digest curriculum workflow state types."""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 
 
 class CurriculumDeriveState(TypedDict, total=False):
@@ -40,3 +40,4 @@ class CurriculumDeriveState(TypedDict, total=False):
 
 
 __all__ = ["CurriculumDeriveState"]
+

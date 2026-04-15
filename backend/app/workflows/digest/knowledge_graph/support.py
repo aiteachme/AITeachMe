@@ -14,9 +14,9 @@ import structlog
 from sqlmodel import Session, select
 
 from app.shared.infra.database import managed_session
-from app.workflows.digest.kg.services.chunker import chunk_markdown
-from app.workflows.digest.kg.services.cleaner import clean_markdown
-from app.workflows.digest.kg.services.embedder import embed_chunks
+from app.workflows.digest.knowledge_graph.services.chunker import chunk_markdown
+from app.workflows.digest.knowledge_graph.services.cleaner import clean_markdown
+from app.workflows.digest.knowledge_graph.services.embedder import embed_chunks
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models import RetrievalChunk
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
@@ -24,7 +24,7 @@ from app.services.subject_embedding_service import (
     get_runtime_embedding_config,
     should_generate_subject_embeddings,
 )
-from app.workflows.digest.kg.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KGDigestState
 
 logger = structlog.get_logger()
 
@@ -227,5 +227,6 @@ __all__ = [
     "prepare_chunk_ids_for_files",
     "workflow_logger",
 ]
+
 
 

@@ -7,20 +7,20 @@ from collections.abc import Awaitable, Callable
 from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
-from app.workflows.digest.kg.finalize_nodes import build_finalize_graph_node, fail_node
-from app.workflows.digest.kg.prepare_nodes import (
+from app.workflows.digest.knowledge_graph.finalize_nodes import build_finalize_graph_node, fail_node
+from app.workflows.digest.knowledge_graph.prepare_nodes import (
     acquire_lock_node,
     cluster_node,
     extract_node,
     prepare_node,
 )
-from app.workflows.digest.kg.resolve_nodes import (
+from app.workflows.digest.knowledge_graph.resolve_nodes import (
     analyze_impact_node,
     resolve_edges_node,
     resolve_nodes_node,
 )
-from app.workflows.digest.kg.routes import route_after_lock, route_after_prepare, route_after_step
-from app.workflows.digest.kg.state import KGDigestState
+from app.workflows.digest.knowledge_graph.routes import route_after_lock, route_after_prepare, route_after_step
+from app.workflows.digest.knowledge_graph.state import KGDigestState
 
 CurriculumTrigger = Callable[..., Awaitable[None]]
 
@@ -216,6 +216,7 @@ __all__ = [
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
+
 
 
 

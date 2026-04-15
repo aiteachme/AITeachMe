@@ -1,4 +1,4 @@
-"""Teaching-unit derivation built on the compressed schema."""
+﻿"""Teaching-unit derivation built on the compressed schema."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import curriculum_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.utils.kg_helpers import compute_member_signature, normalize_name
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 from app.workflows.digest.observability import add_slow_item
 from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_UNIT_NAMING,
@@ -70,9 +70,9 @@ class TeachingUnitDeriveResult:
 
 
 class UnitNamingResponse(BaseModel):
-    title: str = PydanticField(description="教学单元名称")
-    summary: str = PydanticField(description="教学单元摘要")
-    learning_objectives: list[str] = PydanticField(description="学习目标列表")
+    title: str = PydanticField(description="鏁欏鍗曞厓鍚嶇О")
+    summary: str = PydanticField(description="鏁欏鍗曞厓鎽樿")
+    learning_objectives: list[str] = PydanticField(description="瀛︿範鐩爣鍒楄〃")
 
 
 def extract_local_subgraph(
@@ -188,7 +188,7 @@ def _split_large_component(
     topic_ids = [nid for nid in component if node_infos[nid].node_type == "Topic"]
 
     if not topic_ids:
-        # No Topic nodes — fall back to simple slicing
+        # No Topic nodes 鈥?fall back to simple slicing
         return [component]
 
     # Build direct children for each Topic
@@ -284,25 +284,25 @@ def _rule_based_unit_name(
     example_count = len(candidate.example_node_ids)
     if len(core_names) == 1 and len(candidate.all_node_ids) <= 4:
         title = core_names[0]
-        summary_parts = [f"围绕 {title} 组织核心知识点"]
+        summary_parts = [f"鍥寸粫 {title} 缁勭粐鏍稿績鐭ヨ瘑鐐?]
         if support_names:
-            summary_parts.append(f"并补充 {', '.join(support_names)}")
+            summary_parts.append(f"骞惰ˉ鍏?{', '.join(support_names)}")
         if example_count:
-            summary_parts.append(f"附带 {example_count} 个例题/练习")
-        summary = "，".join(summary_parts) + "。"
+            summary_parts.append(f"闄勫甫 {example_count} 涓緥棰?缁冧範")
+        summary = "锛?.join(summary_parts) + "銆?
         return UnitNamingResponse(
             title=title,
             summary=summary,
             learning_objectives=[
-                f"理解并能够讲清 {title} 的核心概念、方法与常见应用。",
+                f"鐞嗚В骞惰兘澶熻娓?{title} 鐨勬牳蹇冩蹇点€佹柟娉曚笌甯歌搴旂敤銆?,
             ],
         )
     if len(core_names) == 2 and not candidate.example_node_ids and len(candidate.support_node_ids) <= 2:
         title = " / ".join(core_names)
         return UnitNamingResponse(
             title=title,
-            summary=f"整合 {title} 两个紧密相关的核心知识点，形成一个可连续讲解与复习的教学单元。",
-            learning_objectives=[f"建立 {title} 之间的联系，并能在题目中综合使用。"],
+            summary=f"鏁村悎 {title} 涓や釜绱у瘑鐩稿叧鐨勬牳蹇冪煡璇嗙偣锛屽舰鎴愪竴涓彲杩炵画璁茶В涓庡涔犵殑鏁欏鍗曞厓銆?,
+            learning_objectives=[f"寤虹珛 {title} 涔嬮棿鐨勮仈绯伙紝骞惰兘鍦ㄩ鐩腑缁煎悎浣跨敤銆?],
         )
     return None
 
@@ -335,10 +335,10 @@ def _fallback_unit_name(
     core_names = [node_infos[node_id].canonical_name for node_id in candidate.core_node_ids]
     support_names = [node_infos[node_id].canonical_name for node_id in candidate.support_node_ids]
     title = " / ".join(core_names[:3] or support_names[:2] or ["Untitled unit"])
-    objective = f"围绕 {title} 建立可复习、可迁移的理解框架。"
+    objective = f"鍥寸粫 {title} 寤虹珛鍙涔犮€佸彲杩佺Щ鐨勭悊瑙ｆ鏋躲€?
     return UnitNamingResponse(
         title=title,
-        summary=f"聚合 {title} 相关知识点，形成一个可讲解、可练习的教学单元。",
+        summary=f"鑱氬悎 {title} 鐩稿叧鐭ヨ瘑鐐癸紝褰㈡垚涓€涓彲璁茶В銆佸彲缁冧範鐨勬暀瀛﹀崟鍏冦€?,
         learning_objectives=[objective],
     )
 
@@ -565,3 +565,4 @@ __all__ = [
     "TeachingUnitDeriveResult",
     "derive_teaching_units",
 ]
+

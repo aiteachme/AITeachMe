@@ -27,8 +27,8 @@ from app.workflows.digest.graph import (
     create_docgen_initial_state,
     create_graph_digest_initial_state,
 )
-from app.workflows.digest.kg.finalize_nodes import trigger_curriculum_derive_safe
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.finalize_nodes import trigger_curriculum_derive_safe
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 from app.workflows.digest.observability import (
     build_curriculum_lane_summary,
     build_docgen_lane_summary,
@@ -373,5 +373,6 @@ __all__ = [
     "run_docgen_workflow",
     "run_graph_digest_workflow",
 ]
+
 
 

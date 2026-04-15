@@ -1,17 +1,17 @@
-"""切块向量化。"""
+﻿"""鍒囧潡鍚戦噺鍖栥€?""
 
 from __future__ import annotations
 
 import structlog
 
-from app.workflows.digest.kg.services.chunker import ChunkData
+from app.workflows.digest.knowledge_graph.services.chunker import ChunkData
 from app.shared.infra.embedding import aembed_texts
 
 logger = structlog.get_logger()
 
 
 async def embed_chunks(chunks: list[ChunkData]) -> list[list[float]]:
-    """为切块生成向量。"""
+    """涓哄垏鍧楃敓鎴愬悜閲忋€?""
 
     if not chunks:
         return []
@@ -27,3 +27,4 @@ async def embed_chunks(chunks: list[ChunkData]) -> list[list[float]]:
         embedding_dim=len(embeddings[0]) if embeddings else 0,
     )
     return embeddings
+

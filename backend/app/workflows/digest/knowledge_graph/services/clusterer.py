@@ -1,4 +1,4 @@
-"""批内候选聚类：基于 normalized_name + embedding 相似度的批内去重聚类。"""
+﻿"""鎵瑰唴鍊欓€夎仛绫伙細鍩轰簬 normalized_name + embedding 鐩镐技搴︾殑鎵瑰唴鍘婚噸鑱氱被銆?""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import re
 
 import structlog
 
-from app.workflows.digest.kg.services.candidate_identity import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import (
     bucket_scope,
     candidate_lookup_keys,
     token_bucket,
 )
-from app.workflows.digest.kg.services.extractor import CandidateNode
+from app.workflows.digest.knowledge_graph.services.extractor import CandidateNode
 from app.shared.infra.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 
@@ -24,7 +24,7 @@ _SECONDARY_NODE_TYPES = {"Definition", "Example"}
 
 @dataclass
 class ClusteredCandidate:
-    """聚类后的候选节点代表。"""
+    """鑱氱被鍚庣殑鍊欓€夎妭鐐逛唬琛ㄣ€?""
 
     representative: CandidateNode
     members: list[CandidateNode] = field(default_factory=list)
@@ -33,7 +33,7 @@ class ClusteredCandidate:
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """计算两个向量的余弦相似度。"""
+    """璁＄畻涓や釜鍚戦噺鐨勪綑寮︾浉浼煎害銆?""
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
@@ -43,7 +43,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def _merge_summaries(members: list[CandidateNode]) -> str:
-    """合并多个候选节点的摘要，去重后拼接。"""
+    """鍚堝苟澶氫釜鍊欓€夎妭鐐圭殑鎽樿锛屽幓閲嶅悗鎷兼帴銆?""
     seen: set[str] = set()
     parts: list[str] = []
     for m in members:
@@ -51,49 +51,38 @@ def _merge_summaries(members: list[CandidateNode]) -> str:
         if s and s not in seen:
             seen.add(s)
             parts.append(s)
-    return "；".join(parts)
+    return "锛?.join(parts)
 
 
 async def cluster_candidates(
     candidates: list[tuple[CandidateNode, int]],
     similarity_threshold: float = 0.85,
 ) -> tuple[list[ClusteredCandidate], dict[str, int]]:
-    """对同一批次抽取的候选节点进行批内去重聚类。
-
-    聚类策略：
-    1. 按 (node_type, normalized_name) 精确分组——名称完全一致的直接合并。
-    2. 同 node_type 内，对名称不同的候选计算 embedding 相似度，
-       超过 similarity_threshold 的合并到同一簇。
-
+    """瀵瑰悓涓€鎵规鎶藉彇鐨勫€欓€夎妭鐐硅繘琛屾壒鍐呭幓閲嶈仛绫汇€?
+    鑱氱被绛栫暐锛?    1. 鎸?(node_type, normalized_name) 绮剧‘鍒嗙粍鈥斺€斿悕绉板畬鍏ㄤ竴鑷寸殑鐩存帴鍚堝苟銆?    2. 鍚?node_type 鍐咃紝瀵瑰悕绉颁笉鍚岀殑鍊欓€夎绠?embedding 鐩镐技搴︼紝
+       瓒呰繃 similarity_threshold 鐨勫悎骞跺埌鍚屼竴绨囥€?
     Args:
-        candidates: (CandidateNode, chunk_id) 元组列表。
-        similarity_threshold: embedding 相似度阈值，默认 0.85。
-
+        candidates: (CandidateNode, chunk_id) 鍏冪粍鍒楄〃銆?        similarity_threshold: embedding 鐩镐技搴﹂槇鍊硷紝榛樿 0.85銆?
     Returns:
-        (clustered_candidates, candidate_lookup_to_cluster_id) 元组。
-        candidate_lookup_to_cluster_id 将候选 id / typed lookup key 映射到聚类代表的索引，
-        供后续边解析使用。
-    """
+        (clustered_candidates, candidate_lookup_to_cluster_id) 鍏冪粍銆?        candidate_lookup_to_cluster_id 灏嗗€欓€?id / typed lookup key 鏄犲皠鍒拌仛绫讳唬琛ㄧ殑绱㈠紩锛?        渚涘悗缁竟瑙ｆ瀽浣跨敤銆?    """
     if not candidates:
         return [], {}
 
-    # ── Step 1: 按 (node_type, normalized_name) 精确分组 ──
+    # 鈹€鈹€ Step 1: 鎸?(node_type, normalized_name) 绮剧‘鍒嗙粍 鈹€鈹€
     group_key_to_members: dict[tuple[str, str], list[tuple[CandidateNode, int]]] = defaultdict(list)
     for cand, chunk_id in candidates:
         scope_key = bucket_scope(cand) if cand.node_type in _SECONDARY_NODE_TYPES else ""
         key = (cand.node_type, f"{normalize_name(cand.name)}::{scope_key}")
         group_key_to_members[key].append((cand, chunk_id))
 
-    # 构建初始簇列表
-    proto_clusters: list[list[tuple[CandidateNode, int]]] = list(group_key_to_members.values())
+    # 鏋勫缓鍒濆绨囧垪琛?    proto_clusters: list[list[tuple[CandidateNode, int]]] = list(group_key_to_members.values())
 
-    # ── Step 2: 同 node_type 内 embedding 相似度合并 ──
-    # 为每个簇的代表生成 embedding
-    repr_texts = [cluster[0][0].name + "：" + cluster[0][0].local_summary for cluster in proto_clusters]
+    # 鈹€鈹€ Step 2: 鍚?node_type 鍐?embedding 鐩镐技搴﹀悎骞?鈹€鈹€
+    # 涓烘瘡涓皣鐨勪唬琛ㄧ敓鎴?embedding
+    repr_texts = [cluster[0][0].name + "锛? + cluster[0][0].local_summary for cluster in proto_clusters]
     embeddings = await aembed_texts(repr_texts)
 
-    # 按 node_type + taxonomy bucket + token bucket 分桶，避免 O(n²) 扫整类。
-    bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
+    # 鎸?node_type + taxonomy bucket + token bucket 鍒嗘《锛岄伩鍏?O(n虏) 鎵暣绫汇€?    bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for idx, cluster in enumerate(proto_clusters):
         representative = cluster[0][0]
         bucket_to_indices[
@@ -104,7 +93,7 @@ async def cluster_candidates(
             )
         ].append(idx)
 
-    # Union-Find 合并
+    # Union-Find 鍚堝苟
     parent = list(range(len(proto_clusters)))
 
     def find(x: int) -> int:
@@ -130,13 +119,13 @@ async def cluster_candidates(
             if sim >= similarity_threshold:
                 union(idx_a, idx_b)
 
-    # 收集最终簇
+    # 鏀堕泦鏈€缁堢皣
     root_to_members: dict[int, list[tuple[CandidateNode, int]]] = defaultdict(list)
     for idx, cluster in enumerate(proto_clusters):
         root = find(idx)
         root_to_members[root].extend(cluster)
 
-    # ── Step 3: 构建输出 ──
+    # 鈹€鈹€ Step 3: 鏋勫缓杈撳嚭 鈹€鈹€
     clustered: list[ClusteredCandidate] = []
     candidate_lookup_to_cluster_id: dict[str, int] = {}
 
@@ -153,8 +142,7 @@ async def cluster_candidates(
         )
         clustered.append(cc)
 
-        # 映射所有成员 id / typed lookup key 到此簇索引
-        for node in nodes:
+        # 鏄犲皠鎵€鏈夋垚鍛?id / typed lookup key 鍒版绨囩储寮?        for node in nodes:
             for lookup_key in candidate_lookup_keys(node):
                 candidate_lookup_to_cluster_id[lookup_key] = cluster_idx
 
@@ -166,3 +154,4 @@ async def cluster_candidates(
         bucket_count=len(bucket_to_indices),
     )
     return clustered, candidate_lookup_to_cluster_id
+

@@ -1,12 +1,12 @@
-"""Typed state for the graph lane."""
+﻿"""Typed state for the graph lane."""
 
 from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from app.workflows.digest.kg.services.clusterer import ClusteredCandidate
-from app.workflows.digest.kg.services.extractor import CandidateEdge, ChunkExtractionResult
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.services.clusterer import ClusteredCandidate
+from app.workflows.digest.knowledge_graph.services.extractor import CandidateEdge, ChunkExtractionResult
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 
 
 class KGDigestState(TypedDict, total=False):
@@ -66,3 +66,4 @@ class KGDigestState(TypedDict, total=False):
     token_summary: dict[str, Any]
     lock_acquired: bool
     error: str | None
+

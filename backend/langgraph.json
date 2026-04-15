@@ -1,4 +1,4 @@
-{
+﻿{
   "python_version": "3.11",
   "dependencies": [
     "."
@@ -13,7 +13,7 @@
       "description": "Ingest Phase 2 deep-enhance workflow."
     },
     "digest_kg": {
-      "path": "./app/workflows/digest/kg/graph.py:build_kg_digest_graph",
+      "path": "./app/workflows/digest/knowledge_graph/graph.py:build_kg_digest_graph",
       "description": "Digest knowledge-graph lane."
     },
     "digest_curriculum": {
@@ -51,3 +51,4 @@
   },
   "env": "../.env"
 }
+

@@ -18,8 +18,8 @@ from app.utils.job_helpers import (
     update_job_progress,
 )
 from app.shared.infra.workflow.result import WorkflowResult
-from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
@@ -267,5 +267,6 @@ __all__ = [
     "fail_node",
     "trigger_curriculum_derive_safe",
 ]
+
 
 

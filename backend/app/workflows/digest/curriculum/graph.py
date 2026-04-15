@@ -14,7 +14,7 @@ from app.workflows.digest.curriculum.nodes import (
     route_after_step,
 )
 from app.workflows.digest.curriculum.state import CurriculumDeriveState
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 
 
 def build_curriculum_derive_graph() -> StateGraph:
@@ -120,6 +120,7 @@ __all__ = [
     "build_curriculum_derive_graph",
     "create_curriculum_derive_initial_state",
 ]
+
 
 
 

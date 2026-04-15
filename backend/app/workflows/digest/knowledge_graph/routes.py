@@ -1,8 +1,8 @@
-"""Routing helpers for the digest graph workflow."""
+﻿"""Routing helpers for the digest graph workflow."""
 
 from __future__ import annotations
 
-from app.workflows.digest.kg.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KGDigestState
 
 
 def route_after_lock(state: KGDigestState) -> str:
@@ -26,3 +26,4 @@ def route_after_prepare(state: KGDigestState) -> str:
 
 
 __all__ = ["route_after_lock", "route_after_prepare", "route_after_step"]
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -8,7 +8,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
 from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
-from app.workflows.digest.kg.graph import build_kg_digest_graph
+from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.examine.exam_grade_workflow import build_exam_grade_graph
@@ -115,3 +115,4 @@ def test_digest_workflow_exports_include_planner_before_unified() -> None:
 
     assert "digest_planner" in keys
     assert keys.index("digest_planner") < keys.index("digest_unified")
+

@@ -13,17 +13,17 @@ from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
 from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.kg.services.candidate_identity import candidate_lookup_keys
-from app.workflows.digest.kg.services.clusterer import cluster_candidates
-from app.workflows.digest.kg.services.extractor import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import candidate_lookup_keys
+from app.workflows.digest.knowledge_graph.services.clusterer import cluster_candidates
+from app.workflows.digest.knowledge_graph.services.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
     extract_candidates,
     has_conceptual_content,
 )
 from app.workflows.digest.observability import add_slow_item
-from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
@@ -746,5 +746,6 @@ __all__ = [
     "extract_node",
     "prepare_node",
 ]
+
 
 

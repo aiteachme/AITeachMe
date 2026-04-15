@@ -1,4 +1,4 @@
-"""Resolve graph candidates against the compressed graph schema."""
+﻿"""Resolve graph candidates against the compressed graph schema."""
 
 from __future__ import annotations
 
@@ -15,31 +15,31 @@ from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
-from app.workflows.digest.kg.mutations import (
+from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
     create_edge_evidence,
     create_new_node,
     create_node_evidence,
     create_updated_revision,
 )
-from app.workflows.digest.kg.services.candidate_identity import (
+from app.workflows.digest.knowledge_graph.services.candidate_identity import (
     build_candidate_name_key,
     candidate_lookup_keys,
     normalize_scope_name,
 )
-from app.workflows.digest.kg.services.embedding_cache import (
+from app.workflows.digest.knowledge_graph.services.embedding_cache import (
     compute_embedding_text_hash,
     load_subject_embedding_cache,
     write_subject_embedding_cache,
 )
-from app.workflows.digest.kg.services.impact_analyzer import analyze_impact
-from app.workflows.digest.kg.services.resolver import (
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import analyze_impact
+from app.workflows.digest.knowledge_graph.services.resolver import (
     ResolveResult,
     compute_edge_confidence,
     resolve_edge,
 )
-from app.workflows.digest.kg.state import KGDigestState
-from app.workflows.digest.kg.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
 
 _PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
 _SECONDARY_NODE_TYPES = {"Definition", "Example"}
@@ -688,3 +688,4 @@ __all__ = [
     "resolve_edges_node",
     "resolve_nodes_node",
 ]
+

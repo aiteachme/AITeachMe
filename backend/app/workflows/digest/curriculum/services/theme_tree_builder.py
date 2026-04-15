@@ -1,4 +1,4 @@
-"""Theme tree derivation built on the compressed curriculum schema."""
+﻿"""Theme tree derivation built on the compressed curriculum schema."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.models.curriculum import (
 from app.models.knowledge_graph import KnowledgeNode
 from app.repositories import curriculum_repo, kg_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
-from app.workflows.digest.kg.services.impact_analyzer import ImpactSet
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import ImpactSet
 from app.workflows.digest.prompts import (
     SYSTEM_PROMPT_KG_THEME_TREE,
     USER_PROMPT_KG_THEME_TREE,
@@ -50,18 +50,18 @@ class UnitInfo:
 
 
 class ChapterSpec(BaseModel):
-    title: str = PydanticField(description="章节标题")
-    order: int = PydanticField(description="章节顺序")
+    title: str = PydanticField(description="绔犺妭鏍囬")
+    order: int = PydanticField(description="绔犺妭椤哄簭")
 
 
 class ModuleSpec(BaseModel):
-    title: str = PydanticField(description="模块标题")
-    order: int = PydanticField(description="模块顺序")
-    chapters: list[ChapterSpec] = PydanticField(description="模块下章节")
+    title: str = PydanticField(description="妯″潡鏍囬")
+    order: int = PydanticField(description="妯″潡椤哄簭")
+    chapters: list[ChapterSpec] = PydanticField(description="妯″潡涓嬬珷鑺?)
 
 
 class ThemeTreeStructure(BaseModel):
-    modules: list[ModuleSpec] = PydanticField(description="主题树结构")
+    modules: list[ModuleSpec] = PydanticField(description="涓婚鏍戠粨鏋?)
 
 
 def _normalize_text(text: str) -> str:
@@ -286,7 +286,7 @@ def _ensure_uncategorized_node(
     leaf_nodes: list[tuple[int, int | None, list[str]]],
 ) -> int:
     for node_id, _anchor_id, path in leaf_nodes:
-        if path and path[-1] == "未归类":
+        if path and path[-1] == "鏈綊绫?:
             return node_id
 
     node = curriculum_repo.create_theme_tree_node(
@@ -296,14 +296,14 @@ def _ensure_uncategorized_node(
             tree_version_id=tree_version_id,
             anchor_id=None,
             parent_tree_node_id=None,
-            title="未归类",
+            title="鏈綊绫?,
             node_type="uncategorized",
             order_index=9999,
             summary="",
         ),
         auto_commit=False,
     )
-    leaf_nodes.append((node.id or 0, None, ["未归类"]))
+    leaf_nodes.append((node.id or 0, None, ["鏈綊绫?]))
     return node.id or 0
 
 
@@ -488,3 +488,4 @@ async def derive_theme_tree(
 
 
 __all__ = ["derive_theme_tree"]
+
