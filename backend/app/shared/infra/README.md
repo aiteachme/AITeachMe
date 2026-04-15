@@ -67,9 +67,9 @@ api/knowledge_docs.py
 ```python
 from app.shared.infra.workflow import (
     WorkflowContext,
-    WorkflowGraphExport,
     emit_progress,
     invoke_state_graph,
+    project_typed_dict_schema,
     run_state_graph,
     workflow_tracer,
 )
@@ -83,6 +83,17 @@ from app.shared.infra.workflow import (
   workflow node 接线
 - `emit_progress(...)`
   前端阶段事件
+- `project_typed_dict_schema(...)`
+  从主 `State` 投影出精简的 LangGraph Studio schema
+
+`WorkflowGraphExport` 不属于 workflow 主公开 API。
+它只给离线图文导出脚本使用，应该从：
+
+```python
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
+```
+
+单独导入。
 
 ### `app.shared.infra.observability`
 

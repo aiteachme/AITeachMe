@@ -21,8 +21,8 @@ from app.workflows.digest.docgen.publish import build_merged_markdown
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def build_enrich_document_node(*, context: WorkflowContext):
-    async def enrich_document_node(state: DocGenState) -> dict:
+def build_enrich_assets_node(*, context: WorkflowContext):
+    async def enrich_assets_node(state: DocGenState) -> dict:
         chapter_metadatas = sorted(
             deepcopy(list(state.get("chapter_metadatas", []))),
             key=lambda item: item.get("chapter_index", 0),
@@ -133,9 +133,12 @@ def build_enrich_document_node(*, context: WorkflowContext):
             "asset_summary": asset_summary,
         }
 
-    return enrich_document_node
+    return enrich_assets_node
 
 
-__all__ = ["build_enrich_document_node"]
+build_enrich_document_node = build_enrich_assets_node
+
+
+__all__ = ["build_enrich_assets_node", "build_enrich_document_node"]
 
 

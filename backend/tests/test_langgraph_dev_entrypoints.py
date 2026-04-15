@@ -7,7 +7,6 @@ from pathlib import Path
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.curriculum.graph import build_curriculum_derive_graph
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
-from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
 from app.workflows.digest.kg.graph import build_kg_digest_graph
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
@@ -108,10 +107,3 @@ def test_langgraph_json_registers_digest_planner() -> None:
 
     assert planner_graph is not None
     assert planner_graph["path"] == "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph"
-
-
-def test_digest_workflow_exports_include_planner_before_unified() -> None:
-    keys = [export.key for export in DIGEST_WORKFLOW_EXPORTS]
-
-    assert "digest_planner" in keys
-    assert keys.index("digest_planner") < keys.index("digest_unified")

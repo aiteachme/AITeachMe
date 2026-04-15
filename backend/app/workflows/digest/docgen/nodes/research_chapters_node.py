@@ -62,8 +62,8 @@ def _extract_top_domains(result_metadata: dict[str, object], source_urls: list[s
     return normalized
 
 
-def build_targeted_research_node(*, context: WorkflowContext):
-    async def targeted_research_node(state: DocGenState) -> dict:
+def build_research_chapters_node(*, context: WorkflowContext):
+    async def research_chapters_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         assignment = deepcopy(state["chapter_assignment"])
         chapter_index = int(assignment.get("chapter_index", 0) or 0)
@@ -229,9 +229,12 @@ def build_targeted_research_node(*, context: WorkflowContext):
             "llm_calls_total": 1 if bool(result.metadata.get("purify_used", False)) else 0,
         }
 
-    return targeted_research_node
+    return research_chapters_node
 
 
-__all__ = ["build_targeted_research_node"]
+build_targeted_research_node = build_research_chapters_node
+
+
+__all__ = ["build_research_chapters_node", "build_targeted_research_node"]
 
 

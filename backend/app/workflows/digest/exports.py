@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.infra.workflow import WorkflowGraphExport
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.workflows.digest.graph import (

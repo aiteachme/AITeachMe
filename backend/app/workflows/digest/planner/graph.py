@@ -30,6 +30,7 @@ from app.workflows.digest.planner.models import (
 )
 from app.workflows.digest.prompts import build_planner_chapter_title_messages, build_planner_prompt
 from app.workflows.digest.planner.state import BuildPlannerState
+from app.workflows.digest.planner.state import BuildPlannerGraphInput, BuildPlannerGraphOutput
 from app.workflows.digest.shared.contracts import (
     resolve_digest_course_type,
     resolve_planner_retrieval_profile,
@@ -429,7 +430,11 @@ def _merge_planner_topic_hints(shared_inputs: SharedInputs, topic_hints: list[st
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
-    workflow = StateGraph(BuildPlannerState)
+    workflow = StateGraph(
+        BuildPlannerState,
+        input_schema=BuildPlannerGraphInput,
+        output_schema=BuildPlannerGraphOutput,
+    )
     workflow.add_node(
         "load_context",
         build_load_context_node(context=context),

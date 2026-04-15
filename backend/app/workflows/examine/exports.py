@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.infra.workflow import WorkflowGraphExport
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.examine.graph import (
     build_exam_grade_graph,
     build_examine_workflow_graph,

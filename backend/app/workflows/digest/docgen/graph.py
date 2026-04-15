@@ -12,15 +12,15 @@ from app.utils.docgen_store import update_knowledge_build_status
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.docgen.nodes import (
-    build_collect_drafts_node,
-    build_collect_materials_node,
-    build_enrich_document_node,
-    build_finalize_assemble_node,
-    build_inject_examine_node,
+    build_append_practice_node,
+    build_enrich_assets_node,
     build_load_context_node,
-    build_pedagogy_craft_node,
-    build_resolve_titles_node,
-    build_targeted_research_node,
+    build_merge_drafts_node,
+    build_merge_research_node,
+    build_finalize_titles_node,
+    build_publish_document_node,
+    build_research_chapters_node,
+    build_write_chapters_node,
 )
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_course_type, resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
@@ -41,42 +41,42 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "research_chapters",
         trace.node(
-            build_targeted_research_node(context=context),
+            build_research_chapters_node(context=context),
             name="research_chapters",
         ),
     )
     workflow.add_node(
         "merge_research",
         trace.node(
-            build_collect_materials_node(context=context),
+            build_merge_research_node(context=context),
             name="merge_research",
         ),
     )
     workflow.add_node(
         "finalize_titles",
         trace.node(
-            build_resolve_titles_node(context=context),
+            build_finalize_titles_node(context=context),
             name="finalize_titles",
         ),
     )
     workflow.add_node(
         "write_chapters",
         trace.node(
-            build_pedagogy_craft_node(context=context),
+            build_write_chapters_node(context=context),
             name="write_chapters",
         ),
     )
     workflow.add_node(
         "merge_drafts",
         trace.node(
-            build_collect_drafts_node(context=context),
+            build_merge_drafts_node(context=context),
             name="merge_drafts",
         ),
     )
     workflow.add_node(
         "enrich_assets",
         trace.node(
-            build_enrich_document_node(context=context),
+            build_enrich_assets_node(context=context),
             name="enrich_assets",
             timing_field="enrich_ms",
         ),
@@ -84,7 +84,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "append_practice",
         trace.node(
-            build_inject_examine_node(context=context),
+            build_append_practice_node(context=context),
             name="append_practice",
             timing_field="examine_ms",
         ),
@@ -92,7 +92,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "publish_document",
         trace.node(
-            build_finalize_assemble_node(context=context),
+            build_publish_document_node(context=context),
             name="publish_document",
         ),
     )
@@ -246,17 +246,18 @@ def get_langgraph_dev_docgen_graph() -> StateGraph:
 
 
 __all__ = [
-    "build_collect_drafts_node",
-    "build_collect_materials_node",
+    "build_append_practice_node",
     "build_craft_sends",
     "build_docgen_graph",
-    "build_enrich_document_node",
-    "build_inject_examine_node",
+    "build_enrich_assets_node",
     "build_load_context_node",
-    "build_pedagogy_craft_node",
-    "build_resolve_titles_node",
+    "build_merge_drafts_node",
+    "build_merge_research_node",
+    "build_publish_document_node",
+    "build_research_chapters_node",
+    "build_finalize_titles_node",
     "build_research_sends",
-    "build_targeted_research_node",
+    "build_write_chapters_node",
     "create_docgen_initial_state",
     "get_langgraph_dev_docgen_graph",
     "route_after_load_context",

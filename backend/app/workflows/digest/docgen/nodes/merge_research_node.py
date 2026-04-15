@@ -9,8 +9,8 @@ from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def build_collect_materials_node(*, context: WorkflowContext):
-    async def collect_materials_node(state: DocGenState) -> dict:
+def build_merge_research_node(*, context: WorkflowContext):
+    async def merge_research_node(state: DocGenState) -> dict:
         materials = sorted(
             list(state.get("chapter_materials", [])),
             key=lambda item: item.get("chapter_index", 0),
@@ -46,15 +46,18 @@ def build_collect_materials_node(*, context: WorkflowContext):
                 "web_hits": sum(int(item.get("web_hits", 0) or 0) for item in materials),
             },
         )
-        context.get_logger().bind(node="collect_materials").info(
+        context.get_logger().bind(node="merge_research").info(
             "docgen_material_collection_completed",
             chapter_count=len(materials),
         )
         return {}
 
-    return collect_materials_node
+    return merge_research_node
 
 
-__all__ = ["build_collect_materials_node"]
+build_collect_materials_node = build_merge_research_node
+
+
+__all__ = ["build_merge_research_node", "build_collect_materials_node"]
 
 

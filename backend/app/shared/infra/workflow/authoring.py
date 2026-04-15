@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import functools
 import inspect
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -48,21 +48,6 @@ def _resolve_build_session_id(state: Mapping[str, Any]) -> str:
         if value not in (None, ""):
             return str(value)
     return ""
-
-
-@dataclass(slots=True, frozen=True)
-class WorkflowGraphExport:
-    """A workflow graph that can be rendered directly from LangGraph."""
-
-    key: str
-    title: str
-    description: str
-    build_graph: Callable[[], Any]
-    # Dynamic edges are not exported by ``draw_mermaid`` automatically.
-    # Declare any manual Mermaid edges here, for example:
-    # ``"src --> dst"`` or ``"src -. label .-> dst"``.
-    extra_edges: tuple[str, ...] = field(default=())
-    prompts: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +161,6 @@ def workflow_tracer(
 
 
 __all__ = [
-    "WorkflowGraphExport",
     "WorkflowTraceBinding",
     "workflow_tracer",
 ]

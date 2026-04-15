@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from app.shared.infra.workflow import project_typed_dict_schema
 from app.workflows.digest.shared.models import SharedInputs
 
 
@@ -38,4 +39,39 @@ class BuildPlannerState(TypedDict, total=False):
     error: str | None
 
 
-__all__ = ["BuildPlannerState"]
+BuildPlannerGraphInput = project_typed_dict_schema(
+    BuildPlannerState,
+    name="BuildPlannerGraphInput",
+    fields=[
+        "subject",
+        "file_ids",
+        "user_goal",
+        "digest_mode",
+        "tone",
+        "selected_skillpacks",
+    ],
+)
+
+
+BuildPlannerGraphOutput = project_typed_dict_schema(
+    BuildPlannerState,
+    name="BuildPlannerGraphOutput",
+    fields=[
+        "plan",
+        "plan_summary",
+        "digest_mode",
+        "planner_generation_mode",
+        "workflow_elapsed_ms",
+        "load_ms",
+        "ground_ms",
+        "draft_ms",
+        "error",
+    ],
+)
+
+
+__all__ = [
+    "BuildPlannerGraphInput",
+    "BuildPlannerGraphOutput",
+    "BuildPlannerState",
+]

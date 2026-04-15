@@ -22,8 +22,8 @@ from app.workflows.digest.docgen.nodes.common import (
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def build_pedagogy_craft_node(*, context: WorkflowContext):
-    async def pedagogy_craft_node(state: DocGenState) -> dict:
+def build_write_chapters_node(*, context: WorkflowContext):
+    async def write_chapters_node(state: DocGenState) -> dict:
         started_at = perf_counter()
         material = deepcopy(state["chapter_material"])
         material["total_chapters"] = int(state.get("total_chapters", 0) or material.get("total_chapters", 0) or 0)
@@ -169,10 +169,13 @@ def build_pedagogy_craft_node(*, context: WorkflowContext):
             "llm_calls_total": 1,
         }
 
-    return pedagogy_craft_node
+    return write_chapters_node
 
 
-__all__ = ["build_pedagogy_craft_node"]
+build_pedagogy_craft_node = build_write_chapters_node
+
+
+__all__ = ["build_write_chapters_node", "build_pedagogy_craft_node"]
 
 
 
