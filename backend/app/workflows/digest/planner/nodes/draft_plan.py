@@ -15,7 +15,7 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
-from app.teaching.documents import coerce_resolved_chapter_title
+from app.workflows.digest._shared.pedagogy import coerce_resolved_chapter_title
 from app.workflows.digest.planner.lib.plans import (
     _dedupe_chapter_plan_titles,
     _resolve_subject_display_name,

@@ -20,7 +20,7 @@ from app.workflows.digest.knowledge_graph.services.embedder import embed_chunks
 from app.models import DigestStep, IngestStatus, RawFile, TaskStatus
 from app.models import RetrievalChunk
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
-from app.services.subject_embedding_service import (
+from app.shared.infra.subject import (
     get_runtime_embedding_config,
     should_generate_subject_embeddings,
 )
@@ -227,6 +227,5 @@ __all__ = [
     "prepare_chunk_ids_for_files",
     "workflow_logger",
 ]
-
 
 

@@ -43,7 +43,7 @@ from app.shared.infra.exceptions import (
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
 )
-from app.teaching.runtime_config import get_teaching_runtime_config
+from app.workflows.digest._shared.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.planner import (

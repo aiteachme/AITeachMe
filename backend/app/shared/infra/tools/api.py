@@ -15,7 +15,7 @@ _PROJECT_TOOL_MODULES = (
     "app.shared.infra.tools.builtin.memory_ops",
     "app.shared.infra.tools.builtin.search_kb",
     "app.shared.infra.tools.builtin.web_search",
-    "app.teaching.tools",
+    "app.workflows.support.teaching_tools",
 )
 _project_tool_modules_loaded = False
 _tool_registry_sync_hooks: list[Callable[[], None]] = []

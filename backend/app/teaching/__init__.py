@@ -1,4 +1,4 @@
-"""Teaching-layer business adapters and teaching-owned tools."""
+"""Legacy compatibility exports for historical teaching imports."""
 
 from . import skill_tools as _skill_tools
 from . import tools as _tools

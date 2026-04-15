@@ -10,7 +10,7 @@ import structlog
 from sqlmodel import Session
 
 from app.shared.infra.config import get_settings
-from app.services.subject_embedding_service import get_subject_vector_search_notice
+from app.shared.infra.subject import get_subject_vector_search_notice
 from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
 from app.workflows.interact.support.types import RetrievedContext
 

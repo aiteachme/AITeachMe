@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-from app.teaching.documents import resolve_effective_chapter_title
+from app.workflows.digest._shared.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.shared.contracts import (
     DigestChapterContract,
     DigestConfirmedPlanContract,
@@ -160,5 +160,4 @@ __all__ = [
     "resolve_docgen_retrieval_profile",
     "serialize_section",
 ]
-
 

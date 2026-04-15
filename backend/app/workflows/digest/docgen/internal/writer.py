@@ -10,7 +10,7 @@ from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResul
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.teaching.documents import (
+from app.workflows.digest._shared.pedagogy import (
     analyze_chapter_heading_quality,
     ensure_chapter_learning_scaffold,
     resolve_effective_chapter_title,

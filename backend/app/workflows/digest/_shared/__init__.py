@@ -7,5 +7,7 @@ boundary is explicit in the directory structure.
 
 from app.workflows.digest._shared.contracts import *  # noqa: F401,F403
 from app.workflows.digest._shared.models import *  # noqa: F401,F403
+from app.workflows.digest._shared.pedagogy import *  # noqa: F401,F403
 from app.workflows.digest._shared.prepare import *  # noqa: F401,F403
 from app.workflows.digest._shared.primitives import *  # noqa: F401,F403
+from app.workflows.digest._shared.runtime_config import *  # noqa: F401,F403
