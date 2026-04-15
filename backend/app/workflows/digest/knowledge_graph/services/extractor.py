@@ -32,53 +32,60 @@ _MAX_EXAMPLE_NAME_CHARS = 48
 _MAX_EXAMPLE_SUMMARY_CHARS = 800
 _MAX_TOPIC_SUMMARY_CHARS = 240
 
-# 鈹€鈹€ 鐭ヨ瘑鐐规彁鍙栫浉鍏虫ā寮?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-# 涓枃瀛︾姒傚康璇嶏紙2-8瀛楋紝鎺掗櫎甯歌鍋滅敤璇嶏級
+# ── 知识点提取相关模式 ──────────────────────────────────────────
+# 中文学科概念词（2-8字，排除常见停用词）
 _CN_CONCEPT_RE = re.compile(
-    r"(?:(?:姹倈璁＄畻|璇佹槑|鍒ゆ柇|璁ㄨ|鍒╃敤|鏍规嵁|鐢眧鐢▅鍏充簬|宸茬煡)\s*)"
-    r"([\u4e00-\u9fff]{2,8}(?:鐨刐\u4e00-\u9fff]{2,6})?)",
+    r"(?:(?:求|计算|证明|判断|讨论|利用|根据|由|用|关于|已知)\s*)"
+    r"([\u4e00-\u9fff]{2,8}(?:的[\u4e00-\u9fff]{2,6})?)",
 )
-# 甯歌瀛︾鏂规硶/瀹氱悊/鍏紡鍚嶇О
+# 常见学科方法/定理/公式名称
 _METHOD_KEYWORDS_RE = re.compile(
-    r"([\u4e00-\u9fff]{2,6}(?:娉晐瀹氱悊|鍏紡|瀹氬緥|鍘熺悊|鍑嗗垯|鏂圭▼|鍙樻崲|鍒嗚В|灞曞紑|鍒ゅ埆|涓嶇瓑寮?)",
+    r"([\u4e00-\u9fff]{2,6}(?:法|定理|公式|定律|原理|准则|方程|变换|分解|展开|判别|不等式))",
 )
-# LaTeX 涓殑鍑芥暟鍚?_LATEX_FUNC_RE = re.compile(
+# LaTeX 中的函数名
+_LATEX_FUNC_RE = re.compile(
     r"\\(?:sin|cos|tan|cot|sec|csc|ln|log|lim|int|sum|prod|det|max|min|sup|inf|arg|exp|sqrt)\b",
 )
-# 姒傚康鎬у唴瀹规娴?_CONCEPTUAL_KEYWORDS_RE = re.compile(
-    r"(?:瀹氫箟|瀹氱悊|鎬ц川|寮曠悊|鎺ㄨ|鍏悊|鍛介|姒傚康|鍘熺悊|娉曞垯|鍏紡)",
+# 概念性内容检测
+_CONCEPTUAL_KEYWORDS_RE = re.compile(
+    r"(?:定义|定理|性质|引理|推论|公理|命题|概念|原理|法则|公式)",
 )
 _INDEPENDENT_FORMULA_RE = re.compile(r"\$\$[^$]+\$\$", re.DOTALL)
-# 鍋滅敤璇嶏細杩囦簬瀹芥硾涓嶉€傚悎浣滀负鐭ヨ瘑鐐?_CONCEPT_STOPWORDS = frozenset({
-    "閫夋嫨棰?, "濉┖棰?, "瑙ｇ瓟棰?, "鍒ゆ柇棰?, "璁＄畻棰?, "璇佹槑棰?, "绠€绛旈",
-    "璁鸿堪棰?, "搴旂敤棰?, "缁煎悎棰?, "澶ч", "灏忛", "鏈", "涓嬪垪",
-    "浠ヤ笅", "鍏朵腑", "鎵€鏈?, "浠绘剰", "瀛樺湪", "婊¤冻", "鏉′欢",
-    "姝ｇ‘", "閿欒", "绛旀", "瑙ｆ瀽", "鍒嗘瀽", "缁撴灉", "杩囩▼",
+# 停用词：过于宽泛不适合作为知识点
+_CONCEPT_STOPWORDS = frozenset({
+    "选择题", "填空题", "解答题", "判断题", "计算题", "证明题", "简答题",
+    "论述题", "应用题", "综合题", "大题", "小题", "本题", "下列",
+    "以下", "其中", "所有", "任意", "存在", "满足", "条件",
+    "正确", "错误", "答案", "解析", "分析", "结果", "过程",
 })
 
-# LLM 杞婚噺姒傚康鎻愬彇 prompt
+# LLM 轻量概念提取 prompt
 _SYSTEM_PROMPT_CONCEPT_EXTRACT = """
-浣犳槸涓€鍚嶇煡璇嗙偣璇嗗埆鍔╂墜銆傝浠庝互涓嬮鐩唴瀹逛腑鎻愬彇鑳屽悗鑰冩煡鐨勬牳蹇冪煡璇嗙偣銆?
-## 杈撳嚭瑕佹眰
-- 姣忎釜鐭ヨ瘑鐐圭敤涓€涓畝鐭悕绉拌〃绀猴紙2-8涓瓧锛?- 鏍囨敞绫诲瀷锛欳oncept锛堟蹇碉級鎴?Method锛堟柟娉?鎶€宸э級
-- 鍙彁鍙栧绉戦€氱敤鐭ヨ瘑鐐癸紝涓嶆彁鍙栭鐩笓灞炶瀹?- 鏈€澶氳繑鍥?8 涓煡璇嗙偣
+你是一名知识点识别助手。请从以下题目内容中提取背后考查的核心知识点。
+
+## 输出要求
+- 每个知识点用一个简短名称表示（2-8个字）
+- 标注类型：Concept（概念）或 Method（方法/技巧）
+- 只提取学科通用知识点，不提取题目专属设定
+- 最多返回 8 个知识点
 """.strip()
 
 _USER_PROMPT_CONCEPT_EXTRACT = """
-## 棰樼洰鍐呭
+## 题目内容
 
 {{ questions_text }}
 
-璇锋彁鍙栬繖浜涢鐩儗鍚庤€冩煡鐨勬牳蹇冪煡璇嗙偣銆?""".strip()
+请提取这些题目背后考查的核心知识点。
+""".strip()
 
 
 class _ConceptItem(BaseModel):
-    name: str = Field(description="鐭ヨ瘑鐐瑰悕绉?)
-    node_type: Literal["Concept", "Method"] = Field(description="鑺傜偣绫诲瀷")
+    name: str = Field(description="知识点名称")
+    node_type: Literal["Concept", "Method"] = Field(description="节点类型")
 
 
 class _ConceptExtractResult(BaseModel):
-    """LLM 杞婚噺姒傚康鎻愬彇缁撴灉銆?""
+    """LLM 轻量概念提取结果。"""
 
     concepts: list[_ConceptItem] = Field(default_factory=list)
 
@@ -131,40 +138,44 @@ def _normalize_text(text: str) -> str:
     return _MULTISPACE_RE.sub(" ", text).strip()
 
 
-# 鈹€鈹€ 鐭ヨ瘑鐐规彁鍙栧嚱鏁?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ── 知识点提取函数 ──────────────────────────────────────────────
 
 def _extract_concept_keywords_from_questions(
     questions: list[QuestionBlock],
 ) -> list[tuple[str, str]]:
-    """浠庨鐩腑鐢ㄨ鍒欐彁鍙栧绉戞蹇靛叧閿瘝銆?
+    """从题目中用规则提取学科概念关键词。
+
     Returns:
-        ``(keyword, node_type)`` 瀵瑰垪琛紝node_type 涓?``"Concept"`` 鎴?``"Method"``銆?    """
+        ``(keyword, node_type)`` 对列表，node_type 为 ``"Concept"`` 或 ``"Method"``。
+    """
     seen: set[str] = set()
     results: list[tuple[str, str]] = []
 
     for q in questions:
         text = _normalize_text(q.stem + " " + q.content)
 
-        # 鏂规硶/瀹氱悊/鍏紡鍚嶇О浼樺厛锛堟洿绮剧‘锛?        for match in _METHOD_KEYWORDS_RE.finditer(text):
+        # 方法/定理/公式名称优先（更精确）
+        for match in _METHOD_KEYWORDS_RE.finditer(text):
             term = match.group(1).strip()
             if term not in seen and term not in _CONCEPT_STOPWORDS and len(term) >= 2:
                 seen.add(term)
                 results.append((term, "Method"))
 
-        # 涓枃瀛︾姒傚康璇?        for match in _CN_CONCEPT_RE.finditer(text):
+        # 中文学科概念词
+        for match in _CN_CONCEPT_RE.finditer(text):
             term = match.group(1).strip()
             if term not in seen and term not in _CONCEPT_STOPWORDS and len(term) >= 2:
                 seen.add(term)
                 results.append((term, "Concept"))
 
-    # LaTeX 鍑芥暟鍚?鈫?瀵瑰簲鏁板姒傚康
+    # LaTeX 函数名 → 对应数学概念
     _LATEX_TO_CONCEPT = {
-        "sin": "涓夎鍑芥暟", "cos": "涓夎鍑芥暟", "tan": "涓夎鍑芥暟",
-        "cot": "涓夎鍑芥暟", "sec": "涓夎鍑芥暟", "csc": "涓夎鍑芥暟",
-        "ln": "瀵规暟鍑芥暟", "log": "瀵规暟鍑芥暟",
-        "lim": "鏋侀檺", "int": "绉垎", "sum": "绾ф暟姹傚拰",
-        "prod": "杩炰箻绉?, "det": "琛屽垪寮?,
-        "sqrt": "鏍瑰紡杩愮畻", "exp": "鎸囨暟鍑芥暟",
+        "sin": "三角函数", "cos": "三角函数", "tan": "三角函数",
+        "cot": "三角函数", "sec": "三角函数", "csc": "三角函数",
+        "ln": "对数函数", "log": "对数函数",
+        "lim": "极限", "int": "积分", "sum": "级数求和",
+        "prod": "连乘积", "det": "行列式",
+        "sqrt": "根式运算", "exp": "指数函数",
     }
     all_text = " ".join(_normalize_text(q.content) for q in questions)
     for match in _LATEX_FUNC_RE.finditer(all_text):
@@ -180,7 +191,7 @@ def _extract_concept_keywords_from_questions(
 async def _llm_extract_concepts_from_questions(
     questions: list[QuestionBlock],
 ) -> list[tuple[str, str]]:
-    """褰撹鍒欐彁鍙栦负绌烘椂锛岀敤杞婚噺 LLM 浠庨鐩腑鎻愬彇鐭ヨ瘑鐐广€?""
+    """当规则提取为空时，用轻量 LLM 从题目中提取知识点。"""
     stems = [_normalize_text(q.stem or q.content)[:200] for q in questions[:8]]
     questions_text = "\n".join(f"- {s}" for s in stems if s)
     if not questions_text:
@@ -211,25 +222,27 @@ async def _llm_extract_concepts_from_questions(
 
 
 def _extract_key_terms(content: str) -> list[str]:
-    """浠庢枃鏈唴瀹逛腑鐢ㄨ鍒欐彁鍙栧叧閿湳璇紙鐢ㄤ簬 topic_fallback 澧炲己锛夈€?""
+    """从文本内容中用规则提取关键术语（用于 topic_fallback 增强）。"""
     text = _normalize_text(content)
     seen: set[str] = set()
     terms: list[str] = []
 
-    # 鏂规硶/瀹氱悊/鍏紡鍚嶇О
+    # 方法/定理/公式名称
     for match in _METHOD_KEYWORDS_RE.finditer(text):
         term = match.group(1).strip()
         if term not in seen and term not in _CONCEPT_STOPWORDS and len(term) >= 2:
             seen.add(term)
             terms.append(term)
 
-    # "瀹氫箟"/"瀹氱悊"/"鎬ц川" 鍚庨潰鐨勫悕璇嶇煭璇?    for match in re.finditer(r"(?:瀹氫箟|瀹氱悊|鎬ц川|寮曠悊|鎺ㄨ|鍏紡)\s*[锛?]\s*([\u4e00-\u9fff]{2,8})", text):
+    # "定义"/"定理"/"性质" 后面的名词短语
+    for match in re.finditer(r"(?:定义|定理|性质|引理|推论|公式)\s*[：:]\s*([\u4e00-\u9fff]{2,8})", text):
         term = match.group(1).strip()
         if term not in seen and term not in _CONCEPT_STOPWORDS:
             seen.add(term)
             terms.append(term)
 
-    # 涓枃瀛︾姒傚康璇?    for match in _CN_CONCEPT_RE.finditer(text):
+    # 中文学科概念词
+    for match in _CN_CONCEPT_RE.finditer(text):
         term = match.group(1).strip()
         if term not in seen and term not in _CONCEPT_STOPWORDS and len(term) >= 2:
             seen.add(term)
@@ -239,14 +252,17 @@ def _extract_key_terms(content: str) -> list[str]:
 
 
 def has_conceptual_content(content: str) -> bool:
-    """妫€娴嬫枃鏈槸鍚﹀寘鍚蹇垫€у唴瀹癸紙瀹氫箟/瀹氱悊/鍏紡鍧楃瓑锛夈€?
-    鐢ㄤ簬 fast_path 鍒ゆ柇锛氬寘鍚蹇垫€у唴瀹圭殑 chunk 涓嶅簲璧?fast_path銆?    """
-    # 鍖呭惈瀹氫箟/瀹氱悊/鎬ц川绛夊叧閿瘝
+    """检测文本是否包含概念性内容（定义/定理/公式块等）。
+
+    用于 fast_path 判断：包含概念性内容的 chunk 不应走 fast_path。
+    """
+    # 包含定义/定理/性质等关键词
     if len(_CONCEPTUAL_KEYWORDS_RE.findall(content)) >= 2:
         return True
-    # 鍖呭惈鐙珛鍏紡鍧?    if len(_INDEPENDENT_FORMULA_RE.findall(content)) >= 2:
+    # 包含独立公式块
+    if len(_INDEPENDENT_FORMULA_RE.findall(content)) >= 2:
         return True
-    # 闈為鐩枃鏈崰姣旀娴嬶細鍘绘帀棰樼洰鍧楀悗鍓╀綑鏂囨湰鍗犳瘮 > 30%
+    # 非题目文本占比检测：去掉题目块后剩余文本占比 > 30%
     question_blocks = parse_question_blocks(content)
     if question_blocks:
         question_chars = sum(len(q.content) for q in question_blocks)
@@ -274,8 +290,8 @@ def _format_example_name(question: QuestionBlock, fallback_index: int) -> str:
     num = question.number if question.number is not None else fallback_index
     stem = _truncate(_normalize_text(question.stem), limit=_MAX_EXAMPLE_NAME_CHARS)
     if not stem:
-        return f"棰榹num}"
-    return f"棰榹num}锛歿stem}"
+        return f"题{num}"
+    return f"题{num}：{stem}"
 
 
 def _format_example_summary(question: QuestionBlock) -> str:
@@ -301,11 +317,11 @@ def _fallback_question_support_name(
     normalized_leaf = clean_semantic_title(leaf_topic_name)
     if normalized_leaf and normalized_leaf != DEFAULT_QUESTION_TOPIC:
         if digest_mode == "sprint":
-            return f"{normalized_leaf}閫熻В鏂规硶", "Method"
-        return f"{normalized_leaf}缁煎悎搴旂敤", "Concept"
+            return f"{normalized_leaf}速解方法", "Method"
+        return f"{normalized_leaf}综合应用", "Concept"
     if digest_mode == "sprint":
-        return "閫熻В鏂规硶涓庨鍨嬪綊绾?, "Method"
-    return "缁煎悎搴旂敤涓庡吀鍨嬮鍨?, "Concept"
+        return "速解方法与题型归纳", "Method"
+    return "综合应用与典型题型", "Concept"
 
 
 def _sanitize_candidate_graph(
@@ -473,7 +489,7 @@ def _build_topic_fallback(
     leaf_name = cleaned_parts[-1]
     summary = _truncate(_normalize_text(chunk_content), limit=_MAX_TOPIC_SUMMARY_CHARS)
     if not summary:
-        summary = f"鐭ヨ瘑涓婚锛屾潵婧愪簬鏂囨。缁撴瀯锛歿header_path or chunk_title or leaf_name}銆?
+        summary = f"知识主题，来源于文档结构：{header_path or chunk_title or leaf_name}。"
 
     nodes: list[CandidateNode] = []
     edges: list[CandidateEdge] = []
@@ -486,7 +502,7 @@ def _build_topic_fallback(
             CandidateNode(
                 name=part_name,
                 node_type="Topic",
-                local_summary=summary if is_leaf else f"涓婂眰涓婚锛歿part_name}銆?,
+                local_summary=summary if is_leaf else f"上层主题：{part_name}。",
                 taxonomy_hint=parent_name or part_name,
                 parent_entity_name=None,
             )
@@ -497,7 +513,7 @@ def _build_topic_fallback(
                     source_name=part_name,
                     target_name=parent_name,
                     edge_type="part_of",
-                    description=f"{part_name} 鏄?{parent_name} 鐨勫瓙涓婚銆?,
+                    description=f"{part_name} 是 {parent_name} 的子主题。",
                 )
             )
 
@@ -512,7 +528,7 @@ def _build_topic_fallback(
             CandidateNode(
                 name=term,
                 node_type="Concept",
-                local_summary=f"浠庢枃鏈腑璇嗗埆鐨勫叧閿蹇碉細{term}銆?,
+                local_summary=f"从文本中识别的关键概念：{term}。",
                 taxonomy_hint=leaf_name,
                 parent_entity_name=None,
             )
@@ -522,7 +538,7 @@ def _build_topic_fallback(
                 source_name=term,
                 target_name=leaf_name,
                 edge_type="belongs_to_topic",
-                description=f"{term} 灞炰簬涓婚 {leaf_name}銆?,
+                description=f"{term} 属于主题 {leaf_name}。",
             )
         )
 
@@ -551,7 +567,7 @@ async def _build_question_fallback(
     nodes: list[CandidateNode] = []
     edges: list[CandidateEdge] = []
 
-    # Extract Concept/Method nodes from questions (hybrid: rules 鈫?LLM)
+    # Extract Concept/Method nodes from questions (hybrid: rules → LLM)
     concept_pairs = _extract_concept_keywords_from_questions(question_blocks)
     if not concept_pairs:
         concept_pairs = await _llm_extract_concepts_from_questions(question_blocks)
@@ -575,9 +591,9 @@ async def _build_question_fallback(
                 name=part_name,
                 node_type="Topic",
                 local_summary=(
-                    f"棰樺瀷涓撻锛屽寘鍚?{len(question_blocks)} 閬撻鐩€傛潵婧愶細{header_path or chunk_title}銆?
+                    f"题型专题，包含 {len(question_blocks)} 道题目。来源：{header_path or chunk_title}。"
                     if is_leaf
-                    else f"涓婂眰涓婚锛歿part_name}銆?
+                    else f"上层主题：{part_name}。"
                 ),
                 taxonomy_hint=parent_name or part_name,
                 parent_entity_name=None,
@@ -589,7 +605,7 @@ async def _build_question_fallback(
                     source_name=part_name,
                     target_name=parent_name,
                     edge_type="part_of",
-                    description=f"{part_name} 鏄?{parent_name} 鐨勫瓙涓婚銆?,
+                    description=f"{part_name} 是 {parent_name} 的子主题。",
                 )
             )
 
@@ -604,7 +620,7 @@ async def _build_question_fallback(
             CandidateNode(
                 name=concept_name,
                 node_type=node_type,
-                local_summary=f"浠庨鐩腑璇嗗埆鐨勬牳蹇冪煡璇嗙偣锛歿concept_name}銆?,
+                local_summary=f"从题目中识别的核心知识点：{concept_name}。",
                 taxonomy_hint=leaf_topic_name,
                 parent_entity_name=None,
             )
@@ -614,7 +630,7 @@ async def _build_question_fallback(
                 source_name=concept_name,
                 target_name=leaf_topic_name,
                 edge_type="belongs_to_topic",
-                description=f"{concept_name} 灞炰簬涓婚 {leaf_topic_name}銆?,
+                description=f"{concept_name} 属于主题 {leaf_topic_name}。",
             )
         )
 
@@ -628,7 +644,7 @@ async def _build_question_fallback(
             CandidateNode(
                 name=fallback_support_name,
                 node_type=fallback_support_type,
-                local_summary="浠庨鐩泦鍚堜腑褰掔撼鍑虹殑棰樺瀷/鏂规硶鏀偣锛岀敤浜庢壙鎺ュ吀鍨嬮涓庣患鍚堝簲鐢ㄣ€?,
+                local_summary="从题目集合中归纳出的题型/方法支点，用于承接典型题与综合应用。",
                 taxonomy_hint=leaf_topic_name,
                 parent_entity_name=None,
             )
@@ -638,7 +654,7 @@ async def _build_question_fallback(
                 source_name=fallback_support_name,
                 target_name=leaf_topic_name,
                 edge_type="belongs_to_topic",
-                description=f"{fallback_support_name} 灞炰簬涓婚 {leaf_topic_name}銆?,
+                description=f"{fallback_support_name} 属于主题 {leaf_topic_name}。",
             )
         )
 
@@ -667,7 +683,7 @@ async def _build_question_fallback(
                         source_name=cname,
                         target_name=example_name,
                         edge_type="illustrated_by",
-                        description=f"{cname} 鐢?{example_name} 涓句緥璇存槑銆?,
+                        description=f"{cname} 由 {example_name} 举例说明。",
                     )
                 )
         if not matched:
@@ -676,7 +692,7 @@ async def _build_question_fallback(
                     source_name=concept_names[0],
                     target_name=example_name,
                     edge_type="illustrated_by",
-                    description=f"{concept_names[0]} 鐢?{example_name} 涓句緥璇存槑銆?,
+                    description=f"{concept_names[0]} 由 {example_name} 举例说明。",
                 )
             )
 

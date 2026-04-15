@@ -7,15 +7,14 @@ from collections.abc import Awaitable, Callable
 from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
-from app.workflows.digest.knowledge_graph.finalize_nodes import build_finalize_graph_node, fail_node
-from app.workflows.digest.knowledge_graph.prepare_nodes import (
+from app.workflows.digest.knowledge_graph.nodes import (
     acquire_lock_node,
+    analyze_impact_node,
+    build_finalize_graph_node,
     cluster_node,
     extract_node,
+    fail_node,
     prepare_node,
-)
-from app.workflows.digest.knowledge_graph.resolve_nodes import (
-    analyze_impact_node,
     resolve_edges_node,
     resolve_nodes_node,
 )
@@ -216,7 +215,6 @@ __all__ = [
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
-
 
 
 

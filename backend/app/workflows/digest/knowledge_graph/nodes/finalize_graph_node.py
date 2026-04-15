@@ -1,4 +1,5 @@
-﻿"""Finalize and failure nodes for the graph lane."""
+﻿"""Knowledge graph finalize node."""
+
 
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
-
 
 def _new_runtime_job_id() -> int:
     return (uuid.uuid4().int % 2_000_000_000) + 1
@@ -167,106 +167,4 @@ def build_finalize_graph_node(
 
     return finalize_graph_node
 
-
-async def fail_node(state: KGDigestState) -> KGDigestState:
-    """Clean up pending graph data and mark the job as failed."""
-
-    with managed_session() as session:
-        digest_logger = workflow_logger(state)
-        try:
-            job_id = state["job_id"]
-            error_message = state.get("error", "unknown_error")
-            cleanup_pending_by_job(
-                session,
-                job_id=job_id,
-                job_type="graph",
-                subject=state["subject"],
-            )
-            if state.get("lock_acquired", False):
-                kg_repo.release_subject_build_lock(session, state["subject"])
-
-            kg_repo.update_digest_job(
-                session,
-                job_id,
-                status="failed",
-                error_message=error_message,
-                current_step=_resolve_failure_step(error_message),
-            )
-            digest_logger.error(
-                "kg_workflow_failed",
-                error=error_message,
-                lock_acquired=state.get("lock_acquired", False),
-                chunk_count=len(state.get("chunk_ids", [])),
-            )
-            return state
-        except Exception as exc:
-            digest_logger.error("kg_workflow_fail_node_error", error=str(exc), exc_info=True)
-            return state
-
-
-def _resolve_failure_step(error_message: str) -> str:
-    if error_message.startswith("prepare_failed:"):
-        return "prepare_failed"
-    if error_message.startswith("extract_failed:"):
-        return "extract_failed"
-    if error_message.startswith("cluster_failed:"):
-        return "cluster_failed"
-    if error_message.startswith("resolve_nodes_failed:"):
-        return "resolve_nodes_failed"
-    if error_message.startswith("resolve_edges_failed:"):
-        return "resolve_edges_failed"
-    if error_message.startswith("analyze_impact_failed:"):
-        return "analyze_impact_failed"
-    if error_message.startswith("finalize_failed:"):
-        return "finalize_failed"
-    if error_message == "lock_conflict":
-        return "acquire_lock_failed"
-    if error_message == "no_ready_digest_inputs":
-        return "prepare_failed"
-    return "failed"
-
-
-async def trigger_curriculum_derive_safe(
-    *,
-    subject: str,
-    graph_job_id: int,
-    curriculum_job_id: int,
-    impact_set: object | None,
-    build_session_id: str | None,
-    run_curriculum_derive_workflow: Callable[..., Awaitable[WorkflowResult[object]]],
-) -> None:
-    """Run curriculum derive in the background."""
-
-    try:
-        result = await run_curriculum_derive_workflow(
-            subject=subject,
-            graph_job_id=graph_job_id,
-            curriculum_job_id=curriculum_job_id,
-            impact_set=impact_set,
-            build_session_id=build_session_id,
-        )
-        if result.failed:
-            workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).error(
-                "curriculum_derive_auto_trigger_failed_result",
-                curriculum_job_id=curriculum_job_id,
-                error=result.error.detail,
-            )
-    except Exception:
-        workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).exception(
-            "curriculum_derive_auto_trigger_failed",
-            curriculum_job_id=curriculum_job_id,
-        )
-        workflow_logger({"subject": subject, "job_id": graph_job_id, "file_ids": []}).error(
-            "curriculum_derive_auto_trigger_failed_traceback",
-            error=traceback.format_exc()[-500:],
-        )
-
-
-__all__ = [
-    "build_finalize_graph_node",
-    "fail_node",
-    "trigger_curriculum_derive_safe",
-]
-
-
-
+__all__ = ["build_finalize_graph_node"]

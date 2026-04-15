@@ -1,4 +1,4 @@
-﻿"""鍒囧潡鍚戦噺鍖栥€?""
+﻿"""切块向量化。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ logger = structlog.get_logger()
 
 
 async def embed_chunks(chunks: list[ChunkData]) -> list[list[float]]:
-    """涓哄垏鍧楃敓鎴愬悜閲忋€?""
+    """为切块生成向量。"""
 
     if not chunks:
         return []

@@ -1,0 +1,81 @@
+﻿"""Knowledge graph analyze-impact node."""
+
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from time import perf_counter
+
+from sqlmodel import select
+
+from app.shared.infra.database import managed_session
+from app.shared.infra.embedding import aembed_texts
+from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
+from app.repositories import kg_repo
+from app.utils.job_helpers import update_job_progress
+from app.utils.kg_helpers import normalize_name
+from app.utils.time import utcnow
+from app.workflows.digest.knowledge_graph.mutations import (
+    create_alias_if_new,
+    create_edge_evidence,
+    create_new_node,
+    create_node_evidence,
+    create_updated_revision,
+)
+from app.workflows.digest.knowledge_graph.services.candidate_identity import (
+    build_candidate_name_key,
+    candidate_lookup_keys,
+    normalize_scope_name,
+)
+from app.workflows.digest.knowledge_graph.services.embedding_cache import (
+    compute_embedding_text_hash,
+    load_subject_embedding_cache,
+    write_subject_embedding_cache,
+)
+from app.workflows.digest.knowledge_graph.services.impact_analyzer import analyze_impact
+from app.workflows.digest.knowledge_graph.services.resolver import (
+    ResolveResult,
+    compute_edge_confidence,
+    resolve_edge,
+)
+from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.support import workflow_logger
+
+_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
+_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_PRIMARY_SIMILARITY_THRESHOLD = 0.80
+_SECONDARY_SIMILARITY_THRESHOLD = 0.85
+
+async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
+    """Compute the affected curriculum scope from graph changes."""
+
+    with managed_session() as session:
+        digest_logger = workflow_logger(state)
+        try:
+            impact = analyze_impact(
+                session,
+                state["subject"],
+                new_node_ids=state.get("new_node_ids", []),
+                updated_node_ids=state.get("updated_node_ids", []),
+                merged_node_ids=state.get("merged_node_ids", []),
+                split_node_ids=[],
+            )
+            update_job_progress(
+                session,
+                job_id=state["job_id"],
+                job_type="graph",
+                progress=85,
+                current_step="analyze_impact",
+            )
+            digest_logger.info(
+                "kg_workflow_impact_complete",
+                changed_nodes=len(impact.changed_node_ids),
+                affected_units=len(impact.affected_unit_ids),
+            )
+            return {**state, "impact_set": impact}
+        except Exception as exc:
+            digest_logger.error("kg_workflow_analyze_impact_failed", error=str(exc), exc_info=True)
+            return {**state, "error": f"analyze_impact_failed: {exc}"}
+
+__all__ = ["analyze_impact_node"]
