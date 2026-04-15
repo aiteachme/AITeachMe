@@ -25,7 +25,19 @@ def _build_schema(func: Callable) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-def tool(name: str, description: str, *, tags: list[str] | None = None, source: str = "python") -> Callable:
+def tool(
+    name: str,
+    description: str,
+    *,
+    tags: list[str] | None = None,
+    source: str = "python",
+    risk_level: str = "low",
+    scopes: list[str] | None = None,
+    timeout_s: float | None = None,
+    requires_subject: bool = False,
+    requires_approval: bool = False,
+    cache_policy: str = "none",
+) -> Callable:
     """装饰器：将函数注册为 LLM 可调用的工具。
 
     用法::
@@ -40,6 +52,12 @@ def tool(name: str, description: str, *, tags: list[str] | None = None, source: 
             is_async=asyncio.iscoroutinefunction(func),
             tags=list(tags or []),
             source=source,
+            risk_level=risk_level,
+            scopes=list(scopes or []),
+            timeout_s=timeout_s,
+            requires_subject=requires_subject,
+            requires_approval=requires_approval,
+            cache_policy=cache_policy,
         )
         get_tool_registry().register(td)
         return func

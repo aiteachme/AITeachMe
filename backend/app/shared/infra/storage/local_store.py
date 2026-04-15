@@ -9,14 +9,26 @@ from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.storage.base import ArtifactStore
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 class LocalArtifactStore(ArtifactStore):
     """基于本地文件系统的 ArtifactStore 实现。"""
 
     def __init__(self) -> None:
-        self._root = get_runtime_data_dir()
+        self._root = get_runtime_data_dir().resolve()
 
     def _resolve(self, storage_key: str) -> Path:
-        return (self._root / storage_key).resolve()
+        raw = Path(str(storage_key or "")).expanduser()
+        path = raw.resolve() if raw.is_absolute() else (self._root / raw).resolve()
+        if not _is_relative_to(path, self._root):
+            raise ValueError(f"storage_key escapes runtime data dir: {storage_key}")
+        return path
 
     async def read_bytes(self, storage_key: str) -> bytes:
         return self._resolve(storage_key).read_bytes()

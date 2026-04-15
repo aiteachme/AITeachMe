@@ -18,8 +18,8 @@ from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
+from app.shared.infra.facade import build_infra_context, read_sources
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
-from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
@@ -54,6 +54,22 @@ _MODE_RESEARCH_STRATEGIES = {
         "max_gap_queries_per_round": 3,
     },
 }
+
+
+async def read_urls(
+    urls: list[str],
+    *,
+    max_workers: int | None = None,
+    timeout_s: float | None = None,
+) -> list[ScrapedPage]:
+    """Compatibility wrapper over the infra facade source reader."""
+
+    return await read_sources(
+        build_infra_context(workflow="digest.docgen", lane="docgen", node="chapter_context.read_urls"),
+        urls,
+        max_workers=max_workers,
+        timeout_s=timeout_s,
+    )
 
 
 class DocGenChapterContextRuntime(BaseTracedExecution):

@@ -205,6 +205,12 @@ def _register_toolpack_result(
             is_async=bool(result.get("is_async", False)),
             tags=list(result.get("tags") or []),
             source=str(result.get("source") or source_label),
+            risk_level=str(result.get("risk_level") or "low"),
+            scopes=list(result.get("scopes") or []),
+            timeout_s=result.get("timeout_s"),
+            requires_subject=bool(result.get("requires_subject", False)),
+            requires_approval=bool(result.get("requires_approval", False)),
+            cache_policy=str(result.get("cache_policy") or "none"),
         )
         registry.register(definition)
         return

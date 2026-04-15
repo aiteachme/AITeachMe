@@ -17,17 +17,22 @@ def _iter_import_modules(path: Path) -> list[str]:
     return modules
 
 
-def test_shared_infra_does_not_import_teaching_or_services() -> None:
+def test_shared_infra_does_not_import_business_layers() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     infra_root = backend_root / "app" / "shared" / "infra"
 
     violations: list[str] = []
     for path in infra_root.rglob("*.py"):
         for module in _iter_import_modules(path):
-            if module.startswith("app.teaching") or module.startswith("app.services"):
+            if (
+                module.startswith("app.api")
+                or module.startswith("app.services")
+                or module.startswith("app.workflows")
+                or module.startswith("app.teaching")
+            ):
                 violations.append(f"{path.relative_to(backend_root)} -> {module}")
 
-    assert violations == [], "shared.infra 出现了反向依赖:\n" + "\n".join(violations)
+    assert violations == [], "shared.infra 出现了业务层反向依赖:\n" + "\n".join(violations)
 
 
 def test_build_planner_service_uses_planner_package_public_entry() -> None:

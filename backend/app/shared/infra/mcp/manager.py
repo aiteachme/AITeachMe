@@ -23,6 +23,11 @@ import structlog
 logger = structlog.get_logger()
 
 
+def _normalize_mcp_segment(value: str) -> str:
+    normalized = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value or "").strip())
+    return normalized.strip("_") or "unnamed"
+
+
 @dataclass
 class MCPTool:
     """MCP 暴露的工具描述。"""
@@ -31,6 +36,10 @@ class MCPTool:
     description: str
     parameters: dict
     server_name: str = ""
+
+    @property
+    def namespaced_name(self) -> str:
+        return f"mcp.{_normalize_mcp_segment(self.server_name)}.{_normalize_mcp_segment(self.name)}"
 
 
 @dataclass
@@ -139,10 +148,11 @@ class MCPManager:
             工具执行结果（字符串）。
         """
 
+        normalized_tool_name = str(tool_name or "").strip()
         for server in self._servers.values():
             for tool in server.tools:
-                if tool.name == tool_name:
-                    return await self._execute_tool(server, tool_name, kwargs)
+                if tool.name == normalized_tool_name or tool.namespaced_name == normalized_tool_name:
+                    return await self._execute_tool(server, tool.name, kwargs)
 
         raise ValueError(f"MCP 工具 `{tool_name}` 未找到")
 
@@ -212,18 +222,37 @@ class MCPManager:
             from app.shared.infra.tools.definition import ToolDefinition
 
             registry = get_tool_registry()
+            allowlist = {
+                str(item).strip()
+                for item in server.config.get("allowed_tools", [])
+                if str(item).strip()
+            }
             for tool in server.tools:
-                def _make_handler(tn=tool.name):
+                if allowlist and tool.name not in allowlist and tool.namespaced_name not in allowlist:
+                    continue
+                if not allowlist and not bool(server.config.get("register_tools", False)):
+                    logger.info(
+                        "mcp_tool_registration_skipped_requires_allowlist",
+                        server=server.name,
+                        tool=tool.name,
+                    )
+                    continue
+
+                def _make_handler(tn=tool.namespaced_name):
                     async def handler(**kwargs):
                         return await self.call_tool(tn, **kwargs)
                     return handler
 
                 td = ToolDefinition(
-                    name=f"mcp_{tool.name}",
+                    name=tool.namespaced_name,
                     description=f"[MCP:{server.name}] {tool.description}",
                     parameters=tool.parameters,
                     handler=_make_handler(),
                     is_async=True,
+                    source=f"mcp:{server.name}",
+                    scopes=["mcp"],
+                    risk_level=str(server.config.get("risk_level") or "medium"),
+                    requires_approval=bool(server.config.get("requires_approval", True)),
                 )
                 registry.register(td)
         except Exception as exc:

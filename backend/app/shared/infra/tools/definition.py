@@ -18,6 +18,12 @@ class ToolDefinition:
     is_async: bool = False
     tags: list[str] = field(default_factory=list)
     source: str = "python"
+    risk_level: str = "low"
+    scopes: list[str] = field(default_factory=list)
+    timeout_s: float | None = None
+    requires_subject: bool = False
+    requires_approval: bool = False
+    cache_policy: str = "none"
 
     def to_openai_format(self) -> dict:
         """转换为 OpenAI function calling 格式。"""

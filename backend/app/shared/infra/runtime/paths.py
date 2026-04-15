@@ -17,7 +17,7 @@ _legacy_warning_emitted = False
 def get_backend_root() -> Path:
     """Return the repository-local backend root directory."""
 
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[4]
 
 
 @lru_cache(maxsize=1)

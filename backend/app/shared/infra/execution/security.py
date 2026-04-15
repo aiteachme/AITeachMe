@@ -189,6 +189,7 @@ def require_confirmation(level: SecurityLevel = SecurityLevel.HIGH) -> Callable:
             if decision.requires_user_confirm:
                 logger.info("security_confirmation_required",
                             tool=tool_name, level=level)
+                return "⚠️ 安全拦截：此操作需要用户确认后才能执行"
             return await func(*args, **kwargs)
 
         return wrapper

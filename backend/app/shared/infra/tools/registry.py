@@ -14,6 +14,7 @@ from app.shared.infra.observability.trace import (
     traceable_with_context,
 )
 from app.shared.infra.tools.definition import ToolDefinition
+from app.shared.infra.execution.security import check_action_safety
 
 logger = structlog.get_logger()
 
@@ -111,9 +112,15 @@ class ToolRegistry:
         tool_name: str,
         arguments: Mapping[str, Any],
         tool_definition: ToolDefinition,
+        approval_granted: bool = False,
         langsmith_extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         del langsmith_extra
+        decision = await check_action_safety(tool_name, dict(arguments))
+        if not decision.allowed:
+            raise PermissionError(decision.reason or f"工具 `{tool_name}` 被安全策略拦截")
+        if (tool_definition.requires_approval or decision.requires_user_confirm) and not approval_granted:
+            raise PermissionError(f"工具 `{tool_name}` 需要用户确认后才能执行")
         if tool_definition.is_async:
             result = await tool_definition.handler(**dict(arguments))
         else:
@@ -126,7 +133,7 @@ class ToolRegistry:
             },
         }
 
-    async def execute(self, name: str, **kwargs: Any) -> Any:
+    async def execute(self, name: str, _approval_granted: bool = False, **kwargs: Any) -> Any:
         td = self._tools.get(name)
         if td is None:
             raise ValueError(f"工具 `{name}` 未注册")
@@ -134,6 +141,7 @@ class ToolRegistry:
             tool_name=name,
             arguments=dict(kwargs),
             tool_definition=td,
+            approval_granted=_approval_granted,
         )
         return payload["result"]
 

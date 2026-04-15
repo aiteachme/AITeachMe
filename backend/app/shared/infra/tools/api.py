@@ -83,6 +83,10 @@ def list_agent_tools() -> list[dict[str, object]]:
             "description": definition.description,
             "tags": list(definition.tags),
             "source": definition.source,
+            "risk_level": definition.risk_level,
+            "scopes": list(definition.scopes),
+            "requires_subject": definition.requires_subject,
+            "requires_approval": definition.requires_approval,
         }
         for definition in get_tool_registry().list_all()
     ]
