@@ -4,9 +4,9 @@ import asyncio
 
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.interact.nodes.prompt import build_prompt_node
-from app.workflows.interact.nodes.stream import build_stream_answer_node
-from app.workflows.interact.support.execution import (
+from app.workflows.interact.chat.nodes.prompt import build_prompt_node
+from app.workflows.interact.chat.nodes.stream import build_stream_answer_node
+from app.workflows.interact.chat.lib.execution import (
     InteractExecutionMode,
     select_execution_mode,
 )
@@ -25,7 +25,7 @@ def test_select_execution_mode_prefers_plan_execute_for_planning_question() -> N
 
 def test_prompt_node_injects_plan_execute_instruction(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.workflows.interact.nodes.prompt.build_chat_messages",
+        "app.workflows.interact.chat.nodes.prompt.build_chat_messages",
         lambda **kwargs: [
             {"role": "system", "content": "base system"},
             {"role": "user", "content": kwargs["question"]},
@@ -69,11 +69,11 @@ def test_stream_answer_node_uses_agent_loop_stream_for_plan_execute_mode(monkeyp
         raise AssertionError("acompletion_stream should not be used in plan_execute mode")
 
     monkeypatch.setattr(
-        "app.workflows.interact.nodes.stream.run_agent_loop_stream",
+        "app.workflows.interact.chat.nodes.stream.run_agent_loop_stream",
         fake_agent_loop_stream,
     )
     monkeypatch.setattr(
-        "app.workflows.interact.nodes.stream.acompletion_stream",
+        "app.workflows.interact.chat.nodes.stream.acompletion_stream",
         fail_if_called,
     )
 

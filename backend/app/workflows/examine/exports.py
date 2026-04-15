@@ -8,7 +8,13 @@ from app.workflows.examine.graph import (
     build_examine_workflow_graph,
     build_question_build_graph,
 )
-from app.workflows.examine.prompts.prompts import PROMPTS
+from app.workflows.examine.exam_grade.prompts import PROMPTS as EXAM_GRADE_PROMPTS
+from app.workflows.examine.question_build.prompts import PROMPTS as QUESTION_BUILD_PROMPTS
+
+PROMPTS = {
+    **QUESTION_BUILD_PROMPTS,
+    **EXAM_GRADE_PROMPTS,
+}
 
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
@@ -33,5 +39,3 @@ WORKFLOW_EXPORTS = (
         prompts=PROMPTS,
     ),
 )
-
-

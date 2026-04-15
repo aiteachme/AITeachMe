@@ -1,6 +1,6 @@
 # 07. Examine 引擎 — 诊断引擎技术文档
 
-> **最后更新**: 2026-04-05 · 基于 `backend/app/workflows/examine/` 代码实现
+> **最后更新**: 2026-04-16 · 基于 `backend/app/workflows/examine/` 代码实现
 
 ---
 
@@ -32,7 +32,8 @@ Examine（诊断引擎）是 AITeachMe 的**评测与诊断闭环核心**，负�
 | 组卷器 | `backend/app/workflows/examine/paper_assembler.py` | 智能组卷策略 |
 | 上下文构建 | `backend/app/workflows/examine/context.py` | 风格画像/单元上下文 |
 | 试卷导出 | `backend/app/workflows/examine/paper_exporter.py` | 试卷 Markdown/JSON 导出 |
-| Prompt 模板 | `backend/app/workflows/examine/prompts/prompts.py` | 出题/判题/错因/分析 prompt |
+| 出题 Prompt | `backend/app/workflows/examine/question_build/prompts/generate.py` | 出题 prompt |
+| 判卷 Prompt | `backend/app/workflows/examine/exam_grade/prompts/grade.py` | 判题/错因/分析 prompt |
 
 ---
 
@@ -313,7 +314,7 @@ LLM 调用: ✅ grading (每道简答题) + error_classification (每道错题)
 
 ## 7. Prompt 模板全文
 
-> 文件: `backend/app/workflows/examine/prompts/prompts.py`
+> 文件: `backend/app/workflows/examine/question_build/prompts/generate.py` 与 `backend/app/workflows/examine/exam_grade/prompts/grade.py`
 
 ### 7.1 出题 Prompt `EXAM_GENERATION_PROMPT`
 

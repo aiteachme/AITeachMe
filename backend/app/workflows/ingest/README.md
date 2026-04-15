@@ -12,7 +12,9 @@ ingest/
   README.md
   fast_parse/
   deep_enhance/
-  parsing/
+  shared/
+    parsing/
+  runtime.py
   recovery.py
 ```
 
@@ -20,7 +22,8 @@ ingest/
 
 - `fast_parse/` 是同步快速解析链路
 - `deep_enhance/` 是后台增强链路
-- `parsing/` 是两条链路共享的解析实现层
+- `shared/parsing/` 是两条链路共享的解析实现层
+- `runtime.py` 是服务层稳定入口，负责 Phase 1 后台派发 Phase 2
 - `recovery.py` 负责服务启动后的增强任务恢复
 
 ## 对外入口
@@ -38,9 +41,9 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ## 迁移说明
 
-- 模块根 `graph.py / runtime / state.py` 仍作为稳定兼容入口保留
+- 模块根 `graph.py / runtime.py / state.py` 仍作为稳定兼容入口保留
 - 真实链路已经是 `fast_parse/` 和 `deep_enhance/`
-- 共享解析逻辑直接从 `parsing/` 进入；不要再新增只做转发的 `_shared/` 空门面
+- 共享解析逻辑直接从 `shared/parsing/` 进入；不要再新增只做转发的 `_shared/` 空门面
 
 ## 一句话总结
 

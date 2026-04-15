@@ -1,4 +1,4 @@
-"""Workflow graph exports for ingest workflows."""
+﻿"""Workflow graph exports for ingest workflows."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.ingest.deep_enhance.graph import build_deep_enhance_graph
 from app.workflows.ingest.fast_parse.graph import build_fast_parse_graph
-from app.workflows.ingest.prompts.prompts import PROMPTS
+from app.workflows.ingest.shared.parsing.prompts import PROMPTS
 
 
 def _build_export_parse_graph():

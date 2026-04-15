@@ -196,7 +196,9 @@ ingest/
   README.md
   fast_parse/
   deep_enhance/
-  parsing/
+  shared/
+    parsing/
+  runtime.py
   recovery.py
 ```
 
@@ -204,8 +206,8 @@ ingest/
 
 - `run_parse_file_workflow(...)` 仍保留在模块层，作为跨两条链路的稳定入口
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
-- `parsing/` 是当前两条链路共享的解析实现，`recovery.py` 是启动恢复入口
-- 不再保留只转发到 `parsing/`、`recovery.py` 的 `_shared/` 空门面
+- `shared/parsing/` 是当前两条链路共享的解析实现，`recovery.py` 是启动恢复入口
+- 不再保留只转发到 `shared/parsing/`、`recovery.py` 的 `_shared/` 空门面
 
 ### 7.3 interact
 
@@ -218,8 +220,8 @@ interact/
 
 说明：
 
-- `chat/` 是 canonical lane
-- 根目录旧 `graph.py / runtime.py / state.py / support/` 作为兼容层保留
+- `chat/` 是唯一真实链路，真实实现已收口到 `chat/`
+- 根目录旧 `graph.py / runtime.py / state.py / nodes/ / prompts/ / support/` 作为兼容层保留
 
 ### 7.4 examine
 

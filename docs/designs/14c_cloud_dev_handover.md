@@ -71,16 +71,16 @@
 
 **需要改的文件和改法：**
 
-1. **`backend/app/workflows/ingest/nodes/file.py`** — 加载原始文件
+1. **`backend/app/workflows/ingest/fast_parse/lib/file.py`** — 加载原始文件
    - 找到读取 `raw_file.file_path` 的地方
    - cloud 模式下用 `store.materialize_to_temp(raw_file.file_path, temp_dir)` 获取本地副本
    - 解析器（markitdown, pymupdf4llm）需要本地 Path，所以必须先下载
 
-2. **`backend/app/workflows/ingest/nodes/finalize.py`** — 写回解析产物
+2. **`backend/app/workflows/ingest/fast_parse/lib/finalize.py`** — 写回解析产物
    - 找到写入 markdown 和 assets 的地方
    - cloud 模式下用 `store.write_bytes()` 写 markdown，`store.write_file()` 写 assets
 
-3. **`backend/app/workflows/ingest/nodes/enhance.py`** — OCR 增强
+3. **`backend/app/workflows/ingest/deep_enhance/lib/enhance.py`** — OCR 增强
    - 同样需要 `materialize_to_temp()` 获取本地副本
 
 **改造模式统一为：**

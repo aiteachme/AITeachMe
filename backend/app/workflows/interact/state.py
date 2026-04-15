@@ -1,37 +1,5 @@
-"""State types for the interact workflow."""
+"""Compatibility wrapper for the chat workflow state."""
 
-from __future__ import annotations
+from app.workflows.interact.chat.state import InteractWorkflowState
 
-from typing import TypedDict
-
-from app.shared.infra.strategies import StrategyMode
-from app.schemas.chats import ChatContextItem
-from app.schemas.llm import ChatMessage
-from app.workflows.interact.support.execution import InteractExecutionMode
-from app.workflows.interact.support.types import (
-    MistakeSummary,
-    RetrievedContext,
-    RecentMessage,
-    WeakPointSummary,
-)
-
-
-class InteractWorkflowState(TypedDict, total=False):
-    subject: str
-    user_id: str
-    session_id: str | None
-    question: str
-    selected_context: str | None
-    source_chunk_id: int | None
-    recent_messages: list[RecentMessage]
-    weak_points: list[WeakPointSummary]
-    recent_mistakes: list[MistakeSummary]
-    retrieval_results: list[RetrievedContext]
-    contexts: list[ChatContextItem] | None
-    strategy_mode: StrategyMode
-    execution_mode: InteractExecutionMode
-    messages: list[ChatMessage]
-    assistant_response: str
-    turn_id: str
-    stream_interrupted: bool
-    error: str | None
+__all__ = ["InteractWorkflowState"]

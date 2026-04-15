@@ -15,7 +15,7 @@ from app.workflows.examine.question_build.graph import build_question_build_grap
 from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
 from app.workflows.ingest.fast_parse.graph import get_langgraph_dev_fast_parse_graph
 from app.workflows.interact.chat.graph import get_langgraph_dev_interact_graph
-from app.workflows.interact.nodes import stream as stream_module
+from app.workflows.interact.chat.nodes import stream as stream_module
 from app.workflows.profile.pipeline.graph import build_profile_pipeline_graph
 
 

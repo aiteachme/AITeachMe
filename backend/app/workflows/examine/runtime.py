@@ -8,7 +8,7 @@ from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.models import Difficulty, QuestionType
 from app.schemas.llm import SYSTEM
-from app.workflows.examine.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
+from app.workflows.examine.question_build.prompts import SYSTEM_PROMPT_EXAM_GENERATE_FROM_TEXT
 
 
 class GeneratedQuestion(BaseModel):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from app.shared.infra.llm_support.context_window import ContextWindowManager, TokenBudget
 from app.shared.infra.strategies import StrategyMode
-from app.workflows.interact.prompts.messages import build_chat_messages
-from app.workflows.interact.support.types import RecentMessage
+from app.workflows.interact.chat.prompts.messages import build_chat_messages
+from app.workflows.interact.chat.lib.types import RecentMessage
 
 
 def test_build_context_reuses_unused_history_budget_for_retrieval() -> None:
@@ -53,11 +53,11 @@ def test_truncate_messages_keeps_truncated_latest_message() -> None:
 
 def test_build_chat_messages_defers_history_truncation_to_soft_budget(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.workflows.interact.prompts.messages.populate_prompt",
+        "app.workflows.interact.chat.prompts.messages.populate_prompt",
         lambda *args, **kwargs: "sys",
     )
     monkeypatch.setattr(
-        "app.workflows.interact.prompts.messages.get_strategy_instruction",
+        "app.workflows.interact.chat.prompts.messages.get_strategy_instruction",
         lambda mode: mode.value,
     )
 

@@ -1,5 +1,20 @@
-"""Compatibility wrapper exposing interact chat prompts."""
+"""Prompt exports for the interact workflow."""
 
-from app.workflows.interact.prompts import build_chat_messages, get_execution_instruction
+from __future__ import annotations
 
-__all__ = ["build_chat_messages", "get_execution_instruction"]
+from .prompts import (
+    PROMPTS,
+    SYSTEM_PROMPT_TUTOR,
+    get_execution_instruction,
+    get_strategy_instruction,
+)
+from .messages import build_chat_messages, format_retrieval_context_item
+
+__all__ = [
+    "PROMPTS",
+    "SYSTEM_PROMPT_TUTOR",
+    "build_chat_messages",
+    "format_retrieval_context_item",
+    "get_execution_instruction",
+    "get_strategy_instruction",
+]
