@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import types
@@ -13,6 +14,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 BACKEND_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 OUTPUT_PATH = PROJECT_ROOT / "frontend" / "openapi.json"
+FRONTEND_GENERATED_DIR = PROJECT_ROOT / "frontend" / "src" / "api" / "generated"
 
 
 def export_openapi_schema(app: object) -> bool:
@@ -28,6 +30,9 @@ def export_openapi_schema(app: object) -> bool:
         print(f"openapi.json exported to {OUTPUT_PATH}")
 
         frontend_dir = PROJECT_ROOT / "frontend"
+        if FRONTEND_GENERATED_DIR.exists():
+            shutil.rmtree(FRONTEND_GENERATED_DIR)
+            print(f"Removed stale generated client: {FRONTEND_GENERATED_DIR}")
         print("Running `npx orval` to sync frontend client...")
         subprocess.run("npx orval", shell=True, cwd=str(frontend_dir), check=False)
         return True

@@ -612,7 +612,6 @@ class BuildPlannerChapterPlanResponse(BaseModel):
 
 class BuildPlannerStepStatsResponse(BaseModel):
     name: str
-    kind: Literal["node", "tool", "substep", "llm"] = "substep"
     status: str = "ok"
     elapsed_ms: int = 0
 
@@ -620,7 +619,6 @@ class BuildPlannerStepStatsResponse(BaseModel):
 class BuildPlannerRuntimeStatsResponse(BaseModel):
     elapsed_ms: int = 0
     steps: list[BuildPlannerStepStatsResponse] = Field(default_factory=list)
-    fallback_used: bool = False
     generation_mode: str | None = None
 
 

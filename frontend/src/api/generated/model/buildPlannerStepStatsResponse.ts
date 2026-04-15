@@ -5,11 +5,9 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.2.0
  */
-import type { BuildPlannerStepStatsResponseKind } from './buildPlannerStepStatsResponseKind';
 
 export interface BuildPlannerStepStatsResponse {
   name: string;
-  kind?: BuildPlannerStepStatsResponseKind;
   status?: string;
   elapsed_ms?: number;
 }

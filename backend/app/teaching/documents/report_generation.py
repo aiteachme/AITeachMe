@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from app.shared.infra.observability import annotate_traceable
+from langsmith import traceable
 from app.teaching.documents.content_blocks import (
     build_glossary_section,
     build_learning_objectives_section,
@@ -201,7 +201,7 @@ def coerce_resolved_chapter_title(
     return current_title
 
 
-@annotate_traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
+@traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
 def build_chapter_title_resolution_messages(
     *,
     subject: str,

@@ -299,21 +299,8 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
         "plan": plan,
         "plan_summary": plan["plan_summary"],
         "workflow_elapsed_ms": 345,
-        "runtime_steps": [
-            {
-                "name": "load_context",
-                "kind": "node",
-                "elapsed_ms": 32,
-                "status": "ok",
-            },
-            {
-                "name": "draft_plan",
-                "kind": "node",
-                "elapsed_ms": 280,
-                "status": "ok",
-            },
-        ],
-        "fallback_used": False,
+        "load_ms": 32,
+        "draft_ms": 280,
         "planner_generation_mode": "stream_plaintext",
     }
 

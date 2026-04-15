@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from langsmith import traceable
+
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.llm_support.context_window import ContextWindowManager
-from app.shared.infra.workflow import traceable_run
 from app.workflows.interact.prompts.prompts import SYSTEM_PROMPT_TUTOR, get_strategy_instruction
 from app.workflows.interact.support.types import (
     MistakeSummary,
@@ -16,7 +17,7 @@ from app.workflows.interact.support.types import (
 )
 
 
-@traceable_run(name="interact.build_chat_messages", run_type="prompt")
+@traceable(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
     subject: str,

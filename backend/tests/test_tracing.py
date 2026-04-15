@@ -3,36 +3,29 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from langsmith import traceable
 
 from app.shared.infra import agent_loop as agent_loop_module
 from app.shared.infra import llm_support as llm_module
 from app.shared.infra.config import Settings, get_settings
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.tools.definition import ToolDefinition
-from app.shared.infra.tools.registry import ToolRegistry
-from app.shared.infra.execution import (
-    BaseTracedExecution,
-    TracedExecutionContext,
-    TracedExecutionResult,
-    _traced_execution_outputs,
-)
-from app.shared.infra.observability import (
-    LLMCallRecord,
-    LLMCallTracker,
+from app.shared.infra.observability.llm_stats import LLMCallRecord, LLMCallTracker
+from app.shared.infra.observability.trace import (
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
     langsmith_capture_outputs_enabled,
     normalize_langsmith_run_type,
 )
-from app.shared.infra.observability import tracing as tracing_module
-from app.shared.infra.observability import tracker as tracker_module
-from app.shared.infra.observability import scope as scope_module
+from app.shared.infra.observability import llm_stats as llm_stats_module
+from app.shared.infra.observability import trace as trace_module
+from app.shared.infra.tools.definition import ToolDefinition
+from app.shared.infra.tools.registry import ToolRegistry
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.execution.units import _traced_execution_outputs
 from app.shared.infra.tools import registry as registry_module
 from app.workflows.digest.docgen.runtime import DocGenWriterRuntime
-from app.shared.infra.workflow import runtime_stats as runtime_stats_module
-from app.shared.infra.workflow import traceable_run, workflow_tracer
+from app.shared.infra.workflow import emit_progress, workflow_tracer
 from app.shared.infra.workflow.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext
-from app.shared.infra.workflow.runtime_stats import emit_progress, record_step_end, record_step_start, tracked_step
 
 
 @pytest.fixture(autouse=True)
@@ -154,7 +147,7 @@ def test_langsmith_capture_respects_explicit_config_flags(monkeypatch) -> None:
 
 def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
     monkeypatch.setattr(
-        tracker_module,
+        llm_stats_module,
         "get_settings",
         lambda: Settings(_env_file=None, llm_observability_max_records=2),
     )
@@ -169,19 +162,20 @@ def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
 
 def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     monkeypatch.setattr(
-        scope_module,
+        trace_module,
         "get_settings",
         lambda: Settings(tracing_enabled=True),
     )
+    monkeypatch.setattr(trace_module, "_langsmith_endpoint_reachable", lambda: True)
     monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
     monkeypatch.delenv("LANGCHAIN_API_KEY", raising=False)
 
-    assert tracing_module.langsmith_tracing_enabled() is False
+    assert trace_module.langsmith_tracing_enabled() is False
 
     monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
 
-    assert tracing_module.langsmith_tracing_enabled() is True
+    assert trace_module.langsmith_tracing_enabled() is True
 
 
 def test_base_runtime_run_sets_nested_llm_trace_scope() -> None:
@@ -289,36 +283,11 @@ def test_workflow_tracer_wraps_node() -> None:
     assert result == {"ok": True}
 
 
-def test_workflow_tracer_supports_decorator_form() -> None:
+def test_workflow_tracer_requires_handler_argument() -> None:
     trace = workflow_tracer(workflow="digest.planner", lane="planner")
 
-    @trace.node(name="decorated_node")
-    async def handler(_state):
-        return {"ok": True}
-
-    result = asyncio.run(handler({"subject": "demo"}))
-
-    assert result == {"ok": True}
-
-
-def test_traceable_run_accepts_context_for_chain_nodes() -> None:
-    context = WorkflowContext(
-        workflow_name="digest.planner",
-        subject=LANGGRAPH_DEV_SUBJECT,
-        metadata={"lane": "planner"},
-    )
-
-    @traceable_run(
-        name="context_bound_node",
-        context=context,
-        lane="planner",
-    )
-    async def handler(_state):
-        return {"ok": True}
-
-    result = asyncio.run(handler({"subject": "demo"}))
-
-    assert result == {"ok": True}
+    with pytest.raises(TypeError, match="requires a handler argument"):
+        trace.node(None, name="decorated_node")
 
 
 def test_workflow_tracer_keeps_result_thin() -> None:
@@ -342,35 +311,28 @@ def test_workflow_tracer_keeps_result_thin() -> None:
     assert "node_timings_ms" not in result
 
 
-def test_traceable_run_unifies_chain_node_decorator() -> None:
-    @traceable_run(
-        name="unified_alias_node",
-        run_type="chain",
-        workflow="digest.planner",
-        lane="planner",
-    )
+def test_workflow_tracer_applies_timing_field() -> None:
     async def handler(_state):
         return {"ok": True}
 
-    result = asyncio.run(handler({"subject": "demo"}))
+    trace = workflow_tracer(workflow="digest.planner", lane="planner")
+    wrapped = trace.node(handler, name="timed_node", timing_field="timed_ms")
+    result = asyncio.run(wrapped({"subject": "demo"}))
 
-    assert result == {"ok": True}
+    assert result["ok"] is True
+    assert isinstance(result["timed_ms"], int)
+    assert result["timed_ms"] >= 0
 
 
-def test_traceable_run_supports_prompt_function() -> None:
-    @traceable_run(
-        name="prompt_builder",
-        run_type="prompt",
-    )
+def test_official_traceable_prompt_function_runs() -> None:
+    @traceable(name="prompt_builder", run_type="prompt")
     def build_prompt(subject: str) -> str:
         return f"teach {subject}"
 
     assert build_prompt("math") == "teach math"
 
 
-
-
-def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
+def test_emit_progress_compact_payload() -> None:
     payloads: list[dict[str, str]] = []
 
     async def callback(payload):
@@ -378,114 +340,23 @@ def test_runtime_stats_helpers_record_steps_and_emit_progress() -> None:
 
     state = {"progress_callback": callback}
 
-    record_step_start(state, name="load_context", kind="node")
-    elapsed_ms = record_step_end(state, name="load_context", kind="node")
     asyncio.run(
         emit_progress(
             state,
-            phase="planner",
+            stage="planner",
             step="load_context",
-            status="completed",
-            message="已读取资料。",
+            detail="已读取资料。",
+            elapsed_ms=12,
         )
     )
 
-    assert elapsed_ms >= 0
-    assert state["runtime_steps"] == [
-        {
-            "name": "load_context",
-            "kind": "node",
-            "status": "ok",
-            "elapsed_ms": elapsed_ms,
-        }
-    ]
     assert payloads == [
         {
-            "phase": "planner",
+            "stage": "planner",
             "step": "load_context",
-            "status": "completed",
-            "message": "已读取资料。",
+            "detail": "已读取资料。",
+            "elapsed_ms": 12,
         }
-    ]
-
-
-def test_tracked_step_unifies_runtime_progress_and_trace(monkeypatch) -> None:
-    payloads: list[dict[str, str]] = []
-    captured: dict[str, object] = {}
-
-    async def callback(payload):
-        payloads.append(payload)
-
-    class DummyRun:
-        def end(self, *, outputs):
-            captured["outputs"] = outputs
-
-    class DummyTraceContext:
-        def __enter__(self):
-            return DummyRun()
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    def fake_trace_substep(name, *, run_type, inputs, metadata, tags):
-        captured["trace_kwargs"] = {
-            "name": name,
-            "run_type": run_type,
-            "inputs": inputs,
-            "metadata": metadata,
-            "tags": tags,
-        }
-        return DummyTraceContext()
-
-    monkeypatch.setattr(runtime_stats_module, "trace_substep", fake_trace_substep)
-
-    state = {"progress_callback": callback}
-
-    async def run_step() -> None:
-        async with tracked_step(
-            state,
-            name="prepare_shared_inputs",
-            kind="substep",
-            phase="planner",
-            running_message="开始读取资料",
-            completed_message="资料读取完成",
-            trace_run_type="prompt",
-            trace_metadata={"file_count": 2},
-            trace_inputs={"user_goal_present": True},
-        ) as step:
-            step.set_outputs(source_packet_count=3)
-
-    asyncio.run(run_step())
-
-    assert state["runtime_steps"][0]["name"] == "prepare_shared_inputs"
-    assert state["runtime_steps"][0]["kind"] == "substep"
-    assert state["runtime_steps"][0]["status"] == "ok"
-
-    # Verify tracked_step now delegates to trace_substep with the expected payload.
-    tk = captured["trace_kwargs"]
-    assert tk["name"] == "prepare_shared_inputs"
-    assert tk["run_type"] == "prompt"
-    assert tk["inputs"] == {"user_goal_present": True}
-    assert tk["metadata"]["file_count"] == 2
-    assert tk["metadata"]["substep"] == "prepare_shared_inputs"
-    assert "substep:prepare_shared_inputs" in tk["tags"]
-
-    assert captured["outputs"]["source_packet_count"] == 3
-    assert captured["outputs"]["status"] == "ok"
-    assert captured["outputs"]["elapsed_ms"] >= 0
-    assert payloads == [
-        {
-            "phase": "planner",
-            "step": "prepare_shared_inputs",
-            "status": "running",
-            "message": "开始读取资料",
-        },
-        {
-            "phase": "planner",
-            "step": "prepare_shared_inputs",
-            "status": "completed",
-            "message": "资料读取完成",
-        },
     ]
 
 

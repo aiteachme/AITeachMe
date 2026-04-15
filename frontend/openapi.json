@@ -6465,11 +6465,6 @@
             "type": "array",
             "title": "Steps"
           },
-          "fallback_used": {
-            "type": "boolean",
-            "title": "Fallback Used",
-            "default": false
-          },
           "generation_mode": {
             "anyOf": [
               {
@@ -6534,17 +6529,6 @@
           "name": {
             "type": "string",
             "title": "Name"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "node",
-              "tool",
-              "substep",
-              "llm"
-            ],
-            "title": "Kind",
-            "default": "substep"
           },
           "status": {
             "type": "string",

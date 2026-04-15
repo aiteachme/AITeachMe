@@ -1,4 +1,4 @@
-"""In-memory tracking helpers for LLM calls and lightweight spans."""
+"""In-memory tracking helpers for workflow-scoped LLM calls."""
 
 from __future__ import annotations
 
@@ -34,51 +34,6 @@ class LLMCallRecord:
     workflow: str = ""
     lane: str = ""
     node: str = ""
-
-
-@dataclass
-class Span:
-    """A simple in-memory span primitive."""
-
-    name: str
-    span_id: str = field(default_factory=lambda: uuid4().hex[:12])
-    parent_id: str | None = None
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    end_time: datetime | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    events: list[LLMCallRecord] = field(default_factory=list)
-
-    @property
-    def duration_s(self) -> float | None:
-        if self.end_time is None:
-            return None
-        return (self.end_time - self.start_time).total_seconds()
-
-    def finish(self) -> None:
-        self.end_time = datetime.now(timezone.utc)
-
-
-class Tracer:
-    """Keeps completed spans in memory."""
-
-    def __init__(self) -> None:
-        self._active: dict[str, Span] = {}
-        self._completed: list[Span] = []
-
-    def start_span(self, name: str, *, parent_id: str | None = None) -> Span:
-        span = Span(name=name, parent_id=parent_id)
-        self._active[span.span_id] = span
-        return span
-
-    def end_span(self, span_id: str) -> Span | None:
-        span = self._active.pop(span_id, None)
-        if span is not None:
-            span.finish()
-            self._completed.append(span)
-        return span
-
-    def get_completed(self, limit: int = 100) -> list[Span]:
-        return self._completed[-limit:]
 
 
 class LLMCallTracker:
@@ -131,6 +86,7 @@ class LLMCallTracker:
         light_model = ""
         if settings.llm_model_light:
             from app.shared.infra.llm_support.routing import TaskType, get_task_profile
+
             light_model = get_task_profile(TaskType.DOCGEN_LIGHT).model
 
         total_latency_ms = int(round(sum(record.latency_s for record in records) * 1000))
@@ -285,17 +241,7 @@ class LLMCallTracker:
         }
 
 
-# ── Singleton accessors ──────────────────────────────────────────────
-
-_tracer: Tracer | None = None
 _tracker: LLMCallTracker | None = None
-
-
-def get_tracer() -> Tracer:
-    global _tracer
-    if _tracer is None:
-        _tracer = Tracer()
-    return _tracer
 
 
 def get_tracker() -> LLMCallTracker:
@@ -308,8 +254,5 @@ def get_tracker() -> LLMCallTracker:
 __all__ = [
     "LLMCallRecord",
     "LLMCallTracker",
-    "Span",
-    "Tracer",
-    "get_tracer",
     "get_tracker",
 ]

@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Mapping
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.observability import sanitize_langsmith_input, traceable_with_context
+from app.shared.infra.observability.trace import sanitize_langsmith_input, traceable_with_context
 from app.shared.infra.search.factory import get_reader_for_url
 from app.shared.infra.search.types import ScrapedPage
 

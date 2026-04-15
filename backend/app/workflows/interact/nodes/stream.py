@@ -13,7 +13,6 @@ from fastapi import Request
 from app.shared.infra.agent_loop import AgentLoopConfig, run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.observability import llm_trace_scope
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.execution import InteractExecutionMode
@@ -86,34 +85,26 @@ def build_stream_answer_node(
 
         collected_tokens: list[str] = []
         subject = str(state.get("subject") or context.subject or "")
-        build_session_id = str(state.get("session_id") or "")
-        with llm_trace_scope(
-            subject=subject,
-            build_session_id=build_session_id,
-            workflow=context.workflow_name,
-            lane="chat",
-            node="stream_answer",
-        ):
-            stream = _build_response_stream(state, subject=subject)
-            try:
-                async for token in stream:
-                    if await _is_disconnected(request):
-                        await stream.aclose()
-                        workflow_logger.info("interact_stream_disconnected")
-                        return _build_stream_state(
-                            state,
-                            collected_tokens,
-                            stream_interrupted=True,
-                        )
-                    collected_tokens.append(token)
-                    await _emit_token(emitter, token)
-            except Exception as exc:
-                workflow_logger.exception("interact_stream_failed")
-                return _build_stream_state(
-                    state,
-                    collected_tokens,
-                    error=str(exc),
-                )
+        stream = _build_response_stream(state, subject=subject)
+        try:
+            async for token in stream:
+                if await _is_disconnected(request):
+                    await stream.aclose()
+                    workflow_logger.info("interact_stream_disconnected")
+                    return _build_stream_state(
+                        state,
+                        collected_tokens,
+                        stream_interrupted=True,
+                    )
+                collected_tokens.append(token)
+                await _emit_token(emitter, token)
+        except Exception as exc:
+            workflow_logger.exception("interact_stream_failed")
+            return _build_stream_state(
+                state,
+                collected_tokens,
+                error=str(exc),
+            )
 
         assistant_response = "".join(collected_tokens)
         workflow_logger.info(

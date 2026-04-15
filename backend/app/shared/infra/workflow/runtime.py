@@ -8,7 +8,7 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.observability import (
+from app.shared.infra.observability.trace import (
     build_langsmith_metadata,
     build_langsmith_tags,
     get_langsmith_project_name,

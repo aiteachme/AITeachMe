@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 import structlog
@@ -17,7 +18,6 @@ from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.teaching.runtime_config import get_teaching_runtime_config
-from app.shared.infra.workflow import tracked_step
 from app.workflows.digest.planner.models import _resolve_subject_display_name
 from app.workflows.digest.shared.contracts import resolve_planner_retrieval_profile
 from app.workflows.digest.shared.models import SharedInputs
@@ -262,21 +262,8 @@ async def _read_external_pages(results: list[SearchResult]) -> dict[str, Scraped
     if not urls:
         return {}
 
-    async with tracked_step(
-        None,
-        name="web_reading",
-        kind="substep",
-        trace_run_type="tool",
-        trace_metadata={"max_urls": _PLANNER_WEB_READ_LIMIT},
-        trace_inputs={"url_count": len(urls)},
-    ) as step:
-        pages = await read_urls(urls)
-        page_map = {page.url: page for page in pages if page.url}
-        step.set_outputs(
-            url_count=len(urls),
-            success_count=sum(1 for page in pages if page.success and page.content.strip()),
-        )
-        return page_map
+    pages = await read_urls(urls)
+    return {page.url: page for page in pages if page.url}
 
 
 def _format_concept_briefing(
@@ -332,65 +319,57 @@ async def collect_planner_concept_briefing(
     provider_budget = max(0.5, float(getattr(settings, "search_provider_timeout_s", 6.0)))
     started_at = time.monotonic()
 
-    async with tracked_step(
-        None,
-        name="local_retrieval",
-        kind="substep",
-        trace_run_type="retriever",
-        trace_metadata={"retriever": "local_rag"},
-        trace_inputs={"query_count": len(queries)},
-    ) as step:
-        local_tasks = [
-            _safe_search(
-                "local_rag",
-                query=query,
-                subject=subject,
-                local_sections=local_sections,
-                max_results=2,
-                timeout_s=min(provider_budget, total_budget),
-            )
-            for query in queries
-        ]
-        local_results = await asyncio.gather(*local_tasks)
-        step.set_outputs(
-            query_count=len(queries),
-            result_count=sum(len(items) for items in local_results),
+    local_started_at = perf_counter()
+    local_tasks = [
+        _safe_search(
+            "local_rag",
+            query=query,
+            subject=subject,
+            local_sections=local_sections,
+            max_results=2,
+            timeout_s=min(provider_budget, total_budget),
         )
+        for query in queries
+    ]
+    local_results = await asyncio.gather(*local_tasks)
+    logger.info(
+        "planner_concept_local_retrieval_completed",
+        subject=subject,
+        query_count=len(queries),
+        result_count=sum(len(items) for items in local_results),
+        elapsed_ms=int((perf_counter() - local_started_at) * 1000),
+    )
 
     external_queries = _dedupe_strings(queries[:2], limit=2)
     external_retrievers = _resolve_external_retriever_names()
     external_results: list[list[SearchResult]] = [[] for _ in external_queries]
     if external_queries and external_retrievers:
-        async with tracked_step(
-            None,
-            name="web_retrieval",
-            kind="substep",
-            trace_run_type="retriever",
-            trace_metadata={"retriever_candidates": external_retrievers},
-            trace_inputs={"query_count": len(external_queries)},
-        ) as step:
-            for index, query in enumerate(external_queries):
-                hits: list[SearchResult] = []
-                for retriever_name in external_retrievers:
-                    remaining = total_budget - (time.monotonic() - started_at)
-                    if remaining <= 0:
-                        logger.info("planner_concept_budget_exhausted", query=query, result_count=sum(len(x) for x in external_results))
-                        break
-                    hits = await _safe_search(
-                        retriever_name,
-                        query=query,
-                        subject=subject,
-                        local_sections=local_sections,
-                        max_results=2,
-                        timeout_s=min(provider_budget, remaining),
-                    )
-                    if hits:
-                        break
-                external_results[index] = hits
-            step.set_outputs(
-                query_count=len(external_queries),
-                result_count=sum(len(items) for items in external_results),
-            )
+        web_started_at = perf_counter()
+        for index, query in enumerate(external_queries):
+            hits: list[SearchResult] = []
+            for retriever_name in external_retrievers:
+                remaining = total_budget - (time.monotonic() - started_at)
+                if remaining <= 0:
+                    logger.info("planner_concept_budget_exhausted", query=query, result_count=sum(len(x) for x in external_results))
+                    break
+                hits = await _safe_search(
+                    retriever_name,
+                    query=query,
+                    subject=subject,
+                    local_sections=local_sections,
+                    max_results=2,
+                    timeout_s=min(provider_budget, remaining),
+                )
+                if hits:
+                    break
+            external_results[index] = hits
+        logger.info(
+            "planner_concept_web_retrieval_completed",
+            subject=subject,
+            query_count=len(external_queries),
+            result_count=sum(len(items) for items in external_results),
+            elapsed_ms=int((perf_counter() - web_started_at) * 1000),
+        )
     external_results_for_read = await _prioritize_external_results(
         subject=subject,
         query=" ".join(external_queries),

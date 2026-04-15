@@ -10,6 +10,5 @@ import type { BuildPlannerStepStatsResponse } from './buildPlannerStepStatsRespo
 export interface BuildPlannerRuntimeStatsResponse {
   elapsed_ms?: number;
   steps?: BuildPlannerStepStatsResponse[];
-  fallback_used?: boolean;
   generation_mode?: string | null;
 }

@@ -726,18 +726,23 @@ LLM 调用: ✅ metadata (每章一次)
 
 ## 10. 可观测性
 
-Digest 的 LangSmith / runtime 观测统一按 `shared/infra/workflow` 的 4 个入口接入：
+Digest 的观测现在拆成两层：
 
-- `run_state_graph(...)`：workflow 根 span
-- `workflow_tracer(...).node(...)`：workflow node 的默认接入方式
-- `@traceable_run(...)`：稳定 prompt / helper / retriever
-- `tracked_step(...)`：node 内部关键步骤、progress、runtime stats
+- LangSmith trace
+- 前端 progress
 
-运行时统计不再依赖旧式 node wrapper 自动塞大块状态，而是：
+当前统一接法：
 
-- 通过 `tracked_step(...)` 写入简洁 steps 列表
-- 通过 `build_token_summary(build_session_id, lane)` 聚合 token 统计
-- 通过 `add_slow_item()` 记录最慢 chunk / chapter / unit
+- `run_state_graph(...)`：workflow root
+- `workflow_tracer(...).node(handler, ...)`：workflow node
+- 官方 `@traceable`：稳定 prompt / helper
+- `emit_progress(...)`：前端阶段事件
+
+运行时兼容统计不再依赖通用 step 框架，而是：
+
+- planner 只保留顶层 node 摘要
+- `build_token_summary(build_session_id, lane)` 聚合 token 统计
+- `add_slow_item()` 记录最慢 chunk / chapter / unit
 
 LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dump 整份 state。
 

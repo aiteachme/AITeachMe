@@ -16,7 +16,7 @@ from typing import Any, Protocol
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.observability import (
+from app.shared.infra.observability.trace import (
     llm_trace_scope,
     sanitize_langsmith_input,
     sanitize_langsmith_output,

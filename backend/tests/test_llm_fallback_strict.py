@@ -30,10 +30,10 @@ def test_acompletion_with_fallback_text_raises_after_single_primary_call() -> No
     failing_completion = AsyncMock(side_effect=RuntimeError("text llm failed"))
 
     with patch(
-        "app.shared.infra.observability.get_llm_trace_context",
+        "app.shared.infra.observability.trace.get_llm_trace_context",
         return_value=_fake_trace_context(),
     ), patch(
-        "app.shared.infra.observability.langsmith_tracing_scope",
+        "app.shared.infra.observability.trace.langsmith_tracing_scope",
         side_effect=lambda **_kwargs: nullcontext(),
     ), patch(
         "app.shared.infra.llm_support.fallback.acompletion",
@@ -54,10 +54,10 @@ def test_acompletion_with_fallback_structured_raises_after_single_primary_call()
     failing_structured_completion = AsyncMock(side_effect=RuntimeError("structured llm failed"))
 
     with patch(
-        "app.shared.infra.observability.get_llm_trace_context",
+        "app.shared.infra.observability.trace.get_llm_trace_context",
         return_value=_fake_trace_context(),
     ), patch(
-        "app.shared.infra.observability.langsmith_tracing_scope",
+        "app.shared.infra.observability.trace.langsmith_tracing_scope",
         side_effect=lambda **_kwargs: nullcontext(),
     ), patch(
         "app.shared.infra.llm_support.fallback.acompletion_structured",

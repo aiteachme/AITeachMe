@@ -60,18 +60,6 @@ from app.workflows.interact.support.streaming import SSEEventEmitter
 
 router = APIRouter(tags=["knowledge"])
 
-
-def _planner_status_detail(payload: dict[str, object]) -> str:
-    node_name = str(payload.get("node_name") or "").strip()
-    elapsed_ms = int(payload.get("elapsed_ms", 0) or 0)
-    status = str(payload.get("status") or "ok").strip() or "ok"
-    if node_name:
-        if status == "failed":
-            return f"{node_name} 失败，耗时 {elapsed_ms} ms。"
-        return f"{node_name} 完成，耗时 {elapsed_ms} ms。"
-    return "正在生成构建方案。"
-
-
 def _planner_stream_response(
     *,
     request: Request,
@@ -93,12 +81,7 @@ def _planner_stream_response(
             async def progress_callback(payload: dict[str, object]) -> None:
                 await emitter.emit_event(
                     "status",
-                    {
-                        **payload,
-                        "stage": str(payload.get("node_name") or "node"),
-                        "detail": str(payload.get("detail") or "").strip()
-                        or _planner_status_detail(payload),
-                    },
+                    payload,
                 )
 
             async def token_callback(token: str) -> None:
@@ -123,7 +106,6 @@ def _planner_stream_response(
                         else "方案生成完成。"
                     ),
                     "elapsed_ms": elapsed_ms,
-                    "workflow_elapsed_ms": elapsed_ms,
                 },
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})

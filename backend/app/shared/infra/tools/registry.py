@@ -8,7 +8,7 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.observability import (
+from app.shared.infra.observability.trace import (
     sanitize_langsmith_input,
     sanitize_langsmith_output,
     traceable_with_context,

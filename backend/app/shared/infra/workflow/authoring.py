@@ -18,13 +18,10 @@ from typing import Any
 import structlog
 from langsmith import tracing_context
 
-from app.shared.infra.observability import (
-    LangSmithRunType,
+from app.shared.infra.observability.trace import (
     build_langsmith_metadata,
     build_langsmith_tags,
     llm_trace_scope,
-    normalize_langsmith_run_type,
-    traceable_with_context,
 )
 from app.shared.infra.workflow.context import WorkflowContext
 
@@ -77,7 +74,7 @@ class WorkflowTraceBinding:
 
     def node(
         self,
-        handler: Any | None = None,
+        handler: Any,
         *,
         name: str,
         timing_field: str | None = None,
@@ -87,79 +84,76 @@ class WorkflowTraceBinding:
         """Wrap one workflow node without creating duplicate LangSmith spans."""
 
         del input_keys, output_keys
+        if handler is None:
+            raise TypeError("workflow_tracer().node(...) requires a handler argument.")
         workflow_name = self.workflow
         lane = self.lane
         tag_node_name = f"{lane}.{name}" if lane else name
 
-        def decorator(fn):
-            @functools.wraps(fn)
-            async def wrapper(state):
-                state_mapping = state if isinstance(state, Mapping) else {}
-                subject = str(state_mapping.get("subject", "") or "")
-                build_session_id = _resolve_build_session_id(state_mapping)
-                started_at = perf_counter()
-                node_metadata = build_langsmith_metadata(
+        @functools.wraps(handler)
+        async def wrapper(state):
+            state_mapping = state if isinstance(state, Mapping) else {}
+            subject = str(state_mapping.get("subject", "") or "")
+            build_session_id = _resolve_build_session_id(state_mapping)
+            started_at = perf_counter()
+            node_metadata = build_langsmith_metadata(
+                subject=subject,
+                build_session_id=build_session_id,
+                workflow=workflow_name,
+                lane=lane,
+                node=name,
+            )
+            node_tags = build_langsmith_tags(
+                workflow=workflow_name,
+                lane=lane,
+                node=tag_node_name,
+            )
+
+            with tracing_context(
+                metadata=node_metadata,
+                tags=node_tags,
+            ):
+                with llm_trace_scope(
                     subject=subject,
                     build_session_id=build_session_id,
                     workflow=workflow_name,
                     lane=lane,
                     node=name,
-                )
-                node_tags = build_langsmith_tags(
-                    workflow=workflow_name,
-                    lane=lane,
-                    node=tag_node_name,
-                )
-
-                with tracing_context(
-                    metadata=node_metadata,
-                    tags=node_tags,
                 ):
-                    with llm_trace_scope(
-                        subject=subject,
-                        build_session_id=build_session_id,
-                        workflow=workflow_name,
-                        lane=lane,
-                        node=name,
-                    ):
-                        try:
-                            result = fn(state)
-                            if inspect.isawaitable(result):
-                                result = await result
-                        except Exception:
-                            elapsed_ms = int((perf_counter() - started_at) * 1000)
-                            logger.bind(
-                                workflow=workflow_name,
-                                lane=lane,
-                                node=name,
-                                subject=subject,
-                                build_session_id=build_session_id,
-                            ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
-                            raise
+                    try:
+                        result = handler(state)
+                        if inspect.isawaitable(result):
+                            result = await result
+                    except Exception:
+                        elapsed_ms = int((perf_counter() - started_at) * 1000)
+                        logger.bind(
+                            workflow=workflow_name,
+                            lane=lane,
+                            node=name,
+                            subject=subject,
+                            build_session_id=build_session_id,
+                        ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
+                        raise
 
-                elapsed_ms = int((perf_counter() - started_at) * 1000)
-                result_mapping = result if isinstance(result, dict) else {}
-                if timing_field and timing_field not in result_mapping:
-                    result_mapping = {**result_mapping, timing_field: elapsed_ms}
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            result_mapping = result if isinstance(result, dict) else {}
+            if timing_field and timing_field not in result_mapping:
+                result_mapping = {**result_mapping, timing_field: elapsed_ms}
 
-                logger.bind(
-                    workflow=workflow_name,
-                    lane=lane,
-                    node=name,
-                    subject=subject,
-                    build_session_id=build_session_id,
-                ).info(
-                    "workflow_node_completed",
-                    elapsed_ms=elapsed_ms,
-                    status="failed" if result_mapping.get("error") else "ok",
-                )
-                return result_mapping if timing_field else result
+            logger.bind(
+                workflow=workflow_name,
+                lane=lane,
+                node=name,
+                subject=subject,
+                build_session_id=build_session_id,
+            ).info(
+                "workflow_node_completed",
+                elapsed_ms=elapsed_ms,
+                status="failed" if result_mapping.get("error") else "ok",
+            )
+            return result_mapping if timing_field else result
 
-            return wrapper
-
-        if handler is not None:
-            return decorator(handler)
-        return decorator
+        return wrapper
 
 
 def workflow_tracer(
@@ -181,35 +175,8 @@ def workflow_tracer(
     return WorkflowTraceBinding(workflow=resolved_workflow, lane=str(lane or ""))
 
 
-def traceable_run(
-    *,
-    name: str,
-    run_type: LangSmithRunType = "chain",
-    workflow: str = "",
-    workflow_name: str | None = None,
-    context: WorkflowContext | None = None,
-    lane: str = "",
-    input_keys: Sequence[str] | None = None,
-    output_keys: Sequence[str] | None = None,
-    timing_field: str | None = None,
-    process_inputs=None,
-    process_outputs=None,
-):
-    """Workflow-local alias around the shared ``@traceable`` wrapper."""
-
-    del workflow, workflow_name, context, lane, input_keys, output_keys, timing_field
-    resolved_run_type = normalize_langsmith_run_type(run_type, default="chain")
-    return traceable_with_context(
-        name=name,
-        run_type=resolved_run_type,
-        process_inputs=process_inputs,
-        process_outputs=process_outputs,
-    )
-
-
 __all__ = [
     "WorkflowGraphExport",
     "WorkflowTraceBinding",
-    "traceable_run",
     "workflow_tracer",
 ]

@@ -639,38 +639,10 @@ def traceable_with_context(
     return decorator
 
 
-def annotate_traceable(
-    func=None,
-    *,
-    name: str,
-    run_type: str = "chain",
-    process_inputs=None,
-    process_outputs=None,
-    name_factory: Callable[..., str | None] | None = None,
-    metadata_factory: Callable[..., Mapping[str, Any] | None] | None = None,
-    tags_factory: Callable[..., Sequence[str] | None] | None = None,
-):
-    """Repo-local ``@traceable`` wrapper with ambient trace-context injection."""
-
-    decorator = traceable_with_context(
-        name=name,
-        run_type=run_type,
-        process_inputs=process_inputs,
-        process_outputs=process_outputs,
-        name_factory=name_factory,
-        metadata_factory=metadata_factory,
-        tags_factory=tags_factory,
-    )
-    if func is not None:
-        return decorator(func)
-    return decorator
-
-
 __all__ = [
     "LANGSMITH_RUN_TYPES",
     "LLMTraceContext",
     "LangSmithRunType",
-    "annotate_traceable",
     "build_langsmith_extra",
     "build_langsmith_metadata",
     "build_langsmith_tags",

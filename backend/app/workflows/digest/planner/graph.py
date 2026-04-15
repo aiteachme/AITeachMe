@@ -19,7 +19,7 @@ from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fa
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.skills import collect_recommended_tool_tags, render_prompt_scoped_skillpacks
 from app.teaching.documents import coerce_resolved_chapter_title
-from app.shared.infra.workflow import emit_progress, get_runtime_steps, tracked_step, workflow_tracer
+from app.shared.infra.workflow import emit_progress, workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.workflows.digest.planner.concept_grounding import collect_planner_concept_briefing
 from app.workflows.digest.planner.models import (
@@ -428,10 +428,6 @@ def _merge_planner_topic_hints(shared_inputs: SharedInputs, topic_hints: list[st
     return next_inputs
 
 
-def _runtime_steps_patch(state: BuildPlannerState) -> dict[str, Any]:
-    return {"runtime_steps": get_runtime_steps(state)}
-
-
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow = StateGraph(BuildPlannerState)
     workflow.add_node(
@@ -460,134 +456,84 @@ def route_after_step(state: BuildPlannerState) -> str:
 def build_load_context_node(*, context: WorkflowContext):
     trace = workflow_tracer(context=context, lane="planner")
 
-    @trace.node(
-        name="load_context",
-        output_keys=("digest_mode", "course_type", "retrieval_profile"),
-    )
     async def load_context_node(state: BuildPlannerState) -> dict:
-        async with tracked_step(
+        await emit_progress(
             state,
-            name="load_context",
-            kind="node",
-            phase="planner",
-            running_message="正在读取用户目标和已上传资料...",
-            completed_message="已读取资料、目标与基础上下文。",
-            failed_message="读取资料与上下文失败。",
-            trace_enabled=False,
-        ):
-            async with tracked_step(
-                state,
-                name="prepare_shared_inputs",
-                kind="substep",
-                trace_metadata={"file_count": len(state.get("file_ids", []))},
-                trace_inputs={"user_goal_present": bool(str(state.get("user_goal") or "").strip())},
-            ) as step:
-                shared_inputs = await prepare_shared_inputs(
-                    state["subject"],
-                    state.get("file_ids", []),
-                    user_prompt=state.get("user_goal"),
-                )
-                source_mode = "prepared"
-                if not shared_inputs.source_packets:
-                    shared_inputs = _build_seed_shared_inputs(
-                        subject=state["subject"],
-                        file_ids=list(state.get("file_ids", [])),
-                        user_goal=state.get("user_goal"),
-                    )
-                    source_mode = "seeded"
-                step.set_outputs(
-                    source_packet_count=len(shared_inputs.source_packets),
-                    section_count=len(shared_inputs.section_packets),
-                    topic_hint_count=len(shared_inputs.fast_hints.chapter_candidates),
-                    source_mode=source_mode,
-                )
+            stage="load_context",
+            step="load_context",
+            detail="正在读取用户目标和已上传资料...",
+        )
+        shared_inputs = await prepare_shared_inputs(
+            state["subject"],
+            state.get("file_ids", []),
+            user_prompt=state.get("user_goal"),
+        )
+        if not shared_inputs.source_packets:
+            shared_inputs = _build_seed_shared_inputs(
+                subject=state["subject"],
+                file_ids=list(state.get("file_ids", [])),
+                user_goal=state.get("user_goal"),
+            )
 
-            digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
-            return {
-                "shared_inputs": shared_inputs,
-                "digest_mode": digest_mode,
-                "course_type": resolve_digest_course_type(digest_mode),
-                "retrieval_profile": resolve_planner_retrieval_profile(),
-                "teaching_action": "plan_course",
-                "tone": state.get("tone") or "encouraging",
-                **_runtime_steps_patch(state),
-            }
+        digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
+        return {
+            "shared_inputs": shared_inputs,
+            "digest_mode": digest_mode,
+            "course_type": resolve_digest_course_type(digest_mode),
+            "retrieval_profile": resolve_planner_retrieval_profile(),
+            "teaching_action": "plan_course",
+            "tone": state.get("tone") or "encouraging",
+        }
 
-    return load_context_node
+    return trace.node(load_context_node, name="load_context", timing_field="load_ms")
 
 
 def build_ground_concepts_node(*, context: WorkflowContext):
     trace = workflow_tracer(context=context, lane="planner")
 
-    @trace.node(
-        name="ground_concepts",
-        output_keys=("concept_local_hit_count", "concept_web_hit_count"),
-    )
     async def ground_concepts_node(state: BuildPlannerState) -> dict:
         shared_inputs = state["shared_inputs"]
-        async with tracked_step(
+        await emit_progress(
             state,
-            name="ground_concepts",
-            kind="node",
-            phase="planner",
-            running_message="正在快速检索基础概念与知识框架，补充事实锚点...",
-            failed_message="概念锚点补充失败。",
-            trace_enabled=False,
-        ):
-            async with tracked_step(
-                state,
-                name="concept_grounding",
-                kind="substep",
-                trace_metadata={"subject": state["subject"]},
-                trace_inputs={"latest_plan_present": bool(state.get("latest_plan"))},
-            ) as step:
-                concept_brief = await collect_planner_concept_briefing(
-                    subject=state["subject"],
-                    user_goal=state.get("user_goal") or "",
-                    shared_inputs=shared_inputs,
-                    latest_plan=state.get("latest_plan"),
-                )
-                step.set_outputs(
-                    query_count=len(concept_brief.queries),
-                    topic_hint_count=len(concept_brief.topic_hints),
-                    local_hits=concept_brief.local_hit_count,
-                    web_hits=concept_brief.web_hit_count,
-                )
+            stage="ground_concepts",
+            step="ground_concepts",
+            detail="正在快速检索基础概念与知识框架，补充事实锚点...",
+        )
+        concept_brief = await collect_planner_concept_briefing(
+            subject=state["subject"],
+            user_goal=state.get("user_goal") or "",
+            shared_inputs=shared_inputs,
+            latest_plan=state.get("latest_plan"),
+        )
 
-            enhanced_inputs = _merge_planner_topic_hints(shared_inputs, concept_brief.topic_hints)
-            local_message = f"已补充 {concept_brief.local_hit_count} 条本地概念锚点"
-            web_message = (
-                f"，{concept_brief.web_hit_count} 条外部概念锚点"
-                if concept_brief.web_hit_count
-                else ""
-            )
-            await emit_progress(
-                state,
-                phase="planner",
-                step="ground_concepts",
-                status="completed",
-                message=f"{local_message}{web_message}。",
-            )
-            return {
-                "shared_inputs": enhanced_inputs,
-                "concept_queries": concept_brief.queries,
-                "concept_briefing": concept_brief.briefing,
-                "concept_topic_hints": concept_brief.topic_hints,
-                "concept_local_hit_count": concept_brief.local_hit_count,
-                "concept_web_hit_count": concept_brief.web_hit_count,
-                **_runtime_steps_patch(state),
-            }
+        enhanced_inputs = _merge_planner_topic_hints(shared_inputs, concept_brief.topic_hints)
+        local_message = f"已补充 {concept_brief.local_hit_count} 条本地概念锚点"
+        web_message = (
+            f"，{concept_brief.web_hit_count} 条外部概念锚点"
+            if concept_brief.web_hit_count
+            else ""
+        )
+        await emit_progress(
+            state,
+            stage="ground_concepts",
+            step="ground_concepts",
+            detail=f"{local_message}{web_message}。",
+        )
+        return {
+            "shared_inputs": enhanced_inputs,
+            "concept_queries": concept_brief.queries,
+            "concept_briefing": concept_brief.briefing,
+            "concept_topic_hints": concept_brief.topic_hints,
+            "concept_local_hit_count": concept_brief.local_hit_count,
+            "concept_web_hit_count": concept_brief.web_hit_count,
+        }
 
-    return ground_concepts_node
+    return trace.node(ground_concepts_node, name="ground_concepts", timing_field="ground_ms")
 
 
 def build_draft_plan_node(*, context: WorkflowContext):
     trace = workflow_tracer(context=context, lane="planner")
 
-    @trace.node(
-        name="draft_plan",
-        output_keys=("planner_generation_mode",),
-    )
     async def draft_plan_node(state: BuildPlannerState) -> dict:
         shared_inputs = state["shared_inputs"]
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
@@ -611,171 +557,135 @@ def build_draft_plan_node(*, context: WorkflowContext):
             f"{_build_preview_title(display_subject=display_subject, user_goal=state.get('user_goal') or '', digest_mode=digest_mode)}\n"
             "研究任务\n"
         )
-        async with tracked_step(
+        await emit_progress(
             state,
-            name="draft_plan",
-            kind="node",
-            phase="planner",
-            running_message="正在流式生成研究任务草案...",
-            completed_message="方案已整理完成，准备返回前端。",
-            failed_message="规划草案生成失败。",
-            trace_enabled=False,
-        ):
-            async with tracked_step(
-                state,
-                name="plan_prompt_build",
-                kind="substep",
-                trace_run_type="prompt",
-                trace_metadata={
-                    "digest_mode": digest_mode,
-                    "selected_skillpack_count": len(state.get("selected_skillpacks") or []),
-                },
-                trace_inputs={"message_count": len(state.get("message_history") or [])},
-            ) as step:
-                prompt = _build_fast_planner_prompt(
-                    build_planner_prompt(
-                        subject=display_subject,
-                        user_goal=state.get("user_goal") or "",
-                        digest_mode=digest_mode,
-                        tone=tone,
-                        shared_inputs=shared_inputs,
-                        message_history=list(state.get("message_history", [])),
-                        latest_plan=state.get("latest_plan"),
-                        concept_briefing=state.get("concept_briefing") or "",
-                        skillpack_guidance=render_prompt_scoped_skillpacks(
-                            state.get("selected_skillpacks") or [],
-                            prompt_scope="digest.planner",
-                            bindings={
-                                "subject": display_subject,
-                                "user_goal": state.get("user_goal") or "",
-                                "topic": display_subject,
-                                "concept": display_subject,
-                            },
-                        ),
-                        recommended_tool_tags=collect_recommended_tool_tags(
-                            state.get("selected_skillpacks") or [],
-                            prompt_scope="digest.planner",
-                        ),
-                    )
-                )
-                step.set_outputs(prompt_chars=len(prompt))
-
-            await _emit_planner_tokens(state, preview_prefix)
-
-            streamed_tokens: list[str] = []
-            stream_failed = False
-            stream_error: Exception | None = None
-            async with tracked_step(
-                state,
-                name="planner_stream_generate",
-                kind="substep",
-                trace_metadata={
-                    "digest_mode": digest_mode,
-                    "course_type": course_type,
-                    "retrieval_profile": retrieval_profile,
-                    "teaching_action": teaching_action,
-                },
-                trace_inputs={"max_tokens": _PLANNER_STREAM_MAX_TOKENS},
-            ) as step:
-                try:
-                    async with asyncio.timeout(_PLANNER_STREAM_TIMEOUT_S):
-                        stream = acompletion_stream(
-                            [{"role": "user", "content": prompt}],
-                            task_type=TaskType.DOCGEN_LIGHT,
-                            temperature=0.1,
-                            max_tokens=_PLANNER_STREAM_MAX_TOKENS,
-                            extra_metadata={
-                                "planner_session_id": state.get("planner_session_id") or "",
-                                "digest_mode": digest_mode,
-                                "course_type": course_type,
-                                "retrieval_profile": retrieval_profile,
-                                "teaching_action": teaching_action,
-                            },
-                        )
-                        async for token in stream:
-                            streamed_tokens.append(token)
-                            await _emit_planner_token(state, token)
-                except Exception as exc:
-                    stream_failed = True
-                    stream_error = exc
-                    step.set_status("failed")
-                step.set_outputs(
-                    token_chunk_count=len(streamed_tokens),
-                    stream_failed=stream_failed,
-                )
-
-            if stream_failed:
-                assert stream_error is not None
-                raise stream_error
-            if not streamed_tokens:
-                raise RuntimeError("主模型调用失败，未生成结果。")
-
-            preview_text = preview_prefix + "".join(streamed_tokens)
-            raw_draft, preview_tasks = _build_raw_plan_from_preview(
-                preview_text=preview_text,
-                display_subject=display_subject,
+            stage="draft_plan",
+            step="draft_plan",
+            detail="正在流式生成研究任务草案...",
+        )
+        prompt = _build_fast_planner_prompt(
+            build_planner_prompt(
+                subject=display_subject,
                 user_goal=state.get("user_goal") or "",
                 digest_mode=digest_mode,
                 tone=tone,
-                fallback_plan=fallback_plan,
-            )
-            if not preview_tasks:
-                raise RuntimeError("主模型调用失败，未生成有效研究任务。")
-
-            draft = normalize_planner_draft(
-                raw_draft,
-                subject=state["subject"],
-                user_goal=state.get("user_goal") or "",
-                requested_digest_mode=digest_mode,
-                requested_tone=tone,
-                selected_skillpacks=list(state.get("selected_skillpacks") or []),
                 shared_inputs=shared_inputs,
+                message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
-            )
-            async with tracked_step(
-                state,
-                name="planner_title_generate",
-                kind="substep",
-                trace_metadata={"chapter_count": len(draft.chapter_plan)},
-                trace_inputs={"preview_task_count": len(preview_tasks)},
-            ) as step:
-                generated_titles = await _generate_planner_titles(
-                    subject=display_subject,
-                    user_goal=state.get("user_goal") or "",
-                    digest_mode=digest_mode,
-                    chapter_plan=[
-                        {
-                            **chapter.model_dump(mode="json"),
-                            "task_hint": preview_tasks[index] if index < len(preview_tasks) else "",
-                        }
-                        for index, chapter in enumerate(draft.chapter_plan)
-                    ],
-                    planner_session_id=state.get("planner_session_id") or "",
-                    course_type=course_type,
-                    retrieval_profile=retrieval_profile,
-                    teaching_action=teaching_action,
+                concept_briefing=state.get("concept_briefing") or "",
+                skillpack_guidance=render_prompt_scoped_skillpacks(
+                    state.get("selected_skillpacks") or [],
+                    prompt_scope="digest.planner",
+                    bindings={
+                        "subject": display_subject,
+                        "user_goal": state.get("user_goal") or "",
+                        "topic": display_subject,
+                        "concept": display_subject,
+                    },
+                ),
+                recommended_tool_tags=collect_recommended_tool_tags(
+                    state.get("selected_skillpacks") or [],
+                    prompt_scope="digest.planner",
                 )
-                step.set_outputs(generated_title_count=len(generated_titles))
-            draft = _apply_generated_titles_to_draft(
-                draft,
-                generated_titles=generated_titles,
-                subject_display_name=display_subject,
             )
-            plan = draft.model_dump(mode="json")
-            return {
-                "plan": plan,
-                "plan_summary": draft.plan_summary,
-                "digest_mode": draft.digest_mode,
-                "course_type": resolve_digest_course_type(draft.digest_mode),
-                "retrieval_profile": resolve_planner_retrieval_profile(),
-                "teaching_action": teaching_action,
-                "tone": draft.tone,
-                "selected_skillpacks": list(draft.selected_skillpacks),
-                "planner_generation_mode": "stream_plaintext",
-                **_runtime_steps_patch(state),
-            }
+        )
 
-    return draft_plan_node
+        await _emit_planner_tokens(state, preview_prefix)
+
+        streamed_tokens: list[str] = []
+        stream_failed = False
+        stream_error: Exception | None = None
+        try:
+            async with asyncio.timeout(_PLANNER_STREAM_TIMEOUT_S):
+                stream = acompletion_stream(
+                    [{"role": "user", "content": prompt}],
+                    task_type=TaskType.DOCGEN_LIGHT,
+                    temperature=0.1,
+                    max_tokens=_PLANNER_STREAM_MAX_TOKENS,
+                    extra_metadata={
+                        "planner_session_id": state.get("planner_session_id") or "",
+                        "digest_mode": digest_mode,
+                        "course_type": course_type,
+                        "retrieval_profile": retrieval_profile,
+                        "teaching_action": teaching_action,
+                    },
+                )
+                async for token in stream:
+                    streamed_tokens.append(token)
+                    await _emit_planner_token(state, token)
+        except Exception as exc:
+            stream_failed = True
+            stream_error = exc
+
+        if stream_failed:
+            assert stream_error is not None
+            raise stream_error
+        if not streamed_tokens:
+            raise RuntimeError("主模型调用失败，未生成结果。")
+
+        preview_text = preview_prefix + "".join(streamed_tokens)
+        raw_draft, preview_tasks = _build_raw_plan_from_preview(
+            preview_text=preview_text,
+            display_subject=display_subject,
+            user_goal=state.get("user_goal") or "",
+            digest_mode=digest_mode,
+            tone=tone,
+            fallback_plan=fallback_plan,
+        )
+        if not preview_tasks:
+            raise RuntimeError("主模型调用失败，未生成有效研究任务。")
+
+        draft = normalize_planner_draft(
+            raw_draft,
+            subject=state["subject"],
+            user_goal=state.get("user_goal") or "",
+            requested_digest_mode=digest_mode,
+            requested_tone=tone,
+            selected_skillpacks=list(state.get("selected_skillpacks") or []),
+            shared_inputs=shared_inputs,
+            latest_plan=state.get("latest_plan"),
+        )
+        generated_titles = await _generate_planner_titles(
+            subject=display_subject,
+            user_goal=state.get("user_goal") or "",
+            digest_mode=digest_mode,
+            chapter_plan=[
+                {
+                    **chapter.model_dump(mode="json"),
+                    "task_hint": preview_tasks[index] if index < len(preview_tasks) else "",
+                }
+                for index, chapter in enumerate(draft.chapter_plan)
+            ],
+            planner_session_id=state.get("planner_session_id") or "",
+            course_type=course_type,
+            retrieval_profile=retrieval_profile,
+            teaching_action=teaching_action,
+        )
+        draft = _apply_generated_titles_to_draft(
+            draft,
+            generated_titles=generated_titles,
+            subject_display_name=display_subject,
+        )
+        plan = draft.model_dump(mode="json")
+        await emit_progress(
+            state,
+            stage="draft_plan",
+            step="draft_plan",
+            detail="方案已整理完成，准备返回前端。",
+        )
+        return {
+            "plan": plan,
+            "plan_summary": draft.plan_summary,
+            "digest_mode": draft.digest_mode,
+            "course_type": resolve_digest_course_type(draft.digest_mode),
+            "retrieval_profile": resolve_planner_retrieval_profile(),
+            "teaching_action": teaching_action,
+            "tone": draft.tone,
+            "selected_skillpacks": list(draft.selected_skillpacks),
+            "planner_generation_mode": "stream_plaintext",
+        }
+
+    return trace.node(draft_plan_node, name="draft_plan", timing_field="draft_ms")
 
 
 def create_planner_initial_state(
@@ -806,8 +716,6 @@ def create_planner_initial_state(
         "planner_session_id": planner_session_id,
         "message_history": message_history,
         "latest_plan": latest_plan,
-        "runtime_steps": [],
-        "_runtime_step_starts": {},
         "progress_callback": progress_callback,
         "token_callback": token_callback,
         "error": None,
