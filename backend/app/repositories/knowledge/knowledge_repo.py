@@ -4,28 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, select
 
 from app.shared.infra.config import get_settings
-from app.shared.infra.database import (
-    ensure_subject_vec_table,
-    get_engine,
-    get_vector_table_dim,
-    is_postgres,
-    is_sqlite,
-    is_vec_ready,
-    quote_sqlite_identifier,
-    vector_table_exists,
-)
 from app.shared.infra.subject import (
-    SubjectEmbeddingMode,
-    build_subject_vector_table_name,
-    get_legacy_vector_table_name,
-    get_subject_embedding_binding,
+    build_subject_index_ref,
 )
-from app.models import RawFile, RetrievalChunk, Subject
+from app.models import RawFile, RetrievalChunk
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -225,136 +211,27 @@ def delete_documents_by_source_file_ids(
     return len(documents), chunk_count
 
 
-def _get_subject_record(session: Session, subject: str) -> Subject | None:
-    return session.exec(select(Subject).where(Subject.slug == subject)).first()
-
-
-def _get_subject_binding(session: Session, subject: str):
-    subject_record = _get_subject_record(session, subject)
-    if subject_record is None:
-        return None
-    return get_subject_embedding_binding(subject_record)
-
-
-def _delete_embeddings_from_table(
-    connection: sa.Connection,
-    *,
-    table_name: str,
-    chunk_ids: list[int],
-) -> None:
-    if not chunk_ids or not vector_table_exists(connection, table_name):
-        return
-
-    placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
-    params = {f"chunk_id_{index}": chunk_id for index, chunk_id in enumerate(chunk_ids)}
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    connection.execute(
-        sa.text(f"DELETE FROM {quoted_table_name} WHERE chunk_id IN ({placeholders})"),
-        params,
-    )
-
-
-def _count_embeddings_for_chunk_ids(
-    connection: sa.Connection,
-    *,
-    table_name: str,
-    chunk_ids: list[int],
-) -> int:
-    if not chunk_ids or not vector_table_exists(connection, table_name):
-        return 0
-
-    placeholders = ", ".join(f":chunk_id_{index}" for index in range(len(chunk_ids)))
-    params = {f"chunk_id_{index}": chunk_id for index, chunk_id in enumerate(chunk_ids)}
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    row = connection.execute(
-        sa.text(f"SELECT COUNT(*) FROM {quoted_table_name} WHERE chunk_id IN ({placeholders})"),
-        params,
-    ).first()
-    return int(row[0]) if row is not None else 0
-
-
 def count_embeddings_for_chunk_ids(
     session: Session,
     *,
     table_name: str,
     chunk_ids: list[int],
 ) -> int:
-    return _count_embeddings_for_chunk_ids(
-        session.connection(),
-        table_name=table_name,
-        chunk_ids=chunk_ids,
-    )
+    from app.shared.infra.search.llamaindex_index import count_indexed_chunks
+
+    del table_name
+    subject = _subject_for_chunk_ids(session, chunk_ids)
+    if subject is None:
+        return 0
+    return count_indexed_chunks(subject, chunk_ids)
 
 
-def _legacy_table_for_subject(
-    session: Session,
-    *,
-    subject: str,
-    chunk_ids: list[int],
-) -> str | None:
-    table_name = get_legacy_vector_table_name()
-    if _count_embeddings_for_chunk_ids(session.connection(), table_name=table_name, chunk_ids=chunk_ids) <= 0:
+def _subject_for_chunk_ids(session: Session, chunk_ids: list[int]) -> str | None:
+    if not chunk_ids:
         return None
-    return table_name
-
-
-def _resolve_insert_table(
-    session: Session,
-    *,
-    subject: str,
-    embedding_dim: int,
-) -> str | None:
-    binding = _get_subject_binding(session, subject)
-    if binding is not None and binding.mode == SubjectEmbeddingMode.DISABLED:
-        return None
-    table_name = (
-        binding.vector_table
-        if binding is not None and binding.vector_table
-        else build_subject_vector_table_name(subject)
-    )
-    ensure_subject_vec_table(get_engine(), subject=subject, embedding_dim=embedding_dim)
-    return table_name
-
-
-def _resolve_search_table(
-    session: Session,
-    *,
-    subject: str,
-    query_embedding_dim: int,
-) -> str | None:
-    binding = _get_subject_binding(session, subject)
-    connection = session.connection()
-
-    if binding is not None and binding.mode == SubjectEmbeddingMode.DISABLED:
-        return None
-
-    if binding is not None and binding.vector_table:
-        if binding.embedding_dim is not None and binding.embedding_dim != query_embedding_dim:
-            return None
-        if vector_table_exists(connection, binding.vector_table):
-            table_dim = get_vector_table_dim(connection, binding.vector_table)
-            if table_dim is None or table_dim == query_embedding_dim:
-                return binding.vector_table
-
-    table_name = get_legacy_vector_table_name()
-    if not vector_table_exists(connection, table_name):
-        return None
-    if _count_embeddings_for_chunk_ids(
-        connection,
-        table_name=table_name,
-        chunk_ids=[
-            chunk_id
-            for chunk_id in session.exec(
-                select(RetrievalChunk.id).where(RetrievalChunk.subject == subject)
-            ).all()
-            if chunk_id is not None
-        ],
-    ) <= 0:
-        return None
-    table_dim = get_vector_table_dim(connection, table_name)
-    if table_dim is not None and table_dim != query_embedding_dim:
-        return None
-    return table_name
+    statement = select(RetrievalChunk.subject).where(RetrievalChunk.id.in_(chunk_ids))
+    subjects = [str(item) for item in session.exec(statement).all() if item]
+    return subjects[0] if subjects else None
 
 
 def update_chunk_vector_metadata(
@@ -425,9 +302,8 @@ def bulk_insert_embeddings(
     embeddings: list[list[float]],
     embedding_model: str | None = None,
 ) -> None:
-    if not is_vec_ready():
-        logger.warning("bulk_insert_embeddings_skipped", reason="vector extension unavailable", subject=subject)
-        return
+    from app.shared.infra.search.llamaindex_index import IndexedChunk, upsert_chunks
+
     if not chunk_ids or not embeddings:
         return
     if len(chunk_ids) != len(embeddings):
@@ -436,119 +312,48 @@ def bulk_insert_embeddings(
             f"Got {len(chunk_ids)} chunk_ids and {len(embeddings)} embeddings."
         )
 
-    if is_postgres():
-        _pg_bulk_insert_embeddings(session, subject=subject, chunk_ids=chunk_ids, embeddings=embeddings, embedding_model=embedding_model)
-    else:
-        _sqlite_bulk_insert_embeddings(session, subject=subject, chunk_ids=chunk_ids, embeddings=embeddings, embedding_model=embedding_model)
-
-
-def _pg_bulk_insert_embeddings(
-    session: Session,
-    *,
-    subject: str,
-    chunk_ids: list[int],
-    embeddings: list[list[float]],
-    embedding_model: str | None = None,
-) -> None:
-    """pgvector：直接更新 retrieval_chunk.embedding 列。"""
-
-    runtime_model = embedding_model or get_settings().normalized_embedding_model
-    try:
-        for chunk_id, embedding in zip(chunk_ids, embeddings):
-            session.execute(
-                sa.text(
-                    "UPDATE retrieval_chunk SET embedding = :emb::vector "
-                    "WHERE id = :cid"
-                ),
-                {"cid": chunk_id, "emb": str(embedding)},
-            )
-        session.commit()
-        update_chunk_vector_metadata(
-            session,
-            subject=subject,
-            chunk_ids=chunk_ids,
-            embedding_model=runtime_model,
-            vector_ref="retrieval_chunk.embedding",
-        )
-        logger.info(
-            "bulk_insert_embeddings_completed",
-            subject=subject,
-            chunk_count=len(chunk_ids),
-            embedding_dim=len(embeddings[0]) if embeddings else 0,
-            backend="pgvector",
-        )
-    except Exception:
-        session.rollback()
-        logger.exception(
-            "bulk_insert_embeddings_failed",
-            subject=subject,
-            chunk_count=len(chunk_ids),
-            backend="pgvector",
-        )
-        raise
-
-
-def _sqlite_bulk_insert_embeddings(
-    session: Session,
-    *,
-    subject: str,
-    chunk_ids: list[int],
-    embeddings: list[list[float]],
-    embedding_model: str | None = None,
-) -> None:
-    """sqlite-vec：写入 vec0 虚拟表。"""
-
-    table_name = _resolve_insert_table(
-        session,
-        subject=subject,
-        embedding_dim=len(embeddings[0]),
+    statement = select(RetrievalChunk).where(
+        RetrievalChunk.subject == subject,
+        RetrievalChunk.id.in_(chunk_ids),
     )
-    if table_name is None:
-        logger.info("bulk_insert_embeddings_skipped", subject=subject, reason="subject_vectors_disabled")
+    chunks = list(session.exec(statement).all())
+    chunk_by_id = {int(chunk.id): chunk for chunk in chunks if chunk.id is not None}
+    indexed_chunks: list[IndexedChunk] = []
+    for chunk_id, embedding in zip(chunk_ids, embeddings, strict=False):
+        chunk = chunk_by_id.get(int(chunk_id))
+        if chunk is None:
+            continue
+        indexed_chunks.append(
+            IndexedChunk(
+                chunk_id=int(chunk.id),
+                document_id=int(chunk.document_id),
+                subject=chunk.subject,
+                title=chunk.title,
+                header_path=chunk.header_path,
+                content=chunk.content,
+                digest_chunk_uid=chunk.digest_chunk_uid,
+                embedding=embedding,
+            )
+        )
+
+    if not indexed_chunks:
         return
 
-    connection = session.connection()
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    runtime_model = embedding_model or get_settings().normalized_embedding_model
-    try:
-        _delete_embeddings_from_table(connection, table_name=table_name, chunk_ids=chunk_ids)
-        legacy_table = _legacy_table_for_subject(session, subject=subject, chunk_ids=chunk_ids)
-        if legacy_table is not None:
-            _delete_embeddings_from_table(connection, table_name=legacy_table, chunk_ids=chunk_ids)
-        for chunk_id, embedding in zip(chunk_ids, embeddings):
-            connection.execute(
-                sa.text(
-                    f"INSERT INTO {quoted_table_name}(chunk_id, embedding) "
-                    "VALUES (:chunk_id, :embedding)"
-                ),
-                {"chunk_id": chunk_id, "embedding": str(embedding)},
-            )
-        session.commit()
-        update_chunk_vector_metadata(
-            session,
-            subject=subject,
-            chunk_ids=chunk_ids,
-            embedding_model=runtime_model,
-            vector_ref=table_name,
-        )
-        logger.info(
-            "bulk_insert_embeddings_completed",
-            subject=subject,
-            chunk_count=len(chunk_ids),
-            embedding_dim=len(embeddings[0]) if embeddings else 0,
-            table_name=table_name,
-        )
-    except Exception:
-        session.rollback()
-        logger.exception(
-            "bulk_insert_embeddings_failed",
-            subject=subject,
-            chunk_count=len(chunk_ids),
-            embedding_dim=len(embeddings[0]) if embeddings else 0,
-            chunk_ids_preview=chunk_ids[:5],
-            table_name=table_name,
-        )
-        raise
+    upsert_chunks(subject, indexed_chunks)
+    update_chunk_vector_metadata(
+        session,
+        subject=subject,
+        chunk_ids=[chunk.chunk_id for chunk in indexed_chunks],
+        embedding_model=embedding_model or get_settings().normalized_embedding_model,
+        vector_ref=build_subject_index_ref(subject),
+    )
+    logger.info(
+        "bulk_insert_embeddings_completed",
+        subject=subject,
+        chunk_count=len(indexed_chunks),
+        embedding_dim=len(embeddings[0]) if embeddings else 0,
+        backend="llamaindex",
+    )
 
 
 def delete_embeddings_by_chunk_ids(
@@ -557,40 +362,11 @@ def delete_embeddings_by_chunk_ids(
     subject: str,
     chunk_ids: list[int],
 ) -> None:
-    if not chunk_ids or not is_vec_ready():
+    from app.shared.infra.search.llamaindex_index import delete_chunks
+
+    if not chunk_ids:
         return
-
-    if is_postgres():
-        # pgvector：将 embedding 列置 NULL
-        placeholders = ", ".join(f":cid_{i}" for i in range(len(chunk_ids)))
-        params = {f"cid_{i}": cid for i, cid in enumerate(chunk_ids)}
-        try:
-            session.execute(
-                sa.text(f"UPDATE retrieval_chunk SET embedding = NULL WHERE id IN ({placeholders})"),
-                params,
-            )
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        return
-
-    # SQLite：从 vec0 虚拟表中删除
-    connection = session.connection()
-    binding = _get_subject_binding(session, subject)
-    table_names = [get_legacy_vector_table_name()]
-    if binding is not None and binding.vector_table:
-        table_names.append(binding.vector_table)
-    else:
-        table_names.append(build_subject_vector_table_name(subject))
-
-    try:
-        for table_name in dict.fromkeys(table_names):
-            _delete_embeddings_from_table(connection, table_name=table_name, chunk_ids=chunk_ids)
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
+    delete_chunks(subject, chunk_ids)
 
 
 @dataclass
@@ -608,105 +384,16 @@ def vector_search(
     *,
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
-    if not is_vec_ready():
-        logger.warning("vector_search_skipped", reason="vector extension unavailable", subject=subject)
-        return []
+    from app.shared.infra.search.llamaindex_index import query_subject_index
+
     if top_k <= 0 or not query_embedding:
         return []
 
-    if is_postgres():
-        return _pg_vector_search(session, query_embedding, subject, top_k=top_k)
-    return _sqlite_vector_search(session, query_embedding, subject, top_k=top_k)
-
-
-def _pg_vector_search(
-    session: Session,
-    query_embedding: list[float],
-    subject: str,
-    *,
-    top_k: int = 5,
-) -> list[ChunkSearchResult]:
-    """pgvector 余弦相似度检索。"""
-
-    rows = session.execute(
-        sa.text(
-            """
-            SELECT id, 1 - (embedding <=> :query_emb::vector) AS score
-            FROM retrieval_chunk
-            WHERE subject = :subject
-              AND is_active = true
-              AND embedding IS NOT NULL
-            ORDER BY embedding <=> :query_emb::vector
-            LIMIT :top_k
-            """
-        ),
-        {
-            "subject": subject,
-            "query_emb": str(query_embedding),
-            "top_k": top_k,
-        },
-    ).fetchall()
-
+    hits = query_subject_index(subject, query_embedding, top_k=top_k)
     results: list[ChunkSearchResult] = []
-    for row in rows:
-        chunk = session.get(RetrievalChunk, row[0])
+    for hit in hits:
+        chunk = session.get(RetrievalChunk, hit.chunk_id)
         if chunk is None:
             continue
-        results.append(ChunkSearchResult(chunk=chunk, score=float(row[1])))
-    return results
-
-
-def _sqlite_vector_search(
-    session: Session,
-    query_embedding: list[float],
-    subject: str,
-    *,
-    top_k: int = 5,
-) -> list[ChunkSearchResult]:
-    """sqlite-vec MATCH 检索。"""
-
-    table_name = _resolve_search_table(
-        session,
-        subject=subject,
-        query_embedding_dim=len(query_embedding),
-    )
-    if table_name is None:
-        logger.info("vector_search_skipped", subject=subject, reason="subject_vectors_unavailable")
-        return []
-
-    connection = session.connection()
-    quoted_table_name = quote_sqlite_identifier(table_name)
-    rows = connection.execute(
-        sa.text(
-            f"""
-            SELECT
-                ce.chunk_id,
-                ce.distance
-            FROM {quoted_table_name} ce
-            WHERE ce.chunk_id IN (
-                SELECT c.id
-                FROM retrieval_chunk c
-                WHERE c.subject = :subject
-                  AND c.is_active = 1
-            )
-              AND ce.embedding MATCH :query_embedding
-              AND k = :top_k
-            ORDER BY ce.distance
-            """
-        ),
-        {
-            "subject": subject,
-            "query_embedding": str(query_embedding),
-            "top_k": top_k,
-        },
-    ).fetchall()
-
-    results: list[ChunkSearchResult] = []
-    for row in rows:
-        chunk = session.get(RetrievalChunk, row[0])
-        if chunk is None:
-            continue
-        distance = row[1]
-        score = 1.0 / (1.0 + distance) if distance >= 0 else 0.0
-        results.append(ChunkSearchResult(chunk=chunk, score=score))
+        results.append(ChunkSearchResult(chunk=chunk, score=float(hit.score)))
     return results

@@ -1,8 +1,8 @@
-"""LlamaIndex adapter layer for the ATM search stack.
+"""Compatibility LlamaIndex retriever components for the ATM search stack.
 
-Bridges search-facing vector-store / retriever infrastructure into
-LlamaIndex-compatible components so that workflow code can use the
-LlamaIndex retriever API without changing the underlying storage layer.
+The canonical subject index lifecycle now lives in
+``app.shared.infra.search.llamaindex_index``.  This package keeps older
+LlamaIndex retriever-style imports working on top of that managed index.
 
 The embedding adapter itself now lives in ``app.shared.infra.embedding``.
 """

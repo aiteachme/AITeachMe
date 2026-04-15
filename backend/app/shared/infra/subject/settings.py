@@ -14,6 +14,8 @@ from app.utils.time import utcnow
 _LEGACY_VECTOR_TABLE = "chunk_embeddings"
 _SUBJECT_VECTOR_TABLE_PREFIX = "chunk_embeddings_"
 _POSTGRES_VECTOR_REF = "retrieval_chunk.embedding"
+_LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://local/"
+_POSTGRES_LLAMA_INDEX_REF = "llamaindex://postgres/atm_llamaindex_rag"
 
 
 class SubjectEmbeddingMode(str, Enum):
@@ -51,6 +53,14 @@ def build_subject_vector_table_name(subject_slug: str) -> str:
 
     normalized = subject_slug.strip().replace("-", "_")
     return f"{_SUBJECT_VECTOR_TABLE_PREFIX}{normalized}"
+
+
+def build_subject_index_ref(subject_slug: str) -> str:
+    """Return the subject-scoped LlamaIndex storage reference."""
+
+    if is_cloud_mode():
+        return _POSTGRES_LLAMA_INDEX_REF
+    return f"{_LOCAL_LLAMA_INDEX_REF_PREFIX}{subject_slug.strip()}/rag_index"
 
 
 def load_subject_settings(subject: Subject) -> SubjectSettingsPayload:
@@ -95,17 +105,11 @@ def build_enabled_binding(
 ) -> SubjectEmbeddingBinding:
     """Create an enabled binding for one subject."""
 
-    vector_target = (
-        _POSTGRES_VECTOR_REF
-        if is_cloud_mode()
-        else build_subject_vector_table_name(subject_slug)
-    )
-
     return SubjectEmbeddingBinding(
         mode=SubjectEmbeddingMode.ENABLED,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
-        vector_table=vector_target,
+        vector_table=build_subject_index_ref(subject_slug),
         disabled_reason=None,
         updated_at=updated_at or utcnow(),
     )
@@ -131,11 +135,7 @@ def build_disabled_binding(
         vector_table=(
             previous_binding.vector_table
             if previous_binding is not None
-            else (
-                _POSTGRES_VECTOR_REF
-                if is_cloud_mode()
-                else build_subject_vector_table_name(subject_slug)
-            )
+            else build_subject_index_ref(subject_slug)
         ),
         disabled_reason=disabled_reason,
         updated_at=updated_at or utcnow(),
@@ -154,6 +154,7 @@ __all__ = [
     "SubjectSettingsPayload",
     "build_disabled_binding",
     "build_enabled_binding",
+    "build_subject_index_ref",
     "build_subject_vector_table_name",
     "dump_subject_settings",
     "get_legacy_vector_table_name",

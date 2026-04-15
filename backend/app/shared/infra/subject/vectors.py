@@ -8,12 +8,8 @@ from sqlmodel import Session, select
 from app.models.subject import Subject
 from app.schemas.knowledge import SubjectVectorStatusResponse
 from app.shared.infra.config import get_settings
-from app.shared.infra.database import (
-    get_vector_table_dim,
-    is_vec_ready,
-    vector_table_exists,
-)
 from app.shared.infra.env_support import get_env
+from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.subject.settings import (
     SubjectEmbeddingBinding,
     SubjectEmbeddingMode,
@@ -23,7 +19,8 @@ from app.shared.infra.subject.settings import (
 SUBJECT_VECTOR_PRECHECK_DETAIL_MAP: dict[str, str] = {
     "embedding_not_configured": "当前后端未配置 embedding 模型，请选择关闭当前学科的向量能力，或先补全配置后再全量重建。",
     "embedding_api_key_missing": "当前后端缺少 embedding 所需的 API Key，请选择关闭当前学科的向量能力，或补全配置后再重建。",
-    "vector_extension_unavailable": "当前运行环境不可用 sqlite-vec，请先关闭当前学科的向量能力，或修复环境后再重建。",
+    "vector_extension_unavailable": "当前运行环境不可用向量索引，请先关闭当前学科的向量能力，或修复环境后再重建。",
+    "llamaindex_postgres_unavailable": "当前云端环境缺少 LlamaIndex Postgres 索引依赖，请先补全依赖后再重建。",
     "subject_not_bound": "当前学科尚未绑定 embedding 模型，请先确认是全量重建当前学科向量，还是继续以非向量模式构建。",
     "legacy_vector_table": "当前学科仍在使用旧的全局向量表，请先全量重建当前学科向量，或继续以非向量模式构建。",
     "embedding_model_mismatch": "当前运行时 embedding 模型与学科已绑定模型不一致，请全量重建当前学科向量，或继续以非向量模式构建。",
@@ -70,7 +67,21 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             embedding_dim=embedding_dim,
             reason="embedding_api_key_missing",
         )
-    if not is_vec_ready():
+    if is_cloud_mode():
+        import importlib.util
+
+        try:
+            postgres_store_spec = importlib.util.find_spec("llama_index.vector_stores.postgres")
+        except ModuleNotFoundError:
+            postgres_store_spec = None
+        if postgres_store_spec is None:
+            return RuntimeEmbeddingConfig(
+                configured=True,
+                embedding_model=model,
+                embedding_dim=embedding_dim,
+                reason="llamaindex_postgres_unavailable",
+            )
+    if embedding_dim <= 0:
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,
@@ -163,29 +174,6 @@ def get_subject_vector_capability(
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
     if not binding.vector_table:
         return SubjectVectorCapability(binding=binding, status=status, queryable=False)
-
-    connection = session.connection()
-    if not vector_table_exists(connection, binding.vector_table):
-        return SubjectVectorCapability(
-            binding=binding,
-            status=_build_table_conflict_status(binding, reason="vector_table_missing"),
-            queryable=False,
-        )
-
-    table_dim = get_vector_table_dim(connection, binding.vector_table)
-    if (
-        table_dim is not None
-        and binding.embedding_dim is not None
-        and table_dim != binding.embedding_dim
-    ):
-        return SubjectVectorCapability(
-            binding=binding,
-            status=_build_table_conflict_status(
-                binding,
-                reason="vector_table_dimension_mismatch",
-            ),
-            queryable=False,
-        )
 
     return SubjectVectorCapability(binding=binding, status=status, queryable=True)
 

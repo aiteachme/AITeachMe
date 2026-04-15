@@ -1,17 +1,13 @@
-"""Bridge existing sqlite-vec / pgvector storage to LlamaIndex VectorStore.
+"""Compatibility VectorStore over the managed LlamaIndex subject index.
 
-This adapter wraps the raw SQL-based ``knowledge_repo.vector_search()``
-behind the ``BasePydanticVectorStore`` interface so that a
-``VectorStoreIndex`` can be created without changing the underlying
-database schema.
+The canonical index is now managed by ``llamaindex_index.manager``.  This
+adapter remains only for older call sites that still instantiate
+``ATMVectorStore`` through ``build_knowledge_retriever()``.
 
 Key design decisions:
-- ``add()`` is a no-op: embeddings are written through the existing
-  ``bulk_insert_embeddings()`` pipeline in the ingest/digest workflows.
-  We only bridge the *read* (query) path here.
-- ``aquery()`` opens its own DB session via ``managed_session()`` and
-  extracts all ORM data **inside** the session scope to avoid
-  ``DetachedInstanceError`` on both SQLite and PostgreSQL.
+- ``add()`` is a no-op because writes go through the unified index manager.
+- ``aquery()`` queries the LlamaIndex-managed subject index, then loads chunk
+  text from ``retrieval_chunk`` for compatibility with LlamaIndex nodes.
 """
 
 from __future__ import annotations
@@ -46,7 +42,7 @@ class _ExtractedChunk:
 
 
 class ATMVectorStore(BasePydanticVectorStore):
-    """LlamaIndex VectorStore backed by the existing sqlite-vec / pgvector tables."""
+    """LlamaIndex VectorStore compatibility wrapper over the managed subject index."""
 
     subject: str = ""
     stores_text: bool = True
@@ -92,7 +88,8 @@ class ATMVectorStore(BasePydanticVectorStore):
     ) -> VectorStoreQueryResult:
         """Execute a vector similarity search against the subject corpus."""
 
-        from app.repositories.knowledge.knowledge_repo import vector_search
+        from app.repositories.knowledge.knowledge_repo import get_chunk_by_id
+        from app.shared.infra.search.llamaindex_index import query_subject_index
 
         query_embedding = query.query_embedding
         if not query_embedding or not self.subject:
@@ -103,15 +100,16 @@ class ATMVectorStore(BasePydanticVectorStore):
         # Extract ALL ORM data inside session scope to avoid
         # DetachedInstanceError on both SQLite and PostgreSQL.
         extracted: list[_ExtractedChunk] = []
+        hits = query_subject_index(
+            self.subject,
+            query_embedding,
+            top_k=top_k,
+        )
         with managed_session() as session:
-            results = vector_search(
-                session,
-                query_embedding,
-                self.subject,
-                top_k=top_k,
-            )
-            for result in results:
-                chunk = result.chunk
+            for hit in hits:
+                chunk = get_chunk_by_id(session, hit.chunk_id)
+                if chunk is None or chunk.subject != self.subject:
+                    continue
                 if chunk.id is None:
                     continue
                 extracted.append(
@@ -122,7 +120,7 @@ class ATMVectorStore(BasePydanticVectorStore):
                         header_path=chunk.header_path,
                         subject=chunk.subject,
                         content=chunk.content,
-                        score=result.score,
+                        score=hit.score,
                     )
                 )
 

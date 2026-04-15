@@ -22,6 +22,16 @@ from .factory import (
     get_retrievers_for_subject,
 )
 from .knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
+from .llamaindex_index import (
+    IndexedChunk,
+    SubjectIndexHit,
+    clear_subject_index,
+    delete_chunks,
+    query_subject_index,
+    rebuild_subject_index,
+    retrieve_subject_chunks,
+    upsert_chunks,
+)
 from .llamaindex_adapter import ATMKnowledgeRetriever, ATMVectorStore, build_knowledge_retriever
 from .readers import get_registered_reader_names
 from .retrievers import get_registered_retriever_names
@@ -33,14 +43,18 @@ __all__ = [
     "ATMVectorStore",
     "ContextCompressor",
     "ContextManager",
+    "IndexedChunk",
     "RetrievalConfig",
     "RetrievalPipeline",
     "RetrievedChunk",
     "ScrapedPage",
     "SearchResult",
     "SourceCurator",
+    "SubjectIndexHit",
     "WebSearchResult",
     "build_knowledge_retriever",
+    "clear_subject_index",
+    "delete_chunks",
     "get_compression_runtime_cache",
     "get_external_retriever_names",
     "get_reader_for_url",
@@ -51,8 +65,12 @@ __all__ = [
     "get_retriever",
     "get_retriever_runtime_cache",
     "get_retrievers_for_subject",
+    "query_subject_index",
+    "rebuild_subject_index",
     "rerank_chunks",
     "reset_search_runtime_caches",
+    "retrieve_subject_chunks",
     "search_knowledge",
+    "upsert_chunks",
     "web_search",
 ]

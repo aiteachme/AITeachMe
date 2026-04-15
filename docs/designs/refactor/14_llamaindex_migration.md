@@ -1,153 +1,119 @@
-# LlamaIndex 渐进式迁移方案
+# LlamaIndex 全索引存储层迁移方案
 
-> 最后更新：2026-04-15
+> 最后更新：2026-04-16
 >
-> 原则：渐进式替换，不动 workflow graph 骨架，不动 LangSmith 观测面，在 `shared/infra/search/llamaindex_adapter/` 建 adapter 层。
-
----
+> 原则：开发期直接废弃旧 sqlite-vec / 手写 pgvector 索引，不做旧数据迁移和双读兼容；`retrieval_chunk` 继续作为业务元数据与引用来源。
 
 ## 1. 迁移目标
 
-用 LlamaIndex 替换当前自建的 retrieval pipeline，获得：
+本次迁移不是在旧 SQL 检索外面包一层 adapter，而是让 LlamaIndex 接管本地知识库的向量索引生命周期：
 
-- 更成熟的 query transform / sub-question decomposition
-- 原生 reranker 和 postprocessor 链
-- 更丰富的 vector store 适配（未来迁移 PostgreSQL + pgvector 更顺畅）
-- hybrid retrieval（vector + keyword）开箱即用
-- 社区维护的 retriever / reader 生态
+- 写入：构建流程生成 embedding 后写入 LlamaIndex node
+- 持久化：本地写入 `ContentStore`，云端写入 Postgres vector store
+- 检索：`search_knowledge()` 统一查询 LlamaIndex subject index
+- 删除：文件删除、知识清空、学科删除同步删除 LlamaIndex node/index
 
-不迁移的部分：
+保留不动的部分：
 
-- LangGraph workflow 骨架不动
-- LangSmith 观测面不动
-- SSE streaming 不动
-- teaching 层不动
+- LangGraph workflow 骨架
+- SSE streaming
+- `retrieval_chunk` 表和 citation 契约
+- SourceCurator / ContextCompressor
+- teaching 层调用面
 
----
+## 2. 目标架构
 
-## 2. 当前架构 vs 目标架构
+```text
+构建写入：
+  digest / knowledge_graph / unified
+    -> aembed_texts()
+    -> knowledge_repo.bulk_insert_embeddings()
+    -> llamaindex_index.upsert_chunks()
+    -> LlamaIndex vector store
 
-```
-迁移前：
-  interact/retrieve_context → aembed_texts() → vector_search() → RetrievalPipeline → rerank
-  search_knowledge()        → aembed_texts() → _vector_search() → rerank_chunks()
-  digest/chapter_context    → get_retrievers_for_subject() → micro-loop → SourceCurator → ContextCompressor
+检索读取：
+  interact / local_rag / tools / teaching
+    -> search_knowledge()
+    -> llamaindex_index.retrieve_subject_chunks()
+    -> retrieval_chunk 补齐正文和 citation metadata
+    -> RetrievedChunk[]
 
-迁移后 (Phase 1-2 已完成)：
-  interact/retrieve_context → build_knowledge_retriever() → ATMKnowledgeRetriever.aretrieve()
-  search_knowledge()        → build_knowledge_retriever() → ATMKnowledgeRetriever.aretrieve()
-  digest/chapter_context    → (未改动，仍走现有 retriever + SourceCurator + ContextCompressor)
-                               ↑ LocalRAGRetriever 内部调用 search_knowledge() 已自动走 LlamaIndex
-```
-
----
-
-## 3. 已完成的实现
-
-### Phase 1：基础适配层 ✅
-
-**3.1 安装依赖**
-
-```
-llama-index-core>=0.12.0
+删除清理：
+  clear / subject delete / file delete
+    -> knowledge_repo.delete_embeddings_by_chunk_ids()
+    -> llamaindex_index.delete_chunks()
 ```
 
-> **注意**：以下包在 PyPI 中 **不存在**，不要安装：
-> - ~~`llama-index-embeddings-litellm`~~ — 用自定义 `ATMEmbedding` 替代
-> - ~~`llama-index-vector-stores-sqlite`~~ — sqlite-vec 无官方集成，用自定义 `ATMVectorStore` 替代
-> - ~~`llama-index-postprocessor-flag-embedding-reranker`~~ — 用自定义 `ATMReranker` 桥接现有 litellm rerank
+## 3. 后端选择
 
-**3.2 Adapter 目录结构**
+### 本地模式
 
+- 使用 `llama-index-core` 内置 `SimpleVectorStore`
+- 每个 subject 一份索引，持久化到 `ContentStore`
+- 索引路径：`<subject>/rag_index/vector_store.json`
+- 不依赖 sqlite-vec，开发环境更轻
+
+### 云端模式
+
+- 使用 `llama-index-vector-stores-postgres`
+- 统一表：`atm_llamaindex_rag`
+- 用 node metadata 的 `subject` 字段做隔离
+- 继续复用 `DATABASE_URL`
+
+## 4. 已落地代码边界
+
+新增统一索引层：
+
+```text
+shared/infra/search/llamaindex_index/
+├── __init__.py
+└── manager.py
 ```
-shared/infra/search/llamaindex_adapter/
-├── __init__.py          # 导出核心组件
-├── embedding.py         # ATMEmbedding — 桥接 aembed_texts() → BaseEmbedding
-├── vector_store.py      # ATMVectorStore — 桥接 vector_search() → BasePydanticVectorStore
-├── reranker.py          # ATMReranker — 桥接 rerank_chunks() → BaseNodePostprocessor
-└── retriever.py         # ATMKnowledgeRetriever + build_knowledge_retriever() 工厂
-```
 
-**3.3 ATMEmbedding**
+核心入口：
 
-- 继承 `llama_index.core.embeddings.BaseEmbedding`
-- 内部调用现有 `aembed_texts()`，复用 LiteLLM + config.yaml 配置
-- 支持 async + sync
+- `upsert_chunks(subject, chunks)`
+- `rebuild_subject_index(subject, chunks)`
+- `delete_chunks(subject, chunk_ids)`
+- `clear_subject_index(subject)`
+- `retrieve_subject_chunks(subject, query, top_k)`
+- `query_subject_index(subject, query_embedding, top_k)`
 
-**3.4 ATMVectorStore**
+旧入口兼容策略：
 
-- 继承 `BasePydanticVectorStore`
-- `aquery()` 内部调用 `knowledge_repo.vector_search()`
-- `add()` / `delete()` 为 no-op（写入仍走 ingest pipeline）
-- 自动管理 DB session
+- `bulk_insert_embeddings()` 保留函数名，但内部写 LlamaIndex
+- `delete_embeddings_by_chunk_ids()` 保留函数名，但内部删 LlamaIndex node
+- `vector_search()` 保留短期兼容，但内部查询 LlamaIndex，不再读旧 SQL 向量表
+- `ATMVectorStore` 仅作为旧 `build_knowledge_retriever()` 的兼容层，不再包装 `knowledge_repo.vector_search()`
 
-**3.5 ATMReranker**
+## 5. 旧数据策略
 
-- 继承 `BaseNodePostprocessor`
-- 内部将 `NodeWithScore` ↔ `RetrievedChunk` 互转
-- 调用现有 `rerank_chunks()`（litellm.arerank）
+当前仍处于开发阶段，旧索引数据直接废弃：
 
-**3.6 ATMKnowledgeRetriever**
+- 不迁移 `chunk_embeddings`
+- 不迁移 `chunk_embeddings_*`
+- 不迁移旧 `retrieval_chunk.embedding`
+- 不保留旧检索 fallback
 
-- 组合 `VectorStoreIndex` + `ATMEmbedding` + `ATMVectorStore` + `ATMReranker`
-- 工厂函数 `build_knowledge_retriever(subject, top_k)` 一行创建
-- 当 rerank 启用时自动 fetch 3x candidates
+下一次知识构建会基于现有 `retrieval_chunk` 内容重新生成 LlamaIndex 索引。
 
----
+## 6. 验证范围
 
-### Phase 2：业务代码接入 ✅
+最小验证即可，不需要跑全量大套件：
 
-**已替换的调用点：**
+- `tests/test_search_namespace.py`
+- `tests/test_architecture_boundaries.py`
+- `tests/test_subject_embedding_service.py`
+- `tests/test_llamaindex_index.py`
 
-| 文件 | 改动 |
-|------|------|
-| `interact/support/retrieval.py` | 移除手写 `RetrievalPipeline`，改用 `build_knowledge_retriever()` |
-| `search/api.py` → `search_knowledge()` | 移除手动 embed + vector_search + rerank，改用 `build_knowledge_retriever()` |
+按实际改动补跑：
 
-**自动受益的调用方（无需修改）：**
+- 写入构建变更：`tests/test_knowledge_digest_service.py`
+- 删除清理变更：`tests/test_subject_deletion.py`
 
-| 文件 | 原因 |
-|------|------|
-| `retrievers/local_rag.py` | 内部调用 `search_knowledge()`，已自动走新路径 |
-| `tools/builtin/search_kb.py` | 内部调用 `search_knowledge()` |
-| `teaching/context.py` | 内部调用 `search_knowledge()` |
+## 7. 后续可选优化
 
----
-
-### Phase 3：清理 ✅
-
-- `knowledge.py` 中的 `RetrievalPipeline` 已标记为 deprecated
-- `RetrievedChunk`、`RetrievalConfig`、`rerank_chunks()` 保留（多处引用）
-
----
-
-## 4. 迁移风险与缓解
-
-| 风险 | 缓解措施 |
-| --- | --- |
-| LlamaIndex 版本更新频繁，API 不稳定 | 只依赖 `llama-index-core` 的稳定接口，adapter 层隔离变化 |
-| 引入新依赖增加包体积 | 只安装 `llama-index-core`，不装完整 `llama-index` |
-| 性能回退 | adapter 底层调用完全相同的 DB 函数，功能等价 |
-| 现有 runtime cache 失效 | `LocalRAGRetriever` 等仍通过 `search_knowledge()` 进入新路径，cache 机制不受影响 |
-
----
-
-## 5. 不迁移的部分
-
-- **LangGraph workflow 骨架**：interact/digest/examine/profile 的 graph 结构不动
-- **SSE streaming**：保持现有 `SSEEventEmitter` 机制
-- **Teaching 层**：teaching tools、context、documents 不受影响
-- **SourceCurator**：教育场景的来源排序逻辑保留
-- **ContextCompressor**：压缩逻辑保留
-- **knowledge_repo.py 底层 SQL**：adapter 桥接到这里，不改底层存储
-
----
-
-## 6. 未来扩展（超出本次范围）
-
-| 步骤 | 内容 | 前置条件 |
-| --- | --- | --- |
-| Next 1 | Digest chapter research 接入 sub-question engine | 本次迁移完成 |
-| Next 2 | Hybrid retrieval (vector + keyword) | Next 1 |
-| Next 3 | Vector store 迁移（替换 sqlite-vec 为 LlamaIndex 原生 store） | Next 1 |
-| Next 4 | LangSmith callback 桥接（将 LlamaIndex 事件映射到 LangSmith span） | Next 1 |
+- 将 API 字段 `vector_table` 正式改名为 `index_ref`
+- 云端索引增加 hybrid search
+- 对 `SimpleVectorStore` 增加构建锁或原子写文件策略
+- 删除旧 sqlite-vec 依赖和旧 pgvector SQL helper

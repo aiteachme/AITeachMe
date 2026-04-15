@@ -10,6 +10,8 @@
   负责把 URL 读取并解析成结构化可消费内容，例如 HTML / PDF / DOCX / PPTX / Markdown / TXT。
 - `knowledge.py`
   负责本地知识库检索契约，例如 `RetrievedChunk`、`RetrievalPipeline`、`rerank_chunks`。
+- `llamaindex_index/`
+  负责本地知识库向量索引生命周期，包括写入、持久化、检索和删除。
 
 ## 为什么不改名成 `rag`
 
@@ -26,6 +28,7 @@ shared/infra/search/
 ├── web.py                 # 多 retriever 调度
 ├── factory.py             # retriever / reader 选择
 ├── knowledge.py           # 本地知识检索契约与 rerank
+├── llamaindex_index/      # LlamaIndex subject index 管理
 ├── source_curation.py     # 来源筛选整理
 ├── context_compression.py # 上下文压缩
 ├── types.py               # SearchResult / ScrapedPage 等类型

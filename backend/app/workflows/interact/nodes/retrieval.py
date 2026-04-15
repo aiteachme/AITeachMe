@@ -15,7 +15,7 @@ from sqlmodel import Session
 
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
-from app.services.subject_embedding_service import get_subject_vector_search_notice
+from app.shared.infra.subject import get_subject_vector_search_notice
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.state import InteractWorkflowState
 from app.workflows.interact.support.retrieval import retrieve_context
@@ -87,5 +87,4 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
         }
 
     return retrieve_context_node
-
 
