@@ -81,6 +81,11 @@ interface PlannerPreviewTask {
   text: string;
 }
 
+interface PlannerStreamEvent {
+  id: string;
+  text: string;
+}
+
 type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
   runtime_stats?: PlannerRuntimeStats | null;
 };
@@ -249,6 +254,22 @@ function resolvePlannerStatusText(payload: unknown): string {
     return `${label} 进行中...`;
   }
   return "正在生成构建方案...";
+}
+
+function appendPlannerStreamEvent(events: PlannerStreamEvent[], text: string): PlannerStreamEvent[] {
+  const cleaned = text.trim();
+  if (!cleaned) {
+    return events;
+  }
+  const last = events[events.length - 1];
+  if (last?.text === cleaned) {
+    return events;
+  }
+  return [...events.slice(-5), { id: nextMessageId(), text: cleaned }];
+}
+
+function hasPlannerPreviewContent(preview: string): boolean {
+  return extractPlannerPreviewText(preview).length > 0;
 }
 
 function fileMeta(file: FileRecord) {
@@ -446,6 +467,7 @@ export function BuildPlanPage() {
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在生成构建方案...");
+  const [plannerStreamingEvents, setPlannerStreamingEvents] = useState<PlannerStreamEvent[]>([]);
   const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
@@ -550,7 +572,7 @@ export function BuildPlanPage() {
     }
     let cancelled = false;
 
-    // First try localStorage — only trust it if it has a real planner session
+    // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(subjectId);
     if (persisted?.plannerSessionId && persisted.messages?.length) {
       setMessages(persisted.messages);
@@ -564,7 +586,7 @@ export function BuildPlanPage() {
       return;
     }
 
-    // No localStorage — try server
+    // 本地没有可用缓存时，从后端恢复最近一次 planner 会话。
     async function restoreFromServer() {
       try {
         const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
@@ -586,7 +608,7 @@ export function BuildPlanPage() {
           return;
         }
 
-        // Reconstruct chat messages from server turns
+        // 用后端 turns 重建聊天记录。
         const restored: ChatMessage[] = [createWelcomeMessage()];
         for (const turn of session.turns) {
           restored.push(createMessage(
@@ -605,7 +627,7 @@ export function BuildPlanPage() {
         setIsRevisingPlan(false);
         loadedSubjectRef.current = subjectId;
       } catch {
-        // Server error — fresh start
+        // 后端恢复失败时，回到一个干净的新会话。
         if (cancelled) return;
         setMessages([createWelcomeMessage()]);
         setPlannerSessionId(null);
@@ -653,7 +675,7 @@ export function BuildPlanPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-start planner when navigated from HomePage with autoStart flag
+  // 从首页带 autoStart 进入时，自动发起一次 planner SSE 生成。
   useEffect(() => {
     if (
       !navState?.autoStart ||
@@ -709,6 +731,7 @@ export function BuildPlanPage() {
         plannerStreamingRawRef.current = "";
         setPlannerStreamingPreview("");
         setPlannerStreamingStatus("正在生成构建方案...");
+        setPlannerStreamingEvents([]);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -812,7 +835,7 @@ export function BuildPlanPage() {
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
       setPlannerSessionId(response.session_id);
-      setCurrentPlan(currentPlanRef.current);
+      setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
       setMessages((prev) => [
@@ -879,9 +902,9 @@ export function BuildPlanPage() {
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
-    setPlannerStreamingStatus(
-      shouldCreateSession ? "正在读取目标与资料，生成构建方案..." : "正在根据你的补充调整构建方案...",
-    );
+    const initialStatus = shouldCreateSession ? "正在读取目标与资料，生成构建方案..." : "正在根据你的补充调整构建方案...";
+    setPlannerStreamingStatus(initialStatus);
+    setPlannerStreamingEvents([{ id: nextMessageId(), text: initialStatus }]);
 
     try {
       if (shouldCreateSession) {
@@ -892,7 +915,10 @@ export function BuildPlanPage() {
             user_goal: text,
           },
           {
-            onStatus: setPlannerStreamingStatus,
+            onStatus: (text) => {
+              setPlannerStreamingStatus(text);
+              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, text));
+            },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
               setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
@@ -908,7 +934,10 @@ export function BuildPlanPage() {
       }
 
       const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, {
-        onStatus: setPlannerStreamingStatus,
+        onStatus: (statusText) => {
+          setPlannerStreamingStatus(statusText);
+          setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, statusText));
+        },
         onToken: (token) => {
           plannerStreamingRawRef.current += token;
           setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
@@ -929,6 +958,7 @@ export function BuildPlanPage() {
       plannerStreamingRawRef.current = "";
       setPlannerStreamingPreview("");
       setPlannerStreamingStatus("正在生成构建方案...");
+      setPlannerStreamingEvents([]);
     }
   }, [
     appendPlannerResponse,
@@ -1027,7 +1057,7 @@ export function BuildPlanPage() {
         <div className="flex items-center justify-center pb-2 pt-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 shadow-sm">
             <Sparkles className="h-3 w-3" />
-            Planner First
+            方案规划
           </div>
         </div>
 
@@ -1038,7 +1068,7 @@ export function BuildPlanPage() {
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-sky-700">
                     <Sparkles className="h-3 w-3" />
-                    Knowledge Build
+                    知识构建
                   </div>
                   <h2 className="text-xl font-semibold text-zinc-900">
                     {isBuildFailure ? "本轮构建失败" : canOpenKnowledgeDocs ? "知识文档已就绪" : "知识文档构建中"}
@@ -1249,10 +1279,29 @@ export function BuildPlanPage() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 shadow-sm">
-                  <p className="mb-2 text-xs text-zinc-500">
-                    {plannerStreaming ? plannerStreamingStatus : "正在确认方案并准备启动构建..."}
-                  </p>
+                <div className="w-full max-w-[85%] rounded-2xl rounded-tl-md border border-violet-100 bg-white px-4 py-3 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      {plannerStreaming ? "SSE 流式生成中" : "正在启动构建"}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {plannerStreaming ? plannerStreamingStatus : "正在确认方案并准备启动构建..."}
+                    </span>
+                  </div>
+                  {plannerStreamingEvents.length ? (
+                    <div className="mb-3 space-y-1.5 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2">
+                      {plannerStreamingEvents.map((event, index) => (
+                        <div key={event.id} className="flex items-start gap-2 text-xs leading-5 text-violet-800">
+                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+                          <span>
+                            {index === plannerStreamingEvents.length - 1 ? "当前：" : "已完成："}
+                            {event.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {extractPlannerPreviewTitle(plannerStreamingPreview) ? (
                     <div className="mb-2 text-sm font-semibold text-zinc-800">
                       {extractPlannerPreviewTitle(plannerStreamingPreview)}
@@ -1273,7 +1322,16 @@ export function BuildPlanPage() {
                       ))}
                     </div>
                   ) : null}
-                  <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+                  {plannerStreaming && hasPlannerPreviewContent(plannerStreamingPreview) && !parsePlannerPreviewTasks(plannerStreamingPreview).length ? (
+                    <div className="mb-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700">
+                      {extractPlannerPreviewText(plannerStreamingPreview)}
+                    </div>
+                  ) : null}
+                  {!plannerStreaming || !hasPlannerPreviewContent(plannerStreamingPreview) ? (
+                    <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                      正在等待后端推送第一段方案内容，请稍等...
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
