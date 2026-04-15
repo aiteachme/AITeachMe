@@ -11,7 +11,6 @@ from .models import DigestTimingReport, DigestTokenSummary
 from .lane_summaries import (
     build_docgen_lane_summary,
     build_kg_lane_summary,
-    build_curriculum_lane_summary,
     build_slow_items,
     _default_lane_status,
     _lane_step_items,
@@ -53,18 +52,15 @@ def build_unified_timing_report(
 
     doc_state = final_state.get("doc_state", {}) or {}
     kg_state = final_state.get("kg_state", {}) or {}
-    curriculum_state = final_state.get("curriculum_state", {}) or {}
     unified_steps = {
         "prepare_shared": int(final_state.get("shared_prepare_ms", 0)),
         "parallel_lanes": int(final_state.get("parallel_lanes_ms", 0)),
-        "derive_curriculum": int(final_state.get("curriculum_ms", 0)),
         "publish_outputs": int(final_state.get("publish_ms", 0)),
         "cleanup": int(final_state.get("cleanup_ms", 0)),
     }
     build_session_id = str(final_state.get("build_session_id", "")) or None
     docgen_token_summary = build_token_summary(build_session_id=build_session_id, lane="docgen")
     kg_token_summary = build_token_summary(build_session_id=build_session_id, lane="kg")
-    curriculum_token_summary = build_token_summary(build_session_id=build_session_id, lane="curriculum")
     docgen_summary = build_docgen_lane_summary(
         doc_state,
         token_summary=docgen_token_summary,
@@ -74,11 +70,6 @@ def build_unified_timing_report(
         kg_state,
         token_summary=kg_token_summary,
         status=_default_lane_status(kg_state, final_status=status),
-    )
-    curriculum_summary = build_curriculum_lane_summary(
-        curriculum_state,
-        token_summary=curriculum_token_summary,
-        status=_default_lane_status(curriculum_state, final_status=status),
     )
     top_slowest_steps = build_slow_items(
         [
@@ -108,15 +99,6 @@ def build_unified_timing_report(
                     "finalize": kg_summary.get("finalize_ms", 0),
                 },
             ),
-            *_lane_step_items(
-                "curriculum",
-                {
-                    "derive_units": curriculum_summary.get("derive_units_ms", 0),
-                    "theme_tree": curriculum_summary.get("theme_tree_ms", 0),
-                    "prereq_dag": curriculum_summary.get("prereq_dag_ms", 0),
-                    "finalize": curriculum_summary.get("finalize_ms", 0),
-                },
-            ),
         ]
     )
     return DigestTimingReport(
@@ -128,13 +110,11 @@ def build_unified_timing_report(
             "parallel_lanes_ms": unified_steps["parallel_lanes"],
             "doc_lane_ms": int(final_state.get("doc_lane_ms", 0)),
             "kg_lane_ms": int(final_state.get("kg_lane_ms", 0)),
-            "curriculum_ms": unified_steps["derive_curriculum"],
             "publish_ms": unified_steps["publish_outputs"],
             "cleanup_ms": unified_steps["cleanup"],
             "lane_total_tokens": {
                 "docgen": docgen_token_summary.total_tokens,
                 "kg": kg_token_summary.total_tokens,
-                "curriculum": curriculum_token_summary.total_tokens,
                 "unified_repair": int(llm_summary.tokens_by_lane.get("unified_repair", 0)),
             },
             "tokens_by_model": llm_summary.tokens_by_model,
@@ -154,7 +134,6 @@ def build_unified_timing_report(
         },
         docgen=docgen_summary,
         kg=kg_summary,
-        curriculum=curriculum_summary,
         llm=llm_summary,
         top_slowest_steps=top_slowest_steps,
     )

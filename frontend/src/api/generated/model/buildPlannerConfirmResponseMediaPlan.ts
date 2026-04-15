@@ -6,4 +6,4 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type BuildPlannerRuntimeStatsResponseNodeTimingsMs = {[key: string]: number};
+export type BuildPlannerConfirmResponseMediaPlan = { [key: string]: unknown };

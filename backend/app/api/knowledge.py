@@ -2,7 +2,7 @@
 
 This module keeps the historical import path ``app.api.knowledge`` stable while
 splitting handlers into:
-- docs/curriculum planner endpoints: ``app.api.knowledge_docs``
+- docs/build-planner endpoints: ``app.api.knowledge_docs``
 - graph query endpoints: ``app.api.knowledge_graph``
 """
 

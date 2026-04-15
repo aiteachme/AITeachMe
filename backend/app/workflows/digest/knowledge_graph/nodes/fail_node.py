@@ -1,28 +1,13 @@
-﻿"""Knowledge graph fail node."""
-
+"""Knowledge graph fail node."""
 
 from __future__ import annotations
 
-import asyncio
-import traceback
-import uuid
-from collections.abc import Awaitable, Callable
-
-from sqlmodel import select
-
 from app.shared.infra.database import managed_session
-from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
-from app.utils.job_helpers import (
-    activate_graph_entities_by_job,
-    cleanup_pending_by_job,
-    update_job_progress,
-)
-from app.shared.infra.workflow.result import WorkflowResult
+from app.utils.job_helpers import cleanup_pending_by_job
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
-from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
-from app.workflows.digest.unified.session import get_unified_build_session
+
 
 async def fail_node(state: KGDigestState) -> KGDigestState:
     """Clean up pending graph data and mark the job as failed."""
@@ -81,4 +66,6 @@ def _resolve_failure_step(error_message: str) -> str:
         return "prepare_failed"
     return "failed"
 
+
 __all__ = ["fail_node"]
+

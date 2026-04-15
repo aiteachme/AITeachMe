@@ -157,7 +157,6 @@ def _cleanup_pending_digest_outputs(subject: str) -> None:
     try:
         with managed_session() as session:
             cleanup_pending_by_subject(session, subject=subject, job_type="graph")
-            cleanup_pending_by_subject(session, subject=subject, job_type="curriculum")
     except Exception:
         logger.exception("knowledge_pending_cleanup_failed", subject=subject)
 
@@ -511,7 +510,12 @@ async def run_graph_build_background(*, subject: str, file_ids: list[int], promp
     try:
         _write_build_status(subject, requested_at=requested_at, status="running", stage="prepare_shared", build_session_id=build_session_id, error_message=None, draft_available=False, source_file_ids=file_ids, prompt=prompt)
         _cleanup_pending_digest_outputs(subject)
-        result = await run_graph_digest_workflow(subject=subject, job_id=_new_graph_run_id(), file_ids=file_ids, build_session_id=build_session_id, trigger_curriculum_after_finalize=True)
+        result = await run_graph_digest_workflow(
+            subject=subject,
+            job_id=_new_graph_run_id(),
+            file_ids=file_ids,
+            build_session_id=build_session_id,
+        )
         if result.failed:
             _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, error_message=result.error.detail)
             logger.error("knowledge_graph_build_failed", subject=subject, error=result.error.detail)

@@ -425,7 +425,7 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
     .reverse()
     .find((turn) => turn.role === "assistant" && turn.content.trim());
 
-  return assistantTurn?.content.trim() || response.plan.plan_summary || fallbackContent;
+  return assistantTurn?.content.trim() || response.latest_plan.plan_summary || fallbackContent;
 }
 
 export function BuildPlanPage() {
@@ -604,12 +604,12 @@ export function BuildPlanPage() {
           restored.push(createMessage(
             turn.role as ChatRole,
             turn.content,
-            turn.role === "assistant" ? session.plan : null,
+            turn.role === "assistant" ? session.latest_plan : null,
           ));
         }
 
         setPlannerSessionId(session.session_id);
-        setCurrentPlan(session.plan);
+        setCurrentPlan(session.latest_plan);
         setMessages(restored);
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
@@ -824,7 +824,7 @@ export function BuildPlanPage() {
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
       setPlannerSessionId(response.session_id);
-      setCurrentPlan(response.plan);
+      setCurrentPlan(currentPlanRef.current);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
       setMessages((prev) => [
@@ -832,7 +832,7 @@ export function BuildPlanPage() {
         createMessage(
           "assistant",
           contentOverride?.trim() || pickAssistantReply(response, fallbackContent),
-          response.plan,
+          response.latest_plan,
           runtimeStats,
         ),
       ]);
@@ -969,7 +969,7 @@ export function BuildPlanPage() {
 
     try {
       const response = await confirmPlannerMutation.mutateAsync(plannerSessionId);
-      setCurrentPlan(response.plan);
+      setCurrentPlan(currentPlanRef.current);
       setIsRevisingPlan(false);
       const buildAcceptedMessage =
         readyFileUids.length > 0
@@ -978,9 +978,9 @@ export function BuildPlanPage() {
 
       setMessages((prev) => [...prev, createMessage("system", buildAcceptedMessage)]);
       knowledgeBuild.submitBuild({
-        confirmed_plan_id: response.plan_id,
+        confirmed_plan_id: response.confirmed_plan_id,
         file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
-        prompt: response.plan.user_goal,
+        prompt: response.user_goal,
       });
     } catch (error) {
       setMessages((prev) => [

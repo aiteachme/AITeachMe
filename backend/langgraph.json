@@ -16,10 +16,6 @@
       "path": "./app/workflows/digest/knowledge_graph/graph.py:build_kg_digest_graph",
       "description": "Digest knowledge-graph lane."
     },
-    "digest_curriculum": {
-      "path": "./app/workflows/digest/curriculum/graph.py:build_curriculum_derive_graph",
-      "description": "Digest curriculum derivation lane."
-    },
     "digest_docgen": {
       "path": "./app/workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
       "description": "Digest doc generation lane."

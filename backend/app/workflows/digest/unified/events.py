@@ -32,7 +32,6 @@ class UnifiedBuildCompletedEvent:
     chunk_count: int
     new_node_count: int
     new_edge_count: int
-    curriculum_ready: bool
     elapsed_ms: int
     occurred_at: datetime = field(default_factory=utcnow)
 

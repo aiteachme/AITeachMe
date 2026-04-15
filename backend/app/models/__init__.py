@@ -2,17 +2,6 @@
 
 from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
-from app.models.curriculum import (
-    Curriculum,
-    CurriculumSnapshot,
-    CurriculumVersion,
-    PrereqDagVersion,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    ThemeTreeVersion,
-    UnitDependency,
-)
 from app.models.enums import (
     AsyncJobStatus,
     Difficulty,
@@ -53,9 +42,6 @@ __all__ = [
     "ChatMessage",
     "ChatSession",
     "ConfirmedBuildPlan",
-    "Curriculum",
-    "CurriculumSnapshot",
-    "CurriculumVersion",
     "Difficulty",
     "DigestStep",
     "DocGenStep",
@@ -72,7 +58,6 @@ __all__ = [
     "KnowledgeEdge",
     "KnowledgeNode",
     "MasteryGranularity",
-    "PrereqDagVersion",
     "QuestionTemplate",
     "QuestionTemplateStatus",
     "QuestionType",
@@ -83,12 +68,7 @@ __all__ = [
     "ReviewTaskType",
     "Subject",
     "TaskStatus",
-    "TaxonomyAnchor",
-    "TeachingUnit",
     "TemplateNodeRole",
-    "ThemeTreeNode",
-    "ThemeTreeVersion",
-    "UnitDependency",
     "User",
     "UserKnowledgeState",
     "WeaknessReason",
@@ -97,3 +77,4 @@ __all__ = [
     "normalize_exam_mode",
     "validate_status_transition",
 ]
+

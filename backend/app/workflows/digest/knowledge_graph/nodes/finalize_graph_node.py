@@ -3,11 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import traceback
-import uuid
-from collections.abc import Awaitable, Callable
-
 from sqlmodel import select
 
 from app.shared.infra.database import managed_session
@@ -15,17 +10,12 @@ from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.repositories import kg_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,
-    cleanup_pending_by_job,
     update_job_progress,
 )
-from app.shared.infra.workflow.result import WorkflowResult
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
-
-def _new_runtime_job_id() -> int:
-    return (uuid.uuid4().int % 2_000_000_000) + 1
 
 
 def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
@@ -71,11 +61,8 @@ def _count_active_graph_entities(*, session, subject: str) -> tuple[int, int]:
     return active_node_count, active_edge_count
 
 
-def build_finalize_graph_node(
-    *,
-    trigger_curriculum_derive: Callable[..., Awaitable[None]],
-):
-    """Build the finalize node with an injected curriculum trigger."""
+def build_finalize_graph_node():
+    """Build the graph finalize node."""
 
     async def finalize_graph_node(state: KGDigestState) -> KGDigestState:
         with managed_session() as session:
@@ -119,12 +106,10 @@ def build_finalize_graph_node(
                     unified_session.publish_topic_anchor_snapshot(topic_snapshot)
 
                 kg_repo.release_subject_build_lock(session, subject)
-                curriculum_job_id = _new_runtime_job_id()
                 kg_repo.update_digest_job(
                     session,
                     job_id,
                     status="completed",
-                    curriculum_job_id=curriculum_job_id,
                 )
                 update_job_progress(
                     session,
@@ -136,20 +121,10 @@ def build_finalize_graph_node(
                 digest_logger.info(
                     "kg_workflow_finalize_complete",
                     activated=activated,
-                    curriculum_job_id=curriculum_job_id,
                     topic_anchor_count=len(topic_snapshot.anchors),
                     resolved_node_count=resolved_node_count,
                     active_node_count=active_node_count,
                     active_edge_count=active_edge_count,
-                )
-                asyncio.create_task(
-                    trigger_curriculum_derive(
-                        subject=subject,
-                        graph_job_id=job_id,
-                        curriculum_job_id=curriculum_job_id,
-                        impact_set=state.get("impact_set"),
-                        build_session_id=build_session_id,
-                    )
                 )
                 return {
                     **state,

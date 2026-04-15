@@ -1,4 +1,4 @@
-"""Knowledge docs API routes."""
+﻿"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from app.api.deps import (
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
-    AnchorManageRequest,
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
@@ -30,9 +29,6 @@ from app.schemas.knowledge import (
     KnowledgeOverviewResponse,
     StudyPlanRequest,
     StudyPlanResponse,
-    TaxonomyAnchorResponse,
-    TeachingUnitDetailResponse,
-    UnitDetailRequest,
 )
 from app.services.knowledge_docs.build_planner_service import (
     append_build_planner_message_service,
@@ -42,10 +38,6 @@ from app.services.knowledge_docs.build_planner_service import (
 )
 from app.services.auth_service import set_guest_cookie_for_user
 from app.services.knowledge_docs.cleanup_service import clear_subject_knowledge
-from app.services.knowledge_docs.curriculum_service import (
-    get_teaching_unit_detail,
-    manage_taxonomy_anchors,
-)
 from app.services.knowledge_docs.digest_service import (
     get_docgen_result,
     run_docgen_background,
@@ -67,9 +59,9 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     status = str(payload.get("status") or "ok").strip() or "ok"
     if node_name:
         if status == "failed":
-            return f"{node_name} 失败，耗时 {elapsed_ms} ms。"
-        return f"{node_name} 完成，耗时 {elapsed_ms} ms。"
-    return "正在生成构建方案。"
+            return f"{node_name} failed in {elapsed_ms} ms."
+        return f"{node_name} finished in {elapsed_ms} ms."
+    return "Generating build plan..."
 
 
 def _planner_stream_response(
@@ -86,7 +78,7 @@ def _planner_stream_response(
                 "status",
                 {
                     "stage": "accepted",
-                    "detail": "已接收请求，正在读取资料与用户目标。",
+                    "detail": "Request accepted. Reading files and user goal.",
                 },
             )
 
@@ -118,9 +110,9 @@ def _planner_stream_response(
                 {
                     "stage": "completed",
                     "detail": (
-                        f"方案生成完成，总耗时 {elapsed_ms} ms。"
+                        f"Plan generated in {elapsed_ms} ms."
                         if runtime_stats is not None
-                        else "方案生成完成。"
+                        else "Plan generated."
                     ),
                     "elapsed_ms": elapsed_ms,
                     "workflow_elapsed_ms": elapsed_ms,
@@ -418,23 +410,6 @@ async def knowledge_overview(
 
 
 @router.post(
-    "/units/detail",
-    response_model=ApiResponse[TeachingUnitDetailResponse],
-    summary="Fetch teaching unit detail",
-    responses=build_error_responses([400, 404, 500]),
-)
-async def unit_detail(
-    subject: str = Path(...),
-    body: UnitDetailRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[TeachingUnitDetailResponse]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(get_teaching_unit_detail(session, subject=normalized, unit_id=body.unit_id))
-
-
-@router.post(
     "/study-plan",
     response_model=ApiResponse[StudyPlanResponse],
     summary="Fetch or update the learner study plan",
@@ -449,34 +424,6 @@ async def knowledge_study_plan(
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(handle_study_plan_request(session, subject=normalized, payload=body))
-
-
-@router.post(
-    "/taxonomy/anchors",
-    response_model=ApiResponse[list[TaxonomyAnchorResponse]],
-    summary="Manage taxonomy anchors",
-    responses=build_error_responses([400, 404, 422, 500]),
-)
-async def taxonomy_anchors(
-    subject: str = Path(...),
-    body: AnchorManageRequest = Body(...),
-    user: CurrentUserContext = Depends(get_current_user_context),
-    session: Session = Depends(get_db),
-) -> ApiResponse[list[TaxonomyAnchorResponse]]:
-    normalized = normalize_subject_slug(subject)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(
-        manage_taxonomy_anchors(
-            session,
-            subject=normalized,
-            action=body.action,
-            anchor_id=body.anchor_id,
-            title=body.title,
-            anchor_type=body.anchor_type,
-            parent_anchor_id=body.parent_anchor_id,
-            order_index=body.order_index,
-        )
-    )
 
 
 @router.post(

@@ -48,7 +48,7 @@ _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
 async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
-    """Compute the affected curriculum scope from graph changes."""
+    """Compute graph-local impact scope from graph changes."""
 
     with managed_session() as session:
         digest_logger = workflow_logger(state)
@@ -71,7 +71,7 @@ async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
             digest_logger.info(
                 "kg_workflow_impact_complete",
                 changed_nodes=len(impact.changed_node_ids),
-                affected_units=len(impact.affected_unit_ids),
+                affected_edges=len(impact.affected_edge_ids),
             )
             return {**state, "impact_set": impact}
         except Exception as exc:

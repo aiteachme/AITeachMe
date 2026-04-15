@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-
 from langgraph.graph import END, StateGraph
 
 from app.shared.infra.workflow import workflow_tracer
@@ -21,16 +19,7 @@ from app.workflows.digest.knowledge_graph.nodes import (
 from app.workflows.digest.knowledge_graph.routes import route_after_lock, route_after_prepare, route_after_step
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 
-CurriculumTrigger = Callable[..., Awaitable[None]]
-
-
-async def _noop_curriculum_trigger(**_: object) -> None:
-    return None
-
-
 def build_kg_digest_graph(
-    *,
-    trigger_curriculum_derive: CurriculumTrigger | None = None,
 ) -> StateGraph:
     """Build the LangGraph workflow for digest graph construction."""
 
@@ -95,9 +84,7 @@ def build_kg_digest_graph(
     workflow.add_node(
         "finalize_graph",
         trace.node(
-            build_finalize_graph_node(
-                trigger_curriculum_derive=trigger_curriculum_derive or _noop_curriculum_trigger,
-            ),
+            build_finalize_graph_node(),
             name="finalize_graph",
             timing_field="finalize_ms",
         ),
@@ -211,10 +198,8 @@ def create_graph_digest_initial_state(
 
 
 __all__ = [
-    "CurriculumTrigger",
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
-
 
 

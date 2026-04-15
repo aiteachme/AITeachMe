@@ -9,7 +9,6 @@ from .finalize_graph_node import build_finalize_graph_node
 from .prepare_node import prepare_node
 from .resolve_edges_node import resolve_edges_node
 from .resolve_nodes_node import resolve_nodes_node
-from .trigger_curriculum_derive_safe import trigger_curriculum_derive_safe
 
 __all__ = [
     "acquire_lock_node",
@@ -21,5 +20,4 @@ __all__ = [
     "prepare_node",
     "resolve_edges_node",
     "resolve_nodes_node",
-    "trigger_curriculum_derive_safe",
 ]

@@ -18,11 +18,11 @@ def _validate_target_ref(
     teaching_unit_id: int | None = None,
     knowledge_node_id: int | None = None,
 ) -> tuple[str, int]:
-    if teaching_unit_id is not None and knowledge_node_id is None:
-        return "unit", teaching_unit_id
-    if teaching_unit_id is None and knowledge_node_id is not None:
+    if teaching_unit_id is not None:
+        raise ValueError("teaching_unit_id is no longer supported.")
+    if knowledge_node_id is not None:
         return "node", knowledge_node_id
-    raise ValueError("Exactly one target ref must be provided.")
+    raise ValueError("knowledge_node_id must be provided.")
 
 
 def _apply_state_target_filter(
@@ -33,25 +33,13 @@ def _apply_state_target_filter(
     target_kind: str | None = None,
 ):
     if teaching_unit_id is not None:
-        return stmt.where(
-            UserKnowledgeState.teaching_unit_id == teaching_unit_id,
-            UserKnowledgeState.knowledge_node_id.is_(None),
-        )
+        raise ValueError("teaching_unit_id is no longer supported.")
     if knowledge_node_id is not None:
-        return stmt.where(
-            UserKnowledgeState.knowledge_node_id == knowledge_node_id,
-            UserKnowledgeState.teaching_unit_id.is_(None),
-        )
-    if target_kind == "unit":
-        return stmt.where(
-            UserKnowledgeState.teaching_unit_id.is_not(None),
-            UserKnowledgeState.knowledge_node_id.is_(None),
-        )
+        return stmt.where(UserKnowledgeState.knowledge_node_id == knowledge_node_id)
     if target_kind == "node":
-        return stmt.where(
-            UserKnowledgeState.knowledge_node_id.is_not(None),
-            UserKnowledgeState.teaching_unit_id.is_(None),
-        )
+        return stmt.where(UserKnowledgeState.knowledge_node_id.is_not(None))
+    if target_kind == "unit":
+        raise ValueError("unit target_kind is no longer supported.")
     return stmt
 
 
@@ -69,7 +57,6 @@ def upsert_knowledge_state(
     insert_values = {
         "user_id": state.user_id,
         "subject": state.subject,
-        "teaching_unit_id": state.teaching_unit_id,
         "knowledge_node_id": state.knowledge_node_id,
         "mastery_score": state.mastery_score,
         "confidence_score": state.confidence_score,
@@ -95,41 +82,27 @@ def upsert_knowledge_state(
     set_values = {
         key: value
         for key, value in insert_values.items()
-        if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_node_id"}
+        if key not in {"user_id", "subject", "knowledge_node_id"}
     }
 
     if is_postgres():
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
         stmt = pg_insert(UserKnowledgeState).values(**insert_values)
-        if target_kind == "unit":
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["user_id", "subject", "teaching_unit_id"],
-                index_where=sa.text("knowledge_node_id IS NULL"),
-                set_=set_values,
-            )
-        else:
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["user_id", "subject", "knowledge_node_id"],
-                index_where=sa.text("teaching_unit_id IS NULL"),
-                set_=set_values,
-            )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "subject", "knowledge_node_id"],
+            index_where=sa.text("knowledge_node_id IS NOT NULL"),
+            set_=set_values,
+        )
     else:
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
         stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
-        if target_kind == "unit":
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["user_id", "subject", "teaching_unit_id"],
-                index_where=sa.text("knowledge_node_id IS NULL"),
-                set_=set_values,
-            )
-        else:
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["user_id", "subject", "knowledge_node_id"],
-                index_where=sa.text("teaching_unit_id IS NULL"),
-                set_=set_values,
-            )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "subject", "knowledge_node_id"],
+            index_where=sa.text("knowledge_node_id IS NOT NULL"),
+            set_=set_values,
+        )
 
     session.exec(stmt)
     if auto_commit:
@@ -140,8 +113,7 @@ def upsert_knowledge_state(
         session,
         user_id=state.user_id,
         subject=state.subject,
-        teaching_unit_id=(target_ref_id if target_kind == "unit" else None),
-        knowledge_node_id=(target_ref_id if target_kind == "node" else None),
+        knowledge_node_id=target_ref_id,
     )
     if persisted is None:
         raise ValueError("UserKnowledgeState upsert failed.")
@@ -241,7 +213,6 @@ def list_weak_node_summaries(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
             UserKnowledgeState.knowledge_node_id.is_not(None),
-            UserKnowledgeState.teaching_unit_id.is_(None),
             UserKnowledgeState.mastery_score < threshold,
             KnowledgeNode.subject == subject,
         )
@@ -313,7 +284,7 @@ def list_recent_wrong_attempt_summaries(
         .limit(candidate_limit)
     )
     if teaching_unit_id is not None:
-        stmt = stmt.where(ExamPaperItem.teaching_unit_id == teaching_unit_id)
+        raise ValueError("teaching_unit_id is no longer supported.")
     rows = session.exec(stmt).all()
 
     ordered_rows = list(rows)

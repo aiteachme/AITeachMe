@@ -1,4 +1,4 @@
-/* ------------------------------------------------------------------ */
+﻿/* ------------------------------------------------------------------ */
 /*  Knowledge Docs — Shared Utility Functions                          */
 /* ------------------------------------------------------------------ */
 
@@ -20,7 +20,6 @@ export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   prepare_shared: 24,
   doc_lane_staged: 62,
   graph_ready: 74,
-  curriculum_deriving: 86,
   publishing: 94,
   completed: 100,
 };
@@ -30,7 +29,6 @@ export const DOC_BUILD_STAGE_CAP: Record<string, number> = {
   prepare_shared: 48,
   doc_lane_staged: 76,
   graph_ready: 86,
-  curriculum_deriving: 93,
   publishing: 97,
 };
 
@@ -38,8 +36,7 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   build_accepted: "已接收知识构建请求",
   prepare_shared: "正在分析材料结构与内容画像",
   doc_lane_staged: "文档草稿已生成，正在等待统一发布",
-  graph_ready: "知识图谱已就绪，正在推导课程结构",
-  curriculum_deriving: "正在生成教学单元、主题树与先修关系",
+  graph_ready: "知识图谱已就绪",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
 };
@@ -200,7 +197,7 @@ export function resolveDocBuildStatusText(
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_TEXT[stage]) return DOC_BUILD_STAGE_TEXT[stage];
   if (hasDraftVersion && !hasLiveVersion) {
-    return "本轮草稿已生成，正在等待图谱与课程结构对齐";
+    return "本轮草稿已生成，正在等待图谱处理完成";
   }
   if (hasLiveVersion) return "正在更新知识文档";
   return "正在生成知识文档";

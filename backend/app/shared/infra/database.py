@@ -1,4 +1,4 @@
-"""Database bootstrap and session helpers."""
+﻿"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 
@@ -32,13 +32,6 @@ from app.shared.infra.subject_settings import (
 )
 from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
-from app.models.curriculum import (
-    Curriculum,
-    TaxonomyAnchor,
-    TeachingUnit,
-    ThemeTreeNode,
-    UnitDependency,
-)
 from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
@@ -74,11 +67,6 @@ _SCHEMA_MODELS = (
     KnowledgeDocument,
     KnowledgeNode,
     KnowledgeEdge,
-    TeachingUnit,
-    TaxonomyAnchor,
-    ThemeTreeNode,
-    UnitDependency,
-    Curriculum,
     QuestionTemplate,
     ExamPaper,
     ExamPaperItem,
