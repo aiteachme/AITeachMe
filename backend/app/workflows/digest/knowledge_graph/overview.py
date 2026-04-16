@@ -1,4 +1,4 @@
-﻿"""Knowledge overview aggregation service."""
+"""Aggregated knowledge overview derived from the knowledge-graph lane."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from app.schemas.knowledge import (
     KnowledgeOverviewResponse,
     KnowledgeOverviewStats,
 )
-from app.workflows.digest.knowledge_graph.module import KnowledgeGraphModule
 from app.shared.infra.subject import get_subject_vector_status_by_slug
 from app.utils.time import utcnow
+from app.workflows.digest.knowledge_graph.module import KnowledgeGraphModule
 
 _DEFAULT_OVERVIEW_SECTIONS = {
     "graph",
@@ -59,3 +59,6 @@ def get_knowledge_overview(
         stats=stats if "stats" in sections else KnowledgeOverviewStats(),
         vector_status=get_subject_vector_status_by_slug(session, subject),
     )
+
+
+__all__ = ["get_knowledge_overview"]

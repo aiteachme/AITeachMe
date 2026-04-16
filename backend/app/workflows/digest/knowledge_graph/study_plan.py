@@ -1,4 +1,4 @@
-"""Study plan derivation from KnowledgeUnit prerequisite graph and mastery."""
+"""Study-plan derivation from the knowledge-graph lane and mastery data."""
 
 from __future__ import annotations
 

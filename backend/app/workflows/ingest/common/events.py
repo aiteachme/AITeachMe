@@ -1,4 +1,4 @@
-"""Canonical ingest domain events."""
+"""Shared ingest domain events for ingest lanes."""
 
 from __future__ import annotations
 

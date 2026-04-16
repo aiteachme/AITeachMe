@@ -41,7 +41,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | Markdown 规范化 | `backend/app/workflows/ingest/common/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
 | OCR 增强 | `backend/app/workflows/ingest/common/parsing/asset_ocr.py` | LLM Vision OCR |
 | Prompt 模板 | `backend/app/workflows/ingest/common/parsing/prompts.py` | OCR prompt 中/英文版 |
-| 事件定义 | `backend/app/workflows/ingest/events.py` | 领域事件 |
+| 事件定义 | `backend/app/workflows/ingest/common/events.py` | 领域事件 |
 | 主要业务表 | `raw_file` + `raw_file_asset` | 文件元数据与资产记录 |
 
 ---
@@ -607,7 +607,7 @@ Output Format:
 
 ## 9. 事件系统
 
-> 文件: `backend/app/workflows/ingest/events.py`
+> 文件: `backend/app/workflows/ingest/common/events.py`
 
 | 事件类 | 事件名 | 触发时机 | 携带数据 |
 |---|---|---|---|

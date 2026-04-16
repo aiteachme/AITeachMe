@@ -1,4 +1,4 @@
-"""Canonical stalled-enhancement recovery logic for ingest."""
+"""Recovery helpers for the deep-enhance lane."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import asyncio
 
 import structlog
 
-from app.shared.infra.database import managed_session
 from app.models import IngestStatus
+from app.shared.infra.database import managed_session
 
 logger = structlog.get_logger()
 
@@ -20,16 +20,16 @@ _STALLED_STATUSES = {
 async def recover_stalled_enhancements() -> int:
     """Scan for files stuck in fast_parsed/enhancing and redispatch Phase 2."""
 
-    from app.workflows.ingest.parse_files import _run_deep_enhance_background
+    from sqlmodel import select
+
+    from app.models.raw_file import RawFile
+    from app.workflows.ingest.deep_enhance.lib.background import _run_deep_enhance_background
     from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 
     dispatched = 0
 
     try:
         with managed_session() as session:
-            from sqlmodel import select
-            from app.models.raw_file import RawFile
-
             statement = select(RawFile).where(
                 RawFile.ingest_status.in_(list(_STALLED_STATUSES))  # type: ignore[attr-defined]
             )
@@ -42,14 +42,14 @@ async def recover_stalled_enhancements() -> int:
             logger.info(
                 "recover_stalled_enhancements_found",
                 count=len(stalled_files),
-                file_ids=[f.id for f in stalled_files],
+                file_ids=[item.id for item in stalled_files],
             )
 
             for raw_file in stalled_files:
                 if raw_file.id is None:
                     continue
 
-                parts = [p for p in raw_file.storage_key.split("/") if p]
+                parts = [part for part in raw_file.storage_key.split("/") if part]
                 subject = parts[0] if parts else ""
                 if not subject:
                     logger.warning(
