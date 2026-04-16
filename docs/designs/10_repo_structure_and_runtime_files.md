@@ -119,7 +119,7 @@ docs + scripts + infra = 配套工程与说明
 | `models/` | 持久化模型 |
 | `repositories/` | 数据读写封装 |
 | `schemas/` | API / service / workflow 边界数据结构 |
-| `core/`、`utils/` | 启动与通用辅助代码 |
+| `shared/infra/`、`shared/kernel/`、`utils/` | 共享基础设施、底层原语与通用辅助代码 |
 
 ### 4.3 推荐分工理解
 
@@ -166,12 +166,22 @@ backend/app/api/knowledge_docs.py
 
 `backend/app/workflows/digest/` 下面还有：
 
-- `kg/`
-- `curriculum/`
+- `application/`
+  承接知识文档、知识图谱等 API-facing 用例入口。
+- `planner/`
+  负责确认式构建方案生成。
+- `docgen/`
+  负责知识文档生成，真实 helper 位于 `docgen/lib/`，旧 `docgen/internal/` 已删除。
+- `knowledge_graph/`
+  负责知识图谱 lane，内部共享能力收口到 `knowledge_graph/lib/`。
+- `shared/`
+  Digest 通用材料准备、模型和指标。
+- `_shared/`
+  仅保留 Digest 专属教学表达入口，例如 `runtime_config.py` 与 `pedagogy/`。
 - `unified/`
-- `build/`
+  负责统一构建编排，报告类 helper 收口到 `unified/lib/`。
 
-这些目录当前仍在演进中，具体设计以代码和 `docs/designs/refactor/*` 为准。
+这些目录当前仍在演进中，具体设计以代码、`backend/app/workflows/STRUCTURE.md` 和 `docs/designs/refactor/*` 为准。
 
 这份总览文档不再把它们的内部阶段图写成当前批次的权威描述，避免旧文档比代码还“强势”。
 

@@ -28,6 +28,7 @@ Profile（画像引擎）是 AITeachMe 的**学习状态中枢**，负责把考�
 | Workflow Graph | `backend/app/workflows/profile/graph.py` | LangGraph 概览图定义 |
 | Workflow State | `backend/app/workflows/profile/state.py` | 状态类型 |
 | Workflow Runtime | `backend/app/workflows/profile/runtime.py` | 运行入口 |
+| Application | `backend/app/workflows/profile/application/mastery.py` | Profile API-facing 掌握度与复习任务入口 |
 | 掌握度更新 | `backend/app/workflows/profile/mastery_updater.py` | 核心掌握度计算引擎 |
 | 复习调度 | `backend/app/workflows/profile/review_scheduler.py` | SM-2 复习间隔 + 遗忘曲线 |
 | 薄弱点分析 | `backend/app/workflows/profile/weakness_analyzer.py` | 多因子薄弱点排序 |

@@ -2,7 +2,7 @@
 
 ## Current API shape
 
-- Layering follows `api -> services -> repositories -> models`.
+- Layering follows `api -> workflows -> repositories / shared.infra / models / schemas`.
 - API responses use the shared `ApiResponse` envelope.
 - Long-running build flows report `pending`, `processing`, `completed`, or `failed`.
 - File upload starts ingest automatically.

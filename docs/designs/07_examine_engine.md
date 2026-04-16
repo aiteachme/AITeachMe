@@ -8,6 +8,8 @@
 
 Examine（诊断引擎）是 AITeachMe 的**评测与诊断闭环核心**，负责把 Digest 产出的知识结构转化为出题→考试→判卷→掌握度更新→复习调度的完整闭环。
 
+> 当前公开 `api/exams.py` 仍处于 offline 占位状态，返回 `EXAMS_OFFLINE`。本文件描述的是 `backend/app/workflows/examine/` 内部能力和目标态契约，API 重新开放前需要以 `workflows/examine/application/` 为入口补齐联调。
+
 **Examine 做四件事：**
 1. 为每个教学单元生成题目模板（question_template）
 2. 根据用户画像和考试模式自动组卷（exam_paper）
@@ -21,7 +23,7 @@ Examine（诊断引擎）是 AITeachMe 的**评测与诊断闭环核心**，负�
 | 层 | 模块路径 | 职责 |
 |---|---|---|
 | API | `backend/app/api/exams.py` | 出卷/提交/查分端点 |
-| Service | `backend/app/services/exam_service.py` | 考试编排、会话管理 |
+| Application | `backend/app/workflows/examine/application/` | 考试用例编排、会话管理、组卷与判卷入口 |
 | Workflow Graph | `backend/app/workflows/examine/graph.py` | LangGraph 图定义 |
 | Workflow Runtime | `backend/app/workflows/examine/runtime.py` | 运行入口 |
 | Workflow State | `backend/app/workflows/examine/state.py` | 状态类型 |

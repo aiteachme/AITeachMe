@@ -9,6 +9,12 @@
 
 ---
 
+> 2026-04-16 当前仓库补充口径：后端源码已完成 workflows 单层化，当前真实依赖方向是
+> `api -> workflows -> repositories / shared.infra / models / schemas`。
+> 本文档中关于通用 `services/` 的正式版平台化示例仍可作为长期多服务拆分参考，但当前 `backend/app/services` 与 `backend/app/teaching` 不再作为源码层存在。
+
+---
+
 ## 1. 目的
 
 本文档用于统一 AITeachMe 的项目目录结构、模块边界与引用链规则，确保项目在不同阶段都具备清晰职责、稳定依赖方向和可演进能力。

@@ -160,11 +160,11 @@ cd backend/app
 
 # 找所有直接读写文件的地方
 grep -rn "\.read_text\|\.read_bytes\|\.write_text\|\.write_bytes\|shutil\.\|Path(" \
-  services/ workflows/ utils/docgen_store.py --include="*.py" | grep -v "__pycache__"
+  workflows/ utils/docgen_store.py --include="*.py" | grep -v "__pycache__"
 
 # 找所有引用 file_path/markdown_path/asset_dir 的地方
 grep -rn "file_path\|markdown_path\|asset_dir" \
-  services/ workflows/ repositories/ --include="*.py" | grep -v "__pycache__"
+  workflows/ repositories/ --include="*.py" | grep -v "__pycache__"
 ```
 
 ---

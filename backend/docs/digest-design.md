@@ -1,3 +1,5 @@
+> 2026-04-16 当前仓库说明：本文保留 Digest 历史设计上下文。当前真实代码边界以 `backend/app/workflows/digest/README.md`、`backend/app/workflows/STRUCTURE.md` 与 `docs/designs/05_digest_engine.md` 为准；旧 `services/`、`docgen/internal/` 等路径不再作为源码入口。
+
 下面我按“**知识图谱型增量构建**”来给你做一版完整设计，并且重点回答第二个核心问题：
 
 > **如何在知识图谱的基础上稳定地产生一个“学科树”**，而不是每次都生成一份漂浮不定的目录。

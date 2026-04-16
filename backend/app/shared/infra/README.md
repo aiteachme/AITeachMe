@@ -79,7 +79,7 @@ from app.shared.infra.facade import (
 
 使用约定：
 
-- service / workflow 可以调用 facade；API 层不要直接调用。
+- workflow / application 可以调用 facade；API 层不要直接调用。
 - facade 只组合 LLM、检索、解析、工具、评测和观测能力，不承载业务状态机。
 - `InfraContext` 只携带 `subject / user_id / workflow / lane / node / build_session_id / request_id / permissions / metadata`，不放 DB session、graph state 或教学策略。
 - 复杂节点可实例化 `InfraRuntime`；简单调用优先用门面函数。

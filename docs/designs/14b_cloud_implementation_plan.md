@@ -396,9 +396,9 @@ def is_vec_ready() -> bool:
 
 ## 阶段 3：对象存储接入 — DogeCloud OSS (S3兼容)
 
-### Step 3.1 — 改造文件上传服务
+### Step 3.1 — 改造文件上传用例
 
-**文件**: `backend/app/services/file_service.py`
+**文件**: `backend/app/workflows/support/files/commands.py`
 
 当前流程：`temp写入 → shutil.move → 更新DB路径`
 
@@ -443,7 +443,7 @@ async def save_uploaded_file(subject, filename, content, ...):
 
 ### Step 3.2 — 改造文件读取/下载
 
-**文件**: `backend/app/services/file_service.py`
+**文件**: `backend/app/workflows/support/files/queries.py` / `commands.py`
 
 需要新增一个统一的文件读取方法：
 

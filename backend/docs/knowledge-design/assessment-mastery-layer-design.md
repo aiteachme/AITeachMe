@@ -1,5 +1,7 @@
 # 设计文档：Assessment & Mastery Layer（第四层：测评与掌握度层）
 
+> 2026-04-16 当前仓库说明：本文为 assessment/mastery 早期设计。当前后端已完成 workflows 单层化，真实依赖方向为 `api -> workflows -> repositories / shared.infra / models / schemas`；Examine 用例入口位于 `workflows/examine/application/`，Profile 用例入口位于 `workflows/profile/application/`，不再使用 `services/assessment_service.py`。
+
 ## 概述
 
 本设计在 AITeachMe 现有三层知识架构（知识图谱 → 教学单元 → 课程视图）之上构建第四层——测评与掌握度层。核心设计理念：

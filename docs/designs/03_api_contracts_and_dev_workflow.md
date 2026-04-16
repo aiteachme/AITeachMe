@@ -31,6 +31,7 @@
 
 - `GET /api/health`
 - `POST /api/v1/system/init`
+- `POST /api/v1/system/settings`
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/logout`
@@ -153,6 +154,18 @@
 - 统一 digest 构建（knowledge build）
 
 两者都通过 `app.state.background_task_registry.spawn(...)` 托管，并在应用关闭时统一取消与清理。
+
+### 6.3 API 调用实现层
+
+当前后端已移除 `backend/app/services` 源层。API 层直接调用 `workflows` 下的用例入口：
+
+- 通用支撑业务：`workflows/support/*`
+- Digest 用例：`workflows/digest/application/*`
+- Interact 用例：`workflows/interact/application/*`
+- Examine 用例：`workflows/examine/application/*`
+- Profile 用例：`workflows/profile/application/*`
+
+`POST /api/v1/system/settings` 是只读配置总览接口，用于前端展示 `.env` 与 `config.yaml` 的当前生效状态；敏感字段只返回是否已配置，不返回明文。
 
 ### 6.2 当前仍是同步请求的链路
 

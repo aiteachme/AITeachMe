@@ -284,7 +284,7 @@ ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径�
 
 主要文件：
 
-- [`config.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/config.py)
+- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/config/settings.py)
 
 需要补齐的配置契约：
 
@@ -402,7 +402,7 @@ EMBEDDING_MODEL=text-embedding-v3
 
 必改核心文件通常包括：
 
-- [`config.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/core/config.py)
+- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/config/settings.py)
 - [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 - [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)

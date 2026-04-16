@@ -1,4 +1,6 @@
-﻿# 璁捐鏂囨。锛氱煡璇嗗浘璋卞閲忔瀯寤?+ 澶氳鍥捐绋嬬粨鏋勬淳鐢?
+﻿> 2026-04-16 当前仓库说明：本文为早期知识图谱设计草稿，且原文存在历史编码问题。当前真实代码边界以 `docs/designs/05_digest_engine.md`、`docs/designs/13_database_schema_inventory.md`、`backend/app/workflows/digest/README.md` 为准；旧 `services/`、`core/` 路径不再作为当前源码入口。
+
+# 璁捐鏂囨。锛氱煡璇嗗浘璋卞閲忔瀯寤?+ 澶氳鍥捐绋嬬粨鏋勬淳鐢?
 ## 姒傝堪
 
 鏈璁″皢鐜版湁 Digest Engine 浠?鎵规鏋勫缓 DocSet"妯″紡閲嶆瀯涓?鐭ヨ瘑鍥捐氨鍨嬪閲忔瀯寤?+ 澶氳鍥捐绋嬬粨鏋勬淳鐢?妯″紡锛圙raph-grounded Multi-View Curriculum Derivation锛夈€?
@@ -1540,4 +1542,3 @@ backend/
     鈹溾攢鈹€ test_kg_repo.py
     鈹溾攢鈹€ test_curriculum_repo.py
     鈹斺攢鈹€ test_kg_properties.py          # 灞炴€ф祴璇曪紙鎵€鏈?Property锛?```
-

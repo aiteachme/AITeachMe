@@ -80,17 +80,16 @@ AITeachMe/
 ```text
 backend/app/
 ├── api/            # HTTP 资源入口（路由、请求校验）
-├── services/       # 用例入口（业务编排、结果封装）
-├── workflows/      # 五大引擎编排（Ingest/Digest/Interact/Examine/Profile）
+├── workflows/      # 唯一业务层（五大引擎 + support 用例）
 ├── repositories/   # 查询与持久化
 ├── models/         # 业务表模型（SQLAlchemy）
 ├── schemas/        # API 请求/响应模型（Pydantic）
-├── core/           # 应用基础设施（config, database, exceptions, logger, runtime_paths）
-├── infra/          # AI 平台引擎（LLM, embedding, agent, tools, search, memory 等）
+├── shared/         # 共享基础层（kernel + infra）
 └── utils/          # 通用工具函数
 ```
 
-**依赖方向**：`api → services → workflows → infra → core`，`infra/` 可以 import `core/`，反之不可。
+**依赖方向**：`api → workflows → repositories / shared.infra / models / schemas`。
+`backend/app/services` 与 `backend/app/teaching` 已不再作为源码层存在。
 
 详细架构说明请参考 [项目目录架构规范](./docs/standards/standard-01-project-directory-architecture.md)
 

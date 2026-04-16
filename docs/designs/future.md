@@ -344,7 +344,7 @@ Step 4: 再进入正式发布
 **技术实现**：
 
 ```python
-# 场景引擎（未来可加入 core/scenarios.py）
+# 场景引擎（未来可放入 workflows/support/scenarios 或独立 workflow lane）
 scenario = load_scenario("db_incident")
 session = await start_scenario_session(scenario, user_id="u1")
 

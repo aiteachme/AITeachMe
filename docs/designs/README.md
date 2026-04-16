@@ -30,7 +30,7 @@
 | `13_database_schema_inventory.md` | 当前数据库唯一主设计文档 |
 | `15_export_import.md` | 导入导出 `.atmx` 格式设计 |
 | `future.md` | 未来学习形态与产品化路线（与当前代码能力映射） |
-| `refactor/` | Digest refactor 设计（见 [refactor/README.md](refactor/README.md)） |
+| `refactor/` | Digest refactor 与 workflows 单层化设计（见 [refactor/README.md](refactor/README.md)） |
 
 ---
 
@@ -40,19 +40,23 @@
 
 1. `01_system_architecture.md`
 2. `10_repo_structure_and_runtime_files.md`
-3. `13_database_schema_inventory.md`
-4. `11_database_and_storage_architecture.md`
-5. `02_domain_model_and_state.md`
-6. 再进入具体引擎文档
+3. `refactor/18_workflows_layer_consolidation.md`
+4. `refactor/19_workflows_structure_spec.md`
+5. `refactor/20_workflows_migration_plan.md`
+6. `13_database_schema_inventory.md`
+7. `11_database_and_storage_architecture.md`
+8. `02_domain_model_and_state.md`
+9. 再进入具体引擎文档
 
 ### 3.2 后端开发
 
 1. `01_system_architecture.md`
 2. `02_domain_model_and_state.md`
-3. `13_database_schema_inventory.md`
-4. `04_ingest_engine.md`
-5. `05_digest_engine.md`
-6. `11_database_and_storage_architecture.md`
+3. `refactor/19_workflows_structure_spec.md`
+4. `13_database_schema_inventory.md`
+5. `04_ingest_engine.md`
+6. `05_digest_engine.md`
+7. `11_database_and_storage_architecture.md`
 
 ### 3.3 前端开发
 
@@ -71,6 +75,8 @@
 
 这轮代码合并后的文档口径必须统一为：
 
+- 后端业务层已经收口为 `api -> workflows -> repositories / shared.infra / models / schemas`
+- `backend/app/services` 与 `backend/app/teaching` 不再作为源码层存在；原能力已迁入 `workflows/*/application`、`workflows/support`、`workflows/digest/_shared` 或 `shared.infra.tools`
 - ingest 方法层采用两阶段加速
 - 数据库主线采用 `curriculum` 单表版本语义
 - 知识文档和知识图谱在同一轮 digest 中共享版本
@@ -89,4 +95,3 @@
 - 哪些对象是长期真相
 - 哪些状态只是运行时实现
 - 在不增加 API 复杂度前提下，未来优先演进哪些能力
-

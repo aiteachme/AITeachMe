@@ -44,11 +44,11 @@
 
 ### Phase 3: Digest 应用用例迁移
 
-- `app.services.knowledge_docs.build_planner_service` -> `digest/application/build_plans.py`
-- `app.services.knowledge_docs.digest_service` -> `digest/application/builds.py`
-- `app.services.knowledge_docs.overview_service` -> `digest/application/overview.py`
-- `app.services.knowledge_docs.cleanup_service` -> `digest/application/cleanup.py`
-- `app.services.knowledge_graph.*` -> `digest/application/*` 或 `digest/knowledge_graph/` 模块门面
+- `app.services.knowledge_docs.build_planner_service` -> `digest/application/knowledge_docs/build_planner_service.py`
+- `app.services.knowledge_docs.digest_service` -> `digest/application/knowledge_docs/digest_service.py`
+- `app.services.knowledge_docs.overview_service` -> `digest/application/knowledge_docs/overview_service.py`
+- `app.services.knowledge_docs.cleanup_service` -> `digest/application/knowledge_docs/cleanup_service.py`
+- `app.services.knowledge_graph.*` -> `digest/application/knowledge_graph/*` 或 `digest/knowledge_graph/` 模块门面
 
 ### Phase 4: 其他引擎迁移
 

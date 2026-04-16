@@ -29,7 +29,7 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| Service | `backend/app/services/knowledge_docs/digest_service.py` | Digest 构建入口、后台任务调度 |
+| Application | `backend/app/workflows/digest/application/knowledge_docs/digest_service.py` | Digest 构建入口、后台任务调度 |
 | 模块入口 | `backend/app/workflows/digest/runtime.py` / `graph.py` | 历史兼容入口，指向真实链路 |
 | Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
@@ -357,6 +357,8 @@ LLM 调用: ❌ (纯图算法)
 ---
 
 ## 6. Docs Lane — 知识文档生成
+
+> 当前代码中的 DocGen 真实链路已收口到 `backend/app/workflows/digest/docgen/`，节点为 `load_context / research_chapters / write_chapters / finalize_titles / merge_drafts / enrich_assets / append_practice / publish_document` 等。`docgen/lib/` 是真实 helper 落点，旧 `docgen/internal/` 已删除。下面保留的 cleanse/outline/draft/review 描述是历史 Docs Lane 设计背景，不再作为当前代码结构的权威说明；当前实现以 `backend/app/workflows/digest/docgen/README.md` 与 `docs/designs/refactor/*` 为准。
 
 ### 6.1 LangGraph 流程图
 

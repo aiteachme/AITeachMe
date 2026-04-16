@@ -22,8 +22,8 @@ Interact（伴读引擎）是 AITeachMe 的**实时教学交互核心**，负责
 
 | 层 | 模块路径 | 职责 |
 |---|---|---|
-| API | `backend/app/api/interact.py` | 对话 SSE 端点 |
-| Service | `backend/app/services/interact_service.py` | 会话管理、调度 |
+| API | `backend/app/api/chats.py` | 对话 SSE 与会话端点 |
+| Application | `backend/app/workflows/interact/application/chats.py` | 会话管理、调度与 SSE 外壳 |
 | Workflow Graph | `backend/app/workflows/interact/chat/graph.py` | LangGraph 图定义 |
 | Workflow Runtime | `backend/app/workflows/interact/chat/runtime.py` | 运行入口 |
 | Workflow State | `backend/app/workflows/interact/chat/state.py` | 状态类型 |
@@ -52,7 +52,7 @@ graph TD
 
 ## 4. State 类型定义
 
-> 文件: `backend/app/workflows/interact/state.py`
+> 文件: `backend/app/workflows/interact/chat/state.py`（根目录 `state.py` 仅作兼容入口）
 
 ### `InteractWorkflowState` 主要字段
 
@@ -111,11 +111,9 @@ graph TD
      ├─ search_notice 非空 → 跳过检索，使用 notice 作为上下文提示
      └─ search_notice 空 → 执行 RAG 检索
   2. RAG 检索流程:
-     a. 对 question 做 embedding
-     b. 在 retrieval_chunk 表中做向量相似度搜索
-        → WHERE subject = <subject> AND similarity >= threshold
-        → ORDER BY similarity DESC LIMIT K
-     c. 返回 top-K 个 chunk.content 作为 retrieved_chunks
+     a. 通过 `chat/lib/retrieval.py` 调用 LlamaIndex adapter
+     b. 底层桥接到同一套 sqlite-vec / pgvector 存储
+     c. 按相似度阈值过滤后返回 prompt-ready `RetrievedContext`
   3. 检索结果为空时: 设 search_notice = "未找到相关知识库内容"
 输出:
   retrieved_chunks: list[str]  (或空列表)

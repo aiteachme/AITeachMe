@@ -26,7 +26,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 |---|---|---|
 | 前端页面 | `frontend/src/pages/FilesPage.tsx` | 文件上传、预览、状态展示 |
 | API | `backend/app/api/files.py` | 上传接口、状态查询 |
-| Service | `backend/app/services/file_service.py` | 上传编排、后台任务派发 |
+| Application | `backend/app/workflows/support/files/commands.py` / `queries.py` | 上传编排、后台任务派发、列表与删除 |
 | Workflow Graph | `backend/app/workflows/ingest/graph.py` | LangGraph 图定义 |
 | Workflow Runtime | `backend/app/workflows/ingest/runtime.py` | 两阶段运行入口 |
 | Workflow State | `backend/app/workflows/ingest/state.py` | 状态类型定义 |
@@ -55,7 +55,7 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
     │
     ▼
 ┌─────────────────────────────────┐
-│  Phase 0: 上传与排队             │  file_service.py
+│  Phase 0: 上传与排队             │  workflows/support/files
 │  - 写原始文件到 ContentStore     │
 │  - 创建 raw_file 记录           │
 │  - 置 ingest_status = pending   │
