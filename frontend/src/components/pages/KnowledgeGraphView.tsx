@@ -38,6 +38,9 @@ const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
   Formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
   formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
+  exercise: { label: "习题", color: "bg-rose-50 text-rose-600" },
+  proof_step: { label: "推导", color: "bg-violet-50 text-violet-600" },
+  remark: { label: "补充", color: "bg-slate-100 text-slate-600" },
 };
 
 function NodeDetailPanel({
@@ -187,11 +190,15 @@ function NodeDetailPanel({
 
 const NODE_TYPES = [
   { value: undefined, label: "全部" },
-  { value: "Topic", label: "主题" },
-  { value: "Concept", label: "概念" },
-  { value: "Method", label: "方法" },
-  { value: "Definition", label: "定义" },
-  { value: "Example", label: "示例" },
+  { value: "concept", label: "概念" },
+  { value: "definition", label: "定义" },
+  { value: "theorem", label: "定理" },
+  { value: "formula", label: "公式" },
+  { value: "example", label: "示例" },
+  { value: "exercise", label: "习题" },
+  { value: "method", label: "方法" },
+  { value: "proof_step", label: "推导" },
+  { value: "remark", label: "补充" },
 ];
 
 type ViewMode = "list" | "graph";

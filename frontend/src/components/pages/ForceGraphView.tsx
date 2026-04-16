@@ -34,6 +34,9 @@ const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }>
   theorem:    { fill: "#48c9b0", dark: "#17a589", label: "定理" },
   Formula:    { fill: "#5d6d7e", dark: "#2c3e50", label: "公式" },
   formula:    { fill: "#5d6d7e", dark: "#2c3e50", label: "公式" },
+  exercise:   { fill: "#e74c3c", dark: "#c0392b", label: "习题" },
+  proof_step: { fill: "#8e44ad", dark: "#6c3483", label: "推导" },
+  remark:     { fill: "#7f8c8d", dark: "#566573", label: "补充" },
 };
 
 const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };

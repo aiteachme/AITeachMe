@@ -16,6 +16,7 @@ from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
 from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
+from app.models.kg_taxonomy import normalize_knowledge_unit_type
 from app.workflows.digest.knowledge_graph.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
@@ -34,7 +35,8 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
         representative = cluster.representative
-        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
+        representative.node_type = normalize_knowledge_unit_type(representative.node_type)
+        if not representative.name or representative.node_type not in {"concept", "method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]

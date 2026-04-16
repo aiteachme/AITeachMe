@@ -20,6 +20,8 @@ export interface KnowledgeUnitDetailResponse {
   normalized_name: string;
   status: string;
   confidence: number;
+  type_confidence?: number;
+  type_source?: string;
   current_revision?: NodeRevisionItem | null;
   aliases?: AliasItem[];
   evidence?: EvidenceSummary[];

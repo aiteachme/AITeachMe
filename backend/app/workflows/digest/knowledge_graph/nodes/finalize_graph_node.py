@@ -14,6 +14,7 @@ from app.utils.job_helpers import (
 )
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.models.kg_taxonomy import normalize_knowledge_unit_type
 from app.workflows.digest.unified.models import TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
@@ -23,7 +24,8 @@ def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
     anchors: list[TopicAnchor] = []
     for cluster in state.get("clustered_candidates", [])[:80]:
         representative = cluster.representative
-        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
+        representative.node_type = normalize_knowledge_unit_type(representative.node_type)
+        if not representative.name or representative.node_type not in {"concept", "method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -143,4 +145,3 @@ def build_finalize_graph_node():
     return finalize_graph_node
 
 __all__ = ["build_finalize_graph_node"]
-

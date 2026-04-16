@@ -6,6 +6,10 @@ import re
 from typing import Protocol
 
 from app.utils.kg_helpers import normalize_name
+from app.models.kg_taxonomy import (
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+)
 
 _TOKEN_RE = re.compile(r"[A-Za-z]{2,}|[\u4e00-\u9fff]{1,}")
 
@@ -81,7 +85,7 @@ def candidate_lookup_keys(candidate: CandidateLike) -> list[str]:
 def bucket_scope(candidate: CandidateLike) -> str:
     """Return the bucket scope used for clustering/filtering."""
 
-    if candidate.node_type in {"Definition", "Example"}:
+    if normalize_knowledge_unit_type(candidate.node_type) in SECONDARY_KNOWLEDGE_UNIT_TYPES:
         return candidate_scope(candidate)
     return normalize_scope_name(candidate.taxonomy_hint)
 

@@ -32,20 +32,43 @@ class Difficulty(str, Enum):
     HARD = "hard"
 
 
-class KGNodeType(str, Enum):
-    TOPIC = "Topic"
-    CONCEPT = "Concept"
-    DEFINITION = "Definition"
-    METHOD = "Method"
-    EXAMPLE = "Example"
+class KnowledgeUnitType(str, Enum):
+    CONCEPT = "concept"
+    DEFINITION = "definition"
+    THEOREM = "theorem"
+    FORMULA = "formula"
+    EXAMPLE = "example"
+    EXERCISE = "exercise"
+    METHOD = "method"
+    PROOF_STEP = "proof_step"
+    REMARK = "remark"
+
+
+class KnowledgeUnitTypeSource(str, Enum):
+    RULE = "rule"
+    LLM = "llm"
+    MANUAL = "manual"
+
+
+class KGRelationType(str, Enum):
+    PREREQUISITE = "prerequisite"
+    DERIVATION = "derivation"
+    APPLICATION = "application"
+    EXAMPLE_OF = "example_of"
+    SIMILAR = "similar"
+    CONTRAST = "contrast"
+
+
+KGNodeType = KnowledgeUnitType
 
 
 class KGEdgeType(str, Enum):
-    BELONGS_TO_TOPIC = "belongs_to_topic"
-    PREREQUISITE_OF = "prerequisite_of"
-    DEFINED_BY = "defined_by"
-    ILLUSTRATED_BY = "illustrated_by"
-    PART_OF = "part_of"
+    PREREQUISITE = "prerequisite"
+    DERIVATION = "derivation"
+    APPLICATION = "application"
+    EXAMPLE_OF = "example_of"
+    SIMILAR = "similar"
+    CONTRAST = "contrast"
 
 
 class KGNodeStatus(str, Enum):

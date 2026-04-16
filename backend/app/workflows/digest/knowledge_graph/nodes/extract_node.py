@@ -25,6 +25,7 @@ from app.workflows.digest.knowledge_graph.lib.extractor import (
 from app.workflows.digest.shared.metrics import add_slow_item
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.models.kg_taxonomy import normalize_knowledge_unit_type
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
@@ -76,7 +77,8 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
         representative = cluster.representative
-        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
+        representative.node_type = normalize_knowledge_unit_type(representative.node_type)
+        if not representative.name or representative.node_type not in {"concept", "method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -478,7 +480,8 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                         for r in ordered_results:
                             for n in r.nodes:
                                 type_counts[n.node_type] = type_counts.get(n.node_type, 0) + 1
-                                if len(sample_nodes) < 6 and n.node_type in ("Topic", "Concept", "Method"):
+                                n.node_type = normalize_knowledge_unit_type(n.node_type)
+                                if len(sample_nodes) < 6 and n.node_type in ("concept", "method"):
                                     sample_nodes.append({"name": n.name, "type": n.node_type})
                         try:
                             from app.utils.docgen_store import update_knowledge_build_status

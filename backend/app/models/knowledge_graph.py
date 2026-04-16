@@ -8,6 +8,7 @@ from datetime import datetime
 
 from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 
+from app.models.enums import KnowledgeUnitTypeSource
 from app.utils.time import utcnow
 
 
@@ -37,6 +38,8 @@ class KnowledgeUnit(SQLModel, table=True):
     evidence_refs_json: str = Field(default="[]")
     status: str = Field(default="pending")
     confidence: float = Field(default=1.0)
+    type_confidence: float = Field(default=1.0)
+    type_source: str = Field(default=KnowledgeUnitTypeSource.LLM.value, index=True)
     build_revision_no: int = Field(default=0, index=True)
     current_revision_id: int | None = Field(default=None)
     merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id")
@@ -137,7 +140,6 @@ class EvidenceLink(SQLModel):
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
-
 
 
 

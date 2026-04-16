@@ -36,19 +36,19 @@
 ## P1 KnowledgeUnit 类型体系 + KG 关系类型体系对齐
 
 ### KnowledgeUnit 类型体系
-- [ ] 定义 `KnowledgeUnit` 类型枚举：`concept/definition/theorem/formula/example/exercise/method/proof_step/remark`。
-- [ ] 建立类型校验与默认映射策略（旧类型 -> 新类型）。
-- [ ] 为 `KnowledgeUnit` 增加类型置信度与来源字段（`rule/llm/manual`）。
+- [x] 定义 `KnowledgeUnit` 类型枚举：`concept/definition/theorem/formula/example/exercise/method/proof_step/remark`。
+- [x] 建立类型校验与默认映射策略（旧类型 -> 新类型）。
+- [x] 为 `KnowledgeUnit` 增加类型置信度与来源字段（`rule/llm/manual`）。
 
 ### KG 关系类型体系
-- [ ] 定义关系枚举：`prerequisite/derivation/application/example_of/similar/contrast`。
-- [ ] 建立旧关系到新关系映射：`prerequisite_of/defined_by/illustrated_by/part_of/belongs_to_topic` -> 标准关系。
-- [ ] 更新抽取、解析、持久化、查询层以统一关系语义。
-- [ ] 增加关系方向约束与合法性校验（如 prerequisite 方向约束）。
+- [x] 定义关系枚举：`prerequisite/derivation/application/example_of/similar/contrast`。
+- [x] 建立旧关系到新关系映射：`prerequisite_of/defined_by/illustrated_by/part_of/belongs_to_topic` -> 标准关系。
+- [x] 更新抽取、解析、持久化、查询层以统一关系语义。
+- [x] 增加关系方向约束与合法性校验（如 prerequisite 方向约束）。
 
 **验收标准**
-- [ ] 新构建图仅包含标准 `KnowledgeUnit` 类型与标准关系类型。
-- [ ] 旧数据可迁移并正确映射到新体系。
+- [x] 新构建图仅包含标准 `KnowledgeUnit` 类型与标准关系类型。
+- [x] 旧数据可迁移并正确映射到新体系。
 
 ---
 

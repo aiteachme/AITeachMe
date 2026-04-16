@@ -19,6 +19,14 @@ from app.utils.kg_helpers import normalize_name
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import build_candidate_name_key
 from app.workflows.digest.knowledge_graph.lib.clusterer import ClusteredCandidate
 from app.workflows.digest.knowledge_graph.lib.extractor import CandidateEdge
+from app.models.kg_taxonomy import (
+    PARENT_KNOWLEDGE_UNIT_TYPES,
+    PRIMARY_KNOWLEDGE_UNIT_TYPES,
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+    normalize_relation_type,
+    validate_relation_direction,
+)
 from app.workflows.digest.knowledge_graph.prompts import (
     SYSTEM_PROMPT_KG_ENTITY_MATCH,
     USER_PROMPT_KG_ENTITY_MATCH,
@@ -28,8 +36,8 @@ logger = structlog.get_logger()
 
 _EMBEDDING_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
-_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_PRIMARY_NODE_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES
+_SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 
 
 @dataclass
@@ -136,7 +144,7 @@ async def _resolve_primary_entity(
         session,
         subject,
         normalized_name,
-        rep.node_type,
+        normalize_knowledge_unit_type(rep.node_type),
     )
     if existing is not None:
         existing_summary = _get_current_summary(session, existing)
@@ -146,7 +154,8 @@ async def _resolve_primary_entity(
             is_content_update=_has_content_update(candidate.merged_summary, existing_summary),
         )
 
-    alias_nodes = kg_repo.find_knowledge_units_by_alias(session, subject, normalized_name, rep.node_type)
+    normalized_type = normalize_knowledge_unit_type(rep.node_type)
+    alias_nodes = kg_repo.find_knowledge_units_by_alias(session, subject, normalized_name, normalized_type)
     if alias_nodes:
         matched = alias_nodes[0]
         existing_summary = _get_current_summary(session, matched)
@@ -159,7 +168,7 @@ async def _resolve_primary_entity(
     same_type_nodes = kg_repo.list_knowledge_units_by_subject(
         session,
         subject,
-        knowledge_unit_type=rep.node_type,
+        knowledge_unit_type=normalized_type,
         status="active",
         limit=200,
         offset=0,
@@ -216,11 +225,12 @@ async def _resolve_secondary_entity(
     rep = candidate.representative
     normalized_name = normalize_name(rep.name)
 
+    normalized_type = normalize_knowledge_unit_type(rep.node_type)
     existing = kg_repo.find_knowledge_unit_by_normalized_name(
         session,
         subject,
         normalized_name,
-        rep.node_type,
+        normalized_type,
     )
     if existing is not None:
         existing_summary = _get_current_summary(session, existing)
@@ -237,7 +247,7 @@ async def _resolve_secondary_entity(
     parent_node_id = candidate_name_to_resolved_node_id.get(parent_name)
     if parent_node_id is None:
         parent_normalized_name = normalize_name(parent_name)
-        for parent_type in ("Concept", "Method", "Topic"):
+        for parent_type in PARENT_KNOWLEDGE_UNIT_TYPES:
             parent_node = kg_repo.find_knowledge_unit_by_normalized_name(
                 session,
                 subject,
@@ -254,10 +264,12 @@ async def _resolve_secondary_entity(
     edges = kg_repo.list_edges_by_knowledge_unit(session, parent_node_id, status="active")
     sibling_node_ids: list[int] = []
     for edge in edges:
-        if edge.edge_type not in {"defined_by", "illustrated_by"}:
+        if edge.edge_type not in {"derivation", "example_of"}:
             continue
-        if edge.target_node_id != parent_node_id:
-            sibling_node_ids.append(edge.target_node_id)
+        if edge.edge_type == "derivation" and edge.target_node_id == parent_node_id:
+            sibling_node_ids.append(edge.source_node_id)
+        elif edge.edge_type == "example_of" and edge.target_node_id == parent_node_id:
+            sibling_node_ids.append(edge.source_node_id)
 
     if not sibling_node_ids or not candidate_embedding:
         return ResolveResult(decision="no_match")
@@ -265,7 +277,7 @@ async def _resolve_secondary_entity(
     siblings: list[KnowledgeUnit] = []
     for sibling_id in sibling_node_ids:
         sibling_node = kg_repo.get_knowledge_unit_by_id(session, sibling_id)
-        if sibling_node and sibling_node.node_type == rep.node_type and sibling_node.status in {"active", "pending"}:
+        if sibling_node and sibling_node.node_type == normalized_type and sibling_node.status in {"active", "pending"}:
             siblings.append(sibling_node)
 
     if not siblings:
@@ -308,7 +320,9 @@ async def resolve_node(
     """Resolve one clustered candidate against the current subject graph."""
 
     rep = candidate.representative
-    if rep.node_type in _PRIMARY_NODE_TYPES:
+    normalized_type = normalize_knowledge_unit_type(rep.node_type)
+    rep.node_type = normalized_type
+    if normalized_type in _PRIMARY_NODE_TYPES:
         result = await _resolve_primary_entity(
             session,
             candidate,
@@ -316,7 +330,7 @@ async def resolve_node(
             candidate_embedding,
             similarity_threshold,
         )
-    elif rep.node_type in _SECONDARY_NODE_TYPES:
+    elif normalized_type in _SECONDARY_NODE_TYPES:
         result = await _resolve_secondary_entity(
             session,
             candidate,
@@ -366,13 +380,14 @@ def _resolve_edge_endpoint(
 ) -> int | None:
     """Resolve one edge endpoint to a persisted knowledge node id."""
 
+    normalized_expected_type = normalize_knowledge_unit_type(expected_node_type) if expected_node_type else None
     lookup_keys = [
         candidate_id or "",
-        build_candidate_name_key(expected_node_type, name, scope=scope_hint)
-        if expected_node_type
+        build_candidate_name_key(normalized_expected_type, name, scope=scope_hint)
+        if normalized_expected_type
         else "",
-        build_candidate_name_key(expected_node_type, name, scope=None)
-        if expected_node_type
+        build_candidate_name_key(normalized_expected_type, name, scope=None)
+        if normalized_expected_type
         else "",
     ]
 
@@ -389,7 +404,7 @@ def _resolve_edge_endpoint(
         if node_id is not None:
             return node_id
 
-    if not expected_node_type:
+    if not normalized_expected_type:
         return None
 
     normalized_name = normalize_name(name)
@@ -397,7 +412,7 @@ def _resolve_edge_endpoint(
         session,
         subject,
         normalized_name,
-        expected_node_type,
+        normalized_expected_type,
     )
     if node is None:
         return None
@@ -414,6 +429,29 @@ def resolve_edge(
 ) -> tuple[KnowledgeEdge | None, bool, float]:
     """Resolve one candidate edge against the persisted graph."""
 
+    normalized_relation = normalize_relation_type(candidate.edge_type)
+    candidate.edge_type = normalized_relation.edge_type
+    if normalized_relation.swap_endpoints:
+        candidate.source_name, candidate.target_name = candidate.target_name, candidate.source_name
+        candidate.source_candidate_id, candidate.target_candidate_id = candidate.target_candidate_id, candidate.source_candidate_id
+        candidate.source_node_type, candidate.target_node_type = candidate.target_node_type, candidate.source_node_type
+    candidate.source_node_type = normalize_knowledge_unit_type(candidate.source_node_type)
+    candidate.target_node_type = normalize_knowledge_unit_type(candidate.target_node_type)
+    if not validate_relation_direction(
+        edge_type=candidate.edge_type,
+        source_type=candidate.source_node_type,
+        target_type=candidate.target_node_type,
+    ):
+        logger.warning(
+            "edge_invalid_direction",
+            source=candidate.source_name,
+            target=candidate.target_name,
+            edge_type=candidate.edge_type,
+            source_type=candidate.source_node_type,
+            target_type=candidate.target_node_type,
+        )
+        return None, False, 0.0
+
     source_id = _resolve_edge_endpoint(
         name=candidate.source_name,
         candidate_id=candidate.source_candidate_id,
@@ -429,7 +467,7 @@ def resolve_edge(
         name=candidate.target_name,
         candidate_id=candidate.target_candidate_id,
         expected_node_type=candidate.target_node_type,
-        scope_hint=candidate.source_name if candidate.target_node_type in {"Definition", "Example"} else None,
+        scope_hint=candidate.source_name if candidate.target_node_type in {"definition", "example"} else None,
         candidate_lookup_to_resolved_node_id=candidate_lookup_to_resolved_node_id,
         candidate_lookup_to_cluster_id=candidate_lookup_to_cluster_id,
         cluster_id_to_resolved_node_id=cluster_id_to_resolved_node_id,

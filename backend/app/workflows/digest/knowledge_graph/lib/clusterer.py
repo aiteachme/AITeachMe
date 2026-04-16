@@ -15,11 +15,15 @@ from app.workflows.digest.knowledge_graph.lib.candidate_identity import (
     token_bucket,
 )
 from app.workflows.digest.knowledge_graph.lib.extractor import CandidateNode
+from app.models.kg_taxonomy import (
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+)
 from app.shared.infra.embedding import aembed_texts
 from app.utils.kg_helpers import normalize_name
 
 logger = structlog.get_logger()
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 
 
 @dataclass
@@ -80,6 +84,7 @@ async def cluster_candidates(
     # ── Step 1: 按 (node_type, normalized_name) 精确分组 ──
     group_key_to_members: dict[tuple[str, str], list[tuple[CandidateNode, int]]] = defaultdict(list)
     for cand, chunk_id in candidates:
+        cand.node_type = normalize_knowledge_unit_type(cand.node_type)
         scope_key = bucket_scope(cand) if cand.node_type in _SECONDARY_NODE_TYPES else ""
         key = (cand.node_type, f"{normalize_name(cand.name)}::{scope_key}")
         group_key_to_members[key].append((cand, chunk_id))

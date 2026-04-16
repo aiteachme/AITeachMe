@@ -8424,6 +8424,16 @@
             "type": "number",
             "title": "Confidence"
           },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
+          },
           "current_revision": {
             "anyOf": [
               {
@@ -8506,6 +8516,16 @@
           "confidence": {
             "type": "number",
             "title": "Confidence"
+          },
+          "type_confidence": {
+            "type": "number",
+            "title": "Type Confidence",
+            "default": 1.0
+          },
+          "type_source": {
+            "type": "string",
+            "title": "Type Source",
+            "default": "llm"
           },
           "created_at": {
             "type": "string",

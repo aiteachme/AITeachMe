@@ -19,7 +19,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
     create_edge_evidence,
-    create_new_node,
+    create_new_knowledge_unit,
     create_node_evidence,
     create_updated_revision,
 )
@@ -39,11 +39,17 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     compute_edge_confidence,
     resolve_edge,
 )
+from app.models.kg_taxonomy import (
+    PARENT_KNOWLEDGE_UNIT_TYPES,
+    PRIMARY_KNOWLEDGE_UNIT_TYPES,
+    SECONDARY_KNOWLEDGE_UNIT_TYPES,
+    normalize_knowledge_unit_type,
+)
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 
-_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
+_PRIMARY_NODE_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES
+_SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
 _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
@@ -162,8 +168,9 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
         embedding = embedding_by_node_id.get(node.id, [])
         record = ExistingNodeRecord(node=node, summary=node.summary, embedding=embedding)
         record_by_node_id[node.id] = record
-        index.normalized_map[(node.node_type, node.normalized_name)] = record
-        index.records_by_type.setdefault(node.node_type, []).append(record)
+        node_type = normalize_knowledge_unit_type(node.node_type)
+        index.normalized_map[(node_type, node.normalized_name)] = record
+        index.records_by_type.setdefault(node_type, []).append(record)
 
         for alias_entry in _load_alias_entries(node.aliases_json):
             if str(alias_entry.get("status", "active")) != "active":
@@ -171,30 +178,30 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
             normalized_alias = str(alias_entry.get("normalized_alias", "")).strip()
             if not normalized_alias:
                 continue
-            index.alias_map[(node.node_type, normalized_alias)] = record
+            index.alias_map[(node_type, normalized_alias)] = record
 
     for edge in edges:
         parent_id: int | None = None
         child_id: int | None = None
         child_type: str | None = None
-        if edge.edge_type == "defined_by":
-            parent_id = edge.source_node_id
-            child_id = edge.target_node_id
-            child_type = "Definition"
-        elif edge.edge_type == "illustrated_by":
-            parent_id = edge.source_node_id
-            child_id = edge.target_node_id
-            child_type = "Example"
-        elif edge.edge_type == "belongs_to_topic":
+        if edge.edge_type == "derivation":
             parent_id = edge.target_node_id
             child_id = edge.source_node_id
-            child_type = "Example"
+            child_type = "definition"
+        elif edge.edge_type == "example_of":
+            parent_id = edge.target_node_id
+            child_id = edge.source_node_id
+            child_type = "example"
+        elif edge.edge_type == "application":
+            parent_id = edge.target_node_id
+            child_id = edge.source_node_id
+            child_type = "exercise"
 
         if parent_id is None or child_id is None or child_type is None:
             continue
 
         child_record = record_by_node_id.get(child_id)
-        if child_record is None or child_record.node.node_type != child_type:
+        if child_record is None or normalize_knowledge_unit_type(child_record.node.node_type) != child_type:
             continue
         children_by_type = index.children_by_parent.setdefault(parent_id, {})
         children_by_type.setdefault(child_type, []).append(child_record)
@@ -256,7 +263,7 @@ def _resolve_parent_node_id(
     index: ResolutionIndex,
 ) -> int | None:
     scope = normalize_scope_name(taxonomy_hint)
-    for parent_type in ("Topic", "Concept", "Method"):
+    for parent_type in PARENT_KNOWLEDGE_UNIT_TYPES:
         for lookup_key in (
             build_candidate_name_key(parent_type, parent_name, scope=scope),
             build_candidate_name_key(parent_type, parent_name, scope=None),
@@ -266,7 +273,7 @@ def _resolve_parent_node_id(
                 return mapped_parent_id
 
     normalized_parent = normalize_name(parent_name)
-    for parent_type in ("Topic", "Concept", "Method"):
+    for parent_type in PARENT_KNOWLEDGE_UNIT_TYPES:
         record = index.normalized_map.get((parent_type, normalized_parent))
         if record is not None:
             return record.node.id
@@ -371,6 +378,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
 
             for cluster_index, clustered_candidate in enumerate(clustered_candidates):
                 representative = clustered_candidate.representative
+                representative.node_type = normalize_knowledge_unit_type(representative.node_type)
                 candidate_embedding = (
                     candidate_embeddings[cluster_index]
                     if cluster_index < len(candidate_embeddings)
@@ -435,7 +443,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                         pending_write_count += 1
                         updated_node_ids.append(node_id)
                 else:
-                    node = create_new_node(
+                    node = create_new_knowledge_unit(
                         session,
                         subject=subject,
                         clustered_candidate=clustered_candidate,
@@ -526,4 +534,3 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 __all__ = ["resolve_nodes_node"]
-

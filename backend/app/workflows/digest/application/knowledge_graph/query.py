@@ -57,6 +57,8 @@ class KnowledgeGraphQueryService:
                 canonical_name=knowledge_unit.canonical_name,
                 status=knowledge_unit.status,
                 confidence=knowledge_unit.confidence,
+                type_confidence=knowledge_unit.type_confidence,
+                type_source=knowledge_unit.type_source,
                 created_at=knowledge_unit.created_at,
                 updated_at=knowledge_unit.updated_at,
             )
@@ -160,6 +162,8 @@ class KnowledgeGraphQueryService:
             normalized_name=node.normalized_name,
             status=node.status,
             confidence=node.confidence,
+            type_confidence=node.type_confidence,
+            type_source=node.type_source,
             current_revision=current_rev,
             aliases=aliases,
             evidence=evidence,
@@ -198,6 +202,8 @@ class KnowledgeGraphQueryService:
                 canonical_name=node.canonical_name,
                 status=node.status,
                 confidence=node.confidence,
+                type_confidence=node.type_confidence,
+                type_source=node.type_source,
                 created_at=node.created_at,
                 updated_at=node.updated_at,
             )

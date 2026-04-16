@@ -15,6 +15,8 @@ export interface KnowledgeUnitResponse {
   canonical_name: string;
   status: string;
   confidence: number;
+  type_confidence?: number;
+  type_source?: string;
   created_at: string;
   updated_at: string;
 }

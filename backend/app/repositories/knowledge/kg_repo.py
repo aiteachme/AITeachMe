@@ -15,6 +15,12 @@ from app.models.knowledge_graph import (
     KnowledgeRevision,
 )
 from app.utils.time import utcnow
+from app.models.kg_taxonomy import (
+    normalize_knowledge_unit_type,
+    normalize_relation_type,
+    normalize_type_source,
+    validate_relation_direction,
+)
 
 
 def _load_json_list(raw: str) -> list[dict[str, object]]:
@@ -52,6 +58,9 @@ def create_knowledge_unit(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
+    knowledge_unit.node_type = normalize_knowledge_unit_type(knowledge_unit.node_type)
+    knowledge_unit.type_source = normalize_type_source(getattr(knowledge_unit, "type_source", None))
+    knowledge_unit.type_confidence = max(0.0, min(1.0, float(knowledge_unit.type_confidence)))
     session.add(knowledge_unit)
     if auto_commit:
         session.commit()
@@ -73,6 +82,7 @@ def find_knowledge_unit_by_normalized_name(
     *,
     include_pending: bool = True,
 ) -> KnowledgeUnit | None:
+    knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
     allowed = ["active"]
     if include_pending:
         allowed.append("pending")
@@ -91,6 +101,7 @@ def find_knowledge_units_by_alias(
     normalized_alias: str,
     knowledge_unit_type: str,
 ) -> list[KnowledgeUnit]:
+    knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
         KnowledgeUnit.node_type == knowledge_unit_type,
@@ -121,6 +132,7 @@ def list_knowledge_units_by_subject(
         base = base.where(KnowledgeUnit.status == status)
         count_base = count_base.where(KnowledgeUnit.status == status)
     if knowledge_unit_type is not None:
+        knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
         base = base.where(KnowledgeUnit.node_type == knowledge_unit_type)
         count_base = count_base.where(KnowledgeUnit.node_type == knowledge_unit_type)
 
@@ -240,6 +252,21 @@ def create_knowledge_edge(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeEdge:
+    normalized_relation = normalize_relation_type(edge.edge_type)
+    edge.edge_type = normalized_relation.edge_type
+    if normalized_relation.swap_endpoints:
+        edge.source_node_id, edge.target_node_id = edge.target_node_id, edge.source_node_id
+    source_unit = session.get(KnowledgeUnit, edge.source_node_id)
+    target_unit = session.get(KnowledgeUnit, edge.target_node_id)
+    if source_unit is not None and target_unit is not None and not validate_relation_direction(
+        edge_type=edge.edge_type,
+        source_type=source_unit.node_type,
+        target_type=target_unit.node_type,
+    ):
+        raise ValueError(
+            "invalid knowledge edge direction: "
+            f"{edge.edge_type} {source_unit.node_type}->{target_unit.node_type}"
+        )
     session.add(edge)
     if auto_commit:
         session.commit()
@@ -255,6 +282,7 @@ def find_edge(
     target_node_id: int,
     edge_type: str,
 ) -> KnowledgeEdge | None:
+    edge_type = normalize_relation_type(edge_type).edge_type
     stmt = select(KnowledgeEdge).where(
         KnowledgeEdge.source_node_id == source_node_id,
         KnowledgeEdge.target_node_id == target_node_id,
@@ -287,6 +315,7 @@ def list_edges_by_type(
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
+    edge_type = normalize_relation_type(edge_type).edge_type
     stmt = select(KnowledgeEdge).where(
         KnowledgeEdge.subject == subject,
         KnowledgeEdge.edge_type == edge_type,

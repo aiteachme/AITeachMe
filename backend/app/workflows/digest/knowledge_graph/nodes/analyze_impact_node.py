@@ -19,7 +19,6 @@ from app.utils.time import utcnow
 from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
     create_edge_evidence,
-    create_new_node,
     create_node_evidence,
     create_updated_revision,
 )
@@ -41,11 +40,6 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
 )
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
-
-_PRIMARY_NODE_TYPES = {"Topic", "Concept", "Method"}
-_SECONDARY_NODE_TYPES = {"Definition", "Example"}
-_PRIMARY_SIMILARITY_THRESHOLD = 0.80
-_SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
 async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
     """Compute graph-local impact scope from graph changes."""
@@ -79,4 +73,5 @@ async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
             return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 __all__ = ["analyze_impact_node"]
+
 

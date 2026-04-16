@@ -266,6 +266,8 @@ class KnowledgeUnitResponse(BaseModel):
     canonical_name: str
     status: str
     confidence: float
+    type_confidence: float = 1.0
+    type_source: str = "llm"
     created_at: datetime
     updated_at: datetime
 
@@ -334,6 +336,8 @@ class KnowledgeUnitDetailResponse(BaseModel):
     normalized_name: str
     status: str
     confidence: float
+    type_confidence: float = 1.0
+    type_source: str = "llm"
     current_revision: NodeRevisionItem | None = None
     aliases: list[AliasItem] = Field(default_factory=list)
     evidence: list[EvidenceSummary] = Field(default_factory=list)

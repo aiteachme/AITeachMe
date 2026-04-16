@@ -43,13 +43,17 @@ interface PositionedNode extends GraphNode {
   clusterLabel: string;
 }
 
-const TYPE_ORDER = ["Topic", "Concept", "Method", "Definition", "Example"] as const;
+const TYPE_ORDER = ["concept", "definition", "theorem", "formula", "example", "exercise", "method", "proof_step", "remark"] as const;
 const TYPE_COLORS: Record<string, string> = {
-  Topic: "#0f766e",
-  Concept: "#2563eb",
-  Method: "#d97706",
-  Definition: "#7c3aed",
-  Example: "#dc2626",
+  concept: "#2563eb",
+  definition: "#7c3aed",
+  theorem: "#0f766e",
+  formula: "#0891b2",
+  example: "#dc2626",
+  exercise: "#e11d48",
+  method: "#d97706",
+  proof_step: "#9333ea",
+  remark: "#475569",
 };
 
 function hashString(value: string): number {
@@ -62,12 +66,23 @@ function hashString(value: string): number {
 }
 
 function priorityOf(type: string): number {
-  const index = TYPE_ORDER.indexOf(type as (typeof TYPE_ORDER)[number]);
+  const index = TYPE_ORDER.indexOf(type.toLowerCase() as (typeof TYPE_ORDER)[number]);
   return index >= 0 ? index : TYPE_ORDER.length + 1;
 }
 
 function clusterColor(type: string): string {
-  return TYPE_COLORS[type] ?? "#475569";
+  return TYPE_COLORS[type.toLowerCase()] ?? "#475569";
+}
+
+function radiusFor(type: string): number {
+  const normalized = type.toLowerCase();
+  if (normalized === "concept") {
+    return 16;
+  }
+  if (normalized === "method" || normalized === "theorem") {
+    return 13;
+  }
+  return 11;
 }
 
 function buildAdjacency(nodes: GraphNode[], edges: GraphEdge[]) {
@@ -356,7 +371,7 @@ export function SemanticUniverse({
               const color = clusterColor(node.node_type);
               const active = activeNeighborSet.size === 0 || activeNeighborSet.has(node.id);
               const isFocused = focusedNodeId === node.id;
-              const radius = node.node_type === "Topic" ? 16 : node.node_type === "Concept" ? 13 : 11;
+              const radius = radiusFor(node.node_type);
               return (
                 <g
                   key={node.id}

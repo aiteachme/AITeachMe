@@ -15,6 +15,10 @@ from app.models.knowledge_graph import (
 from app.repositories import kg_repo
 from app.utils.kg_helpers import normalize_name
 from app.utils.time import utcnow
+from app.models.kg_taxonomy import (
+    normalize_knowledge_unit_type,
+    normalize_type_source,
+)
 
 
 def _iter_taxonomy_hints(clustered_candidate: ClusteredCandidate | None) -> list[str]:
@@ -37,12 +41,15 @@ def create_new_knowledge_unit(
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
     representative = clustered_candidate.representative
+    node_type = normalize_knowledge_unit_type(representative.node_type)
     knowledge_unit = KnowledgeUnit(
         subject=subject,
-        node_type=representative.node_type,
+        node_type=node_type,
         canonical_name=representative.name,
         normalized_name=normalize_name(representative.name),
         status="pending",
+        type_confidence=getattr(representative, "type_confidence", 1.0),
+        type_source=normalize_type_source(getattr(representative, "type_source", None)),
     )
     knowledge_unit = kg_repo.create_knowledge_unit(session, knowledge_unit, auto_commit=auto_commit)
 
@@ -68,24 +75,6 @@ def create_new_knowledge_unit(
     )
     kg_repo.create_alias(session, alias, auto_commit=auto_commit)
     return knowledge_unit
-
-
-def create_new_node(
-    session: Session,
-    *,
-    subject: str,
-    clustered_candidate: ClusteredCandidate,
-    job_id: int,
-    auto_commit: bool = True,
-) -> KnowledgeUnit:
-    """Backward-compatible wrapper for create_new_knowledge_unit."""
-    return create_new_knowledge_unit(
-        session,
-        subject=subject,
-        clustered_candidate=clustered_candidate,
-        job_id=job_id,
-        auto_commit=auto_commit,
-    )
 
 
 def create_updated_revision(
@@ -230,7 +219,6 @@ __all__ = [
     "create_alias_if_new",
     "create_edge_evidence",
     "create_new_knowledge_unit",
-    "create_new_node",
     "create_node_evidence",
     "create_updated_revision",
 ]

@@ -31,20 +31,15 @@ interface LayoutWord {
 // ────────────────────────── Color Palette ──────────────────────────
 
 const TYPE_COLORS: Record<string, string> = {
-  Topic: "#f39c12",
-  topic: "#f39c12",
-  Concept: "#5dade2",
   concept: "#5dade2",
-  Method: "#ec7063",
   method: "#ec7063",
-  Definition: "#58d68d",
   definition: "#58d68d",
-  Example: "#af7ac5",
   example: "#af7ac5",
-  Theorem: "#48c9b0",
   theorem: "#48c9b0",
-  Formula: "#5d6d7e",
   formula: "#5d6d7e",
+  exercise: "#e74c3c",
+  proof_step: "#8e44ad",
+  remark: "#7f8c8d",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -59,8 +54,24 @@ const TYPE_LABELS: Record<string, string> = {
 
 const DEFAULT_COLOR = "#94a3b8";
 
+const STANDARD_TYPE_LABELS: Record<string, string> = {
+  concept: "概念",
+  definition: "定义",
+  theorem: "定理",
+  formula: "公式",
+  example: "示例",
+  exercise: "练习",
+  method: "方法",
+  proof_step: "证明步骤",
+  remark: "备注",
+};
+
 function getColor(nodeType: string): string {
-  return TYPE_COLORS[nodeType] ?? DEFAULT_COLOR;
+  return TYPE_COLORS[nodeType.toLowerCase()] ?? DEFAULT_COLOR;
+}
+
+function getTypeLabel(nodeType: string): string {
+  return STANDARD_TYPE_LABELS[nodeType.toLowerCase()] ?? TYPE_LABELS[nodeType] ?? nodeType;
 }
 
 // ────────────────────────── Helpers ──────────────────────────
@@ -386,7 +397,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
                 className="rounded px-1 py-0.5 text-[9px] font-medium text-white"
                 style={{ backgroundColor: hoveredWord.color }}
               >
-                {TYPE_LABELS[hoveredWord.nodeType] ?? hoveredWord.nodeType}
+                {getTypeLabel(hoveredWord.nodeType)}
               </span>
               <span className="text-[9px] text-slate-400">
                 {Math.round(hoveredWord.confidence * 100)}%
@@ -427,7 +438,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
                     className="inline-block h-1.5 w-1.5 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  {TYPE_LABELS[type] ?? type} {count}
+                  {getTypeLabel(type)} {count}
                 </div>
               );
             })}
