@@ -2,6 +2,8 @@
 
 `backend/toolpacks/` 是项目内真实可执行的外部工具扩展目录。
 
+这不是普通学习用户上传工具的产品入口。它面向开发者、部署管理员和企业私有扩展场景；普通用户不需要也不应该编写 Python `handler.py`。
+
 ## 目录约定
 
 ```text
@@ -26,9 +28,16 @@ enabled: true
 - 可以直接返回一个 `ToolDefinition`，或返回 `list[ToolDefinition]`。
 - 也可以在函数内部自行往 canonical registry 注册工具。
 
+只有带有 `handler.py` 并返回真实 `ToolDefinition` 的 toolpack 才会注册为运行时工具。单纯的 YAML 描述不会创建可执行工具。
+
 ## 优先级
 
 - 项目内：`backend/toolpacks`
-- 用户目录：`~/.atm/toolpacks`
+- 本机/部署方覆盖目录：`~/.atm/toolpacks`
 
-同名 toolpack 后加载者覆盖先加载者，因此用户目录可以覆盖项目内实现。
+同名 toolpack 后加载者覆盖先加载者，因此本机或部署方可以覆盖项目内实现。
+
+## 与 Skill 的区别
+
+- toolpack：注册可执行工具，适合搜索、计算、系统集成、MCP 桥接等动作。
+- skill：渲染 prompt 策略，不执行代码，见 `backend/skills/README.md`。
