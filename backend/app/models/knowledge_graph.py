@@ -1,5 +1,7 @@
 ﻿"""Knowledge graph models."""
 
+
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,18 +11,18 @@ from sqlmodel import Field, Index, SQLModel, UniqueConstraint
 from app.utils.time import utcnow
 
 
-class KnowledgeNode(SQLModel, table=True):
-    """Canonical knowledge node."""
+class KnowledgeUnit(SQLModel, table=True):
+    """Canonical knowledge unit."""
 
-    __tablename__ = "knowledge_node"
+    __tablename__ = "knowledge_unit"
     __table_args__ = (
         UniqueConstraint(
             "subject",
             "node_type",
             "normalized_name",
-            name="uq_node_subject_type_name",
+            name="uq_unit_subject_type_name",
         ),
-        Index("ix_node_subject_status", "subject", "status"),
+        Index("ix_unit_subject_status", "subject", "status"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -37,13 +39,13 @@ class KnowledgeNode(SQLModel, table=True):
     confidence: float = Field(default=1.0)
     build_revision_no: int = Field(default=0, index=True)
     current_revision_id: int | None = Field(default=None)
-    merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id")
+    merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 
 class KnowledgeAlias(SQLModel):
-    """Structured alias payload embedded on a knowledge node."""
+    """Structured alias payload embedded on a knowledge unit."""
 
     id: int | None = None
     node_id: int
@@ -58,7 +60,7 @@ class KnowledgeAlias(SQLModel):
 
 
 class KnowledgeEdge(SQLModel, table=True):
-    """Directed relation between two knowledge nodes."""
+    """Directed relation between two knowledge units."""
 
     __tablename__ = "knowledge_edge"
     __table_args__ = (
@@ -74,8 +76,8 @@ class KnowledgeEdge(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    source_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
-    target_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
+    source_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
+    target_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     edge_type: str = Field(index=True)
     description: str = ""
     evidence_refs_json: str = Field(default="[]")
@@ -89,7 +91,7 @@ class KnowledgeEdge(SQLModel, table=True):
 
 
 class KnowledgeRevision(SQLModel):
-    """Materialized revision view derived from the current node body."""
+    """Materialized revision view derived from the current knowledge-unit body."""
 
     id: int | None = None
     node_id: int
@@ -117,7 +119,7 @@ class EdgeRevision(SQLModel):
 
 
 class EvidenceLink(SQLModel):
-    """Structured evidence payload embedded on a node or edge."""
+    """Structured evidence payload embedded on a knowledge unit or edge."""
 
     id: int | None = None
     subject: str = ""
@@ -135,3 +137,9 @@ class EvidenceLink(SQLModel):
     confidence: float = Field(default=1.0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow)
+
+
+
+
+
+

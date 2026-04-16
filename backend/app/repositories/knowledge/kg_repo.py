@@ -11,7 +11,7 @@ from app.models.knowledge_graph import (
     EvidenceLink,
     KnowledgeAlias,
     KnowledgeEdge,
-    KnowledgeNode,
+    KnowledgeUnit,
     KnowledgeRevision,
 )
 from app.utils.time import utcnow
@@ -48,10 +48,10 @@ def release_subject_build_lock(session: Session, subject: str) -> None:
 
 def create_knowledge_node(
     session: Session,
-    node: KnowledgeNode,
+    node: KnowledgeUnit,
     *,
     auto_commit: bool = True,
-) -> KnowledgeNode:
+) -> KnowledgeUnit:
     session.add(node)
     if auto_commit:
         session.commit()
@@ -61,8 +61,8 @@ def create_knowledge_node(
     return node
 
 
-def get_knowledge_node_by_id(session: Session, node_id: int) -> KnowledgeNode | None:
-    return session.get(KnowledgeNode, node_id)
+def get_knowledge_node_by_id(session: Session, node_id: int) -> KnowledgeUnit | None:
+    return session.get(KnowledgeUnit, node_id)
 
 
 def find_node_by_normalized_name(
@@ -72,15 +72,15 @@ def find_node_by_normalized_name(
     node_type: str,
     *,
     include_pending: bool = True,
-) -> KnowledgeNode | None:
+) -> KnowledgeUnit | None:
     allowed = ["active"]
     if include_pending:
         allowed.append("pending")
-    stmt = select(KnowledgeNode).where(
-        KnowledgeNode.subject == subject,
-        KnowledgeNode.normalized_name == normalized_name,
-        KnowledgeNode.node_type == node_type,
-        KnowledgeNode.status.in_(allowed),
+    stmt = select(KnowledgeUnit).where(
+        KnowledgeUnit.subject == subject,
+        KnowledgeUnit.normalized_name == normalized_name,
+        KnowledgeUnit.node_type == node_type,
+        KnowledgeUnit.status.in_(allowed),
     )
     return session.exec(stmt).first()
 
@@ -90,14 +90,14 @@ def find_nodes_by_alias(
     subject: str,
     normalized_alias: str,
     node_type: str,
-) -> list[KnowledgeNode]:
-    stmt = select(KnowledgeNode).where(
-        KnowledgeNode.subject == subject,
-        KnowledgeNode.node_type == node_type,
-        KnowledgeNode.status.in_(["active", "pending"]),
+) -> list[KnowledgeUnit]:
+    stmt = select(KnowledgeUnit).where(
+        KnowledgeUnit.subject == subject,
+        KnowledgeUnit.node_type == node_type,
+        KnowledgeUnit.status.in_(["active", "pending"]),
     )
     rows = list(session.exec(stmt).all())
-    matched: list[KnowledgeNode] = []
+    matched: list[KnowledgeUnit] = []
     for item in rows:
         aliases = _load_json_list(item.aliases_json)
         if any(alias.get("normalized_alias") == normalized_alias for alias in aliases):
@@ -113,24 +113,24 @@ def list_nodes_by_subject(
     status: str | None = "active",
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[KnowledgeNode], int]:
-    base = select(KnowledgeNode).where(KnowledgeNode.subject == subject)
-    count_base = select(func.count(KnowledgeNode.id)).where(KnowledgeNode.subject == subject)
+) -> tuple[list[KnowledgeUnit], int]:
+    base = select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)
+    count_base = select(func.count(KnowledgeUnit.id)).where(KnowledgeUnit.subject == subject)
 
     if status is not None:
-        base = base.where(KnowledgeNode.status == status)
-        count_base = count_base.where(KnowledgeNode.status == status)
+        base = base.where(KnowledgeUnit.status == status)
+        count_base = count_base.where(KnowledgeUnit.status == status)
     if node_type is not None:
-        base = base.where(KnowledgeNode.node_type == node_type)
-        count_base = count_base.where(KnowledgeNode.node_type == node_type)
+        base = base.where(KnowledgeUnit.node_type == node_type)
+        count_base = count_base.where(KnowledgeUnit.node_type == node_type)
 
     total: int = session.exec(count_base).one()
-    rows = list(session.exec(base.offset(offset).limit(limit).order_by(KnowledgeNode.id)).all())
+    rows = list(session.exec(base.offset(offset).limit(limit).order_by(KnowledgeUnit.id)).all())
     return rows, total
 
 
-def get_node_with_current_revision(session: Session, node_id: int) -> tuple[KnowledgeNode, KnowledgeRevision] | None:
-    node = session.get(KnowledgeNode, node_id)
+def get_node_with_current_revision(session: Session, node_id: int) -> tuple[KnowledgeUnit, KnowledgeRevision] | None:
+    node = session.get(KnowledgeUnit, node_id)
     if node is None:
         return None
     revision = KnowledgeRevision(
@@ -153,7 +153,7 @@ def create_alias(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeAlias:
-    node = session.get(KnowledgeNode, alias.node_id)
+    node = session.get(KnowledgeUnit, alias.node_id)
     if node is None:
         return alias
 
@@ -179,9 +179,9 @@ def create_alias(
 def find_alias(session: Session, subject: str, normalized_alias: str) -> list[KnowledgeAlias]:
     nodes = list(
         session.exec(
-            select(KnowledgeNode).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status.in_(["active", "pending"]),
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status.in_(["active", "pending"]),
             )
         ).all()
     )
@@ -209,7 +209,7 @@ def find_alias(session: Session, subject: str, normalized_alias: str) -> list[Kn
 
 
 def list_aliases_by_node(session: Session, node_id: int) -> list[KnowledgeAlias]:
-    node = session.get(KnowledgeNode, node_id)
+    node = session.get(KnowledgeUnit, node_id)
     if node is None:
         return []
 
@@ -311,7 +311,7 @@ def create_knowledge_revision(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeRevision:
-    node = session.get(KnowledgeNode, revision.node_id)
+    node = session.get(KnowledgeUnit, revision.node_id)
     if node is None:
         return revision
 
@@ -376,7 +376,7 @@ def create_evidence_link(
     }
 
     if link.entity_type == "node":
-        node = session.get(KnowledgeNode, link.entity_id)
+        node = session.get(KnowledgeUnit, link.entity_id)
         if node is not None:
             refs = _load_json_list(node.evidence_refs_json)
             if payload not in refs:
@@ -407,7 +407,7 @@ def list_evidence_by_entity(
 ) -> list[EvidenceLink]:
     raw_items: list[dict[str, object]]
     if entity_type == "node":
-        node = session.get(KnowledgeNode, entity_id)
+        node = session.get(KnowledgeUnit, entity_id)
         raw_items = [] if node is None else _load_json_list(node.evidence_refs_json)
     else:
         edge = session.get(KnowledgeEdge, entity_id)
@@ -444,3 +444,4 @@ def count_active_evidence(session: Session, entity_type: str, entity_id: int) ->
 
 def update_digest_job(session: Session, job_id: int, **kwargs: object) -> None:
     del session, job_id, kwargs
+

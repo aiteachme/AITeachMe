@@ -1,10 +1,6 @@
-"""学科级项目导入导出 support commands。
-
-设计要点：
-- TABLE_REGISTRY 驱动：新增/修改表时只需更新注册表，导出导入自动适配
-- model_dump() / model_validate() 序列化：字段变更时自动兼容
-- 外键重映射在注册表中声明：新增外键只需加一行配置
-"""
+﻿"""瀛︾绾ч」鐩鍏ュ鍑?support commands銆?
+璁捐瑕佺偣锛?- TABLE_REGISTRY 椹卞姩锛氭柊澧?淇敼琛ㄦ椂鍙渶鏇存柊娉ㄥ唽琛紝瀵煎嚭瀵煎叆鑷姩閫傞厤
+- model_dump() / model_validate() 搴忓垪鍖栵細瀛楁鍙樻洿鏃惰嚜鍔ㄥ吋瀹?- 澶栭敭閲嶆槧灏勫湪娉ㄥ唽琛ㄤ腑澹版槑锛氭柊澧炲閿彧闇€鍔犱竴琛岄厤缃?"""
 
 from __future__ import annotations
 
@@ -33,7 +29,7 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
@@ -69,8 +65,7 @@ SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 
 
 # ---------------------------------------------------------------------------
-# Manifest 内部模型（仅用于 .atmx 文件，不走 API）
-# ---------------------------------------------------------------------------
+# Manifest 鍐呴儴妯″瀷锛堜粎鐢ㄤ簬 .atmx 鏂囦欢锛屼笉璧?API锛?# ---------------------------------------------------------------------------
 
 
 class _ManifestSubject(BaseModel):
@@ -100,35 +95,31 @@ class _ExportManifest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Table Registry — 导入导出的唯一配置源
-# ---------------------------------------------------------------------------
+# Table Registry 鈥?瀵煎叆瀵煎嚭鐨勫敮涓€閰嶇疆婧?# ---------------------------------------------------------------------------
 
 
 @dataclass
 class _TableSpec:
-    """声明一张业务表的导出导入规则。
-
-    新增表或修改外键时，只需更新这份注册表。
-    """
+    """澹版槑涓€寮犱笟鍔¤〃鐨勫鍑哄鍏ヨ鍒欍€?
+    鏂板琛ㄦ垨淇敼澶栭敭鏃讹紝鍙渶鏇存柊杩欎唤娉ㄥ唽琛ㄣ€?    """
 
     name: str
     model: type[SQLModel]
-    # 如何按 subject 过滤：字段名 | "slug" (Subject 本身) | None (通过父表过滤)
+    # 濡備綍鎸?subject 杩囨护锛氬瓧娈靛悕 | "slug" (Subject 鏈韩) | None (閫氳繃鐖惰〃杩囨护)
     subject_field: str | None = "subject"
     id_field: str = "id"
-    # id 类型："auto" (自增) | "uuid" (字符串 UUID)
+    # id 绫诲瀷锛?auto" (鑷) | "uuid" (瀛楃涓?UUID)
     id_type: str = "auto"
-    # 外键重映射: {字段名: 引用的表名}
+    # 澶栭敭閲嶆槧灏? {瀛楁鍚? 寮曠敤鐨勮〃鍚峿
     fk_remap: dict[str, str] = dc_field(default_factory=dict)
-    # 通过父表过滤 (用于没有 subject 字段的表)
+    # 閫氳繃鐖惰〃杩囨护 (鐢ㄤ簬娌℃湁 subject 瀛楁鐨勮〃)
     parent_fk: str | None = None
     parent_table: str | None = None
-    # 可选导出分组: "chat" | "exam" | "profile" | None(必须导出)
+    # 鍙€夊鍑哄垎缁? "chat" | "exam" | "profile" | None(蹇呴』瀵煎嚭)
     optional_group: str | None = None
 
 
-# 顺序严格按依赖关系排列 —— 被引用的表必须排在前面
-TABLE_REGISTRY: list[_TableSpec] = [
+# 椤哄簭涓ユ牸鎸変緷璧栧叧绯绘帓鍒?鈥斺€?琚紩鐢ㄧ殑琛ㄥ繀椤绘帓鍦ㄥ墠闈?TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec("subject", Subject, subject_field="slug"),
     _TableSpec("raw_file", RawFile),
     _TableSpec(
@@ -146,7 +137,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
     ),
     _TableSpec(
         "knowledge_node",
-        KnowledgeNode,
+        KnowledgeUnit,
         fk_remap={"merged_into_node_id": "knowledge_node"},
     ),
     _TableSpec(
@@ -216,7 +207,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
 
 
 def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
-    """导出预览：统计内容摘要。"""
+    """瀵煎嚭棰勮锛氱粺璁″唴瀹规憳瑕併€?""
 
     subject = _require_subject(session, subject_slug)
     raw_files = session.exec(select(RawFile).where(RawFile.subject == subject_slug)).all()
@@ -226,7 +217,7 @@ def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
         raw_file_count=len(raw_files),
         total_raw_file_size_bytes=total_size,
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug),
-        knowledge_node_count=_count(session, KnowledgeNode, subject_slug),
+        knowledge_node_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
         question_template_count=_count(session, QuestionTemplate, subject_slug),
         exam_paper_count=_count(session, ExamPaper, subject_slug),
@@ -247,7 +238,7 @@ def export_subject(
     subject_slug: str,
     options: ExportOptions | None = None,
 ) -> Path:
-    """将一个学科的全部产物打包为 .atmx 文件，返回临时文件路径。"""
+    """灏嗕竴涓绉戠殑鍏ㄩ儴浜х墿鎵撳寘涓?.atmx 鏂囦欢锛岃繑鍥炰复鏃舵枃浠惰矾寰勩€?""
 
     options = options or ExportOptions()
     subject = _require_subject(session, subject_slug)
@@ -293,7 +284,7 @@ def import_subject(
     options: ImportOptions | None = None,
     user_id: str = "local",
 ) -> ImportResultData:
-    """从 .atmx 文件导入学科。"""
+    """浠?.atmx 鏂囦欢瀵煎叆瀛︾銆?""
 
     options = options or ImportOptions()
 
@@ -344,7 +335,7 @@ def import_subject(
 
 
 def list_available_courses() -> list[CoursePackageItem]:
-    """扫描共享课程目录中的 .atmx 文件，读取 manifest 返回概要列表。"""
+    """鎵弿鍏变韩璇剧▼鐩綍涓殑 .atmx 鏂囦欢锛岃鍙?manifest 杩斿洖姒傝鍒楄〃銆?""
 
     courses_dir = build_courses_dir()
     if not courses_dir.exists():
@@ -380,7 +371,7 @@ def list_available_courses() -> list[CoursePackageItem]:
 
 
 def get_courses_dir_path() -> Path:
-    """返回共享课程目录路径（前端/API 使用）。"""
+    """杩斿洖鍏变韩璇剧▼鐩綍璺緞锛堝墠绔?API 浣跨敤锛夈€?""
 
     d = build_courses_dir()
     d.mkdir(parents=True, exist_ok=True)
@@ -477,18 +468,18 @@ def _import_table(
     warnings: list[str],
 ) -> int:
     table_id_map: dict[Any, Any] = {}
-    id_map[spec.name] = table_id_map  # 提前注册，支持自引用外键
+    id_map[spec.name] = table_id_map  # 鎻愬墠娉ㄥ唽锛屾敮鎸佽嚜寮曠敤澶栭敭
 
     for record_data in records:
         old_id = record_data.get(spec.id_field)
 
-        # 新 ID
+        # 鏂?ID
         if spec.id_type == "auto":
             record_data[spec.id_field] = None
         elif spec.id_type == "uuid":
             record_data[spec.id_field] = str(uuid.uuid4())
 
-        # 更新 subject
+        # 鏇存柊 subject
         if spec.name == "subject":
             record_data["slug"] = new_slug
             record_data["name"] = new_name
@@ -496,17 +487,15 @@ def _import_table(
         elif spec.subject_field and spec.subject_field != "slug":
             record_data[spec.subject_field] = new_slug
 
-        # 更新 user_id
+        # 鏇存柊 user_id
         if "user_id" in record_data:
             record_data["user_id"] = user_id
 
-        # 外键重映射
-        for fk_field, ref_table in spec.fk_remap.items():
+        # 澶栭敭閲嶆槧灏?        for fk_field, ref_table in spec.fk_remap.items():
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
-        # 清除绝对路径字段（导入后重建）
-        if spec.name == "raw_file":
-            record_data["uid"] = str(uuid.uuid4())  # 防止唯一约束冲突
+        # 娓呴櫎缁濆璺緞瀛楁锛堝鍏ュ悗閲嶅缓锛?        if spec.name == "raw_file":
+            record_data["uid"] = str(uuid.uuid4())  # 闃叉鍞竴绾︽潫鍐茬獊
             record_data["file_path"] = "__importing__"
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
@@ -516,7 +505,7 @@ def _import_table(
             record_data["markdown_path"] = None
             record_data["markdown_uri"] = None
 
-        # 创建实例
+        # 鍒涘缓瀹炰緥
         try:
             instance = spec.model.model_validate(record_data)
             session.add(instance)
@@ -527,8 +516,7 @@ def _import_table(
 
         new_id = getattr(instance, spec.id_field)
 
-        # 路径重建（统一走 ContentStore key）
-        cs = get_content_store()
+        # 璺緞閲嶅缓锛堢粺涓€璧?ContentStore key锛?        cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, int):
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
             instance.file_path = f"{new_slug}/raw_files/{new_id}{ext}"
@@ -560,7 +548,7 @@ def _remap_fk(
         record[fk_field] = None
         return
     new_fk = ref_map.get(old_fk)
-    # 尝试 int/str 互转查找
+    # 灏濊瘯 int/str 浜掕浆鏌ユ壘
     if new_fk is None and isinstance(old_fk, str) and old_fk.isdigit():
         new_fk = ref_map.get(int(old_fk))
     if new_fk is None and isinstance(old_fk, int):
@@ -573,12 +561,11 @@ def _remap_fk(
 
 
 # ===================================================================
-# Internal: 文件打包与解包
-# ===================================================================
+# Internal: 鏂囦欢鎵撳寘涓庤В鍖?# ===================================================================
 
 
 def _pack_files(zf: zipfile.ZipFile, subject_slug: str, options: ExportOptions) -> None:
-    """统一从 ContentStore 读取文件打入 zip。"""
+    """缁熶竴浠?ContentStore 璇诲彇鏂囦欢鎵撳叆 zip銆?""
     cs = get_content_store()
     skip_filenames = {".build.lock", "build_status.json", "manifest.json"}
 
@@ -617,7 +604,7 @@ def _pack_dir(zf: zipfile.ZipFile, src_dir: Path, arc_prefix: str) -> None:
 
 
 def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any]) -> None:
-    """统一通过 ContentStore 将 zip 中的文件写入存储。"""
+    """缁熶竴閫氳繃 ContentStore 灏?zip 涓殑鏂囦欢鍐欏叆瀛樺偍銆?""
     cs = get_content_store()
 
     def _upload_remapped(src_dir: Path, prefix: str) -> None:
@@ -637,8 +624,7 @@ def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any])
     _upload_remapped(extract_dir / "files/raw_files", "raw_files")
     _upload_remapped(extract_dir / "files/raw_markdowns", "raw_markdowns")
 
-    # 资产目录按 file_id 重命名上传
-    src_assets = extract_dir / "files" / "assets"
+    # 璧勪骇鐩綍鎸?file_id 閲嶅懡鍚嶄笂浼?    src_assets = extract_dir / "files" / "assets"
     if src_assets.exists():
         for old_dir in src_assets.iterdir():
             if not old_dir.is_dir():
@@ -654,7 +640,7 @@ def _unpack_files(extract_dir: Path, new_slug: str, file_id_map: dict[Any, Any])
                     key = f"{new_slug}/assets/{new_id}/{relative}"
                     run_store_sync(cs.write_bytes, key, asset_file.read_bytes())
 
-    # 知识文档上传
+    # 鐭ヨ瘑鏂囨。涓婁紶
     src_kd = extract_dir / "knowledge"
     if src_kd.exists():
         for item in src_kd.iterdir():
@@ -719,3 +705,4 @@ def _read_manifest(extract_dir: Path) -> _ExportManifest:
             f"Supported: {SUPPORTED_FORMAT_VERSIONS}"
         )
     return manifest
+

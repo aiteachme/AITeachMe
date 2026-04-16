@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
+from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeUnit
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.utils.kg_helpers import normalize_name
@@ -48,7 +48,7 @@ _PRIMARY_SIMILARITY_THRESHOLD = 0.80
 _SECONDARY_SIMILARITY_THRESHOLD = 0.85
 
 class ExistingNodeRecord:
-    node: KnowledgeNode
+    node: KnowledgeUnit
     summary: str
     embedding: list[float]
 
@@ -95,9 +95,9 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
     with managed_session() as session:
         nodes = list(
             session.exec(
-                select(KnowledgeNode).where(
-                    KnowledgeNode.subject == subject,
-                    KnowledgeNode.status.in_(["active", "pending"]),
+                select(KnowledgeUnit).where(
+                    KnowledgeUnit.subject == subject,
+                    KnowledgeUnit.status.in_(["active", "pending"]),
                 )
             ).all()
         )
@@ -526,3 +526,4 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 __all__ = ["resolve_nodes_node"]
+

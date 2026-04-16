@@ -6,7 +6,7 @@ from __future__ import annotations
 from sqlmodel import select
 
 from app.shared.infra.database import managed_session
-from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
+from app.models.knowledge_graph import KnowledgeEdge, KnowledgeUnit
 from app.repositories import kg_repo
 from app.utils.job_helpers import (
     activate_graph_entities_by_job,
@@ -44,9 +44,9 @@ def _build_topic_snapshot(state: KGDigestState) -> TopicAnchorSnapshot:
 def _count_active_graph_entities(*, session, subject: str) -> tuple[int, int]:
     active_node_count = len(
         session.exec(
-            select(KnowledgeNode.id).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status == "active",
+            select(KnowledgeUnit.id).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status == "active",
             )
         ).all()
     )
@@ -143,3 +143,4 @@ def build_finalize_graph_node():
     return finalize_graph_node
 
 __all__ = ["build_finalize_graph_node"]
+

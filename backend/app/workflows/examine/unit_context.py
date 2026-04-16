@@ -1,4 +1,4 @@
-"""Unit exam context builder and batch DB loaders."""
+﻿"""Unit exam context builder and batch DB loaders."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from sqlmodel import Session, select
 
 from app.models import (
-    KnowledgeNode,
+    KnowledgeUnit,
     TeachingUnit,
     UserKnowledgeState,
     normalize_exam_mode,
@@ -108,13 +108,13 @@ class UnitExamContext:
         return "\n\n".join(part for part in parts if part.strip())
 
 
-# ── Batch DB loaders ─────────────────────────────────────────────────
+# 鈹€鈹€ Batch DB loaders 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
-def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeNode | None, str, str]:
+def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeUnit | None, str, str]:
     resolved = kg_repo.get_node_with_current_revision(session, node_id)
     if resolved is None:
-        node = session.get(KnowledgeNode, node_id)
+        node = session.get(KnowledgeUnit, node_id)
         if node is None:
             return None, "", ""
         return node, node.summary or "", node.body_markdown or node.body or ""
@@ -168,12 +168,12 @@ def _load_knowledge_nodes_by_id(
     session: Session,
     *,
     node_ids: list[int],
-) -> dict[int, KnowledgeNode]:
+) -> dict[int, KnowledgeUnit]:
     unique_ids = sorted({int(node_id) for node_id in node_ids if int(node_id) > 0})
     if not unique_ids:
         return {}
 
-    rows = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(unique_ids))).all())
+    rows = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.id.in_(unique_ids))).all())
     return {int(node.id): node for node in rows if node.id is not None}
 
 
@@ -249,7 +249,7 @@ def _build_node_contexts_for_unit(
     *,
     unit_id: int,
     memberships_by_unit: dict[int, list[tuple[int, str, float]]],
-    node_by_id: dict[int, KnowledgeNode],
+    node_by_id: dict[int, KnowledgeUnit],
     node_content_by_id: dict[int, tuple[str, str]],
     node_state_by_id: dict[int, UserKnowledgeState],
     weak_node_ids: set[int],
@@ -400,3 +400,4 @@ __all__ = [
     "UnitExamContext",
     "build_unit_exam_contexts",
 ]
+

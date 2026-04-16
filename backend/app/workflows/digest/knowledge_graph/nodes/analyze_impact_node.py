@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeNode
+from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeUnit
 from app.repositories import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.utils.kg_helpers import normalize_name
@@ -79,3 +79,4 @@ async def analyze_impact_node(state: KGDigestState) -> KGDigestState:
             return {**state, "error": f"analyze_impact_failed: {exc}"}
 
 __all__ = ["analyze_impact_node"]
+

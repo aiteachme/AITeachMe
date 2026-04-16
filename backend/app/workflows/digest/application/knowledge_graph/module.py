@@ -16,8 +16,8 @@ from app.schemas.knowledge import (
     DocGenBuildData,
     DocGenGetResponse,
     FullGraphResponse,
-    KnowledgeNodeDetailResponse,
-    KnowledgeNodeResponse,
+    KnowledgeUnitDetailResponse,
+    KnowledgeUnitResponse,
 )
 from app.workflows.digest.application.knowledge_graph.build import KnowledgeGraphBuildService
 from app.workflows.digest.application.knowledge_graph.query import KnowledgeGraphQueryService
@@ -45,10 +45,25 @@ class KnowledgeGraphModule:
         node_type: str | None = None,
         page: int = 1,
         size: int = 20,
-    ) -> PaginatedData[KnowledgeNodeResponse]:
+    ) -> PaginatedData[KnowledgeUnitResponse]:
         return self._query.get_graph_nodes(
             subject=subject,
             node_type=node_type,
+            page=page,
+            size=size,
+        )
+
+    def list_knowledge_units(
+        self,
+        *,
+        subject: str,
+        knowledge_unit_type: str | None = None,
+        page: int = 1,
+        size: int = 20,
+    ) -> PaginatedData[KnowledgeUnitResponse]:
+        return self._query.list_knowledge_units(
+            subject=subject,
+            knowledge_unit_type=knowledge_unit_type,
             page=page,
             size=size,
         )
@@ -58,8 +73,19 @@ class KnowledgeGraphModule:
         *,
         subject: str,
         node_id: int,
-    ) -> KnowledgeNodeDetailResponse:
+    ) -> KnowledgeUnitDetailResponse:
         return self._query.get_graph_node_detail(subject=subject, node_id=node_id)
+
+    def get_knowledge_unit_detail(
+        self,
+        *,
+        subject: str,
+        knowledge_unit_id: int,
+    ) -> KnowledgeUnitDetailResponse:
+        return self._query.get_knowledge_unit_detail(
+            subject=subject,
+            knowledge_unit_id=knowledge_unit_id,
+        )
 
     def get_full_graph(self, *, subject: str) -> FullGraphResponse:
         return self._query.get_full_graph(subject=subject)

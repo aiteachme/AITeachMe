@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import PageParams
 
@@ -64,10 +64,15 @@ class GraphNodesQueryRequest(PageParams):
     node_type: str | None = Field(default=None, description="Optional node type filter.")
 
 
-class GraphNodeDetailRequest(BaseModel):
-    """Node detail query."""
+class KnowledgeUnitDetailRequest(BaseModel):
+    """KnowledgeUnit detail query."""
 
-    node_id: int = Field(description="Knowledge node ID.")
+    knowledge_unit_id: int = Field(description="KnowledgeUnit ID.")
+
+    @model_validator(mode="after")
+    def _normalize_knowledge_unit_id(self) -> "KnowledgeUnitDetailRequest":
+        self.knowledge_unit_id = int(self.knowledge_unit_id)
+        return self
 
 
 class KnowledgeOverviewRequest(BaseModel):
@@ -252,8 +257,8 @@ class DocGenGetResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
-class KnowledgeNodeResponse(BaseModel):
-    """Knowledge node list item."""
+class KnowledgeUnitResponse(BaseModel):
+    """KnowledgeUnit list item."""
 
     id: int
     subject: str
@@ -319,8 +324,8 @@ class NodeRevisionItem(BaseModel):
     body: str
 
 
-class KnowledgeNodeDetailResponse(BaseModel):
-    """Knowledge node detail response."""
+class KnowledgeUnitDetailResponse(BaseModel):
+    """KnowledgeUnit detail response."""
 
     id: int
     subject: str
@@ -351,7 +356,7 @@ class GraphEdgeResponse(BaseModel):
 class FullGraphResponse(BaseModel):
     """Full graph payload for force-graph visualization."""
 
-    nodes: list[KnowledgeNodeResponse] = Field(default_factory=list)
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
     edges: list[GraphEdgeResponse] = Field(default_factory=list)
 
 

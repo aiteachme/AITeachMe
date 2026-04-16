@@ -16,8 +16,8 @@ from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
     ChunkContextRequest,
     ChunkContextResponse,
-    GraphNodeDetailRequest,
-    KnowledgeNodeDetailResponse,
+    KnowledgeUnitDetailRequest,
+    KnowledgeUnitDetailResponse,
 )
 from app.workflows.digest.application.knowledge_graph.module import KnowledgeGraphModule
 from app.workflows.support.subjects import get_subject_record
@@ -26,21 +26,26 @@ router = APIRouter(tags=["knowledge"])
 
 
 @router.post(
-    "/graph/nodes/detail",
-    response_model=ApiResponse[KnowledgeNodeDetailResponse],
-    summary="Fetch knowledge node detail",
+    "/graph/knowledge-units/detail",
+    response_model=ApiResponse[KnowledgeUnitDetailResponse],
+    summary="Fetch KnowledgeUnit detail",
     responses=build_error_responses([400, 404, 500]),
 )
-async def graph_node_detail(
+async def graph_knowledge_unit_detail(
     subject: str = Path(...),
-    body: GraphNodeDetailRequest = Body(...),
+    body: KnowledgeUnitDetailRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
-) -> ApiResponse[KnowledgeNodeDetailResponse]:
+) -> ApiResponse[KnowledgeUnitDetailResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     kg = KnowledgeGraphModule(session=session)
-    return ok_response(kg.get_node_detail(subject=normalized, node_id=body.node_id))
+    return ok_response(
+        kg.get_knowledge_unit_detail(
+            subject=normalized,
+            knowledge_unit_id=body.knowledge_unit_id,
+        )
+    )
 
 
 @router.post(

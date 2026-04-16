@@ -26,7 +26,7 @@ class QuestionTemplate(SQLModel, table=True):
     subject: str = Field(index=True)
     curriculum_version_id: int | None = Field(default=None, index=True)
     teaching_unit_id: int | None = Field(default=None, index=True)
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
+    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     question_type: str
     difficulty: str
     stem: str
@@ -82,7 +82,7 @@ class ExamPaperItem(SQLModel, table=True):
     options_snapshot_json: str | None = Field(default=None)
     answer_snapshot: str
     explanation_snapshot: str
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
+    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     teaching_unit_id: int | None = Field(default=None, index=True)
     node_refs_json: str = Field(default="[]")
     difficulty: str

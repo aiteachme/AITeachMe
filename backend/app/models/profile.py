@@ -39,7 +39,7 @@ class UserKnowledgeState(SQLModel, table=True):
     user_id: str = Field(default="local", index=True)
     subject: str = Field(index=True)
     teaching_unit_id: int | None = Field(default=None, index=True)
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
+    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     mastery_score: float = Field(default=0.0, ge=0.0, le=1.0)
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     stability_score: float = Field(default=0.0, ge=0.0, le=1.0)

@@ -9,7 +9,7 @@ from app.models.knowledge import DocumentChunk
 from app.models.knowledge_graph import (
     EvidenceLink,
     KnowledgeAlias,
-    KnowledgeNode,
+    KnowledgeUnit,
     KnowledgeRevision,
 )
 from app.repositories import kg_repo
@@ -35,9 +35,9 @@ def create_new_node(
     clustered_candidate: ClusteredCandidate,
     job_id: int,
     auto_commit: bool = True,
-) -> KnowledgeNode:
+) -> KnowledgeUnit:
     representative = clustered_candidate.representative
-    node = KnowledgeNode(
+    node = KnowledgeUnit(
         subject=subject,
         node_type=representative.node_type,
         canonical_name=representative.name,
@@ -215,3 +215,4 @@ __all__ = [
     "create_node_evidence",
     "create_updated_revision",
 ]
+

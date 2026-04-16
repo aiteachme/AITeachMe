@@ -12,7 +12,7 @@ from sqlmodel import Session
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
-from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
+from app.models.knowledge_graph import KnowledgeEdge, KnowledgeUnit
 from app.repositories import kg_repo
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.utils.kg_helpers import normalize_name
@@ -74,7 +74,7 @@ def _has_content_update(candidate_summary: str, existing_summary: str) -> bool:
     return new_chars > len(candidate_summary) * 0.3
 
 
-def _get_current_summary(session: Session, node: KnowledgeNode) -> str:
+def _get_current_summary(session: Session, node: KnowledgeUnit) -> str:
     """Fetch the current revision summary for a node."""
 
     if node.id is None:
@@ -174,7 +174,7 @@ async def _resolve_primary_entity(
     existing_embeddings = await aembed_texts(existing_texts)
 
     best_similarity = 0.0
-    best_node: KnowledgeNode | None = None
+    best_node: KnowledgeUnit | None = None
     for node, embedding in zip(same_type_nodes, existing_embeddings):
         similarity = _cosine_similarity(candidate_embedding, embedding)
         if similarity > best_similarity:
@@ -262,7 +262,7 @@ async def _resolve_secondary_entity(
     if not sibling_node_ids or not candidate_embedding:
         return ResolveResult(decision="no_match")
 
-    siblings: list[KnowledgeNode] = []
+    siblings: list[KnowledgeUnit] = []
     for sibling_id in sibling_node_ids:
         sibling_node = kg_repo.get_knowledge_node_by_id(session, sibling_id)
         if sibling_node and sibling_node.node_type == rep.node_type and sibling_node.status in {"active", "pending"}:
@@ -278,7 +278,7 @@ async def _resolve_secondary_entity(
     sibling_embeddings = await aembed_texts(sibling_texts)
 
     best_similarity = 0.0
-    best_sibling: KnowledgeNode | None = None
+    best_sibling: KnowledgeUnit | None = None
     for sibling, embedding in zip(siblings, sibling_embeddings):
         similarity = _cosine_similarity(candidate_embedding, embedding)
         if similarity > best_similarity:
@@ -488,3 +488,4 @@ __all__ = [
     "resolve_edge",
     "resolve_node",
 ]
+

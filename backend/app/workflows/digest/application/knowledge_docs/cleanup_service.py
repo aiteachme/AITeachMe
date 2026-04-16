@@ -14,7 +14,7 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     RetrievalChunk,
     Curriculum,
@@ -112,7 +112,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     edges = list(session.exec(select(KnowledgeEdge).where(KnowledgeEdge.subject == subject)).all())
     counts["knowledge_edge"] = len(edges)
 
-    nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject)).all())
+    nodes = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)).all())
     counts["knowledge_node"] = len(nodes)
 
     curriculums = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
@@ -138,7 +138,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
         Curriculum,
         KnowledgeDocument,
         KnowledgeEdge,
-        KnowledgeNode,
+        KnowledgeUnit,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
     session.commit()
@@ -149,3 +149,4 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
+

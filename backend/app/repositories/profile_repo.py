@@ -8,7 +8,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlmodel import Session, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeUnit, UserKnowledgeState
 from app.shared.infra.database import is_postgres
 from app.utils.time import utcnow
 
@@ -216,14 +216,14 @@ def list_weak_node_summaries(
     limit: int = 10,
 ) -> list[tuple[str, float]]:
     stmt = (
-        select(KnowledgeNode.canonical_name, UserKnowledgeState.mastery_score)
-        .join(KnowledgeNode, UserKnowledgeState.knowledge_node_id == KnowledgeNode.id)
+        select(KnowledgeUnit.canonical_name, UserKnowledgeState.mastery_score)
+        .join(KnowledgeUnit, UserKnowledgeState.knowledge_node_id == KnowledgeUnit.id)
         .where(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
             UserKnowledgeState.knowledge_node_id.is_not(None),
             UserKnowledgeState.mastery_score < threshold,
-            KnowledgeNode.subject == subject,
+            KnowledgeUnit.subject == subject,
         )
         .order_by(
             UserKnowledgeState.mastery_score.asc(),
@@ -404,3 +404,4 @@ def complete_review_task(
     else:
         session.flush()
     return state
+
