@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from app.workflows.digest.planner.lib.research_probe import material_topic_hints
+from app.workflows.digest.planner.lib.models import material_topic_hints
 from app.workflows.digest.common.models import DigestMaterialContext
 
 
-_MAX_DIGEST_CHARS = 2000
+_MAX_DIGEST_CHARS = 4000
 
 
 def _render_material_digest(material_context: DigestMaterialContext) -> str:
@@ -30,16 +30,15 @@ def build_learning_intent_messages(
     history = "\n".join(f"- {item}" for item in message_history[-4:] if str(item).strip()) or "暂无补充意见"
     digest = _render_material_digest(material_context)
     prompt = (
-        "请把用户的学习目标解析成结构化意图和检索计划。\n\n"
+        "请把用户的学习目标解析成结构化学习意图。\n\n"
         f"学科/主题：{subject}\n"
         f"用户目标：{user_goal}\n"
         f"请求模式：{digest_mode}\n"
         f"资料主题提示：{topics}\n"
         f"资料摘要：\n{digest}\n\n"
         f"最近对话：\n{history}\n\n"
-        "请优先本地资料，只有本地资料不足时才建议外部搜索。"
-        "检索词要具体，不能是空泛的“学习资料”“相关知识”，"
-        "要从资料摘要里挑出真正需要校准的概念边界。"
+        "只需要判断目标类型、受众、成功标准、约束和是否需要追问。"
+        "不要决定检索器、检索词或工具调用策略；证据探测由后端代码根据资料画像统一处理。"
     )
     return [
         {"role": "system", "content": "你是学习目标分析器，只输出结构化结果。"},

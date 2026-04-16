@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import re
 
-from app.workflows.digest.planner.lib.research_probe import PlanSketch
+from app.workflows.digest.planner.lib.models import PlanSketch
 
 _TASK_LINE_RE = re.compile(r"^\s*(?:[-*]|\(?\d+[).、])\s*(.+)$")
 _HEADING_RE = re.compile(r"^##\s+(.+)$")
+_INLINE_NUMBERED_RE = re.compile(r"^\s*\d+[.、)]\s*")
 
 
 def _extract_section_lines(text: str, heading: str) -> list[str]:
@@ -35,23 +36,58 @@ def _extract_first_blockquote_summary(text: str) -> str:
     return summary_lines[-1] if summary_lines else ""
 
 
+def _extract_labeled_line_payload(lines: list[str], label: str) -> str:
+    for line in lines:
+        cleaned = _INLINE_NUMBERED_RE.sub("", line).strip()
+        if not cleaned.startswith(label):
+            continue
+        _, sep, value = cleaned.partition("：")
+        if not sep:
+            _, sep, value = cleaned.partition(":")
+        return value.strip() if sep else ""
+    return ""
+
+
+def _split_inline_items(value: str, *, limit: int) -> list[str]:
+    items: list[str] = []
+    for raw in re.split(r"[；;]", value):
+        item = _INLINE_NUMBERED_RE.sub("", raw).strip(" ：:，,。.-")
+        if 3 <= len(item) <= 80 and "http" not in item.lower():
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
 def parse_plan_sketch_text(text: str, *, fallback: PlanSketch) -> PlanSketch:
     cleaned_lines = [line.strip() for line in str(text or "").replace("\r", "").splitlines() if line.strip()]
+    focus_payload = _extract_labeled_line_payload(cleaned_lines, "关注重点")
+    outline_payload = _extract_labeled_line_payload(cleaned_lines, "预计计划大纲")
     tasks: list[str] = []
-    for line in _extract_section_lines(text, "研究任务") or cleaned_lines:
-        match = _TASK_LINE_RE.match(line)
-        if match:
-            candidate = match.group(1).strip()
-            if 4 <= len(candidate) <= 80 and "http" not in candidate.lower():
-                tasks.append(candidate)
-        if len(tasks) >= 8:
-            break
+    if focus_payload:
+        tasks = _split_inline_items(focus_payload, limit=8)
+    if not tasks:
+        task_lines = (
+            _extract_section_lines(text, "思考重点")
+            or _extract_section_lines(text, "研究任务")
+            or cleaned_lines
+        )
+        for line in task_lines:
+            match = _TASK_LINE_RE.match(line)
+            if match:
+                candidate = match.group(1).strip()
+                if 4 <= len(candidate) <= 80 and "http" not in candidate.lower():
+                    tasks.append(candidate)
+            if len(tasks) >= 8:
+                break
 
-    chapters = []
-    for line in _extract_section_lines(text, "暂定章节"):
-        match = _TASK_LINE_RE.match(line.strip())
-        if match:
-            chapters.append(match.group(1).strip())
+    chapters = _split_inline_items(outline_payload, limit=8) if outline_payload else []
+    if not chapters:
+        chapter_lines = _extract_section_lines(text, "计划大纲") or _extract_section_lines(text, "暂定章节")
+        for line in chapter_lines:
+            match = _TASK_LINE_RE.match(line.strip())
+            if match:
+                chapters.append(match.group(1).strip())
 
     assumptions = []
     for line in _extract_section_lines(text, "规划假设"):

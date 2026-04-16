@@ -10,7 +10,7 @@ from app.workflows.digest.planner.lib.plans import (
     _resolve_subject_display_name,
     normalize_planner_draft,
 )
-from app.workflows.digest.planner.lib.research_probe import PlanSketch
+from app.workflows.digest.planner.lib.models import PlanSketch
 from app.workflows.digest.planner.state import BuildPlannerState
 
 
@@ -42,13 +42,22 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
             subject_display_name=display_subject,
         )
         plan = draft.model_dump(mode="json")
+        outline_items = [
+            {
+                "title": chapter.title,
+                "objective": chapter.objective,
+            }
+            for chapter in draft.chapter_plan[:8]
+        ]
         await emit_planner_event(
             state,
             event="planner.plan.ready",
-            detail="构建方案已生成，可以确认或继续修改。",
+            detail="已提炼出计划大纲，可以确认或继续修改。",
             payload={
                 "chapter_count": len(draft.chapter_plan),
                 "digest_mode": draft.digest_mode,
+                "plan_summary": draft.plan_summary,
+                "outline_items": outline_items,
             },
         )
         return {

@@ -141,7 +141,7 @@ flowchart TD
 3. **数学公式**：
    - 行内公式用 $...$ 包裹
    - 独立公式用 $$...$$ 包裹
-   - 优先输出规范 LaTeX 语法（如 rac、\sum、\int、\sqrt 等）
+   - 优先输出规范 LaTeX 语法（如 \frac、\sum、\int、\sqrt 等）
    - 保留所有数学符号、上下标、分式结构
 4. **图表处理**：
    - 描述图表类型（柱状图、折线图、几何图形等）
@@ -172,7 +172,7 @@ flowchart TD
 3. **数学公式**：
    - 行内公式用 $...$ 包裹
    - 独立公式用 $$...$$ 包裹
-   - 优先输出规范 LaTeX 语法（如 rac、\sum、\int、\sqrt 等）
+   - 优先输出规范 LaTeX 语法（如 \frac、\sum、\int、\sqrt 等）
    - 保留所有数学符号、上下标、分式结构
 4. **图表处理**：
    - 描述图表类型（柱状图、折线图、几何图形等）
@@ -203,7 +203,7 @@ Core Requirements:
 3. **Mathematical Formulas**:
    - Use $...$ for inline formulas
    - Use $$...$$ for display formulas
-   - Prioritize standard LaTeX syntax (rac, \sum, \int, \sqrt, etc.)
+   - Prioritize standard LaTeX syntax (\frac, \sum, \int, \sqrt, etc.)
    - Preserve all mathematical symbols, superscripts, subscripts, and fraction structures
 4. **Charts & Diagrams**:
    - Describe chart type (bar chart, line chart, geometric figure, etc.)

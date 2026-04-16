@@ -127,7 +127,7 @@ export const useInitSystemApiV1SystemInitPost = <TError = HTTPValidationError | 
       return useMutation(getInitSystemApiV1SystemInitPostMutationOptions(options), queryClient);
     }
     /**
- * 返回环境变量与 config.yaml 合并后的只读设置概览。
+ * 返回环境变量与 settings_default.yaml 合并后的只读设置概览。
  * @summary 读取后端设置总览
  */
 export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {

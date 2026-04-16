@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from app.workflows.digest.planner.prompts.examples import render_plan_sketch_examples
-from app.workflows.digest.planner.lib.research_probe import material_topic_hints
+from app.workflows.digest.planner.lib.models import material_topic_hints
 from app.workflows.digest.common.models import DigestMaterialContext
 
 
-_MAX_DIGEST_CHARS = 2800
+_MAX_DIGEST_CHARS = 6000
 
 
 def _render_material_digest(material_context: DigestMaterialContext) -> str:
@@ -33,8 +33,9 @@ def build_plan_sketch_prompt(
     history = "\n".join(f"- {item}" for item in message_history[-4:] if str(item).strip()) or "暂无补充意见"
     digest = _render_material_digest(material_context)
     return (
-        "你是 AITeachMe 的 Deep Research 风格学习规划助手。"
-        "请先生成一份给用户看的规划草稿，不要写正式知识文档正文。\n\n"
+        "你是 AITeachMe 的学习规划助手。"
+        "请先生成一份给用户看的“可见思考过程”，不要输出正式构建方案，也不要写知识文档正文。"
+        "这里的思考过程是用户可读的规划摘要，不要暴露隐藏推理链或内部草稿。\n\n"
         f"学科/主题：{subject}\n"
         f"用户目标：{user_goal}\n"
         f"模式：{digest_mode}\n"
@@ -43,27 +44,15 @@ def build_plan_sketch_prompt(
         f"资料文件：{files}\n"
         f"资料摘要：\n{digest}\n\n"
         f"最近对话：\n{history}\n\n"
-        "你必须严格按下面的 Markdown 合同输出，不要加解释：\n\n"
-        "# 构建方案\n\n"
-        "> 模式：sprint 或 systematic\n"
-        "> 一句话摘要：一句完整中文说明\n\n"
-        "## 研究任务\n"
-        "1. ...\n"
-        "2. ...\n\n"
-        "## 暂定章节\n"
-        "1. ...\n"
-        "2. ...\n\n"
-        "## 规划假设\n"
-        "- ...\n\n"
-        "## 待确认点\n"
-        "- ...\n\n"
+        "你必须严格按下面的两行格式输出，不要加解释，不要写 Markdown 标题：\n\n"
+        "1. 关注重点：用一句话列出 4-6 个资料里最该抓的具体知识对象、题型、公式、易错点或章节边界。\n"
+        "2. 预计计划大纲：用分号列出 4-6 个后续可能展开的讲义方向。\n\n"
         "硬约束：\n"
-        "1. 必须使用上述标题层级和有序列表格式。\n"
-        "2. 研究任务和暂定章节必须是标准 Markdown 有序列表，不要用 (1) 文本编号。\n"
-        "3. 不允许输出网站名、来源标题、subj_ 标识、代码块、JSON。\n"
-        "4. 研究任务必须服务后续详细知识文档生成，不能只写空泛口号。\n"
-        "5. 章节方向必须像真实讲义目录，不能是“概述/总结/提升”这类模板名。\n\n"
-        "请参考下面这些 few-shot 示例的风格和格式：\n\n"
+        "1. 只能输出两条编号内容：关注重点、预计计划大纲。\n"
+        "2. 不允许输出 #、##、代码块、JSON、网站名、来源标题、subj_ 标识。\n"
+        "3. 不要写空泛表达，例如“梳理基础”“强化理解”“提升能力”；必须落到资料里的具体对象。\n"
+        "4. 全文控制在 220 字以内。\n\n"
+        "请参考下面这些 few-shot 示例的风格和格式，注意它们都是“思考过程”示例，不是最终方案：\n\n"
         f"{render_plan_sketch_examples()}"
     )
 

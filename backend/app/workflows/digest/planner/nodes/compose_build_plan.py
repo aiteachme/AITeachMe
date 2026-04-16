@@ -7,7 +7,7 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import BuildPlannerDraft, build_fallback_plan
-from app.workflows.digest.planner.lib.research_probe import EvidenceBrief, LearningIntentProfile, PlanSketch
+from app.workflows.digest.planner.lib.models import EvidenceBrief, LearningIntentProfile, PlanSketch
 from app.workflows.digest.planner.prompts import build_plan_composer_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -30,7 +30,7 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.plan.composing",
-            detail="正在综合草稿、意图和证据生成最终大纲...",
+            detail="正在把思考过程提炼成几条可确认的计划大纲...",
         )
         try:
             draft = await acompletion_with_fallback(
@@ -46,14 +46,14 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
                     message_history=list(state.get("message_history", [])),
                     latest_plan=state.get("latest_plan"),
                 ),
-                task_type=TaskType.REASONING,
-                model="reason",
+                task_type=TaskType.DOCGEN_LIGHT,
+                model="primary",
                 response_model=BuildPlannerDraft,
                 temperature=0.15,
-                max_tokens=1800,
+                max_tokens=1700,
                 extra_metadata={
                     "planner_session_id": state.get("planner_session_id") or "",
-                    "substep": "compose_plan_contract",
+                    "substep": "compose_build_plan",
                 },
             )
         except Exception:

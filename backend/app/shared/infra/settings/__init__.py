@@ -23,8 +23,11 @@ from .settings import (
     WebSearchSettings,
     get_settings,
 )
+from .support import DEFAULT_PROJECT_SETTINGS_FILENAME, PROJECT_SETTINGS_ENV_NAME
 
 __all__ = [
+    "DEFAULT_PROJECT_SETTINGS_FILENAME",
+    "PROJECT_SETTINGS_ENV_NAME",
     "CacheSettings",
     "ChatSettings",
     "DigestSettings",

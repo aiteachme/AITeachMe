@@ -103,6 +103,14 @@ class FileTooLargeError(AITeachMeError):
         super().__init__(detail=f"上传文件超过 {max_size_mb} MB 限制。")
 
 
+class FileCountLimitError(AITeachMeError):
+    error_code = "FILE_COUNT_LIMIT_EXCEEDED"
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+
+    def __init__(self, max_files: int) -> None:
+        super().__init__(detail=f"单次最多上传 {max_files} 个文件。")
+
+
 class UnsupportedFileTypeError(AITeachMeError):
     error_code = "UNSUPPORTED_FILE_TYPE"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

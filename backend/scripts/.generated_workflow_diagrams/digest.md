@@ -7,8 +7,6 @@
 1. [Digest Planner Workflow](#digest-planner)
 2. [Digest DocGen Workflow](#digest-docgen)
 3. [Digest Graph Workflow](#digest-graph)
-4. [Digest Curriculum Workflow](#digest-curriculum)
-5. [Digest Unified Workflow](#digest-unified)
 
 ---
 
@@ -16,22 +14,31 @@
 
 > Planner-first workflow that drafts a confirmed Chinese build plan before DocGen starts.
 
-📊 **3** 个处理节点 · **6** 条边
+📊 **6** 个处理节点 · **12** 条边
 
 ```mermaid
 flowchart TD
     __start__(["▶ START"])
-    load_context["❶ Load Context"]
-    ground_concepts["❷ Ground Concepts"]
-    draft_plan["❸ Draft Plan"]
+    prepare_material_context["❶ Prepare Material Context"]
+    summarize_material_digest["❷ Summarize Material Digest"]
+    bootstrap_plan_brief["❸ Bootstrap Plan Brief"]
+    probe_evidence["❹ Probe Evidence"]
+    compose_build_plan["❺ Compose Build Plan"]
+    finalize_plan_contract(["❻ Finalize Plan Contract"])
     __end__(["⏹ END"])
 
-    __start__ --> load_context
-    ground_concepts -. "✗ fail" .-> __end__
-    ground_concepts -->|"✓"| draft_plan
-    load_context -. "✗ fail" .-> __end__
-    load_context -->|"✓"| ground_concepts
-    draft_plan --> __end__
+    __start__ --> prepare_material_context
+    bootstrap_plan_brief -. "✗ fail" .-> __end__
+    bootstrap_plan_brief -->|"✓"| probe_evidence
+    compose_build_plan -. "✗ fail" .-> __end__
+    compose_build_plan -->|"✓"| finalize_plan_contract
+    prepare_material_context -. "✗ fail" .-> __end__
+    prepare_material_context -->|"✓"| summarize_material_digest
+    probe_evidence -. "✗ fail" .-> __end__
+    probe_evidence -->|"✓"| compose_build_plan
+    summarize_material_digest -. "✗ fail" .-> __end__
+    summarize_material_digest -->|"✓"| bootstrap_plan_brief
+    finalize_plan_contract --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
@@ -41,17 +48,21 @@ flowchart TD
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
     style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
+    class finalize_plan_contract termCls
     class __end__ endCls
-    linkStyle 1,3 stroke:#f43f5e,stroke-dasharray:5
+    linkStyle 1,3,5,7,9 stroke:#f43f5e,stroke-dasharray:5
 ```
 
 **节点参考：**
 
 | 节点 | 角色 | 路由 |
 |------|------|------|
-| Load Context | 🔀 条件路由 | `fail` -> END / `continue` -> Ground Concepts |
-| Ground Concepts | 🔀 条件路由 | `fail` -> END / `continue` -> Draft Plan |
-| Draft Plan | ⚙ 处理节点 | → END |
+| Prepare Material Context | 🔀 条件路由 | `fail` -> END / `continue` -> Summarize Material Digest |
+| Summarize Material Digest | 🔀 条件路由 | `fail` -> END / `continue` -> Bootstrap Plan Brief |
+| Bootstrap Plan Brief | 🔀 条件路由 | `fail` -> END / `continue` -> Probe Evidence |
+| Probe Evidence | 🔀 条件路由 | `fail` -> END / `continue` -> Compose Build Plan |
+| Compose Build Plan | 🔀 条件路由 | `fail` -> END / `continue` -> Finalize Plan Contract |
+| Finalize Plan Contract | ✅ 终结节点 | → END |
 
 ## Digest DocGen Workflow
 
@@ -63,30 +74,30 @@ flowchart TD
 flowchart TD
     __start__(["▶ START"])
     load_context["❶ Load Context"]
-    targeted_research["❷ Targeted Research"]
-    collect_materials["❸ Collect Materials"]
-    resolve_titles["❹ Resolve Titles"]
-    pedagogy_craft["❺ Pedagogy Craft"]
-    collect_drafts["❻ Collect Drafts"]
-    enrich_document["❼ Enrich Document"]
-    inject_examine["❽ Inject Examine"]
-    finalize_assemble(["❾ Finalize Assemble"])
+    research_chapters["❷ Research Chapters"]
+    merge_research["❸ Merge Research"]
+    finalize_titles(["❹ Finalize Titles"])
+    write_chapters["❺ Write Chapters"]
+    merge_drafts["❻ Merge Drafts"]
+    enrich_assets["❼ Enrich Assets"]
+    append_practice["❽ Append Practice"]
+    publish_document(["❾ Publish Document"])
     __end__(["⏹ END"])
 
     __start__ --> load_context
-    collect_drafts -. "✗ fail" .-> __end__
-    collect_drafts --> enrich_document
-    collect_materials --> resolve_titles
-    enrich_document -. "✗ fail" .-> __end__
-    enrich_document --> inject_examine
-    inject_examine -. "✗ fail" .-> __end__
-    inject_examine --> finalize_assemble
+    append_practice -. "✗ fail" .-> __end__
+    append_practice --> publish_document
+    enrich_assets -. "✗ fail" .-> __end__
+    enrich_assets --> append_practice
+    finalize_titles -. "Send xN" .-> write_chapters
     load_context -. "✗ fail" .-> __end__
-    load_context -. "Send xN" .-> targeted_research
-    pedagogy_craft --> collect_drafts
-    resolve_titles -. "Send xN" .-> pedagogy_craft
-    targeted_research --> collect_materials
-    finalize_assemble --> __end__
+    load_context -. "Send xN" .-> research_chapters
+    merge_drafts -. "✗ fail" .-> __end__
+    merge_drafts --> enrich_assets
+    merge_research --> finalize_titles
+    research_chapters --> merge_research
+    write_chapters --> merge_drafts
+    publish_document --> __end__
 
     %% ── Styling ──
     classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
@@ -96,24 +107,25 @@ flowchart TD
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
     style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
     class __start__ startCls
-    class finalize_assemble termCls
+    class finalize_titles termCls
+    class publish_document termCls
     class __end__ endCls
-    linkStyle 1,4,6,8 stroke:#f43f5e,stroke-dasharray:5
+    linkStyle 1,3,6,8 stroke:#f43f5e,stroke-dasharray:5
 ```
 
 **节点参考：**
 
 | 节点 | 角色 | 路由 |
 |------|------|------|
-| Load Context | 🔀 条件路由 | `fail` -> END / `Send xN` -> Targeted Research |
-| Targeted Research | ⚙ 处理节点 | → Collect Materials |
-| Collect Materials | ⚙ 处理节点 | → Resolve Titles |
-| Resolve Titles | ⚙ 处理节点 | `Send xN` -> Pedagogy Craft |
-| Pedagogy Craft | ⚙ 处理节点 | → Collect Drafts |
-| Collect Drafts | 🔀 条件路由 | `fail` -> END / -> Enrich Document |
-| Enrich Document | 🔀 条件路由 | `fail` -> END / -> Inject Examine |
-| Inject Examine | 🔀 条件路由 | `fail` -> END / -> Finalize Assemble |
-| Finalize Assemble | ✅ 终结节点 | → END |
+| Load Context | 🔀 条件路由 | `fail` -> END / `Send xN` -> Research Chapters |
+| Research Chapters | ⚙ 处理节点 | → Merge Research |
+| Merge Research | ⚙ 处理节点 | → Finalize Titles |
+| Finalize Titles | ✅ 终结节点 | `Send xN` -> Write Chapters |
+| Write Chapters | ⚙ 处理节点 | → Merge Drafts |
+| Merge Drafts | 🔀 条件路由 | `fail` -> END / -> Enrich Assets |
+| Enrich Assets | 🔀 条件路由 | `fail` -> END / -> Append Practice |
+| Append Practice | 🔀 条件路由 | `fail` -> END / -> Publish Document |
+| Publish Document | ✅ 终结节点 | → END |
 
 ## Digest Graph Workflow
 
@@ -185,119 +197,6 @@ flowchart TD
 | Finalize Graph | ✅ 终结节点 | → END |
 | Fail | ❌ 错误处理 | → END |
 
-## Digest Curriculum Workflow
-
-> Curriculum derivation workflow built from digest graph impact.
-
-📊 **5** 个处理节点 · **9** 条边
-
-```mermaid
-flowchart TD
-    __start__(["▶ START"])
-    derive_units["❶ Derive Units"]
-    derive_theme_tree["❷ Derive Theme Tree"]
-    derive_prereq_dag["❸ Derive Prereq Dag"]
-    finalize_curriculum(["❹ Finalize Curriculum"])
-    __end__(["⏹ END"])
-
-    subgraph error_zone ["⚠ 错误处理"]
-    direction TB
-        fail_curriculum["⚠ Fail Curriculum"]
-    end
-
-    __start__ --> derive_units
-    derive_prereq_dag -. "✗ fail" .-> fail_curriculum
-    derive_prereq_dag -->|"✓"| finalize_curriculum
-    derive_theme_tree -->|"✓"| derive_prereq_dag
-    derive_theme_tree -. "✗ fail" .-> fail_curriculum
-    derive_units -->|"✓"| derive_theme_tree
-    derive_units -. "✗ fail" .-> fail_curriculum
-    fail_curriculum --> __end__
-    finalize_curriculum --> __end__
-
-    %% ── Styling ──
-    classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
-    classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
-    classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
-    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
-    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
-    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
-    class __start__ startCls
-    class finalize_curriculum termCls
-    class fail_curriculum failCls
-    class __end__ endCls
-    linkStyle 1,4,6 stroke:#f43f5e,stroke-dasharray:5
-```
-
-**节点参考：**
-
-| 节点 | 角色 | 路由 |
-|------|------|------|
-| Derive Units | 🔀 条件路由 | `continue` -> Derive Theme Tree / `fail` -> Fail Curriculum |
-| Derive Theme Tree | 🔀 条件路由 | `continue` -> Derive Prereq Dag / `fail` -> Fail Curriculum |
-| Derive Prereq Dag | 🔀 条件路由 | `fail` -> Fail Curriculum / `continue` -> Finalize Curriculum |
-| Finalize Curriculum | ✅ 终结节点 | → END |
-| Fail Curriculum | ❌ 错误处理 | → END |
-
-## Digest Unified Workflow
-
-> Shared prepare, docgen lane, graph lane, consistency, repair, and curriculum.
-
-📊 **6** 个处理节点 · **12** 条边
-
-```mermaid
-flowchart TD
-    __start__(["▶ START"])
-    prepare_shared["❶ Prepare Shared"]
-    run_parallel_lanes["❷ Run Parallel Lanes"]
-    derive_curriculum["❸ Derive Curriculum"]
-    publish_outputs(["❹ Publish Outputs"])
-    cleanup(["❺ Cleanup"])
-    __end__(["⏹ END"])
-
-    subgraph error_zone ["⚠ 错误处理"]
-    direction TB
-        fail["⚠ Fail"]
-    end
-
-    __start__ --> prepare_shared
-    derive_curriculum --> fail
-    derive_curriculum -->|"✓"| publish_outputs
-    prepare_shared --> fail
-    prepare_shared -->|"✓"| run_parallel_lanes
-    publish_outputs -->|"✓"| cleanup
-    publish_outputs --> fail
-    run_parallel_lanes -->|"✓"| derive_curriculum
-    run_parallel_lanes --> fail
-    run_parallel_lanes -->|"publish_only"| publish_outputs
-    cleanup --> __end__
-    fail --> __end__
-
-    %% ── Styling ──
-    classDef startCls fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#a7f3d0
-    classDef endCls fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fecaca
-    classDef failCls fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#fecdd3
-    classDef termCls fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#93c5fd
-    classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0
-    style error_zone fill:#1a0a0e,stroke:#f43f5e,stroke-width:1px,color:#fecdd3,stroke-dasharray:5
-    class __start__ startCls
-    class publish_outputs termCls
-    class cleanup termCls
-    class fail failCls
-    class __end__ endCls
-```
-
-**节点参考：**
-
-| 节点 | 角色 | 路由 |
-|------|------|------|
-| Prepare Shared | 🔀 条件路由 | -> Fail / `continue` -> Run Parallel Lanes |
-| Run Parallel Lanes | 🔀 条件路由 | `continue` -> Derive Curriculum / -> Fail / `publish_only` -> Publish Outputs |
-| Derive Curriculum | 🔀 条件路由 | -> Fail / `continue` -> Publish Outputs |
-| Publish Outputs | 🔀 条件路由 | `continue` -> Cleanup / -> Fail |
-| Cleanup | ✅ 终结节点 | → END |
-| Fail | ❌ 错误处理 | → END |
-
 ---
 
 ## 🧬 核心 Prompt 指纹
@@ -341,81 +240,55 @@ Mermaid 生成提示词：负责把章节知识关系转成中文 Mermaid mindma
 </details>
 
 <details>
-<summary><b>Kg Extract System</b> (<code>kg_extract_system</code>)</summary>
+<summary><b>Knowledge Extract System</b> (<code>knowledge_extract_system</code>)</summary>
 
 ```
-你是一名知识图谱构建助手。请从给定的学习资料文本片段中抽取知识节点和知识边。
+浣犳槸涓€鍚嶇煡璇嗗浘璋辨瀯寤哄姪鎵嬨€傝浠庣粰瀹氱殑瀛︿範璧勬枡鏂囨湰鐗囨涓娊鍙?KnowledgeUnit 涓?knowledge graph 鍏崇郴銆?
+## KnowledgeUnit 绫诲瀷
 
-## 节点类型（仅限以下 5 种）
+浠呬娇鐢ㄤ互涓嬫爣鍑嗙被鍨嬶紝蹇呴』杈撳嚭灏忓啓鑻辨枃鍊硷細
 
-- **Topic**：主题或大类（如"微积分"、"线性代数"、"商业模式"、"系统架构"）
-- **Concept**：核心概念（如"导数"、"极限"、"核心痛点"、"产品特性"）
-- **Definition**：概念的正式定义或核心释义（如"导数的定义"、"AITeachMe的产品定位"）
-- **Method**：方法、算法、解题技巧或业务策略（如"洛必达法则"、"动态复习算法"、"获客策略"）
-- **Example**：具体用例、场景、例题或习题（如"求 $f(x)=x^2$ 的导数"、"考研党专属复习场景"）。注意：一道完整的题目或完整的业务案例应作为一个 Example 节点。
+- `concept`锛氭牳蹇冩蹇点€佷富棰樻€х煡璇嗙偣銆佷笂灞傜煡璇嗙被鐩?- `definition`锛氭蹇电殑姝ｅ紡瀹氫箟鎴栨牳蹇冮噴涔?- `theorem`锛氬畾鐞嗐€佸紩鐞嗐€佸懡棰樸€佸叕鐞嗐€侀噸瑕佹€ц川
+- `formula`锛氬叕寮忋€佹柟绋嬨€佹亽绛夊紡銆佽绠楄鍒?- `example`锛氬畬鏁翠緥棰樸€佹渚嬨€佸満鏅寲绀轰緥
+- `exercise`锛氱粌涔犻銆佹祴璇曢銆侀渶瑕佷綔绛旂殑棰樼洰
+- `method`锛氭柟娉曘€佺畻娉曘€佽В棰樻妧宸с€佹搷浣滄楠?- `proof_step`锛氳瘉鏄庢楠ゃ€佹帹瀵兼楠?- `remark`锛氬娉ㄣ€佹槗閿欑偣銆佽ˉ鍏呰鏄庛€侀檺鍒舵潯浠?
+## knowledge graph 鍏崇郴绫诲瀷
 
-## 边类型（仅限以下 5 种）
+浠呬娇鐢ㄤ互涓嬫爣鍑嗗叧绯伙紝蹇呴』杈撳嚭灏忓啓鑻辨枃鍊硷細
 
-- **belongs_to_topic**：节点属于某个 Topic（source → target=Topic）
-- **prerequisite_of**：source 是学习 target 的前置知识
-- **defined_by**：Concept 由 Definition 定义（source=Concept → target=Definition）
-- **illustrated_by**：Concept/Method 由 Example 说明（source=Concept/Method → target=Example）
-- **part_of**：source 是 target 的组成部分
+- `prerequisite`锛歴ource 鏄涔?target 鐨勫墠缃煡璇?- `derivation`锛歴ource 鎺ㄥ銆佸畾涔夈€佺粍鎴愭垨鏀拺 target
+- `application`锛歴ource 鍙簲鐢ㄤ簬 target锛屾垨 source 灞炰簬 target 鐨勫簲鐢ㄨ澧?- `example_of`锛歴ource 鏄?target 鐨勪緥瀛愩€佺粌涔犳垨妗堜緥
+- `similar`锛歴ource 涓?target 鐩镐技
+- `contrast`锛歴ource 涓?target 瀵规瘮鎴栧鏄撴贩娣?
+## 棰樼洰/涔犻璇嗗埆瑙勫垯
 
-## 题目/习题识别规则（优先级最高）
+褰撴枃鏈墖娈垫槸涓€閬撻鐩€佷範棰樸€佽€冭瘯棰樻垨缁冧範棰樻椂锛屽繀椤婚伒瀹堬細
 
-当文本片段是一道题目、习题、考试题或练习题时，必须遵守以下规则：
+1. 姣忛亾瀹屾暣棰樼洰鐙珛鎶藉彇涓轰竴涓?`exercise`锛宯ame 鐢ㄧ畝鐭弿杩帮紝涓嶈鎶婂閬撻鍚堝苟鎴愨€滈€夋嫨棰樷€濃€滃～绌洪鈥濊繖绫荤缁熷崟鍏冦€?2. 棰樼洰涓殑绀轰緥鎬ц瑙ｃ€佹牱渚嬫垨宸插畬鎴愭渚嬪彲鎶藉彇涓?`example`銆?3. 璇曞嵎缁撴瀯璇存槑涓嶆娊鍙栦负 KnowledgeUnit銆?4. 棰樼洰鑳屽悗鑰冩煡鐨勯€氱敤鐭ヨ瘑鐐瑰簲鎶藉彇涓?`concept` 鎴?`method`锛屽苟鐢?`example_of` 浠?`exercise/example` 鎸囧悜瀵瑰簲鐭ヨ瘑鐐广€?5. 棰樼洰涓嚜鍒涚殑涓存椂瀹氫箟鎴栬瀹氫笉瑕佹娊鍙栦负鐙珛 `definition`锛屽簲鏀惧叆璇?`exercise` 鐨?local_summary銆?
+## 灞傜骇涓庣埗绾ц鍒?
+1. 瀵规槑鏄剧殑绔犺妭銆佷富棰樸€佺煡璇嗙被鐩紝浣跨敤 `concept` 琛ㄧず銆?2. `definition`銆乣formula`銆乣example`銆乣exercise`銆乣proof_step`銆乣remark` 搴斿敖閲忔彁渚?parent_entity_name锛屾寚鍚戝叿浣撶殑 `concept`銆乣method` 鎴?`theorem`銆?3. taxonomy_hint 搴旀寚鍚戞渶杩戠殑涓婂眰 `concept`锛屼笉瑕佸叏閮ㄦ寕鍒颁竴涓缁熸牴涓婚涓嬨€?
+## 閫氱敤鎶藉彇瑙勫垯
 
-1. **每道题独立抽取为一个 Example 节点**，name 用简短描述（如"充要条件判断题"、"正六棱柱中阳马计数"），不要把题目拆成多个 Concept 或 Definition。
-2. **严禁合并多道题**：如果文本中包含多道题（如第14题、第15题、第16题），必须为每道题分别创建独立的 Example 节点。绝对不要创建"选择题"、"填空题"、"解答题"这样的笼统节点来概括多道题。
-3. **试卷结构描述不抽取**：如"本部分共4题，满分20分"、"选择题（共X分）"等试卷说明性文字不是知识点，不应抽取为任何节点。
-4. **题目中引用的学科概念**（如"圆锥"、"数列"、"导数"）：如果是学科中公认的概念，可以抽取为 Concept 节点，并用 `illustrated_by` 边连接到该 Example。
-5. **题目中自创的临时定义**（如"定义两个数列'接近'：对任意正整数 $n$，$|b_n - a_n| \leq 1$"）属于题目设问的一部分，**不得**抽取为独立的 Definition 或 Concept 节点。这类内容应包含在 Example 节点的 local_summary 中。
-6. 判断依据：如果一个"定义"或"概念"仅在该题目中成立、不是学科通用知识，则它是题目专属设定，归入 Example。
-
-### 如何识别题目内容
-- 包含"求…"、"证明…"、"计算…"、"判断…"、"选择…"等指令性语句
-- 包含题号标记（如"1."、"(1)"、"第X题"、"例X"）
-- 包含"已知…，求…"、"设…，则…"等数学题目结构
-- 包含选项（A/B/C/D）
-
-## 多层级主题结构规则（非常重要）
-
-1. **必须构建层级化的 Topic 结构**：如果文本片段涉及多个层级的知识（如"高等数学 > 微积分 > 导数"），应为每个层级创建独立的 Topic 节点，并用 `part_of` 边连接。严禁把所有内容都挂到一个笼统的 Topic 下。
-2. **从题目中提取知识点**：当文本包含题目时，不要只创建 Example 节点。必须同时提取题目背后考查的核心 Concept 或 Method 节点，并用 `illustrated_by` 边将 Concept/Method 连接到 Example。
-3. **parent_entity_name 必须精确**：Definition 和 Example 的 parent_entity_name 应指向具体的 Concept 或 Method，而不是笼统的大 Topic。例如，"导数的定义"的 parent_entity_name 应该是"导数"而不是"高等数学"。
-4. **taxonomy_hint 应指向最近的上层 Topic**：不要所有节点都指向同一个根 Topic。
-
-## 通用抽取规则
-
-1. 每个节点必须有明确的 name 和 node_type。
-2. **name 字段中的数学符号必须用 LaTeX**：禁止使用 Unicode 上下标（如 cos²x、x₁），必须写成 LaTeX 格式（如 `$\cos^2 x$`、`$x_1$`）。正确示例：`$\sin x$`、`$\int f(x)\,dx$`、`$a_n$`。错误示例：sin x、cos²x、aₙ。
-3. Definition 和 Example 类型的节点**必须**提供 parent_entity_name，指明其所属的 Concept 或 Method 名称（不是笼统的大 Topic）。
-4. 每个节点应提供 taxonomy_hint：该节点最可能归属的最近上层主题名称（用于后续主题树对齐）。
-5. local_summary 应概括该知识点在本段文本中的核心内容。内容较多时可以分段（用换行分隔），不设严格字数上限但应保持精炼。其中数学公式必须使用 LaTeX 语法（行内 `$...$`，独立 `$$...$$`）。
-6. 边的 source_name 和 target_name 必须与抽取出的节点 name 完全一致。
-7. 不要杜撰原文中没有的知识点或关系。
-8. 如果文本片段中没有可抽取的知识，返回空列表即可。
-9. **数学公式格式**：所有字段（name、local_summary、description）中的数学公式都必须使用 LaTeX 语法。行内公式用 `$...$` 包裹，独立公式用 `$$...$$` 包裹。绝对不要使用纯文本或 Unicode 字符（如 ²、³、₁、∫、∑、≤）表示数学符号。
+1. 姣忎釜 KnowledgeUnit 蹇呴』鏈夋槑纭殑 name 涓?node_type銆?2. name 瀛楁涓殑鏁板绗﹀彿蹇呴』浣跨敤 LaTeX锛屼緥濡?`$\\cos^2 x$`銆乣$a_n$`銆?3. local_summary 搴旀鎷 KnowledgeUnit 鍦ㄦ湰娈垫枃鏈腑鐨勬牳蹇冨唴瀹癸紝鏁板鍏紡蹇呴』浣跨敤 LaTeX銆?4. 杈圭殑 source_name 涓?target_name 蹇呴』涓庢娊鍙栧嚭鐨?KnowledgeUnit name 瀹屽叏涓€鑷淬€?5. 涓嶈鏉滄挵鍘熸枃涓病鏈夌殑鐭ヨ瘑鐐规垨鍏崇郴銆?6. 濡傛灉鏂囨湰鐗囨涓病鏈夊彲鎶藉彇鐨勭煡璇嗭紝杩斿洖绌哄垪琛ㄣ€?
 ```
 
 </details>
 
 <details>
-<summary><b>Kg Extract User</b> (<code>kg_extract_user</code>)</summary>
+<summary><b>Knowledge Extract User</b> (<code>knowledge_extract_user</code>)</summary>
 
 ```
-## 文本片段信息
+## 鏂囨湰鐗囨淇℃伅
 
-- 标题：{{ chunk_title }}
-- 文档结构路径：{{ header_path }}
-{% if doc_source_type %}- 文档类型：{{ doc_source_type }}{% endif %}
-{% if subject_context %}- 学科背景：{{ subject_context }}{% endif %}
-{% if sibling_topics %}- 同级主题参考：{{ sibling_topics }}{% endif %}
-{% if digest_mode == "sprint" %}- 构建模式：速成课（侧重方法归纳、题型突破、易错点，可适当压缩推导细节）{% endif %}
-{% if digest_mode == "systematic" %}- 构建模式：系统课（侧重概念完整性、定义严谨性、前置依赖链）{% endif %}
+- 鏍囬锛歿{ chunk_title }}
+- 鏂囨。缁撴瀯璺緞锛歿{ header_path }}
+{% if doc_source_type %}- 鏂囨。绫诲瀷锛歿{ doc_source_type }}{% endif %}
+{% if subject_context %}- 瀛︾鑳屾櫙锛歿{ subject_context }}{% endif %}
+{% if sibling_topics %}- 鍚岀骇涓婚鍙傝€冿細{{ sibling_topics }}{% endif %}
+{% if digest_mode == "sprint" %}- 鏋勫缓妯″紡锛氶€熸垚璇撅紙渚ч噸鏂规硶褰掔撼銆侀鍨嬬獊鐮淬€佹槗閿欑偣锛屽彲閫傚綋鍘嬬缉鎺ㄥ缁嗚妭锛墈% endif %}
+{% if digest_mode == "systematic" %}- 鏋勫缓妯″紡锛氱郴缁熻锛堜晶閲嶆蹇靛畬鏁存€с€佸畾涔変弗璋ㄦ€с€佸墠缃緷璧栭摼锛墈% endif %}
 
-## 文本内容
+## 鏂囨湰鍐呭
 
 {{ chunk_content }}
 ```
@@ -423,115 +296,104 @@ Mermaid 生成提示词：负责把章节知识关系转成中文 Mermaid mindma
 </details>
 
 <details>
-<summary><b>Kg Entity Match System</b> (<code>kg_entity_match_system</code>)</summary>
+<summary><b>Knowledge Entity Match System</b> (<code>knowledge_entity_match_system</code>)</summary>
 
 ```
-你是一名知识图谱实体对齐助手。请判断以下两个知识节点是否指代同一个知识点。
+浣犳槸涓€鍚嶇煡璇嗗浘璋卞疄浣撳榻愬姪鎵嬨€傝鍒ゆ柇浠ヤ笅涓や釜 KnowledgeUnit 鏄惁鎸囦唬鍚屼竴涓煡璇嗙偣銆?
+## 鍒ゅ畾閫夐」
 
-## 判定选项
+- EXACT锛氬畬鍏ㄧ浉鍚岀殑鐭ヨ瘑鐐癸紝鍙槸琛ㄨ堪涓嶅悓
+- ALIAS锛氬悓涓€鐭ヨ瘑鐐圭殑鍒悕銆佺缉鍐欍€佺炕璇戞垨鍚屼箟琛ㄨ揪
+- NO_MATCH锛氫笉鍚岀殑鐭ヨ瘑鐐?
+## 鍒ゅ畾瑙勫垯
 
-- **EXACT**：完全相同的知识点，只是表述不同
-- **ALIAS**：同一知识点的别名或缩写（如"BP算法"与"反向传播算法"）
-- **NO_MATCH**：不同的知识点
-
-## 判定规则
-
-1. 如果两个节点名称含义完全一致，选 EXACT。
-2. 如果一个是另一个的别名、缩写、翻译或同义表述，选 ALIAS。
-3. 如果两个节点虽然相关但指代不同的知识点，选 NO_MATCH。
-4. 仅根据提供的信息判断，不要猜测。
+1. 濡傛灉涓や釜鍚嶇О鍚箟瀹屽叏涓€鑷达紝閫?EXACT銆?2. 濡傛灉涓€涓槸鍙︿竴涓殑鍒悕銆佺缉鍐欍€佺炕璇戞垨鍚屼箟琛ㄨ堪锛岄€?ALIAS銆?3. 濡傛灉涓や釜 KnowledgeUnit 铏界劧鐩稿叧浣嗘寚浠ｄ笉鍚岋紝閫?NO_MATCH銆?4. 浠呮牴鎹彁渚涚殑淇℃伅鍒ゆ柇锛屼笉瑕佺寽娴嬨€?
 ```
 
 </details>
 
 <details>
-<summary><b>Kg Entity Match User</b> (<code>kg_entity_match_user</code>)</summary>
+<summary><b>Knowledge Entity Match User</b> (<code>knowledge_entity_match_user</code>)</summary>
 
 ```
-## 候选节点
+## 鍊欓€?KnowledgeUnit
+- 鍚嶇О锛歿{ candidate_name }}
+- 绫诲瀷锛歿{ candidate_type }}
+- 鎽樿锛歿{ candidate_summary }}
 
-- 名称：{{ candidate_name }}
-- 类型：{{ candidate_type }}
-- 摘要：{{ candidate_summary }}
+## 宸叉湁 KnowledgeUnit
 
-## 已有节点
+- 鍚嶇О锛歿{ existing_name }}
+- 绫诲瀷锛歿{ existing_type }}
+- 鎽樿锛歿{ existing_summary }}
 
-- 名称：{{ existing_name }}
-- 类型：{{ existing_type }}
-- 摘要：{{ existing_summary }}
-
-请从 EXACT / ALIAS / NO_MATCH 中选择一个判定结果。
-```
-
-</details>
-
-<details>
-<summary><b>Kg Unit Naming System</b> (<code>kg_unit_naming_system</code>)</summary>
-
-```
-你是一名教学设计助手。以下是一组紧密相关的知识节点，它们构成一个教学单元。
-请为这个教学单元生成名称、摘要和学习目标。
-
-## 输出要求
-
-1. 单元名称：简洁、准确、适合作为课程目录标题
-2. 单元摘要：一段话描述本单元的核心内容
-3. 学习目标：2-4 条，以"学完本单元后，学生能够..."开头
+璇蜂粠 EXACT / ALIAS / NO_MATCH 涓€夋嫨涓€涓垽瀹氱粨鏋溿€?
 ```
 
 </details>
 
 <details>
-<summary><b>Kg Unit Naming User</b> (<code>kg_unit_naming_user</code>)</summary>
+<summary><b>Knowledge Unit Naming System</b> (<code>knowledge_unit_naming_system</code>)</summary>
 
 ```
-## 核心概念
+浣犳槸涓€鍚嶆暀瀛﹁璁″姪鎵嬨€備互涓嬫槸涓€缁勭揣瀵嗙浉鍏崇殑 KnowledgeUnit锛屽畠浠瀯鎴愪竴涓暀瀛﹀崟鍏冦€傝涓鸿繖涓暀瀛﹀崟鍏冪敓鎴愬悕绉般€佹憳瑕佸拰瀛︿範鐩爣銆?
+## 杈撳嚭瑕佹眰
+
+1. 鍗曞厓鍚嶇О锛氱畝娲併€佸噯纭€侀€傚悎浣滀负璇剧▼鐩綍鏍囬
+2. 鍗曞厓鎽樿锛氫竴娈佃瘽鎻忚堪鏈崟鍏冪殑鏍稿績鍐呭
+3. 瀛︿範鐩爣锛?-4 鏉★紝浠モ€滃瀹屾湰鍗曞厓鍚庯紝瀛︾敓鑳藉...鈥濆紑澶?
+```
+
+</details>
+
+<details>
+<summary><b>Knowledge Unit Naming User</b> (<code>knowledge_unit_naming_user</code>)</summary>
+
+```
+## 鏍稿績姒傚康
 
 {{ core_nodes }}
 
-## 支撑定义/方法
+## 鏀拺瀹氫箟/鏂规硶
 
 {{ support_nodes }}
 
-## 示例
-
+## 绀轰緥涓庣粌涔?
 {{ example_nodes }}
 ```
 
 </details>
 
 <details>
-<summary><b>Kg Theme Tree System</b> (<code>kg_theme_tree_system</code>)</summary>
+<summary><b>Knowledge Theme Tree System</b> (<code>knowledge_theme_tree_system</code>)</summary>
 
 ```
-你是一名课程结构设计助手。根据给定的教学单元列表，设计一个层级化的主题树结构。
+浣犳槸涓€鍚嶈绋嬬粨鏋勮璁″姪鎵嬨€傛牴鎹粰瀹氱殑鏁欏鍗曞厓鍒楄〃锛岃璁′竴涓眰绾у寲鐨勪富棰樻爲缁撴瀯銆?
+## 杈撳嚭瑕佹眰
 
-## 输出要求
-
-1. 生成 module（模块）和 chapter（章节）两级结构
-2. 每个 module 包含 1-5 个 chapter
-3. 每个 chapter 应该能容纳 1-5 个教学单元
-4. 结构应反映知识的逻辑组织关系
-5. 标题简洁、准确，适合作为课程目录
-6. 如果教学单元数量很少（≤3），可以只生成 1 个 module
-7. module 和 chapter 的 order 应反映推荐的学习顺序
+1. 鐢熸垚 module锛堟ā鍧楋級鍜?chapter锛堢珷鑺傦級涓ょ骇缁撴瀯
+2. 姣忎釜 module 鍖呭惈 1-5 涓?chapter
+3. 姣忎釜 chapter 搴旇兘瀹圭撼 1-5 涓暀瀛﹀崟鍏?4. 缁撴瀯搴斿弽鏄犵煡璇嗙殑閫昏緫缁勭粐鍏崇郴
+5. 鏍囬绠€娲併€佸噯纭紝閫傚悎浣滀负璇剧▼鐩綍
+6. 濡傛灉鏁欏鍗曞厓鏁伴噺寰堝皯锛?=3锛夛紝鍙互鍙敓鎴?1 涓?module
+7. module 鍜?chapter 鐨?order 搴斿弽鏄犳帹鑽愬涔犻『搴?
 ```
 
 </details>
 
 <details>
-<summary><b>Kg Theme Tree User</b> (<code>kg_theme_tree_user</code>)</summary>
+<summary><b>Knowledge Theme Tree User</b> (<code>knowledge_theme_tree_user</code>)</summary>
 
 ```
-## 学科：{{ subject }}
+## 瀛︾锛歿{ subject }}
 
-## 教学单元列表
+## 鏁欏鍗曞厓鍒楄〃
 
 {% for unit in units %}
-- {{ unit.name }}：{{ unit.summary }}
+- {{ unit.name }}锛歿{ unit.summary }}
 {% endfor %}
 
-请设计合理的 module/chapter 层级结构来组织这些教学单元。
+璇疯璁″悎鐞嗙殑 module/chapter 灞傜骇缁撴瀯鏉ョ粍缁囪繖浜涙暀瀛﹀崟鍏冦€?
 ```
 
 </details>

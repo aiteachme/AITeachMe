@@ -51,26 +51,26 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
-        "generate_plan_preview",
+        "bootstrap_plan_brief",
         trace.node(
             build_bootstrap_plan_brief_node(context=context),
-            name="generate_plan_preview",
+            name="bootstrap_plan_brief",
             timing_field="preview_ms",
         ),
     )
     workflow.add_node(
-        "probe_supporting_evidence",
+        "probe_evidence",
         trace.node(
             build_probe_evidence_node(context=context),
-            name="probe_supporting_evidence",
+            name="probe_evidence",
             timing_field="probe_ms",
         ),
     )
     workflow.add_node(
-        "compose_plan_contract",
+        "compose_build_plan",
         trace.node(
             build_compose_build_plan_node(context=context),
-            name="compose_plan_contract",
+            name="compose_build_plan",
             timing_field="compose_ms",
         ),
     )
@@ -91,20 +91,20 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         "summarize_material_digest",
         route_after_step,
-        {"continue": "generate_plan_preview", "fail": END},
+        {"continue": "bootstrap_plan_brief", "fail": END},
     )
     workflow.add_conditional_edges(
-        "generate_plan_preview",
+        "bootstrap_plan_brief",
         route_after_step,
-        {"continue": "probe_supporting_evidence", "fail": END},
+        {"continue": "probe_evidence", "fail": END},
     )
     workflow.add_conditional_edges(
-        "probe_supporting_evidence",
+        "probe_evidence",
         route_after_step,
-        {"continue": "compose_plan_contract", "fail": END},
+        {"continue": "compose_build_plan", "fail": END},
     )
     workflow.add_conditional_edges(
-        "compose_plan_contract",
+        "compose_build_plan",
         route_after_step,
         {"continue": "finalize_plan_contract", "fail": END},
     )
