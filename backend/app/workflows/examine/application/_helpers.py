@@ -1,4 +1,4 @@
-﻿"""Exam service shared helpers, DTOs and internal utilities."""
+"""Exam service shared helpers, DTOs and internal utilities."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from app.models import (
     QuestionType,
     is_paper_exam_mode,
     is_web_practice_mode,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
@@ -248,7 +248,7 @@ def _estimate_questions_per_unit(*, num_questions: int, unit_count: int, mode: s
 
 
 def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
-    return normalize_exam_mode(exam_mode)
+    return exam_mode_value(exam_mode)
 
 
 async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.Lock:
@@ -573,10 +573,10 @@ def _resolve_template_knowledge_points(
     for template in templates:
         if template.id is None:
             continue
-        refs = [item for item in _parse_json_list(template.node_refs_json) if isinstance(item, dict)]
+        refs = [item for item in _parse_json_list(template.knowledge_unit_refs_json) if isinstance(item, dict)]
         refs_by_template[int(template.id)] = refs
         for ref in refs:
-            raw_node_id = ref.get("knowledge_node_id")
+            raw_node_id = ref.get("knowledge_unit_id")
             if isinstance(raw_node_id, int) and raw_node_id > 0:
                 node_ids.add(raw_node_id)
 
@@ -587,7 +587,7 @@ def _resolve_template_knowledge_points(
     for template_id, refs in refs_by_template.items():
         names: list[str] = []
         for ref in refs:
-            raw_node_id = ref.get("knowledge_node_id")
+            raw_node_id = ref.get("knowledge_unit_id")
             if isinstance(raw_node_id, int) and raw_node_id in node_name_by_id:
                 names.append(node_name_by_id[raw_node_id])
         deduped = list(dict.fromkeys(name for name in names if name))

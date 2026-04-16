@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import json
@@ -28,7 +28,7 @@ from app.workflows.examine.context import (
     build_unit_exam_contexts,
 )
 from app.workflows.examine.question_builder import (
-    _build_node_refs_json,
+    _build_knowledge_unit_refs_json,
     _load_existing_template_counts,
     build_question_templates,
 )
@@ -55,7 +55,7 @@ def _make_unit_context(*, node_contexts: list[NodeExamContext]) -> UnitExamConte
     )
 
 
-def test_build_node_refs_json_falls_back_to_unit_node_and_limits_to_three() -> None:
+def test_build_knowledge_unit_refs_json_falls_back_to_unit_node_and_limits_to_three() -> None:
     context = _make_unit_context(
         node_contexts=[
             NodeExamContext(1, "鍑芥暟", "s1", "b1", "primary", 1.0),
@@ -66,7 +66,7 @@ def test_build_node_refs_json_falls_back_to_unit_node_and_limits_to_three() -> N
     )
 
     payload = json.loads(
-        _build_node_refs_json(
+        _build_knowledge_unit_refs_json(
             context,
             preferred_node_id=999,
             fallback_node_id=1,
@@ -76,20 +76,20 @@ def test_build_node_refs_json_falls_back_to_unit_node_and_limits_to_three() -> N
         )
     )
 
-    assert [item["knowledge_node_id"] for item in payload] == [1, 2, 3]
+    assert [item["knowledge_unit_id"] for item in payload] == [1, 2, 3]
     assert payload[0]["role"] == "primary"
     assert payload[1]["role"] == "related"
     assert payload[2]["role"] == "related"
     assert round(sum(float(item["coverage_weight"]) for item in payload), 4) == 1.0
 
 
-def test_build_node_refs_json_single_node_keeps_full_weight() -> None:
+def test_build_knowledge_unit_refs_json_single_node_keeps_full_weight() -> None:
     context = _make_unit_context(
         node_contexts=[NodeExamContext(7, "鐭╅樀", "s", "b", "primary", 1.0)]
     )
 
     payload = json.loads(
-        _build_node_refs_json(
+        _build_knowledge_unit_refs_json(
             context,
             preferred_node_id=7,
             fallback_node_id=7,
@@ -101,7 +101,7 @@ def test_build_node_refs_json_single_node_keeps_full_weight() -> None:
 
     assert payload == [
         {
-            "knowledge_node_id": 7,
+            "knowledge_unit_id": 7,
             "coverage_weight": 1.0,
             "role": "primary",
         }
@@ -114,7 +114,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
 ) -> None:
     node_1 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="鍑芥暟",
         normalized_name="鍑芥暟",
         summary="old summary",
@@ -124,7 +124,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     )
     node_2 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="瀵兼暟",
         normalized_name="瀵兼暟",
         summary="derivative summary",
@@ -134,7 +134,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     )
     node_3 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="绉垎",
         normalized_name="绉垎",
         summary="integral summary",
@@ -152,10 +152,10 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
         member_signature="unit-1",
         summary="unit summary",
         body_markdown="unit body",
-        member_node_refs_json=json.dumps(
+        member_knowledge_unit_refs_json=json.dumps(
             [
-                {"knowledge_node_id": node_1.id, "role": "primary", "score": 1.0},
-                {"knowledge_node_id": node_2.id, "role": "secondary", "score": 0.8},
+                {"knowledge_unit_id": node_1.id, "role": "primary", "score": 1.0},
+                {"knowledge_unit_id": node_2.id, "role": "secondary", "score": 0.8},
             ],
             ensure_ascii=False,
         ),
@@ -169,8 +169,8 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
         member_signature="unit-2",
         summary="unit2 summary",
         body_markdown="unit2 body",
-        member_node_refs_json=json.dumps(
-            [{"knowledge_node_id": node_3.id, "role": "primary", "score": 1.0}],
+        member_knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": node_3.id, "role": "primary", "score": 1.0}],
             ensure_ascii=False,
         ),
         status="active",
@@ -204,8 +204,8 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 answer_snapshot="A",
                 explanation_snapshot="鍑芥暟瑙ｉ噴",
                 teaching_unit_id=unit_1.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -220,8 +220,8 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 answer_snapshot="B",
                 explanation_snapshot="鏃犲叧鑺傜偣",
                 teaching_unit_id=unit_1.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -236,8 +236,8 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 answer_snapshot="C",
                 explanation_snapshot="绉垎瑙ｉ噴",
                 teaching_unit_id=unit_2.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -258,7 +258,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
 
             return node, KnowledgeRevision(
                 id=1,
-                node_id=node_id,
+                knowledge_unit_id=node_id,
                 revision_no=2,
                 title=node.canonical_name,
                 summary="revision summary",
@@ -448,7 +448,7 @@ def test_resolve_requested_unit_scope_keeps_explicit_invalid_units_empty(session
         subject="math",
         tree_version_id=curriculum.id,
         title="鍑芥暟涓婚",
-        node_type="theme",
+        knowledge_unit_type="theme",
         unit_refs_json=json.dumps([{"teaching_unit_id": math_unit.id}], ensure_ascii=False),
     )
     session.add(theme_node)
@@ -467,7 +467,7 @@ def test_resolve_requested_unit_scope_keeps_explicit_invalid_units_empty(session
 def test_question_build_workflow_passes_context_fields_to_builder(session, monkeypatch) -> None:
     node = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="鍑芥暟",
         normalized_name="鍑芥暟",
         summary="summary",
@@ -480,16 +480,16 @@ def test_question_build_workflow_passes_context_fields_to_builder(session, monke
         canonical_name="鍑芥暟鍗曞厓",
         normalized_name="鍑芥暟鍗曞厓",
         member_signature="workflow-unit",
-        member_node_refs_json=json.dumps(
-            [{"knowledge_node_id": 1, "role": "primary", "score": 1.0}],
+        member_knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": 1, "role": "primary", "score": 1.0}],
             ensure_ascii=False,
         ),
         status="active",
     )
     session.add_all([node, unit])
     session.commit()
-    unit.member_node_refs_json = json.dumps(
-        [{"knowledge_node_id": node.id, "role": "primary", "score": 1.0}],
+    unit.member_knowledge_unit_refs_json = json.dumps(
+        [{"knowledge_unit_id": node.id, "role": "primary", "score": 1.0}],
         ensure_ascii=False,
     )
     session.add(unit)

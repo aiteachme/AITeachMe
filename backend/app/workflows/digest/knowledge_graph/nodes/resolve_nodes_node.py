@@ -1,4 +1,4 @@
-﻿"""Knowledge graph resolve-nodes node."""
+"""Knowledge graph resolve-nodes node."""
 
 
 from __future__ import annotations
@@ -169,9 +169,9 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
         embedding = embedding_by_node_id.get(node.id, [])
         record = ExistingNodeRecord(node=node, summary=node.summary, embedding=embedding)
         record_by_node_id[node.id] = record
-        node_type = normalize_knowledge_unit_type(node.node_type)
-        index.normalized_map[(node_type, node.normalized_name)] = record
-        index.records_by_type.setdefault(node_type, []).append(record)
+        knowledge_unit_type = normalize_knowledge_unit_type(node.knowledge_unit_type)
+        index.normalized_map[(knowledge_unit_type, node.normalized_name)] = record
+        index.records_by_type.setdefault(knowledge_unit_type, []).append(record)
 
         for alias_entry in _load_alias_entries(node.aliases_json):
             if str(alias_entry.get("status", "active")) != "active":
@@ -179,7 +179,7 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
             normalized_alias = str(alias_entry.get("normalized_alias", "")).strip()
             if not normalized_alias:
                 continue
-            index.alias_map[(node_type, normalized_alias)] = record
+            index.alias_map[(knowledge_unit_type, normalized_alias)] = record
 
     for edge in edges:
         parent_id: int | None = None
@@ -202,7 +202,7 @@ async def _build_resolution_index(subject: str) -> ResolutionIndex:
             continue
 
         child_record = record_by_node_id.get(child_id)
-        if child_record is None or normalize_knowledge_unit_type(child_record.node.node_type) != child_type:
+        if child_record is None or normalize_knowledge_unit_type(child_record.node.knowledge_unit_type) != child_type:
             continue
         children_by_type = index.children_by_parent.setdefault(parent_id, {})
         children_by_type.setdefault(child_type, []).append(child_record)
@@ -379,24 +379,24 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
 
             for cluster_index, clustered_candidate in enumerate(clustered_candidates):
                 representative = clustered_candidate.representative
-                representative.node_type = normalize_knowledge_unit_type(representative.node_type)
+                representative.knowledge_unit_type = normalize_knowledge_unit_type(representative.knowledge_unit_type)
                 candidate_embedding = (
                     candidate_embeddings[cluster_index]
                     if cluster_index < len(candidate_embeddings)
                     else []
                 )
-                if representative.node_type in _PRIMARY_NODE_TYPES:
+                if representative.knowledge_unit_type in _PRIMARY_NODE_TYPES:
                     result = _match_primary_candidate(
                         representative.name,
-                        representative.node_type,
+                        representative.knowledge_unit_type,
                         clustered_candidate.merged_summary,
                         candidate_embedding,
                         resolution_index,
                     )
-                elif representative.node_type in _SECONDARY_NODE_TYPES:
+                elif representative.knowledge_unit_type in _SECONDARY_NODE_TYPES:
                     result = _match_secondary_candidate(
                         representative_name=representative.name,
-                        representative_type=representative.node_type,
+                        representative_type=representative.knowledge_unit_type,
                         parent_name=representative.parent_entity_name or representative.taxonomy_hint,
                         taxonomy_hint=representative.taxonomy_hint,
                         candidate_summary=clustered_candidate.merged_summary,
@@ -474,13 +474,13 @@ async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestStat
 
                 if result.decision == "no_match":
                     no_match_count += 1
-                    if representative.node_type in _SECONDARY_NODE_TYPES:
+                    if representative.knowledge_unit_type in _SECONDARY_NODE_TYPES:
                         secondary_no_match_count += 1
-                if result.decision != "no_match" or representative.node_type not in _SECONDARY_NODE_TYPES:
+                if result.decision != "no_match" or representative.knowledge_unit_type not in _SECONDARY_NODE_TYPES:
                     digest_logger.info(
                         "resolve_node_complete",
                         name=representative.name,
-                        node_type=representative.node_type,
+                        knowledge_unit_type=representative.knowledge_unit_type,
                         decision=result.decision,
                         matched_node_id=result.matched_node_id,
                     )

@@ -1,4 +1,4 @@
-﻿"""Question build workflow based on LangGraph.
+"""Question build workflow based on LangGraph.
 
 Reads DB: teaching units and graph-backed teaching context.
 Writes DB: question_template via downstream builder.
@@ -72,7 +72,7 @@ async def load_units_node(
                     continue
 
                 has_node_context = any(
-                    knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, membership.knowledge_node_id) is not None
+                    knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, membership.knowledge_unit_id) is not None
                     for membership in memberships
                 )
                 if not has_node_context:

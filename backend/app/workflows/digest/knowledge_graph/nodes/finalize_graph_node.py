@@ -1,4 +1,4 @@
-﻿"""Knowledge graph finalize node."""
+"""Knowledge graph finalize node."""
 
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ def _build_topic_snapshot(state: KnowledgeDigestState) -> TopicAnchorSnapshot:
     anchors: list[TopicAnchor] = []
     for cluster in state.get("clustered_candidates", [])[:80]:
         representative = cluster.representative
-        representative.node_type = normalize_knowledge_unit_type(representative.node_type)
-        if not representative.name or representative.node_type not in {"concept", "method"}:
+        representative.knowledge_unit_type = normalize_knowledge_unit_type(representative.knowledge_unit_type)
+        if not representative.name or representative.knowledge_unit_type not in {"concept", "method"}:
             continue
         chunk_uids = [
             chunk_id_to_chunk_uid[chunk_id]
@@ -36,7 +36,7 @@ def _build_topic_snapshot(state: KnowledgeDigestState) -> TopicAnchorSnapshot:
         anchors.append(
             TopicAnchor(
                 topic_name=representative.name,
-                node_type=representative.node_type,
+                knowledge_unit_type=representative.knowledge_unit_type,
                 confidence=min(0.95, 0.55 + 0.08 * len(cluster.members)),
                 chunk_uids=list(dict.fromkeys(chunk_uids)),
             )

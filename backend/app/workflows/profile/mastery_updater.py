@@ -1,4 +1,4 @@
-﻿"""Mastery updater driven by graded exam paper items."""
+"""Mastery updater driven by graded exam paper items."""
 
 from __future__ import annotations
 
@@ -222,9 +222,9 @@ def _merge_attempt_stats(
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _parse_node_links(node_refs_json: str) -> list[tuple[int, float]]:
+def _parse_knowledge_unit_links(knowledge_unit_refs_json: str) -> list[tuple[int, float]]:
     try:
-        payload = json.loads(node_refs_json or "[]")
+        payload = json.loads(knowledge_unit_refs_json or "[]")
     except json.JSONDecodeError:
         return []
     if not isinstance(payload, list):
@@ -234,7 +234,7 @@ def _parse_node_links(node_refs_json: str) -> list[tuple[int, float]]:
     for row in payload:
         if not isinstance(row, dict):
             continue
-        node_id = row.get("knowledge_node_id")
+        node_id = row.get("knowledge_unit_id")
         coverage_weight = row.get("coverage_weight", 0.0)
         if not isinstance(node_id, int):
             continue
@@ -258,7 +258,7 @@ def _upsert_state_from_attempts(
     user_id: str,
     subject: str,
     teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
+    knowledge_unit_id: int | None = None,
     attempts: list[_WeightedAttempt],
     now: datetime,
     source_exam_paper_id: int | None = None,
@@ -266,7 +266,7 @@ def _upsert_state_from_attempts(
 ) -> UserKnowledgeState | None:
     if not attempts:
         return None
-    if (teaching_unit_id is None) == (knowledge_node_id is None):
+    if (teaching_unit_id is None) == (knowledge_unit_id is None):
         raise ValueError("Exactly one mastery target must be provided.")
 
     existing = profile_repo.get_knowledge_state(
@@ -274,7 +274,7 @@ def _upsert_state_from_attempts(
         user_id=user_id,
         subject=subject,
         teaching_unit_id=teaching_unit_id,
-        knowledge_node_id=knowledge_node_id,
+        knowledge_unit_id=knowledge_unit_id,
     )
 
     current_exam_score = _compute_weighted_mastery_score(attempts=attempts, now=now)
@@ -302,7 +302,7 @@ def _upsert_state_from_attempts(
         user_id=user_id,
         subject=subject,
         teaching_unit_id=teaching_unit_id,
-        knowledge_node_id=knowledge_node_id,
+        knowledge_unit_id=knowledge_unit_id,
         mastery_score=mastery_score,
         confidence_score=confidence_score,
         stability_score=stability_score,
@@ -365,10 +365,10 @@ def update_mastery_from_exam(
         if item.teaching_unit_id is not None:
             unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
 
-        node_links = _parse_node_links(item.node_refs_json)
-        if not node_links and item.knowledge_node_id is not None:
-            node_links = [(item.knowledge_node_id, 1.0)]
-        for node_id, normalized_weight in node_links:
+        knowledge_unit_links = _parse_knowledge_unit_links(item.knowledge_unit_refs_json)
+        if not knowledge_unit_links and item.knowledge_unit_id is not None:
+            knowledge_unit_links = [(item.knowledge_unit_id, 1.0)]
+        for node_id, normalized_weight in knowledge_unit_links:
             node_attempts.setdefault(node_id, []).append(
                 _WeightedAttempt(
                     is_correct=item.is_correct,
@@ -405,7 +405,7 @@ def update_mastery_from_exam(
             session,
             user_id=exam_paper.user_id,
             subject=exam_paper.subject,
-            knowledge_node_id=target_id,
+            knowledge_unit_id=target_id,
             attempts=target_attempts,
             now=now,
             source_exam_paper_id=exam_paper_id,

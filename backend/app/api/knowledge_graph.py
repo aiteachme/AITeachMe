@@ -16,7 +16,6 @@ from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.knowledge import (
     ChunkContextRequest,
     ChunkContextResponse,
-    GraphNodesQueryRequest,
     FullGraphResponse,
     KnowledgePathResponse,
     KnowledgeUnitPathRequest,
@@ -27,6 +26,7 @@ from app.schemas.knowledge import (
     KnowledgeSubgraphResponse,
     KnowledgeUnitDetailRequest,
     KnowledgeUnitDetailResponse,
+    KnowledgeUnitsQueryRequest,
     KnowledgeUnitRelationsRequest,
     KnowledgeUnitResponse,
 )
@@ -44,7 +44,7 @@ router = APIRouter(tags=["knowledge"])
 )
 async def graph_knowledge_units(
     subject: str = Path(...),
-    body: GraphNodesQueryRequest = Body(default_factory=GraphNodesQueryRequest),
+    body: KnowledgeUnitsQueryRequest = Body(default_factory=KnowledgeUnitsQueryRequest),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[KnowledgeUnitResponse]]:
@@ -54,7 +54,7 @@ async def graph_knowledge_units(
     return ok_response(
         knowledge_module.list_knowledge_units(
             subject=normalized,
-            knowledge_unit_type=body.node_type,
+            knowledge_unit_type=body.knowledge_unit_type,
             page=body.page,
             size=body.size,
         )

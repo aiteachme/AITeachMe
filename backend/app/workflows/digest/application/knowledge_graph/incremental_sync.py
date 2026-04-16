@@ -171,7 +171,7 @@ def _upsert_unit(
     item: MarkdownKnowledgeUnit,
     build_revision_no: int,
 ) -> tuple[KnowledgeUnit, bool]:
-    node_type = normalize_knowledge_unit_type(item.node_type)
+    knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
     unit = _find_unit_by_anchor(session, subject=subject, anchor=item.anchor)
     if unit is None:
@@ -179,18 +179,18 @@ def _upsert_unit(
             session,
             subject,
             normalized_name,
-            node_type,
+            knowledge_unit_type,
         )
     created = unit is None
     if unit is None:
         unit = KnowledgeUnit(
             subject=subject,
-            node_type=node_type,
+            knowledge_unit_type=knowledge_unit_type,
             canonical_name=item.name,
             normalized_name=normalized_name,
             status="active",
         )
-    unit.node_type = node_type
+    unit.knowledge_unit_type = knowledge_unit_type
     unit.canonical_name = item.name
     unit.normalized_name = normalized_name
     unit.summary = item.summary or item.name
@@ -234,7 +234,7 @@ def _ensure_related_concept(
         session,
         KnowledgeUnit(
             subject=subject,
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name=name,
             normalized_name=normalized_name,
             summary=f"Markdown referenced concept: {name}.",

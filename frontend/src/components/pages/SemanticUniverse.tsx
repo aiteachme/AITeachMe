@@ -11,7 +11,7 @@ import {
 interface GraphNode {
   id: number;
   canonical_name: string;
-  node_type: string;
+  knowledge_unit_type: string;
   confidence: number;
 }
 
@@ -99,7 +99,7 @@ function buildAdjacency(nodes: GraphNode[], edges: GraphEdge[]) {
 
 function chooseClusterLabel(clusterNodes: GraphNode[], degreeByNode: Map<number, number>) {
   const sorted = [...clusterNodes].sort((left, right) => {
-    const priorityDelta = priorityOf(left.node_type) - priorityOf(right.node_type);
+    const priorityDelta = priorityOf(left.knowledge_unit_type) - priorityOf(right.knowledge_unit_type);
     if (priorityDelta !== 0) {
       return priorityDelta;
     }
@@ -176,7 +176,7 @@ function layoutUniverse(
     const clusterCenterX = centerX + Math.cos(clusterAngle) * clusterDistance;
     const clusterCenterY = centerY + Math.sin(clusterAngle) * clusterDistance;
     const orderedNodes = [...cluster.nodes].sort((left, right) => {
-      const priorityDelta = priorityOf(left.node_type) - priorityOf(right.node_type);
+      const priorityDelta = priorityOf(left.knowledge_unit_type) - priorityOf(right.knowledge_unit_type);
       if (priorityDelta !== 0) {
         return priorityDelta;
       }
@@ -234,12 +234,12 @@ export function SemanticUniverse({
   const nodes = overviewGraph?.nodes ?? [];
   const edges = overviewGraph?.edges ?? [];
   const availableTypes = useMemo(
-    () => Array.from(new Set(nodes.map((node) => node.node_type))).sort((left, right) => priorityOf(left) - priorityOf(right)),
+    () => Array.from(new Set(nodes.map((node) => node.knowledge_unit_type))).sort((left, right) => priorityOf(left) - priorityOf(right)),
     [nodes],
   );
 
   const visibleNodes = useMemo(
-    () => nodes.filter((node) => selectedTypes.has(node.node_type)),
+    () => nodes.filter((node) => selectedTypes.has(node.knowledge_unit_type)),
     [nodes, selectedTypes],
   );
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
@@ -368,10 +368,10 @@ export function SemanticUniverse({
             })}
 
             {positionedNodes.map((node) => {
-              const color = clusterColor(node.node_type);
+              const color = clusterColor(node.knowledge_unit_type);
               const active = activeNeighborSet.size === 0 || activeNeighborSet.has(node.id);
               const isFocused = focusedNodeId === node.id;
-              const radius = radiusFor(node.node_type);
+              const radius = radiusFor(node.knowledge_unit_type);
               return (
                 <g
                   key={node.id}
@@ -416,7 +416,7 @@ export function SemanticUniverse({
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                 <p className="text-sm font-medium text-slate-900">{activeNode.canonical_name}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-600">
-                  {activeNode.clusterLabel} · {activeNode.node_type} · 连接 {activeNode.degree} 个邻居
+                  {activeNode.clusterLabel} · {activeNode.knowledge_unit_type} · 连接 {activeNode.degree} 个邻居
                 </p>
               </div>
 

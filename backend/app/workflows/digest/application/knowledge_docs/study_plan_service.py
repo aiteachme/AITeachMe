@@ -62,14 +62,14 @@ def _write_progress(subject: str, progress: StudyPlanProgressStore) -> None:
 
 def _mastery_by_unit_id(session: Session, *, subject: str, user_id: str) -> dict[int, float]:
     return {
-        int(state.knowledge_node_id): float(state.mastery_score)
+        int(state.knowledge_unit_id): float(state.mastery_score)
         for state in profile_repo.list_knowledge_states(
             session,
             user_id=user_id,
             subject=subject,
             target_kind="node",
         )
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
 
 
@@ -157,7 +157,7 @@ def build_study_plan(session: Session, *, subject: str, user_id: str = "local") 
                 summary=summary,
                 duration_minutes=20 if digest_mode == "sprint" else 30,
                 depends_on_ids=depends_on_ids,
-                theme_titles=[unit.node_type],
+                theme_titles=[unit.knowledge_unit_type],
                 unit_ids=[unit_id],
                 doc_anchor=_anchorify(unit.canonical_name),
                 completed=bool(progress.completed_items.get(item_id, False)),

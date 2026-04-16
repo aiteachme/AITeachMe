@@ -14,7 +14,7 @@ from app.models import (
     RawFile,
     TaskStatus,
     is_paper_exam_mode,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories.files_repo import list_raw_files_by_uids
 from app.workflows.examine.context_helpers import (
@@ -293,7 +293,7 @@ def build_exam_style_profile(
     difficulty: str | None = None,
     exam_mode: str = "web_practice",
 ) -> ExamStyleProfile:
-    mode = normalize_exam_mode(exam_mode)
+    mode = exam_mode_value(exam_mode)
     sample_files = _load_sample_files(
         session,
         subject=subject,

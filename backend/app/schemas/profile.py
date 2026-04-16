@@ -1,4 +1,4 @@
-﻿"""Profile API schemas."""
+"""Profile API schemas."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class MasteryStateResponse(BaseModel):
     id: int
     target_kind: str
     teaching_unit_id: int | None = None
-    knowledge_node_id: int | None = None
+    knowledge_unit_id: int | None = None
     mastery_score: float
     confidence_score: float
     stability_score: float
@@ -31,9 +31,9 @@ class MasteryOverviewResponse(BaseModel):
     subject: str
     user_id: str
     weak_unit_count: int
-    weak_node_count: int
+    weak_knowledge_unit_count: int
     unit_states: list[MasteryStateResponse] = Field(default_factory=list)
-    node_states: list[MasteryStateResponse] = Field(default_factory=list)
+    knowledge_unit_states: list[MasteryStateResponse] = Field(default_factory=list)
     subject_profile: SubjectProfileSummary | None = None
     user_profile: UserProfileSummary | None = None
 
@@ -44,7 +44,7 @@ class ReviewTaskResponse(BaseModel):
     subject: str
     target_kind: str
     teaching_unit_id: int | None = None
-    knowledge_node_id: int | None = None
+    knowledge_unit_id: int | None = None
     priority: float
     scheduled_at: datetime | None = None
     status: str

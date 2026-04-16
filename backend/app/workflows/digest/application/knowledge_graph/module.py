@@ -42,21 +42,6 @@ class KnowledgeGraphModule:
     def build(self) -> KnowledgeGraphBuildService:
         return self._build
 
-    def list_nodes(
-        self,
-        *,
-        subject: str,
-        node_type: str | None = None,
-        page: int = 1,
-        size: int = 20,
-    ) -> PaginatedData[KnowledgeUnitResponse]:
-        return self._query.get_graph_nodes(
-            subject=subject,
-            node_type=node_type,
-            page=page,
-            size=size,
-        )
-
     def list_knowledge_units(
         self,
         *,
@@ -71,14 +56,6 @@ class KnowledgeGraphModule:
             page=page,
             size=size,
         )
-
-    def get_node_detail(
-        self,
-        *,
-        subject: str,
-        node_id: int,
-    ) -> KnowledgeUnitDetailResponse:
-        return self._query.get_graph_node_detail(subject=subject, node_id=node_id)
 
     def get_knowledge_unit_detail(
         self,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.api.exams import _pick_knowledge_units
@@ -11,7 +10,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories.knowledge import knowledge_relation_repo, knowledge_unit_repo
 from app.workflows.digest.application.knowledge_graph.incremental_sync import sync_markdown_knowledge_graph
-from app.workflows.digest.application.knowledge_graph.migration import migrate_legacy_knowledge_graph
+from app.workflows.digest.application.knowledge_graph.migration import normalize_knowledge_graph
 from app.workflows.digest.application.knowledge_graph.release import (
     enable_computable_textbook_rollout,
     get_release_snapshot,
@@ -72,31 +71,11 @@ An affine function preserves the linear-rate idea with an offset.
     assert report_2.elapsed_ms < 1000
 
 
-def test_p6_migration_normalizes_legacy_nodes_and_current_types(session: Session) -> None:
+def test_p6_migration_normalizes_current_knowledge_graph_types(session: Session) -> None:
     _subject(session, "legacy")
-    session.execute(
-        text(
-            """
-            CREATE TABLE knowledge_node (
-                id INTEGER PRIMARY KEY,
-                subject TEXT NOT NULL,
-                name TEXT NOT NULL,
-                type TEXT,
-                summary TEXT,
-                confidence REAL
-            )
-            """
-        )
-    )
-    session.execute(
-        text(
-            "INSERT INTO knowledge_node (id, subject, name, type, summary, confidence) "
-            "VALUES (10, 'legacy', 'Old Topic', 'topic', 'legacy summary', 0.7)"
-        )
-    )
     unit = KnowledgeUnit(
         subject="legacy",
-        node_type="topic",
+        knowledge_unit_type="topic",
         canonical_name="Current Topic",
         normalized_name="current_topic",
         summary="needs normalization",
@@ -110,7 +89,7 @@ def test_p6_migration_normalizes_legacy_nodes_and_current_types(session: Session
         session,
         KnowledgeUnit(
             subject="legacy",
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name="Other",
             normalized_name="other",
             status="active",
@@ -127,16 +106,12 @@ def test_p6_migration_normalizes_legacy_nodes_and_current_types(session: Session
     )
     session.commit()
 
-    report = migrate_legacy_knowledge_graph(session, subject="legacy")
+    report = normalize_knowledge_graph(session, subject="legacy")
 
-    assert report.copied_legacy_units == 1
     assert report.normalized_units >= 1
     assert report.normalized_edges == 1
-    migrated = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(session, "legacy", "oldtopic", "concept")
-    assert migrated is not None
-    assert migrated.status == "active"
     session.refresh(unit)
-    assert unit.node_type == "concept"
+    assert unit.knowledge_unit_type == "concept"
     assert unit.type_source == "manual"
 
 
@@ -146,7 +121,7 @@ def test_p6_release_snapshot_and_rollback_restore_previous_revision(session: Ses
         session,
         KnowledgeUnit(
             subject="release",
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name="Old Unit",
             normalized_name="old_unit",
             status="active",
@@ -157,7 +132,7 @@ def test_p6_release_snapshot_and_rollback_restore_previous_revision(session: Ses
         session,
         KnowledgeUnit(
             subject="release",
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name="New Unit",
             normalized_name="new_unit",
             status="deprecated",

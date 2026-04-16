@@ -24,10 +24,9 @@ from app.shared.infra.config import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
-from app.shared.infra.runtime import get_sqlite_db_path, log_legacy_runtime_path_warnings
+from app.shared.infra.runtime import get_sqlite_db_path
 from app.shared.infra.subject import (
     build_subject_vector_table_name,
-    get_legacy_vector_table_name,
     get_postgres_vector_ref,
 )
 from app.models.build_planner import BuildPlannerSession, BuildPlannerTurn, ConfirmedBuildPlan
@@ -80,7 +79,7 @@ _EXPECTED_SCHEMA_COLUMNS = {
     table.name: {column.name for column in table.columns}
     for table in _SCHEMA_TABLES
 }
-_ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence", "chunk_embeddings"}
+_ALLOWED_SQLITE_RUNTIME_TABLES = {"sqlite_sequence"}
 _ALLOWED_SQLITE_RUNTIME_PREFIXES = ("chunk_embeddings_",)
 
 
@@ -319,8 +318,6 @@ def quote_sqlite_identifier(identifier: str) -> str:
 
 def _normalize_postgres_vector_target(table_name: str) -> str:
     if table_name == get_postgres_vector_ref():
-        return table_name
-    if table_name == get_legacy_vector_table_name():
         return table_name
     if table_name.startswith("chunk_embeddings_"):
         return get_postgres_vector_ref()
@@ -562,13 +559,6 @@ def reset_subject_vec_table(engine: sa.Engine, *, subject: str, embedding_dim: i
     return table_name
 
 
-def get_legacy_vector_table_dim(engine: sa.Engine) -> int | None:
-    """Return the legacy global table dimension if present."""
-
-    with engine.begin() as connection:
-        return get_vector_table_dim(connection, get_legacy_vector_table_name())
-
-
 def _ensure_default_local_user(engine) -> None:
     with Session(engine, expire_on_commit=False) as session:
         user = session.get(User, "local")
@@ -599,7 +589,6 @@ def init_db() -> None:
 def _init_local_sqlite_db(settings) -> None:
     """本地 SQLite 初始化（原有逻辑）。"""
 
-    log_legacy_runtime_path_warnings()
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)

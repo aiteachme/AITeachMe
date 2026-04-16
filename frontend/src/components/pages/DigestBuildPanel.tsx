@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -42,7 +42,7 @@ interface BuildSampleCard {
 
 interface BuildPreviewNode {
   name: string;
-  node_type: string;
+  knowledge_unit_type: string;
 }
 
 interface KnowledgeBuildPreview {
@@ -469,10 +469,10 @@ export function DigestBuildProgress({
           <div className="mt-2 flex flex-wrap gap-2">
             {previewNodes.slice(0, 6).map((node) => (
               <span
-                key={`${node.node_type}-${node.name}`}
+                key={`${node.knowledge_unit_type}-${node.name}`}
                 className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
               >
-                {node.node_type}: {node.name}
+                {node.knowledge_unit_type}: {node.name}
               </span>
             ))}
           </div>

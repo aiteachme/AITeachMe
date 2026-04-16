@@ -12,5 +12,5 @@
 export interface BuildPreviewNodeResponse {
   name: string;
   /** Standard KnowledgeUnit type */
-  node_type: string;
+  knowledge_unit_type: string;
 }

@@ -1,4 +1,4 @@
-﻿"""Models for unified digest coordination."""
+"""Models for unified digest coordination."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class TopicAnchor(BaseModel):
     """Bottom-up topic anchor shared from graph lane to docgen lane."""
 
     topic_name: str
-    node_type: str = "concept"
+    knowledge_unit_type: str = "concept"
     confidence: float = 1.0
     chunk_uids: list[str] = Field(default_factory=list)
 

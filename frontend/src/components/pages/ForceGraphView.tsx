@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
@@ -38,7 +38,7 @@ const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "鍏朵粬" };
 interface GraphNode extends d3.SimulationNodeDatum {
   id: number;
   canonical_name: string;
-  node_type: string;
+  knowledge_unit_type: string;
   confidence: number;
 }
 
@@ -84,7 +84,7 @@ function NodeDetailSidebar({
 
   if (!data) return null;
 
-  const color = NODE_COLORS[data.node_type] ?? DEFAULT_COLOR;
+  const color = NODE_COLORS[data.knowledge_unit_type] ?? DEFAULT_COLOR;
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
@@ -213,8 +213,8 @@ export function ForceGraphView({
     const typeSet = new Set<string>();
 
     const nodes: GraphNode[] = (rawData.nodes ?? []).map((n: any) => {
-      typeSet.add(n.node_type);
-      return { id: n.id, canonical_name: n.canonical_name, node_type: n.node_type, confidence: n.confidence };
+      typeSet.add(n.knowledge_unit_type);
+      return { id: n.id, canonical_name: n.canonical_name, knowledge_unit_type: n.knowledge_unit_type, confidence: n.confidence };
     });
 
     const links: GraphLink[] = (rawData.edges ?? [])
@@ -378,7 +378,7 @@ export function ForceGraphView({
     // Node circles 鈥?clean, flat design
     nodeG.append("circle")
       .attr("r", 10)
-      .attr("fill", (d) => (NODE_COLORS[d.node_type] ?? DEFAULT_COLOR).fill)
+      .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
       .attr("stroke", "#fff")
       .attr("stroke-width", 2.5);
 

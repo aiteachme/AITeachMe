@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import json
@@ -58,7 +58,7 @@ def _create_curriculum_graph(session):
         subject="math",
         tree_version_id=curriculum.id,
         title="root",
-        node_type="theme",
+        knowledge_unit_type="theme",
         unit_refs_json=json.dumps(
             [
                 {"teaching_unit_id": unit_1.id},
@@ -208,14 +208,14 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
     )
     node_1 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="鍑芥暟",
         normalized_name="鍑芥暟",
         status="active",
     )
     node_2 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="瀵兼暟",
         normalized_name="瀵兼暟",
         status="active",
@@ -241,8 +241,8 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
         answer_snapshot="A",
         explanation_snapshot="exp",
         teaching_unit_id=unit.id,
-        node_refs_json=json.dumps(
-            [{"knowledge_node_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
+        knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
             ensure_ascii=False,
         ),
         difficulty=Difficulty.MEDIUM.value,
@@ -264,13 +264,13 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
         session,
         user_id="local",
         subject="math",
-        knowledge_node_id=node_1.id,
+        knowledge_unit_id=node_1.id,
     )
     node_2_state = profile_repo.get_knowledge_state(
         session,
         user_id="local",
         subject="math",
-        knowledge_node_id=node_2.id,
+        knowledge_unit_id=node_2.id,
     )
 
     assert result.states_updated == 2
@@ -306,7 +306,7 @@ def test_grade_paper_raises_when_short_answer_llm_grading_fails(session) -> None
         answer_snapshot="A derivative is a rate of change.",
         explanation_snapshot="exp",
         teaching_unit_id=unit.id,
-        node_refs_json=json.dumps([], ensure_ascii=False),
+        knowledge_unit_refs_json=json.dumps([], ensure_ascii=False),
         difficulty=Difficulty.MEDIUM.value,
         question_type="short_answer",
         answer_content="It is something else.",

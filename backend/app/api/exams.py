@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_slug
 from app.api.openapi import build_error_responses
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, normalize_exam_mode
+from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.subject import Subject
 from app.repositories import exams_repo
@@ -74,7 +74,7 @@ def _pick_knowledge_units(
             for unit in units
             if focus in unit.canonical_name.casefold()
             or focus in unit.summary.casefold()
-            or focus in unit.node_type.casefold()
+            or focus in unit.knowledge_unit_type.casefold()
         ]
         if focused:
             units = focused
@@ -94,7 +94,7 @@ def _template_for_unit(
     existing = session.exec(
         select(QuestionTemplate).where(
             QuestionTemplate.subject == subject,
-            QuestionTemplate.knowledge_node_id == unit.id,
+            QuestionTemplate.knowledge_unit_id == unit.id,
             QuestionTemplate.stem_hash == stem_hash,
             QuestionTemplate.status == "active",
         )
@@ -104,15 +104,15 @@ def _template_for_unit(
     template = QuestionTemplate(
         subject=subject,
         teaching_unit_id=None,
-        knowledge_node_id=unit.id,
+        knowledge_unit_id=unit.id,
         question_type="short_answer",
         difficulty=difficulty,
         stem=stem,
         stem_hash=stem_hash,
         answer=answer,
         explanation=f"Review the definition and usage of {unit.canonical_name}.",
-        node_refs_json=json.dumps(
-            [{"knowledge_node_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
+        knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
             ensure_ascii=False,
         ),
     )
@@ -131,15 +131,15 @@ def _paper_item_response(item: ExamPaperItem) -> ExamPaperItemResponse:
         correct_answer=item.answer_snapshot,
         explanation=item.explanation_snapshot,
         teaching_unit_id=item.teaching_unit_id or 0,
-        node_links=[
+        knowledge_unit_links=[
             {
-                "knowledge_node_id": int(ref.get("knowledge_node_id", 0) or 0),
-                "knowledge_node_name": "",
+                "knowledge_unit_id": int(ref.get("knowledge_unit_id", 0) or 0),
+                "knowledge_unit_name": "",
                 "coverage_weight": float(ref.get("coverage_weight", 1.0) or 1.0),
                 "role": str(ref.get("role", "primary")),
                 "mastery_score": None,
             }
-            for ref in _json_list(item.node_refs_json)
+            for ref in _json_list(item.knowledge_unit_refs_json)
         ],
         user_answer=item.answer_content or None,
         is_correct=item.is_correct,
@@ -246,7 +246,7 @@ async def generate_exam(
             status_code=409,
         )
 
-    mode = normalize_exam_mode(body.exam_mode)
+    mode = exam_mode_value(body.exam_mode)
     difficulty = body.difficulty or "medium"
     paper = exams_repo.create_exam_paper(
         session,
@@ -280,9 +280,9 @@ async def generate_exam(
                 options_snapshot_json=template.options_json,
                 answer_snapshot=template.answer,
                 explanation_snapshot=template.explanation,
-                knowledge_node_id=unit.id,
+                knowledge_unit_id=unit.id,
                 teaching_unit_id=None,
-                node_refs_json=template.node_refs_json,
+                knowledge_unit_refs_json=template.knowledge_unit_refs_json,
                 difficulty=template.difficulty,
                 question_type=template.question_type,
                 score=1.0,

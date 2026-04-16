@@ -1,4 +1,4 @@
-﻿"""Mutation helpers for digest graph workflow persistence."""
+"""Mutation helpers for digest graph workflow persistence."""
 
 from __future__ import annotations
 
@@ -37,10 +37,10 @@ def create_new_knowledge_unit(
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
     representative = clustered_candidate.representative
-    node_type = normalize_knowledge_unit_type(representative.node_type)
+    knowledge_unit_type = normalize_knowledge_unit_type(representative.knowledge_unit_type)
     knowledge_unit = KnowledgeUnit(
         subject=subject,
-        node_type=node_type,
+        knowledge_unit_type=knowledge_unit_type,
         canonical_name=representative.name,
         normalized_name=normalize_name(representative.name),
         status="pending",
@@ -50,7 +50,7 @@ def create_new_knowledge_unit(
     knowledge_unit = knowledge_unit_repo.create_knowledge_unit(session, knowledge_unit, auto_commit=auto_commit)
 
     revision = KnowledgeRevision(
-        node_id=knowledge_unit.id,  # type: ignore[arg-type]
+        knowledge_unit_id=knowledge_unit.id,  # type: ignore[arg-type]
         revision_no=1,
         title=representative.name,
         summary=clustered_candidate.merged_summary,
@@ -63,7 +63,7 @@ def create_new_knowledge_unit(
         session.refresh(knowledge_unit)
 
     alias = KnowledgeAlias(
-        node_id=knowledge_unit.id,  # type: ignore[arg-type]
+        knowledge_unit_id=knowledge_unit.id,  # type: ignore[arg-type]
         alias=representative.name,
         normalized_alias=normalize_name(representative.name),
         source="llm",
@@ -95,7 +95,7 @@ def create_updated_revision(
 
     knowledge_unit_repo.deactivate_old_knowledge_unit_revisions(session, node_id)
     revision = KnowledgeRevision(
-        node_id=node_id,
+        knowledge_unit_id=node_id,
         revision_no=current_revision.revision_no + 1,
         title=current_revision.title,
         summary=merged_summary,
@@ -126,7 +126,7 @@ def create_alias_if_new(
     knowledge_unit_repo.create_alias(
         session,
         KnowledgeAlias(
-            node_id=node_id,
+            knowledge_unit_id=node_id,
             alias=alias_name,
             normalized_alias=normalized_alias,
             source="llm",

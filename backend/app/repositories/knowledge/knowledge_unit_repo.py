@@ -1,4 +1,4 @@
-﻿"""KnowledgeUnit repository helpers."""
+"""KnowledgeUnit repository helpers."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def create_knowledge_unit(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
-    knowledge_unit.node_type = normalize_knowledge_unit_type(knowledge_unit.node_type)
+    knowledge_unit.knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit.knowledge_unit_type)
     knowledge_unit.type_source = normalize_type_source(getattr(knowledge_unit, "type_source", None))
     knowledge_unit.type_confidence = max(0.0, min(1.0, float(knowledge_unit.type_confidence)))
     session.add(knowledge_unit)
@@ -62,7 +62,7 @@ def find_knowledge_unit_by_normalized_name(
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
         KnowledgeUnit.normalized_name == normalized_name,
-        KnowledgeUnit.node_type == knowledge_unit_type,
+        KnowledgeUnit.knowledge_unit_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(allowed),
     )
     return session.exec(stmt).first()
@@ -77,7 +77,7 @@ def find_knowledge_units_by_alias(
     knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
-        KnowledgeUnit.node_type == knowledge_unit_type,
+        KnowledgeUnit.knowledge_unit_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(["active", "pending"]),
     )
     rows = list(session.exec(stmt).all())
@@ -106,8 +106,8 @@ def list_knowledge_units_by_subject(
         count_base = count_base.where(KnowledgeUnit.status == status)
     if knowledge_unit_type is not None:
         knowledge_unit_type = normalize_knowledge_unit_type(knowledge_unit_type)
-        base = base.where(KnowledgeUnit.node_type == knowledge_unit_type)
-        count_base = count_base.where(KnowledgeUnit.node_type == knowledge_unit_type)
+        base = base.where(KnowledgeUnit.knowledge_unit_type == knowledge_unit_type)
+        count_base = count_base.where(KnowledgeUnit.knowledge_unit_type == knowledge_unit_type)
 
     total: int = session.exec(count_base).one()
     rows = list(session.exec(base.offset(offset).limit(limit).order_by(KnowledgeUnit.id)).all())
@@ -123,7 +123,7 @@ def get_knowledge_unit_with_current_revision(
         return None
     revision = KnowledgeRevision(
         id=knowledge_unit.current_revision_id,
-        node_id=knowledge_unit.id or 0,
+        knowledge_unit_id=knowledge_unit.id or 0,
         revision_no=1,
         title=knowledge_unit.canonical_name,
         summary=knowledge_unit.summary,
@@ -141,7 +141,7 @@ def create_alias(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeAlias:
-    node = session.get(KnowledgeUnit, alias.node_id)
+    node = session.get(KnowledgeUnit, alias.knowledge_unit_id)
     if node is None:
         return alias
 
@@ -182,7 +182,7 @@ def find_alias(session: Session, subject: str, normalized_alias: str) -> list[Kn
             matched.append(
                 KnowledgeAlias(
                     id=synthetic_id,
-                    node_id=node.id or 0,
+                    knowledge_unit_id=node.id or 0,
                     alias=str(alias.get("alias", "")),
                     normalized_alias=str(alias.get("normalized_alias", "")),
                     language=str(alias.get("language", "zh")),
@@ -206,7 +206,7 @@ def list_aliases_by_knowledge_unit(session: Session, knowledge_unit_id: int) -> 
         items.append(
             KnowledgeAlias(
                 id=index,
-                node_id=knowledge_unit_id,
+                knowledge_unit_id=knowledge_unit_id,
                 alias=str(alias.get("alias", "")),
                 normalized_alias=str(alias.get("normalized_alias", "")),
                 language=str(alias.get("language", "zh")),
@@ -225,7 +225,7 @@ def create_knowledge_revision(
     *,
     auto_commit: bool = True,
 ) -> KnowledgeRevision:
-    node = session.get(KnowledgeUnit, revision.node_id)
+    node = session.get(KnowledgeUnit, revision.knowledge_unit_id)
     if node is None:
         return revision
 

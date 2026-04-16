@@ -1,4 +1,4 @@
-﻿"""Knowledge graph query use-cases."""
+"""Knowledge graph query use-cases."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class KnowledgeGraphQueryService:
         return KnowledgeUnitResponse(
             id=knowledge_unit.id,  # type: ignore[arg-type]
             subject=knowledge_unit.subject,
-            node_type=knowledge_unit.node_type,
+            knowledge_unit_type=knowledge_unit.knowledge_unit_type,
             canonical_name=knowledge_unit.canonical_name,
             status=knowledge_unit.status,
             confidence=knowledge_unit.confidence,
@@ -68,10 +68,10 @@ class KnowledgeGraphQueryService:
             subject=edge.subject,
             source_node_id=edge.source_node_id,
             source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
-            source_node_type=source.node_type if source else "unknown",
+            source_node_type=source.knowledge_unit_type if source else "unknown",
             target_node_id=edge.target_node_id,
             target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
-            target_node_type=target.node_type if target else "unknown",
+            target_node_type=target.knowledge_unit_type if target else "unknown",
             edge_type=edge.edge_type,
             description=edge.description,
             weight=edge.weight,
@@ -96,22 +96,6 @@ class KnowledgeGraphQueryService:
         )
         items = [self._to_unit_response(knowledge_unit) for knowledge_unit in knowledge_units]
         return build_paginated_data(items=items, page=page, size=size, total=total)
-
-    def get_graph_nodes(
-        self,
-        *,
-        subject: str,
-        node_type: str | None = None,
-        page: int = 1,
-        size: int = 20,
-    ) -> PaginatedData[KnowledgeUnitResponse]:
-        """Backward-compatible wrapper for list_knowledge_units."""
-        return self.list_knowledge_units(
-            subject=subject,
-            knowledge_unit_type=node_type,
-            page=page,
-            size=size,
-        )
 
     def get_knowledge_unit_detail(
         self,
@@ -172,7 +156,7 @@ class KnowledgeGraphQueryService:
 
             other_node = self._session.get(KnowledgeUnit, other_id)
             other_name = other_node.canonical_name if other_node else f"node#{other_id}"
-            other_type = other_node.node_type if other_node else "unknown"
+            other_type = other_node.knowledge_unit_type if other_node else "unknown"
             incident_edges.append(
                 IncidentEdgeItem(
                     id=edge.id,  # type: ignore[arg-type]
@@ -188,7 +172,7 @@ class KnowledgeGraphQueryService:
         return KnowledgeUnitDetailResponse(
             id=node.id,  # type: ignore[arg-type]
             subject=node.subject,
-            node_type=node.node_type,
+            knowledge_unit_type=node.knowledge_unit_type,
             canonical_name=node.canonical_name,
             normalized_name=node.normalized_name,
             status=node.status,
@@ -202,15 +186,6 @@ class KnowledgeGraphQueryService:
             created_at=node.created_at,
             updated_at=node.updated_at,
         )
-
-    def get_graph_node_detail(
-        self,
-        *,
-        subject: str,
-        node_id: int,
-    ) -> KnowledgeUnitDetailResponse:
-        """Backward-compatible wrapper for get_knowledge_unit_detail."""
-        return self.get_knowledge_unit_detail(subject=subject, knowledge_unit_id=node_id)
 
     def get_full_graph(
         self,
@@ -353,7 +328,7 @@ class KnowledgeGraphQueryService:
                 and (
                     topic_text in unit.canonical_name.casefold()
                     or topic_text in unit.summary.casefold()
-                    or topic_text in unit.node_type.casefold()
+                    or topic_text in unit.knowledge_unit_type.casefold()
                 )
             )
         if not center_ids:
@@ -475,22 +450,6 @@ class KnowledgeGraphQueryService:
         )
 
 
-def get_graph_nodes(
-    session: Session,
-    *,
-    subject: str,
-    node_type: str | None = None,
-    page: int = 1,
-    size: int = 20,
-) -> PaginatedData[KnowledgeUnitResponse]:
-    return KnowledgeGraphQueryService(session).get_graph_nodes(
-        subject=subject,
-        node_type=node_type,
-        page=page,
-        size=size,
-    )
-
-
 def get_knowledge_units(
     session: Session,
     *,
@@ -504,18 +463,6 @@ def get_knowledge_units(
         knowledge_unit_type=knowledge_unit_type,
         page=page,
         size=size,
-    )
-
-
-def get_graph_node_detail(
-    session: Session,
-    *,
-    subject: str,
-    node_id: int,
-) -> KnowledgeUnitDetailResponse:
-    return KnowledgeGraphQueryService(session).get_graph_node_detail(
-        subject=subject,
-        node_id=node_id,
     )
 
 
@@ -627,8 +574,6 @@ __all__ = [
     "KnowledgeGraphQueryService",
     "get_chunk_context",
     "get_full_graph",
-    "get_graph_node_detail",
-    "get_graph_nodes",
     "get_focus_subgraph",
     "get_knowledge_unit_detail",
     "get_knowledge_unit_relations",
@@ -636,4 +581,3 @@ __all__ = [
     "find_knowledge_path",
     "explain_relation_path",
 ]
-

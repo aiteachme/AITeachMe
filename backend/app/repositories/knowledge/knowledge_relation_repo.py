@@ -1,4 +1,4 @@
-﻿"""Knowledge graph relation repository helpers."""
+"""Knowledge graph relation repository helpers."""
 
 from __future__ import annotations
 
@@ -37,12 +37,12 @@ def create_knowledge_edge(
     target_unit = session.get(KnowledgeUnit, edge.target_node_id)
     if source_unit is not None and target_unit is not None and not validate_relation_direction(
         edge_type=edge.edge_type,
-        source_type=source_unit.node_type,
-        target_type=target_unit.node_type,
+        source_type=source_unit.knowledge_unit_type,
+        target_type=target_unit.knowledge_unit_type,
     ):
         raise ValueError(
             "invalid knowledge edge direction: "
-            f"{edge.edge_type} {source_unit.node_type}->{target_unit.node_type}"
+            f"{edge.edge_type} {source_unit.knowledge_unit_type}->{target_unit.knowledge_unit_type}"
         )
     session.add(edge)
     if auto_commit:

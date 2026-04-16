@@ -19,7 +19,7 @@ def _unit(session: Session, *, subject: str, name: str, summary: str = "") -> Kn
         session,
         KnowledgeUnit(
             subject=subject,
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name=name,
             normalized_name=name.casefold().replace(" ", "_"),
             summary=summary or name,
@@ -37,15 +37,15 @@ def test_p4_exam_grading_updates_knowledge_unit_mastery_and_reviews(session: Ses
         session,
         QuestionTemplate(
             subject=subject,
-            knowledge_node_id=unit.id,
+            knowledge_unit_id=unit.id,
             question_type="short_answer",
             difficulty="medium",
             stem="Explain Linear Function.",
             stem_hash="linear-function",
             answer="constant rate of change",
             explanation="A linear function has a constant rate of change.",
-            node_refs_json=json.dumps(
-                [{"knowledge_node_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
+            knowledge_unit_refs_json=json.dumps(
+                [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0, "role": "primary"}],
                 ensure_ascii=False,
             ),
         ),
@@ -70,8 +70,8 @@ def test_p4_exam_grading_updates_knowledge_unit_mastery_and_reviews(session: Ses
                 stem_snapshot=template.stem,
                 answer_snapshot=template.answer,
                 explanation_snapshot=template.explanation,
-                knowledge_node_id=unit.id,
-                node_refs_json=template.node_refs_json,
+                knowledge_unit_id=unit.id,
+                knowledge_unit_refs_json=template.knowledge_unit_refs_json,
                 difficulty=template.difficulty,
                 question_type=template.question_type,
                 answer_content="wrong answer",
@@ -87,7 +87,7 @@ def test_p4_exam_grading_updates_knowledge_unit_mastery_and_reviews(session: Ses
         session,
         user_id="local",
         subject=subject,
-        knowledge_node_id=unit.id,
+        knowledge_unit_id=unit.id,
     )
     assert state is not None
     assert state.mastery_score == 0.0
@@ -114,7 +114,7 @@ def test_p4_study_plan_uses_prerequisite_graph_and_mastery(session: Session) -> 
         state=UserKnowledgeState(
             user_id="local",
             subject=subject,
-            knowledge_node_id=target.id,
+            knowledge_unit_id=target.id,
             mastery_score=0.4,
             confidence_score=0.2,
             stability_score=0.1,

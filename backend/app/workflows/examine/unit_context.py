@@ -1,4 +1,4 @@
-﻿"""Unit exam context builder and batch DB loaders."""
+"""Unit exam context builder and batch DB loaders."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.models import (
     KnowledgeUnit,
     TeachingUnit,
     UserKnowledgeState,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories import profile_repo
 from app.repositories.knowledge import curriculum_repo, knowledge_unit_repo
@@ -147,10 +147,10 @@ def _load_unit_memberships(
             continue
 
         memberships: list[tuple[int, str, float]] = []
-        for item in _parse_json_list(unit.member_node_refs_json):
+        for item in _parse_json_list(unit.member_knowledge_unit_refs_json):
             if not isinstance(item, dict):
                 continue
-            raw_node_id = item.get("knowledge_node_id")
+            raw_node_id = item.get("knowledge_unit_id")
             if not isinstance(raw_node_id, int) or raw_node_id <= 0:
                 continue
             memberships.append(
@@ -164,7 +164,7 @@ def _load_unit_memberships(
     return memberships_by_unit
 
 
-def _load_knowledge_nodes_by_id(
+def _load_knowledge_units_by_id(
     session: Session,
     *,
     node_ids: list[int],
@@ -206,7 +206,7 @@ def _load_unit_state_map(
                 UserKnowledgeState.user_id == user_id,
                 UserKnowledgeState.subject == subject,
                 UserKnowledgeState.teaching_unit_id.in_(unique_ids),
-                UserKnowledgeState.knowledge_node_id.is_(None),
+                UserKnowledgeState.knowledge_unit_id.is_(None),
             )
         ).all()
     )
@@ -233,15 +233,15 @@ def _load_node_state_map(
             select(UserKnowledgeState).where(
                 UserKnowledgeState.user_id == user_id,
                 UserKnowledgeState.subject == subject,
-                UserKnowledgeState.knowledge_node_id.in_(unique_ids),
+                UserKnowledgeState.knowledge_unit_id.in_(unique_ids),
                 UserKnowledgeState.teaching_unit_id.is_(None),
             )
         ).all()
     )
     return {
-        int(state.knowledge_node_id): state
+        int(state.knowledge_unit_id): state
         for state in rows
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
 
 
@@ -293,7 +293,7 @@ def build_unit_exam_contexts(
     focus_prompt: str | None = None,
     style_profile: ExamStyleProfile | None = None,
 ) -> list[UnitExamContext]:
-    mode = normalize_exam_mode(exam_mode)
+    mode = exam_mode_value(exam_mode)
     doc_text = read_knowledge_doc_text(subject)
     style = style_profile or build_exam_style_profile(
         session,
@@ -304,15 +304,15 @@ def build_unit_exam_contexts(
         exam_mode=mode,
     )
     weak_node_ids = {
-        int(state.knowledge_node_id)
+        int(state.knowledge_unit_id)
         for state in profile_repo.list_weak_knowledge_states(
             session,
             user_id=user_id,
             subject=subject,
             threshold=0.8,
-            target_kind="node",
+            target_kind="knowledge_unit",
         )
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
     units_by_id = _load_teaching_units_by_id(session, unit_ids=unit_ids)
     ordered_units = [
@@ -326,7 +326,7 @@ def build_unit_exam_contexts(
         for memberships in memberships_by_unit.values()
         for node_id, _, _ in memberships
     ]
-    node_by_id = _load_knowledge_nodes_by_id(session, node_ids=all_node_ids)
+    node_by_id = _load_knowledge_units_by_id(session, node_ids=all_node_ids)
     node_content_by_id = _load_node_content_map(session, node_ids=all_node_ids)
     unit_state_by_id = _load_unit_state_map(
         session,
@@ -368,7 +368,7 @@ def build_unit_exam_contexts(
             user_id=user_id,
             subject=subject,
             teaching_unit_id=int(unit.id),
-            knowledge_node_ids=[item.node_id for item in node_contexts],
+            knowledge_unit_ids=[item.node_id for item in node_contexts],
             limit=3,
         )
         contexts.append(

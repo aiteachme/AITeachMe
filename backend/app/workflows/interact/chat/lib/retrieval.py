@@ -192,14 +192,14 @@ def _tokens(text: str) -> list[str]:
 
 def _mastery_by_unit_id(session: Session, *, subject: str, user_id: str) -> dict[int, float]:
     return {
-        int(state.knowledge_node_id): float(state.mastery_score)
+        int(state.knowledge_unit_id): float(state.mastery_score)
         for state in profile_repo.list_knowledge_states(
             session,
             user_id=user_id,
             subject=subject,
             target_kind="node",
         )
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
 
 
@@ -238,7 +238,7 @@ def _context_from_unit(
         low_relevance=score < 0.45,
         knowledge_unit_id=unit.id,
         knowledge_unit_name=unit.canonical_name,
-        knowledge_unit_type=unit.node_type,
+        knowledge_unit_type=unit.knowledge_unit_type,
         relation_path=relation_path,
         evidence_quote=str(evidence["quote_text"] or "") or None,
         mastery_score=mastery_score,

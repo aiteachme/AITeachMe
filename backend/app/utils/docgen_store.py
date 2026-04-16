@@ -1,4 +1,4 @@
-﻿"""Storage helpers for knowledge-doc build artifacts."""
+"""Storage helpers for knowledge-doc build artifacts."""
 
 from __future__ import annotations
 
@@ -139,14 +139,14 @@ def _build_sample_cards(
 
     for sample in sample_nodes[:3]:
         name = str(sample.get("name", "")).strip()
-        node_type = str(sample.get("type", "concept")).strip() or "concept"
+        knowledge_unit_type = str(sample.get("type", "concept")).strip() or "concept"
         if not name:
             continue
         cards.append(
             {
                 "title": name,
-                "card_type": node_type.lower(),
-                "summary": f"这是当前构建过程中抽取到的 {node_type.lower()} 预览。",
+                "card_type": knowledge_unit_type.lower(),
+                "summary": f"这是当前构建过程中抽取到的 {knowledge_unit_type.lower()} 预览。",
             }
         )
     return cards[:4]

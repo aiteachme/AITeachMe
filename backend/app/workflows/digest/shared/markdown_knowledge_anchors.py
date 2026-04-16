@@ -52,7 +52,7 @@ class MarkdownKnowledgeUnit:
 
     anchor: str
     name: str
-    node_type: str = "concept"
+    knowledge_unit_type: str = "concept"
     summary: str = ""
     prerequisites: list[str] = field(default_factory=list)
     related: list[str] = field(default_factory=list)
@@ -160,13 +160,13 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
             continue
 
         tags = _extract_tags(line)
-        node_type = _infer_node_type(line, tags.get("type", ""))
+        knowledge_unit_type = _infer_node_type(line, tags.get("type", ""))
         summary = _build_summary(lines, index)
         units.append(
             MarkdownKnowledgeUnit(
                 anchor=anchor_match.group("anchor"),
                 name=name,
-                node_type=node_type,
+                knowledge_unit_type=knowledge_unit_type,
                 summary=summary,
                 prerequisites=_split_tag_values(tags.get("prerequisite", "")),
                 related=_split_tag_values(tags.get("related", "")),

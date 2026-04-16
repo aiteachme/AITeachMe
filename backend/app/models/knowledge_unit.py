@@ -1,4 +1,4 @@
-﻿"""KnowledgeUnit domain models."""
+"""KnowledgeUnit domain models."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class KnowledgeUnit(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             "subject",
-            "node_type",
+            "knowledge_unit_type",
             "normalized_name",
             name="uq_unit_subject_type_name",
         ),
@@ -26,7 +26,7 @@ class KnowledgeUnit(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject: str = Field(index=True)
-    node_type: str = Field(index=True)
+    knowledge_unit_type: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
     summary: str = ""
@@ -40,7 +40,7 @@ class KnowledgeUnit(SQLModel, table=True):
     type_source: str = Field(default=KnowledgeUnitTypeSource.LLM.value, index=True)
     build_revision_no: int = Field(default=0, index=True)
     current_revision_id: int | None = Field(default=None)
-    merged_into_node_id: int | None = Field(default=None, foreign_key="knowledge_unit.id")
+    merged_into_knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -49,7 +49,7 @@ class KnowledgeAlias(SQLModel):
     """Structured alias payload embedded on a knowledge unit."""
 
     id: int | None = None
-    node_id: int
+    knowledge_unit_id: int
     alias: str
     normalized_alias: str
     language: str = Field(default="zh")
@@ -64,7 +64,7 @@ class KnowledgeRevision(SQLModel):
     """Materialized revision view derived from the current knowledge-unit body."""
 
     id: int | None = None
-    node_id: int
+    knowledge_unit_id: int
     revision_no: int
     title: str
     summary: str = ""

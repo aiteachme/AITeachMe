@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -46,7 +46,7 @@ def _seed_subject_knowledge(session: Session, *, subject_id: str) -> Subject:
 
     node_a = KnowledgeUnit(
         subject=subject_id,
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="方程",
         normalized_name="方程",
         status="active",
@@ -57,10 +57,10 @@ def _seed_subject_knowledge(session: Session, *, subject_id: str) -> Subject:
 
     node_b = KnowledgeUnit(
         subject=subject_id,
-        node_type="concept",
+        knowledge_unit_type="concept",
         canonical_name="一次方程",
         normalized_name="一次方程",
-        merged_into_node_id=node_a.id,
+        merged_into_knowledge_unit_id=node_a.id,
         status="active",
         build_revision_no=1,
     )
@@ -127,7 +127,7 @@ def test_delete_subject_record_removes_self_referential_knowledge_graphs() -> No
     assert result.subject_id == subject_id
     assert result.deleted_counts["knowledge_document"] == 2
     assert result.deleted_counts["knowledge_edge"] == 1
-    assert result.deleted_counts["knowledge_node"] == 2
+    assert result.deleted_counts["knowledge_unit"] == 2
     assert session.exec(select(Subject).where(Subject.slug == subject_id)).first() is None
 
 
@@ -140,7 +140,7 @@ def test_clear_subject_knowledge_handles_self_referential_rows() -> None:
 
     assert counts["knowledge_document"] == 2
     assert counts["knowledge_edge"] == 1
-    assert counts["knowledge_node"] == 2
+    assert counts["knowledge_unit"] == 2
     assert session.exec(select(Subject).where(Subject.slug == subject_id)).first() is not None
     assert session.exec(select(KnowledgeDocument).where(KnowledgeDocument.subject == subject_id)).first() is None
     assert session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject_id)).first() is None
@@ -156,7 +156,7 @@ def test_clear_subject_knowledge_rejects_when_exam_data_still_exists() -> None:
     session.add(
         QuestionTemplate(
             subject=subject_id,
-            knowledge_node_id=node.id or 0,
+            knowledge_unit_id=node.id or 0,
             question_type="single_choice",
             difficulty="medium",
             stem="下面哪一项是一次方程？",

@@ -118,8 +118,8 @@
 
 ## 跨阶段并行任务
 
-- [ ] 维护术语对齐词典（`KnowledgeNode -> KnowledgeUnit` 等术语边界）。
-- [ ] 维护兼容层清单（含预计删除版本）。
+- [x] 维护术语对齐词典（`KnowledgeNode -> KnowledgeUnit` 等术语边界）：见 `docs/ComputableTextbook-Terminology.md`。
+- [x] 维护兼容层清单（含预计删除版本）：见 `docs/ComputableTextbook-Compatibility-Layers.md`。
 - [ ] 每阶段结束更新 OpenAPI 与前端生成类型。
 - [ ] 每阶段输出迁移报告与风险清单。
 

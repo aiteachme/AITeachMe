@@ -13,7 +13,7 @@ export interface ExportPreviewStats {
   raw_file_count?: number;
   total_raw_file_size_bytes?: number;
   knowledge_document_count?: number;
-  knowledge_node_count?: number;
+  knowledge_unit_count?: number;
   knowledge_edge_count?: number;
   question_template_count?: number;
   exam_paper_count?: number;

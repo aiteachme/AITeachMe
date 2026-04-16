@@ -8,12 +8,12 @@ from app.repositories.knowledge import knowledge_relation_repo, knowledge_unit_r
 from app.workflows.digest.application.knowledge_graph.query import KnowledgeGraphQueryService
 
 
-def _unit(session: Session, *, subject: str, name: str, node_type: str = "concept") -> KnowledgeUnit:
+def _unit(session: Session, *, subject: str, name: str, knowledge_unit_type: str = "concept") -> KnowledgeUnit:
     unit = knowledge_unit_repo.create_knowledge_unit(
         session,
         KnowledgeUnit(
             subject=subject,
-            node_type=node_type,
+            knowledge_unit_type=knowledge_unit_type,
             canonical_name=name,
             normalized_name=name.casefold().replace(" ", "_"),
             status="active",
@@ -80,7 +80,7 @@ def test_p3_focus_subgraph_and_relation_explanation(session: Session) -> None:
     subject = "math"
     function = _unit(session, subject=subject, name="Function")
     linear = _unit(session, subject=subject, name="Linear Function")
-    example = _unit(session, subject=subject, name="Linear Function Example", node_type="example")
+    example = _unit(session, subject=subject, name="Linear Function Example", knowledge_unit_type="example")
     prerequisite = _edge(session, subject=subject, source=function, target=linear)
     _edge(session, subject=subject, source=example, target=linear, edge_type="example_of")
     knowledge_relation_repo.create_evidence_link(

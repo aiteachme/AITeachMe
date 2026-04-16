@@ -1,4 +1,4 @@
-﻿"""Node and edge resolution helpers for the digest knowledge graph."""
+"""Node and edge resolution helpers for the digest knowledge graph."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ async def _resolve_primary_entity(
         session,
         subject,
         normalized_name,
-        normalize_knowledge_unit_type(rep.node_type),
+        normalize_knowledge_unit_type(rep.knowledge_unit_type),
     )
     if existing is not None:
         existing_summary = _get_current_summary(session, existing)
@@ -155,7 +155,7 @@ async def _resolve_primary_entity(
             is_content_update=_has_content_update(candidate.merged_summary, existing_summary),
         )
 
-    normalized_type = normalize_knowledge_unit_type(rep.node_type)
+    normalized_type = normalize_knowledge_unit_type(rep.knowledge_unit_type)
     alias_nodes = knowledge_unit_repo.find_knowledge_units_by_alias(session, subject, normalized_name, normalized_type)
     if alias_nodes:
         matched = alias_nodes[0]
@@ -197,10 +197,10 @@ async def _resolve_primary_entity(
     existing_summary = _get_current_summary(session, best_node)
     decision = await _llm_entity_match(
         candidate_name=rep.name,
-        candidate_type=rep.node_type,
+        candidate_type=rep.knowledge_unit_type,
         candidate_summary=candidate.merged_summary,
         existing_name=best_node.canonical_name,
-        existing_type=best_node.node_type,
+        existing_type=best_node.knowledge_unit_type,
         existing_summary=existing_summary,
     )
     if decision not in {"exact", "alias"}:
@@ -226,7 +226,7 @@ async def _resolve_secondary_entity(
     rep = candidate.representative
     normalized_name = normalize_name(rep.name)
 
-    normalized_type = normalize_knowledge_unit_type(rep.node_type)
+    normalized_type = normalize_knowledge_unit_type(rep.knowledge_unit_type)
     existing = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
         session,
         subject,
@@ -278,7 +278,7 @@ async def _resolve_secondary_entity(
     siblings: list[KnowledgeUnit] = []
     for sibling_id in sibling_node_ids:
         sibling_node = knowledge_unit_repo.get_knowledge_unit_by_id(session, sibling_id)
-        if sibling_node and sibling_node.node_type == normalized_type and sibling_node.status in {"active", "pending"}:
+        if sibling_node and sibling_node.knowledge_unit_type == normalized_type and sibling_node.status in {"active", "pending"}:
             siblings.append(sibling_node)
 
     if not siblings:
@@ -321,8 +321,8 @@ async def resolve_node(
     """Resolve one clustered candidate against the current subject graph."""
 
     rep = candidate.representative
-    normalized_type = normalize_knowledge_unit_type(rep.node_type)
-    rep.node_type = normalized_type
+    normalized_type = normalize_knowledge_unit_type(rep.knowledge_unit_type)
+    rep.knowledge_unit_type = normalized_type
     if normalized_type in _PRIMARY_NODE_TYPES:
         result = await _resolve_primary_entity(
             session,
@@ -340,13 +340,13 @@ async def resolve_node(
             candidate_name_to_resolved_node_id or {},
         )
     else:
-        logger.warning("unknown_node_type", node_type=rep.node_type, name=rep.name)
+        logger.warning("unknown_node_type", knowledge_unit_type=rep.knowledge_unit_type, name=rep.name)
         result = ResolveResult(decision="no_match")
 
     logger.info(
         "resolve_node_complete",
         name=rep.name,
-        node_type=rep.node_type,
+        knowledge_unit_type=rep.knowledge_unit_type,
         decision=result.decision,
         matched_node_id=result.matched_node_id,
     )

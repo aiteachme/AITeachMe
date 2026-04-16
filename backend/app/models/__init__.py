@@ -22,9 +22,9 @@ from app.models.enums import (
     TaskStatus,
     TemplateNodeRole,
     WeaknessReason,
+    exam_mode_value,
     is_paper_exam_mode,
     is_web_practice_mode,
-    normalize_exam_mode,
     validate_status_transition,
 )
 from app.models.email_verification import EmailVerificationCode
@@ -95,9 +95,9 @@ __all__ = [
     "User",
     "UserKnowledgeState",
     "WeaknessReason",
+    "exam_mode_value",
     "is_paper_exam_mode",
     "is_web_practice_mode",
-    "normalize_exam_mode",
     "validate_status_transition",
 ]
 

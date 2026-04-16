@@ -30,9 +30,9 @@ def _ensure_subject(session: Session, subject: str, user_id: str) -> Subject:
 def _state_response(state) -> MasteryStateResponse:
     return MasteryStateResponse(
         id=state.id,
-        target_kind="node" if state.knowledge_node_id is not None else "unit",
+        target_kind="knowledge_unit" if state.knowledge_unit_id is not None else "unit",
         teaching_unit_id=state.teaching_unit_id,
-        knowledge_node_id=state.knowledge_node_id,
+        knowledge_unit_id=state.knowledge_unit_id,
         mastery_score=state.mastery_score,
         confidence_score=state.confidence_score,
         stability_score=state.stability_score,
@@ -51,9 +51,9 @@ def _review_response(state) -> ReviewTaskResponse:
         id=state.id,
         user_id=state.user_id,
         subject=state.subject,
-        target_kind="node" if state.knowledge_node_id is not None else "unit",
+        target_kind="knowledge_unit" if state.knowledge_unit_id is not None else "unit",
         teaching_unit_id=state.teaching_unit_id,
-        knowledge_node_id=state.knowledge_node_id,
+        knowledge_unit_id=state.knowledge_unit_id,
         priority=state.review_priority,
         scheduled_at=state.scheduled_review_at,
         status=state.review_status,
@@ -85,20 +85,20 @@ async def mastery_overview(
         subject=normalized,
         target_kind="unit",
     )
-    node_states = profile_repo.list_knowledge_states(
+    knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user.user_id,
         subject=normalized,
-        target_kind="node",
+        target_kind="knowledge_unit",
     )
     return ok_response(
         MasteryOverviewResponse(
             subject=normalized,
             user_id=user.user_id,
             weak_unit_count=sum(1 for item in unit_states if item.mastery_score < 0.8),
-            weak_node_count=sum(1 for item in node_states if item.mastery_score < 0.8),
+            weak_knowledge_unit_count=sum(1 for item in knowledge_unit_states if item.mastery_score < 0.8),
             unit_states=[_state_response(item) for item in unit_states],
-            node_states=[_state_response(item) for item in node_states],
+            knowledge_unit_states=[_state_response(item) for item in knowledge_unit_states],
         )
     )
 

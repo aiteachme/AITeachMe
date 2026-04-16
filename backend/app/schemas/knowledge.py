@@ -1,4 +1,4 @@
-﻿"""Knowledge-domain API schemas."""
+"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ class DocGenBuildRequest(BaseModel):
     )
 
 
-class GraphNodesQueryRequest(PageParams):
-    """Paginated graph node query."""
+class KnowledgeUnitsQueryRequest(PageParams):
+    """Paginated KnowledgeUnit query."""
 
-    node_type: str | None = Field(default=None, description="Optional node type filter.")
+    knowledge_unit_type: str | None = Field(default=None, description="Optional KnowledgeUnit type filter.")
 
 
 class KnowledgeUnitDetailRequest(BaseModel):
@@ -188,7 +188,7 @@ class BuildPreviewNodeResponse(BaseModel):
     """One lightweight node preview surfaced during digest polling."""
 
     name: str
-    node_type: str = Field(description="Standard KnowledgeUnit type")
+    knowledge_unit_type: str = Field(description="Standard KnowledgeUnit type")
 
 
 class BuildPreviewChapterProgressResponse(BaseModel):
@@ -298,7 +298,7 @@ class KnowledgeUnitResponse(BaseModel):
 
     id: int
     subject: str
-    node_type: str
+    knowledge_unit_type: str
     canonical_name: str
     status: str
     confidence: float
@@ -367,7 +367,7 @@ class KnowledgeUnitDetailResponse(BaseModel):
 
     id: int
     subject: str
-    node_type: str
+    knowledge_unit_type: str
     canonical_name: str
     normalized_name: str
     status: str

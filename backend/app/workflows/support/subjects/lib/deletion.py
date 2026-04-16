@@ -45,7 +45,7 @@ _KNOWLEDGE_KEYS = [
     "curriculum",
     "knowledge_document",
     "knowledge_edge",
-    "knowledge_node",
+    "knowledge_unit",
     "taxonomy_anchor",
     "teaching_unit",
     "theme_tree_node",
@@ -91,7 +91,7 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         ),
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
-        "knowledge_node": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
+        "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
         "curriculum": _count_rows(session, Curriculum, Curriculum.subject == subject),
         "taxonomy_anchor": _count_rows(session, TaxonomyAnchor, TaxonomyAnchor.subject == subject),
         "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
@@ -274,4 +274,3 @@ def _delete_subject_directory(subject: str) -> None:
     subject_dir = build_subject_dir(subject)
     if subject_dir.exists():
         shutil.rmtree(subject_dir, ignore_errors=True)
-

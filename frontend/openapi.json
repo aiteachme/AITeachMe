@@ -6130,7 +6130,7 @@
             "type": "string",
             "title": "Name"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type",
             "description": "Standard KnowledgeUnit type"
@@ -6139,7 +6139,7 @@
         "type": "object",
         "required": [
           "name",
-          "node_type"
+          "knowledge_unit_type"
         ],
         "title": "BuildPreviewNodeResponse",
         "description": "One lightweight node preview surfaced during digest polling."
@@ -7415,7 +7415,7 @@
             "title": "Knowledge Document Count",
             "default": 0
           },
-          "knowledge_node_count": {
+          "knowledge_unit_count": {
             "type": "integer",
             "title": "Knowledge Node Count",
             "default": 0
@@ -8404,7 +8404,7 @@
             "type": "string",
             "title": "Subject"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type"
           },
@@ -8480,7 +8480,7 @@
         "required": [
           "id",
           "subject",
-          "node_type",
+          "knowledge_unit_type",
           "canonical_name",
           "normalized_name",
           "status",
@@ -8501,7 +8501,7 @@
             "type": "string",
             "title": "Subject"
           },
-          "node_type": {
+          "knowledge_unit_type": {
             "type": "string",
             "title": "Node Type"
           },
@@ -8542,7 +8542,7 @@
         "required": [
           "id",
           "subject",
-          "node_type",
+          "knowledge_unit_type",
           "canonical_name",
           "status",
           "confidence",

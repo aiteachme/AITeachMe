@@ -113,7 +113,7 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
     counts["knowledge_edge"] = len(edges)
 
     nodes = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject)).all())
-    counts["knowledge_node"] = len(nodes)
+    counts["knowledge_unit"] = len(nodes)
 
     curriculums = list(session.exec(select(Curriculum).where(Curriculum.subject == subject)).all())
     counts["curriculum"] = len(curriculums)
@@ -149,4 +149,3 @@ def clear_subject_knowledge(session: Session, *, subject: str) -> dict[str, int]
 
 
 __all__ = ["clear_subject_knowledge"]
-

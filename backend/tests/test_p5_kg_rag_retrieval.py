@@ -18,7 +18,7 @@ def _unit(session: Session, *, subject: str, name: str, summary: str = "") -> Kn
         session,
         KnowledgeUnit(
             subject=subject,
-            node_type="concept",
+            knowledge_unit_type="concept",
             canonical_name=name,
             normalized_name=name.casefold().replace(" ", "_"),
             summary=summary or name,
@@ -92,7 +92,7 @@ def test_p5_retrieval_uses_knowledge_unit_graph_before_vector(session: Session) 
         state=UserKnowledgeState(
             user_id="local",
             subject=subject,
-            knowledge_node_id=target.id,
+            knowledge_unit_id=target.id,
             mastery_score=0.3,
         ),
     )

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -69,8 +69,8 @@ function NodeDetailPanel({
 
   if (!data) return null;
 
-  const typeStyle = NODE_TYPE_STYLE[data.node_type] ?? {
-    label: data.node_type,
+  const typeStyle = NODE_TYPE_STYLE[data.knowledge_unit_type] ?? {
+    label: data.knowledge_unit_type,
     color: "bg-slate-100 text-slate-600",
   };
 
@@ -214,7 +214,7 @@ export function KnowledgeGraphView({
 
     const allNodes = overviewGraph?.nodes ?? [];
     const filtered = nodeType
-      ? allNodes.filter((node) => node.node_type.toLowerCase() === nodeType.toLowerCase())
+      ? allNodes.filter((node) => node.knowledge_unit_type.toLowerCase() === nodeType.toLowerCase())
       : allNodes;
 
     const total = filtered.length;
@@ -309,8 +309,8 @@ export function KnowledgeGraphView({
 
             <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
               {nodes.map((node: KnowledgeUnitResponse) => {
-                const typeStyle = NODE_TYPE_STYLE[node.node_type] ?? {
-                  label: node.node_type,
+                const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
+                  label: node.knowledge_unit_type,
                   color: "bg-slate-100 text-slate-600",
                 };
                 const isSelected = selectedNodeId === node.id;

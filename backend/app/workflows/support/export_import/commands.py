@@ -1,4 +1,4 @@
-﻿"""瀛︾绾ч」鐩鍏ュ鍑?support commands銆?
+"""瀛︾绾ч」鐩鍏ュ鍑?support commands銆?
 璁捐瑕佺偣锛?- TABLE_REGISTRY 椹卞姩锛氭柊澧?淇敼琛ㄦ椂鍙渶鏇存柊娉ㄥ唽琛紝瀵煎嚭瀵煎叆鑷姩閫傞厤
 - model_dump() / model_validate() 搴忓垪鍖栵細瀛楁鍙樻洿鏃惰嚜鍔ㄥ吋瀹?- 澶栭敭閲嶆槧灏勫湪娉ㄥ唽琛ㄤ腑澹版槑锛氭柊澧炲閿彧闇€鍔犱竴琛岄厤缃?"""
 
@@ -76,7 +76,7 @@ class _ManifestSubject(BaseModel):
 class _ManifestStats(BaseModel):
     raw_file_count: int = 0
     knowledge_document_count: int = 0
-    knowledge_node_count: int = 0
+    knowledge_unit_count: int = 0
     knowledge_edge_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
@@ -136,23 +136,23 @@ class _TableSpec:
         },
     ),
     _TableSpec(
-        "knowledge_node",
+        "knowledge_unit",
         KnowledgeUnit,
-        fk_remap={"merged_into_node_id": "knowledge_node"},
+        fk_remap={"merged_into_knowledge_unit_id": "knowledge_unit"},
     ),
     _TableSpec(
         "knowledge_edge",
         KnowledgeEdge,
         fk_remap={
-            "source_node_id": "knowledge_node",
-            "target_node_id": "knowledge_node",
+            "source_node_id": "knowledge_unit",
+            "target_node_id": "knowledge_unit",
         },
     ),
     _TableSpec(
         "question_template",
         QuestionTemplate,
         fk_remap={
-            "knowledge_node_id": "knowledge_node",
+            "knowledge_unit_id": "knowledge_unit",
         },
         optional_group="exam",
     ),
@@ -170,7 +170,7 @@ class _TableSpec:
         fk_remap={
             "exam_paper_id": "exam_paper",
             "question_template_id": "question_template",
-            "knowledge_node_id": "knowledge_node",
+            "knowledge_unit_id": "knowledge_unit",
         },
         optional_group="exam",
     ),
@@ -178,7 +178,7 @@ class _TableSpec:
         "user_knowledge_state",
         UserKnowledgeState,
         fk_remap={
-            "knowledge_node_id": "knowledge_node",
+            "knowledge_unit_id": "knowledge_unit",
             "source_exam_paper_id": "exam_paper",
         },
         optional_group="profile",
@@ -217,7 +217,7 @@ def preview_export(session: Session, *, subject_slug: str) -> ExportPreviewData:
         raw_file_count=len(raw_files),
         total_raw_file_size_bytes=total_size,
         knowledge_document_count=_count(session, KnowledgeDocument, subject_slug),
-        knowledge_node_count=_count(session, KnowledgeUnit, subject_slug),
+        knowledge_unit_count=_count(session, KnowledgeUnit, subject_slug),
         knowledge_edge_count=_count(session, KnowledgeEdge, subject_slug),
         question_template_count=_count(session, QuestionTemplate, subject_slug),
         exam_paper_count=_count(session, ExamPaper, subject_slug),
@@ -684,7 +684,7 @@ def _build_manifest(
         stats=_ManifestStats(
             raw_file_count=len(exported.get("raw_file", [])),
             knowledge_document_count=len(exported.get("knowledge_document", [])),
-            knowledge_node_count=len(exported.get("knowledge_node", [])),
+            knowledge_unit_count=len(exported.get("knowledge_unit", [])),
             knowledge_edge_count=len(exported.get("knowledge_edge", [])),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
@@ -705,4 +705,3 @@ def _read_manifest(extract_dir: Path) -> _ExportManifest:
             f"Supported: {SUPPORTED_FORMAT_VERSIONS}"
         )
     return manifest
-

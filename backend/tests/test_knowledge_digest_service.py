@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -109,14 +109,14 @@ def test_trigger_docgen_build_force_full_rebuild_clears_chunk_vector_metadata(
         build_session_id="build-1",
         content="sample content",
         embedding_model="text-embedding-v3",
-        vector_ref="chunk_embeddings",
+        vector_ref="chunk_embeddings_subj_digest_rebuild",
     )
     session.add(chunk)
     session.commit()
     session.refresh(chunk)
 
     conflict = KnowledgeBuildPrecheckConflictData(
-        reason="legacy_vector_table",
+        reason="subject_not_bound",
         subject_model=None,
         subject_dim=None,
         runtime_model="text-embedding-v4",
@@ -167,7 +167,7 @@ def test_trigger_docgen_build_calls_direct_clear_chunk_vector_metadata(session: 
     ready_file = _seed_ready_raw_file(session, subject_slug=subject.slug, uid="raw_digest_direct")
 
     conflict = KnowledgeBuildPrecheckConflictData(
-        reason="legacy_vector_table",
+        reason="subject_not_bound",
         subject_model=None,
         subject_dim=None,
         runtime_model="text-embedding-v4",

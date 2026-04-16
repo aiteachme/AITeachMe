@@ -42,7 +42,7 @@ def test_extract_markdown_knowledge_units_reads_tags() -> None:
     assert len(units) == 1
     assert units[0].anchor == "ku_linear_function_definition"
     assert units[0].name == "Linear Function Definition"
-    assert units[0].node_type == "definition"
+    assert units[0].knowledge_unit_type == "definition"
     assert units[0].prerequisites == ["Function"]
     assert units[0].related == ["Slope"]
 
@@ -62,7 +62,7 @@ async def test_extract_candidates_prefers_markdown_knowledge_unit_anchors() -> N
     names = {node.name: node for node in result.nodes}
     assert names["Linear Function Definition"].candidate_id == "ku_linear_function_definition"
     assert names["Linear Function Definition"].anchor_id == "ku_linear_function_definition"
-    assert names["Linear Function Definition"].node_type == "definition"
+    assert names["Linear Function Definition"].knowledge_unit_type == "definition"
     assert "Function" in names
     assert any(
         edge.edge_type == "prerequisite"
