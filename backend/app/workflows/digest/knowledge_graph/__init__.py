@@ -7,7 +7,7 @@ from app.shared.infra.workflow.events import InProcessEventBus
 from app.shared.infra.workflow.result import WorkflowResult, err_result
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.metrics import build_token_summary
-from app.workflows.digest.events import (
+from app.workflows.digest.common.events import (
     DigestBuildRequestedEvent,
     DigestGraphCompletedEvent,
     DigestGraphFailedEvent,
@@ -26,6 +26,7 @@ from app.workflows.digest.knowledge_graph.incremental_sync import (
     KnowledgeSyncReport,
     sync_markdown_knowledge_graph,
 )
+from app.workflows.digest.knowledge_graph.overview import get_knowledge_overview
 from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
 from app.workflows.digest.knowledge_graph.migration import (
     KnowledgeGraphMigrationReport,
@@ -38,6 +39,10 @@ from app.workflows.digest.knowledge_graph.release import (
     enable_computable_textbook_rollout,
     get_release_snapshot,
     rollback_computable_textbook_rollout,
+)
+from app.workflows.digest.knowledge_graph.study_plan import (
+    build_study_plan,
+    handle_study_plan_request,
 )
 from app.workflows.digest.knowledge_graph.state import KGDigestState, KnowledgeDigestState
 
@@ -144,11 +149,14 @@ __all__ = [
     "build_knowledge_digest_graph",
     "create_graph_digest_initial_state",
     "enable_computable_textbook_rollout",
+    "get_knowledge_overview",
     "get_release_snapshot",
+    "handle_study_plan_request",
     "normalize_knowledge_graph",
     "rollback_computable_textbook_rollout",
     "run_graph_build_background",
     "run_graph_digest_background",
     "run_graph_digest_workflow",
+    "build_study_plan",
     "sync_markdown_knowledge_graph",
 ]

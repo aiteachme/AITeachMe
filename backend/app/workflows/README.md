@@ -41,10 +41,16 @@
 
 ## 当前已落地的单层化示例
 
-- `digest/overview.py`、`digest/study_plan.py`
-  Digest 模块根下的跨 lane 聚合用例
+- `ingest/__init__.py`、`digest/__init__.py`
+  引擎模块根只保留稳定导入面，不再承载业务实现
+- `ingest/common/events.py`、`ingest/common/exports.py`
+  Ingest 跨链路事件与 workflow export 落点
+- `digest/common/events.py`、`digest/common/exports.py`
+  Digest 跨链路事件与 workflow export 落点
+- `digest/knowledge_graph/overview.py`、`digest/knowledge_graph/study_plan.py`
+  基于知识图谱的总览与学习计划用例
 - `digest/docgen/__init__.py`、`digest/knowledge_graph/__init__.py`
-  Digest workflow runner 的模块级入口
+  Digest workflow runner 的 lane 入口
 - `digest/planner/sessions.py`
   Planner session 的 API-facing use case 落点
 - `digest/docgen/builds.py`

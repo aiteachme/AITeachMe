@@ -96,7 +96,7 @@
 
 ### 5.1 Ingest（透视引擎）
 
-- 入口：`api/files.py` + `workflows/support/files` + `workflows/ingest/parse_files.py`
+- 入口：`api/files.py` + `workflows/support/files` + `workflows/ingest/fast_parse/lib/runtime.py`
 - 核心：两阶段解析（Fast Parse + Deep Enhance）
 - 产物：`raw_files/`、`raw_markdowns/`、`assets/`、`raw_file` 元数据
 

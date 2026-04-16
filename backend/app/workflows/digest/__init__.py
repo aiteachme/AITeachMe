@@ -19,7 +19,7 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "DocGenState": "app.workflows.digest.docgen.state",
     "KGDigestState": "app.workflows.digest.knowledge_graph.state",
-    "WORKFLOW_EXPORTS": "app.workflows.digest.exports",
+    "WORKFLOW_EXPORTS": "app.workflows.digest.common.exports",
     "build_docgen_graph": "app.workflows.digest.docgen",
     "build_kg_digest_graph": "app.workflows.digest.knowledge_graph",
     "create_docgen_initial_state": "app.workflows.digest.docgen",

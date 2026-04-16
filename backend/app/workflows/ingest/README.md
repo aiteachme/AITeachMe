@@ -28,10 +28,6 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 ingest/
   __init__.py
   README.md
-  events.py
-  exports.py
-  parse_files.py
-  recovery.py
   fast_parse/
     graph.py
     state.py
@@ -43,16 +39,19 @@ ingest/
     nodes/
     lib/
   common/
+    events.py
+    exports.py
     parsing/
 ```
 
 说明：
 
-- `parse_files.py` 是 ingest 模块级解析入口，承接单文件 parse workflow runner。
-- `recovery.py` 承接增强恢复。
-- `events.py`、`exports.py` 承接模块级事件与 workflow export。
+- `__init__.py` 只提供稳定导入面，不承载业务实现。
 - `fast_parse/` 是 Phase 1 快速解析链路。
+- `fast_parse/lib/runtime.py` 是单文件 parse workflow runner 的真实落点。
 - `deep_enhance/` 是 Phase 2 后台增强链路。
+- `deep_enhance/lib/recovery.py` 承接增强恢复。
+- `common/events.py`、`common/exports.py` 承接跨链路事件与 workflow export。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
 
 当前真实运行主线以 `fast_parse/lib/runtime.py::run_parse_file_workflow()` 和 `deep_enhance/lib/background.py::_run_deep_enhance_background()` 为准；`fast_parse/graph.py` 与 `deep_enhance/graph.py` 主要用于 LangGraph dev/export 和后续节点化收口，避免把 graph 与手写 runtime 当成两套同时维护的业务入口。
@@ -273,7 +272,7 @@ Phase 2 在 `background_task_registry` 中后台执行。主解析请求会先�
 
 ## 恢复链路
 
-`recovery.py::recover_stalled_enhancements()` 会扫描：
+`deep_enhance/lib/recovery.py::recover_stalled_enhancements()` 会扫描：
 
 - `fast_parsed`
 - `enhancing`

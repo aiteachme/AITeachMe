@@ -43,9 +43,11 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.knowledge_graph import run_graph_build_background
-from app.workflows.digest.overview import get_knowledge_overview
-from app.workflows.digest.study_plan import handle_study_plan_request
+from app.workflows.digest.knowledge_graph import (
+    get_knowledge_overview,
+    handle_study_plan_request,
+    run_graph_build_background,
+)
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 

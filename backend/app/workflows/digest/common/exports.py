@@ -1,10 +1,10 @@
-"""Canonical workflow export definitions for digest workflows."""
+"""Workflow export definitions shared by digest lanes."""
 
 from __future__ import annotations
 
-from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
+from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.digest.docgen.graph import build_docgen_graph
 from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
 from app.workflows.digest.knowledge_graph.prompts import KG_PROMPTS
@@ -22,12 +22,12 @@ DOCGEN_PROMPTS = {
 
 
 def _build_docgen_graph_for_export():
-    ctx = WorkflowContext(
+    context = WorkflowContext(
         workflow_name="digest.docgen",
         subject="__export__",
         event_bus=InProcessEventBus(),
     )
-    return build_docgen_graph(context=ctx)
+    return build_docgen_graph(context=context)
 
 
 _DOCGEN_SEND_EDGES = (
