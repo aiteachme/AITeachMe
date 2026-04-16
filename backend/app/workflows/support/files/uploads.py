@@ -75,8 +75,8 @@ async def save_uploaded_file(
     store = get_artifact_store()
     normalized_subject = validate_subject(subject)
     content = await file.read()
-    if len(content) > settings.max_upload_size_mb * 1024 * 1024:
-        raise FileTooLargeError(settings.max_upload_size_mb)
+    if len(content) > settings.files.max_upload_size_mb * 1024 * 1024:
+        raise FileTooLargeError(settings.files.max_upload_size_mb)
 
     filename = file.filename or "unknown"
     extension = Path(filename).suffix.lower()

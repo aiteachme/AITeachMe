@@ -66,9 +66,14 @@ def _start_parse_for_files(
     return get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
 
 
-async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
+async def run_parse_files_background(
+    *,
+    subject: str,
+    file_ids: list[int],
+    background_task_registry=None,
+) -> None:
     settings = get_settings()
-    concurrency = max(settings.ingest_parse_concurrency, 1)
+    concurrency = max(settings.ingest.parse_concurrency, 1)
     batch_logger = logger.bind(subject=subject, file_ids=file_ids)
     batch_logger.info(
         "file_parse_background_started",
@@ -82,7 +87,11 @@ async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> No
         async with semaphore:
             batch_logger.info("file_parse_background_dispatch", file_id=file_id)
             try:
-                result = await run_parse_file_workflow(subject=subject, file_id=file_id)
+                result = await run_parse_file_workflow(
+                    subject=subject,
+                    file_id=file_id,
+                    background_task_registry=background_task_registry,
+                )
             except asyncio.CancelledError:
                 batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
                 raise

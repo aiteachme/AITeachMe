@@ -17,7 +17,7 @@ _STALLED_STATUSES = {
 }
 
 
-async def recover_stalled_enhancements() -> int:
+async def recover_stalled_enhancements(*, task_registry=None) -> int:
     """Scan for files stuck in fast_parsed/enhancing and redispatch Phase 2."""
 
     from app.workflows.ingest.parse_files import _run_deep_enhance_background
@@ -49,13 +49,11 @@ async def recover_stalled_enhancements() -> int:
                 if raw_file.id is None:
                     continue
 
-                parts = [p for p in raw_file.storage_key.split("/") if p]
-                subject = parts[0] if parts else ""
+                subject = (raw_file.subject or "").strip()
                 if not subject:
                     logger.warning(
                         "recover_stalled_skip_no_subject",
                         file_id=raw_file.id,
-                        storage_key=raw_file.storage_key,
                     )
                     continue
 
@@ -65,15 +63,22 @@ async def recover_stalled_enhancements() -> int:
                     subject=subject,
                     current_status=raw_file.ingest_status,
                 )
-                task = asyncio.create_task(
-                    _run_deep_enhance_background(
-                        subject=subject,
-                        file_id=raw_file.id,
-                        event_bus=None,
-                    )
+                enhance_coro = _run_deep_enhance_background(
+                    subject=subject,
+                    file_id=raw_file.id,
+                    event_bus=None,
                 )
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
+                if task_registry is not None:
+                    task_registry.spawn(
+                        enhance_coro,
+                        kind="ingest.enhance.recovery",
+                        subject=subject,
+                        name=f"ingest.enhance.recover:{subject}:{raw_file.id}",
+                    )
+                else:
+                    task = asyncio.create_task(enhance_coro)
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
                 dispatched += 1
 
     except Exception:
