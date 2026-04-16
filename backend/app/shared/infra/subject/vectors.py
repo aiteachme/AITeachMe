@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from app.models.subject import Subject
 from app.schemas.knowledge import SubjectVectorStatusResponse
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.subject.settings import (

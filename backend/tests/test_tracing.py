@@ -7,7 +7,7 @@ from langsmith import traceable
 
 from app.shared.infra import agent_loop as agent_loop_module
 from app.shared.infra import llm_support as llm_module
-from app.shared.infra.config import Settings, get_settings
+from app.shared.infra.settings import Settings, get_settings
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.observability.llm_stats import LLMCallRecord, LLMCallTracker
 from app.shared.infra.observability.trace import (
@@ -150,7 +150,7 @@ def test_llm_call_tracker_trims_old_records(monkeypatch) -> None:
     monkeypatch.setattr(
         llm_stats_module,
         "get_settings",
-        lambda: Settings(_env_file=None, llm_observability_max_records=2),
+        lambda: Settings(observability={"llm_observability_max_records": 2}),
     )
     tracker = LLMCallTracker()
 
@@ -165,7 +165,7 @@ def test_langsmith_tracing_requires_api_key(monkeypatch) -> None:
     monkeypatch.setattr(
         trace_module,
         "get_settings",
-        lambda: Settings(tracing_enabled=True),
+        lambda: Settings(observability={"tracing_enabled": True}),
     )
     monkeypatch.setattr(trace_module, "_langsmith_endpoint_reachable", lambda: True)
     monkeypatch.setenv("LANGSMITH_TRACING", "true")

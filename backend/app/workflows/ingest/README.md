@@ -92,7 +92,7 @@ from app.workflows.ingest import run_parse_file_workflow
    - `status = processing`
    - `ingest_status = classifying`
    - `digest_current_step = ingest.parse.queued`
-4. API 用 `background_task_registry.spawn(...)` 启动 `run_parse_files_background()`，批量解析时按 `settings.ingest_parse_concurrency` 控制并发。
+4. API 用 `background_task_registry.spawn(...)` 启动 `run_parse_files_background()`，批量解析时按 `settings.ingest.parse_concurrency` 控制并发。
 
 ## Phase 1：Fast Parse 快速解析
 
@@ -297,4 +297,3 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 ## 一句话总结
 
 Ingest 当前是“两阶段解析”：Phase 1 先给可用 Markdown，Phase 2 后台尽量把复杂 PDF 和图片资料补强。它的优化重点不是更会教学，而是更稳、更快、更可恢复地把资料变成 Digest 的标准输入。
-

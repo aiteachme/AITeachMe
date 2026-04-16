@@ -154,7 +154,7 @@ workflow 作者通常不需要从这里直接导入。
 
 | 目录或文件 | 作用 |
 | --- | --- |
-| `config/`、`env_support.py`、`runtime/` | 运行模式、配置、环境变量、路径 |
+| `settings/`、`env_support.py`、`runtime/` | 运行模式、项目设置、环境变量、路径 |
 | `database/` | 数据库引擎、Session、向量表能力 |
 | `storage/` | 本地存储 / S3 / 内容存储接口 |
 | `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
@@ -168,6 +168,18 @@ workflow 作者通常不需要从这里直接导入。
 | `workflow/` | workflow authoring/runtime/progress 公共支撑 |
 | `execution/` | 共享执行契约与安全边界 |
 | `observability/` | LangSmith tracing 与 LLM 统计底层实现 |
+
+### LLM 模型选择
+
+LLM 调用现在优先用 `model=` 指定模型选择：
+
+```python
+await acompletion_with_fallback(messages, model="reason")
+await acompletion_with_fallback(messages, model="primary")
+await acompletion_with_fallback(messages, model="light")
+```
+
+这些逻辑名直接对应 `settings.yaml` 的 `models.reason / primary / light / extract`。也可以传具体模型名。`task_type` 仍可用于默认温度、超时、重试和观测归类，但不应再作为业务代码选择模型的主要方式。
 
 ## 什么不该放进 Infra
 
@@ -191,7 +203,7 @@ workflow 作者通常不需要从这里直接导入。
 第一次读 `infra`，建议按下面顺序：
 
 1. `env_support.py`
-2. `config/settings.py`
+2. `settings/settings.py`
 3. `runtime/mode.py` 与 `runtime/paths.py`
 4. `database/__init__.py`
 5. `llm_support/__init__.py`

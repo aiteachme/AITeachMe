@@ -11,7 +11,7 @@ from typing import Any, NoReturn
 import structlog
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.config import Settings, get_settings
+from app.shared.infra.settings import Settings, get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.routing import TaskProfile, TaskType, get_task_profile
@@ -32,13 +32,42 @@ class CompletionContext:
     settings: Settings
     api_key: str
     profile: TaskProfile
+    model: str
+    model_selector: str
+
+
+def normalize_model_selector(value: str | None) -> str | None:
+    """Normalize one settings model key or concrete provider model name."""
+
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def resolve_settings_model(settings: Settings, model: str | None = None) -> tuple[str, str]:
+    """Resolve a provider model name from ``settings.models``."""
+
+    selector = normalize_model_selector(model) or "primary"
+    normalized = selector.lower()
+    models = settings.models
+    fallback_model = models.primary
+
+    if normalized == "reason":
+        return models.reason or fallback_model, "reason"
+    if normalized == "primary":
+        return fallback_model, "primary"
+    if normalized == "light":
+        return models.light or fallback_model, "light"
+    if normalized == "extract":
+        return models.extract or models.light or fallback_model, "extract"
+    return selector, selector
 
 
 def build_completion_context(
-    task_type: TaskType,
+    task_type: TaskType = TaskType.DEFAULT,
     *,
-    tier_override: str | None = None,
-    model_override: str | None = None,
+    model: str | None = None,
 ) -> CompletionContext:
     """Resolve config and credentials for one task-scoped LLM call."""
 
@@ -46,15 +75,14 @@ def build_completion_context(
     api_key = (get_env("LLM_API_KEY") or "").strip()
     if not api_key:
         raise MissingLLMApiKeyError()
+    resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
         task_type=task_type,
         settings=settings,
         api_key=api_key,
-        profile=get_task_profile(
-            task_type,
-            tier_override=tier_override,
-            model_override=model_override,
-        ),
+        profile=get_task_profile(task_type),
+        model=resolved_model,
+        model_selector=model_selector,
     )
 
 
@@ -67,7 +95,7 @@ def request_timeout_s(timeout_s: int) -> int:
 def get_semaphore() -> asyncio.Semaphore:
     global _LLM_SEMAPHORE
     if _LLM_SEMAPHORE is None:
-        _LLM_SEMAPHORE = asyncio.Semaphore(get_settings().llm_concurrency_limit)
+        _LLM_SEMAPHORE = asyncio.Semaphore(get_settings().runtime.llm_concurrency_limit)
     return _LLM_SEMAPHORE
 
 
@@ -151,8 +179,10 @@ def build_completion_kwargs(
     """Build the LiteLLM kwargs shared by all completion modes."""
 
     remaining_kwargs = dict(extra_kwargs)
+    provider_model = context.model
+    completion_model = provider_model if "/" in provider_model else f"openai/{provider_model}"
     completion_kwargs = {
-        "model": f"openai/{context.profile.model}",
+        "model": completion_model,
         "messages": messages,
         "api_base": (
             get_env("LLM_BASE_URL")
@@ -181,7 +211,7 @@ def track_call(
     """Record one LLM call in the in-memory observability tracker."""
 
     settings = get_settings()
-    if not settings.llm_observability_enabled:
+    if not settings.observability.llm_observability_enabled:
         return
 
     trace_context = get_llm_trace_context()

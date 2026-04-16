@@ -1,4 +1,4 @@
-﻿"""Phase 2 background task: deep OCR enhancement of parsed files."""
+"""Phase 2 background task: deep OCR enhancement of parsed files."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus

@@ -113,6 +113,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
         stream = acompletion_stream(
             [{"role": "user", "content": prompt}],
             task_type=TaskType.REASONING,
+            model="reason",
             temperature=0.2,
             max_tokens=420,
             extra_metadata={
@@ -183,7 +184,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentPr
                 message_history=list(state.get("message_history", [])),
             ),
             task_type=TaskType.DOCGEN_LIGHT,
-            tier="primary",
+            model="primary",
             response_model=LearningIntentProfile,
             temperature=0.1,
             max_tokens=650,

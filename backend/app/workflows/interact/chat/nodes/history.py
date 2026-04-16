@@ -1,4 +1,4 @@
-﻿"""History-loading node builders for the interact workflow.
+"""History-loading node builders for the interact workflow.
 
 Reads DB: ``chat_message`` plus active mastery/attempt summaries.
 Writes DB: none.
@@ -13,7 +13,7 @@ from typing import Generator
 
 from sqlmodel import Session
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.repositories import profile_repo
 from app.repositories.chats_repo import get_recent_turns
@@ -50,7 +50,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
                     db_session,
                     state["subject"],
                     user_id=state["user_id"],
-                    n_turns=settings.chat_history_turns,
+                    n_turns=settings.chat.history_turns,
                     session_id=state.get("session_id"),
                 )
             ]

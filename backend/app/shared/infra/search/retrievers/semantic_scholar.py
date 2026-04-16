@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
@@ -32,7 +32,7 @@ class SemanticScholarRetriever(BaseRetriever):
         if api_key:
             headers["x-api-key"] = api_key
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
                 response = await client.get(_SEMANTIC_SCHOLAR_URL, params=params, headers=headers)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior

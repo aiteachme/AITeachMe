@@ -31,31 +31,31 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 /**
  * @summary Profile feature offline
  */
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse200 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse404 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse422 = {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponseSuccess = (profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse200) & {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse200) & {
   headers: Headers;
 };
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponseError = (profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse404 | profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse422) & {
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponse404 | profileOfflineRootApiV1SubjectsSubjectProfilePostResponse422) & {
   headers: Headers;
 };
 
-export type profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse = (profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponseSuccess | profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponseError)
+export type profileOfflineRootApiV1SubjectsSubjectProfilePostResponse = (profileOfflineRootApiV1SubjectsSubjectProfilePostResponseSuccess | profileOfflineRootApiV1SubjectsSubjectProfilePostResponseError)
 
-export const getProfileOfflineRootApiV1SubjectsSubjectProfileDeleteUrl = (subject: string,) => {
+export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl = (subject: string,) => {
 
 
   
@@ -63,12 +63,12 @@ export const getProfileOfflineRootApiV1SubjectsSubjectProfileDeleteUrl = (subjec
   return `/api/v1/subjects/${subject}/profile/`
 }
 
-export const profileOfflineRootApiV1SubjectsSubjectProfileDelete = async (subject: string, options?: RequestInit): Promise<profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse> => {
+export const profileOfflineRootApiV1SubjectsSubjectProfilePost = async (subject: string, options?: RequestInit): Promise<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse> => {
   
-  return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfileDeleteResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfileDeleteUrl(subject),
+  return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl(subject),
   {      
     ...options,
-    method: 'PUT'
+    method: 'PATCH'
     
     
   }
@@ -77,11 +77,11 @@ export const profileOfflineRootApiV1SubjectsSubjectProfileDelete = async (subjec
 
 
 
-export const getProfileOfflineRootApiV1SubjectsSubjectProfileDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>, TError,{subject: string}, TContext> => {
+export const getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext> => {
 
-const mutationKey = ['profileOfflineRootApiV1SubjectsSubjectProfileDelete'];
+const mutationKey = ['profileOfflineRootApiV1SubjectsSubjectProfilePost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -91,10 +91,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>, {subject: string}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, {subject: string}> = (props) => {
           const {subject} = props ?? {};
 
-          return  profileOfflineRootApiV1SubjectsSubjectProfileDelete(subject,requestOptions)
+          return  profileOfflineRootApiV1SubjectsSubjectProfilePost(subject,requestOptions)
         }
 
 
@@ -104,51 +104,51 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ProfileOfflineRootApiV1SubjectsSubjectProfileDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>>
+    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>>
     
-    export type ProfileOfflineRootApiV1SubjectsSubjectProfileDeleteMutationError = ErrorResponse | HTTPValidationError
+    export type ProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary Profile feature offline
  */
-export const useProfileOfflineRootApiV1SubjectsSubjectProfileDelete = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useProfileOfflineRootApiV1SubjectsSubjectProfilePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfileDelete>>,
+        Awaited<ReturnType<typeof profileOfflineRootApiV1SubjectsSubjectProfilePost>>,
         TError,
         {subject: string},
         TContext
       > => {
-      return useMutation(getProfileOfflineRootApiV1SubjectsSubjectProfileDeleteMutationOptions(options), queryClient);
+      return useMutation(getProfileOfflineRootApiV1SubjectsSubjectProfilePostMutationOptions(options), queryClient);
     }
     /**
  * @summary Profile feature offline
  */
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse200 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200 = {
   data: unknown
   status: 200
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse404 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse422 = {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponseSuccess = (profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse200) & {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse200) & {
   headers: Headers;
 };
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponseError = (profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse404 | profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse422) & {
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse404 | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse422) & {
   headers: Headers;
 };
 
-export type profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse = (profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponseSuccess | profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponseError)
+export type profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse = (profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseSuccess | profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponseError)
 
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteUrl = (subject: string,
+export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl = (subject: string,
     path: string,) => {
 
 
@@ -157,13 +157,13 @@ export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteUrl = (su
   return `/api/v1/subjects/${subject}/profile/${path}`
 }
 
-export const profileOfflinePathApiV1SubjectsSubjectProfilePathDelete = async (subject: string,
-    path: string, options?: RequestInit): Promise<profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse> => {
+export const profileOfflinePathApiV1SubjectsSubjectProfilePathPost = async (subject: string,
+    path: string, options?: RequestInit): Promise<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse> => {
   
-  return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathDeleteResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteUrl(subject,path),
+  return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl(subject,path),
   {      
     ...options,
-    method: 'PUT'
+    method: 'PATCH'
     
     
   }
@@ -172,11 +172,11 @@ export const profileOfflinePathApiV1SubjectsSubjectProfilePathDelete = async (su
 
 
 
-export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>, TError,{subject: string;path: string}, TContext> => {
+export const getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext> => {
 
-const mutationKey = ['profileOfflinePathApiV1SubjectsSubjectProfilePathDelete'];
+const mutationKey = ['profileOfflinePathApiV1SubjectsSubjectProfilePathPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -186,10 +186,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>, {subject: string;path: string}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, {subject: string;path: string}> = (props) => {
           const {subject,path} = props ?? {};
 
-          return  profileOfflinePathApiV1SubjectsSubjectProfilePathDelete(subject,path,requestOptions)
+          return  profileOfflinePathApiV1SubjectsSubjectProfilePathPost(subject,path,requestOptions)
         }
 
 
@@ -199,21 +199,21 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>>
+    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationResult = NonNullable<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>>
     
-    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteMutationError = ErrorResponse | HTTPValidationError
+    export type ProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary Profile feature offline
  */
-export const useProfileOfflinePathApiV1SubjectsSubjectProfilePathDelete = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useProfileOfflinePathApiV1SubjectsSubjectProfilePathPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathDelete>>,
+        Awaited<ReturnType<typeof profileOfflinePathApiV1SubjectsSubjectProfilePathPost>>,
         TError,
         {subject: string;path: string},
         TContext
       > => {
-      return useMutation(getProfileOfflinePathApiV1SubjectsSubjectProfilePathDeleteMutationOptions(options), queryClient);
+      return useMutation(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostMutationOptions(options), queryClient);
     }
     

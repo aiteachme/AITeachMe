@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.workflows.support.system import build_settings_overview_data
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 
 def _entry_map():
@@ -41,7 +41,7 @@ def test_settings_overview_groups_config_and_env(monkeypatch) -> None:
 
     assert {"runtime", "models", "ingest", "search", "storage", "observability"}.issubset(sections)
     assert entries["runtime.mode"].source == "runtime"
-    assert entries["models.primary"].source == "config"
+    assert entries["models.primary"].source == "settings"
     assert entries["search.searxng_url"].source == "env"
     assert entries["search.searxng_url"].display_value == "https://search.example.com"
     assert overview.notes

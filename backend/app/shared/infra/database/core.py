@@ -1,4 +1,4 @@
-﻿"""Database bootstrap and session helpers."""
+"""Database bootstrap and session helpers."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ except ImportError:
     pass
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 import re
 from typing import Generator
@@ -20,8 +23,8 @@ import sqlalchemy as sa
 import structlog
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.shared.infra.config import get_settings
-from app.shared.infra.env_support import get_env
+from app.shared.infra.settings import get_settings
+from app.shared.infra.env_support import get_env, resolve_project_settings_path
 from app.shared.infra.exceptions import VectorExtensionUnavailableError
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path, log_legacy_runtime_path_warnings
@@ -40,6 +43,7 @@ from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject
+from app.models.system import SystemSettingsSnapshot
 from app.models.user import User
 
 logger = structlog.get_logger()
@@ -73,6 +77,7 @@ _SCHEMA_MODELS = (
     UserKnowledgeState,
     ChatSession,
     ChatMessage,
+    SystemSettingsSnapshot,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
 _EXPECTED_SCHEMA_COLUMNS = {
@@ -584,6 +589,33 @@ def _ensure_default_local_user(engine) -> None:
             session.commit()
 
 
+def _settings_snapshot_payload(settings) -> dict[str, object]:
+    return settings.model_dump(mode="json")
+
+
+def _settings_snapshot_hash(payload: dict[str, object]) -> str:
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
+    payload = _settings_snapshot_payload(settings)
+    now = datetime.now(timezone.utc)
+    settings_hash = _settings_snapshot_hash(payload)
+    settings_path = str(resolve_project_settings_path())
+
+    with Session(engine, expire_on_commit=False) as session:
+        snapshot = session.get(SystemSettingsSnapshot, "runtime")
+        if snapshot is None:
+            snapshot = SystemSettingsSnapshot(id="runtime", created_at=now)
+        snapshot.settings_path = settings_path
+        snapshot.settings_hash = settings_hash
+        snapshot.settings_json = payload
+        snapshot.updated_at = now
+        session.add(snapshot)
+        session.commit()
+
+
 def init_db() -> None:
     """Initialize the database schema and runtime helpers."""
 
@@ -603,6 +635,7 @@ def _init_local_sqlite_db(settings) -> None:
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
     _ensure_default_local_user(engine)
+    _upsert_settings_snapshot(engine, settings)
 
     logger.info(
         "database_initialized",
@@ -624,6 +657,7 @@ def _init_postgres_db(settings) -> None:
         conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
+    _upsert_settings_snapshot(engine, settings)
 
     # 为 retrieval_chunk 添加 embedding 向量列（如果不存在）
     dim = settings.embedding_dim

@@ -14,7 +14,7 @@ import time
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.litellm_loader import load_litellm
@@ -83,7 +83,7 @@ async def _call_embedding(
             raise LLMCallError(
                 reason=(
                     f"Embedding 模型 `{configured_model}` 在当前供应商不可用或无权限。"
-                    "请在项目根目录 config.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
+                    "请在项目根目录 settings.yaml 的 `models.embedding` 中改为账号可用模型后重启后端。"
                     f"当前 LLM_BASE_URL={api_base}。"
                     "常见可选：`text-embedding-3-small`（OpenAI 兼容）或 `text-embedding-v4`（DashScope）。"
                 )
@@ -100,7 +100,7 @@ async def aembed_texts(
 
     Args:
         texts: 待向量化的文本列表。
-        batch_size: 每批大小（默认从 `config.yaml` 读取）。
+        batch_size: 每批大小（默认从 `settings.yaml` 读取）。
     """
 
     if not texts:
@@ -110,8 +110,8 @@ async def aembed_texts(
     api_key = (get_env("LLM_API_KEY") or "").strip()
     if not api_key:
         raise MissingLLMApiKeyError()
-    batch_size = batch_size or settings.embedding_batch_size
-    model = _build_model_name(settings.embedding_model)
+    batch_size = batch_size or settings.embedding.batch_size
+    model = _build_model_name(settings.models.embedding)
     api_base = (
         get_env("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
         or "https://dashscope.aliyuncs.com/compatible-mode/v1"

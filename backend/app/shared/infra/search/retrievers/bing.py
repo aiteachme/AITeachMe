@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
@@ -24,7 +24,7 @@ class BingRetriever(BaseRetriever):
         if not api_key:
             return []
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
                 response = await client.get(
                     "https://api.bing.microsoft.com/v7.0/search",
                     params={"q": query, "count": max_results},

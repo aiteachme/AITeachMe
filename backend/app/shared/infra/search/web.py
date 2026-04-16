@@ -8,7 +8,7 @@ import time
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -161,8 +161,8 @@ async def dispatch_web_search(
     from app.shared.infra.search.factory import get_retrievers_for_subject
 
     settings = get_settings()
-    total_budget = float(total_timeout_s or settings.search_total_timeout_s)
-    provider_budget = float(provider_timeout_s or settings.search_provider_timeout_s)
+    total_budget = float(total_timeout_s or settings.search.total_timeout_s)
+    provider_budget = float(provider_timeout_s or settings.search.provider_timeout_s)
     if not str(query or "").strip() or top_k <= 0:
         return []
 
@@ -191,7 +191,7 @@ async def dispatch_web_search(
             fused = _fuse_provider_results(
                 provider_outputs,
                 top_k=top_k,
-                fusion_k=max(1, int(settings.search_fusion_k)),
+                fusion_k=max(1, int(settings.search.fusion_k)),
             )
             logger.info(
                 "web_search_complete",
@@ -205,7 +205,7 @@ async def dispatch_web_search(
 
     remaining = total_budget - (time.monotonic() - started_at)
     if remaining > 0 and external_retrievers:
-        if bool(settings.search_parallel_retrievers):
+        if bool(settings.search.parallel_retrievers):
             provider_outputs.extend(
                 await _search_retrievers_parallel(
                     external_retrievers,
@@ -214,7 +214,7 @@ async def dispatch_web_search(
                     provider_timeout_s=provider_budget,
                     total_deadline_s=total_budget,
                     started_at=started_at,
-                    max_parallel=int(settings.search_max_parallel_retrievers),
+                    max_parallel=int(settings.search.max_parallel_retrievers),
                 )
             )
         else:
@@ -238,7 +238,7 @@ async def dispatch_web_search(
     fused_results = _fuse_provider_results(
         provider_outputs,
         top_k=top_k,
-        fusion_k=max(1, int(settings.search_fusion_k)),
+        fusion_k=max(1, int(settings.search.fusion_k)),
     )
     logger.info(
         "web_search_complete",
@@ -246,7 +246,7 @@ async def dispatch_web_search(
         provider_count=len([results for _name, results in provider_outputs if results]),
         result_count=len(fused_results),
         elapsed_ms=int((time.monotonic() - started_at) * 1000),
-        dispatch_mode="parallel" if bool(settings.search_parallel_retrievers) else "sequential",
+        dispatch_mode="parallel" if bool(settings.search.parallel_retrievers) else "sequential",
     )
     return fused_results
 

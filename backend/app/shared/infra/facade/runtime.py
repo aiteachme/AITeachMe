@@ -29,9 +29,10 @@ class InfraRuntime:
         messages: list[ChatMessage],
         *,
         task_type: TaskType = TaskType.DEFAULT,
+        model: str | None = None,
         **kwargs,
     ) -> LLMTextResult:
-        return await call_llm_text(self.context, messages, task_type=task_type, **kwargs)
+        return await call_llm_text(self.context, messages, task_type=task_type, model=model, **kwargs)
 
     async def call_llm_structured(
         self,
@@ -39,18 +40,20 @@ class InfraRuntime:
         messages: list[ChatMessage],
         *,
         task_type: TaskType = TaskType.DEFAULT,
+        model: str | None = None,
         **kwargs,
     ) -> T:
-        return await call_llm_structured(self.context, response_model, messages, task_type=task_type, **kwargs)
+        return await call_llm_structured(self.context, response_model, messages, task_type=task_type, model=model, **kwargs)
 
     def stream_llm_text(
         self,
         messages: list[ChatMessage],
         *,
         task_type: TaskType = TaskType.DEFAULT,
+        model: str | None = None,
         **kwargs,
     ) -> AsyncIterator[str]:
-        return stream_llm_text(self.context, messages, task_type=task_type, **kwargs)
+        return stream_llm_text(self.context, messages, task_type=task_type, model=model, **kwargs)
 
     async def build_research_context(self, **kwargs: Any) -> ResearchContext:
         return await build_research_context(self.context, **kwargs)

@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from app.shared.infra.config import get_settings
-from app.shared.infra.env_support import resolve_project_config_path
+from app.shared.infra.settings import get_settings
+from app.shared.infra.env_support import resolve_project_settings_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,10 +38,10 @@ class TeachingRuntimeConfig:
     source_path: str
 
 
-def get_teaching_runtime_config_path() -> Path:
-    """Return the resolved project config path for diagnostics/debugging."""
+def get_teaching_runtime_settings_path() -> Path:
+    """Return the resolved project settings path for diagnostics/debugging."""
 
-    return resolve_project_config_path()
+    return resolve_project_settings_path()
 
 
 @lru_cache
@@ -51,27 +51,27 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
     settings = get_settings()
     return TeachingRuntimeConfig(
         planner=PlannerRuntimeConfig(
-            default_tone=settings.planner_default_tone,
-            default_digest_mode=settings.planner_default_digest_mode,
-            allow_external_search=settings.planner_allow_external_search,
+            default_tone=settings.planner.default_tone,
+            default_digest_mode=settings.planner.default_digest_mode,
+            allow_external_search=settings.planner.allow_external_search,
             sprint=PlannerModeRuntimeConfig(
-                min_chapters=settings.planner_sprint_min_chapters,
+                min_chapters=settings.planner.sprint.min_chapters,
                 max_chapters=max(
-                    settings.planner_sprint_min_chapters,
-                    settings.planner_sprint_max_chapters,
+                    settings.planner.sprint.min_chapters,
+                    settings.planner.sprint.max_chapters,
                 ),
-                target_length=settings.planner_sprint_target_length,
+                target_length=settings.planner.sprint.target_length,
             ),
             systematic=PlannerModeRuntimeConfig(
-                min_chapters=settings.planner_systematic_min_chapters,
+                min_chapters=settings.planner.systematic.min_chapters,
                 max_chapters=max(
-                    settings.planner_systematic_min_chapters,
-                    settings.planner_systematic_max_chapters,
+                    settings.planner.systematic.min_chapters,
+                    settings.planner.systematic.max_chapters,
                 ),
-                target_length=settings.planner_systematic_target_length,
+                target_length=settings.planner.systematic.target_length,
             ),
         ),
-        source_path=str(resolve_project_config_path()),
+        source_path=str(resolve_project_settings_path()),
     )
 
 
@@ -88,5 +88,5 @@ __all__ = [
     "TeachingRuntimeConfig",
     "get_planner_mode_runtime_config",
     "get_teaching_runtime_config",
-    "get_teaching_runtime_config_path",
+    "get_teaching_runtime_settings_path",
 ]

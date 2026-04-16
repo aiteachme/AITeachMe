@@ -9,7 +9,7 @@ from __future__ import annotations
 import app.shared.infra.search.readers as _reader_registry
 import app.shared.infra.search.retrievers as _retriever_registry
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.readers import BS4Reader
 from app.shared.infra.search.readers.base import BaseReader, get_registered_reader_types
 from app.shared.infra.search.retrievers import LocalRAGRetriever

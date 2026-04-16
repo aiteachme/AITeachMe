@@ -471,8 +471,8 @@ LLM purify：每章最多 1 次
 
 避免过度并发：
 
-- 遵守 `llm_concurrency_limit`。
-- `docgen_max_parallel_chapters` 不应默认过高。
+- 遵守 `settings.runtime.llm_concurrency_limit`。
+- `settings.docgen.max_parallel_chapters` 不应默认过高。
 - 对外部检索设置总预算和 provider 预算。
 - 对 search-only 模式单独限流。
 

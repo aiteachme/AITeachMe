@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import structlog
 from sqlmodel import Session, select
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.subject import (
     build_subject_index_ref,
 )

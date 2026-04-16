@@ -37,19 +37,17 @@ async def acompletion_stream(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
-    tier_override: str | None = None,
-    model_override: str | None = None,
+    model: str | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
 
     context = build_completion_context(
         task_type,
-        tier_override=tier_override,
-        model_override=model_override,
+        model=model,
     )
     start = time.monotonic()
-    tracked_model = context.profile.model
+    tracked_model = context.model
 
     async with get_semaphore():
         try:
@@ -61,7 +59,7 @@ async def acompletion_stream(
             call_kwargs["stream"] = True
             call_model, provider, tracked_model = _resolved_trace_model(
                 call_kwargs,
-                context.profile.model,
+                context.model,
             )
             logger.info(
                 "llm_stream_started",

@@ -1,4 +1,4 @@
-"""Helpers for loading project runtime configuration from `config.yaml`."""
+"""Helpers for loading project runtime configuration from `settings.yaml`."""
 
 from __future__ import annotations
 
@@ -34,33 +34,6 @@ RETRIEVER_PROFILES: dict[str, list[str]] = {
     "docgen_systematic": ["local_rag", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
 }
 
-CONFIG_YAML_FIELD_MAP: dict[str, str] = {
-    "models_reason": "llm_model_reason",
-    "models_primary": "llm_model",
-    "models_light": "llm_model_light",
-    "models_extract": "llm_model_extract",
-    "models_ocr": "ocr_model",
-    "models_embedding": "embedding_model",
-    "models_image_generation": "image_generation_model",
-    "models_mermaid_generation": "mermaid_generation_model",
-    "files_max_upload_size_mb": "max_upload_size_mb",
-    "chat_history_turns": "chat_history_turns",
-    "runtime_llm_concurrency_limit": "llm_concurrency_limit",
-    "runtime_default_token_budget": "default_token_budget",
-    "observability_llm_observability_enabled": "llm_observability_enabled",
-    "observability_tracing_enabled": "tracing_enabled",
-    "observability_llm_observability_max_records": "llm_observability_max_records",
-    "features_enable_image_generation": "enable_image_generation",
-    "features_enable_mermaid_generation": "enable_mermaid_generation",
-    "features_image_generation_model": "image_generation_model",
-    "features_mermaid_generation_model": "mermaid_generation_model",
-    "safety_guardrails_enabled": "guardrails_enabled",
-    "cache_enabled": "llm_cache_enabled",
-    "cache_ttl_s": "llm_cache_ttl_s",
-    "cache_max_entries": "llm_cache_max_entries",
-    "knowledge_graph_extract_max_parallelism": "kg_extract_max_parallelism",
-}
-
 
 def split_csv_names(value: str | None) -> list[str]:
     if not value:
@@ -84,6 +57,10 @@ def parse_yaml_scalar(value: str) -> Any:
         return False
     if lowered in {"null", "none"}:
         return None
+    if text == "{}":
+        return {}
+    if text == "[]":
+        return []
     if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
         return text[1:-1]
     try:
@@ -98,7 +75,7 @@ def parse_yaml_scalar(value: str) -> Any:
 
 
 def parse_yaml_mapping(text: str) -> dict[str, Any]:
-    """Parse the small repo-root `config.yaml` mapping."""
+    """Parse the small repo-root `settings.yaml` mapping."""
 
     try:
         import yaml  # type: ignore
@@ -137,31 +114,19 @@ def parse_yaml_mapping(text: str) -> dict[str, Any]:
     return root
 
 
-def flatten_project_config(raw: dict[str, Any], *, prefix: str = "") -> dict[str, Any]:
-    flattened: dict[str, Any] = {}
-    for key, value in raw.items():
-        normalized_key = str(key).strip().replace("-", "_")
-        full_key = f"{prefix}_{normalized_key}" if prefix else normalized_key
-        if isinstance(value, dict):
-            flattened.update(flatten_project_config(value, prefix=full_key))
-            continue
-        flattened[CONFIG_YAML_FIELD_MAP.get(full_key, full_key)] = value
-    return flattened
-
-
-def load_project_config_values(path: Path | None = None) -> dict[str, Any]:
+def load_project_settings_values(path: Path | None = None) -> dict[str, Any]:
     current_path = path
     if current_path is None:
-        from app.shared.infra.env_support import resolve_project_config_path
+        from app.shared.infra.env_support import resolve_project_settings_path
 
-        current_path = resolve_project_config_path()
+        current_path = resolve_project_settings_path()
     if not current_path.exists():
         return {}
     try:
         raw = parse_yaml_mapping(current_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return flatten_project_config(raw)
+    return raw
 
 
 __all__ = [
@@ -169,7 +134,7 @@ __all__ = [
     "DEFAULT_RETRIEVER_FALLBACK",
     "EMBEDDING_DIM_BY_MODEL",
     "RETRIEVER_PROFILES",
-    "load_project_config_values",
+    "load_project_settings_values",
     "normalize_retriever_name",
     "split_csv_names",
 ]

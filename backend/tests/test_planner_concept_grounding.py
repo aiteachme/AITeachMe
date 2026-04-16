@@ -137,7 +137,10 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
 
     monkeypatch.setattr(
         "app.workflows.digest.planner.lib.grounding.get_settings",
-        lambda: SimpleNamespace(web_search_retriever="duckduckgo", planner_allow_external_search=True),
+        lambda: SimpleNamespace(
+            planner=SimpleNamespace(grounding_timeout_s=10.0),
+            search=SimpleNamespace(provider_timeout_s=6.0),
+        ),
     )
     monkeypatch.setattr(
         "app.workflows.digest.planner.lib.grounding.get_retriever",

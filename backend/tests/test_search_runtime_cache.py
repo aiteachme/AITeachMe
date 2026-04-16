@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from app.shared.infra.config import Settings
+from app.shared.infra.settings import Settings
 from app.shared.infra.search import ContextCompressor, reset_search_runtime_caches
 from app.shared.infra.search.readers.base import BaseReader
 from app.shared.infra.search.retrievers.base import BaseRetriever
@@ -49,9 +49,11 @@ class DummyCachedReader(BaseReader):
 
 def _enabled_cache_settings() -> Settings:
     return Settings(
-        search_runtime_cache_enabled=True,
-        search_runtime_cache_ttl_s=3600,
-        search_runtime_cache_max_entries=32,
+        search={
+            "runtime_cache_enabled": True,
+            "runtime_cache_ttl_s": 3600,
+            "runtime_cache_max_entries": 32,
+        },
     )
 
 

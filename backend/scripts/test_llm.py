@@ -95,13 +95,15 @@ async def test_acompletion_stream() -> None:
 
 
 async def main() -> None:
-    from app.shared.infra.config import get_settings
+    from app.shared.infra.settings import get_settings
+    from app.shared.infra.env_support import get_env
+
     settings = get_settings()
 
     print()
     print("📋 当前配置")
-    print(f"  LLM_MODEL  : {settings.llm_model}")
-    print(f"  LLM_BASE_URL: {settings.llm_base_url}")
+    print(f"  LLM_MODEL  : {settings.models.primary}")
+    print(f"  LLM_BASE_URL: {get_env('LLM_BASE_URL')}")
     print()
 
     await test_acompletion()

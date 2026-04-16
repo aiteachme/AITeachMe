@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.shared.infra.config import Settings
+from app.shared.infra.settings import Settings
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.search.web import dispatch_web_search
 
@@ -24,12 +24,14 @@ class FakeRetriever:
 
 def _settings() -> Settings:
     return Settings(
-        search_parallel_retrievers=True,
-        search_max_parallel_retrievers=4,
-        search_provider_timeout_s=1.0,
-        search_total_timeout_s=3.0,
-        search_fusion_k=60,
-        local_rag_min_results=2,
+        search={
+            "parallel_retrievers": True,
+            "max_parallel_retrievers": 4,
+            "provider_timeout_s": 1.0,
+            "total_timeout_s": 3.0,
+            "fusion_k": 60,
+        },
+        local_rag={"min_results": 2},
     )
 
 

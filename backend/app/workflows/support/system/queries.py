@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.schemas.system import InitData, RuntimeUser, SettingEntry, SettingSection, SettingsOverviewData
-from app.shared.infra.config import get_settings
-from app.shared.infra.env_support import get_env, get_env_bool, resolve_project_config_path
+from app.shared.infra.settings import get_settings
+from app.shared.infra.env_support import get_env, get_env_bool, resolve_project_settings_path
 from app.shared.infra.runtime import get_app_version, resolve_app_mode
 from app.shared.infra.storage.config import (
     get_storage_backend,
@@ -66,7 +66,7 @@ def _display(value: Any) -> str:
     return text if text.strip() else "空"
 
 
-def _config_entry(
+def _settings_entry(
     key: str,
     label: str,
     value: Any,
@@ -78,7 +78,7 @@ def _config_entry(
     return SettingEntry(
         key=key,
         label=label,
-        source="config",
+        source="settings",
         value=value,
         display_value=_display(value),
         status=status,
@@ -132,11 +132,11 @@ def _runtime_entry(
 
 
 def build_settings_overview_data() -> SettingsOverviewData:
-    """Build a safe read-only overview of env/config.yaml effective settings."""
+    """Build a safe read-only overview of env/settings.yaml effective settings."""
 
     settings = get_settings()
     mode = resolve_app_mode()
-    config_path = resolve_project_config_path()
+    settings_path = resolve_project_settings_path()
 
     sections = [
         SettingSection(
@@ -148,25 +148,25 @@ def build_settings_overview_data() -> SettingsOverviewData:
                 _env_entry("runtime.app_mode_raw", "APP_MODE", "APP_MODE", "未设置时按本地优先策略解析。"),
                 _runtime_entry("runtime.version", "应用版本", get_app_version()),
                 _env_entry("auth.enabled", "AUTH_ENABLED", "AUTH_ENABLED", "控制账号鉴权能力。", value=get_env_bool("AUTH_ENABLED", True)),
-                _runtime_entry("config.path", "config.yaml 路径", str(config_path)),
+                _runtime_entry("settings.path", "settings.yaml 路径", str(settings_path)),
             ],
         ),
         SettingSection(
             id="models",
             label="模型与密钥",
-            description="模型名来自 config.yaml，服务地址和密钥来自环境变量。",
+            description="模型名来自 settings.yaml，服务地址和密钥来自环境变量。",
             entries=[
                 _env_entry("llm.base_url", "LLM_BASE_URL", "LLM_BASE_URL", "OpenAI-compatible 上游地址。"),
                 _env_entry("llm.api_key", "LLM_API_KEY", "LLM_API_KEY", "模型访问密钥，只显示是否配置。", secret=True),
-                _config_entry("models.primary", "Primary 模型", settings.llm_model, "主要生成、对话、批改任务。"),
-                _config_entry("models.reason", "Reason 模型", settings.llm_model_reason, "深度推理与规划；空值时回退到 Primary。"),
-                _config_entry("models.light", "Light 模型", settings.llm_model_light, "分类、摘要和批量轻任务；空值时回退到 Primary。"),
-                _config_entry("models.extract", "Extract 模型", settings.llm_model_extract, "知识抽取专用；空值时回退到 Light/Primary。"),
-                _config_entry("models.embedding", "Embedding 模型", settings.embedding_model),
+                _settings_entry("models.primary", "Primary 模型", settings.models.primary, "主要生成、对话、批改任务。"),
+                _settings_entry("models.reason", "Reason 模型", settings.models.reason, "深度推理与规划；空值时回退到 Primary。"),
+                _settings_entry("models.light", "Light 模型", settings.models.light, "分类、摘要和批量轻任务；空值时回退到 Primary。"),
+                _settings_entry("models.extract", "Extract 模型", settings.models.extract, "知识抽取专用；空值时回退到 Light/Primary。"),
+                _settings_entry("models.embedding", "Embedding 模型", settings.models.embedding),
                 _runtime_entry("models.embedding_dim", "Embedding 维度", settings.embedding_dim),
-                _config_entry("models.ocr", "OCR 模型", settings.ocr_model),
-                _config_entry("models.mermaid", "Mermaid 模型", settings.mermaid_generation_model),
-                _config_entry("models.image_generation", "文生图模型", settings.image_generation_model),
+                _settings_entry("models.ocr", "OCR 模型", settings.models.ocr),
+                _settings_entry("models.mermaid", "Mermaid 模型", settings.models.mermaid_generation),
+                _settings_entry("models.image_generation", "文生图模型", settings.models.image_generation),
             ],
         ),
         SettingSection(
@@ -174,9 +174,9 @@ def build_settings_overview_data() -> SettingsOverviewData:
             label="资料解析",
             description="上传限制、解析并发、解析超时和外部解析服务状态。",
             entries=[
-                _config_entry("files.max_upload_size_mb", "最大上传大小", settings.max_upload_size_mb),
-                _config_entry("ingest.parse_concurrency", "解析并发", settings.ingest_parse_concurrency),
-                _config_entry("ingest.parser_timeout_s", "解析超时", settings.ingest_parser_timeout_s),
+                _settings_entry("files.max_upload_size_mb", "最大上传大小", settings.files.max_upload_size_mb),
+                _settings_entry("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency),
+                _settings_entry("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),
                 _env_entry("ocr.api_key", "OCR_API_KEY", "OCR_API_KEY", "外部 OCR 服务密钥，只显示是否配置。", secret=True),
                 _env_entry("ocr.base_url", "OCR_BASE_URL", "OCR_BASE_URL", "外部 OCR 服务地址。"),
@@ -187,20 +187,20 @@ def build_settings_overview_data() -> SettingsOverviewData:
             label="检索与联网",
             description="本地 RAG、外部搜索 provider、reader 与 rerank 配置。",
             entries=[
-                _config_entry("rag.top_k", "RAG Top-K", settings.rag_top_k),
-                _config_entry("rag.similarity_threshold", "相似度阈值", settings.rag_similarity_threshold),
-                _config_entry("rag.rerank_model", "Rerank 模型", settings.rag_rerank_model),
+                _settings_entry("rag.top_k", "RAG Top-K", settings.rag.top_k),
+                _settings_entry("rag.similarity_threshold", "相似度阈值", settings.rag.similarity_threshold),
+                _settings_entry("rag.rerank_model", "Rerank 模型", settings.rag.rerank_model),
                 _env_entry("rag.rerank_api_key", "RAG_RERANK_API_KEY", "RAG_RERANK_API_KEY", "Rerank 服务密钥。", secret=True),
-                _config_entry("local_rag.priority", "本地资料优先", settings.local_rag_priority),
-                _config_entry("local_rag.min_results", "本地命中阈值", settings.local_rag_min_results),
-                _config_entry("web_search.retriever_profile", "检索 Profile", settings.web_search_retriever_profile),
-                _config_entry("web_search.retrievers", "显式 Retrievers", settings.web_search_retrievers),
-                _config_entry("search.max_results_per_query", "单 query 最大结果数", settings.search_max_results_per_query),
-                _config_entry("search.provider_timeout_s", "Provider 超时", settings.search_provider_timeout_s),
-                _config_entry("search.total_timeout_s", "总检索预算", settings.search_total_timeout_s),
-                _config_entry("search.parallel_retrievers", "并发检索", settings.search_parallel_retrievers),
-                _config_entry("search.max_parallel_retrievers", "最大并发 Provider", settings.search_max_parallel_retrievers),
-                _config_entry("search.fusion_k", "融合参数 K", settings.search_fusion_k),
+                _settings_entry("local_rag.priority", "本地资料优先", settings.local_rag.priority),
+                _settings_entry("local_rag.min_results", "本地命中阈值", settings.local_rag.min_results),
+                _settings_entry("web_search.retriever_profile", "检索 Profile", settings.web_search.retriever_profile),
+                _settings_entry("web_search.retrievers", "显式 Retrievers", settings.web_search.retrievers),
+                _settings_entry("search.max_results_per_query", "单 query 最大结果数", settings.search.max_results_per_query),
+                _settings_entry("search.provider_timeout_s", "Provider 超时", settings.search.provider_timeout_s),
+                _settings_entry("search.total_timeout_s", "总检索预算", settings.search.total_timeout_s),
+                _settings_entry("search.parallel_retrievers", "并发检索", settings.search.parallel_retrievers),
+                _settings_entry("search.max_parallel_retrievers", "最大并发 Provider", settings.search.max_parallel_retrievers),
+                _settings_entry("search.fusion_k", "融合参数 K", settings.search.fusion_k),
                 _env_entry("search.tavily_key", "TAVILY_API_KEY", "TAVILY_API_KEY", "Tavily 检索密钥。", secret=True),
                 _env_entry("search.brave_key", "BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_API_KEY", "Brave Search 密钥。", secret=True),
                 _env_entry("search.exa_key", "EXA_API_KEY", "EXA_API_KEY", "Exa 语义搜索密钥。", secret=True),
@@ -234,26 +234,26 @@ def build_settings_overview_data() -> SettingsOverviewData:
             label="观测与安全",
             description="LangSmith、LLM 统计、缓存、安全护栏与并发控制。",
             entries=[
-                _config_entry("observability.tracing_enabled", "Tracing 总开关", settings.tracing_enabled),
+                _settings_entry("observability.tracing_enabled", "Tracing 总开关", settings.observability.tracing_enabled),
                 _env_entry("langsmith.tracing", "LANGSMITH_TRACING", "LANGSMITH_TRACING"),
                 _env_entry("langsmith.api_key", "LANGSMITH_API_KEY", "LANGSMITH_API_KEY", secret=True),
                 _env_entry("langsmith.project", "LANGSMITH_PROJECT", "LANGSMITH_PROJECT"),
-                _config_entry("observability.llm_observability_enabled", "LLM 调用统计", settings.llm_observability_enabled),
-                _config_entry("runtime.llm_concurrency_limit", "LLM 并发限制", settings.llm_concurrency_limit),
-                _config_entry("safety.guardrails_enabled", "Guardrails", settings.guardrails_enabled),
-                _config_entry("cache.enabled", "LLM 缓存", settings.llm_cache_enabled),
-                _config_entry("cache.ttl_s", "LLM 缓存 TTL", settings.llm_cache_ttl_s),
-                _config_entry("search_runtime_cache.enabled", "检索运行时缓存", settings.search_runtime_cache_enabled),
+                _settings_entry("observability.llm_observability_enabled", "LLM 调用统计", settings.observability.llm_observability_enabled),
+                _settings_entry("runtime.llm_concurrency_limit", "LLM 并发限制", settings.runtime.llm_concurrency_limit),
+                _settings_entry("safety.guardrails_enabled", "Guardrails", settings.safety.guardrails_enabled),
+                _settings_entry("cache.enabled", "LLM 缓存", settings.cache.enabled),
+                _settings_entry("cache.ttl_s", "LLM 缓存 TTL", settings.cache.ttl_s),
+                _settings_entry("search.runtime_cache_enabled", "检索运行时缓存", settings.search.runtime_cache_enabled),
             ],
         ),
     ]
 
     return SettingsOverviewData(
-        config_path=str(config_path),
+        settings_path=str(settings_path),
         mode=mode,
         sections=sections,
         notes=[
-            "页面只展示后端当前生效配置；环境变量和 config.yaml 需要在部署环境或文件中修改。",
+            "页面只展示后端当前生效配置；环境变量和 settings.yaml 需要在部署环境或文件中修改。",
             "敏感字段只显示是否已配置，不返回明文。",
             "浏览器本地偏好只影响当前设备，不会写回后端配置。",
         ],

@@ -1,4 +1,4 @@
-﻿"""Lightweight concept grounding for planner outline quality."""
+"""Lightweight concept grounding for planner outline quality."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from langsmith import traceable
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_retriever
@@ -333,8 +333,8 @@ async def collect_planner_concept_briefing(
         )
 
     local_sections = list(shared_inputs.section_packets)
-    total_budget = max(1.0, float(getattr(settings, "planner_grounding_timeout_s", 10.0)))
-    provider_budget = max(0.5, float(getattr(settings, "search_provider_timeout_s", 6.0)))
+    total_budget = max(1.0, float(settings.planner.grounding_timeout_s))
+    provider_budget = max(0.5, float(settings.search.provider_timeout_s))
     started_at = time.monotonic()
 
     local_started_at = perf_counter()
@@ -475,4 +475,3 @@ __all__ = [
     "build_planner_concept_queries",
     "collect_planner_concept_briefing",
 ]
-

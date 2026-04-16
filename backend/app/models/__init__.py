@@ -41,6 +41,7 @@ from app.models.knowledge_graph import KnowledgeEdge, KnowledgeNode
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset
 from app.models.subject import Subject
+from app.models.system import SystemSettingsSnapshot
 from app.models.user import User
 
 __all__ = [
@@ -77,6 +78,7 @@ __all__ = [
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Subject",
+    "SystemSettingsSnapshot",
     "TaskStatus",
     "TaxonomyAnchor",
     "TeachingUnit",

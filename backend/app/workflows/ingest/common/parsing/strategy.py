@@ -1,4 +1,4 @@
-﻿"""Parser planning and capability-aware routing for ingest workflows."""
+"""Parser planning and capability-aware routing for ingest workflows."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import MissingLLMApiKeyError, UnsupportedFileTypeError
 from app.workflows.ingest.common.parsing.classifier import ClassificationResult
@@ -64,13 +64,13 @@ def build_parse_plan(
     file_mb = round((file_size_bytes or 0) / (1024 * 1024), 2)
     estimated_pages = classification.estimated_pages if classification else 0
     parser_parallelism = _derive_parser_parallelism(
-        base_concurrency=settings.ingest_parse_concurrency,
+        base_concurrency=settings.ingest.parse_concurrency,
         file_mb=file_mb,
         estimated_pages=estimated_pages,
     )
     ocr_language_mode = _derive_ocr_language_mode(classification)
     options = ParserRunOptions(
-        timeout_s=settings.ingest_parser_timeout_s,
+        timeout_s=settings.ingest.parser_timeout_s,
         parser_parallelism=parser_parallelism,
         llm_ocr_page_concurrency=parser_parallelism,
         ocr_language_mode=ocr_language_mode,

@@ -53,7 +53,7 @@ def test_mermaid_placeholder_runtime_falls_back_when_llm_fails() -> None:
         "app.workflows.digest.docgen.lib.assets.get_settings",
         return_value=SimpleNamespace(
             mermaid_generation_enabled=True,
-            mermaid_generation_model="",
+            models=SimpleNamespace(mermaid_generation=""),
         ),
     ):
         result = asyncio.run(
