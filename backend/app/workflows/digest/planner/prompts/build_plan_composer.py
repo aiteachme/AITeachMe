@@ -4,9 +4,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.workflows.digest.planner.prompts.examples import render_composer_examples
-from app.workflows.digest.planner.lib.research_probe import EvidenceBrief, LearningIntentProfile, PlanSketch, material_topic_hints
 from app.workflows.digest.common.models import DigestMaterialContext
+from app.workflows.digest.planner.lib.research_probe import (
+    EvidenceBrief,
+    LearningIntentProfile,
+    PlanSketch,
+    material_topic_hints,
+)
+from app.workflows.digest.planner.prompts.examples import render_composer_examples
+
+_MAX_DIGEST_CHARS = 2400
+
+
+def _render_material_digest(material_context: DigestMaterialContext) -> str:
+    digest = (material_context.material_digest or "").strip()
+    if not digest:
+        return "暂无资料摘要"
+    if len(digest) <= _MAX_DIGEST_CHARS:
+        return digest
+    return digest[: _MAX_DIGEST_CHARS - 1].rstrip() + "…"
 
 
 def _compact_message_history(message_history: list[str] | None) -> str:
@@ -44,10 +60,14 @@ def build_plan_composer_messages(
     sketch_tasks = "；".join(plan_sketch.research_tasks[:8]) or plan_sketch.raw_text
     provisional_chapters = "；".join(plan_sketch.provisional_chapters[:8]) or "暂无暂定章节"
     core_concepts = "、".join(evidence_brief.core_concepts[:10]) or "暂无明确概念清单"
-    evidence_hints = "；".join(
-        f"{item.chapter_hint}=>{item.evidence_summary}"
-        for item in evidence_brief.chapter_evidence_hints[:6]
-    ) or "暂无章节级证据提示"
+    evidence_hints = (
+        "；".join(
+            f"{item.chapter_hint}=>{item.evidence_summary}"
+            for item in evidence_brief.chapter_evidence_hints[:6]
+        )
+        or "暂无章节级证据提示"
+    )
+    digest = _render_material_digest(material_context)
     prompt = (
         "请综合草稿、用户意图和证据摘要，生成一份可确认的知识文档构建计划。\n\n"
         f"主题：{subject}\n"
@@ -55,6 +75,7 @@ def build_plan_composer_messages(
         f"模式：{digest_mode}\n"
         f"语气：{tone}\n"
         f"资料主题：{topics}\n\n"
+        f"资料摘要：\n{digest}\n\n"
         f"最近对话与修改意见：\n{_compact_message_history(message_history)}\n\n"
         f"上一版方案：\n{_compact_latest_plan(latest_plan)}\n\n"
         f"草稿任务：{sketch_tasks}\n\n"

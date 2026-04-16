@@ -214,9 +214,28 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     if not isinstance(final_state, dict):
         return None
 
+    steps: list[BuildPlannerStepStatsResponse] = []
+    for name, field_name in (
+        ("prepare_material_context", "prepare_ms"),
+        ("summarize_material_digest", "digest_ms"),
+        ("generate_plan_preview", "preview_ms"),
+        ("probe_supporting_evidence", "probe_ms"),
+        ("compose_plan_contract", "compose_ms"),
+        ("finalize_plan_contract", "finalize_ms"),
+    ):
+        elapsed_ms = int(final_state.get(field_name, 0) or 0)
+        if elapsed_ms <= 0:
+            continue
+        steps.append(
+            BuildPlannerStepStatsResponse(
+                name=name,
+                elapsed_ms=elapsed_ms,
+                status="ok",
+            )
+        )
     return BuildPlannerRuntimeStatsResponse(
         elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
-        steps=[],
+        steps=steps,
         generation_mode=str(final_state.get("planner_generation_mode") or "").strip() or None,
     )
 

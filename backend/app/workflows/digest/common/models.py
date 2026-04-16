@@ -240,6 +240,7 @@ class DigestMaterialContext(BaseModel):
         default_factory=DigestModeDecision,
         validation_alias=AliasChoices("course_mode_decision", "digest_mode_decision"),
     )
+    material_digest: str = ""
 
     @property
     def source_packets(self) -> list[SourcePacket]:

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import structlog
 
-from app.shared.infra.settings import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_external_retriever_names
 from app.shared.infra.search.types import SearchResult
+from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.evidence_probe import (
@@ -35,7 +35,9 @@ def build_probe_evidence_node(*, context: WorkflowContext):
     async def probe_evidence_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
         intent = LearningIntentProfile.model_validate(state.get("learning_intent_profile") or {})
-        probe_plan = ResearchProbePlan.model_validate(state.get("research_probe_plan") or intent.research_probe_plan.model_dump())
+        probe_plan = ResearchProbePlan.model_validate(
+            state.get("research_probe_plan") or intent.research_probe_plan.model_dump()
+        )
         plan_sketch = PlanSketch.model_validate(state.get("plan_sketch") or {})
         local_sections = list(material_context.material_sections)
         logger.info(
@@ -189,7 +191,13 @@ def build_probe_evidence_node(*, context: WorkflowContext):
             opened_source_count=len(opened_sources),
         )
         return {
+            "selected_sources": [source.model_dump(mode="json") for source in selected_sources],
+            "opened_sources": [source.model_dump(mode="json") for source in opened_sources],
             "evidence_brief": evidence.model_dump(mode="json"),
+            "concept_briefing": evidence.concept_briefing,
+            "concept_topic_hints": list(evidence.core_concepts),
+            "concept_local_hit_count": len(local_results),
+            "concept_web_hit_count": len(web_results),
         }
 
     return probe_evidence_node

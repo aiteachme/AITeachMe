@@ -1,4 +1,4 @@
-﻿"""Planner graph definition and lane-local runtime entrypoints."""
+"""Planner graph definition and lane-local runtime entrypoints."""
 
 from __future__ import annotations
 
@@ -8,25 +8,46 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
+from app.workflows.digest.common.contracts import (
+    resolve_digest_course_type,
+    resolve_planner_retrieval_profile,
+)
 from app.workflows.digest.planner.nodes import (
     build_bootstrap_plan_brief_node,
     build_compose_build_plan_node,
     build_finalize_plan_contract_node,
     build_prepare_material_context_node,
     build_probe_evidence_node,
+    build_summarize_material_digest_node,
 )
-from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
+from app.workflows.digest.planner.state import (
+    BuildPlannerGraphInput,
+    BuildPlannerGraphOutput,
+    BuildPlannerState,
+)
 
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     trace = workflow_tracer(context=context, lane="planner")
-    workflow = StateGraph(BuildPlannerState)
+    workflow = StateGraph(
+        BuildPlannerState,
+        input_schema=BuildPlannerGraphInput,
+        output_schema=BuildPlannerGraphOutput,
+    )
     workflow.add_node(
         "prepare_material_context",
         trace.node(
             build_prepare_material_context_node(context=context),
             name="prepare_material_context",
+            timing_field="prepare_ms",
+        ),
+    )
+    workflow.add_node(
+        "summarize_material_digest",
+        trace.node(
+            build_summarize_material_digest_node(context=context),
+            name="summarize_material_digest",
+            timing_field="digest_ms",
         ),
     )
     workflow.add_node(
@@ -34,6 +55,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_bootstrap_plan_brief_node(context=context),
             name="generate_plan_preview",
+            timing_field="preview_ms",
         ),
     )
     workflow.add_node(
@@ -41,6 +63,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_probe_evidence_node(context=context),
             name="probe_supporting_evidence",
+            timing_field="probe_ms",
         ),
     )
     workflow.add_node(
@@ -48,6 +71,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_compose_build_plan_node(context=context),
             name="compose_plan_contract",
+            timing_field="compose_ms",
         ),
     )
     workflow.add_node(
@@ -55,13 +79,35 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         trace.node(
             build_finalize_plan_contract_node(context=context),
             name="finalize_plan_contract",
+            timing_field="finalize_ms",
         ),
     )
     workflow.set_entry_point("prepare_material_context")
-    workflow.add_conditional_edges("prepare_material_context", route_after_step, {"continue": "generate_plan_preview", "fail": END})
-    workflow.add_conditional_edges("generate_plan_preview", route_after_step, {"continue": "probe_supporting_evidence", "fail": END})
-    workflow.add_conditional_edges("probe_supporting_evidence", route_after_step, {"continue": "compose_plan_contract", "fail": END})
-    workflow.add_conditional_edges("compose_plan_contract", route_after_step, {"continue": "finalize_plan_contract", "fail": END})
+    workflow.add_conditional_edges(
+        "prepare_material_context",
+        route_after_step,
+        {"continue": "summarize_material_digest", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "summarize_material_digest",
+        route_after_step,
+        {"continue": "generate_plan_preview", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "generate_plan_preview",
+        route_after_step,
+        {"continue": "probe_supporting_evidence", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "probe_supporting_evidence",
+        route_after_step,
+        {"continue": "compose_plan_contract", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "compose_plan_contract",
+        route_after_step,
+        {"continue": "finalize_plan_contract", "fail": END},
+    )
     workflow.add_edge("finalize_plan_contract", END)
     return workflow
 
@@ -84,12 +130,15 @@ def create_planner_initial_state(
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
+    course_type = resolve_digest_course_type(digest_mode)
     return {
         "subject": subject,
         "file_ids": file_ids,
         "user_goal": user_goal,
         "digest_mode": digest_mode,
+        "course_type": course_type,
         "retrieval_profile": resolve_planner_retrieval_profile(),
+        "teaching_action": "plan_course",
         "tone": tone,
         "selected_skillpacks": list(selected_skillpacks),
         "planner_session_id": planner_session_id,

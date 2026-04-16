@@ -10,9 +10,9 @@ import structlog
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.planner.lib.plan_sketch import parse_plan_sketch_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name, build_fallback_plan
-from app.workflows.digest.planner.lib.plan_sketch import parse_plan_sketch_text
 from app.workflows.digest.planner.lib.research_probe import (
     LearningIntentProfile,
     PlanSketch,
@@ -173,9 +173,11 @@ def build_bootstrap_plan_brief_node(*, context: WorkflowContext):
         )
         return {
             "plan_sketch_markdown": sketch.raw_text,
+            "plan_sketch_text": sketch.raw_text,
             "plan_sketch": sketch.model_dump(mode="json"),
             "learning_intent_profile": intent.model_dump(mode="json"),
             "research_probe_plan": intent.research_probe_plan.model_dump(mode="json"),
+            "concept_queries": [query.query for query in intent.research_probe_plan.local_queries],
         }
 
     return bootstrap_plan_brief_node
