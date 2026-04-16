@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from app.shared.infra.config import get_settings
@@ -50,14 +50,37 @@ _DEFAULT_PROFILES: dict[TaskType, TaskProfile] = {
 }
 
 
-def get_task_profile(task_type: TaskType = TaskType.DEFAULT) -> TaskProfile:
+def _resolve_model_for_tier(task_type: TaskType, *, tier_override: str | None = None) -> str:
+    settings = get_settings()
+    fallback_model = settings.llm_model
+
+    if tier_override == "reason":
+        return settings.llm_model_reason or fallback_model
+    if tier_override == "primary":
+        return fallback_model
+    if tier_override == "light":
+        if task_type is TaskType.EXTRACT:
+            return settings.llm_model_extract or settings.llm_model_light or fallback_model
+        return settings.llm_model_light or fallback_model
+    return ""
+
+
+def get_task_profile(
+    task_type: TaskType = TaskType.DEFAULT,
+    *,
+    tier_override: str | None = None,
+    model_override: str | None = None,
+) -> TaskProfile:
     """Resolve the effective profile for a task type."""
 
     settings = get_settings()
     base = _DEFAULT_PROFILES.get(task_type, _DEFAULT_PROFILES[TaskType.DEFAULT])
 
     fallback_model = settings.llm_model
-    override_model = settings.model_overrides.get(task_type.value)
+    override_model = model_override or settings.model_overrides.get(task_type.value)
+
+    if not override_model and tier_override:
+        override_model = _resolve_model_for_tier(task_type, tier_override=tier_override)
 
     if not override_model:
         # Tier-based model resolution: reason → light → primary fallback
@@ -71,13 +94,7 @@ def get_task_profile(task_type: TaskType = TaskType.DEFAULT) -> TaskProfile:
 
     resolved_model = override_model or base.model or fallback_model
 
-    return TaskProfile(
-        model=resolved_model,
-        temperature=base.temperature,
-        max_tokens=base.max_tokens,
-        timeout_s=base.timeout_s,
-        max_retries=base.max_retries,
-    )
+    return replace(base, model=resolved_model)
 
 
 __all__ = ["TaskProfile", "TaskType", "get_task_profile"]

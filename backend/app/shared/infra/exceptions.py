@@ -332,3 +332,11 @@ class BuildPlannerEmptyPlanError(AITeachMeError):
 
     def __init__(self, session_id: str) -> None:
         super().__init__(detail=f"构建方案会话 `{session_id}` 当前没有可确认的方案草稿。")
+
+
+class PlannerMaterialsNotReadyError(AITeachMeError):
+    error_code = "PLANNER_MATERIALS_NOT_READY"
+    status_code = HTTPStatus.CONFLICT
+
+    def __init__(self, subject: str) -> None:
+        super().__init__(detail=f"学科 `{subject}` 的资料正文仍在解析中，请等待至少一份资料完成解析后再生成构建方案。")

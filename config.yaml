@@ -6,9 +6,9 @@
 #   primary – 常用模型 (教学、出题、批改、对话)
 #   light   – 轻量模型 (批量抽取、分类、摘要) — 留空则回退到 primary
 models:
-  reason: ""
+  reason: qwen3-max
   primary: qwen-plus-latest
-  light: ""
+  light: qwen-turbo
   
   extract: ""
   ocr: ""

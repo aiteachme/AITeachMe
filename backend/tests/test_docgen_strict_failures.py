@@ -38,7 +38,7 @@ def test_docgen_writer_runtime_raises_when_main_llm_fails() -> None:
         )
 
 
-def test_mermaid_placeholder_runtime_raises_when_llm_fails() -> None:
+def test_mermaid_placeholder_runtime_falls_back_when_llm_fails() -> None:
     async def failing_llm(*_args, **_kwargs) -> str:
         raise RuntimeError("mermaid llm failed")
 
@@ -56,10 +56,13 @@ def test_mermaid_placeholder_runtime_raises_when_llm_fails() -> None:
             mermaid_generation_model="",
         ),
     ):
-        with pytest.raises(RuntimeError, match="mermaid llm failed"):
-            asyncio.run(
-                runtime.execute(
-                    topic="Partial Derivatives",
-                    context="Explain the geometric intuition",
-                )
+        result = asyncio.run(
+            runtime.execute(
+                topic="Partial Derivatives",
+                context="Explain the geometric intuition",
             )
+        )
+
+    assert result.metadata["fallback_used"] is True
+    assert "```mermaid" in result.content
+    assert "mindmap" in result.content

@@ -68,7 +68,7 @@ export const profileOfflineRootApiV1SubjectsSubjectProfilePost = async (subject:
   return orvalApiClient<profileOfflineRootApiV1SubjectsSubjectProfilePostResponse>(getProfileOfflineRootApiV1SubjectsSubjectProfilePostUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'DELETE'
     
     
   }
@@ -163,7 +163,7 @@ export const profileOfflinePathApiV1SubjectsSubjectProfilePathPost = async (subj
   return orvalApiClient<profileOfflinePathApiV1SubjectsSubjectProfilePathPostResponse>(getProfileOfflinePathApiV1SubjectsSubjectProfilePathPostUrl(subject,path),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'DELETE'
     
     
   }

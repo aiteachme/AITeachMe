@@ -44,11 +44,17 @@ async def acompletion_structured(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    tier_override: str | None = None,
+    model_override: str | None = None,
     **kwargs,
 ) -> T:
     """Async structured completion."""
 
-    context = build_completion_context(task_type)
+    context = build_completion_context(
+        task_type,
+        tier_override=tier_override,
+        model_override=model_override,
+    )
     use_instructor = instructor is not None
     client = instructor.from_litellm(litellm.acompletion) if use_instructor else None
     last_error: Exception | None = None
@@ -190,6 +196,26 @@ async def acompletion_structured(
                     mode="instructor" if use_instructor else "json_prompt",
                     **trace_log_fields(),
                 )
+            except asyncio.CancelledError:
+                last_error = asyncio.CancelledError()
+                logger.info(
+                    "llm_structured_cancelled",
+                    attempt=attempt,
+                    elapsed_s=round(time.monotonic() - start, 2),
+                    response_model=response_model.__name__,
+                    model=tracked_model,
+                    task_type=context.task_type.value,
+                    mode="instructor" if use_instructor else "json_prompt",
+                    **trace_log_fields(),
+                )
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=call_started_at,
+                    success=False,
+                    error="cancelled",
+                )
+                raise
             except Exception as exc:
                 last_error = exc
                 logger.warning(

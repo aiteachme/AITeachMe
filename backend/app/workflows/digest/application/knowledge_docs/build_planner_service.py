@@ -39,6 +39,7 @@ from app.schemas.knowledge import (
 )
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
+    PlannerMaterialsNotReadyError,
     BuildPlannerSessionNotFoundError,
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
@@ -72,6 +73,10 @@ def _planner_file_available(raw_file: RawFile) -> bool:
     return raw_file.id is not None
 
 
+def _planner_ready_file(raw_file: RawFile) -> bool:
+    return _markdown_ready(raw_file)
+
+
 def _select_planner_files(
     session: Session,
     *,
@@ -89,6 +94,11 @@ def _select_planner_files(
     available_ids = {require_id(item.id, "RawFile.id") for item in available_files}
     selected = [item for item in requested if item.id is not None and require_id(item.id, "RawFile.id") in available_ids]
     return selected
+
+
+def _select_planner_workflow_files(raw_files: list[RawFile]) -> list[RawFile]:
+    ready = [item for item in raw_files if _planner_ready_file(item)]
+    return ready or raw_files
 
 
 def _file_uids_from_ids(session: Session, *, subject: str, file_ids: list[int]) -> list[str]:
@@ -152,12 +162,67 @@ def _normalized_plan_payload(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resolve_planner_preview_markdown(final_state: dict[str, Any] | None, plan_payload: dict[str, Any]) -> str:
+    if isinstance(final_state, dict):
+        preview = str(final_state.get("plan_sketch_markdown") or final_state.get("plan_sketch_text") or "").strip()
+        if preview:
+            return preview
+    summary = str(plan_payload.get("plan_summary") or "").strip()
+    tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
+    chapters = [
+        str((item or {}).get("title") or "").strip()
+        for item in list(plan_payload.get("chapter_plan") or [])
+        if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
+    ]
+    lines = [
+        "# 构建方案",
+        "",
+        f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
+        f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
+        "",
+        "## 研究任务",
+        *[f"{index}. {item}" for index, item in enumerate(tasks[:8], start=1)],
+        "",
+        "## 暂定章节",
+        *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
+    ]
+    return "\n".join(lines).strip()
+
+
+def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
+    summary = str(plan_payload.get("plan_summary") or "").strip()
+    tasks = [str(item).strip() for item in list(plan_payload.get("research_queries") or []) if str(item).strip()]
+    chapters = [
+        str((item or {}).get("title") or "").strip()
+        for item in list(plan_payload.get("chapter_plan") or [])
+        if isinstance(item, dict) and str((item or {}).get("title") or "").strip()
+    ]
+    lines = [
+        "# 构建方案",
+        "",
+        f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
+        f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
+        "",
+        "## 研究任务",
+        *[f"{index}. {item}" for index, item in enumerate(tasks[:8], start=1)],
+        "",
+        "## 暂定章节",
+        *[f"{index}. {item}" for index, item in enumerate(chapters[:8], start=1)],
+    ]
+    return "\n".join(lines).strip()
+
+
 def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerRuntimeStatsResponse | None:
     if not isinstance(final_state, dict):
         return None
 
     steps: list[BuildPlannerStepStatsResponse] = []
     for name, field_name in (
+        ("prepare_material_context", "prepare_ms"),
+        ("generate_plan_preview", "bootstrap_ms"),
+        ("probe_supporting_evidence", "probe_ms"),
+        ("compose_plan_contract", "compose_ms"),
+        ("finalize_plan_contract", "finalize_ms"),
         ("load_context", "load_ms"),
         ("ground_concepts", "ground_ms"),
         ("draft_plan", "draft_ms"),
@@ -264,6 +329,10 @@ async def create_build_planner_session_service(
     planner_files = _select_planner_files(session, subject=subject.slug, file_uids=payload.file_uids)
     file_ids = [require_id(item.id, "RawFile.id") for item in planner_files]
     file_uids = [require_uid(item.uid, "RawFile.uid") for item in planner_files]
+    workflow_files = _select_planner_workflow_files(planner_files)
+    workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
+    if planner_files and not workflow_file_ids:
+        raise PlannerMaterialsNotReadyError(subject.slug)
     session_id = uuid.uuid4().hex
     tone = (payload.tone or planner_defaults.default_tone).strip() or planner_defaults.default_tone
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
@@ -296,7 +365,7 @@ async def create_build_planner_session_service(
 
     workflow_result = await run_build_planner_workflow(
         subject=subject.slug,
-        file_ids=file_ids,
+        file_ids=workflow_file_ids,
         user_goal=user_goal,
         planner_session_id=session_id,
         digest_mode=digest_mode,
@@ -321,7 +390,7 @@ async def create_build_planner_session_service(
         digest_mode=digest_mode,
         tone=tone,
         selected_skillpacks=list(payload.selected_skillpacks or []),
-        shared_inputs=final_state.get("shared_inputs"),
+        shared_inputs=final_state.get("material_context") or final_state.get("shared_inputs"),
     )
     record.latest_plan_json = plan
     record.latest_summary = str(plan.get("plan_summary") or final_state.get("plan_summary") or "")
@@ -337,7 +406,7 @@ async def create_build_planner_session_service(
             user_id=user_id,
             session_id=session_id,
             role="assistant",
-            content=record.latest_summary,
+            content=_render_final_plan_markdown(plan),
             plan_json=plan,
         ),
     )
@@ -385,9 +454,15 @@ async def append_build_planner_message_service(
         if payload.selected_skillpacks is not None
         else list((record.latest_plan_json or {}).get("selected_skillpacks") or [])
     )
+    workflow_files = _select_planner_workflow_files(
+        list_raw_files_by_ids(session, subject.slug, list(record.selected_file_ids_json))
+    )
+    workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
+    if record.selected_file_ids_json and not workflow_file_ids:
+        raise PlannerMaterialsNotReadyError(subject.slug)
     workflow_result = await run_build_planner_workflow(
         subject=subject.slug,
-        file_ids=list(record.selected_file_ids_json),
+        file_ids=workflow_file_ids,
         user_goal=record.user_goal,
         planner_session_id=session_id,
         digest_mode=record.digest_mode,
@@ -413,7 +488,7 @@ async def append_build_planner_message_service(
         digest_mode=record.digest_mode,
         tone=record.tone,
         selected_skillpacks=selected_skillpacks,
-        shared_inputs=final_state.get("shared_inputs"),
+        shared_inputs=final_state.get("material_context") or final_state.get("shared_inputs"),
         latest_plan=record.latest_plan_json,
     )
     record.latest_plan_json = plan
@@ -431,7 +506,7 @@ async def append_build_planner_message_service(
             user_id=user_id,
             session_id=session_id,
             role="assistant",
-            content=record.latest_summary,
+            content=_render_final_plan_markdown(plan),
             plan_json=plan,
         ),
     )

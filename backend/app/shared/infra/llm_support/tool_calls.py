@@ -38,11 +38,17 @@ async def acompletion_with_tools(
     *,
     tools: list[dict] | None = None,
     task_type: TaskType = TaskType.DEFAULT,
+    tier_override: str | None = None,
+    model_override: str | None = None,
     **kwargs,
 ) -> Any:
     """Async completion with tool-call support."""
 
-    context = build_completion_context(task_type)
+    context = build_completion_context(
+        task_type,
+        tier_override=tier_override,
+        model_override=model_override,
+    )
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = context.profile.model
@@ -126,6 +132,23 @@ async def acompletion_with_tools(
                     timeout_s=context.profile.timeout_s,
                     **trace_log_fields(),
                 )
+            except asyncio.CancelledError:
+                last_error = asyncio.CancelledError()
+                logger.info(
+                    "llm_tools_cancelled",
+                    attempt=attempt,
+                    model=tracked_model,
+                    task_type=context.task_type.value,
+                    **trace_log_fields(),
+                )
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=call_started_at,
+                    success=False,
+                    error="cancelled",
+                )
+                raise
             except Exception as exc:
                 last_error = exc
                 logger.warning(

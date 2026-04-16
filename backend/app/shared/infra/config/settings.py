@@ -80,6 +80,9 @@ class Settings(BaseModel):
     planner_default_digest_mode: str = "sprint"
     planner_allow_external_search: bool = True
     planner_grounding_timeout_s: float = 10.0
+    planner_sketch_timeout_s: float = 30.0
+    planner_intent_timeout_s: float = 20.0
+    planner_compose_timeout_s: float = 45.0
     planner_sprint_min_chapters: int = 3
     planner_sprint_max_chapters: int = 6
     planner_sprint_target_length: str = "3000-5000字"
@@ -196,4 +199,3 @@ __all__ = [
     "Settings",
     "get_settings",
 ]
-

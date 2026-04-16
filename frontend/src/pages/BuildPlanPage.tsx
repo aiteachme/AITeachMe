@@ -29,6 +29,7 @@ import type {
 import type { ApiResponse } from "../api/types";
 import { BuildView, ACTIVE_DOC_BUILD_STATUSES, parseIsoTimestamp, useDocBuildProgress } from "../components/knowledge-docs";
 import { KnowledgeBuildResolutionModal } from "../components/pages/KnowledgeBuildResolutionModal";
+import { PlannerPreviewMarkdown } from "../components/pages/PlannerPreviewMarkdown";
 import { SubjectVectorNotice } from "../components/pages/SubjectVectorNotice";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
@@ -74,11 +75,6 @@ interface PlannerRuntimeStats {
   elapsed_ms?: number;
   steps?: PlannerRuntimeStep[];
   generation_mode?: string | null;
-}
-
-interface PlannerPreviewTask {
-  index: number;
-  text: string;
 }
 
 interface PlannerStreamEvent {
@@ -169,12 +165,16 @@ function formatElapsedMs(value: number | undefined): string {
 
 function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
-    case "load_context":
-      return "读取上下文";
-    case "ground_concepts":
-      return "概念预检索";
-    case "draft_plan":
-      return "生成方案";
+    case "prepare_material_context":
+      return "准备资料理解包";
+    case "generate_plan_preview":
+      return "生成规划预览";
+    case "probe_supporting_evidence":
+      return "探测支撑证据";
+    case "compose_plan_contract":
+      return "合成计划大纲";
+    case "finalize_plan_contract":
+      return "整理最终方案";
     default:
       return stepName;
   }
@@ -185,61 +185,6 @@ function listPlannerNodeTimings(runtimeStats: PlannerRuntimeStats | null | undef
     return [];
   }
   return (runtimeStats.steps ?? []).slice(0, 3).map((step) => [step.name, step.elapsed_ms]);
-}
-
-function extractPlannerPreviewText(raw: string): string {
-  const normalized = raw.replace(/\r/g, "");
-  const fenceIndex = normalized.indexOf("```");
-  const preview = fenceIndex >= 0 ? normalized.slice(0, fenceIndex) : normalized;
-  return preview.trim();
-}
-
-function parsePlannerPreviewTasks(raw: string): PlannerPreviewTask[] {
-  const lines = extractPlannerPreviewText(raw)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const tasks: PlannerPreviewTask[] = [];
-  for (const line of lines) {
-    const match = line.match(/^\(?(\d+)\)?[.、\s]*\s*(.+)$/) ?? line.match(/^\((\d+)\)\s*(.+)$/);
-    if (!match) {
-      continue;
-    }
-    const text = match[2].trim();
-    if (!text) {
-      continue;
-    }
-    tasks.push({
-      index: Number(match[1]),
-      text,
-    });
-  }
-  return tasks;
-}
-
-function extractPlannerPreviewTitle(raw: string): string {
-  const lines = extractPlannerPreviewText(raw)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const firstTitle = lines.find(
-    (line) =>
-      !line.startsWith("方案概览") &&
-      line !== "研究任务" &&
-      line !== "研究网站" &&
-      !/^\(?\d+\)?/.test(line),
-  );
-  return firstTitle ?? "";
-}
-
-function extractPlannerPreviewSummary(raw: string): string {
-  const lines = extractPlannerPreviewText(raw)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const summaryLine = lines.find((line) => line.startsWith("方案概览"));
-  return summaryLine ? summaryLine.replace(/^方案概览\s*[:：]\s*/, "").trim() : "";
 }
 
 function resolvePlannerStatusText(payload: unknown): string {
@@ -266,10 +211,6 @@ function appendPlannerStreamEvent(events: PlannerStreamEvent[], text: string): P
     return events;
   }
   return [...events.slice(-5), { id: nextMessageId(), text: cleaned }];
-}
-
-function hasPlannerPreviewContent(preview: string): boolean {
-  return extractPlannerPreviewText(preview).length > 0;
 }
 
 function fileMeta(file: FileRecord) {
@@ -513,6 +454,10 @@ export function BuildPlanPage() {
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
   const plannerFileUids = useMemo(() => plannerFiles.map((item) => item.uid), [plannerFiles]);
   const readyFileUids = useMemo(() => readyFiles.map((item) => item.uid), [readyFiles]);
+  const plannerEffectiveFileUids = useMemo(
+    () => (readyFileUids.length > 0 ? readyFileUids : plannerFileUids),
+    [plannerFileUids, readyFileUids],
+  );
   const buildSourceFiles = useMemo<ApiFileRecord[]>(
     () =>
       files.map((file) => ({
@@ -707,19 +652,22 @@ export function BuildPlanPage() {
       try {
         const response = await createPlannerSessionStream(
           subjectId,
-          { file_uids: plannerFileUids, user_goal: prompt },
+          { file_uids: plannerEffectiveFileUids, user_goal: prompt },
           {
-            onStatus: setPlannerStreamingStatus,
+            onStatus: (text) => {
+              setPlannerStreamingStatus(text);
+              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, text));
+            },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
-              setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
+              setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
             },
           },
         );
         appendPlannerResponse(
           response,
           "我已经根据当前目标和资料重新整理了一版构建方案。",
-          extractPlannerPreviewText(plannerStreamingRawRef.current),
+          plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
       } catch (error) {
         setMessages((prev) => [
@@ -895,6 +843,16 @@ export function BuildPlanPage() {
       return;
     }
 
+    if (plannerFileUids.length > 0 && readyFileUids.length === 0) {
+      setMessages((prev) => [
+        ...prev,
+        createMessage("user", text),
+        createMessage("system", "资料还在解析中，至少等一份资料完成正文解析后，再基于上传内容生成构建方案。"),
+      ]);
+      setInputValue("");
+      return;
+    }
+
     const shouldCreateSession = !plannerSessionId || !currentPlan || plannerNeedsRefresh;
     setMessages((prev) => [...prev, createMessage("user", text)]);
     setInputValue("");
@@ -902,7 +860,11 @@ export function BuildPlanPage() {
     setPlannerStreaming(true);
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
-    const initialStatus = shouldCreateSession ? "正在读取目标与资料，生成构建方案..." : "正在根据你的补充调整构建方案...";
+    const initialStatus = shouldCreateSession
+      ? readyFileUids.length === 0 && plannerFileUids.length > 0
+        ? "资料仍在解析，先基于文件名生成临时方案..."
+        : "正在读取目标与资料，生成构建方案..."
+      : "正在根据你的补充调整构建方案...";
     setPlannerStreamingStatus(initialStatus);
     setPlannerStreamingEvents([{ id: nextMessageId(), text: initialStatus }]);
 
@@ -911,7 +873,7 @@ export function BuildPlanPage() {
         const response = await createPlannerSessionStream(
           subjectId,
           {
-            file_uids: plannerFileUids,
+            file_uids: plannerEffectiveFileUids,
             user_goal: text,
           },
           {
@@ -921,14 +883,14 @@ export function BuildPlanPage() {
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
-              setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
+              setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
             },
           },
         );
         appendPlannerResponse(
           response,
           "我已经根据当前目标和资料重新整理了一版构建方案。",
-          plannerStreamingPreview || extractPlannerPreviewText(plannerStreamingRawRef.current),
+          plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
         return;
       }
@@ -940,13 +902,13 @@ export function BuildPlanPage() {
         },
         onToken: (token) => {
           plannerStreamingRawRef.current += token;
-          setPlannerStreamingPreview(extractPlannerPreviewText(plannerStreamingRawRef.current));
+          setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
         },
       });
       appendPlannerResponse(
         response,
         "我已经按你的新要求更新了构建方案。",
-        plannerStreamingPreview || extractPlannerPreviewText(plannerStreamingRawRef.current),
+        plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
       );
     } catch (error) {
       setMessages((prev) => [
@@ -966,9 +928,11 @@ export function BuildPlanPage() {
     inputValue,
     isBuilding,
     isPlannerPending,
+    plannerEffectiveFileUids,
     plannerFileUids,
     plannerNeedsRefresh,
     plannerSessionId,
+    readyFileUids.length,
     subjectId,
   ]);
 
@@ -1170,8 +1134,8 @@ export function BuildPlanPage() {
                   {message.role === "assistant" ? (
                     <>
                       {!message.plan && message.content ? (
-                        <div className="whitespace-pre-line rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 text-sm leading-6 text-zinc-700 shadow-sm">
-                          {message.content}
+                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+                          <PlannerPreviewMarkdown markdown={message.content} />
                         </div>
                       ) : null}
 
@@ -1193,9 +1157,11 @@ export function BuildPlanPage() {
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="mt-1 whitespace-pre-line text-xs leading-5 text-zinc-500">
-                                {message.plan.plan_summary}
-                              </p>
+                              {!message.content?.trim() ? (
+                                <p className="mt-1 whitespace-pre-line text-xs leading-5 text-zinc-500">
+                                  {message.plan.plan_summary}
+                                </p>
+                              ) : null}
                               {message.runtimeStats ? (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-600">
@@ -1228,7 +1194,7 @@ export function BuildPlanPage() {
                             ))}
                           </div>
 
-                          {message.plan.research_queries?.length ? (
+                          {message.plan.research_queries?.length && !message.content?.trim() ? (
                             <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-3">
                               <div className="text-xs font-medium text-zinc-500">研究任务</div>
                               <div className="mt-2 space-y-2">
@@ -1238,6 +1204,12 @@ export function BuildPlanPage() {
                                   </div>
                                 ))}
                               </div>
+                            </div>
+                          ) : null}
+
+                          {message.content?.trim() ? (
+                            <div className="mt-3">
+                              <PlannerPreviewMarkdown markdown={message.content} />
                             </div>
                           ) : null}
 
@@ -1302,32 +1274,12 @@ export function BuildPlanPage() {
                       ))}
                     </div>
                   ) : null}
-                  {extractPlannerPreviewTitle(plannerStreamingPreview) ? (
-                    <div className="mb-2 text-sm font-semibold text-zinc-800">
-                      {extractPlannerPreviewTitle(plannerStreamingPreview)}
+                  {plannerStreamingPreview.trim() ? (
+                    <div className="mb-3">
+                      <PlannerPreviewMarkdown markdown={plannerStreamingPreview} />
                     </div>
                   ) : null}
-                  {extractPlannerPreviewSummary(plannerStreamingPreview) ? (
-                    <div className="mb-3 whitespace-pre-line rounded-xl bg-zinc-50 px-3 py-2 text-sm leading-6 text-zinc-700">
-                      {extractPlannerPreviewSummary(plannerStreamingPreview)}
-                    </div>
-                  ) : null}
-                  {parsePlannerPreviewTasks(plannerStreamingPreview).length ? (
-                    <div className="mb-3 space-y-2">
-                      {parsePlannerPreviewTasks(plannerStreamingPreview).map((task) => (
-                        <div key={`preview-${task.index}`} className="rounded-xl bg-zinc-50 px-3 py-3">
-                          <div className="text-xs text-zinc-400">研究任务 {task.index}</div>
-                          <div className="mt-1 text-sm leading-6 text-zinc-700">{task.text}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {plannerStreaming && hasPlannerPreviewContent(plannerStreamingPreview) && !parsePlannerPreviewTasks(plannerStreamingPreview).length ? (
-                    <div className="mb-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700">
-                      {extractPlannerPreviewText(plannerStreamingPreview)}
-                    </div>
-                  ) : null}
-                  {!plannerStreaming || !hasPlannerPreviewContent(plannerStreamingPreview) ? (
+                  {!plannerStreaming || !plannerStreamingPreview.trim() ? (
                     <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
                       正在等待后端推送第一段方案内容，请稍等...
                     </div>
