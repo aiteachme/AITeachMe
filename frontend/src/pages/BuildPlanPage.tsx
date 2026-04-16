@@ -246,7 +246,7 @@ function plannerStringList(value: unknown, limit = 4): string[] {
     .slice(0, limit);
 }
 
-function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 6): PlannerOutlineItem[] {
+function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 8): PlannerOutlineItem[] {
   const chapters = (plan?.chapter_plan ?? [])
     .map((chapter) => ({
       title: String(chapter.title ?? "").trim(),
@@ -264,7 +264,7 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
     .slice(0, limit);
 }
 
-function buildPlannerFocusItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 4): string[] {
+function buildPlannerFocusItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 6): string[] {
   const elements = (plan?.chapter_plan ?? []).flatMap((chapter) => chapter.required_elements ?? []);
   const deduped: string[] = [];
   for (const item of [...elements, ...(plan?.research_queries ?? [])]) {
@@ -291,7 +291,7 @@ function plannerPayloadOutlineDetails(payload: Record<string, unknown>): string[
       return title && objective ? `${title}：${objective}` : title;
     })
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, 8);
 }
 
 function plannerRetrieverNames(value: unknown): string[] {

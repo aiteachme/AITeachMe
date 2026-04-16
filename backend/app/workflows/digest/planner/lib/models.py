@@ -23,6 +23,10 @@ class ResearchProbePlan(BaseModel):
     web_queries: list[PlannerQuery] = Field(default_factory=list)
 
 
+class PlannerProbeQuerySet(BaseModel):
+    queries: list[str] = Field(default_factory=list)
+
+
 class PlanSketch(BaseModel):
     title: str = ""
     summary: str = ""
@@ -158,21 +162,8 @@ def build_fallback_plan_sketch(draft: BuildPlannerDraft) -> PlanSketch:
     missing_clarifications = ["如需更聚焦，可继续补充章节方向、难度或题型偏好。"]
     raw_text = "\n".join(
         [
-            "# 思考过程",
-            "",
-            f"> 我会先按 {draft.digest_mode} 模式理解资料边界，再提炼可执行的大纲。",
-            "",
-            "## 思考重点",
-            *[f"{index}. {item}" for index, item in enumerate(research_tasks, start=1)],
-            "",
-            "## 计划大纲",
-            *[f"{index}. {item}" for index, item in enumerate(provisional_chapters, start=1)],
-            "",
-            "## 规划假设",
-            *[f"- {item}" for item in assumptions],
-            "",
-            "## 待确认点",
-            *[f"- {item}" for item in missing_clarifications],
+            "1. 关注重点：" + "；".join(research_tasks[:6] or assumptions),
+            "2. 预计计划大纲：" + "；".join(provisional_chapters[:8] or missing_clarifications),
         ]
     ).strip()
     return PlanSketch(
@@ -192,6 +183,7 @@ __all__ = [
     "LearningIntentProfile",
     "PlanSketch",
     "PlannerOpenedSource",
+    "PlannerProbeQuerySet",
     "PlannerQuery",
     "PlannerSelectedSource",
     "ResearchProbePlan",

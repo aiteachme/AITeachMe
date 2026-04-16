@@ -175,6 +175,7 @@ def build_settings_overview_data() -> SettingsOverviewData:
             description="上传限制、解析并发、解析超时和外部解析服务状态。",
             entries=[
                 _settings_entry("files.max_upload_size_mb", "最大上传大小", settings.files.max_upload_size_mb),
+                _settings_entry("files.max_files_per_upload", "单次最大文件数", settings.files.max_files_per_upload),
                 _settings_entry("ingest.parse_concurrency", "解析并发", settings.ingest.parse_concurrency),
                 _settings_entry("ingest.parser_timeout_s", "解析超时", settings.ingest.parser_timeout_s),
                 _env_entry("mineru.api_token", "MINERU_API_TOKEN", "MINERU_API_TOKEN", "服务端 MinerU Token，只显示是否配置。", secret=True),

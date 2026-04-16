@@ -7,7 +7,8 @@ models:
   # primary - 常用模型，教学、出题、批改、对话。
   # light   - 轻量模型，批量抽取、分类、摘要；留空则回退到 primary。
   reason: qwen3-max
-  primary: qwen-plus-latest
+  # primary: qwen-plus-latest
+  primary: qwen-plus-2025-07-28
   light: qwen-turbo
   extract: ""
   ocr: ""
@@ -17,7 +18,8 @@ models:
   overrides: {}
 
 files:
-  max_upload_size_mb: 50
+  max_upload_size_mb: 10
+  max_files_per_upload: 10
 
 chat:
   history_turns: 10
@@ -30,6 +32,8 @@ planner:
   sketch_timeout_s: 30.0
   intent_timeout_s: 20.0
   compose_timeout_s: 45.0
+  evidence_query_count: 4
+  evidence_open_source_limit: 4
   sprint:
     min_chapters: 3
     max_chapters: 6

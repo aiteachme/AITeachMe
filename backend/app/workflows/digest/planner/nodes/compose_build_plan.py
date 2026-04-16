@@ -50,7 +50,7 @@ def build_compose_build_plan_node(*, context: WorkflowContext):
                 model="primary",
                 response_model=BuildPlannerDraft,
                 temperature=0.15,
-                max_tokens=1200,
+                max_tokens=1700,
                 extra_metadata={
                     "planner_session_id": state.get("planner_session_id") or "",
                     "substep": "compose_build_plan",

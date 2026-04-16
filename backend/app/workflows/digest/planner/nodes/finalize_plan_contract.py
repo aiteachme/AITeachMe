@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
-from app.workflows.digest.planner.lib.finalize_plan_contract import apply_plan_sketch_preferences
+from app.workflows.digest.planner.lib.finalize_contract import apply_plan_sketch_preferences
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import (
     _resolve_subject_display_name,
@@ -47,7 +47,7 @@ def build_finalize_plan_contract_node(*, context: WorkflowContext):
                 "title": chapter.title,
                 "objective": chapter.objective,
             }
-            for chapter in draft.chapter_plan[:6]
+            for chapter in draft.chapter_plan[:8]
         ]
         await emit_planner_event(
             state,

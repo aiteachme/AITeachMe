@@ -6,6 +6,8 @@ import asyncio
 
 import structlog
 
+from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names
@@ -13,7 +15,7 @@ from app.shared.infra.search.types import SearchResult
 from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.probe_evidence import (
+from app.workflows.digest.planner.lib.evidence_probe import (
     build_evidence_brief,
     fallback_probe_queries,
     rule_based_source_triage,
@@ -24,22 +26,77 @@ from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.models import (
     PlanSketch,
     PlannerOpenedSource,
+    PlannerProbeQuerySet,
     PlannerSelectedSource,
 )
+from app.workflows.digest.planner.prompts import build_evidence_query_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
+
+
+def _normalize_probe_queries(value: list[str], *, limit: int) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        query = str(item or "").strip()
+        if not query:
+            continue
+        key = query.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+        if len(queries) >= limit:
+            break
+    return queries
+
+
+async def _generate_probe_queries(state: BuildPlannerState, *, plan_sketch: PlanSketch) -> list[str]:
+    settings = get_settings()
+    query_count = max(1, int(settings.planner.evidence_query_count))
+    material_context = state["material_context"]
+    fallback_queries = fallback_probe_queries(material_context, plan_sketch=plan_sketch)
+    try:
+        generated = await acompletion_with_fallback(
+            build_evidence_query_messages(
+                subject=state["subject"],
+                user_goal=state.get("user_goal") or "",
+                material_context=material_context,
+                plan_sketch=plan_sketch,
+                query_count=query_count,
+            ),
+            task_type=TaskType.CLASSIFY,
+            model="light",
+            response_model=PlannerProbeQuerySet,
+            temperature=0.1,
+            max_tokens=420,
+            extra_metadata={
+                "planner_session_id": state.get("planner_session_id") or "",
+                "substep": "generate_probe_queries",
+            },
+        )
+        queries = _normalize_probe_queries(generated.queries, limit=query_count)
+        if queries:
+            return queries
+    except Exception:
+        logger.exception(
+            "planner_probe_query_generation_failed",
+            planner_session_id=state.get("planner_session_id") or "",
+            subject=state["subject"],
+        )
+    return _normalize_probe_queries(fallback_queries, limit=query_count)
 
 
 def build_probe_evidence_node(*, context: WorkflowContext):
     async def probe_evidence_node(state: BuildPlannerState) -> dict:
         material_context = state["material_context"]
         plan_sketch = PlanSketch.model_validate(state.get("plan_sketch") or {})
-        queries = fallback_probe_queries(material_context, plan_sketch=plan_sketch)
+        settings = get_settings()
+        queries = await _generate_probe_queries(state, plan_sketch=plan_sketch)
         if not queries:
             fallback_query = str(state.get("user_goal") or state["subject"]).strip()
             queries = [fallback_query] if fallback_query else []
-        queries = list(dict.fromkeys(queries))[:4]
         local_sections = list(material_context.material_sections)
         retriever_names = get_configured_retriever_names(
             profile=state.get("retrieval_profile"),
@@ -141,10 +198,19 @@ def build_probe_evidence_node(*, context: WorkflowContext):
                         content_preview=source_preview(source.snippet),
                     )
                 )
-        web_urls = [source.url for source in selected_sources if source.source_type == "web" and source.url][:2]
+        open_source_limit = max(1, int(settings.planner.evidence_open_source_limit))
+        web_urls = [
+            source.url
+            for source in selected_sources
+            if source.source_type == "web" and source.url
+        ][:open_source_limit]
         if web_urls:
             try:
-                pages = await read_urls(web_urls, max_workers=2, timeout_s=float(get_settings().search.read_timeout_s))
+                pages = await read_urls(
+                    web_urls,
+                    max_workers=min(open_source_limit, max(1, int(settings.search.max_parallel_retrievers))),
+                    timeout_s=float(settings.search.read_timeout_s),
+                )
                 for page in pages:
                     opened_sources.append(
                         PlannerOpenedSource(

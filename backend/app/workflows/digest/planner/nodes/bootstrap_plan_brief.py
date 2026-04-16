@@ -10,8 +10,8 @@ import structlog
 from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.bootstrap_plan_brief import parse_plan_sketch_text
-from app.workflows.digest.planner.lib.probe_evidence import fallback_probe_queries
+from app.workflows.digest.planner.lib.plan_sketch import parse_plan_sketch_text
+from app.workflows.digest.planner.lib.evidence_probe import fallback_probe_queries
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name, build_fallback_plan
 from app.workflows.digest.planner.lib.models import (
@@ -51,7 +51,7 @@ async def _stream_plan_sketch(state: BuildPlannerState, fallback: PlanSketch) ->
             task_type=TaskType.REASONING,
             model="reason",
             temperature=0.2,
-            max_tokens=520,
+            max_tokens=780,
             extra_metadata={
                 "planner_session_id": state.get("planner_session_id") or "",
                 "substep": "stream_visible_thinking",

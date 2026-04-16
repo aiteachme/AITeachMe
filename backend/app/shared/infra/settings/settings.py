@@ -46,7 +46,8 @@ class ModelsSettings(_SettingsModel):
 
 
 class FilesSettings(_SettingsModel):
-    max_upload_size_mb: int = 50
+    max_upload_size_mb: int = 10
+    max_files_per_upload: int = 10
 
 
 class ChatSettings(_SettingsModel):
@@ -67,6 +68,8 @@ class PlannerSettings(_SettingsModel):
     sketch_timeout_s: float = 30.0
     intent_timeout_s: float = 20.0
     compose_timeout_s: float = 45.0
+    evidence_query_count: int = 4
+    evidence_open_source_limit: int = 4
     sprint: PlannerModeSettings = Field(
         default_factory=lambda: PlannerModeSettings(
             min_chapters=3,

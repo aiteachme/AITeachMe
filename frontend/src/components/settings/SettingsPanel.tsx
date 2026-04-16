@@ -611,6 +611,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsModalProps) {
         entries={getBackendEntries("ingest", "search").filter((entry) =>
           [
             "files.max_upload_size_mb",
+            "files.max_files_per_upload",
             "ingest.parse_concurrency",
             "ingest.parser_timeout_s",
             "mineru.api_token",

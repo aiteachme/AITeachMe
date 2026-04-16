@@ -11,7 +11,7 @@
 
 ## 一句话总览
 
-Planner V3.3 做的事是：先准备资料理解包，再用 light 模型快速提炼一份"资料摘要"写回理解包，再并行生成可见思考过程和结构化学习意图，然后用外部检索校准概念边界，最后合成并整理出稳定的构建计划合同。
+Planner V3.3 做的事是：先准备资料理解包，再用 light 模型快速提炼一份"资料摘要"写回理解包，再并行生成可见思考过程和结构化学习意图，然后用 light 模型生成证据查询问题并调用全部可用检索器校准概念边界，最后合成并整理出稳定的构建计划合同。
 
 ## 当前流程
 
@@ -21,7 +21,7 @@ prepare_material_context
   -> bootstrap_plan_brief
        ├─ stream_plan_sketch       # reason + SSE
        └─ extract_learning_intent  # light 结构化
-  -> probe_evidence                # 外部检索校准
+  -> probe_evidence                # 生成查询问题 + 全部可用检索器
   -> compose_build_plan
   -> finalize_plan_contract
 ```
@@ -33,7 +33,7 @@ prepare_material_context
 | 1 | `prepare_material_context` | 读取 parsed markdown，生成 `DigestMaterialContext`；没有正文时退化成 seed context | 给后续所有规划步骤一份共享"资料理解包" | `prepare_material_context`、`DigestMaterialContext` |
 | 2 | `summarize_material_digest` | 拼接资料原文，总字数 < 10k 直接透传；≥ 10k 按 10k 切片并行走 light 模型摘要（最多 10 片） | 让 sketch/intent/compose 都能基于真实资料内容，而不是只看文件名和 hints | `build_material_digest`、`acompletion` (tier=light) |
 | 3 | `bootstrap_plan_brief` | 内部并行跑 `stream_plan_sketch` 和 `extract_learning_intent` | 让前端尽快看到格式稳定的可见思考过程，同时产出结构化意图与外部检索计划 | `acompletion_stream`、`acompletion_with_fallback` |
-| 4 | `probe_evidence` | 跳过 local_rag，跑少量外部检索；筛选并打开极少量来源 | 给最终大纲提供概念边界和标准定义校准 | `get_retriever`、`SourceCurator`、`read_urls` |
+| 4 | `probe_evidence` | light 模型生成检索问题，调用全部可用检索器；筛选并按配置打开来源 | 给最终大纲提供概念边界、标准定义和本地资料命中校准 | `get_retriever`、`SourceCurator`、`read_urls` |
 | 5 | `compose_build_plan` | 综合思考过程、意图、证据和资料理解包，生成结构化 `BuildPlannerDraft` | 一次性生成后续 DocGen 可用的大纲合同 | `BuildPlannerDraft`、`build_plan_composer_messages` |
 | 6 | `finalize_plan_contract` | normalize、fallback merge、标题去重、字段补齐 | 保持外部 API 与 ConfirmedBuildPlan 合同稳定 | `normalize_planner_draft`、`build_fallback_plan` |
 
@@ -62,35 +62,19 @@ prepare_material_context
 | `course_mode_decision` | `digest_mode_decision` | 课程模式建议 |
 | `material_digest` | — | light 模型输出的资料快速摘要；< 10k 字时直接是拼接原文 |
 
-## 可见思考 Markdown 合同
+## 可见思考输出合同
 
-`stream_plan_sketch` 的输出被强约束为固定 Markdown：
+`stream_plan_sketch` 的输出被强约束为两行可读思考摘要：
 
-```markdown
-# 思考过程
-
-> 我会先用一句话说明当前资料和目标该怎么拆。
-
-## 思考重点
-1. …
-2. …
-
-## 计划大纲
-1. …
-2. …
-
-## 规划假设
-- …
-
-## 待确认点
-- …
+```text
+1. 关注重点：……
+2. 预计计划大纲：……
 ```
 
 硬约束：
 
-- 必须有一级标题、思考重点、计划大纲。
-- `思考重点` 与 `计划大纲` 必须是标准 Markdown 有序列表。
-- 不允许输出网站名、来源标题、`subj_xxx`、代码块或 JSON。
+- 只能输出两条编号内容：关注重点、预计计划大纲。
+- 不允许输出 Markdown 标题、网站名、来源标题、`subj_xxx`、代码块或 JSON。
 - few-shot 示例会明确约束格式和风格。
 
 ## Few-shot 示例
@@ -148,7 +132,7 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
   - token 通过旧 `token_callback` 流给前端
 - `extract_learning_intent`
   - 走 `light`
-  - 输出 `LearningIntentProfile` 和 `ResearchProbePlan`
+  - 输出 `LearningIntentProfile`
 
 ### `probe_evidence`
 
@@ -158,9 +142,9 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 做什么：
 
-- 跳过 local_rag
-- 跑少量外部检索
-- 先筛选来源，再最多打开 2 个外部 URL
+- 用 light 模型生成证据查询问题
+- 调用全部可用检索器，包括 `local_rag` 和外部 retriever
+- 先筛选来源，再按 `settings.planner.evidence_open_source_limit` 打开外部 URL
 - 输出 `EvidenceBrief`
 
 ### `compose_build_plan`
