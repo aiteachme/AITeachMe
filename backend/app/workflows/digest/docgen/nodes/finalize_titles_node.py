@@ -153,7 +153,7 @@ def build_finalize_titles_node(*, context: WorkflowContext):
                 "resolved_title_count": sum(1 for item in resolved_materials if str(item.get("resolved_title") or "").strip()),
             },
         )
-        return {"chapter_materials": resolved_materials}
+        return {"title_resolved_chapter_materials": resolved_materials}
 
     return finalize_titles_node
 

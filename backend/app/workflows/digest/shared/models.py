@@ -177,7 +177,11 @@ class SubjectProfile(BaseModel):
 
 
 class SharedInputs(BaseModel):
-    """Outputs of the shared preparation layer."""
+    """Digest-wide material understanding package prepared once and reused by lanes.
+
+    中文理解：这是 Digest 的“资料理解包”，统一打包文件正文、切片、主题提示、
+    资产、学科画像、材料统计和模式判断，供 planner / docgen / KG 复用。
+    """
 
     source_packets: list[SourcePacket] = Field(default_factory=list)
     section_packets: list[SectionPacket] = Field(default_factory=list)

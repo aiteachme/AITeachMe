@@ -33,6 +33,7 @@ async def recover_stalled_enhancements() -> int:
     """
 
     from app.workflows.ingest.runtime import _run_deep_enhance_background
+    from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 
     dispatched = 0
 
@@ -77,13 +78,15 @@ async def recover_stalled_enhancements() -> int:
                     subject=subject,
                     current_status=raw_file.ingest_status,
                 )
-                asyncio.create_task(
+                task = asyncio.create_task(
                     _run_deep_enhance_background(
                         subject=subject,
                         file_id=raw_file.id,
                         event_bus=None,
                     )
                 )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
                 dispatched += 1
 
     except Exception:

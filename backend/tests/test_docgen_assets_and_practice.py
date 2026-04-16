@@ -24,6 +24,22 @@ def test_docgen_asset_runtime_processes_interactive_placeholder() -> None:
     assert "交互推导卡" in rendered
 
 
+def test_docgen_mermaid_placeholder_falls_back_when_llm_fails() -> None:
+    async def failing_llm(*_args, **_kwargs):
+        raise RuntimeError("mermaid model unavailable")
+
+    markdown = "# 偏导数\n\n<!-- [MERMAID: 偏导数核心关系] -->"
+    rendered = asyncio.run(
+        DocGenAssetRuntime(
+            TracedExecutionContext(subject="demo", llm_caller=failing_llm)
+        ).process_mermaid_placeholders(markdown)
+    )
+
+    assert "[MERMAID:" not in rendered
+    assert "```mermaid" in rendered
+    assert "mindmap" in rendered
+
+
 def test_append_practice_node_generates_mode_aware_practice_layers() -> None:
     node = build_append_practice_node(context=create_langgraph_dev_context("digest.docgen.practice_test"))
     base_state = {
