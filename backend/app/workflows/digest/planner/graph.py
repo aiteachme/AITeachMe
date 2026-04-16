@@ -14,6 +14,7 @@ from app.workflows.digest.planner.nodes import (
     build_generate_plan_preview_node,
     build_prepare_material_context_node,
     build_probe_supporting_evidence_node,
+    build_summarize_material_digest_node,
 )
 from app.workflows.digest.planner.state import (
     BuildPlannerGraphInput,
@@ -42,11 +43,19 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.add_node(
+        "summarize_material_digest",
+        trace.node(
+            build_summarize_material_digest_node(context=context),
+            name="summarize_material_digest",
+            timing_field="digest_ms",
+        ),
+    )
+    workflow.add_node(
         "generate_plan_preview",
         trace.node(
             build_generate_plan_preview_node(context=context),
             name="generate_plan_preview",
-            timing_field="bootstrap_ms",
+            timing_field="preview_ms",
         ),
     )
     workflow.add_node(
@@ -74,7 +83,8 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.set_entry_point("prepare_material_context")
-    workflow.add_conditional_edges("prepare_material_context", route_after_step, {"continue": "generate_plan_preview", "fail": END})
+    workflow.add_conditional_edges("prepare_material_context", route_after_step, {"continue": "summarize_material_digest", "fail": END})
+    workflow.add_conditional_edges("summarize_material_digest", route_after_step, {"continue": "generate_plan_preview", "fail": END})
     workflow.add_conditional_edges("generate_plan_preview", route_after_step, {"continue": "probe_supporting_evidence", "fail": END})
     workflow.add_conditional_edges("probe_supporting_evidence", route_after_step, {"continue": "compose_plan_contract", "fail": END})
     workflow.add_conditional_edges("compose_plan_contract", route_after_step, {"continue": "finalize_plan_contract", "fail": END})

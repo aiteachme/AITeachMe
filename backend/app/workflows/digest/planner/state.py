@@ -42,7 +42,8 @@ class BuildPlannerState(TypedDict, total=False):
     plan_summary: str
     workflow_elapsed_ms: int
     prepare_ms: int
-    bootstrap_ms: int
+    digest_ms: int
+    preview_ms: int
     probe_ms: int
     compose_ms: int
     finalize_ms: int
@@ -81,7 +82,8 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "planner_generation_mode",
         "workflow_elapsed_ms",
         "prepare_ms",
-        "bootstrap_ms",
+        "digest_ms",
+        "preview_ms",
         "probe_ms",
         "compose_ms",
         "finalize_ms",

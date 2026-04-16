@@ -1,26 +1,28 @@
-# Planner V3.2 链路说明
+# Planner V3.3 链路说明
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
-`digest/planner/` 负责在正式生成知识文档前，先产出一份用户可确认的高质量构建方案。当前 V3.2 版本重点解决三件事：
+`digest/planner/` 负责在正式生成知识文档前，先产出一份用户可确认的高质量构建方案。当前 V3.3 版本重点解决四件事：
 
-1. 草稿必须真实使用 `reason` 模型。
-2. 草稿和最终计划必须吃 few-shot 示例。
-3. 前端 Planner 预览必须按 Markdown 正确渲染。
+1. 草稿和意图识别必须读到真实资料内容，不再只看文件名和规则 hints。
+2. 草稿必须真实使用 `reason` 模型，意图识别走 `primary` 模型。
+3. 草稿和最终计划必须吃 few-shot 示例。
+4. 前端 Planner 预览必须按 Markdown 正确渲染。
 
 ## 一句话总览
 
-Planner V3.2 做的事是：先准备资料理解包，再并行生成 markdown 草稿和结构化学习意图，然后快速探测少量支撑证据，最后合成并整理出稳定的构建计划合同。
+Planner V3.3 做的事是：先准备资料理解包，再用 light 模型快速提炼一份"资料摘要"写回理解包，再并行生成 markdown 草稿和结构化学习意图，然后快速探测少量支撑证据，最后合成并整理出稳定的构建计划合同。
 
 ## 当前流程
 
 ```text
 prepare_material_context
+  -> summarize_material_digest     # light 摘要，短路直拼，长文分片并行
   -> generate_plan_preview
-       ├─ stream_plan_sketch
-       └─ extract_learning_intent
+       ├─ stream_plan_sketch       # reason + SSE
+       └─ extract_learning_intent  # primary 结构化
   -> probe_supporting_evidence
-  -> compose_plan_contract
+  -> compose_plan_contract         # reason 综合
   -> finalize_plan_contract
 ```
 
@@ -28,11 +30,12 @@ prepare_material_context
 
 | 顺序 | 节点 | 具体做什么 | 目的 | 主要模块/工具 |
 | --- | --- | --- | --- | --- |
-| 1 | `prepare_material_context` | 读取 parsed markdown，生成 `DigestMaterialContext`；没有正文时退化成 seed context | 给后续所有规划步骤一份共享“资料理解包” | `prepare_material_context`、`DigestMaterialContext` |
-| 2 | `generate_plan_preview` | 内部并行跑 `stream_plan_sketch` 和 `extract_learning_intent` | 让前端尽快看到格式稳定的草稿，同时产出结构化意图与检索计划 | `acompletion_stream`、`acompletion_with_fallback` |
-| 3 | `probe_supporting_evidence` | 本地 RAG 优先，必要时补少量外部检索；筛选并打开极少量来源 | 给最终大纲提供足够但不臃肿的事实锚点 | `get_retriever`、`SourceCurator`、`read_urls` |
-| 4 | `compose_plan_contract` | `reason` 模型综合草稿、意图、证据和资料理解包，生成结构化 `BuildPlannerDraft` | 一次性生成后续 DocGen 可用的大纲合同 | `BuildPlannerDraft`、`build_plan_composer_messages` |
-| 5 | `finalize_plan_contract` | normalize、fallback merge、标题去重、字段补齐 | 保持外部 API 与 ConfirmedBuildPlan 合同稳定 | `normalize_planner_draft`、`build_fallback_plan` |
+| 1 | `prepare_material_context` | 读取 parsed markdown，生成 `DigestMaterialContext`；没有正文时退化成 seed context | 给后续所有规划步骤一份共享"资料理解包" | `prepare_material_context`、`DigestMaterialContext` |
+| 2 | `summarize_material_digest` | 拼接资料原文，总字数 < 10k 直接透传；≥ 10k 按 10k 切片并行走 light 模型摘要（最多 10 片） | 让 sketch/intent/compose 都能基于真实资料内容，而不是只看文件名和 hints | `build_material_digest`、`acompletion` (tier=light) |
+| 3 | `generate_plan_preview` | 内部并行跑 `stream_plan_sketch` 和 `extract_learning_intent` | 让前端尽快看到格式稳定的草稿，同时产出结构化意图与检索计划 | `acompletion_stream`、`acompletion_with_fallback` |
+| 4 | `probe_supporting_evidence` | 本地 RAG 优先，必要时补少量外部检索；筛选并打开极少量来源 | 给最终大纲提供足够但不臃肿的事实锚点 | `get_retriever`、`SourceCurator`、`read_urls` |
+| 5 | `compose_plan_contract` | `reason` 模型综合草稿、意图、证据和资料理解包，生成结构化 `BuildPlannerDraft` | 一次性生成后续 DocGen 可用的大纲合同 | `BuildPlannerDraft`、`build_plan_composer_messages` |
+| 6 | `finalize_plan_contract` | normalize、fallback merge、标题去重、字段补齐 | 保持外部 API 与 ConfirmedBuildPlan 合同稳定 | `normalize_planner_draft`、`build_fallback_plan` |
 
 ## 资料理解包
 
@@ -57,6 +60,7 @@ prepare_material_context
 | `learning_domain_profile` | `subject_profile` | 学科画像 |
 | `material_stats_profile` | `material_profile` | 材料统计画像 |
 | `course_mode_decision` | `digest_mode_decision` | 课程模式建议 |
+| `material_digest` | — | light 模型输出的资料快速摘要；< 10k 字时直接是拼接原文 |
 
 ## 草稿 Markdown 合同
 
@@ -118,6 +122,18 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 - 生成 `material_context`
 - 无正文时生成 seed context
 - 发 `planner.material.ready`
+
+### `summarize_material_digest`
+
+文件：`planner/nodes/summarize_material.py`（核心逻辑在 `digest/common/material_digest.py`）
+
+做什么：
+
+- 把 `material_context.source_documents` 按 `===== filename =====\n` 拼接
+- 总字符数 < 10000 → 直接把拼接结果写入 `material_digest`，不调 LLM
+- ≥ 10000 → 按每片 10000 字切，最多 10 片，`asyncio.gather` 并行走 `tier="light"` + `TaskType.SUMMARIZE` 的快速摘要模型
+- 每片输出 150-250 字要点型段落，最终以 "段1：...\n\n段2：..." 合并写回 `material_context.material_digest`
+- 发 `planner.digest.started` 和 `planner.digest.ready`
 
 ### `generate_plan_preview`
 
@@ -187,7 +203,11 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 当前 Planner 事件包括：
 
+- `planner.material.loading`
+- `planner.material.pending`
 - `planner.material.ready`
+- `planner.digest.started`
+- `planner.digest.ready`
 - `planner.sketch.started`
 - `planner.sketch.delta`
 - `planner.intent.ready`

@@ -38,7 +38,7 @@ async def _safe_search(retriever_name: str, *, query: str, subject: str, local_s
             local_sections=local_sections if retriever_name in {"local_rag", "rag"} else None,
         )
         return await asyncio.wait_for(
-            retriever.traced_search(query, max_results=2),
+            retriever.traced_search(query, max_results=4),
             timeout=max(0.1, float(settings.search_provider_timeout_s)),
         )
     except Exception:

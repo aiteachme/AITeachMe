@@ -182,7 +182,7 @@ async def _extract_learning_intent(state: BuildPlannerState) -> LearningIntentPr
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
             ),
-            task_type=TaskType.DOCGEN_LIGHT,
+            task_type=TaskType.CLASSIFY,
             tier="primary",
             response_model=LearningIntentProfile,
             temperature=0.1,

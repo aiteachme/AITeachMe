@@ -7,6 +7,18 @@ from app.workflows.digest.planner.lib.research_probe import material_topic_hints
 from app.workflows.digest.common.models import DigestMaterialContext
 
 
+_MAX_DIGEST_CHARS = 2800
+
+
+def _render_material_digest(material_context: DigestMaterialContext) -> str:
+    digest = (material_context.material_digest or "").strip()
+    if not digest:
+        return "暂无资料摘要"
+    if len(digest) <= _MAX_DIGEST_CHARS:
+        return digest
+    return digest[: _MAX_DIGEST_CHARS - 1].rstrip() + "…"
+
+
 def build_plan_sketch_prompt(
     *,
     subject: str,
@@ -19,6 +31,7 @@ def build_plan_sketch_prompt(
     topics = "、".join(material_topic_hints(material_context, limit=8)) or "暂无明显主题"
     files = "、".join(doc.filename for doc in material_context.source_documents[:5]) or "暂无已解析文件"
     history = "\n".join(f"- {item}" for item in message_history[-4:] if str(item).strip()) or "暂无补充意见"
+    digest = _render_material_digest(material_context)
     return (
         "你是 AITeachMe 的 Deep Research 风格学习规划助手。"
         "请先生成一份给用户看的规划草稿，不要写正式知识文档正文。\n\n"
@@ -28,6 +41,7 @@ def build_plan_sketch_prompt(
         f"语气：{tone}\n"
         f"主题提示：{topics}\n"
         f"资料文件：{files}\n"
+        f"资料摘要：\n{digest}\n\n"
         f"最近对话：\n{history}\n\n"
         "你必须严格按下面的 Markdown 合同输出，不要加解释：\n\n"
         "# 构建方案\n\n"

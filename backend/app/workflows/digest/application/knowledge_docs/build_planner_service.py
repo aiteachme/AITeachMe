@@ -219,7 +219,8 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
     steps: list[BuildPlannerStepStatsResponse] = []
     for name, field_name in (
         ("prepare_material_context", "prepare_ms"),
-        ("generate_plan_preview", "bootstrap_ms"),
+        ("summarize_material_digest", "digest_ms"),
+        ("generate_plan_preview", "preview_ms"),
         ("probe_supporting_evidence", "probe_ms"),
         ("compose_plan_contract", "compose_ms"),
         ("finalize_plan_contract", "finalize_ms"),

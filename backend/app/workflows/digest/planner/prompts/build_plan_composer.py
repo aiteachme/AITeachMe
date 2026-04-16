@@ -7,6 +7,18 @@ from app.workflows.digest.planner.lib.research_probe import EvidenceBrief, Learn
 from app.workflows.digest.common.models import DigestMaterialContext
 
 
+_MAX_DIGEST_CHARS = 2400
+
+
+def _render_material_digest(material_context: DigestMaterialContext) -> str:
+    digest = (material_context.material_digest or "").strip()
+    if not digest:
+        return "暂无资料摘要"
+    if len(digest) <= _MAX_DIGEST_CHARS:
+        return digest
+    return digest[: _MAX_DIGEST_CHARS - 1].rstrip() + "…"
+
+
 def build_plan_composer_messages(
     *,
     subject: str,
@@ -27,6 +39,7 @@ def build_plan_composer_messages(
         f"{item.chapter_hint}=>{item.evidence_summary}"
         for item in evidence_brief.chapter_evidence_hints[:6]
     ) or "暂无章节级证据提示"
+    digest = _render_material_digest(material_context)
     prompt = (
         "请综合草稿、用户意图和证据摘要，生成一份可确认的知识文档构建计划。\n\n"
         f"主题：{subject}\n"
@@ -34,6 +47,7 @@ def build_plan_composer_messages(
         f"模式：{digest_mode}\n"
         f"语气：{tone}\n"
         f"资料主题：{topics}\n\n"
+        f"资料摘要：\n{digest}\n\n"
         f"草稿任务：{sketch_tasks}\n\n"
         f"草稿暂定章节：{provisional_chapters}\n\n"
         f"意图类型：{intent_profile.goal_type}\n"

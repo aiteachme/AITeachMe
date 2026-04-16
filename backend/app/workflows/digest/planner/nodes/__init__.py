@@ -8,6 +8,7 @@ from .prepare_material_context import build_prepare_material_context_node
 from .probe_evidence import build_probe_evidence_node
 from .probe_supporting_evidence import build_probe_supporting_evidence_node
 from .compose_plan_contract import build_compose_plan_contract_node
+from .summarize_material import build_summarize_material_digest_node
 
 __all__ = [
     "build_bootstrap_plan_brief_node",
@@ -18,4 +19,5 @@ __all__ = [
     "build_prepare_material_context_node",
     "build_probe_evidence_node",
     "build_probe_supporting_evidence_node",
+    "build_summarize_material_digest_node",
 ]
