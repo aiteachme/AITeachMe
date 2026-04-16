@@ -138,7 +138,6 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
             "retrieval_profile": resolve_planner_retrieval_profile(),
             "teaching_action": "plan_course",
             "tone": state.get("tone") or "encouraging",
-            "load_ms": 0,
         }
 
     return prepare_material_context_node

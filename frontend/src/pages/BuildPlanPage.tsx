@@ -80,6 +80,8 @@ interface PlannerRuntimeStats {
 interface PlannerStreamEvent {
   id: string;
   text: string;
+  stage?: string;
+  details?: string[];
 }
 
 type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
@@ -201,16 +203,147 @@ function resolvePlannerStatusText(payload: unknown): string {
   return "正在生成构建方案...";
 }
 
-function appendPlannerStreamEvent(events: PlannerStreamEvent[], text: string): PlannerStreamEvent[] {
-  const cleaned = text.trim();
-  if (!cleaned) {
+function plannerGoalTypeLabel(value: string): string {
+  switch (value) {
+    case "exam_sprint":
+      return "考前冲刺";
+    case "systematic_learning":
+      return "系统学习";
+    case "knowledge_doc":
+      return "知识文档规划";
+    default:
+      return value;
+  }
+}
+
+function plannerSourcePolicyLabel(value: string): string {
+  switch (value) {
+    case "local_only":
+      return "仅使用本地资料";
+    case "local_first":
+      return "本地优先，必要时补外部";
+    default:
+      return value;
+  }
+}
+
+function plannerStringList(value: unknown, limit = 4): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function buildPlannerStreamDetails(payload: Record<string, unknown>): string[] {
+  const stage = typeof payload.event === "string"
+    ? payload.event.trim()
+    : typeof payload.stage === "string"
+      ? payload.stage.trim()
+      : "";
+
+  switch (stage) {
+    case "planner.intent.ready": {
+      const details: string[] = [];
+      if (typeof payload.goal_type === "string" && payload.goal_type.trim()) {
+        details.push(`目标类型：${plannerGoalTypeLabel(payload.goal_type.trim())}`);
+      }
+      if (typeof payload.source_policy === "string" && payload.source_policy.trim()) {
+        details.push(`检索策略：${plannerSourcePolicyLabel(payload.source_policy.trim())}`);
+      }
+      const localQueries = plannerStringList(payload.local_queries);
+      if (localQueries.length) {
+        details.push(`本地优先检索：${localQueries.join("；")}`);
+      }
+      const webQueries = plannerStringList(payload.web_queries, 3);
+      if (webQueries.length) {
+        details.push(`必要时补充外部校准：${webQueries.join("；")}`);
+      }
+      return details;
+    }
+    case "planner.probe.started": {
+      const details: string[] = [];
+      const localQueries = plannerStringList(payload.local_queries);
+      if (localQueries.length) {
+        details.push(`正在查本地资料：${localQueries.join("；")}`);
+      }
+      const webQueries = plannerStringList(payload.web_queries, 3);
+      if (webQueries.length) {
+        details.push(`候选外部方向：${webQueries.join("；")}`);
+      }
+      return details;
+    }
+    case "planner.sources.triaged": {
+      const titles = plannerStringList(payload.selected_source_titles);
+      return titles.length ? [`候选来源：${titles.join("；")}`] : [];
+    }
+    case "planner.evidence.ready": {
+      const details: string[] = [];
+      const titles = plannerStringList(payload.selected_source_titles);
+      if (titles.length) {
+        details.push(`已打开证据：${titles.join("；")}`);
+      }
+      const coreConcepts = plannerStringList(payload.core_concepts, 6);
+      if (coreConcepts.length) {
+        details.push(`提炼概念：${coreConcepts.join("、")}`);
+      }
+      if (typeof payload.concept_briefing === "string" && payload.concept_briefing.trim()) {
+        details.push(payload.concept_briefing.trim());
+      }
+      return details;
+    }
+    case "planner.plan.composing":
+      return ["接下来会把草稿、意图和证据一起整理成最终可确认的大纲。"];
+    case "planner.plan.ready":
+      return ["最终方案已整理完成，可以确认或继续调整。"];
+    default:
+      return [];
+  }
+}
+
+function normalizePlannerStreamEvent(payload: unknown): PlannerStreamEvent | null {
+  if (typeof payload === "string") {
+    const cleaned = payload.trim();
+    return cleaned ? { id: nextMessageId(), text: cleaned } : null;
+  }
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const text = resolvePlannerStatusText(payload).trim();
+  if (!text) {
+    return null;
+  }
+
+  const stage = typeof payload.event === "string"
+    ? payload.event.trim()
+    : typeof payload.stage === "string"
+      ? payload.stage.trim()
+      : "";
+
+  return {
+    id: nextMessageId(),
+    text,
+    stage: stage || undefined,
+    details: buildPlannerStreamDetails(payload),
+  };
+}
+
+function appendPlannerStreamEvent(events: PlannerStreamEvent[], payload: unknown): PlannerStreamEvent[] {
+  const nextEvent = normalizePlannerStreamEvent(payload);
+  if (!nextEvent) {
     return events;
   }
   const last = events[events.length - 1];
-  if (last?.text === cleaned) {
+  if (
+    last?.text === nextEvent.text &&
+    JSON.stringify(last.details ?? []) === JSON.stringify(nextEvent.details ?? [])
+  ) {
     return events;
   }
-  return [...events.slice(-5), { id: nextMessageId(), text: cleaned }];
+  return [...events.slice(-5), nextEvent];
 }
 
 function fileMeta(file: FileRecord) {
@@ -298,7 +431,7 @@ async function streamPlannerSession(
   url: string,
   body: object,
   options: {
-    onStatus?: (text: string) => void;
+    onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
 ): Promise<PlannerSessionWithRuntime> {
@@ -310,7 +443,7 @@ async function streamPlannerSession(
       options.onToken?.(content);
     },
     onStatus: (payload) => {
-      options.onStatus?.(resolvePlannerStatusText(payload));
+      options.onStatus?.(payload);
     },
     onDone: (payload) => {
       if (isRecord(payload) && isRecord(payload.session)) {
@@ -342,7 +475,7 @@ async function createPlannerSessionStream(
   subject: string,
   payload: { file_uids: string[]; user_goal: string },
   options: {
-    onStatus?: (text: string) => void;
+    onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
 ) {
@@ -358,7 +491,7 @@ async function revisePlannerSessionStream(
   sessionId: string,
   message: string,
   options: {
-    onStatus?: (text: string) => void;
+    onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
 ) {
@@ -654,9 +787,9 @@ export function BuildPlanPage() {
           subjectId,
           { file_uids: plannerEffectiveFileUids, user_goal: prompt },
           {
-            onStatus: (text) => {
-              setPlannerStreamingStatus(text);
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, text));
+            onStatus: (payload) => {
+              setPlannerStreamingStatus(resolvePlannerStatusText(payload));
+              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -877,9 +1010,9 @@ export function BuildPlanPage() {
             user_goal: text,
           },
           {
-            onStatus: (text) => {
-              setPlannerStreamingStatus(text);
-              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, text));
+            onStatus: (payload) => {
+              setPlannerStreamingStatus(resolvePlannerStatusText(payload));
+              setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
@@ -896,9 +1029,9 @@ export function BuildPlanPage() {
       }
 
       const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, {
-        onStatus: (statusText) => {
-          setPlannerStreamingStatus(statusText);
-          setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, statusText));
+        onStatus: (payload) => {
+          setPlannerStreamingStatus(resolvePlannerStatusText(payload));
+          setPlannerStreamingEvents((prev) => appendPlannerStreamEvent(prev, payload));
         },
         onToken: (token) => {
           plannerStreamingRawRef.current += token;
@@ -1266,10 +1399,21 @@ export function BuildPlanPage() {
                       {plannerStreamingEvents.map((event, index) => (
                         <div key={event.id} className="flex items-start gap-2 text-xs leading-5 text-violet-800">
                           <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
-                          <span>
-                            {index === plannerStreamingEvents.length - 1 ? "当前：" : "已完成："}
-                            {event.text}
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div>
+                              {index === plannerStreamingEvents.length - 1 ? "当前：" : "已完成："}
+                              {event.text}
+                            </div>
+                            {event.details?.length ? (
+                              <div className="mt-1.5 space-y-1 text-[11px] leading-5 text-violet-700/90">
+                                {event.details.map((detail) => (
+                                  <div key={`${event.id}-${detail}`} className="rounded-lg bg-white/55 px-2 py-1">
+                                    {detail}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>

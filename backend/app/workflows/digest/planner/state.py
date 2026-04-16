@@ -46,9 +46,6 @@ class BuildPlannerState(TypedDict, total=False):
     probe_ms: int
     compose_ms: int
     finalize_ms: int
-    load_ms: int
-    ground_ms: int
-    draft_ms: int
     planner_generation_mode: str
     progress_callback: Any
     token_callback: Any

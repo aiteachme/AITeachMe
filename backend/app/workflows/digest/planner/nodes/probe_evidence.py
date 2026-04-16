@@ -127,6 +127,8 @@ def build_probe_evidence_node(*, context: WorkflowContext):
                 "local_query_count": len(probe_plan.local_queries),
                 "web_query_count": len(probe_plan.web_queries),
                 "local_sections_count": len(local_sections),
+                "local_queries": [query.query for query in probe_plan.local_queries[:4]],
+                "web_queries": [query.query for query in probe_plan.web_queries[:3]],
             },
         )
 
@@ -199,7 +201,14 @@ def build_probe_evidence_node(*, context: WorkflowContext):
             state,
             event="planner.sources.triaged",
             detail=f"已筛选 {len(selected_sources)} 个候选来源。",
-            payload={"selected_source_count": len(selected_sources)},
+            payload={
+                "selected_source_count": len(selected_sources),
+                "selected_source_titles": [
+                    source.title
+                    for source in selected_sources[:4]
+                    if str(source.title or "").strip()
+                ],
+            },
         )
 
         opened_sources: list[PlannerOpenedSource] = []
@@ -282,6 +291,8 @@ def build_probe_evidence_node(*, context: WorkflowContext):
                 "web_hit_count": len(web_results),
                 "opened_source_count": len(opened_sources),
                 "selected_source_titles": topic_titles[:4],
+                "core_concepts": core_concepts[:6],
+                "concept_briefing": concept_briefing,
             },
         )
         logger.info(

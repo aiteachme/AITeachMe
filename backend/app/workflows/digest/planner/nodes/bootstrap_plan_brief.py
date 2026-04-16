@@ -230,6 +230,9 @@ def build_bootstrap_plan_brief_node(*, context: WorkflowContext):
                 "source_policy": intent.source_policy,
                 "local_query_count": len(intent.research_probe_plan.local_queries),
                 "web_query_count": len(intent.research_probe_plan.web_queries),
+                "local_queries": [query.query for query in intent.research_probe_plan.local_queries[:4]],
+                "web_queries": [query.query for query in intent.research_probe_plan.web_queries[:3]],
+                "success_criteria": list(intent.success_criteria[:3]),
             },
         )
         return {

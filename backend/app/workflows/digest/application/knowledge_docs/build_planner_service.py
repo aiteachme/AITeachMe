@@ -223,9 +223,6 @@ def _runtime_stats_response(final_state: dict[str, Any] | None) -> BuildPlannerR
         ("probe_supporting_evidence", "probe_ms"),
         ("compose_plan_contract", "compose_ms"),
         ("finalize_plan_contract", "finalize_ms"),
-        ("load_context", "load_ms"),
-        ("ground_concepts", "ground_ms"),
-        ("draft_plan", "draft_ms"),
     ):
         elapsed_ms = int(final_state.get(field_name, 0) or 0)
         if elapsed_ms <= 0:
