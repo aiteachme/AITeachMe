@@ -37,6 +37,10 @@ from app.workflows.digest import run_docgen_workflow
 - `create_docgen_initial_state(...)`
 - `get_langgraph_dev_docgen_graph()`
 
+## 后续改造计划
+
+DocGen 的详细后续计划见 [IMPROVEMENT_PLAN.md](./IMPROVEMENT_PLAN.md)。这份文档记录了 confirmed plan 合同、Deep Research 式章节研究、证据账本、审校重写、Examine 练习注入、资产生命周期和发布恢复等改造方向。
+
 ## 目录结构
 
 ```text
