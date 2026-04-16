@@ -9,7 +9,7 @@ import "katex/dist/katex.min.css";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
-type MarkdownViewerVariant = "default" | "document";
+type MarkdownViewerVariant = "default" | "document" | "planner";
 type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
 
 interface MarkdownViewerProps {
@@ -99,6 +99,28 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       badge: "bg-rose-100 text-rose-700",
     },
   },
+  planner: {
+    note: {
+      shell: "my-4 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-zinc-700",
+      badge: "bg-sky-100 text-sky-700",
+    },
+    tip: {
+      shell: "my-4 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-zinc-700",
+      badge: "bg-emerald-100 text-emerald-700",
+    },
+    important: {
+      shell: "my-4 rounded-xl border border-violet-200 bg-violet-50/70 px-4 py-3 text-zinc-700",
+      badge: "bg-violet-100 text-violet-700",
+    },
+    warning: {
+      shell: "my-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-zinc-700",
+      badge: "bg-amber-100 text-amber-700",
+    },
+    caution: {
+      shell: "my-4 rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-zinc-700",
+      badge: "bg-rose-100 text-rose-700",
+    },
+  },
 };
 
 const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
@@ -165,6 +187,38 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white shadow-sm",
     image: "max-h-[32rem] w-full object-contain bg-white",
     imageCaption: "mt-2 px-1 text-center text-[13px] text-[#646A73]",
+  },
+  planner: {
+    heading: {
+      1: "mb-3 text-lg font-semibold text-zinc-900",
+      2: "mt-4 mb-2 text-sm font-semibold text-zinc-800",
+      3: "mt-3 mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500",
+      4: "mt-3 mb-1 text-sm font-semibold text-zinc-700",
+      5: "mt-3 mb-1 text-xs font-semibold text-zinc-600",
+      6: "mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500",
+    },
+    paragraph: "mb-3 text-sm leading-6 text-zinc-700",
+    list: "mb-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-700",
+    orderedList: "mb-3 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-zinc-700",
+    listItem: "leading-6 [&>p]:mb-0 [&>p]:inline",
+    blockquote: "my-3 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700",
+    codeInline: "rounded bg-zinc-100 px-1.5 py-0.5 text-sm font-mono text-zinc-800",
+    codeShell: "my-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 shadow-sm",
+    codeLanguageBadge: "border-b border-zinc-800/80 bg-zinc-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400",
+    codePre: "overflow-x-auto p-4 text-sm leading-6 text-zinc-100",
+    tableShell: "my-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm",
+    table: "min-w-full text-sm",
+    thead: "border-b border-zinc-200 bg-zinc-50",
+    th: "px-3 py-2 text-left font-semibold text-zinc-700",
+    td: "border-t border-zinc-100 px-3 py-2 text-zinc-600",
+    hr: "my-5 border-zinc-200",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline",
+    strong: "font-semibold text-zinc-900",
+    em: "italic text-zinc-600",
+    imageShell: "my-5",
+    imageFrame: "overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm",
+    image: "max-h-[28rem] w-full object-contain bg-white",
+    imageCaption: "mt-2 px-1 text-center text-xs text-zinc-500",
   },
 };
 
@@ -362,7 +416,7 @@ export function MarkdownViewer({
           const isBlock = Boolean(className) || codeText.includes("\n");
 
           if (language === "mermaid") {
-            return <MermaidBlock chart={codeText} variant={variant} />;
+            return <MermaidBlock chart={codeText} variant={variant === "planner" ? "default" : variant} />;
           }
 
           if (isBlock) {

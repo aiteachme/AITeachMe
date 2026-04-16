@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class MaterialStats(BaseModel):
@@ -202,18 +202,101 @@ class SubjectProfile(BaseModel):
         return "\n".join(parts) if parts else "（未识别学科）"
 
 
-class SharedInputs(BaseModel):
+class DigestMaterialContext(BaseModel):
     """Digest-wide material understanding package prepared once and reused by lanes.
 
     中文理解：这是 Digest 的“资料理解包”，统一打包文件正文、切片、主题提示、
     资产、学科画像、材料统计和模式判断，供 planner / docgen / KG 复用。
     """
 
-    source_packets: list[SourcePacket] = Field(default_factory=list)
-    section_packets: list[SectionPacket] = Field(default_factory=list)
+    model_config = ConfigDict(populate_by_name=True)
+
+    source_documents: list[SourcePacket] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("source_documents", "source_packets"),
+    )
+    material_sections: list[SectionPacket] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("material_sections", "section_packets"),
+    )
     chunk_identity_map: ChunkIdentityMap = Field(default_factory=ChunkIdentityMap)
-    fast_hints: FastTopicHints = Field(default_factory=FastTopicHints)
-    asset_registry: AssetRegistry = Field(default_factory=AssetRegistry)
-    subject_profile: SubjectProfile = Field(default_factory=SubjectProfile)
-    material_profile: MaterialProfile = Field(default_factory=MaterialProfile)
-    digest_mode_decision: DigestModeDecision = Field(default_factory=DigestModeDecision)
+    material_hints: FastTopicHints = Field(
+        default_factory=FastTopicHints,
+        validation_alias=AliasChoices("material_hints", "fast_hints"),
+    )
+    material_assets: AssetRegistry = Field(
+        default_factory=AssetRegistry,
+        validation_alias=AliasChoices("material_assets", "asset_registry"),
+    )
+    learning_domain_profile: SubjectProfile = Field(
+        default_factory=SubjectProfile,
+        validation_alias=AliasChoices("learning_domain_profile", "subject_profile"),
+    )
+    material_stats_profile: MaterialProfile = Field(
+        default_factory=MaterialProfile,
+        validation_alias=AliasChoices("material_stats_profile", "material_profile"),
+    )
+    course_mode_decision: DigestModeDecision = Field(
+        default_factory=DigestModeDecision,
+        validation_alias=AliasChoices("course_mode_decision", "digest_mode_decision"),
+    )
+
+    @property
+    def source_packets(self) -> list[SourcePacket]:
+        return self.source_documents
+
+    @source_packets.setter
+    def source_packets(self, value: list[SourcePacket]) -> None:
+        self.source_documents = value
+
+    @property
+    def section_packets(self) -> list[SectionPacket]:
+        return self.material_sections
+
+    @section_packets.setter
+    def section_packets(self, value: list[SectionPacket]) -> None:
+        self.material_sections = value
+
+    @property
+    def fast_hints(self) -> FastTopicHints:
+        return self.material_hints
+
+    @fast_hints.setter
+    def fast_hints(self, value: FastTopicHints) -> None:
+        self.material_hints = value
+
+    @property
+    def asset_registry(self) -> AssetRegistry:
+        return self.material_assets
+
+    @asset_registry.setter
+    def asset_registry(self, value: AssetRegistry) -> None:
+        self.material_assets = value
+
+    @property
+    def subject_profile(self) -> SubjectProfile:
+        return self.learning_domain_profile
+
+    @subject_profile.setter
+    def subject_profile(self, value: SubjectProfile) -> None:
+        self.learning_domain_profile = value
+
+    @property
+    def material_profile(self) -> MaterialProfile:
+        return self.material_stats_profile
+
+    @material_profile.setter
+    def material_profile(self, value: MaterialProfile) -> None:
+        self.material_stats_profile = value
+
+    @property
+    def digest_mode_decision(self) -> DigestModeDecision:
+        return self.course_mode_decision
+
+    @digest_mode_decision.setter
+    def digest_mode_decision(self, value: DigestModeDecision) -> None:
+        self.course_mode_decision = value
+
+
+# Backward-compatible alias kept for existing docgen / KG / tests during migration.
+SharedInputs = DigestMaterialContext

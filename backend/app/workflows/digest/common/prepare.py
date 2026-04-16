@@ -18,7 +18,7 @@ from app.workflows.digest.common.material_profile import (
 )
 from app.workflows.digest.common.asset_indexer import build_asset_registry
 from app.workflows.digest.common.hint_extractor import extract_fast_topic_hints
-from app.workflows.digest.common.models import ChunkIdentityMap, SharedInputs, SourcePacket
+from app.workflows.digest.common.models import ChunkIdentityMap, DigestMaterialContext, SharedInputs, SourcePacket
 from app.workflows.digest.common.section_splitter import split_into_sections
 from app.workflows.digest.common.subject_recognizer import recognize_subject_profile
 
@@ -34,14 +34,14 @@ async def prepare_shared_inputs(
     file_ids: list[int],
     *,
     user_prompt: str | None = None,
-) -> SharedInputs:
+) -> DigestMaterialContext:
     """Prepare shared inputs once for a digest build."""
 
     logger.info("shared_prepare_started", subject=subject, file_count=len(file_ids))
     source_packets = await load_source_packets(subject, file_ids)
     if not source_packets:
         logger.warning("shared_prepare_empty", subject=subject)
-        return SharedInputs()
+        return DigestMaterialContext()
 
     section_packets = [
         section
@@ -77,22 +77,22 @@ async def prepare_shared_inputs(
         user_prompt=user_prompt,
         subject_profile=subject_profile,
     )
-    shared_inputs = SharedInputs(
-        source_packets=source_packets,
-        section_packets=section_packets,
+    material_context = DigestMaterialContext(
+        source_documents=source_packets,
+        material_sections=section_packets,
         chunk_identity_map=chunk_identity_map,
-        fast_hints=fast_hints,
-        asset_registry=build_asset_registry(subject, source_packets),
-        subject_profile=subject_profile,
-        material_profile=material_profile,
-        digest_mode_decision=digest_mode_decision,
+        material_hints=fast_hints,
+        material_assets=build_asset_registry(subject, source_packets),
+        learning_domain_profile=subject_profile,
+        material_stats_profile=material_profile,
+        course_mode_decision=digest_mode_decision,
     )
     logger.info(
         "shared_prepare_completed",
         subject=subject,
         source_count=len(source_packets),
         section_count=len(section_packets),
-        asset_count=len(shared_inputs.asset_registry.assets),
+        asset_count=len(material_context.material_assets.assets),
         discipline=subject_profile.discipline,
         sub_discipline=subject_profile.sub_discipline,
         content_type=subject_profile.content_type,
@@ -100,7 +100,18 @@ async def prepare_shared_inputs(
         digest_mode_confidence=digest_mode_decision.confidence,
         exercise_density=material_profile.stats.exercise_density,
     )
-    return shared_inputs
+    return material_context
+
+
+async def prepare_material_context(
+    subject: str,
+    file_ids: list[int],
+    *,
+    user_prompt: str | None = None,
+) -> DigestMaterialContext:
+    """New canonical name for shared material preparation."""
+
+    return await prepare_shared_inputs(subject, file_ids, user_prompt=user_prompt)
 
 
 async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
@@ -180,4 +191,3 @@ def extract_image_refs(content: str) -> list[str]:
             continue
         refs.append(Path(raw.strip()).name)
     return list(dict.fromkeys(refs))
-

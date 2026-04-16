@@ -20,6 +20,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 | `18_workflows_layer_consolidation.md` | Workflows 单层化边界收敛 — 为什么收缩 `services` / `teaching`，以及总映射表 |
 | `19_workflows_structure_spec.md` | Workflows 结构规范 — engine/support 模板、命名规则、Digest 示例 |
 | `20_workflows_migration_plan.md` | Workflows 单层化迁移计划 — 分阶段执行顺序、模块映射、风险与验收 |
+| `21_planner_deep_research_flow.md` | Planner Deep Research 风格改造计划 — 草稿流、意图识别、概念增强、最终合成与前端可视化 |
+| `22_planner_v4_research_surface_plan.md` | Planner V4 改造计划 — 对齐 OpenAI / Gemini Deep Research 的研究面板、概念增强、证据开读与前端可视化 |
 | `21_ingest_deepdoc_comparison.md` | Ingest v2 全流程设计 — Provider 优先级、转换层、质量仲裁、多格式支持与教学证据层 |
 | `02_landed_decisions.md` | 已落地的关键决策（架构边界、扩展模型、LLM 策略、DocGen 骨架、tracing） |
 | `05_document_modes.md` | 知识文档模式契约 — 待完成的章节结构、资产配额、质量门槛、交互内容 |

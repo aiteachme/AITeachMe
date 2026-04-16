@@ -109,11 +109,13 @@ async def acompletion_with_fallback(
                     response_model,
                     messages,
                     task_type=task_type,
+                    tier_override=resolved_tier,
                     **kwargs,
                 )
             return await acompletion(
                 messages,
                 task_type=task_type,
+                tier_override=resolved_tier,
                 **kwargs,
             )
     except Exception as exc:  # pragma: no cover - integration-heavy behavior

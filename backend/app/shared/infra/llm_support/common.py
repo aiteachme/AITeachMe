@@ -34,7 +34,12 @@ class CompletionContext:
     profile: TaskProfile
 
 
-def build_completion_context(task_type: TaskType) -> CompletionContext:
+def build_completion_context(
+    task_type: TaskType,
+    *,
+    tier_override: str | None = None,
+    model_override: str | None = None,
+) -> CompletionContext:
     """Resolve config and credentials for one task-scoped LLM call."""
 
     settings = get_settings()
@@ -45,7 +50,11 @@ def build_completion_context(task_type: TaskType) -> CompletionContext:
         task_type=task_type,
         settings=settings,
         api_key=api_key,
-        profile=get_task_profile(task_type),
+        profile=get_task_profile(
+            task_type,
+            tier_override=tier_override,
+            model_override=model_override,
+        ),
     )
 
 

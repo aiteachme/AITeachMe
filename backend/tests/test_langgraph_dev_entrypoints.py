@@ -34,7 +34,9 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
         _node_ids(get_langgraph_dev_deep_enhance_graph())
     )
     assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(build_kg_digest_graph()))
-    assert {"load_context", "draft_plan"}.issubset(_node_ids(get_langgraph_dev_planner_graph()))
+    assert {"prepare_material_context", "generate_plan_preview", "probe_supporting_evidence", "compose_plan_contract", "finalize_plan_contract"}.issubset(
+        _node_ids(get_langgraph_dev_planner_graph())
+    )
     assert {"load_context", "research_chapters", "publish_document"}.issubset(
         _node_ids(get_langgraph_dev_docgen_graph())
     )

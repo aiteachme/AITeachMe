@@ -298,10 +298,12 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
     workflow_state = {
         "plan": plan,
         "plan_summary": plan["plan_summary"],
+        "plan_sketch_markdown": "# 构建方案\n\n> 模式：systematic\n> 一句话摘要：围绕极限与连续整理一份系统化知识文档方案。\n\n## 研究任务\n1. 梳理极限与连续的核心概念\n",
         "workflow_elapsed_ms": 345,
-        "load_ms": 32,
-        "draft_ms": 280,
-        "planner_generation_mode": "stream_plaintext",
+        "prepare_ms": 32,
+        "compose_ms": 180,
+        "finalize_ms": 100,
+        "planner_generation_mode": "deep_research_v3",
     }
 
     with patch(
@@ -319,15 +321,19 @@ def test_create_build_planner_session_exposes_runtime_stats(session: Session) ->
 
     assert response.runtime_stats is not None
     assert response.runtime_stats.elapsed_ms == 345
-    assert response.runtime_stats.steps[0].name == "load_context"
+    assert response.runtime_stats.steps[0].name == "prepare_material_context"
     assert response.runtime_stats.steps[0].elapsed_ms == 32
-    assert response.runtime_stats.steps[1].name == "draft_plan"
-    assert response.runtime_stats.steps[1].elapsed_ms == 280
-    assert response.runtime_stats.generation_mode == "stream_plaintext"
+    assert response.runtime_stats.steps[1].name == "compose_plan_contract"
+    assert response.runtime_stats.steps[1].elapsed_ms == 180
+    assert response.runtime_stats.steps[2].name == "finalize_plan_contract"
+    assert response.runtime_stats.steps[2].elapsed_ms == 100
+    assert response.runtime_stats.generation_mode == "deep_research_v3"
     assert [step.name for step in response.runtime_stats.steps] == [
-        "load_context",
-        "draft_plan",
+        "prepare_material_context",
+        "compose_plan_contract",
+        "finalize_plan_contract",
     ]
+    assert response.turns[-1].content.startswith("# 构建方案")
 
 
 def test_create_build_planner_session_marks_session_failed_when_workflow_result_fails(session: Session) -> None:

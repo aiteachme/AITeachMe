@@ -37,11 +37,17 @@ async def acompletion_stream(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    tier_override: str | None = None,
+    model_override: str | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
 
-    context = build_completion_context(task_type)
+    context = build_completion_context(
+        task_type,
+        tier_override=tier_override,
+        model_override=model_override,
+    )
     start = time.monotonic()
     tracked_model = context.profile.model
 
@@ -139,6 +145,22 @@ async def acompletion_stream(
                 error="timeout",
             )
             raise LLMTimeoutError(timeout_s=context.profile.timeout_s)
+        except asyncio.CancelledError:
+            logger.info(
+                "llm_stream_cancelled",
+                elapsed_s=round(time.monotonic() - start, 2),
+                model=tracked_model,
+                task_type=context.task_type.value,
+                **trace_log_fields(),
+            )
+            track_call(
+                task_type=context.task_type,
+                model=tracked_model,
+                start=start,
+                success=False,
+                error="cancelled",
+            )
+            raise
         except Exception as exc:
             track_call(
                 task_type=context.task_type,

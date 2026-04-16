@@ -1,4 +1,4 @@
-﻿"""Load user goal, file context, and shared inputs for planner."""
+"""Prepare Digest material context for Planner V3."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from pathlib import Path
 from app.models.subject import Subject
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.shared.infra.database import managed_session
-from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.common.contracts import (
     resolve_digest_course_type,
     resolve_planner_retrieval_profile,
 )
-from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SourcePacket, SubjectProfile
-from app.workflows.digest.common.prepare import prepare_shared_inputs
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
+from app.workflows.digest.common.prepare import prepare_material_context
 
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 
@@ -33,50 +33,36 @@ def _guess_topic_hints_from_filenames(
         seeds.append(user_goal.strip())
     for filename in filenames:
         stem = Path(filename).stem.strip()
-        if not stem:
-            continue
-        cleaned = stem.replace("_", " ").replace("-", " ").strip()
-        if cleaned:
-            seeds.append(cleaned)
+        if stem:
+            seeds.append(stem.replace("_", " ").replace("-", " ").strip())
     if subject and not _SUBJECT_SLUG_RE.fullmatch(subject.strip()):
         seeds.append(subject)
     deduped: list[str] = []
     seen: set[str] = set()
     for item in seeds:
-        key = item.casefold()
-        if key in seen:
+        text = item.strip()
+        key = text.casefold()
+        if not text or key in seen:
             continue
         seen.add(key)
-        deduped.append(item)
+        deduped.append(text)
         if len(deduped) >= 8:
             break
     return deduped
 
 
-def _build_seed_shared_inputs(*, subject: str, file_ids: list[int], user_goal: str | None) -> SharedInputs:
+def _build_seed_material_context(*, subject: str, file_ids: list[int], user_goal: str | None) -> DigestMaterialContext:
     with managed_session() as session:
         raw_files = list_raw_files_by_ids(session, subject, file_ids)
         subject_row = session.query(Subject).filter(Subject.slug == subject).first()
 
     filenames = [raw_file.original_filename for raw_file in raw_files if raw_file.original_filename]
     topic_hints = _guess_topic_hints_from_filenames(filenames, subject=subject, user_goal=user_goal)
-    discipline_counts = Counter(
-        str(raw_file.detected_discipline).strip()
-        for raw_file in raw_files
-        if raw_file.detected_discipline
-    )
-    sub_discipline_counts = Counter(
-        str(raw_file.detected_sub_discipline).strip()
-        for raw_file in raw_files
-        if raw_file.detected_sub_discipline
-    )
-    content_type_counts = Counter(
-        str(raw_file.detected_content_type).strip()
-        for raw_file in raw_files
-        if raw_file.detected_content_type
-    )
+    discipline_counts = Counter(str(raw_file.detected_discipline).strip() for raw_file in raw_files if raw_file.detected_discipline)
+    sub_discipline_counts = Counter(str(raw_file.detected_sub_discipline).strip() for raw_file in raw_files if raw_file.detected_sub_discipline)
+    content_type_counts = Counter(str(raw_file.detected_content_type).strip() for raw_file in raw_files if raw_file.detected_content_type)
 
-    source_packets = [
+    source_documents = [
         SourcePacket(
             file_id=int(raw_file.id),
             filename=raw_file.original_filename,
@@ -94,10 +80,10 @@ def _build_seed_shared_inputs(*, subject: str, file_ids: list[int], user_goal: s
         if raw_file.id is not None
     ]
 
-    return SharedInputs(
-        source_packets=source_packets,
-        fast_hints=FastTopicHints(chapter_candidates=topic_hints),
-        subject_profile=SubjectProfile(
+    return DigestMaterialContext(
+        source_documents=source_documents,
+        material_hints=FastTopicHints(chapter_candidates=topic_hints),
+        learning_domain_profile=SubjectProfile(
             subject_slug=subject,
             subject_name=(subject_row.name or "").strip() if subject_row is not None else "",
             discipline=(discipline_counts.most_common(1)[0][0] if discipline_counts else ""),
@@ -108,29 +94,47 @@ def _build_seed_shared_inputs(*, subject: str, file_ids: list[int], user_goal: s
     )
 
 
-def build_load_context_node(*, context: WorkflowContext):
-    async def load_context_node(state: BuildPlannerState) -> dict:
-        await emit_progress(
+def build_prepare_material_context_node(*, context: WorkflowContext):
+    async def prepare_material_context_node(state: BuildPlannerState) -> dict:
+        await emit_planner_event(
             state,
-            stage="load_context",
-            step="load_context",
-            detail="正在读取用户目标和已上传资料...",
+            event="planner.material.loading",
+            detail="正在读取学习目标和资料理解包...",
         )
-        shared_inputs = await prepare_shared_inputs(
+        material_context = await prepare_material_context(
             state["subject"],
             state.get("file_ids", []),
             user_prompt=state.get("user_goal"),
         )
-        if not shared_inputs.source_packets:
-            shared_inputs = _build_seed_shared_inputs(
+        if not material_context.source_documents:
+            await emit_planner_event(
+                state,
+                event="planner.material.pending",
+                detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户目标生成临时方案。",
+            )
+            material_context = _build_seed_material_context(
                 subject=state["subject"],
                 file_ids=list(state.get("file_ids", [])),
                 user_goal=state.get("user_goal"),
             )
 
-        digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value
+        digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        await emit_planner_event(
+            state,
+            event="planner.material.ready",
+            detail=(
+                f"已读取 {len(material_context.source_documents)} 个资料文件，"
+                f"整理 {len(material_context.material_sections)} 个内容片段。"
+            ),
+            payload={
+                "source_count": len(material_context.source_documents),
+                "section_count": len(material_context.material_sections),
+                "topic_hints": list(material_context.material_hints.chapter_candidates[:8]),
+            },
+        )
         return {
-            "shared_inputs": shared_inputs,
+            "material_context": material_context,
+            "shared_inputs": material_context,
             "digest_mode": digest_mode,
             "course_type": resolve_digest_course_type(digest_mode),
             "retrieval_profile": resolve_planner_retrieval_profile(),
@@ -138,9 +142,6 @@ def build_load_context_node(*, context: WorkflowContext):
             "tone": state.get("tone") or "encouraging",
         }
 
-    return load_context_node
+    return prepare_material_context_node
 
-
-__all__ = ["build_load_context_node"]
-
-
+__all__ = ["build_prepare_material_context_node"]

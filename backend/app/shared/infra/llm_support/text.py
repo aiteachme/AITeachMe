@@ -31,11 +31,17 @@ async def acompletion(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
+    tier_override: str | None = None,
+    model_override: str | None = None,
     **kwargs,
 ) -> str:
     """Async text completion."""
 
-    context = build_completion_context(task_type)
+    context = build_completion_context(
+        task_type,
+        tier_override=tier_override,
+        model_override=model_override,
+    )
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = context.profile.model
@@ -115,6 +121,24 @@ async def acompletion(
                     timeout_s=context.profile.timeout_s,
                     **trace_log_fields(),
                 )
+            except asyncio.CancelledError:
+                last_error = asyncio.CancelledError()
+                logger.info(
+                    "llm_completion_cancelled",
+                    attempt=attempt,
+                    elapsed_s=round(time.monotonic() - start, 2),
+                    model=tracked_model,
+                    task_type=context.task_type.value,
+                    **trace_log_fields(),
+                )
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=call_started_at,
+                    success=False,
+                    error="cancelled",
+                )
+                raise
             except Exception as exc:
                 last_error = exc
                 logger.warning(

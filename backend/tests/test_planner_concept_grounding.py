@@ -2,16 +2,21 @@
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.workflow.context import create_langgraph_dev_context
+from app.workflows.digest.planner.lib.research_probe import LearningIntentProfile, ResearchProbePlan, PlannerQuery
+from app.workflows.digest.planner.lib.plans import build_fallback_plan
+from app.workflows.digest.planner.lib.research_probe import build_fallback_plan_sketch
 from app.workflows.digest.planner.lib.grounding import (
     build_planner_concept_queries,
     collect_planner_concept_briefing,
 )
 from app.workflows.digest.planner.graph import build_planner_graph
+from app.workflows.digest.planner.nodes.generate_plan_preview import build_generate_plan_preview_node
 from app.workflows.digest.planner.state import BuildPlannerGraphInput
-from app.workflows.digest.common.models import FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
 
 
 def _build_shared_inputs() -> SharedInputs:
@@ -60,6 +65,25 @@ def test_build_planner_concept_queries_prefers_subject_and_topic_hints() -> None
     assert len(queries) <= 4
     assert any("极限 定义 关键性质" == item for item in queries)
     assert any("导数 定义 关键性质" == item for item in queries)
+
+
+def test_digest_material_context_accepts_new_and_legacy_names() -> None:
+    context = DigestMaterialContext(
+        material_sections=_build_shared_inputs().section_packets,
+        material_hints=FastTopicHints(chapter_candidates=["函数"]),
+        learning_domain_profile=SubjectProfile(subject_name="数学"),
+    )
+    legacy = SharedInputs(
+        section_packets=context.material_sections,
+        fast_hints=context.material_hints,
+        subject_profile=context.learning_domain_profile,
+    )
+
+    assert context.section_packets == context.material_sections
+    assert context.fast_hints.chapter_candidates == ["函数"]
+    assert context.subject_profile.subject_name == "数学"
+    assert legacy.material_sections == context.material_sections
+    assert legacy.learning_domain_profile.subject_name == "数学"
 
 
 def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypatch) -> None:
@@ -158,16 +182,18 @@ def test_collect_planner_concept_briefing_merges_local_and_web_evidence(monkeypa
     assert "极限" in briefing.topic_hints
 
 
-def test_planner_graph_compiles_with_ground_concepts_node() -> None:
+def test_planner_graph_compiles_with_v3_nodes() -> None:
     compiled = build_planner_graph(
         context=create_langgraph_dev_context("digest.planner.concept_grounding_test")
     ).compile()
 
     node_ids = {node.id for node in compiled.get_graph().nodes.values()}
 
-    assert "load_context" in node_ids
-    assert "ground_concepts" in node_ids
-    assert "draft_plan" in node_ids
+    assert "prepare_material_context" in node_ids
+    assert "generate_plan_preview" in node_ids
+    assert "probe_supporting_evidence" in node_ids
+    assert "compose_plan_contract" in node_ids
+    assert "finalize_plan_contract" in node_ids
 
 
 def test_planner_input_schema_keeps_stream_callbacks() -> None:
@@ -177,3 +203,65 @@ def test_planner_input_schema_keeps_stream_callbacks() -> None:
     assert "token_callback" in annotations
     assert "planner_session_id" in annotations
 
+
+def test_generate_plan_preview_streams_sketch_and_extracts_intent(monkeypatch) -> None:
+    async def fake_stream(*_args, **_kwargs):
+        for token in ["高等数学规划\n", "1. 梳理极限核心概念\n"]:
+            yield token
+
+    intent = LearningIntentProfile(
+        goal_type="systematic_learning",
+        research_probe_plan=ResearchProbePlan(
+            local_queries=[PlannerQuery(query="极限 核心概念", purpose="校准本地概念", expected_signal="定义")],
+            web_queries=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.workflows.digest.planner.nodes.bootstrap_plan_brief.acompletion_stream",
+        fake_stream,
+    )
+    monkeypatch.setattr(
+        "app.workflows.digest.planner.nodes.bootstrap_plan_brief.acompletion_with_fallback",
+        AsyncMock(return_value=intent),
+    )
+
+    tokens: list[str] = []
+    events: list[dict] = []
+    node = build_generate_plan_preview_node(context=create_langgraph_dev_context("digest.planner.preview_test"))
+    result = asyncio.run(
+        node(
+            {
+                "subject": "subj_math",
+                "user_goal": "系统学习极限",
+                "digest_mode": "systematic",
+                "tone": "encouraging",
+                "material_context": _build_shared_inputs(),
+                "message_history": ["系统学习极限"],
+                "selected_skillpacks": [],
+                "token_callback": lambda token: tokens.append(token),
+                "progress_callback": lambda payload: events.append(payload),
+            }
+        )
+    )
+
+    assert "".join(tokens).startswith("高等数学规划")
+    assert result["plan_sketch_markdown"].startswith("高等数学规划")
+    assert result["plan_sketch"]["research_tasks"]
+    assert result["learning_intent_profile"]["goal_type"] == "systematic_learning"
+    assert result["research_probe_plan"]["local_queries"][0]["query"] == "极限 核心概念"
+    assert any(event["event"] == "planner.intent.ready" for event in events)
+
+
+def test_fallback_plan_sketch_uses_markdown_contract() -> None:
+    draft = build_fallback_plan(
+        subject="subj_math",
+        user_goal="系统学习极限",
+        digest_mode="systematic",
+        tone="encouraging",
+        shared_inputs=_build_shared_inputs(),
+    )
+    sketch = build_fallback_plan_sketch(draft)
+
+    assert sketch.raw_text.startswith("# 构建方案")
+    assert "## 研究任务" in sketch.raw_text
+    assert "## 暂定章节" in sketch.raw_text

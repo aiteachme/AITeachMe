@@ -19,6 +19,7 @@ from app.workflows.digest.common.models import (
     AssetItem,
     AssetRegistry,
     ChunkIdentityMap,
+    DigestMaterialContext,
     DigestMode,
     DigestModeDecision,
     FastTopicHints,
@@ -45,7 +46,7 @@ from app.workflows.digest.common.material_profile import (
     compute_material_stats,
     decide_digest_mode,
 )
-from app.workflows.digest.common.prepare import prepare_shared_inputs
+from app.workflows.digest.common.prepare import prepare_material_context, prepare_shared_inputs
 
 __all__ = [
     "AssetItem",
@@ -58,6 +59,7 @@ __all__ = [
     "DigestConfirmedPlanContract",
     "DigestMode",
     "DigestModeDecision",
+    "DigestMaterialContext",
     "DigestModelUsageSummary",
     "DigestTimingReport",
     "DigestTokenSummary",
@@ -81,10 +83,10 @@ __all__ = [
     "compute_material_stats",
     "decide_digest_mode",
     "prepare_shared_inputs",
+    "prepare_material_context",
     "resolve_digest_course_type",
     "resolve_digest_retrieval_profile",
     "resolve_planner_retrieval_profile",
     "resolve_teaching_action",
     "step_slow_items",
 ]
-

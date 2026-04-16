@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 from app.shared.infra.workflow import project_typed_dict_schema
-from app.workflows.digest.common.models import SharedInputs
+from app.workflows.digest.common.models import DigestMaterialContext
 
 
 class BuildPlannerState(TypedDict, total=False):
@@ -21,7 +21,18 @@ class BuildPlannerState(TypedDict, total=False):
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
-    shared_inputs: SharedInputs
+    material_context: DigestMaterialContext
+    shared_inputs: DigestMaterialContext
+    plan_sketch_markdown: str
+    plan_sketch_text: str
+    plan_sketch: dict[str, Any]
+    learning_intent_profile: dict[str, Any]
+    research_probe_plan: dict[str, Any]
+    selected_sources: list[dict[str, Any]]
+    opened_sources: list[dict[str, Any]]
+    evidence_brief: dict[str, Any]
+    build_plan_contract: dict[str, Any]
+    fallback_reason: str | None
     concept_queries: list[str]
     concept_briefing: str
     concept_topic_hints: list[str]
@@ -30,9 +41,11 @@ class BuildPlannerState(TypedDict, total=False):
     plan: dict[str, Any]
     plan_summary: str
     workflow_elapsed_ms: int
-    load_ms: int
-    ground_ms: int
-    draft_ms: int
+    prepare_ms: int
+    bootstrap_ms: int
+    probe_ms: int
+    compose_ms: int
+    finalize_ms: int
     planner_generation_mode: str
     progress_callback: Any
     token_callback: Any
@@ -67,9 +80,11 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "digest_mode",
         "planner_generation_mode",
         "workflow_elapsed_ms",
-        "load_ms",
-        "ground_ms",
-        "draft_ms",
+        "prepare_ms",
+        "bootstrap_ms",
+        "probe_ms",
+        "compose_ms",
+        "finalize_ms",
         "error",
     ],
 )
@@ -80,4 +95,3 @@ __all__ = [
     "BuildPlannerGraphOutput",
     "BuildPlannerState",
 ]
-

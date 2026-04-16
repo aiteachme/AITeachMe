@@ -58,9 +58,11 @@ def _planner_status_detail(payload: dict[str, object]) -> str:
     status = str(payload.get("status") or "ok").strip() or "ok"
     if node_name:
         node_label = {
-            "load_context": "读取目标与资料",
-            "ground_concepts": "校准核心概念",
-            "draft_plan": "生成构建方案",
+            "prepare_material_context": "准备资料理解包",
+            "generate_plan_preview": "生成规划预览",
+            "probe_supporting_evidence": "探测支撑证据",
+            "compose_plan_contract": "合成计划大纲",
+            "finalize_plan_contract": "整理最终方案",
         }.get(node_name, node_name)
         if status == "failed":
             return f"{node_label}失败，用时 {elapsed_ms} ms。"
@@ -117,6 +119,9 @@ def _planner_stream_response(
                 },
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})
+        except asyncio.CancelledError:
+            # Client disconnected or the SSE stream was intentionally aborted.
+            pass
         except Exception as exc:
             await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
         finally:
