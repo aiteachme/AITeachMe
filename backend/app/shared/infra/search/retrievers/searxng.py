@@ -16,13 +16,31 @@ logger = structlog.get_logger(__name__)
 class SearXngRetriever(BaseRetriever):
     aliases = ("searx",)
 
+    @classmethod
+    def _base_url(cls) -> str:
+        settings = get_settings()
+        return (
+            str(getattr(settings, "searxng_base_url", "") or "").strip()
+            or (get_env("SEARXNG_BASE_URL") or "").strip()
+        ).rstrip("/")
+
+    @classmethod
+    def is_available(cls) -> bool:
+        return bool(cls._base_url())
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if cls.is_available():
+            return None
+        return "missing `SEARXNG_BASE_URL` or `search.searxng_base_url`"
+
     @property
     def name(self) -> str:
         return "searxng"
 
     async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         settings = get_settings()
-        base_url = (get_env("SEARXNG_BASE_URL") or "").strip().rstrip("/")
+        base_url = self._base_url()
         if not base_url:
             return []
 
@@ -63,4 +81,3 @@ class SearXngRetriever(BaseRetriever):
 
 
 __all__ = ["SearXngRetriever"]
-

@@ -12,6 +12,16 @@ logger = structlog.get_logger(__name__)
 
 
 class BochaRetriever(BaseRetriever):
+    @classmethod
+    def is_available(cls) -> bool:
+        return False
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if not (get_env("BOCHA_API_KEY") or "").strip():
+            return "missing `BOCHA_API_KEY`"
+        return "provider implementation is not completed yet"
+
     @property
     def name(self) -> str:
         return "bocha"

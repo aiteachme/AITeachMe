@@ -16,6 +16,16 @@ _BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
 
 class BraveRetriever(BaseRetriever):
+    @classmethod
+    def is_available(cls) -> bool:
+        return bool((get_env("BRAVE_SEARCH_API_KEY") or "").strip())
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if cls.is_available():
+            return None
+        return "missing `BRAVE_SEARCH_API_KEY`"
+
     @property
     def name(self) -> str:
         return "brave"

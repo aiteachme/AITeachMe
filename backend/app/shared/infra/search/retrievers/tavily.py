@@ -14,6 +14,16 @@ logger = structlog.get_logger(__name__)
 
 
 class TavilyRetriever(BaseRetriever):
+    @classmethod
+    def is_available(cls) -> bool:
+        return bool((get_env("TAVILY_API_KEY") or "").strip())
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if cls.is_available():
+            return None
+        return "missing `TAVILY_API_KEY`"
+
     @property
     def name(self) -> str:
         return "tavily"
@@ -62,4 +72,3 @@ class TavilyRetriever(BaseRetriever):
 
 
 __all__ = ["TavilyRetriever"]
-

@@ -57,6 +57,10 @@ search:
 web_search:
   retriever_profile: ""
   retrievers: ""
+  # searxng_base_url: "https://your-searxng.example.com"
+  # retriever_profiles:
+  #   planner_grounding: [local_rag, duckduckgo]
+  #   docgen_systematic: [local_rag, tavily, arxiv, semantic_scholar, duckduckgo]
 
 local_rag:
   priority: true

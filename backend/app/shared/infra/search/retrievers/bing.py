@@ -14,6 +14,16 @@ logger = structlog.get_logger(__name__)
 
 
 class BingRetriever(BaseRetriever):
+    @classmethod
+    def is_available(cls) -> bool:
+        return bool((get_env("BING_API_KEY") or "").strip())
+
+    @classmethod
+    def availability_reason(cls) -> str | None:
+        if cls.is_available():
+            return None
+        return "missing `BING_API_KEY`"
+
     @property
     def name(self) -> str:
         return "bing"
@@ -48,4 +58,3 @@ class BingRetriever(BaseRetriever):
 
 
 __all__ = ["BingRetriever"]
-

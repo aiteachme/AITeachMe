@@ -10,7 +10,7 @@ from .support import (
     DEFAULT_EMBEDDING_DIM,
     DEFAULT_RETRIEVER_FALLBACK,
     EMBEDDING_DIM_BY_MODEL,
-    RETRIEVER_PROFILES,
+    get_retriever_profiles,
     load_project_config_values,
     normalize_retriever_name,
     split_csv_names,
@@ -64,6 +64,7 @@ class Settings(BaseModel):
     web_search_retriever: str = "duckduckgo"
     web_search_retrievers: str = ""
     web_search_retriever_profile: str = ""
+    searxng_base_url: str = ""
 
     local_rag_priority: bool = True
     local_rag_min_results: int = 2
@@ -146,7 +147,7 @@ class Settings(BaseModel):
         )
         profile_names = [
             normalize_retriever_name(item)
-            for item in RETRIEVER_PROFILES.get(resolved_profile, [])
+            for item in get_retriever_profiles().get(resolved_profile, [])
         ]
         legacy_names = [
             normalize_retriever_name(item)

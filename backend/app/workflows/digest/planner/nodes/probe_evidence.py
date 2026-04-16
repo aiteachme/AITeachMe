@@ -10,7 +10,7 @@ import structlog
 from app.shared.infra.config import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
-from app.shared.infra.search.factory import get_retriever
+from app.shared.infra.search.factory import get_external_retriever_names, get_retriever
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.shared.infra.workflow.context import WorkflowContext
@@ -162,15 +162,7 @@ def build_probe_evidence_node(*, context: WorkflowContext):
 
         web_results: list[SearchResult] = []
         if get_settings().planner_allow_external_search and probe_plan.source_policy != "local_only":
-            external_names = [
-                name
-                for name in get_settings().parse_retrievers(
-                    profile=state.get("retrieval_profile"),
-                    include_local_rag=False,
-                    include_fallback=True,
-                )
-                if name not in {"local_rag", "rag"}
-            ]
+            external_names = get_external_retriever_names(profile=state.get("retrieval_profile"))
             for query in probe_plan.web_queries[:2]:
                 for retriever_name in external_names[:2]:
                     hits = await _safe_search(

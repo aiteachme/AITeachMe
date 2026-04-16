@@ -15,7 +15,7 @@ from langsmith import traceable
 from app.shared.infra.config import get_settings
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search import SourceCurator
-from app.shared.infra.search.factory import get_retriever
+from app.shared.infra.search.factory import get_external_retriever_names, get_retriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
@@ -173,15 +173,8 @@ def _resolve_external_retriever_names() -> list[str]:
     settings = get_settings()
     if not get_teaching_runtime_config().planner.allow_external_search:
         return []
-    parse_retrievers = getattr(settings, "parse_retrievers", None)
     profile = resolve_planner_retrieval_profile()
-    if callable(parse_retrievers):
-        return [
-            name
-            for name in parse_retrievers(profile=profile, include_local_rag=False, include_fallback=True)
-            if name not in {"local_rag", "rag"}
-        ]
-    return ["searxng", "bocha", "duckduckgo"]
+    return get_external_retriever_names(profile=profile)
 
 
 async def _safe_search(
@@ -475,4 +468,3 @@ __all__ = [
     "build_planner_concept_queries",
     "collect_planner_concept_briefing",
 ]
-
