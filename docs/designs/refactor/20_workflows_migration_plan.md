@@ -150,7 +150,7 @@
 - `backend/app/teaching` 不存在，且不再通过 shim 恢复
 - `backend/app/services` 不存在，且不再通过 shim 恢复
 - 已迁移的 `auth_service / chats_service / exams_service / export_import_service / file_service / profile_service / subject_service / subject_deletion_service / subject_embedding_service / system_service` 不再出现旧路径 import
-- 新规范里明确 Digest 新代码不再继续扩张 `application/`
+- 新规范里 Digest / Ingest 不再保留 `application/`
 - support 模块与 engine 模块边界清晰
 
 ### 行为验收

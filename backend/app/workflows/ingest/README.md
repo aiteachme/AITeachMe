@@ -28,7 +28,10 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 ingest/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  parse_files.py
+  recovery.py
   fast_parse/
     graph.py
     state.py
@@ -45,11 +48,12 @@ ingest/
 
 说明：
 
-- `application/` 是 ingest 模块级 canonical 入口，承接 parse-file runtime、恢复与 workflow exports。
+- `parse_files.py` 是 ingest 模块级解析入口，承接单文件 parse workflow runner。
+- `recovery.py` 承接增强恢复。
+- `events.py`、`exports.py` 承接模块级事件与 workflow export。
 - `fast_parse/` 是 Phase 1 快速解析链路。
 - `deep_enhance/` 是 Phase 2 后台增强链路。
 - `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
-- 模块根的 `runtime.py`、`recovery.py`、`exports.py` 现在只保留兼容导入面。
 
 ## 对外入口
 
@@ -297,4 +301,3 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 ## 一句话总结
 
 Ingest 当前是“两阶段解析”：Phase 1 先给可用 Markdown，Phase 2 后台尽量把复杂 PDF 和图片资料补强。它的优化重点不是更会教学，而是更稳、更快、更可恢复地把资料变成 Digest 的标准输入。
-

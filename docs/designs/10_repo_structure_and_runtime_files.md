@@ -170,8 +170,6 @@ backend/app/api/knowledge_docs.py
   Digest 模块根级别入口。
 - `docgen/__init__.py`、`knowledge_graph/__init__.py`
   Digest workflow runner 入口。
-- `application/`
-  只保留迁移兼容入口，不再承接新逻辑。
 - `planner/`
   负责确认式构建方案生成。
 - `docgen/`

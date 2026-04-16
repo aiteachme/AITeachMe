@@ -50,4 +50,3 @@ from app.workflows.digest.planner import run_build_planner_workflow
 - 新 helper 放各自链路 `lib/`
 - 跨链路共享能力走 `common/`
 - Digest 文档教学语义走 `common/runtime_config.py` 与 `common/pedagogy/`
-- `application/` 目录现在只保留迁移兼容入口，不再承载真实实现

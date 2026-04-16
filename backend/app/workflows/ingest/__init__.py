@@ -22,10 +22,10 @@ _ATTR_TO_MODULE = {
     "build_deep_enhance_graph": "app.workflows.ingest.deep_enhance.graph",
     "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
     "build_parse_file_graph": "app.workflows.ingest.fast_parse.graph",
-    "create_parse_file_initial_state": "app.workflows.ingest.application.parse_files",
+    "create_parse_file_initial_state": "app.workflows.ingest.parse_files",
     "get_langgraph_dev_deep_enhance_graph": "app.workflows.ingest.deep_enhance.graph",
     "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
-    "run_parse_file_workflow": "app.workflows.ingest.application.parse_files",
+    "run_parse_file_workflow": "app.workflows.ingest.parse_files",
 }
 
 

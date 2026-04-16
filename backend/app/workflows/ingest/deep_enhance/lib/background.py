@@ -14,7 +14,7 @@ from app.shared.infra.storage import get_content_store, run_store_sync
 from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
-from app.workflows.ingest.application.events import (
+from app.workflows.ingest.events import (
     IngestFileEnhanceFailedEvent,
     IngestFileEnhanceStartedEvent,
     IngestFileReadyForDigestEvent,
@@ -243,4 +243,3 @@ async def _run_deep_enhance_background(
                 )
         except Exception:
             enhance_logger.exception("deep_enhance_failure_update_error")
-

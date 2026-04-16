@@ -200,7 +200,6 @@ digest/
   docgen/
   knowledge_graph/
   common/
-  application/             # compatibility-only
 ```
 
 说明：
@@ -211,7 +210,6 @@ digest/
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
 - `knowledge_graph/` 是独立图谱构建链路
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 等复用能力
-- `application/` 只保留兼容入口，不再承载真实实现
 
 
 ### 9.2 ingest
@@ -220,7 +218,10 @@ digest/
 ingest/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  parse_files.py
+  recovery.py
   fast_parse/
   deep_enhance/
   common/
@@ -229,7 +230,7 @@ ingest/
 
 说明：
 
-- `application/` 是 ingest 模块级入口，承接 runtime / recovery / exports
+- `parse_files.py`、`recovery.py`、`events.py`、`exports.py` 是 ingest 模块根用例和模块级入口
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
 - `common/parsing/` 是当前两条链路共享的解析实现
 

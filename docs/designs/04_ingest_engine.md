@@ -161,7 +161,7 @@ graph TD
 
 ### 4.3 实际运行方式说明
 
-> **重要**：当前实际运行入口 `runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行这两张图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
+> **重要**：当前实际运行入口 `fast_parse/lib/runtime.py` 中的 `run_parse_file_workflow()` 并没有通过 `graph.compile().ainvoke()` 来执行这两张图，而是**直接在 runtime 函数中内联执行每一步**。`graph.py` 中的图定义主要用于：
 > - 导出可视化流程图
 > - 保持与 LangGraph 骨架约定的一致性
 > - 为未来迁移到 LangGraph 运行时做准备

@@ -55,12 +55,12 @@
 
 `backend/app/workflows/*` 负责：
 
-- API-facing 用例入口（`application/` 与 `support/`）；
+- API-facing 用例入口（模块根用例文件、具体 lane 与 `support/`）；
 - LangGraph 状态推进；
 - 节点并发与降级策略；
 - 事件发布、失败恢复、观测摘要。
 
-这是当前后端业务流程的第一真相源。旧 `backend/app/services` 源层已经移除，原服务能力迁入 `workflows/*/application` 或 `workflows/support/*`。
+这是当前后端业务流程的第一真相源。旧 `backend/app/services` 源层已经移除，原服务能力迁入 `workflows/*` 或 `workflows/support/*`。
 
 ### 3.4 Repository / Model 层
 
@@ -96,13 +96,13 @@
 
 ### 5.1 Ingest（透视引擎）
 
-- 入口：`api/files.py` + `workflows/support/files` + `workflows/ingest/runtime.py`
+- 入口：`api/files.py` + `workflows/support/files` + `workflows/ingest/parse_files.py`
 - 核心：两阶段解析（Fast Parse + Deep Enhance）
 - 产物：`raw_files/`、`raw_markdowns/`、`assets/`、`raw_file` 元数据
 
 ### 5.2 Digest（织网引擎）
 
-- 入口：`api/knowledge_docs.py` + `workflows/digest/application/knowledge_docs` + `workflows/digest/application/runtime.py`
+- 入口：`api/knowledge_docs.py` + `workflows/digest/planner` + `workflows/digest/docgen` + `workflows/digest/knowledge_graph`
 - 核心：Planner 生成 confirmed plan；DocGen 独立生成知识文档；Knowledge Graph 独立生成图谱并触发 curriculum
 - 产物：`knowledge_document`、`knowledge_node/edge`、`curriculum/theme_tree_node/unit_dependency`
 
@@ -160,7 +160,7 @@
 
 1. exam 生成/判卷仍是同步 HTTP 触发。
 2. observability 已有 runtime summary，但未统一对外 API 暴露。
-3. services 源层已移除；后续重点是继续压实 `workflows/*/application` 与 `support/*` 的边界。
+3. services 源层已移除；后续重点是继续压实 `workflows/*` 与 `support/*` 的边界。
 
 ### 8.2 未来演进方向（保持接口简单）
 

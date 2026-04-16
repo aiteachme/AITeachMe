@@ -41,7 +41,6 @@ workflows/<module>/
   <lane_a>/
   <lane_b>/
   common/           # 可选，仅在真实跨链路复用时建立
-  application/      # compatibility-only
 ```
 
 ### 2.1 模块根用例文件的职责
@@ -52,11 +51,7 @@ workflows/<module>/
 
 明确禁止：
 
-- 不把 graph node 放进 `application/`
-- 不把 prompt 模板放进 `application/`
 - 不把底层数据库能力直接下沉成 infra 杂项
-
-`application/` 目录只在迁移兼容时保留，不再作为 Digest 新代码的 canonical 落点。
 
 ### 2.2 模块根不再新增
 
@@ -201,7 +196,6 @@ digest/
     prompts/
     lib/
   common/
-  application/   # compatibility-only
 ```
 
 - `planner/` 只承接图和链路内部逻辑

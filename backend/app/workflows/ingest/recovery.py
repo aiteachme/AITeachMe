@@ -20,7 +20,7 @@ _STALLED_STATUSES = {
 async def recover_stalled_enhancements() -> int:
     """Scan for files stuck in fast_parsed/enhancing and redispatch Phase 2."""
 
-    from app.workflows.ingest.application.parse_files import _run_deep_enhance_background
+    from app.workflows.ingest.parse_files import _run_deep_enhance_background
     from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 
     dispatched = 0
