@@ -1,4 +1,4 @@
-﻿"""Canonical section materialization for unified digest builds."""
+﻿"""Canonical section materialization for digest builds."""
 
 from __future__ import annotations
 
@@ -22,8 +22,7 @@ from app.shared.infra.subject import (
     get_subject_vector_capability,
     should_generate_subject_embeddings,
 )
-from app.workflows.digest.common.models import SharedInputs
-from app.workflows.digest.unified.models import MaterializedSections
+from app.workflows.digest.common.models import MaterializedSections, SharedInputs
 
 logger = structlog.get_logger()
 
@@ -95,7 +94,7 @@ async def materialize_shared_inputs(
     shared_inputs: SharedInputs,
     build_session_id: str | None = None,
 ) -> MaterializedSections:
-    """Persist canonical documents and chunks for one unified build session."""
+    """Persist canonical documents and chunks for one digest build session."""
 
     session_id = build_session_id or uuid4().hex
     source_file_ids = [packet.file_id for packet in shared_inputs.source_packets]

@@ -1,4 +1,4 @@
-﻿"""Asset indexing for unified digest builds."""
+﻿"""Asset indexing for digest builds."""
 
 from __future__ import annotations
 

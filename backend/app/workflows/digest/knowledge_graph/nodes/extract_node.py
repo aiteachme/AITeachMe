@@ -12,10 +12,7 @@ from sqlmodel import select
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
-from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
-from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
 from app.workflows.digest.knowledge_graph.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
@@ -26,8 +23,6 @@ from app.workflows.digest.common.metrics import add_slow_item
 from app.workflows.digest.knowledge_graph.state import KGDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
-from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
-from app.workflows.digest.unified.session import get_unified_build_session
 
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
@@ -46,15 +41,16 @@ def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     return max(1, min(adaptive, configured, ceiling))
 
 
-def _build_taxonomy_hints(chapter_priors: ChapterPriors | None) -> set[str]:
-    if chapter_priors is None:
+def _build_taxonomy_hints(shared_inputs: Any | None) -> set[str]:
+    if shared_inputs is None:
         return set()
 
     hints: set[str] = set()
-    for chapter in chapter_priors.chapters:
-        hints.add(chapter.title)
-        hints.update(chapter.section_titles)
-        hints.update(chapter.key_terms)
+    subject_profile = getattr(shared_inputs, "subject_profile", None)
+    fast_hints = getattr(shared_inputs, "fast_hints", None)
+    hints.update(getattr(subject_profile, "key_topics", []) or [])
+    hints.update(getattr(fast_hints, "chapter_candidates", []) or [])
+    hints.update(term for term, _count in (getattr(fast_hints, "high_freq_terms", []) or []))
     return {hint for hint in hints if hint}
 
 
@@ -71,182 +67,6 @@ def _apply_taxonomy_hints(result: ChunkExtractionResult, taxonomy_hints: set[str
                 break
 
 
-def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> TopicAnchorSnapshot:
-    chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
-    anchors: list[TopicAnchor] = []
-    for cluster in clustered_candidates[:80]:
-        representative = cluster.representative
-        if not representative.name or representative.node_type not in {"Topic", "Concept", "Method"}:
-            continue
-        chunk_uids = [
-            chunk_id_to_chunk_uid[chunk_id]
-            for chunk_id in cluster.source_chunk_ids
-            if chunk_id in chunk_id_to_chunk_uid
-        ]
-        if not chunk_uids:
-            continue
-        anchors.append(
-            TopicAnchor(
-                topic_name=representative.name,
-                node_type=representative.node_type,
-                confidence=min(0.9, 0.5 + 0.06 * len(cluster.members)),
-                chunk_uids=list(dict.fromkeys(chunk_uids)),
-            )
-        )
-    return TopicAnchorSnapshot(anchors=anchors)
-
-
-def _normalize_doc_chapter_metadatas(payload: object) -> list[dict[str, object]]:
-    if not isinstance(payload, list):
-        return []
-
-    normalized: list[dict[str, object]] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        summary = str(item.get("summary") or "").strip()
-        research_summary = str(item.get("research_summary") or "").strip()
-        if not summary and not research_summary:
-            continue
-        tags = [str(tag).strip() for tag in list(item.get("tags") or []) if str(tag).strip()]
-        source_file_ids: list[int] = []
-        for file_id in list(item.get("source_file_ids") or []):
-            try:
-                parsed = int(file_id)
-            except (TypeError, ValueError):
-                continue
-            if parsed > 0:
-                source_file_ids.append(parsed)
-        normalized.append(
-            {
-                "chapter_index": int(item.get("chapter_index", 0) or 0),
-                "title": str(item.get("resolved_title") or item.get("title") or "").strip(),
-                "summary": summary,
-                "research_summary": research_summary,
-                "tags": tags,
-                "source_file_ids": source_file_ids,
-            }
-        )
-    return normalized
-
-
-def _build_doc_summary_content(chapter: dict[str, object]) -> str:
-    summary = str(chapter.get("summary") or "").strip()
-    research_summary = str(chapter.get("research_summary") or "").strip()
-    tags = [str(tag).strip() for tag in list(chapter.get("tags") or []) if str(tag).strip()]
-    parts: list[str] = []
-    if summary:
-        parts.append(f"章节总结：{summary}")
-    if research_summary:
-        parts.append(f"研究补充：{research_summary}")
-    if tags:
-        parts.append(f"关键词：{'、'.join(tags[:8])}")
-    return "\n\n".join(parts).strip()
-
-
-def _resolve_doc_summary_chunk_id(
-    chapter: dict[str, object],
-    *,
-    file_id_to_chunk_ids: dict[int, list[int]],
-    fallback_chunk_id: int | None,
-) -> int | None:
-    for file_id in list(chapter.get("source_file_ids") or []):
-        try:
-            parsed = int(file_id)
-        except (TypeError, ValueError):
-            continue
-        chunk_ids = file_id_to_chunk_ids.get(parsed, [])
-        if chunk_ids:
-            return chunk_ids[0]
-    return fallback_chunk_id
-
-
-async def _extract_doc_summary_candidates(
-    *,
-    chapter_metadatas: list[dict[str, object]],
-    ordered_results: list[ChunkExtractionResult],
-    all_candidate_edges: list[tuple[CandidateEdge, int]],
-    chunk_id_to_index: dict[int, int],
-    file_id_to_chunk_ids: dict[int, list[int]],
-    fallback_chunk_id: int | None,
-    semaphore: asyncio.Semaphore,
-    taxonomy_hints: set[str],
-    subject_context: str,
-    sibling_topics: str,
-    digest_mode: str,
-    chapter_topic_hints: list[str],
-    digest_logger: Any,
-) -> tuple[int, int, int]:
-    if not chapter_metadatas or not chunk_id_to_index:
-        return 0, 0, 0
-
-    summary_jobs: list[tuple[int, int, str, str]] = []
-    for chapter in chapter_metadatas:
-        content = _build_doc_summary_content(chapter)
-        if not content:
-            continue
-        chunk_id = _resolve_doc_summary_chunk_id(
-            chapter,
-            file_id_to_chunk_ids=file_id_to_chunk_ids,
-            fallback_chunk_id=fallback_chunk_id,
-        )
-        if chunk_id is None:
-            continue
-        target_index = chunk_id_to_index.get(chunk_id)
-        if target_index is None:
-            continue
-        chapter_title = str(chapter.get("title") or "").strip() or f"章节{int(chapter.get('chapter_index', 0) or 0)}"
-        summary_jobs.append((target_index, chunk_id, chapter_title, content))
-
-    if not summary_jobs:
-        return 0, 0, 0
-
-    async def _extract_one(
-        target_index: int,
-        chunk_id: int,
-        chapter_title: str,
-        summary_content: str,
-    ) -> tuple[int, int, ChunkExtractionResult]:
-        async with semaphore:
-            result = await extract_candidates(
-                chunk_content=summary_content,
-                chunk_title=chapter_title,
-                header_path=chapter_title,
-                doc_source_type="knowledge_doc_summary",
-                subject_context=subject_context,
-                prefer_fast_path=False,
-                sibling_topics=sibling_topics,
-                digest_mode=digest_mode,
-                chapter_topic_hints=chapter_topic_hints,
-            )
-        _apply_taxonomy_hints(result, taxonomy_hints)
-        return target_index, chunk_id, result
-
-    tasks = [
-        asyncio.create_task(_extract_one(target_index, chunk_id, chapter_title, summary_content))
-        for target_index, chunk_id, chapter_title, summary_content in summary_jobs
-    ]
-    extracted_summary_count = 0
-    extracted_node_count = 0
-    extracted_edge_count = 0
-    try:
-        for task in asyncio.as_completed(tasks):
-            try:
-                target_index, chunk_id, result = await task
-            except Exception as exc:
-                digest_logger.warning("kg_doc_summary_extract_failed", error=str(exc))
-                continue
-            ordered_results[target_index].nodes.extend(result.nodes)
-            ordered_results[target_index].edges.extend(result.edges)
-            all_candidate_edges.extend((edge, chunk_id) for edge in result.edges)
-            extracted_summary_count += 1
-            extracted_node_count += len(result.nodes)
-            extracted_edge_count += len(result.edges)
-    except asyncio.CancelledError:
-        await cancel_tasks_and_drain(tasks)
-        raise
-    return extracted_summary_count, extracted_node_count, extracted_edge_count
-
 async def extract_node(state: KGDigestState) -> KGDigestState:
     """Extract candidate nodes and edges chunk by chunk with controlled parallelism."""
 
@@ -255,43 +75,32 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
         try:
             chunk_ids = list(state.get("chunk_ids", []))
             extract_parallelism = _resolve_extract_parallelism(len(chunk_ids))
-            build_session_id = state.get("build_session_id", "")
-            chapter_priors: ChapterPriors | None = None
             subject_context = ""
-            shared_inputs = None
+            shared_inputs = state.get("shared_inputs")
             digest_mode = ""
             sibling_topics = ""
             chapter_topic_hints: list[str] = []
-            doc_chapter_metadatas = _normalize_doc_chapter_metadatas(
-                state.get("doc_chapter_metadatas", [])
-            )
-            if build_session_id:
-                unified_session = get_unified_build_session(build_session_id)
-                shared_inputs = unified_session.shared_inputs
-                settings = get_settings()
-                chapter_priors = await unified_session.wait_for_chapter_priors(
-                    timeout_ms=settings.digest_chapter_priors_timeout_ms
-                )
-                if unified_session.shared_inputs and unified_session.shared_inputs.subject_profile:
-                    subject_context = unified_session.shared_inputs.subject_profile.build_context_string()
-                # Resolve digest mode for prompt context
-                if shared_inputs and shared_inputs.digest_mode_decision:
+            if shared_inputs is not None:
+                if getattr(shared_inputs, "subject_profile", None):
+                    subject_context = shared_inputs.subject_profile.build_context_string()
+                    chapter_topic_hints.extend(list(shared_inputs.subject_profile.key_topics[:8]))
+                if getattr(shared_inputs, "fast_hints", None):
+                    chapter_topic_hints.extend(list(shared_inputs.fast_hints.chapter_candidates[:8]))
+                    sibling_topics = "、".join(
+                        [
+                            str(term)
+                            for term, _count in list(shared_inputs.fast_hints.high_freq_terms[:15])
+                            if str(term).strip()
+                        ]
+                    )
+                if getattr(shared_inputs, "digest_mode_decision", None):
                     digest_mode = shared_inputs.digest_mode_decision.mode.value
-                # Build sibling topics hint from chapter priors
-                if chapter_priors:
-                    all_terms: list[str] = []
-                    for ch in chapter_priors.chapters:
-                        chapter_topic_hints.append(ch.title)
-                        chapter_topic_hints.extend(ch.section_titles[:3])
-                        all_terms.extend(ch.key_terms[:3])
-                    sibling_topics = "、".join(all_terms[:15])
 
-            taxonomy_hints = _build_taxonomy_hints(chapter_priors)
+            taxonomy_hints = _build_taxonomy_hints(shared_inputs)
             digest_logger.info(
                 "kg_extract_started",
                 chunk_count=len(chunk_ids),
                 parallelism=extract_parallelism,
-                has_chapter_priors=chapter_priors is not None,
                 taxonomy_hint_count=len(taxonomy_hints),
             )
             update_job_progress(
@@ -339,9 +148,6 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
             fast_path_chunk_count = 0
             llm_extract_chunk_count = 0
-            doc_summary_extraction_count = 0
-            doc_summary_node_count = 0
-            doc_summary_edge_count = 0
             slowest_chunks: list[dict[str, object]] = []
 
             def _should_prefer_fast_path(chunk_id: int) -> bool:
@@ -498,33 +304,6 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 await cancel_tasks_and_drain(tasks)
                 raise
 
-            (
-                doc_summary_extraction_count,
-                doc_summary_node_count,
-                doc_summary_edge_count,
-            ) = await _extract_doc_summary_candidates(
-                chapter_metadatas=doc_chapter_metadatas,
-                ordered_results=ordered_results,
-                all_candidate_edges=all_candidate_edges,
-                chunk_id_to_index=chunk_id_to_index,
-                file_id_to_chunk_ids=file_id_to_chunk_ids,
-                fallback_chunk_id=(chunk_ids[0] if chunk_ids else None),
-                semaphore=semaphore,
-                taxonomy_hints=taxonomy_hints,
-                subject_context=subject_context,
-                sibling_topics=sibling_topics,
-                digest_mode=digest_mode,
-                chapter_topic_hints=chapter_topic_hints,
-                digest_logger=digest_logger,
-            )
-            if doc_summary_extraction_count:
-                digest_logger.info(
-                    "kg_doc_summary_extract_complete",
-                    summary_count=doc_summary_extraction_count,
-                    node_count=doc_summary_node_count,
-                    edge_count=doc_summary_edge_count,
-                )
-
             update_job_progress(
                 session,
                 job_id=state["job_id"],
@@ -555,12 +334,9 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 total_nodes=total_nodes,
                 total_edges=total_edges,
                 parallelism=extract_parallelism,
-                doc_summary_count=doc_summary_extraction_count,
-                doc_summary_nodes=doc_summary_node_count,
-                doc_summary_edges=doc_summary_edge_count,
                 failure_samples=failure_samples,
             )
-            if chunk_ids and success_chunk_count == 0 and doc_summary_extraction_count == 0:
+            if chunk_ids and success_chunk_count == 0:
                 error_message = "extract_failed: all_chunk_extractions_failed"
                 digest_logger.error(
                     "kg_workflow_extract_zero_success",
@@ -597,9 +373,6 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 "llm_extract_chunk_count": llm_extract_chunk_count,
                 "success_chunk_count": success_chunk_count,
                 "failed_chunk_count": failed_chunk_count,
-                "doc_summary_extraction_count": doc_summary_extraction_count,
-                "doc_summary_node_count": doc_summary_node_count,
-                "doc_summary_edge_count": doc_summary_edge_count,
                 "slowest_chunks": slowest_chunks,
             }
         except Exception as exc:

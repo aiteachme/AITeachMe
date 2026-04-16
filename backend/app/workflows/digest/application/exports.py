@@ -9,7 +9,6 @@ from app.workflows.digest.docgen.graph import build_docgen_graph
 from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
 from app.workflows.digest.knowledge_graph.prompts import KG_PROMPTS
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
-from app.workflows.digest.unified.graph import build_unified_digest_graph
 
 PLANNER_PROMPTS = {
     "planner_prompt": "构建方案规划提示词：负责输出全中文、可直接确认的章节方案。",
@@ -29,15 +28,6 @@ def _build_docgen_graph_for_export():
         event_bus=InProcessEventBus(),
     )
     return build_docgen_graph(context=ctx)
-
-
-def _build_unified_graph_for_export():
-    ctx = WorkflowContext(
-        workflow_name="digest.unified",
-        subject="__export__",
-        event_bus=InProcessEventBus(),
-    )
-    return build_unified_digest_graph(context=ctx)
 
 
 _DOCGEN_SEND_EDGES = (
@@ -73,12 +63,6 @@ WORKFLOW_EXPORTS = (
         description="Incremental knowledge-graph build workflow.",
         build_graph=build_kg_digest_graph,
         prompts=KG_PROMPTS,
-    ),
-    WorkflowGraphExport(
-        key="digest_unified",
-        title="Digest Unified Workflow",
-        description="Shared prepare, docgen lane, graph lane, consistency, and repair.",
-        build_graph=_build_unified_graph_for_export,
     ),
 )
 

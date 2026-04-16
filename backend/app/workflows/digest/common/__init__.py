@@ -1,4 +1,4 @@
-﻿"""Shared preparation layer for unified digest build."""
+﻿"""Shared preparation layer for digest build."""
 
 from app.workflows.digest.common.contracts import (
     DEFAULT_COURSE_TYPE,

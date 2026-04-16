@@ -60,11 +60,11 @@ class DigestTokenSummary(BaseModel):
 
 
 class DigestTimingReport(BaseModel):
-    """Unified digest timing and token report."""
+    """Digest timing and token report."""
 
     status: str = "completed"
     elapsed_ms: int = 0
-    unified: dict[str, Any] = Field(default_factory=dict)
+    overall: dict[str, Any] = Field(default_factory=dict)
     docgen: dict[str, Any] = Field(default_factory=dict)
     kg: dict[str, Any] = Field(default_factory=dict)
     llm: DigestTokenSummary = Field(default_factory=DigestTokenSummary)

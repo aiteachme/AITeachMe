@@ -12,7 +12,6 @@ from app.workflows.digest.application.knowledge_docs.cleanup_service import clea
 from app.workflows.digest.application.knowledge_docs.digest_service import (
     get_docgen_result,
     run_docgen_background,
-    run_unified_build_background,
     trigger_docgen_build,
 )
 from app.workflows.digest.application.knowledge_docs.overview_service import get_knowledge_overview
@@ -30,6 +29,5 @@ __all__ = [
     "handle_study_plan_request",
     "mark_confirmed_build_plan_status",
     "run_docgen_background",
-    "run_unified_build_background",
     "trigger_docgen_build",
 ]

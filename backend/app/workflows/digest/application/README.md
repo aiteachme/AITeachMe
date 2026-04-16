@@ -7,7 +7,7 @@
 ## 职责
 
 - 承接原 `app.services.knowledge_docs.*`、`app.services.knowledge_graph.*` 中面向 API 的业务用例
-- 组合 planner / docgen / knowledge_graph / unified 等链路
+- 组合 planner / docgen / knowledge_graph 等独立链路
 - 处理 build lock、SSE、background task、结果装配等模块级协调逻辑
 
 ## 非职责

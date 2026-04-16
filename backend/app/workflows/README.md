@@ -34,7 +34,6 @@
 - `digest/planner`
 - `digest/docgen`
 - `digest/knowledge_graph`
-- `digest/unified`
 - `interact/chat`
 - `examine/question_build`
 - `examine/exam_grade`

@@ -1,4 +1,4 @@
-"""Shared input models for unified digest builds."""
+﻿"""Shared input models for digest builds."""
 
 from __future__ import annotations
 
@@ -125,6 +125,32 @@ class ChunkIdentityMap(BaseModel):
 
     chunk_uid_to_section: dict[str, int] = Field(default_factory=dict)
     section_to_chunk_uid: dict[int, str] = Field(default_factory=dict)
+
+
+class MaterializedSections(BaseModel):
+    """Canonical chunk materialization persisted for one digest lane run."""
+
+    build_session_id: str
+    source_file_ids: list[int] = Field(default_factory=list)
+    document_ids: list[int] = Field(default_factory=list)
+    chunk_ids: list[int] = Field(default_factory=list)
+    chunk_uid_to_chunk_id: dict[str, int] = Field(default_factory=dict)
+    chunk_id_to_chunk_uid: dict[int, str] = Field(default_factory=dict)
+
+
+class TopicAnchor(BaseModel):
+    """Knowledge-graph topic anchor produced during graph finalization."""
+
+    topic_name: str
+    node_type: str = "Topic"
+    confidence: float = 1.0
+    chunk_uids: list[str] = Field(default_factory=list)
+
+
+class TopicAnchorSnapshot(BaseModel):
+    """Snapshot of graph anchors used by graph status and diagnostics."""
+
+    anchors: list[TopicAnchor] = Field(default_factory=list)
 
 
 class SubjectProfile(BaseModel):

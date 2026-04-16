@@ -14,7 +14,6 @@ digest/
   planner/
   docgen/
   knowledge_graph/
-  unified/
   common/
 ```
 
@@ -22,8 +21,7 @@ digest/
 
 - `planner/` 负责生成 confirmed plan
 - `docgen/` 负责按 confirmed plan 生成知识文档
-- `knowledge_graph/` 负责知识图谱链路
-- `unified/` 负责编排共享准备、docgen、kg 等组合流程
+- `knowledge_graph/` 负责独立知识图谱链路
 - `application/` 是 Digest 模块级 API-facing 用例落点
 - `application/runtime.py`、`application/events.py`、`application/exports.py` 是模块级 canonical 入口
 - `common/` 是跨链路共用的 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 实现层

@@ -186,7 +186,6 @@ digest/
   planner/
   docgen/
   knowledge_graph/
-  unified/
   common/
 ```
 
@@ -194,7 +193,7 @@ digest/
 
 - `application/` 承接 knowledge_docs / knowledge_graph 的 API-facing 用例
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
-- `knowledge_graph/` 与 `unified/` 先对齐门面与命名
+- `knowledge_graph/` 是独立图谱构建链路
 - `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 等复用能力
 
 

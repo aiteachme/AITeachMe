@@ -28,7 +28,7 @@ class KnowledgeGraphBuildService:
         prompt: str | None,
         embedding_resolution: str | None,
         confirmed_plan_id: str | None,
-        build_type: str = "all",
+        build_type: str = "graph",
     ) -> tuple[DocGenBuildData, list[int]]:
         from app.workflows.digest.application.knowledge_docs.digest_service import trigger_docgen_build
 
@@ -74,29 +74,6 @@ class KnowledgeGraphBuildService:
         from app.workflows.digest.application.knowledge_graph.digest_service import run_graph_digest_background
 
         await run_graph_digest_background(subject=subject, file_ids=file_ids)
-
-    async def run_unified_build_background(
-        self,
-        *,
-        subject: str,
-        file_ids: list[int],
-        prompt: str | None,
-        requested_at: datetime,
-        planner_session_id: str | None = None,
-        confirmed_plan_id: str | None = None,
-        user_id: str | None = None,
-    ) -> None:
-        from app.workflows.digest.application.knowledge_docs.digest_service import run_unified_build_background
-
-        await run_unified_build_background(
-            subject=subject,
-            file_ids=file_ids,
-            prompt=prompt,
-            requested_at=requested_at,
-            planner_session_id=planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            user_id=user_id,
-        )
 
 
 __all__ = ["KnowledgeGraphBuildService"]

@@ -1,4 +1,4 @@
-﻿"""Shared preparation entrypoint for unified digest builds."""
+﻿"""Shared preparation entrypoint for digest builds."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ async def prepare_shared_inputs(
     *,
     user_prompt: str | None = None,
 ) -> SharedInputs:
-    """Prepare shared inputs once for a unified build."""
+    """Prepare shared inputs once for a digest build."""
 
     logger.info("shared_prepare_started", subject=subject, file_count=len(file_ids))
     source_packets = await load_source_packets(subject, file_ids)

@@ -1,4 +1,4 @@
-﻿"""Rule-based fast hint extraction for unified digest builds."""
+﻿"""Rule-based fast hint extraction for digest builds."""
 
 from __future__ import annotations
 

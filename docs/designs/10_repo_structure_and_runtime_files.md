@@ -176,8 +176,6 @@ backend/app/api/knowledge_docs.py
   负责知识图谱 lane，内部共享能力收口到 `knowledge_graph/lib/`。
 - `common/`
   Digest 跨链路通用材料准备、模型、指标，以及教学语义入口（如 `runtime_config.py`、`pedagogy/`）。
-- `unified/`
-  负责统一构建编排，报告类 helper 收口到 `unified/lib/`。
 
 这些目录当前仍在演进中，具体设计以代码、`backend/app/workflows/STRUCTURE.md` 和 `docs/designs/refactor/*` 为准。
 

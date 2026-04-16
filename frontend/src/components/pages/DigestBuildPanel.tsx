@@ -386,7 +386,7 @@ export function DigestBuildProgress({
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             {derived.hasDraftVersion
-              ? "Draft is available. The page keeps polling and will switch after unified publish."
+              ? "Draft is available. The page keeps polling and will switch after document publish."
               : "Progress is estimated on the frontend and synced via POST /knowledge/docs polling."}
           </p>
         </div>
