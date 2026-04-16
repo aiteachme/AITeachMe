@@ -68,6 +68,10 @@ search:
   runtime_cache_enabled: true
   runtime_cache_ttl_s: 900
   runtime_cache_max_entries: 256
+  searxng_base_url: ""
+  # retriever_profiles:
+  #   planner_grounding: [local_rag, duckduckgo]
+  #   docgen_systematic: [local_rag, tavily, arxiv, semantic_scholar, duckduckgo]
 
 web_search:
   retriever: duckduckgo

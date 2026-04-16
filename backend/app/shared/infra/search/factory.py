@@ -28,9 +28,25 @@ def get_retriever(
     retriever_type = get_registered_retriever_types().get(normalized)
     if retriever_type is None:
         raise ValueError(f"Unknown retriever: {name}")
+    if not retriever_type.is_available():
+        reason = retriever_type.availability_reason() or "retriever is unavailable"
+        raise ValueError(f"Retriever `{normalized}` is unavailable: {reason}")
     if issubclass(retriever_type, LocalRAGRetriever):
         return retriever_type(subject=subject, local_sections=local_sections)
     return retriever_type()
+
+
+def get_available_retriever_names(names: list[str]) -> list[str]:
+    available: list[str] = []
+    registered = get_registered_retriever_types()
+    for name in names:
+        retriever_type = registered.get((name or "").strip().lower())
+        if retriever_type is None:
+            continue
+        if not retriever_type.is_available():
+            continue
+        available.append(name)
+    return available
 
 
 def get_configured_retriever_names(
@@ -48,7 +64,8 @@ def get_configured_retriever_names(
         include_fallback=include_fallback,
     )
     registered_names = get_registered_retriever_types()
-    return [name for name in configured if name in registered_names]
+    candidate_names = [name for name in configured if name in registered_names]
+    return get_available_retriever_names(candidate_names)
 
 
 def get_external_retriever_names(*, profile: str | None = None) -> list[str]:
@@ -125,6 +142,7 @@ def get_reader_for_url(url: str, *, preferred: str | None = None) -> BaseReader:
 
 
 __all__ = [
+    "get_available_retriever_names",
     "get_configured_retriever_names",
     "get_external_retriever_names",
     "get_reader_for_url",

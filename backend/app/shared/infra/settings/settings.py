@@ -12,7 +12,7 @@ from .support import (
     DEFAULT_EMBEDDING_DIM,
     DEFAULT_RETRIEVER_FALLBACK,
     EMBEDDING_DIM_BY_MODEL,
-    RETRIEVER_PROFILES,
+    get_retriever_profiles,
     load_project_settings_values,
     normalize_retriever_name,
     split_csv_names,
@@ -145,12 +145,15 @@ class SearchSettings(_SettingsModel):
     runtime_cache_enabled: bool = True
     runtime_cache_ttl_s: int = 900
     runtime_cache_max_entries: int = 256
+    searxng_base_url: str = ""
+    retriever_profiles: dict[str, list[str] | str] = Field(default_factory=dict)
 
 
 class WebSearchSettings(_SettingsModel):
     retriever: str = "duckduckgo"
     retrievers: str = ""
     retriever_profile: str = ""
+    retriever_profiles: dict[str, list[str] | str] = Field(default_factory=dict)
 
 
 class LocalRagSettings(_SettingsModel):
@@ -276,7 +279,7 @@ class Settings(_SettingsModel):
         )
         profile_names = [
             normalize_retriever_name(item)
-            for item in RETRIEVER_PROFILES.get(resolved_profile, [])
+            for item in get_retriever_profiles().get(resolved_profile, [])
         ]
         legacy_names = [
             normalize_retriever_name(item)

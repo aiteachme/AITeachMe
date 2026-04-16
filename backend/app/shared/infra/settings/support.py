@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -25,14 +26,28 @@ RETRIEVER_ALIASES: dict[str, str] = {
     "searx": "searxng",
     "wiki": "wikipedia",
 }
-RETRIEVER_PROFILES: dict[str, list[str]] = {
-    "planner_fast": ["local_rag", "searxng", "bocha", "duckduckgo"],
-    "planner_grounding": ["local_rag", "searxng", "bocha", "duckduckgo"],
-    "docgen_balanced": ["local_rag", "searxng", "tavily", "bocha", "duckduckgo"],
-    "docgen_sprint": ["local_rag", "searxng", "tavily", "bocha", "duckduckgo"],
-    "docgen_academic": ["local_rag", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
-    "docgen_systematic": ["local_rag", "searxng", "tavily", "arxiv", "semantic_scholar", "duckduckgo"],
+DEFAULT_RETRIEVERS: list[str] = [
+    "local_rag",
+    "searxng",
+    "tavily",
+    "bocha",
+    "brave",
+    "exa",
+    "bing",
+    "arxiv",
+    "semantic_scholar",
+    "duckduckgo",
+]
+DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
+    "planner_fast": list(DEFAULT_RETRIEVERS),
+    "planner_grounding": list(DEFAULT_RETRIEVERS),
+    "docgen_balanced": list(DEFAULT_RETRIEVERS),
+    "docgen_sprint": list(DEFAULT_RETRIEVERS),
+    "docgen_academic": list(DEFAULT_RETRIEVERS),
+    "docgen_systematic": list(DEFAULT_RETRIEVERS),
 }
+RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
+
 
 def split_csv_names(value: str | None) -> list[str]:
     if not value:
@@ -43,6 +58,10 @@ def split_csv_names(value: str | None) -> list[str]:
 def normalize_retriever_name(name: str) -> str:
     normalized = (name or "").strip().lower()
     return RETRIEVER_ALIASES.get(normalized, normalized)
+
+
+def normalize_profile_name(name: str) -> str:
+    return (name or "").strip().lower()
 
 
 def parse_yaml_scalar(value: str) -> Any:
@@ -125,15 +144,72 @@ def load_project_settings_values(path: Path | None = None) -> dict[str, Any]:
         raw = parse_yaml_mapping(current_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return raw
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_profile_entries(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_names = split_csv_names(value)
+    elif isinstance(value, list):
+        raw_names = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw_names:
+        name = normalize_retriever_name(str(item))
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        normalized.append(name)
+    return normalized
+
+
+def _iter_retriever_profile_override_blocks(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for key in ("retriever_profiles",):
+        candidate = raw.get(key)
+        if isinstance(candidate, dict):
+            blocks.append(candidate)
+    for scope_key in ("search", "web_search"):
+        scope_value = raw.get(scope_key)
+        if not isinstance(scope_value, dict):
+            continue
+        candidate = scope_value.get("retriever_profiles")
+        if isinstance(candidate, dict):
+            blocks.append(candidate)
+    return blocks
+
+
+@lru_cache(maxsize=1)
+def get_retriever_profiles(path: Path | None = None) -> dict[str, list[str]]:
+    profiles = {
+        normalize_profile_name(name): list(values)
+        for name, values in DEFAULT_RETRIEVER_PROFILES.items()
+    }
+    raw = load_project_settings_values(path)
+    for block in _iter_retriever_profile_override_blocks(raw):
+        for name, value in block.items():
+            profile_name = normalize_profile_name(str(name))
+            if not profile_name:
+                continue
+            entries = _normalize_profile_entries(value)
+            if entries:
+                profiles[profile_name] = entries
+    return profiles
 
 
 __all__ = [
     "DEFAULT_EMBEDDING_DIM",
     "DEFAULT_RETRIEVER_FALLBACK",
+    "DEFAULT_RETRIEVER_PROFILES",
+    "DEFAULT_RETRIEVERS",
     "EMBEDDING_DIM_BY_MODEL",
     "RETRIEVER_PROFILES",
+    "get_retriever_profiles",
     "load_project_settings_values",
+    "normalize_profile_name",
     "normalize_retriever_name",
     "split_csv_names",
 ]
