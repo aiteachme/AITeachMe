@@ -24,7 +24,7 @@ from app.models import (
     QuestionType,
     is_paper_exam_mode,
     is_web_practice_mode,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories import exams_repo, profile_repo
 from app.utils.time import utcnow
@@ -37,7 +37,7 @@ from app.workflows.examine.paper_exporter import compile_tex_to_pdf_artifact
 logger = structlog.get_logger()
 
 
-# ── DTOs ───────────────────────────────────────────────────────────
+# 鈹€鈹€ DTOs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 @dataclass(frozen=True)
 class ExamPaperDetail:
@@ -103,14 +103,14 @@ class ExamGradingResult:
     mastery_consumed: bool
 
 
-# ── Concurrency primitives ─────────────────────────────────────────
+# 鈹€鈹€ Concurrency primitives 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 _exam_generate_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _exam_generate_locks_guard = asyncio.Lock()
 _paper_export_tasks: set[asyncio.Task[None]] = set()
 
 
-# ── Internal utility functions ─────────────────────────────────────
+# 鈹€鈹€ Internal utility functions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 def _new_runtime_job_id() -> int:
     return (int(utcnow().timestamp() * 1_000_000) % 2_000_000_000) + 1
@@ -182,7 +182,7 @@ def _resolve_template_count_difficulty(difficulty: str | None) -> str | None:
 def _extract_requested_question_count(user_prompt: str | None) -> int | None:
     if not user_prompt:
         return None
-    match = re.search(r"(\d{1,3})\s*(?:题|道|questions?)", user_prompt, re.IGNORECASE)
+    match = re.search(r"(\d{1,3})\s*(?:棰榺閬搢questions?)", user_prompt, re.IGNORECASE)
     if not match:
         return None
     value = int(match.group(1))
@@ -204,11 +204,11 @@ def _choose_preferred_question_types(
 ) -> list[str]:
     prompt = (user_prompt or "").lower()
     picked: list[str] = []
-    if any(key in prompt for key in ["选择", "单选", "choice", "mcq"]):
+    if any(key in prompt for key in ["閫夋嫨", "鍗曢€?, "choice", "mcq"]):
         picked.append(QuestionType.SINGLE_CHOICE.value)
-    if any(key in prompt for key in ["填空", "blank"]):
+    if any(key in prompt for key in ["濉┖", "blank"]):
         picked.append(QuestionType.FILL_BLANK.value)
-    if any(key in prompt for key in ["简答", "问答", "解答", "分析", "论述", "essay"]):
+    if any(key in prompt for key in ["绠€绛?, "闂瓟", "瑙ｇ瓟", "鍒嗘瀽", "璁鸿堪", "essay"]):
         picked.append(QuestionType.SHORT_ANSWER.value)
 
     if picked:
@@ -248,7 +248,7 @@ def _estimate_questions_per_unit(*, num_questions: int, unit_count: int, mode: s
 
 
 def _resolve_generate_mode(exam_mode: ExamMode | str) -> str:
-    return normalize_exam_mode(exam_mode)
+    return exam_mode_value(exam_mode)
 
 
 async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.Lock:
@@ -261,7 +261,7 @@ async def _acquire_exam_generate_lock(*, subject: str, user_id: str) -> asyncio.
 
     if lock.locked():
         _raise_conflict(
-            "当前已有试卷生成任务进行中，请稍后再试。",
+            "褰撳墠宸叉湁璇曞嵎鐢熸垚浠诲姟杩涜涓紝璇风◢鍚庡啀璇曘€?,
             error_code="EXAM_GENERATE_JOB_ACTIVE",
         )
     await lock.acquire()
@@ -334,11 +334,11 @@ async def _sync_exam_learning_memory(
     total_count: int,
 ) -> None:
     summary = (
-        f"{paper.subject} 完成{('考试卷' if is_paper_exam_mode(paper.exam_mode) else '在线测验')}，"
-        f"得分 {correct_count}/{total_count}（{score_percent:.1f} 分）"
+        f"{paper.subject} 瀹屾垚{('鑰冭瘯鍗? if is_paper_exam_mode(paper.exam_mode) else '鍦ㄧ嚎娴嬮獙')}锛?
+        f"寰楀垎 {correct_count}/{total_count}锛坽score_percent:.1f} 鍒嗭級"
     )
     note_line = f"- {summary}"
-    advice_line = f"- {paper.subject}：最近一次作答得分 {score_percent:.1f} 分，可据此调整下一轮讲解与练习难度。"
+    advice_line = f"- {paper.subject}锛氭渶杩戜竴娆′綔绛斿緱鍒?{score_percent:.1f} 鍒嗭紝鍙嵁姝よ皟鏁翠笅涓€杞瑙ｄ笌缁冧範闅惧害銆?
 
     await log_learning_event(
         paper.user_id,
@@ -356,12 +356,12 @@ async def _sync_exam_learning_memory(
     await sync_profile_to_doc(paper.user_id)
     await append_to_learner_section(
         paper.user_id,
-        "最近学习主题",
+        "鏈€杩戝涔犱富棰?,
         note_line,
     )
     await append_to_learner_section(
         paper.user_id,
-        "教学备注",
+        "鏁欏澶囨敞",
         advice_line,
     )
 
@@ -558,7 +558,7 @@ def _resolve_template_knowledge_points(
     *,
     template_ids: list[int],
 ) -> dict[int, list[str]]:
-    from app.models import KnowledgeNode, QuestionTemplate
+    from app.models import KnowledgeUnit, QuestionTemplate
 
     if not template_ids:
         return {}
@@ -573,23 +573,24 @@ def _resolve_template_knowledge_points(
     for template in templates:
         if template.id is None:
             continue
-        refs = [item for item in _parse_json_list(template.node_refs_json) if isinstance(item, dict)]
+        refs = [item for item in _parse_json_list(template.knowledge_unit_refs_json) if isinstance(item, dict)]
         refs_by_template[int(template.id)] = refs
         for ref in refs:
-            raw_node_id = ref.get("knowledge_node_id")
+            raw_node_id = ref.get("knowledge_unit_id")
             if isinstance(raw_node_id, int) and raw_node_id > 0:
                 node_ids.add(raw_node_id)
 
-    nodes = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(node_ids))).all()) if node_ids else []
+    nodes = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.id.in_(node_ids))).all()) if node_ids else []
     node_name_by_id = {int(node.id): node.canonical_name for node in nodes if node.id is not None}
 
     result: dict[int, list[str]] = {}
     for template_id, refs in refs_by_template.items():
         names: list[str] = []
         for ref in refs:
-            raw_node_id = ref.get("knowledge_node_id")
+            raw_node_id = ref.get("knowledge_unit_id")
             if isinstance(raw_node_id, int) and raw_node_id in node_name_by_id:
                 names.append(node_name_by_id[raw_node_id])
         deduped = list(dict.fromkeys(name for name in names if name))
         result[template_id] = deduped
     return result
+

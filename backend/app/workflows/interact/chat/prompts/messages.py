@@ -62,8 +62,25 @@ def format_retrieval_context_item(result: RetrievedContext) -> str:
     """Format one retrieval record for the prompt context block."""
 
     relevance_label = "低相关" if result.low_relevance else "高相关"
+    unit_lines = []
+    if result.knowledge_unit_id is not None:
+        unit_lines.append(
+            f"KnowledgeUnit：#{result.knowledge_unit_id} {result.knowledge_unit_name or result.title}"
+        )
+    if result.knowledge_unit_type:
+        unit_lines.append(f"类型：{result.knowledge_unit_type}")
+    if result.relation_path:
+        unit_lines.append(f"图路径：{result.relation_path}")
+    if result.mastery_score is not None:
+        unit_lines.append(f"用户掌握度：{result.mastery_score:.0%}")
+    if result.evidence_quote:
+        unit_lines.append(f"证据摘录：{result.evidence_quote}")
+    unit_context = "\n".join(unit_lines)
+    if unit_context:
+        unit_context = f"{unit_context}\n"
     return (
-        f"[资料] 标题：{result.title}\n"
+        f"[资料:{result.retrieval_source}] 标题：{result.title}\n"
+        f"{unit_context}"
         f"路径：{result.header_path}\n"
         f"相关性：{relevance_label}，分数：{result.score:.4f}\n"
         f"内容：{result.content}"
@@ -105,4 +122,3 @@ __all__ = [
     "build_chat_messages",
     "format_retrieval_context_item",
 ]
-

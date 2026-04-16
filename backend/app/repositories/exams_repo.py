@@ -1,4 +1,4 @@
-﻿"""Exam data access layer."""
+"""Exam data access layer."""
 
 from __future__ import annotations
 
@@ -40,16 +40,16 @@ def create_question_template(session: Session, template: QuestionTemplate) -> Qu
     return template
 
 
-def create_template_node_links(session: Session, links: list) -> list:
+def create_template_knowledge_unit_links(session: Session, links: list) -> list:
     grouped: dict[int, list[dict[str, object]]] = {}
     for item in links:
         template_id = getattr(item, "question_template_id", None)
-        node_id = getattr(item, "knowledge_node_id", None)
+        node_id = getattr(item, "knowledge_unit_id", None)
         if template_id is None or node_id is None:
             continue
         grouped.setdefault(int(template_id), []).append(
             {
-                "knowledge_node_id": int(node_id),
+                "knowledge_unit_id": int(node_id),
                 "coverage_weight": float(getattr(item, "coverage_weight", 1.0)),
                 "role": str(getattr(item, "role", "primary")),
             }
@@ -59,7 +59,7 @@ def create_template_node_links(session: Session, links: list) -> list:
         template = session.get(QuestionTemplate, template_id)
         if template is None:
             continue
-        template.node_refs_json = _dump_json_list(node_refs)
+        template.knowledge_unit_refs_json = _dump_json_list(node_refs)
         session.add(template)
 
     session.commit()
@@ -91,7 +91,7 @@ def find_templates_by_node(
     rows = list(session.exec(stmt.order_by(QuestionTemplate.id)).all())
     matched: list[QuestionTemplate] = []
     for item in rows:
-        if any(ref.get("knowledge_node_id") == node_id for ref in _load_json_list(item.node_refs_json)):
+        if any(ref.get("knowledge_unit_id") == node_id for ref in _load_json_list(item.knowledge_unit_refs_json)):
             matched.append(item)
     return matched
 
@@ -110,11 +110,11 @@ def find_template_by_stem_hash(
     return session.exec(stmt).first()
 
 
-def find_node_links_by_template(session: Session, template_id: int) -> list[dict[str, object]]:
+def find_knowledge_unit_links_by_template(session: Session, template_id: int) -> list[dict[str, object]]:
     template = session.get(QuestionTemplate, template_id)
     if template is None:
         return []
-    return _load_json_list(template.node_refs_json)
+    return _load_json_list(template.knowledge_unit_refs_json)
 
 
 def create_exam_paper(

@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 from sqlmodel import Session, select
 
 from app.models import (
-    KnowledgeNode,
+    KnowledgeUnit,
     TeachingUnit,
     UserKnowledgeState,
-    normalize_exam_mode,
+    exam_mode_value,
 )
 from app.repositories import profile_repo
-from app.repositories.knowledge import curriculum_repo, kg_repo
+from app.repositories.knowledge import curriculum_repo, knowledge_unit_repo
 from app.workflows.examine.context_helpers import (
     _extract_doc_excerpt,
     _format_mastery,
@@ -108,13 +108,13 @@ class UnitExamContext:
         return "\n\n".join(part for part in parts if part.strip())
 
 
-# ── Batch DB loaders ─────────────────────────────────────────────────
+# 鈹€鈹€ Batch DB loaders 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
-def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeNode | None, str, str]:
-    resolved = kg_repo.get_node_with_current_revision(session, node_id)
+def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeUnit | None, str, str]:
+    resolved = knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, node_id)
     if resolved is None:
-        node = session.get(KnowledgeNode, node_id)
+        node = session.get(KnowledgeUnit, node_id)
         if node is None:
             return None, "", ""
         return node, node.summary or "", node.body_markdown or node.body or ""
@@ -147,10 +147,10 @@ def _load_unit_memberships(
             continue
 
         memberships: list[tuple[int, str, float]] = []
-        for item in _parse_json_list(unit.member_node_refs_json):
+        for item in _parse_json_list(unit.member_knowledge_unit_refs_json):
             if not isinstance(item, dict):
                 continue
-            raw_node_id = item.get("knowledge_node_id")
+            raw_node_id = item.get("knowledge_unit_id")
             if not isinstance(raw_node_id, int) or raw_node_id <= 0:
                 continue
             memberships.append(
@@ -164,16 +164,16 @@ def _load_unit_memberships(
     return memberships_by_unit
 
 
-def _load_knowledge_nodes_by_id(
+def _load_knowledge_units_by_id(
     session: Session,
     *,
     node_ids: list[int],
-) -> dict[int, KnowledgeNode]:
+) -> dict[int, KnowledgeUnit]:
     unique_ids = sorted({int(node_id) for node_id in node_ids if int(node_id) > 0})
     if not unique_ids:
         return {}
 
-    rows = list(session.exec(select(KnowledgeNode).where(KnowledgeNode.id.in_(unique_ids))).all())
+    rows = list(session.exec(select(KnowledgeUnit).where(KnowledgeUnit.id.in_(unique_ids))).all())
     return {int(node.id): node for node in rows if node.id is not None}
 
 
@@ -206,7 +206,7 @@ def _load_unit_state_map(
                 UserKnowledgeState.user_id == user_id,
                 UserKnowledgeState.subject == subject,
                 UserKnowledgeState.teaching_unit_id.in_(unique_ids),
-                UserKnowledgeState.knowledge_node_id.is_(None),
+                UserKnowledgeState.knowledge_unit_id.is_(None),
             )
         ).all()
     )
@@ -233,15 +233,15 @@ def _load_node_state_map(
             select(UserKnowledgeState).where(
                 UserKnowledgeState.user_id == user_id,
                 UserKnowledgeState.subject == subject,
-                UserKnowledgeState.knowledge_node_id.in_(unique_ids),
+                UserKnowledgeState.knowledge_unit_id.in_(unique_ids),
                 UserKnowledgeState.teaching_unit_id.is_(None),
             )
         ).all()
     )
     return {
-        int(state.knowledge_node_id): state
+        int(state.knowledge_unit_id): state
         for state in rows
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
 
 
@@ -249,7 +249,7 @@ def _build_node_contexts_for_unit(
     *,
     unit_id: int,
     memberships_by_unit: dict[int, list[tuple[int, str, float]]],
-    node_by_id: dict[int, KnowledgeNode],
+    node_by_id: dict[int, KnowledgeUnit],
     node_content_by_id: dict[int, tuple[str, str]],
     node_state_by_id: dict[int, UserKnowledgeState],
     weak_node_ids: set[int],
@@ -293,7 +293,7 @@ def build_unit_exam_contexts(
     focus_prompt: str | None = None,
     style_profile: ExamStyleProfile | None = None,
 ) -> list[UnitExamContext]:
-    mode = normalize_exam_mode(exam_mode)
+    mode = exam_mode_value(exam_mode)
     doc_text = read_knowledge_doc_text(subject)
     style = style_profile or build_exam_style_profile(
         session,
@@ -304,15 +304,15 @@ def build_unit_exam_contexts(
         exam_mode=mode,
     )
     weak_node_ids = {
-        int(state.knowledge_node_id)
+        int(state.knowledge_unit_id)
         for state in profile_repo.list_weak_knowledge_states(
             session,
             user_id=user_id,
             subject=subject,
             threshold=0.8,
-            target_kind="node",
+            target_kind="knowledge_unit",
         )
-        if state.knowledge_node_id is not None
+        if state.knowledge_unit_id is not None
     }
     units_by_id = _load_teaching_units_by_id(session, unit_ids=unit_ids)
     ordered_units = [
@@ -326,7 +326,7 @@ def build_unit_exam_contexts(
         for memberships in memberships_by_unit.values()
         for node_id, _, _ in memberships
     ]
-    node_by_id = _load_knowledge_nodes_by_id(session, node_ids=all_node_ids)
+    node_by_id = _load_knowledge_units_by_id(session, node_ids=all_node_ids)
     node_content_by_id = _load_node_content_map(session, node_ids=all_node_ids)
     unit_state_by_id = _load_unit_state_map(
         session,
@@ -368,7 +368,7 @@ def build_unit_exam_contexts(
             user_id=user_id,
             subject=subject,
             teaching_unit_id=int(unit.id),
-            knowledge_node_ids=[item.node_id for item in node_contexts],
+            knowledge_unit_ids=[item.node_id for item in node_contexts],
             limit=3,
         )
         contexts.append(

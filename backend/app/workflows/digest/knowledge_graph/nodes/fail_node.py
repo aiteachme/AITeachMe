@@ -1,15 +1,15 @@
-"""Knowledge graph fail node."""
+﻿"""Knowledge graph fail node."""
 
 from __future__ import annotations
 
 from app.shared.infra.database import managed_session
-from app.repositories import kg_repo
+from app.repositories import knowledge_build_repo
 from app.utils.job_helpers import cleanup_pending_by_job
-from app.workflows.digest.knowledge_graph.state import KGDigestState
-from app.workflows.digest.knowledge_graph.support import workflow_logger
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
+from app.workflows.digest.knowledge_graph.lib.support import workflow_logger
 
 
-async def fail_node(state: KGDigestState) -> KGDigestState:
+async def fail_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Clean up pending graph data and mark the job as failed."""
 
     with managed_session() as session:
@@ -24,9 +24,9 @@ async def fail_node(state: KGDigestState) -> KGDigestState:
                 subject=state["subject"],
             )
             if state.get("lock_acquired", False):
-                kg_repo.release_subject_build_lock(session, state["subject"])
+                knowledge_build_repo.release_subject_build_lock(session, state["subject"])
 
-            kg_repo.update_digest_job(
+            knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
                 status="failed",
@@ -34,14 +34,14 @@ async def fail_node(state: KGDigestState) -> KGDigestState:
                 current_step=_resolve_failure_step(error_message),
             )
             digest_logger.error(
-                "kg_workflow_failed",
+                "knowledge_workflow_failed",
                 error=error_message,
                 lock_acquired=state.get("lock_acquired", False),
                 chunk_count=len(state.get("chunk_ids", [])),
             )
             return state
         except Exception as exc:
-            digest_logger.error("kg_workflow_fail_node_error", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_fail_node_error", error=str(exc), exc_info=True)
             return state
 
 

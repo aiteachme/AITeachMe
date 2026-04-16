@@ -13,11 +13,7 @@ from app.workflows.digest.planner.nodes import (
     build_ground_concepts_node,
     build_load_context_node,
 )
-from app.workflows.digest.planner.state import (
-    BuildPlannerGraphInput,
-    BuildPlannerGraphOutput,
-    BuildPlannerState,
-)
+from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.digest.common.contracts import (
     resolve_digest_course_type,
     resolve_planner_retrieval_profile,
@@ -26,11 +22,7 @@ from app.workflows.digest.common.contracts import (
 
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     trace = workflow_tracer(context=context, lane="planner")
-    workflow = StateGraph(
-        BuildPlannerState,
-        input_schema=BuildPlannerGraphInput,
-        output_schema=BuildPlannerGraphOutput,
-    )
+    workflow = StateGraph(BuildPlannerState)
     workflow.add_node(
         "load_context",
         trace.node(
@@ -155,4 +147,3 @@ __all__ = [
     "route_after_step",
     "run_build_planner_workflow",
 ]
-

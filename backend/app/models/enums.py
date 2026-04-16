@@ -1,4 +1,4 @@
-﻿"""Shared enum definitions used across the application."""
+"""Shared enum definitions used across the application."""
 
 from __future__ import annotations
 
@@ -32,30 +32,41 @@ class Difficulty(str, Enum):
     HARD = "hard"
 
 
-class KGNodeType(str, Enum):
-    TOPIC = "Topic"
-    CONCEPT = "Concept"
-    DEFINITION = "Definition"
-    METHOD = "Method"
-    EXAMPLE = "Example"
+class KnowledgeUnitType(str, Enum):
+    CONCEPT = "concept"
+    DEFINITION = "definition"
+    THEOREM = "theorem"
+    FORMULA = "formula"
+    EXAMPLE = "example"
+    EXERCISE = "exercise"
+    METHOD = "method"
+    PROOF_STEP = "proof_step"
+    REMARK = "remark"
 
 
-class KGEdgeType(str, Enum):
-    BELONGS_TO_TOPIC = "belongs_to_topic"
-    PREREQUISITE_OF = "prerequisite_of"
-    DEFINED_BY = "defined_by"
-    ILLUSTRATED_BY = "illustrated_by"
-    PART_OF = "part_of"
+class KnowledgeUnitTypeSource(str, Enum):
+    RULE = "rule"
+    LLM = "llm"
+    MANUAL = "manual"
 
 
-class KGNodeStatus(str, Enum):
+class KnowledgeRelationType(str, Enum):
+    PREREQUISITE = "prerequisite"
+    DERIVATION = "derivation"
+    APPLICATION = "application"
+    EXAMPLE_OF = "example_of"
+    SIMILAR = "similar"
+    CONTRAST = "contrast"
+
+
+class KnowledgeUnitStatus(str, Enum):
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     MERGED = "merged"
     PENDING = "pending"
 
 
-class KGEdgeStatus(str, Enum):
+class KnowledgeRelationStatus(str, Enum):
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     PENDING = "pending"
@@ -173,38 +184,22 @@ class DigestJobStatus(str, Enum):
 class ExamMode(str, Enum):
     WEB_PRACTICE = "web_practice"
     PAPER_EXAM = "paper_exam"
-    DIAGNOSTIC = "diagnostic"
-    PRACTICE = "practice"
-    WEAKPOINT_BOOST = "weakpoint_boost"
-    REVIEW = "review"
-    MOCK_FINAL = "mock_final"
-    REAL_EXAM = "real_exam"
 
 
-_EXAM_MODE_ALIAS_TO_CANONICAL: dict[str, str] = {
-    ExamMode.WEB_PRACTICE.value: ExamMode.WEB_PRACTICE.value,
-    ExamMode.PAPER_EXAM.value: ExamMode.PAPER_EXAM.value,
-    ExamMode.DIAGNOSTIC.value: ExamMode.WEB_PRACTICE.value,
-    ExamMode.PRACTICE.value: ExamMode.WEB_PRACTICE.value,
-    ExamMode.WEAKPOINT_BOOST.value: ExamMode.WEB_PRACTICE.value,
-    ExamMode.REVIEW.value: ExamMode.WEB_PRACTICE.value,
-    ExamMode.MOCK_FINAL.value: ExamMode.PAPER_EXAM.value,
-    ExamMode.REAL_EXAM.value: ExamMode.PAPER_EXAM.value,
-}
+def exam_mode_value(mode: "ExamMode | str") -> str:
+    """Return the canonical exam mode value, rejecting unsupported legacy modes."""
 
-
-def normalize_exam_mode(mode: "ExamMode | str") -> str:
-    raw = mode.value if isinstance(mode, ExamMode) else str(mode or "")
-    normalized = raw.strip().lower()
-    return _EXAM_MODE_ALIAS_TO_CANONICAL.get(normalized, ExamMode.WEB_PRACTICE.value)
+    if isinstance(mode, ExamMode):
+        return mode.value
+    return ExamMode(str(mode or "").strip().lower()).value
 
 
 def is_paper_exam_mode(mode: "ExamMode | str") -> bool:
-    return normalize_exam_mode(mode) == ExamMode.PAPER_EXAM.value
+    return exam_mode_value(mode) == ExamMode.PAPER_EXAM.value
 
 
 def is_web_practice_mode(mode: "ExamMode | str") -> bool:
-    return normalize_exam_mode(mode) == ExamMode.WEB_PRACTICE.value
+    return exam_mode_value(mode) == ExamMode.WEB_PRACTICE.value
 
 
 class ExamPaperStatus(str, Enum):
@@ -235,12 +230,12 @@ class QuestionTemplateStatus(str, Enum):
 
 class MasteryGranularity(str, Enum):
     UNIT = "unit"
-    NODE = "node"
+    KNOWLEDGE_UNIT = "knowledge_unit"
 
 
 class ReviewTaskType(str, Enum):
     REVIEW_UNIT = "review_unit"
-    REVIEW_NODE = "review_node"
+    REVIEW_KNOWLEDGE_UNIT = "review_knowledge_unit"
     REVIEW_EXAM = "review_exam"
     PREREQ_PATCH = "prereq_patch"
 
@@ -317,3 +312,4 @@ class IngestStatus(str, Enum):
     # Backward-compatible aliases for older persisted values.
     PARSING = "fast_parsing"
     VALIDATING = "fast_parsed"
+

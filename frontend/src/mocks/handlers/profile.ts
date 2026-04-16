@@ -1,4 +1,4 @@
-﻿import { HttpResponse, http } from "msw";
+import { HttpResponse, http } from "msw";
 
 const nowIso = new Date().toISOString();
 
@@ -36,12 +36,12 @@ const mockMistakes = [
   },
 ];
 
-const mockKnowledgeNodes = [
-  { id: 101, subject: "mock", node_type: "Concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 102, subject: "mock", node_type: "Concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 103, subject: "mock", node_type: "Concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 104, subject: "mock", node_type: "Concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 105, subject: "mock", node_type: "Concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+const mockKnowledgeUnits = [
+  { id: 101, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 103, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 104, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 105, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockUnitItems = [
@@ -53,14 +53,14 @@ const mockMasteryOverview = {
   subject: "mock",
   user_id: "local",
   weak_unit_count: 0,
-  weak_node_count: 2,
+  weak_knowledge_unit_count: 2,
   unit_states: [],
-  node_states: [
+  knowledge_unit_states: [
     {
       id: 1,
-      target_kind: "node",
+      target_kind: "knowledge_unit",
       teaching_unit_id: null,
-      knowledge_node_id: 101,
+      knowledge_unit_id: 101,
       mastery_score: 0.95,
       confidence_score: 0.9,
       stability_score: 0.88,
@@ -74,9 +74,9 @@ const mockMasteryOverview = {
     },
     {
       id: 2,
-      target_kind: "node",
+      target_kind: "knowledge_unit",
       teaching_unit_id: null,
-      knowledge_node_id: 102,
+      knowledge_unit_id: 102,
       mastery_score: 0.82,
       confidence_score: 0.8,
       stability_score: 0.74,
@@ -90,9 +90,9 @@ const mockMasteryOverview = {
     },
     {
       id: 3,
-      target_kind: "node",
+      target_kind: "knowledge_unit",
       teaching_unit_id: null,
-      knowledge_node_id: 103,
+      knowledge_unit_id: 103,
       mastery_score: 0.6,
       confidence_score: 0.62,
       stability_score: 0.58,
@@ -106,9 +106,9 @@ const mockMasteryOverview = {
     },
     {
       id: 4,
-      target_kind: "node",
+      target_kind: "knowledge_unit",
       teaching_unit_id: null,
-      knowledge_node_id: 104,
+      knowledge_unit_id: 104,
       mastery_score: 0.3,
       confidence_score: 0.45,
       stability_score: 0.32,
@@ -122,9 +122,9 @@ const mockMasteryOverview = {
     },
     {
       id: 5,
-      target_kind: "node",
+      target_kind: "knowledge_unit",
       teaching_unit_id: null,
-      knowledge_node_id: 105,
+      knowledge_unit_id: 105,
       mastery_score: 0.65,
       confidence_score: 0.6,
       stability_score: 0.55,
@@ -144,10 +144,10 @@ const mockReviewTasks = [
     id: 11,
     user_id: "local",
     subject: "mock",
-    task_type: "review_node",
-    target_kind: "node",
+    task_type: "review_knowledge_unit",
+    target_kind: "knowledge_unit",
     teaching_unit_id: null,
-    knowledge_node_id: 104,
+    knowledge_unit_id: 104,
     priority: 0.95,
     scheduled_at: nowIso,
     status: "pending",
@@ -165,10 +165,10 @@ const mockReviewTasks = [
     id: 12,
     user_id: "local",
     subject: "mock",
-    task_type: "review_node",
-    target_kind: "node",
+    task_type: "review_knowledge_unit",
+    target_kind: "knowledge_unit",
     teaching_unit_id: null,
-    knowledge_node_id: 103,
+    knowledge_unit_id: 103,
     priority: 0.82,
     scheduled_at: nowIso,
     status: "pending",
@@ -221,12 +221,12 @@ export const profileHandlers = [
         theme_tree: null,
         prereq_dag: null,
         graph: {
-          nodes: mockKnowledgeNodes,
+          nodes: mockKnowledgeUnits,
           edges: [],
         },
         units: mockUnitItems,
         stats: {
-          node_count: mockKnowledgeNodes.length,
+          node_count: mockKnowledgeUnits.length,
           edge_count: 0,
           unit_count: mockUnitItems.length,
           theme_node_count: 0,
@@ -236,3 +236,4 @@ export const profileHandlers = [
     });
   }),
 ];
+

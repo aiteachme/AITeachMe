@@ -7,14 +7,12 @@
 - llamaindex_adapter bridges to LlamaIndex components
 """
 
-from .api import get_knowledge_search_notice, search_knowledge, web_search
 from .cache import (
     get_compression_runtime_cache,
     get_reader_runtime_cache,
     get_retriever_runtime_cache,
     reset_search_runtime_caches,
 )
-from .context_compression import ContextCompressor, ContextManager
 from .factory import (
     get_external_retriever_names,
     get_reader_for_url,
@@ -22,21 +20,39 @@ from .factory import (
     get_retrievers_for_subject,
 )
 from .knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
-from .llamaindex_index import (
-    IndexedChunk,
-    SubjectIndexHit,
-    clear_subject_index,
-    delete_chunks,
-    query_subject_index,
-    rebuild_subject_index,
-    retrieve_subject_chunks,
-    upsert_chunks,
-)
-from .llamaindex_adapter import ATMKnowledgeRetriever, ATMVectorStore, build_knowledge_retriever
 from .readers import get_registered_reader_names
 from .retrievers import get_registered_retriever_names
 from .source_curation import SourceCurator
 from .types import ScrapedPage, SearchResult, WebSearchResult
+
+
+def __getattr__(name: str):
+    if name in {"ContextCompressor", "ContextManager"}:
+        from . import context_compression
+
+        return getattr(context_compression, name)
+    if name in {"get_knowledge_search_notice", "search_knowledge", "web_search"}:
+        from . import api
+
+        return getattr(api, name)
+    if name in {
+        "IndexedChunk",
+        "SubjectIndexHit",
+        "clear_subject_index",
+        "delete_chunks",
+        "query_subject_index",
+        "rebuild_subject_index",
+        "retrieve_subject_chunks",
+        "upsert_chunks",
+    }:
+        from . import llamaindex_index
+
+        return getattr(llamaindex_index, name)
+    if name in {"ATMKnowledgeRetriever", "ATMVectorStore", "build_knowledge_retriever"}:
+        from . import llamaindex_adapter
+
+        return getattr(llamaindex_adapter, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "ATMKnowledgeRetriever",

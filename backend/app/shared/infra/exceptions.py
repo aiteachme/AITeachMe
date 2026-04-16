@@ -202,12 +202,12 @@ class DigestJobNotFoundError(AITeachMeError):
         super().__init__(detail=f"增量构建任务 `{job_id}` 不存在。")
 
 
-class KnowledgeNodeNotFoundError(AITeachMeError):
-    error_code = "KNOWLEDGE_NODE_NOT_FOUND"
+class KnowledgeUnitNotFoundError(AITeachMeError):
+    error_code = "KNOWLEDGE_UNIT_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, node_id: int) -> None:
-        super().__init__(detail=f"知识节点 `{node_id}` 不存在。")
+    def __init__(self, knowledge_unit_id: int) -> None:
+        super().__init__(detail=f"知识单元 `{knowledge_unit_id}` 不存在。")
 
 
 class TeachingUnitNotFoundError(AITeachMeError):

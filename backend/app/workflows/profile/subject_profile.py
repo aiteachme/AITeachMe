@@ -21,9 +21,9 @@ class SubjectProfileSummary(BaseModel):
     subject: str
     generated_at: datetime
     avg_unit_mastery: float | None = None
-    avg_node_mastery: float | None = None
+    avg_knowledge_unit_mastery: float | None = None
     weak_unit_count: int = 0
-    weak_node_count: int = 0
+    weak_knowledge_unit_count: int = 0
     pending_review_count: int = 0
     due_review_count: int = 0
     preferred_question_types: list[str] = Field(default_factory=list)
@@ -32,7 +32,7 @@ class SubjectProfileSummary(BaseModel):
     recommended_question_count: int | None = None
     difficulty_focus: str = "medium"
     focus_teaching_unit_ids: list[int] = Field(default_factory=list)
-    focus_node_ids: list[int] = Field(default_factory=list)
+    focus_knowledge_unit_ids: list[int] = Field(default_factory=list)
     question_type_accuracy: dict[str, float] = Field(default_factory=dict)
     difficulty_accuracy: dict[str, float] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
@@ -98,16 +98,16 @@ def _pick_recommended_exam_mode(
     *,
     avg_unit_mastery: float | None,
     weak_unit_count: int,
-    weak_node_count: int,
+    weak_knowledge_unit_count: int,
     due_review_count: int,
 ) -> str:
     if due_review_count >= 2:
         return ExamMode.WEB_PRACTICE.value
     if avg_unit_mastery is None or avg_unit_mastery < 0.35:
         return ExamMode.WEB_PRACTICE.value
-    if weak_unit_count >= 3 or weak_node_count >= 6:
+    if weak_unit_count >= 3 or weak_knowledge_unit_count >= 6:
         return ExamMode.WEB_PRACTICE.value
-    if avg_unit_mastery >= 0.72 and weak_unit_count <= 1 and weak_node_count <= 2:
+    if avg_unit_mastery >= 0.72 and weak_unit_count <= 1 and weak_knowledge_unit_count <= 2:
         return ExamMode.PAPER_EXAM.value
     return ExamMode.WEB_PRACTICE.value
 
@@ -155,26 +155,26 @@ def _pick_focus_unit_ids(unit_states: list[UserKnowledgeState]) -> list[int]:
     return [int(state.teaching_unit_id) for state in ordered[:6] if state.teaching_unit_id is not None]
 
 
-def _pick_focus_node_ids(node_states: list[UserKnowledgeState]) -> list[int]:
+def _pick_focus_knowledge_unit_ids(knowledge_unit_states: list[UserKnowledgeState]) -> list[int]:
     ordered = sorted(
         [
             state
-            for state in node_states
-            if state.knowledge_node_id is not None
+            for state in knowledge_unit_states
+            if state.knowledge_unit_id is not None
         ],
         key=lambda state: (
             state.mastery_score,
             -state.review_priority,
-            state.knowledge_node_id or 0,
+            state.knowledge_unit_id or 0,
         ),
     )
-    return [int(state.knowledge_node_id) for state in ordered[:8] if state.knowledge_node_id is not None]
+    return [int(state.knowledge_unit_id) for state in ordered[:8] if state.knowledge_unit_id is not None]
 
 
 def _build_notes(
     *,
     weak_unit_count: int,
-    weak_node_count: int,
+    weak_knowledge_unit_count: int,
     due_review_count: int,
     recommended_exam_mode: str,
     recommended_question_types: list[str],
@@ -182,7 +182,7 @@ def _build_notes(
 ) -> list[str]:
     notes = [
         f"Weak units: {weak_unit_count}",
-        f"Weak nodes: {weak_node_count}",
+        f"Weak KnowledgeUnits: {weak_knowledge_unit_count}",
         f"Due reviews: {due_review_count}",
         f"Recommended exam mode: {recommended_exam_mode}",
     ]
@@ -226,11 +226,11 @@ def build_subject_profile_summary(
         subject=subject,
         target_kind="unit",
     )
-    node_states = profile_repo.list_knowledge_states(
+    knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user_id,
         subject=subject,
-        target_kind="node",
+        target_kind="knowledge_unit",
     )
     pending_reviews = profile_repo.list_pending_reviews(
         session,
@@ -261,9 +261,9 @@ def build_subject_profile_summary(
             difficulty_correct[item.difficulty] += 1
 
     avg_unit_mastery = _average_mastery(unit_states)
-    avg_node_mastery = _average_mastery(node_states)
+    avg_knowledge_unit_mastery = _average_mastery(knowledge_unit_states)
     weak_unit_count = sum(1 for state in unit_states if state.mastery_score < _WEAK_THRESHOLD)
-    weak_node_count = sum(1 for state in node_states if state.mastery_score < _WEAK_THRESHOLD)
+    weak_knowledge_unit_count = sum(1 for state in knowledge_unit_states if state.mastery_score < _WEAK_THRESHOLD)
     question_type_accuracy = _to_accuracy_map(type_totals, type_correct)
     difficulty_accuracy = _to_accuracy_map(difficulty_totals, difficulty_correct)
     preferred_question_types = _pick_preferred_question_types(type_totals)
@@ -274,7 +274,7 @@ def build_subject_profile_summary(
     recommended_exam_mode = _pick_recommended_exam_mode(
         avg_unit_mastery=avg_unit_mastery,
         weak_unit_count=weak_unit_count,
-        weak_node_count=weak_node_count,
+        weak_knowledge_unit_count=weak_knowledge_unit_count,
         due_review_count=due_review_count,
     )
     difficulty_focus = _pick_difficulty_focus(
@@ -286,9 +286,9 @@ def build_subject_profile_summary(
         subject=subject,
         generated_at=now,
         avg_unit_mastery=avg_unit_mastery,
-        avg_node_mastery=avg_node_mastery,
+        avg_knowledge_unit_mastery=avg_knowledge_unit_mastery,
         weak_unit_count=weak_unit_count,
-        weak_node_count=weak_node_count,
+        weak_knowledge_unit_count=weak_knowledge_unit_count,
         pending_review_count=len(pending_reviews),
         due_review_count=due_review_count,
         preferred_question_types=preferred_question_types,
@@ -301,12 +301,12 @@ def build_subject_profile_summary(
         ),
         difficulty_focus=difficulty_focus,
         focus_teaching_unit_ids=_pick_focus_unit_ids(unit_states),
-        focus_node_ids=_pick_focus_node_ids(node_states),
+        focus_knowledge_unit_ids=_pick_focus_knowledge_unit_ids(knowledge_unit_states),
         question_type_accuracy=question_type_accuracy,
         difficulty_accuracy=difficulty_accuracy,
         notes=_build_notes(
             weak_unit_count=weak_unit_count,
-            weak_node_count=weak_node_count,
+            weak_knowledge_unit_count=weak_knowledge_unit_count,
             due_review_count=due_review_count,
             recommended_exam_mode=recommended_exam_mode,
             recommended_question_types=recommended_question_types,

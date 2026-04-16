@@ -1,4 +1,4 @@
-﻿"""History-loading node builders for the interact workflow.
+"""History-loading node builders for the interact workflow.
 
 Reads DB: ``chat_message`` plus active mastery/attempt summaries.
 Writes DB: none.
@@ -54,7 +54,7 @@ def build_load_history_state_node(*, context: WorkflowContext, session: Session 
                     session_id=state.get("session_id"),
                 )
             ]
-            weak_points_from_mastery = profile_repo.list_weak_node_summaries(
+            weak_points_from_mastery = profile_repo.list_weak_knowledge_unit_summaries(
                 db_session,
                 user_id=state["user_id"],
                 subject=state["subject"],

@@ -17,7 +17,7 @@ if not all(
         allow_module_level=True,
     )
 
-from app.models import Curriculum, Difficulty, KnowledgeNode, QuestionTemplate, TeachingUnit
+from app.models import Curriculum, Difficulty, KnowledgeUnit, QuestionTemplate, TeachingUnit
 from app.workflows.examine.application._helpers import _resolve_requested_unit_scope
 from app.utils.time import utcnow
 from app.workflows.examine.context import (
@@ -28,7 +28,7 @@ from app.workflows.examine.context import (
     build_unit_exam_contexts,
 )
 from app.workflows.examine.question_builder import (
-    _build_node_refs_json,
+    _build_knowledge_unit_refs_json,
     _load_existing_template_counts,
     build_question_templates,
 )
@@ -55,53 +55,53 @@ def _make_unit_context(*, node_contexts: list[NodeExamContext]) -> UnitExamConte
     )
 
 
-def test_build_node_refs_json_falls_back_to_unit_node_and_limits_to_three() -> None:
+def test_build_knowledge_unit_refs_json_falls_back_to_unit_node_and_limits_to_three() -> None:
     context = _make_unit_context(
         node_contexts=[
-            NodeExamContext(1, "函数", "s1", "b1", "primary", 1.0),
-            NodeExamContext(2, "导数", "s2", "b2", "secondary", 0.8),
-            NodeExamContext(3, "极限", "s3", "b3", "secondary", 0.6),
-            NodeExamContext(4, "积分", "s4", "b4", "secondary", 0.4),
+            NodeExamContext(1, "鍑芥暟", "s1", "b1", "primary", 1.0),
+            NodeExamContext(2, "瀵兼暟", "s2", "b2", "secondary", 0.8),
+            NodeExamContext(3, "鏋侀檺", "s3", "b3", "secondary", 0.6),
+            NodeExamContext(4, "绉垎", "s4", "b4", "secondary", 0.4),
         ]
     )
 
     payload = json.loads(
-        _build_node_refs_json(
+        _build_knowledge_unit_refs_json(
             context,
             preferred_node_id=999,
             fallback_node_id=1,
-            stem="请说明函数与导数、极限之间的关系。",
-            answer="导数和极限都依赖函数定义。",
-            explanation="这里没有提到积分。",
+            stem="璇疯鏄庡嚱鏁颁笌瀵兼暟銆佹瀬闄愪箣闂寸殑鍏崇郴銆?,
+            answer="瀵兼暟鍜屾瀬闄愰兘渚濊禆鍑芥暟瀹氫箟銆?,
+            explanation="杩欓噷娌℃湁鎻愬埌绉垎銆?,
         )
     )
 
-    assert [item["knowledge_node_id"] for item in payload] == [1, 2, 3]
+    assert [item["knowledge_unit_id"] for item in payload] == [1, 2, 3]
     assert payload[0]["role"] == "primary"
     assert payload[1]["role"] == "related"
     assert payload[2]["role"] == "related"
     assert round(sum(float(item["coverage_weight"]) for item in payload), 4) == 1.0
 
 
-def test_build_node_refs_json_single_node_keeps_full_weight() -> None:
+def test_build_knowledge_unit_refs_json_single_node_keeps_full_weight() -> None:
     context = _make_unit_context(
-        node_contexts=[NodeExamContext(7, "矩阵", "s", "b", "primary", 1.0)]
+        node_contexts=[NodeExamContext(7, "鐭╅樀", "s", "b", "primary", 1.0)]
     )
 
     payload = json.loads(
-        _build_node_refs_json(
+        _build_knowledge_unit_refs_json(
             context,
             preferred_node_id=7,
             fallback_node_id=7,
-            stem="矩阵的定义是什么？",
-            answer="矩阵是按行列排列的数表。",
-            explanation="只考一个知识点。",
+            stem="鐭╅樀鐨勫畾涔夋槸浠€涔堬紵",
+            answer="鐭╅樀鏄寜琛屽垪鎺掑垪鐨勬暟琛ㄣ€?,
+            explanation="鍙€冧竴涓煡璇嗙偣銆?,
         )
     )
 
     assert payload == [
         {
-            "knowledge_node_id": 7,
+            "knowledge_unit_id": 7,
             "coverage_weight": 1.0,
             "role": "primary",
         }
@@ -112,31 +112,31 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     session,
     monkeypatch,
 ) -> None:
-    node_1 = KnowledgeNode(
+    node_1 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="函数",
-        normalized_name="函数",
+        knowledge_unit_type="concept",
+        canonical_name="鍑芥暟",
+        normalized_name="鍑芥暟",
         summary="old summary",
         body="old body",
         body_markdown="old body",
         status="active",
     )
-    node_2 = KnowledgeNode(
+    node_2 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="导数",
-        normalized_name="导数",
+        knowledge_unit_type="concept",
+        canonical_name="瀵兼暟",
+        normalized_name="瀵兼暟",
         summary="derivative summary",
         body="derivative body",
         body_markdown="derivative body",
         status="active",
     )
-    node_3 = KnowledgeNode(
+    node_3 = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="积分",
-        normalized_name="积分",
+        knowledge_unit_type="concept",
+        canonical_name="绉垎",
+        normalized_name="绉垎",
         summary="integral summary",
         body="integral body",
         body_markdown="integral body",
@@ -147,30 +147,30 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
 
     unit_1 = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="unit-1",
         summary="unit summary",
         body_markdown="unit body",
-        member_node_refs_json=json.dumps(
+        member_knowledge_unit_refs_json=json.dumps(
             [
-                {"knowledge_node_id": node_1.id, "role": "primary", "score": 1.0},
-                {"knowledge_node_id": node_2.id, "role": "secondary", "score": 0.8},
+                {"knowledge_unit_id": node_1.id, "role": "primary", "score": 1.0},
+                {"knowledge_unit_id": node_2.id, "role": "secondary", "score": 0.8},
             ],
             ensure_ascii=False,
         ),
-        learning_objectives_json=json.dumps(["理解函数"], ensure_ascii=False),
+        learning_objectives_json=json.dumps(["鐞嗚В鍑芥暟"], ensure_ascii=False),
         status="active",
     )
     unit_2 = TeachingUnit(
         subject="math",
-        canonical_name="积分单元",
-        normalized_name="积分单元",
+        canonical_name="绉垎鍗曞厓",
+        normalized_name="绉垎鍗曞厓",
         member_signature="unit-2",
         summary="unit2 summary",
         body_markdown="unit2 body",
-        member_node_refs_json=json.dumps(
-            [{"knowledge_node_id": node_3.id, "role": "primary", "score": 1.0}],
+        member_knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": node_3.id, "role": "primary", "score": 1.0}],
             ensure_ascii=False,
         ),
         status="active",
@@ -179,7 +179,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     session.commit()
 
     from app.models import Curriculum, ExamPaper, ExamPaperItem
-    from app.repositories.knowledge import kg_repo
+    from app.repositories.knowledge import knowledge_unit_repo
 
     curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
     session.add(curriculum)
@@ -200,12 +200,12 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 exam_paper_id=paper.id,
                 question_template_id=1,
                 item_order=1,
-                stem_snapshot="函数错题",
+                stem_snapshot="鍑芥暟閿欓",
                 answer_snapshot="A",
-                explanation_snapshot="函数解释",
+                explanation_snapshot="鍑芥暟瑙ｉ噴",
                 teaching_unit_id=unit_1.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_1.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -216,12 +216,12 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 exam_paper_id=paper.id,
                 question_template_id=2,
                 item_order=2,
-                stem_snapshot="同单元但错节点",
+                stem_snapshot="鍚屽崟鍏冧絾閿欒妭鐐?,
                 answer_snapshot="B",
-                explanation_snapshot="无关节点",
+                explanation_snapshot="鏃犲叧鑺傜偣",
                 teaching_unit_id=unit_1.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -232,12 +232,12 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
                 exam_paper_id=paper.id,
                 question_template_id=3,
                 item_order=3,
-                stem_snapshot="别的单元错题",
+                stem_snapshot="鍒殑鍗曞厓閿欓",
                 answer_snapshot="C",
-                explanation_snapshot="积分解释",
+                explanation_snapshot="绉垎瑙ｉ噴",
                 teaching_unit_id=unit_2.id,
-                node_refs_json=json.dumps(
-                    [{"knowledge_node_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
+                knowledge_unit_refs_json=json.dumps(
+                    [{"knowledge_unit_id": node_3.id, "coverage_weight": 1.0, "role": "primary"}],
                     ensure_ascii=False,
                 ),
                 difficulty=Difficulty.MEDIUM.value,
@@ -248,17 +248,17 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     )
     session.commit()
 
-    original_get_revision = kg_repo.get_node_with_current_revision
+    original_get_revision = knowledge_unit_repo.get_knowledge_unit_with_current_revision
 
     def _fake_get_revision(db_session, node_id: int):
         if node_id == node_1.id:
-            node = db_session.get(KnowledgeNode, node_id)
+            node = db_session.get(KnowledgeUnit, node_id)
             assert node is not None
-            from app.models.knowledge_graph import KnowledgeRevision
+            from app.models.knowledge_unit import KnowledgeRevision
 
             return node, KnowledgeRevision(
                 id=1,
-                node_id=node_id,
+                knowledge_unit_id=node_id,
                 revision_no=2,
                 title=node.canonical_name,
                 summary="revision summary",
@@ -267,7 +267,7 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
             )
         return original_get_revision(db_session, node_id)
 
-    monkeypatch.setattr(kg_repo, "get_node_with_current_revision", _fake_get_revision)
+    monkeypatch.setattr(knowledge_unit_repo, "get_knowledge_unit_with_current_revision", _fake_get_revision)
 
     contexts = build_unit_exam_contexts(
         session,
@@ -282,8 +282,8 @@ def test_build_unit_exam_contexts_uses_revision_content_and_scoped_mistakes(
     assert contexts[0].node_contexts[0].summary == "revision summary"
     assert contexts[0].node_contexts[0].body == "revision body"
     assert [item["question_stem"] for item in contexts[0].recent_mistakes] == [
-        "函数错题",
-        "同单元但错节点",
+        "鍑芥暟閿欓",
+        "鍚屽崟鍏冧絾閿欒妭鐐?,
     ]
 
 
@@ -292,8 +292,8 @@ def test_existing_template_counts_respect_curriculum_and_context_signature(sessi
     curriculum_old = Curriculum(subject="math", version_no=2, status="archived", is_current=False)
     unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="unit-counts",
         status="active",
     )
@@ -398,15 +398,15 @@ def test_existing_template_counts_respect_curriculum_and_context_signature(sessi
 def test_resolve_requested_unit_scope_filters_cross_subject_units(session) -> None:
     math_unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="math-scope-unit",
         status="active",
     )
     physics_unit = TeachingUnit(
         subject="physics",
-        canonical_name="力学单元",
-        normalized_name="力学单元",
+        canonical_name="鍔涘鍗曞厓",
+        normalized_name="鍔涘鍗曞厓",
         member_signature="physics-scope-unit",
         status="active",
     )
@@ -426,15 +426,15 @@ def test_resolve_requested_unit_scope_filters_cross_subject_units(session) -> No
 def test_resolve_requested_unit_scope_keeps_explicit_invalid_units_empty(session) -> None:
     math_unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="math-explicit-unit",
         status="active",
     )
     physics_unit = TeachingUnit(
         subject="physics",
-        canonical_name="力学单元",
-        normalized_name="力学单元",
+        canonical_name="鍔涘鍗曞厓",
+        normalized_name="鍔涘鍗曞厓",
         member_signature="physics-explicit-unit",
         status="active",
     )
@@ -447,8 +447,8 @@ def test_resolve_requested_unit_scope_keeps_explicit_invalid_units_empty(session
     theme_node = ThemeTreeNode(
         subject="math",
         tree_version_id=curriculum.id,
-        title="函数主题",
-        node_type="theme",
+        title="鍑芥暟涓婚",
+        knowledge_unit_type="theme",
         unit_refs_json=json.dumps([{"teaching_unit_id": math_unit.id}], ensure_ascii=False),
     )
     session.add(theme_node)
@@ -465,11 +465,11 @@ def test_resolve_requested_unit_scope_keeps_explicit_invalid_units_empty(session
 
 
 def test_question_build_workflow_passes_context_fields_to_builder(session, monkeypatch) -> None:
-    node = KnowledgeNode(
+    node = KnowledgeUnit(
         subject="math",
-        node_type="concept",
-        canonical_name="函数",
-        normalized_name="函数",
+        knowledge_unit_type="concept",
+        canonical_name="鍑芥暟",
+        normalized_name="鍑芥暟",
         summary="summary",
         body="body",
         body_markdown="body",
@@ -477,19 +477,19 @@ def test_question_build_workflow_passes_context_fields_to_builder(session, monke
     )
     unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="workflow-unit",
-        member_node_refs_json=json.dumps(
-            [{"knowledge_node_id": 1, "role": "primary", "score": 1.0}],
+        member_knowledge_unit_refs_json=json.dumps(
+            [{"knowledge_unit_id": 1, "role": "primary", "score": 1.0}],
             ensure_ascii=False,
         ),
         status="active",
     )
     session.add_all([node, unit])
     session.commit()
-    unit.member_node_refs_json = json.dumps(
-        [{"knowledge_node_id": node.id, "role": "primary", "score": 1.0}],
+    unit.member_knowledge_unit_refs_json = json.dumps(
+        [{"knowledge_unit_id": node.id, "role": "primary", "score": 1.0}],
         ensure_ascii=False,
     )
     session.add(unit)

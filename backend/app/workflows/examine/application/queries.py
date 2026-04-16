@@ -1,11 +1,11 @@
-"""Exam read queries: history, question bank, detail, delete."""
+﻿"""Exam read queries: history, question bank, detail, delete."""
 
 from __future__ import annotations
 
 import structlog
 from sqlmodel import Session, select
 
-from app.models import ExamPaperItem, KnowledgeNode, QuestionTemplate
+from app.models import ExamPaperItem, KnowledgeUnit, QuestionTemplate
 from app.repositories import exams_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 
@@ -111,11 +111,11 @@ async def delete_exam_paper(
 ) -> None:
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.subject != subject or paper.user_id != user_id:
-        _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
+        _raise_not_found(f"璇曞嵎 `{exam_paper_id}` 涓嶅瓨鍦ㄣ€?, error_code="EXAM_PAPER_NOT_FOUND")
 
     deleted = exams_repo.delete_exam_paper_cascade(session, paper_id=exam_paper_id)
     if not deleted:
-        _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
+        _raise_not_found(f"璇曞嵎 `{exam_paper_id}` 涓嶅瓨鍦ㄣ€?, error_code="EXAM_PAPER_NOT_FOUND")
 
 
 async def get_exam_paper_detail(
@@ -127,7 +127,7 @@ async def get_exam_paper_detail(
 ) -> ExamPaperDetail:
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.subject != subject or paper.user_id != user_id:
-        _raise_not_found(f"试卷 `{exam_paper_id}` 不存在。", error_code="EXAM_PAPER_NOT_FOUND")
+        _raise_not_found(f"璇曞嵎 `{exam_paper_id}` 涓嶅瓨鍦ㄣ€?, error_code="EXAM_PAPER_NOT_FOUND")
 
     items = list(
         session.exec(
@@ -145,3 +145,4 @@ async def get_exam_paper_detail(
         attempts_by_item_id[item.id] = item
 
     return ExamPaperDetail(paper=paper, items=items, attempts_by_item_id=attempts_by_item_id)
+
