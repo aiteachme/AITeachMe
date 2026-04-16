@@ -94,7 +94,7 @@ class CandidateNode(BaseModel):
     """A candidate knowledge node extracted from a chunk."""
 
     candidate_id: str = Field(default="", description="Internal stable candidate id.")
-    name: str = Field(description="Knowledge node name.")
+    name: str = Field(description="KnowledgeUnit name.")
     node_type: Literal["Topic", "Concept", "Definition", "Method", "Example"] = Field(
         description="Allowed node type."
     )

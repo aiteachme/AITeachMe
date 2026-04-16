@@ -1,4 +1,4 @@
-﻿"""Node and edge resolution helpers for the digest knowledge graph."""
+"""Node and edge resolution helpers for the digest knowledge graph."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def _get_current_summary(session: Session, node: KnowledgeUnit) -> str:
 
     if node.id is None:
         return ""
-    result = kg_repo.get_node_with_current_revision(session, node.id)
+    result = kg_repo.get_knowledge_unit_with_current_revision(session, node.id)
     if result is None:
         return ""
     return result[1].summary
@@ -132,7 +132,7 @@ async def _resolve_primary_entity(
     rep = candidate.representative
     normalized_name = normalize_name(rep.name)
 
-    existing = kg_repo.find_node_by_normalized_name(
+    existing = kg_repo.find_knowledge_unit_by_normalized_name(
         session,
         subject,
         normalized_name,
@@ -146,7 +146,7 @@ async def _resolve_primary_entity(
             is_content_update=_has_content_update(candidate.merged_summary, existing_summary),
         )
 
-    alias_nodes = kg_repo.find_nodes_by_alias(session, subject, normalized_name, rep.node_type)
+    alias_nodes = kg_repo.find_knowledge_units_by_alias(session, subject, normalized_name, rep.node_type)
     if alias_nodes:
         matched = alias_nodes[0]
         existing_summary = _get_current_summary(session, matched)
@@ -156,10 +156,10 @@ async def _resolve_primary_entity(
             is_content_update=_has_content_update(candidate.merged_summary, existing_summary),
         )
 
-    same_type_nodes = kg_repo.list_nodes_by_subject(
+    same_type_nodes = kg_repo.list_knowledge_units_by_subject(
         session,
         subject,
-        node_type=rep.node_type,
+        knowledge_unit_type=rep.node_type,
         status="active",
         limit=200,
         offset=0,
@@ -216,7 +216,7 @@ async def _resolve_secondary_entity(
     rep = candidate.representative
     normalized_name = normalize_name(rep.name)
 
-    existing = kg_repo.find_node_by_normalized_name(
+    existing = kg_repo.find_knowledge_unit_by_normalized_name(
         session,
         subject,
         normalized_name,
@@ -238,7 +238,7 @@ async def _resolve_secondary_entity(
     if parent_node_id is None:
         parent_normalized_name = normalize_name(parent_name)
         for parent_type in ("Concept", "Method", "Topic"):
-            parent_node = kg_repo.find_node_by_normalized_name(
+            parent_node = kg_repo.find_knowledge_unit_by_normalized_name(
                 session,
                 subject,
                 parent_normalized_name,
@@ -251,7 +251,7 @@ async def _resolve_secondary_entity(
     if parent_node_id is None:
         return ResolveResult(decision="no_match")
 
-    edges = kg_repo.list_edges_by_node(session, parent_node_id, status="active")
+    edges = kg_repo.list_edges_by_knowledge_unit(session, parent_node_id, status="active")
     sibling_node_ids: list[int] = []
     for edge in edges:
         if edge.edge_type not in {"defined_by", "illustrated_by"}:
@@ -264,7 +264,7 @@ async def _resolve_secondary_entity(
 
     siblings: list[KnowledgeUnit] = []
     for sibling_id in sibling_node_ids:
-        sibling_node = kg_repo.get_knowledge_node_by_id(session, sibling_id)
+        sibling_node = kg_repo.get_knowledge_unit_by_id(session, sibling_id)
         if sibling_node and sibling_node.node_type == rep.node_type and sibling_node.status in {"active", "pending"}:
             siblings.append(sibling_node)
 
@@ -393,7 +393,7 @@ def _resolve_edge_endpoint(
         return None
 
     normalized_name = normalize_name(name)
-    node = kg_repo.find_node_by_normalized_name(
+    node = kg_repo.find_knowledge_unit_by_normalized_name(
         session,
         subject,
         normalized_name,

@@ -36,7 +36,7 @@ const mockMistakes = [
   },
 ];
 
-const mockKnowledgeNodes = [
+const mockKnowledgeUnits = [
   { id: 101, subject: "mock", node_type: "Concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
   { id: 102, subject: "mock", node_type: "Concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
   { id: 103, subject: "mock", node_type: "Concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
@@ -221,12 +221,12 @@ export const profileHandlers = [
         theme_tree: null,
         prereq_dag: null,
         graph: {
-          nodes: mockKnowledgeNodes,
+          nodes: mockKnowledgeUnits,
           edges: [],
         },
         units: mockUnitItems,
         stats: {
-          node_count: mockKnowledgeNodes.length,
+          node_count: mockKnowledgeUnits.length,
           edge_count: 0,
           unit_count: mockUnitItems.length,
           theme_node_count: 0,

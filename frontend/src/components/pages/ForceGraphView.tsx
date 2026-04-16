@@ -12,7 +12,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-import { graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost } from "../../api/generated/knowledge";
+import { graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
 import type { FullGraphResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -72,8 +72,8 @@ function NodeDetailSidebar({
     queryKey: ["graph-node-detail", subject, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject, {
-          node_id: nodeId,
+        await graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+          knowledge_unit_id: nodeId,
         }),
       ) ?? null,
     enabled: !!nodeId,

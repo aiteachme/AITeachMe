@@ -72,7 +72,7 @@ async def load_units_node(
                     continue
 
                 has_node_context = any(
-                    kg_repo.get_node_with_current_revision(session, membership.knowledge_node_id) is not None
+                    kg_repo.get_knowledge_unit_with_current_revision(session, membership.knowledge_node_id) is not None
                     for membership in memberships
                 )
                 if not has_node_context:
@@ -373,6 +373,5 @@ class QuestionBuildWorkflow:
             focus_node_ids=focus_node_ids,
             session=session,
         )
-
 
 

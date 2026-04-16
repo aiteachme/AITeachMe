@@ -28,7 +28,7 @@ def _iter_taxonomy_hints(clustered_candidate: ClusteredCandidate | None) -> list
     return list(dict.fromkeys(hints))
 
 
-def create_new_node(
+def create_new_knowledge_unit(
     session: Session,
     *,
     subject: str,
@@ -37,17 +37,17 @@ def create_new_node(
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
     representative = clustered_candidate.representative
-    node = KnowledgeUnit(
+    knowledge_unit = KnowledgeUnit(
         subject=subject,
         node_type=representative.node_type,
         canonical_name=representative.name,
         normalized_name=normalize_name(representative.name),
         status="pending",
     )
-    node = kg_repo.create_knowledge_node(session, node, auto_commit=auto_commit)
+    knowledge_unit = kg_repo.create_knowledge_unit(session, knowledge_unit, auto_commit=auto_commit)
 
     revision = KnowledgeRevision(
-        node_id=node.id,  # type: ignore[arg-type]
+        node_id=knowledge_unit.id,  # type: ignore[arg-type]
         revision_no=1,
         title=representative.name,
         summary=clustered_candidate.merged_summary,
@@ -57,17 +57,35 @@ def create_new_node(
     )
     kg_repo.create_knowledge_revision(session, revision, auto_commit=auto_commit)
     if auto_commit:
-        session.refresh(node)
+        session.refresh(knowledge_unit)
 
     alias = KnowledgeAlias(
-        node_id=node.id,  # type: ignore[arg-type]
+        node_id=knowledge_unit.id,  # type: ignore[arg-type]
         alias=representative.name,
         normalized_alias=normalize_name(representative.name),
         source="llm",
         is_primary=True,
     )
     kg_repo.create_alias(session, alias, auto_commit=auto_commit)
-    return node
+    return knowledge_unit
+
+
+def create_new_node(
+    session: Session,
+    *,
+    subject: str,
+    clustered_candidate: ClusteredCandidate,
+    job_id: int,
+    auto_commit: bool = True,
+) -> KnowledgeUnit:
+    """Backward-compatible wrapper for create_new_knowledge_unit."""
+    return create_new_knowledge_unit(
+        session,
+        subject=subject,
+        clustered_candidate=clustered_candidate,
+        job_id=job_id,
+        auto_commit=auto_commit,
+    )
 
 
 def create_updated_revision(
@@ -78,7 +96,7 @@ def create_updated_revision(
     job_id: int,
     auto_commit: bool = True,
 ) -> None:
-    result = kg_repo.get_node_with_current_revision(session, node_id)
+    result = kg_repo.get_knowledge_unit_with_current_revision(session, node_id)
     if result is None:
         return
 
@@ -90,7 +108,7 @@ def create_updated_revision(
     ):
         merged_summary = f"{merged_summary}\n{clustered_candidate.merged_summary}"
 
-    kg_repo.deactivate_old_revisions(session, node_id)
+    kg_repo.deactivate_old_knowledge_unit_revisions(session, node_id)
     revision = KnowledgeRevision(
         node_id=node_id,
         revision_no=current_revision.revision_no + 1,
@@ -116,7 +134,7 @@ def create_alias_if_new(
     auto_commit: bool = True,
 ) -> None:
     normalized_alias = normalize_name(alias_name)
-    existing_aliases = kg_repo.list_aliases_by_node(session, node_id)
+    existing_aliases = kg_repo.list_aliases_by_knowledge_unit(session, node_id)
     if any(alias.normalized_alias == normalized_alias for alias in existing_aliases):
         return
 
@@ -211,8 +229,8 @@ def create_edge_evidence(
 __all__ = [
     "create_alias_if_new",
     "create_edge_evidence",
+    "create_new_knowledge_unit",
     "create_new_node",
     "create_node_evidence",
     "create_updated_revision",
 ]
-

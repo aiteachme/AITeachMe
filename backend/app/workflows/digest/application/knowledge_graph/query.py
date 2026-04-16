@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
-    KnowledgeNodeNotFoundError,
+    KnowledgeUnitNotFoundError,
 )
 from app.models.knowledge_graph import KnowledgeUnit
 from app.repositories import kg_repo, knowledge_repo
@@ -42,25 +42,25 @@ class KnowledgeGraphQueryService:
         size: int = 20,
     ) -> PaginatedData[KnowledgeUnitResponse]:
         offset = (page - 1) * size
-        nodes, total = kg_repo.list_nodes_by_subject(
+        knowledge_units, total = kg_repo.list_knowledge_units_by_subject(
             self._session,
             subject,
-            node_type=knowledge_unit_type,
+            knowledge_unit_type=knowledge_unit_type,
             limit=size,
             offset=offset,
         )
         items = [
             KnowledgeUnitResponse(
-                id=node.id,  # type: ignore[arg-type]
-                subject=node.subject,
-                node_type=node.node_type,
-                canonical_name=node.canonical_name,
-                status=node.status,
-                confidence=node.confidence,
-                created_at=node.created_at,
-                updated_at=node.updated_at,
+                id=knowledge_unit.id,  # type: ignore[arg-type]
+                subject=knowledge_unit.subject,
+                node_type=knowledge_unit.node_type,
+                canonical_name=knowledge_unit.canonical_name,
+                status=knowledge_unit.status,
+                confidence=knowledge_unit.confidence,
+                created_at=knowledge_unit.created_at,
+                updated_at=knowledge_unit.updated_at,
             )
-            for node in nodes
+            for knowledge_unit in knowledge_units
         ]
         return build_paginated_data(items=items, page=page, size=size, total=total)
 
@@ -86,13 +86,13 @@ class KnowledgeGraphQueryService:
         subject: str,
         knowledge_unit_id: int,
     ) -> KnowledgeUnitDetailResponse:
-        result = kg_repo.get_node_with_current_revision(self._session, knowledge_unit_id)
+        result = kg_repo.get_knowledge_unit_with_current_revision(self._session, knowledge_unit_id)
         if result is None:
-            raise KnowledgeNodeNotFoundError(knowledge_unit_id)
+            raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
         node, revision = result
         if node.subject != subject:
-            raise KnowledgeNodeNotFoundError(knowledge_unit_id)
+            raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
         current_rev = NodeRevisionItem(
             title=revision.title,
@@ -100,7 +100,7 @@ class KnowledgeGraphQueryService:
             body=revision.body,
         )
 
-        aliases_raw = kg_repo.list_aliases_by_node(self._session, knowledge_unit_id)
+        aliases_raw = kg_repo.list_aliases_by_knowledge_unit(self._session, knowledge_unit_id)
         aliases = [
             AliasItem(
                 id=alias.id,  # type: ignore[arg-type]
@@ -127,7 +127,7 @@ class KnowledgeGraphQueryService:
             for item in evidence_raw
         ]
 
-        edges_raw = kg_repo.list_edges_by_node(self._session, knowledge_unit_id)
+        edges_raw = kg_repo.list_edges_by_knowledge_unit(self._session, knowledge_unit_id)
         incident_edges: list[IncidentEdgeItem] = []
         for edge in edges_raw:
             if edge.source_node_id == knowledge_unit_id:
@@ -182,7 +182,7 @@ class KnowledgeGraphQueryService:
         *,
         subject: str,
     ) -> FullGraphResponse:
-        nodes_raw, _ = kg_repo.list_nodes_by_subject(
+        nodes_raw, _ = kg_repo.list_knowledge_units_by_subject(
             self._session,
             subject,
             limit=5000,

@@ -13,9 +13,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
-  graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost,
+  graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost,
 } from "../../api/generated/knowledge";
-import type { FullGraphResponse, KnowledgeNodeResponse } from "../../api/generated/model";
+import type { FullGraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -57,8 +57,8 @@ function NodeDetailPanel({
     queryKey: ["graph-node-detail", subject, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphNodeDetailApiV1SubjectsSubjectKnowledgeGraphNodesDetailPost(subject, {
-          node_id: nodeId,
+        await graphKnowledgeUnitDetailApiV1SubjectsSubjectKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+          knowledge_unit_id: nodeId,
         }),
       ) ?? null,
     enabled: !!nodeId,
@@ -309,7 +309,7 @@ export function KnowledgeGraphView({
             </div>
 
             <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-              {nodes.map((node: KnowledgeNodeResponse) => {
+              {nodes.map((node: KnowledgeUnitResponse) => {
                 const typeStyle = NODE_TYPE_STYLE[node.node_type] ?? {
                   label: node.node_type,
                   color: "bg-slate-100 text-slate-600",

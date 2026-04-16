@@ -2103,14 +2103,14 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/nodes/detail": {
+    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/detail": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
-        "summary": "Fetch knowledge node detail",
-        "operationId": "graph_node_detail_api_v1_subjects__subject__knowledge_graph_nodes_detail_post",
+        "summary": "Fetch KnowledgeUnit detail",
+        "operationId": "graph_knowledge_unit_detail_api_v1_subjects__subject__knowledge_graph_knowledge_units_detail_post",
         "parameters": [
           {
             "name": "subject",
@@ -2127,7 +2127,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GraphNodeDetailRequest"
+                  "$ref": "#/components/schemas/KnowledgeUnitDetailRequest"
               }
             }
           }
@@ -2138,7 +2138,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNodeDetailResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeUnitDetailResponse_"
                 }
               }
             }
@@ -4877,7 +4877,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_KnowledgeNodeDetailResponse_": {
+      "ApiResponse_KnowledgeUnitDetailResponse_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -4894,7 +4894,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/KnowledgeNodeDetailResponse"
+                "$ref": "#/components/schemas/KnowledgeUnitDetailResponse"
               },
               {
                 "type": "null"
@@ -4904,7 +4904,7 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[KnowledgeNodeDetailResponse]",
+        "title": "ApiResponse[KnowledgeUnitDetailResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -7891,7 +7891,7 @@
         "properties": {
           "nodes": {
             "items": {
-              "$ref": "#/components/schemas/KnowledgeNodeResponse"
+              "$ref": "#/components/schemas/KnowledgeUnitResponse"
             },
             "type": "array",
             "title": "Nodes"
@@ -7947,20 +7947,20 @@
         "title": "GraphEdgeResponse",
         "description": "Graph edge item used by full-graph query."
       },
-      "GraphNodeDetailRequest": {
+      "KnowledgeUnitDetailRequest": {
         "properties": {
-          "node_id": {
+          "knowledge_unit_id": {
             "type": "integer",
-            "title": "Node Id",
-            "description": "Knowledge node ID."
+            "title": "Knowledge Unit Id",
+            "description": "KnowledgeUnit ID."
           }
         },
         "type": "object",
         "required": [
-          "node_id"
+          "knowledge_unit_id"
         ],
-        "title": "GraphNodeDetailRequest",
-        "description": "Node detail query."
+        "title": "KnowledgeUnitDetailRequest",
+        "description": "KnowledgeUnit detail query."
       },
       "HTTPValidationError": {
         "properties": {
@@ -8394,7 +8394,7 @@
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
       },
-      "KnowledgeNodeDetailResponse": {
+      "KnowledgeUnitDetailResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -8478,10 +8478,10 @@
           "created_at",
           "updated_at"
         ],
-        "title": "KnowledgeNodeDetailResponse",
-        "description": "Knowledge node detail response."
+        "title": "KnowledgeUnitDetailResponse",
+        "description": "KnowledgeUnit detail response."
       },
-      "KnowledgeNodeResponse": {
+      "KnowledgeUnitResponse": {
         "properties": {
           "id": {
             "type": "integer",
@@ -8529,8 +8529,8 @@
           "created_at",
           "updated_at"
         ],
-        "title": "KnowledgeNodeResponse",
-        "description": "Knowledge node list item."
+        "title": "KnowledgeUnitResponse",
+        "description": "KnowledgeUnit list item."
       },
       "KnowledgeOverviewRequest": {
         "properties": {

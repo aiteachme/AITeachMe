@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { GraphEdgeResponse } from './graphEdgeResponse';
-import type { KnowledgeNodeResponse } from './knowledgeNodeResponse';
+import type { KnowledgeUnitResponse } from './knowledgeUnitResponse';
 
 /**
  * Full graph payload for force-graph visualization.
  */
 export interface FullGraphResponse {
-  nodes?: KnowledgeNodeResponse[];
+  nodes?: KnowledgeUnitResponse[];
   edges?: GraphEdgeResponse[];
 }

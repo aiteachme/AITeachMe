@@ -18,18 +18,18 @@
 ## P0 命名统一：KnowledgeNode -> KnowledgeUnit（先做）
 
 - [x] 冻结命名规范：统一使用 `KnowledgeUnit`（实体名、接口名、前后端字段名、日志名）。
-- [x] 后端领域模型重命名：核心实体由 `KnowledgeNode` 升级为 `KnowledgeUnit`（保留兼容别名窗口）。
+- [x] 后端领域模型重命名：核心实体由 `KnowledgeNode` 升级为 `KnowledgeUnit`。
 - [x] API schema 重命名：详情请求/响应改用 `KnowledgeUnit` 命名，并保留旧字段兼容。
 - [x] 知识图 API 增加 `knowledge-units` 路由，并保留旧路由兼容。
 - [x] 数据模型表名对齐：`KnowledgeUnit.__tablename__` 改为 `knowledge_unit`。
 - [x] 关联外键对齐：`knowledge_node.id` 外键引用改为 `knowledge_unit.id`。
-- [ ] 仓储层命名清理：`kg_repo` 中 node 命名方法迁移为 `knowledge_unit` 语义（兼容层保留）。
-- [ ] 前端类型与调用链重命名：generated model + 页面状态 + props 全链路统一。
-- [ ] 迁移说明：补齐旧名到新名映射（DB/API/前端）。
+- [x] 仓储层命名清理：`kg_repo` 中 node 命名方法迁移为 `knowledge_unit` 语义（旧别名/兼容函数已删除）。
+- [x] 前端类型与调用链重命名：generated model + 页面状态 + props 全链路统一。
+- [x] 迁移说明：补齐旧名到新名映射（DB/API/前端）。
 
 **验收标准**
-- [ ] 主路径代码中不再把 Node 作为核心知识实体（仅兼容层保留）。
-- [ ] 对外 API 文档默认展示 `KnowledgeUnit`。
+- [x] 主路径代码中不再把 Node 作为核心知识实体（仅兼容层保留）。
+- [x] 对外 API 文档默认展示 `KnowledgeUnit`。
 
 ---
 

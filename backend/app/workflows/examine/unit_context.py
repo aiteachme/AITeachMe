@@ -112,7 +112,7 @@ class UnitExamContext:
 
 
 def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeUnit | None, str, str]:
-    resolved = kg_repo.get_node_with_current_revision(session, node_id)
+    resolved = kg_repo.get_knowledge_unit_with_current_revision(session, node_id)
     if resolved is None:
         node = session.get(KnowledgeUnit, node_id)
         if node is None:
@@ -400,4 +400,3 @@ __all__ = [
     "UnitExamContext",
     "build_unit_exam_contexts",
 ]
-

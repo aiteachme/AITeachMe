@@ -46,30 +46,30 @@ def release_subject_build_lock(session: Session, subject: str) -> None:
     del session, subject
 
 
-def create_knowledge_node(
+def create_knowledge_unit(
     session: Session,
-    node: KnowledgeUnit,
+    knowledge_unit: KnowledgeUnit,
     *,
     auto_commit: bool = True,
 ) -> KnowledgeUnit:
-    session.add(node)
+    session.add(knowledge_unit)
     if auto_commit:
         session.commit()
-        session.refresh(node)
+        session.refresh(knowledge_unit)
     else:
         session.flush()
-    return node
+    return knowledge_unit
 
 
-def get_knowledge_node_by_id(session: Session, node_id: int) -> KnowledgeUnit | None:
-    return session.get(KnowledgeUnit, node_id)
+def get_knowledge_unit_by_id(session: Session, knowledge_unit_id: int) -> KnowledgeUnit | None:
+    return session.get(KnowledgeUnit, knowledge_unit_id)
 
 
-def find_node_by_normalized_name(
+def find_knowledge_unit_by_normalized_name(
     session: Session,
     subject: str,
     normalized_name: str,
-    node_type: str,
+    knowledge_unit_type: str,
     *,
     include_pending: bool = True,
 ) -> KnowledgeUnit | None:
@@ -79,21 +79,21 @@ def find_node_by_normalized_name(
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
         KnowledgeUnit.normalized_name == normalized_name,
-        KnowledgeUnit.node_type == node_type,
+        KnowledgeUnit.node_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(allowed),
     )
     return session.exec(stmt).first()
 
 
-def find_nodes_by_alias(
+def find_knowledge_units_by_alias(
     session: Session,
     subject: str,
     normalized_alias: str,
-    node_type: str,
+    knowledge_unit_type: str,
 ) -> list[KnowledgeUnit]:
     stmt = select(KnowledgeUnit).where(
         KnowledgeUnit.subject == subject,
-        KnowledgeUnit.node_type == node_type,
+        KnowledgeUnit.node_type == knowledge_unit_type,
         KnowledgeUnit.status.in_(["active", "pending"]),
     )
     rows = list(session.exec(stmt).all())
@@ -105,11 +105,11 @@ def find_nodes_by_alias(
     return matched
 
 
-def list_nodes_by_subject(
+def list_knowledge_units_by_subject(
     session: Session,
     subject: str,
     *,
-    node_type: str | None = None,
+    knowledge_unit_type: str | None = None,
     status: str | None = "active",
     limit: int = 50,
     offset: int = 0,
@@ -120,31 +120,34 @@ def list_nodes_by_subject(
     if status is not None:
         base = base.where(KnowledgeUnit.status == status)
         count_base = count_base.where(KnowledgeUnit.status == status)
-    if node_type is not None:
-        base = base.where(KnowledgeUnit.node_type == node_type)
-        count_base = count_base.where(KnowledgeUnit.node_type == node_type)
+    if knowledge_unit_type is not None:
+        base = base.where(KnowledgeUnit.node_type == knowledge_unit_type)
+        count_base = count_base.where(KnowledgeUnit.node_type == knowledge_unit_type)
 
     total: int = session.exec(count_base).one()
     rows = list(session.exec(base.offset(offset).limit(limit).order_by(KnowledgeUnit.id)).all())
     return rows, total
 
 
-def get_node_with_current_revision(session: Session, node_id: int) -> tuple[KnowledgeUnit, KnowledgeRevision] | None:
-    node = session.get(KnowledgeUnit, node_id)
-    if node is None:
+def get_knowledge_unit_with_current_revision(
+    session: Session,
+    knowledge_unit_id: int,
+) -> tuple[KnowledgeUnit, KnowledgeRevision] | None:
+    knowledge_unit = session.get(KnowledgeUnit, knowledge_unit_id)
+    if knowledge_unit is None:
         return None
     revision = KnowledgeRevision(
-        id=node.current_revision_id,
-        node_id=node.id or 0,
+        id=knowledge_unit.current_revision_id,
+        node_id=knowledge_unit.id or 0,
         revision_no=1,
-        title=node.canonical_name,
-        summary=node.summary,
-        body=node.body_markdown or node.body,
+        title=knowledge_unit.canonical_name,
+        summary=knowledge_unit.summary,
+        body=knowledge_unit.body_markdown or knowledge_unit.body,
         revision_reason="materialized",
         is_current=True,
-        created_at=node.updated_at,
+        created_at=knowledge_unit.updated_at,
     )
-    return node, revision
+    return knowledge_unit, revision
 
 
 def create_alias(
@@ -208,17 +211,17 @@ def find_alias(session: Session, subject: str, normalized_alias: str) -> list[Kn
     return matched
 
 
-def list_aliases_by_node(session: Session, node_id: int) -> list[KnowledgeAlias]:
-    node = session.get(KnowledgeUnit, node_id)
-    if node is None:
+def list_aliases_by_knowledge_unit(session: Session, knowledge_unit_id: int) -> list[KnowledgeAlias]:
+    knowledge_unit = session.get(KnowledgeUnit, knowledge_unit_id)
+    if knowledge_unit is None:
         return []
 
     items: list[KnowledgeAlias] = []
-    for index, alias in enumerate(_load_json_list(node.aliases_json), start=1):
+    for index, alias in enumerate(_load_json_list(knowledge_unit.aliases_json), start=1):
         items.append(
             KnowledgeAlias(
                 id=index,
-                node_id=node_id,
+                node_id=knowledge_unit_id,
                 alias=str(alias.get("alias", "")),
                 normalized_alias=str(alias.get("normalized_alias", "")),
                 language=str(alias.get("language", "zh")),
@@ -260,16 +263,16 @@ def find_edge(
     return session.exec(stmt).first()
 
 
-def list_edges_by_node(
+def list_edges_by_knowledge_unit(
     session: Session,
-    node_id: int,
+    knowledge_unit_id: int,
     *,
     status: str | None = "active",
 ) -> list[KnowledgeEdge]:
     stmt = select(KnowledgeEdge).where(
         or_(
-            KnowledgeEdge.source_node_id == node_id,
-            KnowledgeEdge.target_node_id == node_id,
+            KnowledgeEdge.source_node_id == knowledge_unit_id,
+            KnowledgeEdge.target_node_id == knowledge_unit_id,
         )
     )
     if status is not None:
@@ -327,8 +330,8 @@ def create_knowledge_revision(
     return revision
 
 
-def deactivate_old_revisions(session: Session, node_id: int) -> None:
-    del session, node_id
+def deactivate_old_knowledge_unit_revisions(session: Session, knowledge_unit_id: int) -> None:
+    del session, knowledge_unit_id
 
 
 def create_edge_revision(
@@ -444,4 +447,3 @@ def count_active_evidence(session: Session, entity_type: str, entity_id: int) ->
 
 def update_digest_job(session: Session, job_id: int, **kwargs: object) -> None:
     del session, job_id, kwargs
-
