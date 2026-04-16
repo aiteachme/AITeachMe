@@ -1,4 +1,4 @@
-﻿# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
+# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
 **状态**: 阶段 1 + 阶段 3 已完成（ContentStore 统一抽象 + OSS 接入）  
 **最后更新**: 2026-04-04  
@@ -520,7 +520,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 主要涉及：
 
-- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - ingest workflow 相关文件
 - digest docs publish 相关文件
@@ -546,7 +546,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 高优先级文件通常包括：
 
-- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`runtime.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/runtime.py)

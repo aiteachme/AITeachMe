@@ -35,13 +35,16 @@ workflows/
 workflows/<module>/
   __init__.py
   README.md
-  application/
+  events.py
+  exports.py
+  <use_case_a>.py
   <lane_a>/
   <lane_b>/
   common/           # 可选，仅在真实跨链路复用时建立
+  application/      # compatibility-only
 ```
 
-### 2.1 `application/` 的职责
+### 2.1 模块根用例文件的职责
 
 - 承接面向 API 的业务用例
 - 组合多条链路
@@ -52,6 +55,8 @@ workflows/<module>/
 - 不把 graph node 放进 `application/`
 - 不把 prompt 模板放进 `application/`
 - 不把底层数据库能力直接下沉成 infra 杂项
+
+`application/` 目录只在迁移兼容时保留，不再作为 Digest 新代码的 canonical 落点。
 
 ### 2.2 模块根不再新增
 
@@ -116,8 +121,8 @@ workflows/<module>/<lane>/
 workflows/support/<module>/
   __init__.py
   README.md
-  commands.py
-  queries.py
+  <use_case_a>.py
+  <use_case_b>.py
   streams.py        # 可选
   lib/              # 可选
 ```
@@ -135,6 +140,8 @@ workflows/support/<module>/
 - support 模块默认不用 LangGraph
 - 如果需要长链 AI 流程，直接调用已有 engine 链路
 - 不在 support 里平行造一套“伪引擎”
+- 新代码优先按用例命名文件，例如 `catalog.py`、`uploads.py`、`deletion.py`
+- 没有真实调用方的旧兼容壳应直接删除
 
 ### 4.1 teaching tool 分类规则
 
@@ -185,7 +192,8 @@ teaching tool 不是独立教学层。当前通用实现是内置 tool，不再�
 
 ```text
 digest/
-  application/
+  events.py
+  exports.py
   planner/
     graph.py
     state.py
@@ -193,16 +201,20 @@ digest/
     prompts/
     lib/
   common/
+  application/   # compatibility-only
 ```
 
 - `planner/` 只承接图和链路内部逻辑
-- planner session create / append / confirm 进入 `digest/application/build_plans.py`
+- planner session create / append / confirm 进入 `digest/planner/sessions.py`
 
 ### 7.2 docgen
 
 ```text
 digest/
-  application/
+  events.py
+  exports.py
+  overview.py
+  study_plan.py
   docgen/
     graph.py
     state.py
@@ -215,7 +227,8 @@ digest/
 ```
 
 - `docgen/` 只承接 research / writer / publish 等链路内部逻辑
-- build trigger / result / cleanup / overview 进入 `digest/application/*`
+- build trigger / result / cleanup 进入 `digest/docgen/*`
+- overview / study plan 进入 `digest/{overview.py,study_plan.py}`
 - 教学语义统一从 `common/runtime_config.py` 与 `common/pedagogy/` 进入
 
 ## 8. 兼容策略
@@ -229,7 +242,5 @@ digest/
 
 新的 workflows 结构只有两个关键词：
 
-- 五大引擎：`application + lanes + common`
-- 支撑模块：`commands + queries (+ streams/lib)`
-
-
+- 五大引擎：`module root use cases + lanes + common`
+- 支撑模块：`use-case files (+ streams/lib)`

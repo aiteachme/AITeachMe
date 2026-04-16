@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -15,7 +15,7 @@ from app.models import (
     Subject,
     User,
 )
-from app.workflows.digest.application.knowledge_docs.cleanup_service import clear_subject_knowledge
+from app.workflows.digest.docgen.cleanup import clear_subject_knowledge
 from app.workflows.support.subjects import delete_subject_record
 
 

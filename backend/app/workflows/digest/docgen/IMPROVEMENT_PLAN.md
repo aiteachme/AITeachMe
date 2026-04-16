@@ -22,7 +22,7 @@
 当前权威代码入口：
 
 - API 入口：`backend/app/api/knowledge_docs.py`
-- Digest application：`backend/app/workflows/digest/application/knowledge_docs/digest_service.py`
+- DocGen build：`backend/app/workflows/digest/docgen/builds.py`
 - DocGen graph：`backend/app/workflows/digest/docgen/graph.py`
 - DocGen 状态：`backend/app/workflows/digest/docgen/state.py`
 - DocGen 节点：`backend/app/workflows/digest/docgen/nodes/`
@@ -139,7 +139,7 @@ LangChain Open Deep Research 总结为 `Scope -> Research -> Write`。它特别�
 
 - `frontend/src/components/pages/DigestBuildPanel.tsx`
 - `frontend/src/hooks/useKnowledgeBuildFlow.ts`
-- `backend/app/workflows/digest/application/knowledge_docs/digest_service.py`
+- `backend/app/workflows/digest/docgen/builds.py`
 
 ### P0-2：strict failure 与 fallback 口径冲突
 

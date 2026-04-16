@@ -36,7 +36,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows` 反过来又依赖部分 `services`，层级已经不再单向
 - 模块边界被拆散，Digest/Interact/Examine 的真实主线很难从目录上读出来
 
-因此本轮不再把 `services` 当作长期架构层，而是把引擎相关用例并回各自的 `workflows/<module>/application/`，把非引擎业务用例并入 `workflows/support/`
+因此本轮不再把 `services` 当作长期架构层，而是把引擎相关用例并回各自的 `workflows/<module>/` 模块根或对应 lane，把非引擎业务用例并入 `workflows/support/`
 
 ## 3. 为什么要拆散 `teaching`
 
@@ -75,8 +75,8 @@ api -> workflows -> repositories / shared.infra / models / schemas
 
 | 旧位置 | 新位置 |
 | --- | --- |
-| `app.services.knowledge_docs.*` | `app.workflows.digest.application.*` |
-| `app.services.knowledge_graph.*` | `app.workflows.digest.application.*` 或 `digest/knowledge_graph/` 门面 |
+| `app.services.knowledge_docs.*` | `app.workflows.digest.planner.*` / `app.workflows.digest.docgen.*` / `app.workflows.digest.*` |
+| `app.services.knowledge_graph.*` | `app.workflows.digest.knowledge_graph.*` |
 | `app.services.chats_service` | `app.workflows.interact.application.*` |
 | `app.services.exams_service.*` | `app.workflows.examine.application.*` |
 | `app.services.profile_service` | `app.workflows.profile.application.*` |
@@ -111,7 +111,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `app.services.export_import_service` 已迁入 `app.workflows.support.export_import`
 - `app.services.exams_service.*` 已迁入 `app.workflows.examine.application`
 - `app.services.subject_embedding_service` 已迁入 `app.shared.infra.subject.build_precheck`
-- `app.services.knowledge_docs.*` 与 `app.services.knowledge_graph.*` 已迁入 `app.workflows.digest.application.*`
+- `app.services.knowledge_docs.*` 与 `app.services.knowledge_graph.*` 已迁入 `app.workflows.digest.*`
 - 删除旧 `backend/app/services` 源层
 - 所有 workflow 与 API 代码已消除对 `app.services` 的直接 import
 - Digest workflow 已消除对 `app.teaching` 的直接 import，统一改走 `common` 真实实现
@@ -129,5 +129,4 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows` 只管业务
 - `shared.infra` 只管能力
 - `services` 和 `teaching` 均已完成源层退场
-
 

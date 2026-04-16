@@ -30,22 +30,22 @@ from app.schemas.knowledge import (
     StudyPlanRequest,
     StudyPlanResponse,
 )
-from app.workflows.digest.application.knowledge_docs.build_planner_service import (
+from app.workflows.digest.planner import (
     append_build_planner_message_service,
     confirm_build_planner_session_service,
     create_build_planner_session_service,
     get_latest_planner_session_service,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
-from app.workflows.digest.application.knowledge_docs.cleanup_service import clear_subject_knowledge
-from app.workflows.digest.application.knowledge_docs.digest_service import (
+from app.workflows.digest.docgen import (
+    clear_subject_knowledge,
     get_docgen_result,
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.application.knowledge_docs.overview_service import get_knowledge_overview
-from app.workflows.digest.application.knowledge_docs.study_plan_service import handle_study_plan_request
-from app.workflows.digest.application.knowledge_graph.digest_service import run_graph_build_background
+from app.workflows.digest.knowledge_graph import run_graph_build_background
+from app.workflows.digest.overview import get_knowledge_overview
+from app.workflows.digest.study_plan import handle_study_plan_request
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 

@@ -41,24 +41,30 @@
 
 ## 当前已落地的单层化示例
 
-- `digest/application/`
-  Digest 模块根下的 API-facing use case 落点
+- `digest/overview.py`、`digest/study_plan.py`
+  Digest 模块根下的跨 lane 聚合用例
+- `digest/docgen/__init__.py`、`digest/knowledge_graph/__init__.py`
+  Digest workflow runner 的模块级入口
+- `digest/planner/sessions.py`
+  Planner session 的 API-facing use case 落点
+- `digest/docgen/builds.py`
+  DocGen 构建触发、状态装配与后台编排入口
 - `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy/`
   Digest 教学语义 facade
-- `support/system/`
-  系统初始化查询的 canonical 位置，承接原 `app.services.system_service`
-- `support/files/`
-  文件上传、列表、删除与解析触发的 canonical 位置，承接原 `app.services.file_service`
+- `support/system/init.py`、`support/system/settings.py`
+  系统初始化与设置总览的 canonical 位置
+- `support/files/catalog.py`、`support/files/uploads.py`、`support/files/parsing.py`、`support/files/deletion.py`
+  文件模块按用例拆分后的 canonical 位置
 - `profile/application/`
   Profile 面向 API 的掌握度与复习任务用例落点
 - `interact/application/`
   Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点
-- `support/auth/`
-  访客身份、邮箱注册登录、token 与验证码的 canonical 位置
-- `support/export_import/`
-  学科级课程包导入导出的 canonical 位置
+- `support/auth/identity.py`、`support/auth/sessions.py`、`support/auth/smtp.py`
+  鉴权模块按身份、会话、邮件通道拆分后的 canonical 位置
+- `support/export_import/exports.py`、`support/export_import/imports.py`、`support/export_import/courses.py`
+  学科级课程包导入导出模块按用例拆分后的 canonical 位置
 
 ## 最重要的调用入口
 
@@ -89,4 +95,3 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - 教学语义统一从 `digest/common`、具体 workflow lane 与 `shared.infra.tools` 进入
 
 具体结构规则请统一看 [STRUCTURE.md](./STRUCTURE.md)。
-

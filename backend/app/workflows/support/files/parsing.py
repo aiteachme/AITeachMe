@@ -1,0 +1,117 @@
+"""File parsing workflow entrypoints."""
+
+from __future__ import annotations
+
+import asyncio
+
+import structlog
+from sqlmodel import Session
+
+from app.shared.infra.config import get_settings
+from app.shared.infra.exceptions import InvalidRawFileStateError
+from app.models import IngestStatus, RawFile, TaskStatus
+from app.repositories.files_repo import update_raw_file
+from app.utils.presenters import require_id, require_uid
+from app.workflows.ingest import run_parse_file_workflow
+from app.workflows.support.files.catalog import get_subject_files_or_raise
+
+logger = structlog.get_logger()
+
+
+def _start_parse_for_files(
+    session: Session,
+    *,
+    subject: str,
+    file_ids: list[int],
+) -> list[RawFile]:
+    raw_files = get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
+    logger.info(
+        "file_parse_state_transition_requested",
+        subject=subject,
+        requested_file_ids=file_ids,
+        raw_file_states=[
+            {
+                "file_id": require_id(item.id, "RawFile.id"),
+                "file_uid": require_uid(item.uid, "RawFile.uid"),
+                "status": item.status,
+                "markdown_ready": bool(item.markdown_path),
+                "filename": item.filename,
+            }
+            for item in raw_files
+        ],
+    )
+
+    for raw_file in raw_files:
+        raw_file_id = require_id(raw_file.id, "RawFile.id")
+        raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
+        if raw_file.status != TaskStatus.PENDING.value:
+            raise InvalidRawFileStateError(raw_file_uid or raw_file_id, raw_file.status, TaskStatus.PENDING.value)
+
+        update_raw_file(
+            session,
+            raw_file,
+            status=TaskStatus.PROCESSING.value,
+            error_message=None,
+            ingest_status=IngestStatus.CLASSIFYING.value,
+            digest_current_step="ingest.parse.queued",
+        )
+
+    logger.info(
+        "file_parse_state_transition_completed",
+        subject=subject,
+        accepted_file_ids=file_ids,
+        accepted_file_uids=[require_uid(item.uid, "RawFile.uid") for item in raw_files],
+        accepted_count=len(file_ids),
+    )
+    return get_subject_files_or_raise(session, subject=subject, file_ids=file_ids)
+
+
+async def run_parse_files_background(*, subject: str, file_ids: list[int]) -> None:
+    settings = get_settings()
+    concurrency = max(settings.ingest_parse_concurrency, 1)
+    batch_logger = logger.bind(subject=subject, file_ids=file_ids)
+    batch_logger.info(
+        "file_parse_background_started",
+        file_count=len(file_ids),
+        concurrency=concurrency,
+    )
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _run_one(file_id: int) -> None:
+        async with semaphore:
+            batch_logger.info("file_parse_background_dispatch", file_id=file_id)
+            try:
+                result = await run_parse_file_workflow(subject=subject, file_id=file_id)
+            except asyncio.CancelledError:
+                batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
+                raise
+            except Exception as exc:
+                batch_logger.exception(
+                    "file_parse_background_crashed",
+                    file_id=file_id,
+                    error=str(exc),
+                )
+                return
+
+            if result.failed:
+                error_metadata = result.error.metadata if result.error else {}
+                batch_logger.warning(
+                    "file_parse_background_failed",
+                    file_id=file_id,
+                    error=result.error.detail,
+                    filename=error_metadata.get("filename"),
+                    filetype=error_metadata.get("filetype"),
+                    parse_mode=error_metadata.get("parse_mode"),
+                    parser_chain=error_metadata.get("parser_chain"),
+                )
+
+    try:
+        await asyncio.gather(*(_run_one(file_id) for file_id in file_ids))
+        batch_logger.info("file_parse_background_completed")
+    except asyncio.CancelledError:
+        batch_logger.warning("file_parse_background_cancelled")
+        raise
+
+
+__all__ = ["_start_parse_for_files", "run_parse_files_background"]

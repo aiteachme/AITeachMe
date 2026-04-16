@@ -28,10 +28,10 @@ shared.infra -> shared.kernel
 
 ```text
 api/knowledge_docs.py
--> workflows/digest/application/knowledge_docs/build_planner_service.py
+-> workflows/digest/planner/sessions.py
 -> app.workflows.digest.planner
 -> confirmed_plan
--> workflows/digest/application/knowledge_docs/digest_service.py
+-> workflows/digest/docgen/builds.py
 -> app.workflows.digest.run_docgen_workflow
 ```
 

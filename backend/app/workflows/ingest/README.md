@@ -1,4 +1,4 @@
-﻿# Ingest 透视引擎链路说明
+# Ingest 透视引擎链路说明
 
 最后更新：2026-04-16
 
@@ -69,7 +69,7 @@ from app.workflows.ingest import run_parse_file_workflow
 ```text
 前端上传文件
   -> api/files.py
-  -> workflows/support/files/commands.py
+  -> workflows/support/files/uploads.py
   -> 保存 raw_file 记录与原始文件
   -> background_task_registry.spawn(run_parse_files_background)
   -> run_parse_file_workflow
@@ -80,7 +80,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ## Phase 0：上传与排队
 
-入口在 `workflows/support/files/commands.py`。
+入口在 `workflows/support/files/uploads.py`。
 
 1. `save_uploaded_file()` 读取上传内容，计算 SHA256，写入本地或对象存储。
 2. 创建 `RawFile` 记录：

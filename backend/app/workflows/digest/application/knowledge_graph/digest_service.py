@@ -1,11 +1,3 @@
-"""Knowledge-graph domain wrapper for graph build services."""
+"""Compatibility shim for legacy knowledge-graph background imports."""
 
-from app.workflows.digest.application.knowledge_docs.digest_service import (
-    run_graph_build_background,
-    run_graph_digest_background,
-)
-
-__all__ = [
-    "run_graph_build_background",
-    "run_graph_digest_background",
-]
+from app.workflows.digest.knowledge_graph.builds import *  # noqa: F401,F403

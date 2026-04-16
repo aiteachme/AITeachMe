@@ -7,7 +7,7 @@ from pathlib import Path
 import app.models as _models
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
-from app.workflows.digest.application.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
+from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
 from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
