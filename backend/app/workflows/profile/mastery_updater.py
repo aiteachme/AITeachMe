@@ -362,9 +362,13 @@ def update_mastery_from_exam(
             confidence_self_report=item.confidence_self_report,
             error_cause_label=item.error_cause_label,
         )
-        unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
+        if item.teaching_unit_id is not None:
+            unit_attempts.setdefault(item.teaching_unit_id, []).append(base)
 
-        for node_id, normalized_weight in _parse_node_links(item.node_refs_json):
+        node_links = _parse_node_links(item.node_refs_json)
+        if not node_links and item.knowledge_node_id is not None:
+            node_links = [(item.knowledge_node_id, 1.0)]
+        for node_id, normalized_weight in node_links:
             node_attempts.setdefault(node_id, []).append(
                 _WeightedAttempt(
                     is_correct=item.is_correct,

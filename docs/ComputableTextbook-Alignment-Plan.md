@@ -80,39 +80,39 @@
 
 ## P4 学习路径、出题、评估、掌握度闭环
 
-- [ ] 恢复并正式开放 `profile` API（移除 offline 占位）。
-- [ ] 恢复并正式开放 `exams` API（移除 offline 占位）。
-- [ ] 出题绑定主/辅 `KnowledgeUnit` 映射并回写作答结果。
-- [ ] 掌握度更新基于 `KnowledgeUnit` 粒度（含遗忘曲线与复习优先级）。
-- [ ] 学习路径生成使用 prerequisite 图与 mastery 状态。
+- [x] 恢复并正式开放 `profile` API（移除 offline 占位）。
+- [x] 恢复并正式开放 `exams` API（移除 offline 占位）。
+- [x] 出题绑定主/辅 `KnowledgeUnit` 映射并回写作答结果。
+- [x] 掌握度更新基于 `KnowledgeUnit` 粒度（含遗忘曲线与复习优先级）。
+- [x] 学习路径生成使用 prerequisite 图与 mastery 状态。
 
 **验收标准**
-- [ ] 形成“出题 -> 作答 -> 评估 -> mastery 更新 -> 路径重排”闭环。
+- [x] 形成“出题 -> 作答 -> 评估 -> mastery 更新 -> 路径重排”闭环。
 
 ---
 
 ## P5 KG + RAG 主流程改造
 
-- [ ] 检索主单元从粗粒度 chunk 切换到 `KnowledgeUnit`。
-- [ ] 引入“先图约束、后文本回溯”的检索链路。
-- [ ] 回答中返回 `KnowledgeUnit` 路径解释与引用片段。
-- [ ] 对话策略接入用户子图与 mastery 上下文。
+- [x] 检索主单元从粗粒度 chunk 切换到 `KnowledgeUnit`。
+- [x] 引入“先图约束、后文本回溯”的检索链路。
+- [x] 回答中返回 `KnowledgeUnit` 路径解释与引用片段。
+- [x] 对话策略接入用户子图与 mastery 上下文。
 
 **验收标准**
-- [ ] 相比纯向量检索，回答路径可解释且漂移率下降。
+- [x] 相比纯向量检索，回答路径可解释且漂移率下降。
 
 ---
 
 ## P6 增量同步、迁移、测试、发布
 
-- [ ] 建立 Markdown -> `KnowledgeUnit` -> KG 增量同步 pipeline（支持 diff）。
-- [ ] 编写数据迁移脚本（旧 node/edge/type 全量迁移）。
-- [ ] 建立契约测试：类型、关系、路径、回指、兼容 API。
-- [ ] 建立回归测试：构建耗时、检索质量、出题命中率。
-- [ ] 发布策略：灰度开关 + 回滚方案 + 观测看板。
+- [x] 建立 Markdown -> `KnowledgeUnit` -> KG 增量同步 pipeline（支持 diff）。
+- [x] 编写数据迁移脚本（旧 node/edge/type 全量迁移）。
+- [x] 建立契约测试：类型、关系、路径、回指、兼容 API。
+- [x] 建立回归测试：构建耗时、检索质量、出题命中率。
+- [x] 发布策略：灰度开关 + 回滚方案 + 观测看板。
 
 **验收标准**
-- [ ] 新旧版本可平滑切换，核心链路有监控与回滚保障。
+- [x] 新旧版本可平滑切换，核心链路有监控与回滚保障。
 
 ---
 
@@ -127,9 +127,9 @@
 
 ## Definition of Done
 
-- [ ] 系统核心实体命名与设计文档一致（`KnowledgeUnit` 为一等公民）。
-- [ ] `KnowledgeUnit` 类型体系与 KG 关系体系完全对齐设计文档。
-- [ ] Markdown 成为事实源，KnowledgeUnit/KG 支持稳定增量同步。
-- [ ] Profile + Exams + Study Path + KG+RAG 形成闭环。
-- [ ] 前后端接口、文档、测试全部收敛到新语义。
+- [x] 系统核心实体命名与设计文档一致（`KnowledgeUnit` 为一等公民）。
+- [x] `KnowledgeUnit` 类型体系与 KG 关系体系完全对齐设计文档。
+- [x] Markdown 成为事实源，KnowledgeUnit/KG 支持稳定增量同步。
+- [x] Profile + Exams + Study Path + KG+RAG 形成闭环。
+- [x] 前后端接口、文档、测试全部收敛到新语义。
 

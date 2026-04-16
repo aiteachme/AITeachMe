@@ -422,7 +422,7 @@ async def knowledge_study_plan(
 ) -> ApiResponse[StudyPlanResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(handle_study_plan_request(session, subject=normalized, payload=body))
+    return ok_response(handle_study_plan_request(session, subject=normalized, user_id=user.user_id, payload=body))
 
 
 @router.post(
