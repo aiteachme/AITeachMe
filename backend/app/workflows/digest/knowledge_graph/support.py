@@ -24,12 +24,12 @@ from app.shared.infra.subject import (
     get_runtime_embedding_config,
     should_generate_subject_embeddings,
 )
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 
 logger = structlog.get_logger()
 
 
-def workflow_logger(state: KGDigestState) -> structlog.stdlib.BoundLogger:
+def workflow_logger(state: KnowledgeDigestState) -> structlog.stdlib.BoundLogger:
     """Bind consistent log context for the graph digest workflow."""
 
     return logger.bind(
@@ -192,7 +192,7 @@ async def prepare_chunk_ids_for_files(
         )
         if not is_ready:
             digest_logger.warning(
-                "kg_prepare_skip_unready_file",
+                "knowledge_prepare_skip_unready_file",
                 file_id=raw_file_id,
                 status=raw_file.status,
                 ingest_status=raw_file.ingest_status,

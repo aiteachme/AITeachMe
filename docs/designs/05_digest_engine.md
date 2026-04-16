@@ -19,9 +19,9 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 | **Unified Lane** | `digest.unified` | 共享准备 + docgen + graph 编排结果 | Digest Service 后台任务 |
 
 **Digest 不做：**
-- ❌ 不处理原始文件（那是 Ingest 的事）
-- ❌ 不与用户交互（那是 Interact 的事）
-- ❌ 不出题/判卷（那是 Examine 的事）
+- ? 不处理原始文件（那是 Ingest 的事）
+- ? 不与用户交互（那是 Interact 的事）
+- ? 不出题/判卷（那是 Examine 的事）
 
 ---
 
@@ -65,7 +65,7 @@ Ingest 产物 (raw_markdowns) 就绪
 
 三个 Lane 共享一个 `UnifiedBuildSession`，通过 `build_session_id` 关联：
 - **shared_inputs**: 材料分析结果（subject_profile、material_profile、digest_mode 等）
-- **chunk 映射**: `chunk_uid ↔ chunk_id` 双向映射
+- **chunk 映射**: `chunk_uid ? chunk_id` 双向映射
 - **topic_anchor_snapshot**: KG Lane 在 cluster 和 finalize 阶段发布，Docs Lane 可消费
 
 ---
@@ -102,7 +102,7 @@ graph TD
 ```
 输入: subject, job_id
 操作:
-  1. 调用 kg_repo.acquire_subject_build_lock(session, subject, job_id)
+  1. 调用 knowledge_build_repo.acquire_subject_build_lock(session, subject, job_id)
      → 确保同一 subject 同时只有一个 KG 构建任务
   2. 成功: 更新 job progress=5, step="acquire_lock"
   3. 失败: 设置 error="lock_conflict"
@@ -135,7 +135,7 @@ graph TD
      - chunk_count ≤ 20 → parallelism = min(chunk_count, 10)
      - chunk_count ≤ 100 → min(chunk_count, 20)
      - chunk_count > 100 → min(chunk_count, 30)
-     - 受限于 settings.kg_extract_max_parallelism 和 settings.llm_concurrency_limit
+     - 受限于 settings.knowledge_extract_max_parallelism 和 settings.llm_concurrency_limit
   2. 可选: 从 UnifiedBuildSession 等待 chapter_priors (超时可配置)
      → 用于为提取提供 taxonomy_hint 和 sibling_topics
   3. 对每个 chunk 并行调用 extract_candidates():
@@ -146,7 +146,7 @@ graph TD
   5. 校验: 全部失败 → error; 零节点 → error
 输出: candidates (ChunkExtractionResult[]), all_candidate_edges
 写 DB: job progress 15→40
-LLM 调用: ✅ kg_extract (每 chunk 一次)
+LLM 调用: ? knowledge_extract (每 chunk 一次)
 ```
 
 #### Node 4: `cluster`
@@ -163,7 +163,7 @@ LLM 调用: ✅ kg_extract (每 chunk 一次)
      (供 Docs Lane 消费作为写作时的知识锚点)
 输出: clustered_candidates, candidate_lookup_to_cluster_id
 写 DB: job progress=50
-LLM 调用: ❌ (纯规则)
+LLM 调用: ? (纯规则)
 ```
 
 #### Node 5: `resolve_nodes`（核心持久化节点）
@@ -198,7 +198,7 @@ LLM 调用: ❌ (纯规则)
       candidate_lookup_to_resolved_node_id, cluster_id_to_resolved_node_id
 写 DB: knowledge_node, node_revision, node_evidence, node_alias
        job progress 50→65
-LLM 调用: ❌ (embedding 不算 LLM chat)
+LLM 调用: ? (embedding 不算 LLM chat)
 ```
 
 #### Node 6: `resolve_edges`
@@ -217,7 +217,7 @@ LLM 调用: ❌ (embedding 不算 LLM chat)
 输出: new_edge_ids, updated_edge_ids
 写 DB: knowledge_edge, edge_revision, edge_evidence
        job progress=75
-LLM 调用: ❌
+LLM 调用: ?
 ```
 
 #### Node 7: `analyze_impact`
@@ -233,7 +233,7 @@ LLM 调用: ❌
      - affected_unit_ids: 需要重新推导的教学单元
 输出: impact_set: ImpactSet
 写 DB: job progress=85
-LLM 调用: ❌
+LLM 调用: ?
 ```
 
 #### Node 8: `finalize_graph`
@@ -247,12 +247,12 @@ LLM 调用: ❌
   3. 激活全部 pending 实体:
      activate_graph_entities_by_job(job_id, subject)
      → 所有 status="pending" 的节点/边/证据 → "active"
-  4. 释放构建锁: kg_repo.release_subject_build_lock()
+  4. 释放构建锁: knowledge_build_repo.release_subject_build_lock()
   5. 更新 digest_job: status="completed"
   6. asyncio.create_task() 触发 Curriculum Lane
 输出: graph_ready=True, active_node_count, active_edge_count
 写 DB: 批量状态更新, job status, 锁释放
-LLM 调用: ❌
+LLM 调用: ?
 ```
 
 #### `fail` node
@@ -304,7 +304,7 @@ graph TD
 输出: derived_unit_ids
 写 DB: teaching_unit, unit_membership
        job progress=10→40
-LLM 调用: ✅ kg_unit_naming (每个多节点 unit 一次)
+LLM 调用: ? knowledge_unit_naming (每个多节点 unit 一次)
 ```
 
 #### Node 2: `derive_theme_tree`
@@ -324,7 +324,7 @@ LLM 调用: ✅ kg_unit_naming (每个多节点 unit 一次)
 输出: theme_tree_version_id
 写 DB: curriculum_snapshot, theme_tree_node, taxonomy_anchor
        job progress=50→70
-LLM 调用: ✅ kg_theme_tree (全 subject 一次)
+LLM 调用: ? knowledge_theme_tree (全 subject 一次)
 ```
 
 #### Node 3: `derive_prereq_dag`
@@ -338,7 +338,7 @@ LLM 调用: ✅ kg_theme_tree (全 subject 一次)
   3. 持久化: UnitDependency 记录
 输出: prereq_dag_version_id
 写 DB: unit_dependency, job progress=75→85
-LLM 调用: ❌ (纯图算法)
+LLM 调用: ? (纯图算法)
 ```
 
 #### Node 4: `finalize_curriculum`
@@ -403,7 +403,7 @@ graph TD
   → 修复 OCR 错字、乱码和 PDF 提取噪声
   → 不重写结构，不补充内容，不删减信息
 输出: cleansed text
-LLM 调用: ✅ cleanse (每文件一次)
+LLM 调用: ? cleanse (每文件一次)
 ```
 
 #### Node 3: `outline_map` (LLM)
@@ -415,7 +415,7 @@ LLM 调用: ✅ cleanse (每文件一次)
   → 提取 3~5 个子标题
   → 返回 JSON 数组
 输出: local_outlines (per chunk)
-LLM 调用: ✅ local_outline (每 chunk 一次)
+LLM 调用: ? local_outline (每 chunk 一次)
 ```
 
 #### Node 4: `outline_reduce` (LLM)
@@ -428,7 +428,7 @@ LLM 调用: ✅ local_outline (每 chunk 一次)
   → 每节标明对应的原始文本块索引
   → JSON: { chapters: [{ chapter_index, title, sections: [{title, source_chunk_indices}] }] }
 输出: outline_tree, chapter_assignments
-LLM 调用: ✅ global_outline (全 subject 一次)
+LLM 调用: ? global_outline (全 subject 一次)
 ```
 
 #### Node 5: `draft_chapter` (fan-out, LLM)
@@ -445,7 +445,7 @@ LLM 调用: ✅ global_outline (全 subject 一次)
      source_content, formula_refs, prev_summary, next_preview
   3. 调用 LLM 生成完整 Markdown 章节
 输出: chapter_drafts[] (通过 Annotated[list, operator.add] 收集)
-LLM 调用: ✅ writer (每章一次)
+LLM 调用: ? writer (每章一次)
 ```
 
 #### Node 6: `collect_drafts` → Node 7: `review_chapter` (fan-out, LLM)
@@ -457,7 +457,7 @@ LLM 调用: ✅ writer (每章一次)
      → 检查一级标题、概要段、结构、公式、标签
      → 返回 JSON: { passed, issues, suggestions } 或扩展版
 输出: chapter_reviews[]
-LLM 调用: ✅ reviewer (每章一次)
+LLM 调用: ? reviewer (每章一次)
 ```
 
 #### Node 8: `collect_reviews` → Node 9: `extract_metadata` (fan-out, LLM)
@@ -469,7 +469,7 @@ LLM 调用: ✅ reviewer (每章一次)
   → 生成 50 字导读摘要 + 3~5 个标签
   → JSON: { summary, tags }
 输出: chapter_metadatas[]
-LLM 调用: ✅ metadata (每章一次)
+LLM 调用: ? metadata (每章一次)
 ```
 
 #### Node 10: `finalize_assemble`
@@ -617,11 +617,11 @@ LLM 调用: ✅ metadata (每章一次)
 写作要求:
 1. 只输出这一章
 2. 以 # {chapter_title} 作为唯一一级标题
-3. 开头必须有 > 📌 本章概要：...
+3. 开头必须有 > ?? 本章概要：...
 4. 正文写成自然的讲义
 5. 公式保留 LaTeX 写法
 6. 不要照搬原文，要用教学化语言重写
-7. 文末附一行：📊 本章标签：#标签1 #标签2 ...
+7. 文末附一行：?? 本章标签：#标签1 #标签2 ...
 ```
 
 #### 四种原型 Writer Prompt
@@ -650,7 +650,7 @@ LLM 调用: ✅ metadata (每章一次)
 
 ## 8. State 类型定义
 
-### 8.1 `KGDigestState` 主要字段
+### 8.1 `KnowledgeDigestState` 主要字段
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -790,3 +790,4 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
+

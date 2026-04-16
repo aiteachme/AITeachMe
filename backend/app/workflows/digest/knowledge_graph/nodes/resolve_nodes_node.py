@@ -11,10 +11,11 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeUnit
-from app.repositories import kg_repo
+from app.models.knowledge_relation import EdgeRevision, KnowledgeEdge
+from app.models.knowledge_unit import KnowledgeUnit
+from app.repositories import knowledge_build_repo
 from app.utils.job_helpers import update_job_progress
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
@@ -39,13 +40,13 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     compute_edge_confidence,
     resolve_edge,
 )
-from app.models.kg_taxonomy import (
+from app.models.knowledge_taxonomy import (
     PARENT_KNOWLEDGE_UNIT_TYPES,
     PRIMARY_KNOWLEDGE_UNIT_TYPES,
     SECONDARY_KNOWLEDGE_UNIT_TYPES,
     normalize_knowledge_unit_type,
 )
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 
 _PRIMARY_NODE_TYPES = PRIMARY_KNOWLEDGE_UNIT_TYPES
@@ -325,7 +326,7 @@ def _match_secondary_candidate(
     )
 
 
-async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
+async def resolve_nodes_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Resolve clustered candidates against existing graph nodes."""
 
     with managed_session() as session:
@@ -338,7 +339,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
             resolution_index = await _build_resolution_index(subject)
             resolution_index_ms = int((perf_counter() - resolution_index_started_at) * 1000)
             digest_logger.info(
-                "kg_resolution_index_built",
+                "knowledge_resolution_index_built",
                 cluster_count=len(clustered_candidates),
                 indexed_type_count=len(resolution_index.records_by_type),
                 indexed_node_count=sum(
@@ -503,7 +504,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 progress=65,
                 current_step="resolve_nodes",
             )
-            kg_repo.update_digest_job(
+            knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
                 nodes_added=len(new_node_ids),
@@ -511,7 +512,7 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 nodes_merged=len(merged_node_ids),
             )
             digest_logger.info(
-                "kg_workflow_resolve_nodes_complete",
+                "knowledge_workflow_resolve_nodes_complete",
                 new_nodes=len(new_node_ids),
                 updated_nodes=len(updated_node_ids),
                 total_resolved=len(candidate_lookup_to_resolved_node_id),
@@ -530,7 +531,8 @@ async def resolve_nodes_node(state: KGDigestState) -> KGDigestState:
                 "secondary_no_match_count": secondary_no_match_count,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_resolve_nodes_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"resolve_nodes_failed: {exc}"}
 
 __all__ = ["resolve_nodes_node"]
+

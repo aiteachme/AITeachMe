@@ -9,7 +9,7 @@ from app.workflows.digest.knowledge_graph.lib.extractor import CandidateEdge, Ch
 from app.workflows.digest.knowledge_graph.lib.impact_analyzer import ImpactSet
 
 
-class KGDigestState(TypedDict, total=False):
+class KnowledgeDigestState(TypedDict, total=False):
     """State carried by the knowledge-graph digest graph."""
 
     subject: str

@@ -140,13 +140,13 @@ async def run_unified_digest_build(
             elapsed_ms=int((perf_counter() - started_at) * 1000),
             shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
             doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
-            kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
+            knowledge_lane_ms=int(final_state.get("knowledge_lane_ms", 0)),
             timing_report=timing_report.model_dump(mode="json"),
             token_summary=unified_token_summary.model_dump(mode="json"),
         )
 
     doc_state = final_state.get("doc_state", {})
-    kg_state = final_state.get("kg_state", {})
+    knowledge_state = final_state.get("knowledge_state", {})
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     timing_report = build_unified_timing_report(
@@ -165,13 +165,13 @@ async def run_unified_digest_build(
         success=True,
         doc_count=len(doc_state.get("doc_ids", [])),
         doc_ids=list(doc_state.get("doc_ids", [])),
-        chunk_count=len(kg_state.get("chunk_ids", [])),
-        new_node_count=len(kg_state.get("new_node_ids", [])),
-        new_edge_count=len(kg_state.get("new_edge_ids", [])),
+        chunk_count=len(knowledge_state.get("chunk_ids", [])),
+        new_node_count=len(knowledge_state.get("new_node_ids", [])),
+        new_edge_count=len(knowledge_state.get("new_edge_ids", [])),
         elapsed_ms=elapsed_ms,
         shared_prepare_ms=int(final_state.get("shared_prepare_ms", 0)),
         doc_lane_ms=int(final_state.get("doc_lane_ms", 0)),
-        kg_lane_ms=int(final_state.get("kg_lane_ms", 0)),
+        knowledge_lane_ms=int(final_state.get("knowledge_lane_ms", 0)),
         timing_report=timing_report.model_dump(mode="json"),
         token_summary=unified_token_summary.model_dump(mode="json"),
     )

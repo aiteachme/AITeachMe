@@ -129,16 +129,16 @@ def route_after_step(state: UnifiedDigestState) -> str:
 def route_after_parallel_lanes(state: UnifiedDigestState) -> str:
     if state.get("error"):
         return "fail"
-    if not _graph_is_ready(state.get("kg_state")):
+    if not _graph_is_ready(state.get("knowledge_state")):
         return "publish_only"
     return "continue"
 
 
-def _graph_is_ready(kg_state: dict | None) -> bool:
-    return bool(kg_state and kg_state.get("graph_ready"))
+def _graph_is_ready(knowledge_state: dict | None) -> bool:
+    return bool(knowledge_state and knowledge_state.get("graph_ready"))
 
 
-def _build_kg_doc_chapter_metadatas(doc_state: dict[str, object]) -> list[dict[str, object]]:
+def _build_knowledge_doc_chapter_metadatas(doc_state: dict[str, object]) -> list[dict[str, object]]:
     chapter_metadatas = doc_state.get("chapter_metadatas", [])
     if not isinstance(chapter_metadatas, list):
         return []
@@ -295,31 +295,31 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
         else:
             doc_state = doc_result.require_value()
 
-        chapter_metadatas = _build_kg_doc_chapter_metadatas(doc_state)
-        kg_result, kg_lane_ms = await run_graph_lane(chapter_metadatas=chapter_metadatas)
+        chapter_metadatas = _build_knowledge_doc_chapter_metadatas(doc_state)
+        knowledge_result, knowledge_lane_ms = await run_graph_lane(chapter_metadatas=chapter_metadatas)
 
-        kg_state: dict = {}
-        if kg_result.failed:
-            errors.append(f"Graph lane failed: {kg_result.error.detail}")
+        knowledge_state: dict = {}
+        if knowledge_result.failed:
+            errors.append(f"Graph lane failed: {knowledge_result.error.detail}")
         else:
-            kg_state = kg_result.require_value()
+            knowledge_state = knowledge_result.require_value()
 
-        if doc_result.failed and kg_result.failed:
+        if doc_result.failed and knowledge_result.failed:
             return {**state, "error": " | ".join(errors)}
 
         logger.info(
             "unified_parallel_lanes_completed",
             build_session_id=build_session_id,
             doc_lane_ms=doc_lane_ms,
-            kg_lane_ms=kg_lane_ms,
+            knowledge_lane_ms=knowledge_lane_ms,
             doc_lane_ok=not doc_result.failed,
-            kg_lane_ok=not kg_result.failed,
+            knowledge_lane_ok=not knowledge_result.failed,
             staged_chapter_count=len(doc_state.get("chapter_metadatas", [])),
             draft_available=bool(str(doc_state.get("merged_markdown", "")).strip()),
             published_doc_count=len(doc_state.get("doc_ids", [])),
-            chunk_count=len(kg_state.get("chunk_ids", [])),
+            chunk_count=len(knowledge_state.get("chunk_ids", [])),
         )
-        if _graph_is_ready(kg_state):
+        if _graph_is_ready(knowledge_state):
             update_knowledge_build_status(
                 subject,
                 requested_at=requested_at,
@@ -335,13 +335,13 @@ def build_parallel_lanes_node(*, context: WorkflowContext):
         return {
             **state,
             "doc_state": doc_state,
-            "kg_state": kg_state,
-            "graph_ready": _graph_is_ready(kg_state),
-            "lane_ms": doc_lane_ms + kg_lane_ms,
+            "knowledge_state": knowledge_state,
+            "graph_ready": _graph_is_ready(knowledge_state),
+            "lane_ms": doc_lane_ms + knowledge_lane_ms,
             "doc_lane_ms": doc_lane_ms,
-            "kg_lane_ms": kg_lane_ms,
+            "knowledge_lane_ms": knowledge_lane_ms,
             "doc_lane_error": doc_result.error.detail if doc_result.failed else None,
-            "kg_lane_error": kg_result.error.detail if kg_result.failed else None,
+            "knowledge_lane_error": knowledge_result.error.detail if knowledge_result.failed else None,
         }
 
     return parallel_lanes_node

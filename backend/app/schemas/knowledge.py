@@ -152,7 +152,7 @@ class BuildPreviewNodeResponse(BaseModel):
     """One lightweight node preview surfaced during digest polling."""
 
     name: str
-    node_type: str = Field(description="Topic / Concept / Method / Definition / Example")
+    node_type: str = Field(description="Standard KnowledgeUnit type")
 
 
 class BuildPreviewChapterProgressResponse(BaseModel):

@@ -14,13 +14,13 @@ from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.knowledge_graph.lib.chunker import QuestionBlock, parse_question_blocks
-from app.models.kg_taxonomy import (
+from app.models.knowledge_taxonomy import (
     normalize_knowledge_unit_type,
     normalize_relation_type,
     normalize_type_source,
     validate_relation_direction,
 )
-from app.workflows.digest.knowledge_graph.prompts import SYSTEM_PROMPT_KG_EXTRACT, USER_PROMPT_KG_EXTRACT
+from app.workflows.digest.knowledge_graph.prompts import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT, USER_PROMPT_KNOWLEDGE_EXTRACT
 from app.workflows.digest.shared.semantic_titles import (
     DEFAULT_QUESTION_TOPIC,
     choose_semantic_topic_path,
@@ -87,7 +87,7 @@ _USER_PROMPT_CONCEPT_EXTRACT = """
 
 class _ConceptItem(BaseModel):
     name: str = Field(description="知识点名称")
-    node_type: Literal["concept", "method", "Concept", "Method"] = Field(description="标准节点类型")
+    node_type: Literal["concept", "method"] = Field(description="标准节点类型")
 
 
 class _ConceptExtractResult(BaseModel):
@@ -111,17 +111,6 @@ class CandidateNode(BaseModel):
         "method",
         "proof_step",
         "remark",
-        "Topic",
-        "Concept",
-        "Definition",
-        "Theorem",
-        "Formula",
-        "Example",
-        "Exercise",
-        "Method",
-        "ProofStep",
-        "Proof_step",
-        "Remark",
     ] = Field(
         description="Allowed node type."
     )
@@ -151,12 +140,6 @@ class CandidateEdge(BaseModel):
         "example_of",
         "similar",
         "contrast",
-        "belongs_to_topic",
-        "prerequisite_of",
-        "defined_by",
-        "illustrated_by",
-        "part_of",
-        "derivation_of",
     ] = Field(description="Allowed edge type.")
     description: str = Field(description="Short relation description.")
 
@@ -423,12 +406,7 @@ def _sanitize_candidate_graph(
     for edge in result.edges:
         edge.source_name = rename_map.get(edge.source_name, edge.source_name)
         edge.target_name = rename_map.get(edge.target_name, edge.target_name)
-        normalized_relation = normalize_relation_type(edge.edge_type)
-        edge.edge_type = normalized_relation.edge_type
-        if normalized_relation.swap_endpoints:
-            edge.source_name, edge.target_name = edge.target_name, edge.source_name
-            edge.source_candidate_id, edge.target_candidate_id = edge.target_candidate_id, edge.source_candidate_id
-            edge.source_node_type, edge.target_node_type = edge.target_node_type, edge.source_node_type
+        edge.edge_type = normalize_relation_type(edge.edge_type)
         edge.source_node_type = normalize_knowledge_unit_type(edge.source_node_type or node_type_by_name.get(edge.source_name))
         edge.target_node_type = normalize_knowledge_unit_type(edge.target_node_type or node_type_by_name.get(edge.target_name))
         if validate_relation_direction(
@@ -439,7 +417,7 @@ def _sanitize_candidate_graph(
             filtered_edges.append(edge)
         else:
             logger.warning(
-                "kg_edge_dropped_invalid_direction",
+                "knowledge_edge_dropped_invalid_direction",
                 edge_type=edge.edge_type,
                 source=edge.source_name,
                 target=edge.target_name,
@@ -535,11 +513,11 @@ def _build_topic_fallback(
     chapter_topic_hints: list[str] | None = None,
     subject_context: str | None = None,
 ) -> ChunkExtractionResult:
-    """Build a multi-level Topic hierarchy from the header path.
+    """Build a multi-level concept hierarchy from the header path.
 
-    Also extracts key terms from the content as Concept nodes so that
+    Also extracts key terms from the content as concept units so that
     downstream clustering and curriculum derivation see richer structure
-    beyond just Topic shells.
+    beyond just hierarchy shells.
     """
     cleaned_parts = choose_semantic_topic_path(
         header_path=header_path,
@@ -557,7 +535,7 @@ def _build_topic_fallback(
     nodes: list[CandidateNode] = []
     edges: list[CandidateEdge] = []
 
-    # Create Topic nodes for each level of the hierarchy
+    # Create concept units for each level of the hierarchy.
     for i, part_name in enumerate(cleaned_parts):
         is_leaf = i == len(cleaned_parts) - 1
         parent_name = cleaned_parts[i - 1] if i > 0 else None
@@ -580,7 +558,7 @@ def _build_topic_fallback(
                 )
             )
 
-    # Extract key terms from content as Concept nodes
+    # Extract key terms from content as concept units.
     existing_names = {n.name for n in nodes}
     key_terms = _extract_key_terms(chunk_content)
     for term in key_terms:
@@ -619,8 +597,8 @@ async def _build_question_fallback(
 ) -> ChunkExtractionResult | None:
     """Build a structured fallback for question-heavy chunks.
 
-    Creates the full header-path hierarchy, attaches questions as Example
-    nodes, and extracts Concept/Method nodes from the questions using a
+    Creates the full header-path hierarchy, attaches questions as example
+    units, and extracts concept/method units from the questions using a
     hybrid strategy (rule-based first, LLM fallback if rules yield nothing).
     """
     question_blocks = parse_question_blocks(chunk_content)
@@ -630,7 +608,7 @@ async def _build_question_fallback(
     nodes: list[CandidateNode] = []
     edges: list[CandidateEdge] = []
 
-    # Extract Concept/Method nodes from questions (hybrid: rules → LLM)
+    # Extract concept/method units from questions (hybrid: rules -> LLM).
     concept_pairs = _extract_concept_keywords_from_questions(question_blocks)
     if not concept_pairs:
         concept_pairs = await _llm_extract_concepts_from_questions(question_blocks)
@@ -645,7 +623,7 @@ async def _build_question_fallback(
     )
     leaf_topic_name = semantic_topic_path[-1]
 
-    # Create Topic nodes for each hierarchy level
+    # Create concept units for each hierarchy level.
     for index, part_name in enumerate(semantic_topic_path):
         is_leaf = index == len(semantic_topic_path) - 1
         parent_name = semantic_topic_path[index - 1] if index > 0 else None
@@ -733,7 +711,7 @@ async def _build_question_fallback(
                 parent_entity_name=concept_names[0],
             )
         )
-        # Link example to relevant concepts via illustrated_by
+        # Link example units to relevant concepts.
         stem_lower = _normalize_text(question.stem + " " + question.content).lower()
         matched = False
         for cname in concept_names:
@@ -760,7 +738,7 @@ async def _build_question_fallback(
             )
 
     logger.info(
-        "kg_question_fallback_built",
+        "knowledge_question_fallback_built",
         chunk_title=chunk_title,
         question_count=len(question_blocks),
         concept_count=len(concept_names),
@@ -783,7 +761,7 @@ async def extract_candidates(
     """Extract candidate nodes and edges from one chunk."""
 
     user_content = populate_prompt(
-        USER_PROMPT_KG_EXTRACT,
+        USER_PROMPT_KNOWLEDGE_EXTRACT,
         chunk_content=chunk_content,
         chunk_title=chunk_title,
         header_path=header_path,
@@ -794,7 +772,7 @@ async def extract_candidates(
     )
 
     messages: list[ChatMessage] = [
-        {"role": SYSTEM, "content": SYSTEM_PROMPT_KG_EXTRACT},
+        {"role": SYSTEM, "content": SYSTEM_PROMPT_KNOWLEDGE_EXTRACT},
         {"role": USER, "content": user_content},
     ]
 
@@ -819,7 +797,7 @@ async def extract_candidates(
 
     if prefer_fast_path and question_fallback is not None:
         logger.info(
-            "kg_extract_fast_path_used",
+            "knowledge_extract_fast_path_used",
             chunk_title=chunk_title,
             header_path=header_path,
             node_count=len(question_fallback.nodes),
@@ -835,7 +813,7 @@ async def extract_candidates(
     except Exception:
         if question_fallback is not None:
             logger.warning(
-                "kg_extract_question_fallback_after_error",
+                "knowledge_extract_question_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
                 node_count=len(question_fallback.nodes),
@@ -845,7 +823,7 @@ async def extract_candidates(
             used_question_fallback = True
         else:
             logger.warning(
-                "kg_extract_topic_fallback_after_error",
+                "knowledge_extract_topic_fallback_after_error",
                 chunk_title=chunk_title,
                 header_path=header_path,
                 exc_info=True,
@@ -856,7 +834,7 @@ async def extract_candidates(
         if not result.nodes and not result.edges:
             if question_fallback is not None:
                 logger.warning(
-                    "kg_extract_question_fallback_after_empty_result",
+                    "knowledge_extract_question_fallback_after_empty_result",
                     chunk_title=chunk_title,
                     header_path=header_path,
                     node_count=len(question_fallback.nodes),
@@ -865,7 +843,7 @@ async def extract_candidates(
                 used_question_fallback = True
             else:
                 logger.warning(
-                    "kg_extract_topic_fallback_after_empty_result",
+                    "knowledge_extract_topic_fallback_after_empty_result",
                     chunk_title=chunk_title,
                     header_path=header_path,
                 )
@@ -883,7 +861,7 @@ async def extract_candidates(
     result = _assign_candidate_ids_and_edge_types(result)
 
     logger.info(
-        "kg_extract_complete",
+        "knowledge_extract_complete",
         chunk_title=chunk_title,
         header_path=header_path,
         node_count=len(result.nodes),
@@ -902,4 +880,5 @@ __all__ = [
     "extract_candidates",
     "has_conceptual_content",
 ]
+
 

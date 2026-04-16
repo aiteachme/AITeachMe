@@ -11,10 +11,11 @@ from sqlmodel import select
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.models.knowledge_graph import EdgeRevision, KnowledgeEdge, KnowledgeUnit
-from app.repositories import kg_repo
+from app.models.knowledge_relation import EdgeRevision, KnowledgeEdge
+from app.models.knowledge_unit import KnowledgeUnit
+from app.repositories import knowledge_relation_repo, knowledge_build_repo
 from app.utils.job_helpers import update_job_progress
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.knowledge_graph.mutations import (
     create_alias_if_new,
@@ -38,10 +39,10 @@ from app.workflows.digest.knowledge_graph.lib.resolver import (
     compute_edge_confidence,
     resolve_edge,
 )
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 
-async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
+async def resolve_edges_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Resolve candidate edges against the current graph."""
 
     with managed_session() as session:
@@ -80,11 +81,11 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                     continue
 
                 if is_new:
-                    edge = kg_repo.create_knowledge_edge(session, matched_edge, auto_commit=False)
+                    edge = knowledge_relation_repo.create_knowledge_edge(session, matched_edge, auto_commit=False)
                     edge_id = edge.id
                     if edge_id is None:
                         continue
-                    kg_repo.create_edge_revision(
+                    knowledge_relation_repo.create_edge_revision(
                         session,
                         EdgeRevision(
                             edge_id=edge_id,
@@ -123,7 +124,7 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                         job_id=job_id,
                         auto_commit=False,
                     )
-                    active_evidence_count = kg_repo.count_active_evidence(session, "edge", edge_id)
+                    active_evidence_count = knowledge_relation_repo.count_active_evidence(session, "edge", edge_id)
                     matched_edge.confidence = compute_edge_confidence(active_evidence_count)
                     matched_edge.updated_at = utcnow()
                     session.add(matched_edge)
@@ -142,14 +143,14 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                 progress=75,
                 current_step="resolve_edges",
             )
-            kg_repo.update_digest_job(
+            knowledge_build_repo.update_digest_job(
                 session,
                 job_id,
                 edges_added=len(new_edge_ids),
                 edges_updated=len(updated_edge_ids),
             )
             digest_logger.info(
-                "kg_workflow_resolve_edges_complete",
+                "knowledge_workflow_resolve_edges_complete",
                 new_edges=len(new_edge_ids),
                 updated_edges=len(updated_edge_ids),
             )
@@ -161,9 +162,10 @@ async def resolve_edges_node(state: KGDigestState) -> KGDigestState:
                 "unresolved_endpoint_count": unresolved_endpoint_count,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_resolve_edges_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_resolve_edges_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"resolve_edges_failed: {exc}"}
 
 __all__ = ["resolve_edges_node"]
+
 
 

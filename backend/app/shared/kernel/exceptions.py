@@ -1,4 +1,4 @@
-"""项目统一异常定义。"""
+﻿"""Shared domain exception definitions."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 
 class AITeachMeError(Exception):
-    """所有对外业务异常的基类。"""
+    """Base class for business-facing errors."""
 
     error_code: str = "AITEACHME_ERROR"
     status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -34,7 +34,7 @@ class KnowledgeChunkNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, chunk_id: int) -> None:
-        super().__init__(detail=f"知识切块 `{chunk_id}` 不存在。")
+        super().__init__(detail=f"Knowledge chunk `{chunk_id}` does not exist.")
 
 
 class InvalidSubjectError(AITeachMeError):
@@ -42,9 +42,7 @@ class InvalidSubjectError(AITeachMeError):
     status_code = HTTPStatus.BAD_REQUEST
 
     def __init__(self, subject: str) -> None:
-        super().__init__(
-            detail=f"学科标识 `{subject}` 不合法，只允许字母、数字、下划线和中划线。"
-        )
+        super().__init__(detail=f"Subject slug `{subject}` is invalid.")
 
 
 class SubjectAlreadyExistsError(AITeachMeError):
@@ -52,7 +50,7 @@ class SubjectAlreadyExistsError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 已存在。")
+        super().__init__(detail=f"Subject `{subject}` already exists.")
 
 
 class SubjectRegistryNotFoundError(AITeachMeError):
@@ -60,7 +58,7 @@ class SubjectRegistryNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 不存在。")
+        super().__init__(detail=f"Subject `{subject}` does not exist.")
 
 
 class SubjectInUseError(AITeachMeError):
@@ -68,7 +66,7 @@ class SubjectInUseError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 下仍有内容，不能删除。")
+        super().__init__(detail=f"Subject `{subject}` still has content.")
 
 
 class KnowledgeClearConflictError(AITeachMeError):
@@ -77,10 +75,7 @@ class KnowledgeClearConflictError(AITeachMeError):
 
     def __init__(self, subject: str, blocking_details: str) -> None:
         super().__init__(
-            detail=(
-                f"学科 `{subject}` 仍有关联的考试、画像或对话数据，"
-                f"暂不能直接清空知识。阻塞项：{blocking_details}。"
-            )
+            detail=f"Subject `{subject}` still has linked data and cannot be cleared: {blocking_details}.",
         )
 
 
@@ -89,10 +84,8 @@ class FileParseError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, filename: str, reason: str = "") -> None:
-        detail = f"文件 `{filename}` 解析失败。"
-        if reason:
-            detail = f"{detail}{reason}"
-        super().__init__(detail=detail)
+        suffix = f" {reason}" if reason else ""
+        super().__init__(detail=f"Failed to parse file `{filename}`.{suffix}")
 
 
 class FileTooLargeError(AITeachMeError):
@@ -100,7 +93,7 @@ class FileTooLargeError(AITeachMeError):
     status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
     def __init__(self, max_size_mb: int) -> None:
-        super().__init__(detail=f"上传文件超过 {max_size_mb} MB 限制。")
+        super().__init__(detail=f"Uploaded file exceeds the {max_size_mb} MB limit.")
 
 
 class UnsupportedFileTypeError(AITeachMeError):
@@ -108,7 +101,7 @@ class UnsupportedFileTypeError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, filetype: str) -> None:
-        super().__init__(detail=f"暂不支持文件类型 `{filetype}`。")
+        super().__init__(detail=f"Unsupported file type `{filetype}`.")
 
 
 class RawFileNotFoundError(AITeachMeError):
@@ -116,7 +109,7 @@ class RawFileNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, file_id: int | str) -> None:
-        super().__init__(detail=f"文件 `{file_id}` 不存在。")
+        super().__init__(detail=f"Raw file `{file_id}` does not exist.")
 
 
 class InvalidRawFileStateError(AITeachMeError):
@@ -125,7 +118,7 @@ class InvalidRawFileStateError(AITeachMeError):
 
     def __init__(self, file_id: int | str, current_state: str, expected: str) -> None:
         super().__init__(
-            detail=f"文件 `{file_id}` 当前状态为 `{current_state}`，期望状态为 `{expected}`。"
+            detail=f"Raw file `{file_id}` is in state `{current_state}`, expected `{expected}`.",
         )
 
 
@@ -134,7 +127,7 @@ class ExamNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, exam_id: int) -> None:
-        super().__init__(detail=f"试卷 `{exam_id}` 不存在。")
+        super().__init__(detail=f"Exam `{exam_id}` does not exist.")
 
 
 class MissingLLMApiKeyError(AITeachMeError):
@@ -142,7 +135,7 @@ class MissingLLMApiKeyError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="未配置 LLM_API_KEY。")
+        super().__init__(detail="LLM_API_KEY is not configured.")
 
 
 class LLMCallError(AITeachMeError):
@@ -150,10 +143,8 @@ class LLMCallError(AITeachMeError):
     status_code = HTTPStatus.BAD_GATEWAY
 
     def __init__(self, reason: str = "") -> None:
-        detail = "上游模型调用失败。"
-        if reason:
-            detail = f"{detail}{reason}"
-        super().__init__(detail=detail)
+        suffix = f" {reason}" if reason else ""
+        super().__init__(detail=f"Upstream model call failed.{suffix}")
 
 
 class LLMTimeoutError(AITeachMeError):
@@ -161,7 +152,7 @@ class LLMTimeoutError(AITeachMeError):
     status_code = HTTPStatus.GATEWAY_TIMEOUT
 
     def __init__(self, timeout_s: int = 60) -> None:
-        super().__init__(detail=f"上游模型调用超时，超过 {timeout_s} 秒。")
+        super().__init__(detail=f"Upstream model call timed out after {timeout_s} seconds.")
 
 
 class VectorExtensionUnavailableError(AITeachMeError):
@@ -169,10 +160,8 @@ class VectorExtensionUnavailableError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self, reason: str = "") -> None:
-        detail = "当前环境不可用 sqlite-vec。"
-        if reason:
-            detail = f"{detail}{reason}"
-        super().__init__(detail=detail)
+        suffix = f" {reason}" if reason else ""
+        super().__init__(detail=f"sqlite-vec is unavailable.{suffix}")
 
 
 class AuthDisabledError(AITeachMeError):
@@ -180,7 +169,7 @@ class AuthDisabledError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="本地模式下未启用鉴权。")
+        super().__init__(detail="Authentication is disabled in local mode.")
 
 
 class AuthNotReadyError(AITeachMeError):
@@ -188,7 +177,7 @@ class AuthNotReadyError(AITeachMeError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
     def __init__(self) -> None:
-        super().__init__(detail="鉴权脚手架已预留，但当前尚未实现。")
+        super().__init__(detail="Authentication scaffolding is reserved but not implemented.")
 
 
 class DigestJobNotFoundError(AITeachMeError):
@@ -196,15 +185,15 @@ class DigestJobNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, job_id: int) -> None:
-        super().__init__(detail=f"增量构建任务 `{job_id}` 不存在。")
+        super().__init__(detail=f"Digest job `{job_id}` does not exist.")
 
 
-class KnowledgeNodeNotFoundError(AITeachMeError):
-    error_code = "KNOWLEDGE_NODE_NOT_FOUND"
+class KnowledgeUnitNotFoundError(AITeachMeError):
+    error_code = "KNOWLEDGE_UNIT_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, node_id: int) -> None:
-        super().__init__(detail=f"知识节点 `{node_id}` 不存在。")
+    def __init__(self, unit_id: int) -> None:
+        super().__init__(detail=f"KnowledgeUnit `{unit_id}` does not exist.")
 
 
 class TeachingUnitNotFoundError(AITeachMeError):
@@ -212,15 +201,15 @@ class TeachingUnitNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, unit_id: int) -> None:
-        super().__init__(detail=f"教学单元 `{unit_id}` 不存在。")
+        super().__init__(detail=f"TeachingUnit `{unit_id}` does not exist.")
 
 
 class ThemeTreeNodeNotFoundError(AITeachMeError):
     error_code = "THEME_TREE_NODE_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, node_id: int) -> None:
-        super().__init__(detail=f"主题树节点 `{node_id}` 不存在。")
+    def __init__(self, tree_node_id: int) -> None:
+        super().__init__(detail=f"ThemeTreeNode `{tree_node_id}` does not exist.")
 
 
 class NoPublishedTreeError(AITeachMeError):
@@ -228,7 +217,7 @@ class NoPublishedTreeError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的主题树，请先完成 digest 并发布当前课程结构。")
+        super().__init__(detail=f"Subject `{subject}` has no published theme tree.")
 
 
 class NoPublishedDagError(AITeachMeError):
@@ -236,7 +225,7 @@ class NoPublishedDagError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的先修 DAG，请先完成 digest 并发布当前课程结构。")
+        super().__init__(detail=f"Subject `{subject}` has no published prerequisite DAG.")
 
 
 class NoPublishedCurriculumSnapshotError(AITeachMeError):
@@ -244,7 +233,7 @@ class NoPublishedCurriculumSnapshotError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无已发布的课程快照，请先完成 digest 再生成测验或考试。")
+        super().__init__(detail=f"Subject `{subject}` has no published curriculum snapshot.")
 
 
 class NoReadyFilesForDocGenError(AITeachMeError):
@@ -252,7 +241,7 @@ class NoReadyFilesForDocGenError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 暂无可用的已解析文件，无法开始知识构建。")
+        super().__init__(detail=f"Subject `{subject}` has no ready parsed files for doc generation.")
 
 
 class ConfirmedBuildPlanRequiredError(AITeachMeError):
@@ -260,11 +249,7 @@ class ConfirmedBuildPlanRequiredError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, build_type: str) -> None:
-        build_label = {
-            "docs": "知识文档构建",
-            "all": "统一知识构建",
-        }.get(build_type, "当前构建")
-        super().__init__(detail=f"{build_label}必须基于已确认的构建方案执行，请先完成 planner 确认。")
+        super().__init__(detail=f"Confirmed build plan is required for `{build_type}` build.")
 
 
 class SubjectBuildLockConflictError(AITeachMeError):
@@ -272,7 +257,7 @@ class SubjectBuildLockConflictError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 正在构建中，请稍后重试。")
+        super().__init__(detail=f"Subject `{subject}` is currently building.")
 
 
 class KnowledgeBuildPrecheckConflictError(AITeachMeError):
@@ -288,7 +273,7 @@ class TreeVersionConflictError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` 树版本乐观锁冲突，请重试。")
+        super().__init__(detail=f"Subject `{subject}` theme tree version conflict.")
 
 
 class DagVersionConflictError(AITeachMeError):
@@ -296,7 +281,7 @@ class DagVersionConflictError(AITeachMeError):
     status_code = HTTPStatus.CONFLICT
 
     def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"学科 `{subject}` DAG 版本乐观锁冲突，请重试。")
+        super().__init__(detail=f"Subject `{subject}` DAG version conflict.")
 
 
 class EvidenceNotFoundError(AITeachMeError):
@@ -304,7 +289,7 @@ class EvidenceNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, evidence_id: int) -> None:
-        super().__init__(detail=f"证据 #{evidence_id} 不存在。")
+        super().__init__(detail=f"Evidence `{evidence_id}` does not exist.")
 
 
 class BuildPlannerSessionNotFoundError(AITeachMeError):
@@ -312,7 +297,7 @@ class BuildPlannerSessionNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, session_id: str) -> None:
-        super().__init__(detail=f"构建方案会话 `{session_id}` 不存在。")
+        super().__init__(detail=f"Build planner session `{session_id}` does not exist.")
 
 
 class ConfirmedBuildPlanNotFoundError(AITeachMeError):
@@ -320,7 +305,7 @@ class ConfirmedBuildPlanNotFoundError(AITeachMeError):
     status_code = HTTPStatus.NOT_FOUND
 
     def __init__(self, plan_id: str) -> None:
-        super().__init__(detail=f"已确认构建方案 `{plan_id}` 不存在。")
+        super().__init__(detail=f"Confirmed build plan `{plan_id}` does not exist.")
 
 
 class BuildPlannerEmptyPlanError(AITeachMeError):
@@ -328,4 +313,4 @@ class BuildPlannerEmptyPlanError(AITeachMeError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, session_id: str) -> None:
-        super().__init__(detail=f"构建方案会话 `{session_id}` 当前没有可确认的方案草稿。")
+        super().__init__(detail=f"Build planner session `{session_id}` has no confirmable draft plan.")

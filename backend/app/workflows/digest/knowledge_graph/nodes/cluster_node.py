@@ -12,11 +12,10 @@ from sqlmodel import select
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
-from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
 from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
-from app.models.kg_taxonomy import normalize_knowledge_unit_type
+from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 from app.workflows.digest.knowledge_graph.lib.extractor import (
     CandidateEdge,
     ChunkExtractionResult,
@@ -24,13 +23,13 @@ from app.workflows.digest.knowledge_graph.lib.extractor import (
     has_conceptual_content,
 )
 from app.workflows.digest.shared.metrics import add_slow_item
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
 
-def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> TopicAnchorSnapshot:
+def _build_early_topic_snapshot(state: KnowledgeDigestState, clustered_candidates) -> TopicAnchorSnapshot:
     chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
@@ -55,7 +54,7 @@ def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> T
         )
     return TopicAnchorSnapshot(anchors=anchors)
 
-async def cluster_node(state: KGDigestState) -> KGDigestState:
+async def cluster_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Cluster candidate nodes within the current batch."""
 
     with managed_session() as session:
@@ -64,7 +63,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
             results = state.get("candidates", [])
             chunk_ids = state.get("chunk_ids", [])
             digest_logger.info(
-                "kg_cluster_started",
+                "knowledge_cluster_started",
                 result_count=len(results),
                 chunk_count=len(chunk_ids),
             )
@@ -103,7 +102,7 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 current_step="cluster",
             )
             digest_logger.info(
-                "kg_workflow_cluster_complete",
+                "knowledge_workflow_cluster_complete",
                 input_candidates=len(all_pairs),
                 cluster_count=len(clustered),
                 early_topic_anchor_count=len(early_snapshot.anchors) if build_session_id else 0,
@@ -114,7 +113,8 @@ async def cluster_node(state: KGDigestState) -> KGDigestState:
                 "candidate_lookup_to_cluster_id": lookup_to_cluster,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_cluster_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_cluster_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"cluster_failed: {exc}"}
 
 __all__ = ["cluster_node"]
+

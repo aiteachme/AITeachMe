@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+﻿import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import cloud from "d3-cloud";
 
-// ────────────────────────── Types ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 interface WordCloudNode {
   name: string;
@@ -28,7 +28,7 @@ interface LayoutWord {
   color: string;
 }
 
-// ────────────────────────── Color Palette ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Color Palette 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const TYPE_COLORS: Record<string, string> = {
   concept: "#5dade2",
@@ -43,18 +43,6 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  Topic: "主题",
-  Concept: "概念",
-  Method: "方法",
-  Definition: "定义",
-  Example: "示例",
-  Theorem: "定理",
-  Formula: "公式",
-};
-
-const DEFAULT_COLOR = "#94a3b8";
-
-const STANDARD_TYPE_LABELS: Record<string, string> = {
   concept: "概念",
   definition: "定义",
   theorem: "定理",
@@ -66,23 +54,25 @@ const STANDARD_TYPE_LABELS: Record<string, string> = {
   remark: "备注",
 };
 
+const DEFAULT_COLOR = "#94a3b8";
+
 function getColor(nodeType: string): string {
   return TYPE_COLORS[nodeType.toLowerCase()] ?? DEFAULT_COLOR;
 }
 
 function getTypeLabel(nodeType: string): string {
-  return STANDARD_TYPE_LABELS[nodeType.toLowerCase()] ?? TYPE_LABELS[nodeType] ?? nodeType;
+  return TYPE_LABELS[nodeType.toLowerCase()] ?? nodeType;
 }
 
-// ────────────────────────── Helpers ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function truncate(s: string, max: number): string {
-  return s.length <= max ? s : s.slice(0, max - 1) + "…";
+  return s.length <= max ? s : `${s.slice(0, max - 1)}...`;
 }
 
 const MAX_WORDS = 100;
 
-// ────────────────────────── Main Component ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Main Component 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCloud3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -343,7 +333,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
               <path d="M8 12h8M12 8v8" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-slate-500">暂无图谱数据</p>
+          <p className="text-sm font-medium text-slate-500">鏆傛棤鍥捐氨鏁版嵁</p>
           <p className="mt-1 text-xs text-slate-400">构建知识资产后自动生成词云</p>
         </div>
       </div>
@@ -418,7 +408,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
           <div>
             <p className="text-sm font-bold text-slate-800">{subjectLabel}</p>
             <p className="mt-0.5 text-[9px] text-slate-400">
-              {nodes.length} 个知识节点 · 点击查看详情 · 滚轮缩放 · 拖拽平移
+              {nodes.length} 涓煡璇嗚妭鐐?路 鐐瑰嚮鏌ョ湅璇︽儏 路 婊氳疆缂╂斁 路 鎷栨嫿骞崇Щ
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-1.5">
@@ -450,3 +440,4 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
 }
 
 export default WordCloud3D;
+

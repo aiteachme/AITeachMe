@@ -1,4 +1,4 @@
-"""Unified digest reporting helpers."""
+﻿"""Unified digest reporting helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
-from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
+from app.workflows.digest.knowledge_graph.lib.reporting import build_knowledge_lane_summary
 from app.workflows.digest.shared.metrics import (
     DigestTimingReport,
     DigestTokenSummary,
@@ -26,7 +26,7 @@ def build_unified_timing_report(
     """Create the final unified digest timing report."""
 
     doc_state = final_state.get("doc_state", {}) or {}
-    kg_state = final_state.get("kg_state", {}) or {}
+    knowledge_state = final_state.get("knowledge_state", {}) or {}
     unified_steps = {
         "prepare_shared": int(final_state.get("shared_prepare_ms", 0)),
         "parallel_lanes": int(final_state.get("parallel_lanes_ms", 0)),
@@ -35,16 +35,16 @@ def build_unified_timing_report(
     }
     build_session_id = str(final_state.get("build_session_id", "")) or None
     docgen_token_summary = build_token_summary(build_session_id=build_session_id, lane="docgen")
-    kg_token_summary = build_token_summary(build_session_id=build_session_id, lane="kg")
+    knowledge_token_summary = build_token_summary(build_session_id=build_session_id, lane="knowledge")
     docgen_summary = build_docgen_lane_summary(
         doc_state,
         token_summary=docgen_token_summary,
         status=_default_lane_status(doc_state, final_status=status),
     )
-    kg_summary = build_kg_lane_summary(
-        kg_state,
-        token_summary=kg_token_summary,
-        status=_default_lane_status(kg_state, final_status=status),
+    knowledge_summary = build_knowledge_lane_summary(
+        knowledge_state,
+        token_summary=knowledge_token_summary,
+        status=_default_lane_status(knowledge_state, final_status=status),
     )
     top_slowest_steps = build_slow_items(
         [
@@ -62,16 +62,16 @@ def build_unified_timing_report(
                 },
             ),
             *build_lane_step_slow_items(
-                "kg",
+                "knowledge",
                 {
-                    "acquire_lock": kg_summary.get("acquire_lock_ms", 0),
-                    "prepare": kg_summary.get("prepare_ms", 0),
-                    "extract": kg_summary.get("extract_ms", 0),
-                    "cluster": kg_summary.get("cluster_ms", 0),
-                    "resolve_nodes": kg_summary.get("resolve_nodes_ms", 0),
-                    "resolve_edges": kg_summary.get("resolve_edges_ms", 0),
-                    "impact": kg_summary.get("impact_ms", 0),
-                    "finalize": kg_summary.get("finalize_ms", 0),
+                    "acquire_lock": knowledge_summary.get("acquire_lock_ms", 0),
+                    "prepare": knowledge_summary.get("prepare_ms", 0),
+                    "extract": knowledge_summary.get("extract_ms", 0),
+                    "cluster": knowledge_summary.get("cluster_ms", 0),
+                    "resolve_nodes": knowledge_summary.get("resolve_nodes_ms", 0),
+                    "resolve_edges": knowledge_summary.get("resolve_edges_ms", 0),
+                    "impact": knowledge_summary.get("impact_ms", 0),
+                    "finalize": knowledge_summary.get("finalize_ms", 0),
                 },
             ),
         ]
@@ -84,12 +84,12 @@ def build_unified_timing_report(
             "prepare_shared_ms": unified_steps["prepare_shared"],
             "parallel_lanes_ms": unified_steps["parallel_lanes"],
             "doc_lane_ms": int(final_state.get("doc_lane_ms", 0)),
-            "kg_lane_ms": int(final_state.get("kg_lane_ms", 0)),
+            "knowledge_lane_ms": int(final_state.get("knowledge_lane_ms", 0)),
             "publish_ms": unified_steps["publish_outputs"],
             "cleanup_ms": unified_steps["cleanup"],
             "lane_total_tokens": {
                 "docgen": docgen_token_summary.total_tokens,
-                "kg": kg_token_summary.total_tokens,
+                "knowledge": knowledge_token_summary.total_tokens,
                 "unified_repair": int(llm_summary.tokens_by_lane.get("unified_repair", 0)),
             },
             "tokens_by_model": llm_summary.tokens_by_model,
@@ -108,7 +108,7 @@ def build_unified_timing_report(
             },
         },
         docgen=docgen_summary,
-        kg=kg_summary,
+        knowledge=knowledge_summary,
         llm=llm_summary,
         top_slowest_steps=top_slowest_steps,
     )

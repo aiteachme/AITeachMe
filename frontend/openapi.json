@@ -6133,7 +6133,7 @@
           "node_type": {
             "type": "string",
             "title": "Node Type",
-            "description": "Topic / Concept / Method / Definition / Example"
+            "description": "Standard KnowledgeUnit type"
           }
         },
         "type": "object",

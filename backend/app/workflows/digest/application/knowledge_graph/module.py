@@ -1,4 +1,4 @@
-"""Knowledge graph façade module.
+﻿"""Knowledge graph fa莽ade module.
 
 This is the stable object-oriented entrypoint for knowledge graph operations.
 """
@@ -24,7 +24,7 @@ from app.workflows.digest.application.knowledge_graph.query import KnowledgeGrap
 
 
 class KnowledgeGraphModule:
-    """Unified domain façade for KG query/build operations."""
+    """Unified domain fa莽ade for knowledge graph query/build operations."""
 
     def __init__(self, *, session: Session) -> None:
         self._query = KnowledgeGraphQueryService(session)

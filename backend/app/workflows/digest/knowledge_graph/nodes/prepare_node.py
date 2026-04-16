@@ -1,15 +1,15 @@
-"""Knowledge graph prepare node."""
+﻿"""Knowledge graph prepare node."""
 
 from __future__ import annotations
 
 from app.shared.infra.database import managed_session
 from app.utils.job_helpers import update_job_progress
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
 from app.workflows.digest.unified.session import get_unified_build_session
 
 
-async def prepare_node(state: KGDigestState) -> KGDigestState:
+async def prepare_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Load canonical chunk ids from the unified build session."""
 
     with managed_session() as session:
@@ -33,7 +33,7 @@ async def prepare_node(state: KGDigestState) -> KGDigestState:
                 current_step="prepare",
             )
             digest_logger.info(
-                "kg_workflow_prepare_complete",
+                "knowledge_workflow_prepare_complete",
                 build_session_id=build_session_id,
                 document_count=len(materialized.document_ids),
                 chunk_count=len(chunk_ids),
@@ -47,7 +47,7 @@ async def prepare_node(state: KGDigestState) -> KGDigestState:
                 "chunk_id_to_chunk_uid": dict(materialized.chunk_id_to_chunk_uid),
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_prepare_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_prepare_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"prepare_failed: {exc}"}
 
 

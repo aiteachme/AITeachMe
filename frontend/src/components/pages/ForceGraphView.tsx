@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+﻿import { useRef, useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
@@ -17,31 +17,23 @@ import type { FullGraphResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
-// ────────────────────────── MiroFish Color Palette ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ MiroFish Color Palette 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }> = {
-  Topic:      { fill: "#f39c12", dark: "#d68910", label: "主题" },
-  topic:      { fill: "#f39c12", dark: "#d68910", label: "主题" },
-  Concept:    { fill: "#5dade2", dark: "#2e86c1", label: "概念" },
   concept:    { fill: "#5dade2", dark: "#2e86c1", label: "概念" },
-  Method:     { fill: "#ec7063", dark: "#cb4335", label: "方法" },
-  method:     { fill: "#ec7063", dark: "#cb4335", label: "方法" },
-  Definition: { fill: "#58d68d", dark: "#28b463", label: "定义" },
   definition: { fill: "#58d68d", dark: "#28b463", label: "定义" },
-  Example:    { fill: "#af7ac5", dark: "#7d3c98", label: "示例" },
-  example:    { fill: "#af7ac5", dark: "#7d3c98", label: "示例" },
-  Theorem:    { fill: "#48c9b0", dark: "#17a589", label: "定理" },
   theorem:    { fill: "#48c9b0", dark: "#17a589", label: "定理" },
-  Formula:    { fill: "#5d6d7e", dark: "#2c3e50", label: "公式" },
   formula:    { fill: "#5d6d7e", dark: "#2c3e50", label: "公式" },
-  exercise:   { fill: "#e74c3c", dark: "#c0392b", label: "习题" },
-  proof_step: { fill: "#8e44ad", dark: "#6c3483", label: "推导" },
-  remark:     { fill: "#7f8c8d", dark: "#566573", label: "补充" },
+  example:    { fill: "#af7ac5", dark: "#7d3c98", label: "示例" },
+  exercise:   { fill: "#e74c3c", dark: "#c0392b", label: "练习" },
+  method:     { fill: "#ec7063", dark: "#cb4335", label: "方法" },
+  proof_step: { fill: "#8e44ad", dark: "#6c3483", label: "证明步骤" },
+  remark:     { fill: "#7f8c8d", dark: "#566573", label: "备注" },
 };
 
-const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };
+const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "鍏朵粬" };
 
-// ────────────────────────── Interfaces ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Interfaces 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: number;
@@ -56,7 +48,7 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   target_node_id: number;
 }
 
-// ────────────────────────── Node Detail Sidebar (unchanged) ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Node Detail Sidebar (unchanged) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function NodeDetailSidebar({
   subject,
@@ -85,7 +77,7 @@ function NodeDetailSidebar({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-slate-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />鍔犺浇涓?..
       </div>
     );
   }
@@ -112,7 +104,7 @@ function NodeDetailSidebar({
               {color.label}
             </span>
           </div>
-          <p className="text-xs text-slate-400">置信度：{Math.round(data.confidence * 100)}%</p>
+          <p className="text-xs text-slate-400">缃俊搴︼細{Math.round(data.confidence * 100)}%</p>
         </div>
         <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
           <X className="h-4 w-4" />
@@ -137,7 +129,7 @@ function NodeDetailSidebar({
       {aliases.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Tag className="h-3 w-3" />别名
+            <Tag className="h-3 w-3" />鍒悕
           </div>
           <div className="flex flex-wrap gap-1.5">
             {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
@@ -152,13 +144,13 @@ function NodeDetailSidebar({
       {incidentEdges.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Link2 className="h-3 w-3" />关联边 ({incidentEdges.length})
+            <Link2 className="h-3 w-3" />鍏宠仈杈?({incidentEdges.length})
           </div>
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
               <button key={edge.id} onClick={() => onNavigate(edge.other_node_id)}
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-slate-50">
-                <span className="text-slate-400">{edge.direction === "outgoing" ? "→" : "←"}</span>
+                <span className="text-slate-400">{edge.direction === "outgoing" ? "->" : "<-"}</span>
                 <span className="flex-1 truncate text-slate-700">{edge.other_node_name}</span>
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="h-3 w-3 text-slate-300" />
@@ -171,7 +163,7 @@ function NodeDetailSidebar({
       {evidenceList.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <FileText className="h-3 w-3" />来源证据 ({evidenceList.length})
+            <FileText className="h-3 w-3" />鏉ユ簮璇佹嵁 ({evidenceList.length})
           </div>
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
@@ -179,7 +171,7 @@ function NodeDetailSidebar({
                 className="group w-full cursor-pointer rounded border-l-2 border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50">
                 <p className="line-clamp-3">{ev.quote_text}</p>
                 <div className="mt-1 flex items-center justify-between">
-                  <p className="text-[10px] text-slate-400">{ev.evidence_role} · {Math.round(ev.confidence * 100)}%</p>
+                  <p className="text-[10px] text-slate-400">{ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%</p>
                   <ExternalLink className="h-3 w-3 text-slate-300 transition-colors group-hover:text-amber-500" />
                 </div>
               </button>
@@ -191,7 +183,7 @@ function NodeDetailSidebar({
   );
 }
 
-// ────────────────────────── D3 SVG Force Graph (MiroFish approach) ──────────────────────────
+// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ D3 SVG Force Graph (MiroFish approach) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 export function ForceGraphView({
   subject,
@@ -257,7 +249,7 @@ export function ForceGraphView({
     return () => obs.disconnect();
   }, []);
 
-  // ── D3 Force Simulation + SVG Rendering ──
+  // 鈹€鈹€ D3 Force Simulation + SVG Rendering 鈹€鈹€
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || nodes.length === 0) return;
@@ -294,7 +286,7 @@ export function ForceGraphView({
       });
     svgSel.call(zoom);
 
-    // ── SVG Defs: simple marker ──
+    // 鈹€鈹€ SVG Defs: simple marker 鈹€鈹€
     const defs = svgSel.append("defs");
 
     // Glow filter for hover (simplified)
@@ -383,14 +375,14 @@ export function ForceGraphView({
       setSelectedNodeId((prev) => (prev === d.id ? null : d.id));
     });
 
-    // Node circles — clean, flat design
+    // Node circles 鈥?clean, flat design
     nodeG.append("circle")
       .attr("r", 10)
       .attr("fill", (d) => (NODE_COLORS[d.node_type] ?? DEFAULT_COLOR).fill)
       .attr("stroke", "#fff")
       .attr("stroke-width", 2.5);
 
-    // Node labels — clean, no shadows for extreme minimalist clarity
+    // Node labels 鈥?clean, no shadows for extreme minimalist clarity
     nodeG.append("text")
       .attr("dx", 14)
       .attr("dy", 4)
@@ -399,7 +391,7 @@ export function ForceGraphView({
       .attr("font-weight", "500")
       .attr("fill", "#333")
       .style("pointer-events", "none")
-      .text((d) => d.canonical_name.length > 8 ? d.canonical_name.slice(0, 8) + "…" : d.canonical_name);
+      .text((d) => d.canonical_name.length > 8 ? `${d.canonical_name.slice(0, 8)}...` : d.canonical_name);
 
     // Hover effects
     nodeG
@@ -415,7 +407,7 @@ export function ForceGraphView({
         }
       });
 
-    // Force simulation — simple and robust
+    // Force simulation 鈥?simple and robust
     const simulation = d3.forceSimulation<GraphNode>(simNodes)
       .force("link", d3.forceLink<GraphNode, GraphLink>(simLinks).id((d) => d.id).distance(150))
       .force("charge", d3.forceManyBody().strength(-400))
@@ -458,19 +450,19 @@ export function ForceGraphView({
     };
   }, [nodes, links, dimensions, showEdgeLabels]);
 
-  // ── Empty state ──
+  // 鈹€鈹€ Empty state 鈹€鈹€
   if (!rawData || (rawData.nodes ?? []).length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-slate-400">
         <NetworkIcon className="mb-2 h-8 w-8 text-slate-300" />
-        <p className="text-sm">暂无可展示的图谱数据</p>
+        <p className="text-sm">鏆傛棤鍙睍绀虹殑鍥捐氨鏁版嵁</p>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 gap-0">
-      {/* ── Graph Panel ── */}
+      {/* 鈹€鈹€ Graph Panel 鈹€鈹€ */}
       <div className="relative flex-1 min-w-0">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
@@ -480,7 +472,7 @@ export function ForceGraphView({
         <div className="pointer-events-auto absolute left-3 top-3 z-10 flex items-center gap-2">
           {toolbar}
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60">
-            {nodeCount} 节点 · {edgeCount} 边
+            {nodeCount} 鑺傜偣 路 {edgeCount} 杈?
           </span>
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
@@ -489,7 +481,7 @@ export function ForceGraphView({
             <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#8b5cf6" : "#d1d5db" }}>
               <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
             </span>
-            边标签
+            杈规爣绛?
           </button>
         </div>
 
@@ -506,7 +498,7 @@ export function ForceGraphView({
         </div>
       </div>
 
-      {/* ── Detail Sidebar ── */}
+      {/* 鈹€鈹€ Detail Sidebar 鈹€鈹€ */}
       {selectedNodeId && (
         <div className="w-[320px] shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
           <div className="p-4">
@@ -523,3 +515,4 @@ export function ForceGraphView({
     </div>
   );
 }
+

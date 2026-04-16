@@ -10,7 +10,7 @@ from app.shared.infra.exceptions import KnowledgeClearConflictError
 from app.models import (
     KnowledgeDocument,
     KnowledgeEdge,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     Subject,
     User,
@@ -44,7 +44,7 @@ def _seed_subject_knowledge(session: Session, *, subject_id: str) -> Subject:
     subject = Subject(user_id="local", slug=subject_id, name="线性代数")
     session.add(subject)
 
-    node_a = KnowledgeNode(
+    node_a = KnowledgeUnit(
         subject=subject_id,
         node_type="concept",
         canonical_name="方程",
@@ -55,7 +55,7 @@ def _seed_subject_knowledge(session: Session, *, subject_id: str) -> Subject:
     session.add(node_a)
     session.flush()
 
-    node_b = KnowledgeNode(
+    node_b = KnowledgeUnit(
         subject=subject_id,
         node_type="concept",
         canonical_name="一次方程",
@@ -143,14 +143,14 @@ def test_clear_subject_knowledge_handles_self_referential_rows() -> None:
     assert counts["knowledge_node"] == 2
     assert session.exec(select(Subject).where(Subject.slug == subject_id)).first() is not None
     assert session.exec(select(KnowledgeDocument).where(KnowledgeDocument.subject == subject_id)).first() is None
-    assert session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject_id)).first() is None
+    assert session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject_id)).first() is None
 
 
 def test_clear_subject_knowledge_rejects_when_exam_data_still_exists() -> None:
     session = _make_session()
     subject_id = "subj_exam1234abc"
     _seed_subject_knowledge(session, subject_id=subject_id)
-    node = session.exec(select(KnowledgeNode).where(KnowledgeNode.subject == subject_id)).first()
+    node = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.subject == subject_id)).first()
     assert node is not None
 
     session.add(

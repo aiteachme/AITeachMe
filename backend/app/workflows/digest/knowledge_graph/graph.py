@@ -17,14 +17,14 @@ from app.workflows.digest.knowledge_graph.nodes import (
     resolve_nodes_node,
 )
 from app.workflows.digest.knowledge_graph.routes import route_after_lock, route_after_prepare, route_after_step
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 
-def build_kg_digest_graph(
+def build_knowledge_digest_graph(
 ) -> StateGraph:
     """Build the LangGraph workflow for digest graph construction."""
 
-    workflow = StateGraph(KGDigestState)
-    trace = workflow_tracer(workflow="digest.graph", lane="kg")
+    workflow = StateGraph(KnowledgeDigestState)
+    trace = workflow_tracer(workflow="digest.graph", lane="knowledge")
     workflow.add_node(
         "acquire_lock",
         trace.node(
@@ -166,7 +166,7 @@ def create_graph_digest_initial_state(
     job_id: int,
     build_session_id: str | None = None,
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
-) -> KGDigestState:
+) -> KnowledgeDigestState:
     """Create the initial state for digest graph building."""
 
     return {
@@ -198,7 +198,7 @@ def create_graph_digest_initial_state(
 
 
 __all__ = [
-    "build_kg_digest_graph",
+    "build_knowledge_digest_graph",
     "create_graph_digest_initial_state",
 ]
 

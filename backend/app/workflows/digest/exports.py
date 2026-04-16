@@ -7,10 +7,10 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.events import InProcessEventBus
 from app.workflows.digest.graph import (
     build_docgen_graph,
-    build_kg_digest_graph,
+    build_knowledge_digest_graph,
 )
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
-from app.workflows.digest.knowledge_graph.prompts import KG_PROMPTS
+from app.workflows.digest.knowledge_graph.prompts import KNOWLEDGE_PROMPTS
 from app.workflows.digest.unified.graph import build_unified_digest_graph
 
 PLANNER_PROMPTS = {
@@ -77,8 +77,8 @@ WORKFLOW_EXPORTS = (
         key="digest_graph",
         title="Digest Graph Workflow",
         description="Incremental knowledge-graph build workflow.",
-        build_graph=build_kg_digest_graph,
-        prompts=KG_PROMPTS,
+        build_graph=build_knowledge_digest_graph,
+        prompts=KNOWLEDGE_PROMPTS,
     ),
     WorkflowGraphExport(
         key="digest_unified",

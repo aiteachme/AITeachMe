@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -24,23 +24,15 @@ import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
-  Topic: { label: "主题", color: "bg-blue-50 text-blue-600" },
-  topic: { label: "主题", color: "bg-blue-50 text-blue-600" },
-  Concept: { label: "概念", color: "bg-purple-50 text-purple-600" },
   concept: { label: "概念", color: "bg-purple-50 text-purple-600" },
-  Method: { label: "方法", color: "bg-amber-50 text-amber-600" },
-  method: { label: "方法", color: "bg-amber-50 text-amber-600" },
-  Definition: { label: "定义", color: "bg-emerald-50 text-emerald-600" },
   definition: { label: "定义", color: "bg-emerald-50 text-emerald-600" },
-  Example: { label: "示例", color: "bg-pink-50 text-pink-600" },
-  example: { label: "示例", color: "bg-pink-50 text-pink-600" },
-  Theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
   theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
-  Formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
   formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
-  exercise: { label: "习题", color: "bg-rose-50 text-rose-600" },
-  proof_step: { label: "推导", color: "bg-violet-50 text-violet-600" },
-  remark: { label: "补充", color: "bg-slate-100 text-slate-600" },
+  example: { label: "示例", color: "bg-pink-50 text-pink-600" },
+  exercise: { label: "练习", color: "bg-rose-50 text-rose-600" },
+  method: { label: "方法", color: "bg-amber-50 text-amber-600" },
+  proof_step: { label: "证明步骤", color: "bg-violet-50 text-violet-600" },
+  remark: { label: "备注", color: "bg-slate-100 text-slate-600" },
 };
 
 function NodeDetailPanel({
@@ -70,7 +62,7 @@ function NodeDetailPanel({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-slate-400">
-        <Loader2 className="w-4 h-4 animate-spin mr-2" />加载中...
+        <Loader2 className="w-4 h-4 animate-spin mr-2" />鍔犺浇涓?..
       </div>
     );
   }
@@ -96,7 +88,7 @@ function NodeDetailPanel({
             </h3>
             <span className={`text-xs px-1.5 py-0.5 rounded ${typeStyle.color}`}>{typeStyle.label}</span>
           </div>
-          <p className="text-xs text-slate-400">置信度 {Math.round(data.confidence * 100)}%</p>
+          <p className="text-xs text-slate-400">缃俊搴?{Math.round(data.confidence * 100)}%</p>
         </div>
         <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
           <X className="w-4 h-4" />
@@ -121,7 +113,7 @@ function NodeDetailPanel({
       {aliases.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Tag className="w-3 h-3" />别名
+            <Tag className="w-3 h-3" />鍒悕
           </div>
           <div className="flex flex-wrap gap-1.5">
             {aliases.map((alias: { id: number; is_primary: boolean; alias: string }) => (
@@ -141,7 +133,7 @@ function NodeDetailPanel({
       {incidentEdges.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <Link2 className="w-3 h-3" />关联知识 ({incidentEdges.length})
+            <Link2 className="w-3 h-3" />鍏宠仈鐭ヨ瘑 ({incidentEdges.length})
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
@@ -150,7 +142,7 @@ function NodeDetailPanel({
                 onClick={() => onNavigate(edge.other_node_id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-slate-50 transition-colors"
               >
-                <span className="text-slate-400">{edge.direction === "outgoing" ? "→" : "←"}</span>
+                <span className="text-slate-400">{edge.direction === "outgoing" ? "->" : "<-"}</span>
                 <span className="text-slate-700 truncate flex-1">{edge.other_node_name}</span>
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="w-3 h-3 text-slate-300" />
@@ -163,7 +155,7 @@ function NodeDetailPanel({
       {evidenceList.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mb-2">
-            <FileText className="w-3 h-3" />来源证据 ({evidenceList.length})
+            <FileText className="w-3 h-3" />鏉ユ簮璇佹嵁 ({evidenceList.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
@@ -175,7 +167,7 @@ function NodeDetailPanel({
                 <p className="line-clamp-3">{ev.quote_text}</p>
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-[10px] text-slate-400">
-                    {ev.evidence_role} · {Math.round(ev.confidence * 100)}%
+                    {ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%
                   </p>
                   <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-amber-500 transition-colors" />
                 </div>
@@ -189,16 +181,16 @@ function NodeDetailPanel({
 }
 
 const NODE_TYPES = [
-  { value: undefined, label: "全部" },
-  { value: "concept", label: "概念" },
-  { value: "definition", label: "定义" },
-  { value: "theorem", label: "定理" },
-  { value: "formula", label: "公式" },
-  { value: "example", label: "示例" },
-  { value: "exercise", label: "习题" },
-  { value: "method", label: "方法" },
-  { value: "proof_step", label: "推导" },
-  { value: "remark", label: "补充" },
+  { value: undefined, label: "鍏ㄩ儴" },
+  { value: "concept", label: "姒傚康" },
+  { value: "definition", label: "瀹氫箟" },
+  { value: "theorem", label: "瀹氱悊" },
+  { value: "formula", label: "鍏紡" },
+  { value: "example", label: "绀轰緥" },
+  { value: "exercise", label: "涔犻" },
+  { value: "method", label: "鏂规硶" },
+  { value: "proof_step", label: "鎺ㄥ" },
+  { value: "remark", label: "琛ュ厖" },
 ];
 
 type ViewMode = "list" | "graph";
@@ -247,8 +239,8 @@ export function KnowledgeGraphView({
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <Network className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">暂无知识节点</p>
-        <p className="text-xs mt-1">构建完成后将自动提取知识节点</p>
+        <p className="text-sm">鏆傛棤鐭ヨ瘑鑺傜偣</p>
+        <p className="text-xs mt-1">鏋勫缓瀹屾垚鍚庡皢鑷姩鎻愬彇鐭ヨ瘑鑺傜偣</p>
       </div>
     );
   }
@@ -263,7 +255,7 @@ export function KnowledgeGraphView({
             : "text-slate-500 hover:text-slate-700"
         }`}
       >
-        <List className="w-3.5 h-3.5" />列表视图
+        <List className="w-3.5 h-3.5" />鍒楄〃瑙嗗浘
       </button>
       <button
         onClick={() => setViewMode("graph")}
@@ -273,7 +265,7 @@ export function KnowledgeGraphView({
             : "text-slate-500 hover:text-slate-700"
         }`}
       >
-        <Share2 className="w-3.5 h-3.5" />力导向图
+        <Share2 className="w-3.5 h-3.5" />鍔涘鍚戝浘
       </button>
     </div>
   );
@@ -340,7 +332,7 @@ export function KnowledgeGraphView({
                         {typeStyle.label}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-1">置信度 {Math.round(node.confidence * 100)}%</div>
+                    <div className="text-[10px] text-slate-400 mt-1">缃俊搴?{Math.round(node.confidence * 100)}%</div>
                   </button>
                 );
               })}
@@ -349,13 +341,13 @@ export function KnowledgeGraphView({
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">
                 <Button variant="outline" size="sm" disabled={displayPage <= 1} onClick={() => setPage((p) => p - 1)}>
-                  上一页
+                  涓婁竴椤?
                 </Button>
                 <span className="text-xs text-slate-500">
                   {displayPage} / {totalPages}
                 </span>
                 <Button variant="outline" size="sm" disabled={displayPage >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                  下一页
+                  涓嬩竴椤?
                 </Button>
               </div>
             )}
@@ -389,3 +381,4 @@ export function KnowledgeGraphView({
     </div>
   );
 }
+

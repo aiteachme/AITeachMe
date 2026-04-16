@@ -18,14 +18,14 @@ from app.workflows.digest.events import (
 )
 from app.workflows.digest.graph import (
     build_docgen_graph,
-    build_kg_digest_graph,
+    build_knowledge_digest_graph,
     create_docgen_initial_state,
     create_graph_digest_initial_state,
 )
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
-from app.workflows.digest.knowledge_graph.lib.reporting import build_kg_lane_summary
+from app.workflows.digest.knowledge_graph.lib.reporting import build_knowledge_lane_summary
 from app.workflows.digest.shared.metrics import build_token_summary
-from app.workflows.digest.state import DocGenState, KGDigestState
+from app.workflows.digest.state import DocGenState, KnowledgeDigestState
 
 
 async def run_graph_digest_workflow(
@@ -36,7 +36,7 @@ async def run_graph_digest_workflow(
     doc_chapter_metadatas: list[dict[str, object]] | None = None,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
-) -> WorkflowResult[KGDigestState]:
+) -> WorkflowResult[KnowledgeDigestState]:
     """Run the graph lane workflow."""
 
     bus = event_bus or InProcessEventBus()
@@ -50,7 +50,7 @@ async def run_graph_digest_workflow(
     )
     result = await run_state_graph(
         workflow_name="digest.graph",
-        graph_builder=build_kg_digest_graph,
+        graph_builder=build_knowledge_digest_graph,
         initial_state=create_graph_digest_initial_state(
             subject=subject,
             file_ids=file_ids,
@@ -61,10 +61,10 @@ async def run_graph_digest_workflow(
         context=context,
     )
     if result.failed:
-        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="kg")
+        token_summary = build_token_summary(build_session_id=build_session_id or None, lane="knowledge")
         context.get_logger().bind(node="runtime").info(
-            "kg_digest_timing_summary",
-            **build_kg_lane_summary(
+            "knowledge_digest_timing_summary",
+            **build_knowledge_lane_summary(
                 {},
                 token_summary=token_summary,
                 status="failed",
@@ -82,14 +82,14 @@ async def run_graph_digest_workflow(
         return result
 
     final_state = result.require_value()
-    kg_token_summary = build_token_summary(
+    knowledge_token_summary = build_token_summary(
         build_session_id=final_state.get("build_session_id") or build_session_id or None,
-        lane="kg",
+        lane="knowledge",
     )
-    final_state["token_summary"] = kg_token_summary.model_dump()
-    final_state["timing_summary"] = build_kg_lane_summary(final_state, token_summary=kg_token_summary)
+    final_state["token_summary"] = knowledge_token_summary.model_dump()
+    final_state["timing_summary"] = build_knowledge_lane_summary(final_state, token_summary=knowledge_token_summary)
     context.get_logger().bind(node="runtime").info(
-        "kg_digest_timing_summary",
+        "knowledge_digest_timing_summary",
         **final_state["timing_summary"],
     )
     error_message = final_state.get("error")

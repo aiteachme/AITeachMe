@@ -50,7 +50,7 @@ class KnowledgeUnitTypeSource(str, Enum):
     MANUAL = "manual"
 
 
-class KGRelationType(str, Enum):
+class KnowledgeRelationType(str, Enum):
     PREREQUISITE = "prerequisite"
     DERIVATION = "derivation"
     APPLICATION = "application"
@@ -59,26 +59,14 @@ class KGRelationType(str, Enum):
     CONTRAST = "contrast"
 
 
-KGNodeType = KnowledgeUnitType
-
-
-class KGEdgeType(str, Enum):
-    PREREQUISITE = "prerequisite"
-    DERIVATION = "derivation"
-    APPLICATION = "application"
-    EXAMPLE_OF = "example_of"
-    SIMILAR = "similar"
-    CONTRAST = "contrast"
-
-
-class KGNodeStatus(str, Enum):
+class KnowledgeUnitStatus(str, Enum):
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     MERGED = "merged"
     PENDING = "pending"
 
 
-class KGEdgeStatus(str, Enum):
+class KnowledgeRelationStatus(str, Enum):
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     PENDING = "pending"
@@ -340,3 +328,4 @@ class IngestStatus(str, Enum):
     # Backward-compatible aliases for older persisted values.
     PARSING = "fast_parsing"
     VALIDATING = "fast_parsed"
+

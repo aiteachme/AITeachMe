@@ -1,4 +1,4 @@
-"""Knowledge graph API routes."""
+﻿"""Knowledge graph API routes."""
 
 from __future__ import annotations
 
@@ -39,9 +39,9 @@ async def graph_knowledge_unit_detail(
 ) -> ApiResponse[KnowledgeUnitDetailResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    kg = KnowledgeGraphModule(session=session)
+    knowledge_module = KnowledgeGraphModule(session=session)
     return ok_response(
-        kg.get_knowledge_unit_detail(
+        knowledge_module.get_knowledge_unit_detail(
             subject=normalized,
             knowledge_unit_id=body.knowledge_unit_id,
         )
@@ -62,5 +62,5 @@ async def chunk_context(
 ) -> ApiResponse[ChunkContextResponse]:
     normalized = normalize_subject_slug(subject)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    kg = KnowledgeGraphModule(session=session)
-    return ok_response(kg.get_chunk_context(subject=normalized, chunk_id=body.chunk_id))
+    knowledge_module = KnowledgeGraphModule(session=session)
+    return ok_response(knowledge_module.get_chunk_context(subject=normalized, chunk_id=body.chunk_id))

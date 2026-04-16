@@ -1,4 +1,4 @@
-"""Knowledge-graph lane reporting helpers."""
+﻿"""Knowledge-graph lane reporting helpers."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.workflows.digest.shared.metrics import (
 )
 
 
-def build_kg_lane_summary(
+def build_knowledge_lane_summary(
     state: Mapping[str, Any],
     *,
     token_summary: DigestTokenSummary,
@@ -82,4 +82,4 @@ def _resolve_error_message(state: Mapping[str, Any], *, error_message: str | Non
     return resolved or None
 
 
-__all__ = ["build_kg_lane_summary"]
+__all__ = ["build_knowledge_lane_summary"]

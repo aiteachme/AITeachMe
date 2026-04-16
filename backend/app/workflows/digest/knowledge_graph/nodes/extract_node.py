@@ -12,7 +12,6 @@ from sqlmodel import select
 from app.shared.infra.config import get_settings
 from app.shared.infra.database import managed_session
 from app.models import RetrievalChunk
-from app.repositories.knowledge import kg_repo
 from app.utils.job_helpers import update_job_progress
 from app.workflows.digest.knowledge_graph.lib.candidate_identity import candidate_lookup_keys
 from app.workflows.digest.knowledge_graph.lib.clusterer import cluster_candidates
@@ -23,9 +22,9 @@ from app.workflows.digest.knowledge_graph.lib.extractor import (
     has_conceptual_content,
 )
 from app.workflows.digest.shared.metrics import add_slow_item
-from app.workflows.digest.knowledge_graph.state import KGDigestState
+from app.workflows.digest.knowledge_graph.state import KnowledgeDigestState
 from app.workflows.digest.knowledge_graph.support import workflow_logger
-from app.models.kg_taxonomy import normalize_knowledge_unit_type
+from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
 from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
 from app.workflows.digest.unified.models import ChapterPriors, TopicAnchor, TopicAnchorSnapshot
 from app.workflows.digest.unified.session import get_unified_build_session
@@ -33,7 +32,7 @@ from app.workflows.digest.unified.session import get_unified_build_session
 def _resolve_extract_parallelism(chunk_count: int = 0) -> int:
     settings = get_settings()
     ceiling = settings.llm_concurrency_limit
-    configured = settings.kg_extract_max_parallelism
+    configured = settings.knowledge_extract_max_parallelism
     # Adaptive: scale parallelism with chunk count so small jobs don't
     # over-subscribe and large jobs saturate the concurrency budget.
     if chunk_count <= 0:
@@ -72,7 +71,7 @@ def _apply_taxonomy_hints(result: ChunkExtractionResult, taxonomy_hints: set[str
                 break
 
 
-def _build_early_topic_snapshot(state: KGDigestState, clustered_candidates) -> TopicAnchorSnapshot:
+def _build_early_topic_snapshot(state: KnowledgeDigestState, clustered_candidates) -> TopicAnchorSnapshot:
     chunk_id_to_chunk_uid = state.get("chunk_id_to_chunk_uid", {})
     anchors: list[TopicAnchor] = []
     for cluster in clustered_candidates[:80]:
@@ -236,7 +235,7 @@ async def _extract_doc_summary_candidates(
             try:
                 target_index, chunk_id, result = await task
             except Exception as exc:
-                digest_logger.warning("kg_doc_summary_extract_failed", error=str(exc))
+                digest_logger.warning("knowledge_doc_summary_extract_failed", error=str(exc))
                 continue
             ordered_results[target_index].nodes.extend(result.nodes)
             ordered_results[target_index].edges.extend(result.edges)
@@ -249,7 +248,7 @@ async def _extract_doc_summary_candidates(
         raise
     return extracted_summary_count, extracted_node_count, extracted_edge_count
 
-async def extract_node(state: KGDigestState) -> KGDigestState:
+async def extract_node(state: KnowledgeDigestState) -> KnowledgeDigestState:
     """Extract candidate nodes and edges chunk by chunk with controlled parallelism."""
 
     with managed_session() as session:
@@ -290,7 +289,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
 
             taxonomy_hints = _build_taxonomy_hints(chapter_priors)
             digest_logger.info(
-                "kg_extract_started",
+                "knowledge_extract_started",
                 chunk_count=len(chunk_ids),
                 parallelism=extract_parallelism,
                 has_chapter_priors=chapter_priors is not None,
@@ -362,8 +361,8 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 # Only use fast path for chunks that are overwhelmingly
                 # question-based (>= 3 question blocks) AND the material is
                 # clearly an exam paper.  Mixed content (concepts + questions)
-                # must go through LLM extraction to produce proper Concept /
-                # Method nodes instead of only Example nodes.
+                # must go through LLM extraction to produce proper concept /
+                # method units instead of only example units.
                 if section.question_block_count < 3:
                     return False
                 # If the section contains conceptual content (definitions,
@@ -408,7 +407,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                         used_fast_path,
                     )
                 except Exception as exc:
-                    digest_logger.warning("kg_chunk_extraction_failed", chunk_id=chunk_id, error=str(exc))
+                    digest_logger.warning("knowledge_chunk_extraction_failed", chunk_id=chunk_id, error=str(exc))
                     return (
                         index,
                         chunk_id,
@@ -445,13 +444,13 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                         failed_chunk_count += 1
                         if len(failure_samples) < 5:
                             failure_samples.append({"chunk_id": chunk_id, "error": "missing"})
-                        digest_logger.warning("kg_extract_chunk_missing", chunk_id=chunk_id)
+                        digest_logger.warning("knowledge_extract_chunk_missing", chunk_id=chunk_id)
                     elif error is not None:
                         failed_chunk_count += 1
                         if len(failure_samples) < 5:
                             failure_samples.append({"chunk_id": chunk_id, "error": error[:180]})
                         digest_logger.warning(
-                            "kg_extract_chunk_failed",
+                            "knowledge_extract_chunk_failed",
                             chunk_id=chunk_id,
                             error=error,
                         )
@@ -522,7 +521,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             )
             if doc_summary_extraction_count:
                 digest_logger.info(
-                    "kg_doc_summary_extract_complete",
+                    "knowledge_doc_summary_extract_complete",
                     summary_count=doc_summary_extraction_count,
                     node_count=doc_summary_node_count,
                     edge_count=doc_summary_edge_count,
@@ -550,7 +549,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             total_nodes = sum(len(result.nodes) for result in ordered_results)
             total_edges = len(all_candidate_edges)
             digest_logger.info(
-                "kg_workflow_extract_complete",
+                "knowledge_workflow_extract_complete",
                 total_chunks=len(chunk_ids),
                 success_chunk_count=success_chunk_count,
                 failed_chunk_count=failed_chunk_count,
@@ -566,7 +565,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             if chunk_ids and success_chunk_count == 0 and doc_summary_extraction_count == 0:
                 error_message = "extract_failed: all_chunk_extractions_failed"
                 digest_logger.error(
-                    "kg_workflow_extract_zero_success",
+                    "knowledge_workflow_extract_zero_success",
                     total_chunks=len(chunk_ids),
                     failed_chunk_count=failed_chunk_count,
                     failure_samples=failure_samples,
@@ -580,7 +579,7 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
             if chunk_ids and total_nodes == 0:
                 error_message = "extract_failed: zero_candidate_nodes"
                 digest_logger.error(
-                    "kg_workflow_extract_zero_nodes",
+                    "knowledge_workflow_extract_zero_nodes",
                     total_chunks=len(chunk_ids),
                     success_chunk_count=success_chunk_count,
                     failed_chunk_count=failed_chunk_count,
@@ -606,7 +605,8 @@ async def extract_node(state: KGDigestState) -> KGDigestState:
                 "slowest_chunks": slowest_chunks,
             }
         except Exception as exc:
-            digest_logger.error("kg_workflow_extract_failed", error=str(exc), exc_info=True)
+            digest_logger.error("knowledge_workflow_extract_failed", error=str(exc), exc_info=True)
             return {**state, "error": f"extract_failed: {exc}"}
 
 __all__ = ["extract_node"]
+

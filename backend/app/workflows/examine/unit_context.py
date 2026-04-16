@@ -13,7 +13,7 @@ from app.models import (
     normalize_exam_mode,
 )
 from app.repositories import profile_repo
-from app.repositories.knowledge import curriculum_repo, kg_repo
+from app.repositories.knowledge import curriculum_repo, knowledge_unit_repo
 from app.workflows.examine.context_helpers import (
     _extract_doc_excerpt,
     _format_mastery,
@@ -112,7 +112,7 @@ class UnitExamContext:
 
 
 def _resolve_node_content(session: Session, node_id: int) -> tuple[KnowledgeUnit | None, str, str]:
-    resolved = kg_repo.get_knowledge_unit_with_current_revision(session, node_id)
+    resolved = knowledge_unit_repo.get_knowledge_unit_with_current_revision(session, node_id)
     if resolved is None:
         node = session.get(KnowledgeUnit, node_id)
         if node is None:

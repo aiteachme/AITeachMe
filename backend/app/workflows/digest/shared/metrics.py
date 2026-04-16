@@ -1,4 +1,4 @@
-"""Shared metrics helpers for digest workflows."""
+﻿"""Shared metrics helpers for digest workflows."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ class DigestTimingReport(BaseModel):
     elapsed_ms: int = 0
     unified: dict[str, Any] = Field(default_factory=dict)
     docgen: dict[str, Any] = Field(default_factory=dict)
-    kg: dict[str, Any] = Field(default_factory=dict)
+    knowledge: dict[str, Any] = Field(default_factory=dict)
     llm: DigestTokenSummary = Field(default_factory=DigestTokenSummary)
     top_slowest_steps: list[SlowItemTiming] = Field(default_factory=list)
 

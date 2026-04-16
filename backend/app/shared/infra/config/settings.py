@@ -1,4 +1,4 @@
-"""Runtime configuration loaded from project `config.yaml` only."""
+﻿"""Runtime configuration loaded from project `config.yaml` only."""
 
 from __future__ import annotations
 
@@ -82,10 +82,10 @@ class Settings(BaseModel):
     planner_grounding_timeout_s: float = 10.0
     planner_sprint_min_chapters: int = 3
     planner_sprint_max_chapters: int = 6
-    planner_sprint_target_length: str = "3000-5000字"
+    planner_sprint_target_length: str = "3000-5000 words"
     planner_systematic_min_chapters: int = 5
     planner_systematic_max_chapters: int = 12
-    planner_systematic_target_length: str = "10000-15000字"
+    planner_systematic_target_length: str = "10000-15000 words"
 
     image_generation_model: str | None = None
     mermaid_generation_model: str | None = None
@@ -98,7 +98,7 @@ class Settings(BaseModel):
     llm_model_reason: str | None = None
     llm_model_light: str | None = None
     llm_model_extract: str | None = None
-    kg_extract_max_parallelism: int = 20
+    knowledge_extract_max_parallelism: int = 20
 
     @property
     def embedding_dim(self) -> int:

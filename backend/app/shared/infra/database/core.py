@@ -36,7 +36,8 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.exam import ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
-from app.models.knowledge_graph import KnowledgeEdge, KnowledgeUnit
+from app.models.knowledge_relation import KnowledgeEdge
+from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile
 from app.models.subject import Subject

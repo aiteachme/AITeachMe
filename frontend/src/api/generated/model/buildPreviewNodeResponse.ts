@@ -11,6 +11,6 @@
  */
 export interface BuildPreviewNodeResponse {
   name: string;
-  /** Topic / Concept / Method / Definition / Example */
+  /** Standard KnowledgeUnit type */
   node_type: string;
 }

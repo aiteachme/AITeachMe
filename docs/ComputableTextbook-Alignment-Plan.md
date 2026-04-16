@@ -23,7 +23,7 @@
 - [x] 知识图 API 增加 `knowledge-units` 路由，并保留旧路由兼容。
 - [x] 数据模型表名对齐：`KnowledgeUnit.__tablename__` 改为 `knowledge_unit`。
 - [x] 关联外键对齐：`knowledge_node.id` 外键引用改为 `knowledge_unit.id`。
-- [x] 仓储层命名清理：`kg_repo` 中 node 命名方法迁移为 `knowledge_unit` 语义（旧别名/兼容函数已删除）。
+- [x] 仓储层命名清理：`knowledge_build_repo` 中 node 命名方法迁移为 `knowledge_unit` 语义（旧别名/兼容函数已删除）。
 - [x] 前端类型与调用链重命名：generated model + 页面状态 + props 全链路统一。
 - [x] 迁移说明：补齐旧名到新名映射（DB/API/前端）。
 
@@ -42,7 +42,7 @@
 
 ### KG 关系类型体系
 - [x] 定义关系枚举：`prerequisite/derivation/application/example_of/similar/contrast`。
-- [x] 建立旧关系到新关系映射：`prerequisite_of/defined_by/illustrated_by/part_of/belongs_to_topic` -> 标准关系。
+- [x] 删除旧关系兼容入口，仅保留标准关系。
 - [x] 更新抽取、解析、持久化、查询层以统一关系语义。
 - [x] 增加关系方向约束与合法性校验（如 prerequisite 方向约束）。
 
@@ -118,7 +118,7 @@
 
 ## 跨阶段并行任务
 
-- [ ] 维护术语对齐词典（`KnowledgeNode -> KnowledgeUnit`，`Unit/Topic` 等术语边界）。
+- [ ] 维护术语对齐词典（`KnowledgeNode -> KnowledgeUnit` 等术语边界）。
 - [ ] 维护兼容层清单（含预计删除版本）。
 - [ ] 每阶段结束更新 OpenAPI 与前端生成类型。
 - [ ] 每阶段输出迁移报告与风险清单。
@@ -132,3 +132,4 @@
 - [ ] Markdown 成为事实源，KnowledgeUnit/KG 支持稳定增量同步。
 - [ ] Profile + Exams + Study Path + KG+RAG 形成闭环。
 - [ ] 前后端接口、文档、测试全部收敛到新语义。
+

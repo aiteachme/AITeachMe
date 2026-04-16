@@ -37,11 +37,11 @@ const mockMistakes = [
 ];
 
 const mockKnowledgeUnits = [
-  { id: 101, subject: "mock", node_type: "Concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 102, subject: "mock", node_type: "Concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 103, subject: "mock", node_type: "Concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 104, subject: "mock", node_type: "Concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 105, subject: "mock", node_type: "Concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 101, subject: "mock", node_type: "concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, subject: "mock", node_type: "concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 103, subject: "mock", node_type: "concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 104, subject: "mock", node_type: "concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 105, subject: "mock", node_type: "concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockUnitItems = [
@@ -236,3 +236,4 @@ export const profileHandlers = [
     });
   }),
 ];
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -8,7 +8,7 @@ import app.models as _models
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
 from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
-from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
+from app.workflows.digest.knowledge_graph.graph import build_knowledge_digest_graph
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
 from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
@@ -34,7 +34,7 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
     assert {"load_enhance_context", "deep_enhance_file", "finalize_deep_enhance"}.issubset(
         _node_ids(get_langgraph_dev_deep_enhance_graph())
     )
-    assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(build_kg_digest_graph()))
+    assert {"acquire_lock", "prepare", "finalize_graph"}.issubset(_node_ids(build_knowledge_digest_graph()))
     assert {"load_context", "draft_plan"}.issubset(_node_ids(get_langgraph_dev_planner_graph()))
     assert {"load_context", "research_chapters", "publish_document"}.issubset(
         _node_ids(get_langgraph_dev_docgen_graph())

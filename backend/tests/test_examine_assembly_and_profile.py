@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -22,7 +22,7 @@ from app.models import (
     Difficulty,
     ExamPaper,
     ExamPaperItem,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     TeachingUnit,
     ThemeTreeNode,
@@ -39,15 +39,15 @@ def _create_curriculum_graph(session):
     curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
     unit_1 = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="assembly-unit-1",
         status="active",
     )
     unit_2 = TeachingUnit(
         subject="math",
-        canonical_name="导数单元",
-        normalized_name="导数单元",
+        canonical_name="瀵兼暟鍗曞厓",
+        normalized_name="瀵兼暟鍗曞厓",
         member_signature="assembly-unit-2",
         status="active",
     )
@@ -123,7 +123,7 @@ def test_assemble_paper_scope_locked_does_not_fallback_outside_scope(session) ->
     )
     session.commit()
 
-    with pytest.raises(ValueError, match="指定范围内可用题目不足"):
+    with pytest.raises(ValueError, match="鎸囧畾鑼冨洿鍐呭彲鐢ㄩ鐩笉瓒?):
         assemble_paper(
             session,
             subject="math",
@@ -201,23 +201,23 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
     curriculum = Curriculum(subject="math", version_no=1, status="published", is_current=True)
     unit = TeachingUnit(
         subject="math",
-        canonical_name="函数单元",
-        normalized_name="函数单元",
+        canonical_name="鍑芥暟鍗曞厓",
+        normalized_name="鍑芥暟鍗曞厓",
         member_signature="profile-unit",
         status="active",
     )
-    node_1 = KnowledgeNode(
+    node_1 = KnowledgeUnit(
         subject="math",
         node_type="concept",
-        canonical_name="函数",
-        normalized_name="函数",
+        canonical_name="鍑芥暟",
+        normalized_name="鍑芥暟",
         status="active",
     )
-    node_2 = KnowledgeNode(
+    node_2 = KnowledgeUnit(
         subject="math",
         node_type="concept",
-        canonical_name="导数",
-        normalized_name="导数",
+        canonical_name="瀵兼暟",
+        normalized_name="瀵兼暟",
         status="active",
     )
     session.add_all([curriculum, unit, node_1, node_2])
@@ -237,7 +237,7 @@ def test_update_mastery_from_exam_only_updates_linked_nodes(session) -> None:
         exam_paper_id=paper.id,
         question_template_id=1,
         item_order=1,
-        stem_snapshot="函数题",
+        stem_snapshot="鍑芥暟棰?,
         answer_snapshot="A",
         explanation_snapshot="exp",
         teaching_unit_id=unit.id,

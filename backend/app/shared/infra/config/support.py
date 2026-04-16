@@ -1,4 +1,4 @@
-"""Helpers for loading project runtime configuration from `config.yaml`."""
+﻿"""Helpers for loading project runtime configuration from `config.yaml`."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ CONFIG_YAML_FIELD_MAP: dict[str, str] = {
     "cache_enabled": "llm_cache_enabled",
     "cache_ttl_s": "llm_cache_ttl_s",
     "cache_max_entries": "llm_cache_max_entries",
-    "knowledge_graph_extract_max_parallelism": "kg_extract_max_parallelism",
+    "knowledge_graph_extract_max_parallelism": "knowledge_extract_max_parallelism",
 }
 
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import uuid
@@ -59,17 +59,17 @@ def _sanitize_build_error_message(error_message: str | None) -> str | None:
     if not text:
         return None
     if text == "build_cancelled":
-        return "知识构建已取消。"
+        return "鐭ヨ瘑鏋勫缓宸插彇娑堛€?
     if text == "build_crashed":
-        return "知识构建异常失败。"
+        return "鐭ヨ瘑鏋勫缓寮傚父澶辫触銆?
     if text == "no_ready_digest_inputs":
-        return "当前没有可用于构建的已解析资料。"
+        return "褰撳墠娌℃湁鍙敤浜庢瀯寤虹殑宸茶В鏋愯祫鏂欍€?
     if text == "confirmed_plan_required":
-        return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
+        return "鐭ヨ瘑鏂囨。鏋勫缓蹇呴』鍩轰簬宸茬‘璁ょ殑鏋勫缓鏂规鎵ц锛岃鍏堝畬鎴?planner 纭銆?
     if "Dimension mismatch" in text or "sqlite3.OperationalError" in text or ("chunk_embeddings" in text and "embedding" in text):
-        return "Embedding 配置已变化，请先重建向量后再继续。"
+        return "Embedding 閰嶇疆宸插彉鍖栵紝璇峰厛閲嶅缓鍚戦噺鍚庡啀缁х画銆?
     if "[SQL:" in text or "parameters:" in text or "Traceback" in text or len(text) > 240:
-        return "知识构建异常失败。"
+        return "鐭ヨ瘑鏋勫缓寮傚父澶辫触銆?
     return text
 
 
@@ -192,7 +192,7 @@ def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[st
         if not stripped.startswith("#"):
             continue
         title = stripped.lstrip("#").strip()
-        if title and title.lower() not in {"knowledge document overview", "知识文档总览"}:
+        if title and title.lower() not in {"knowledge document overview", "鐭ヨ瘑鏂囨。鎬昏"}:
             titles.append(title)
         if len(titles) >= 4:
             break
@@ -207,7 +207,7 @@ def _build_initial_chapter_progress(plan: ConfirmedBuildPlan) -> list[dict[str, 
         progress.append(
             {
                 "chapter_index": chapter_index,
-                "title": str(chapter.get("title") or f"第 {chapter_index} 章").strip() or f"第 {chapter_index} 章",
+                "title": str(chapter.get("title") or f"绗?{chapter_index} 绔?).strip() or f"绗?{chapter_index} 绔?,
                 "status": "planned",
                 "source_count": 0,
                 "local_hits": 0,
@@ -226,7 +226,7 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
     sample_nodes = []
     sample_cards = []
     if build_status is not None:
-        sample_nodes = [BuildPreviewNodeResponse(name=str(item.get("name", "")).strip(), node_type=str(item.get("type", "Topic")).strip() or "Topic") for item in build_status.sample_nodes if str(item.get("name", "")).strip()][:6]
+        sample_nodes = [BuildPreviewNodeResponse(name=str(item.get("name", "")).strip(), node_type=str(item.get("type", "concept")).strip() or "concept") for item in build_status.sample_nodes if str(item.get("name", "")).strip()][:6]
         sample_cards = [{"title": str(item.get("title", "")).strip(), "card_type": str(item.get("card_type", "")).strip() or "topic", "summary": str(item.get("summary", "")).strip()} for item in build_status.sample_cards if str(item.get("title", "")).strip() and str(item.get("summary", "")).strip()]
     chapter_progress = [
         BuildPreviewChapterProgressResponse.model_validate(item)
@@ -312,7 +312,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
                 "stage": "build_accepted",
                 "chapter_index": None,
                 "title": None,
-                "summary": f"方案已确认，共 {len(chapter_progress)} 章，构建请求已受理。",
+                "summary": f"鏂规宸茬‘璁わ紝鍏?{len(chapter_progress)} 绔狅紝鏋勫缓璇锋眰宸插彈鐞嗐€?,
                 "created_at": utcnow(),
             }
         ]
@@ -348,7 +348,7 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
                 "stage": "search_only_mode",
                 "chapter_index": None,
                 "title": None,
-                "summary": "当前没有已解析资料，本轮将以外部检索为主生成知识文档。",
+                "summary": "褰撳墠娌℃湁宸茶В鏋愯祫鏂欙紝鏈疆灏嗕互澶栭儴妫€绱负涓荤敓鎴愮煡璇嗘枃妗ｃ€?,
                 "created_at": utcnow(),
             }
         )
@@ -374,9 +374,9 @@ def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, fi
         chapter_progress=chapter_progress,
         recent_events=recent_events,
         current_stage_description=(
-            "方案已确认，当前没有本地资料，将优先执行联网研究。"
+            "鏂规宸茬‘璁わ紝褰撳墠娌℃湁鏈湴璧勬枡锛屽皢浼樺厛鎵ц鑱旂綉鐮旂┒銆?
             if search_only_mode
-            else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
+            else ("鏂规宸茬‘璁わ紝姝ｅ湪鎺掗槦鍚姩鏋勫缓銆? if confirmed_plan_id else None)
         ),
     )
     logger.info(

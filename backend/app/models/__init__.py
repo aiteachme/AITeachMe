@@ -12,6 +12,8 @@ from app.models.enums import (
     ExamPaperStatus,
     IngestStatus,
     KnowledgeDocStatus,
+    KnowledgeUnitStatus,
+    KnowledgeRelationStatus,
     MasteryGranularity,
     QuestionTemplateStatus,
     QuestionType,
@@ -37,7 +39,8 @@ from app.models.curriculum import (
 )
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDoc, KnowledgeDocument
-from app.models.knowledge_graph import KnowledgeEdge, KnowledgeUnit
+from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
+from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset
 from app.models.subject import Subject
@@ -65,8 +68,14 @@ __all__ = [
     "KnowledgeDoc",
     "KnowledgeDocument",
     "KnowledgeDocStatus",
+    "KnowledgeAlias",
+    "KnowledgeRevision",
+    "KnowledgeUnitStatus",
+    "KnowledgeRelationStatus",
     "KnowledgeUnit",
     "KnowledgeEdge",
+    "EdgeRevision",
+    "EvidenceLink",
     "MasteryGranularity",
     "QuestionTemplate",
     "QuestionTemplateStatus",

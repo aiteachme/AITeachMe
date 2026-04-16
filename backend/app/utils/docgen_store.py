@@ -139,7 +139,7 @@ def _build_sample_cards(
 
     for sample in sample_nodes[:3]:
         name = str(sample.get("name", "")).strip()
-        node_type = str(sample.get("type", "Topic")).strip() or "Topic"
+        node_type = str(sample.get("type", "concept")).strip() or "concept"
         if not name:
             continue
         cards.append(

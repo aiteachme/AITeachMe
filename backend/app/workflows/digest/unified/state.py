@@ -1,4 +1,4 @@
-"""State and result models for unified digest builds."""
+﻿"""State and result models for unified digest builds."""
 
 from __future__ import annotations
 
@@ -29,17 +29,17 @@ class UnifiedDigestState(TypedDict, total=False):
     materialized: MaterializedSections
 
     doc_state: dict[str, Any]
-    kg_state: dict[str, Any]
+    knowledge_state: dict[str, Any]
 
     graph_ready: bool
     doc_lane_error: str | None
-    kg_lane_error: str | None
+    knowledge_lane_error: str | None
 
     shared_prepare_ms: int
     lane_ms: int
     parallel_lanes_ms: int
     doc_lane_ms: int
-    kg_lane_ms: int
+    knowledge_lane_ms: int
     publish_ms: int
     cleanup_ms: int
     timing_report: dict[str, Any]
@@ -64,6 +64,6 @@ class UnifiedBuildResult(BaseModel):
     elapsed_ms: int = 0
     shared_prepare_ms: int = 0
     doc_lane_ms: int = 0
-    kg_lane_ms: int = 0
+    knowledge_lane_ms: int = 0
     timing_report: dict[str, Any] | None = None
     token_summary: dict[str, Any] | None = None

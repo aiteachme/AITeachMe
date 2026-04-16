@@ -1,12 +1,12 @@
-"""Stable candidate identity helpers for typed digest resolution."""
+﻿"""Stable candidate identity helpers for typed digest resolution."""
 
 from __future__ import annotations
 
 import re
 from typing import Protocol
 
-from app.utils.kg_helpers import normalize_name
-from app.models.kg_taxonomy import (
+from app.utils.knowledge_helpers import normalize_name
+from app.models.knowledge_taxonomy import (
     SECONDARY_KNOWLEDGE_UNIT_TYPES,
     normalize_knowledge_unit_type,
 )
@@ -91,7 +91,7 @@ def bucket_scope(candidate: CandidateLike) -> str:
 
 
 def token_bucket(name: str) -> str:
-    """Create a cheap token bucket to avoid full O(n²) comparisons."""
+    """Create a cheap token bucket to avoid full O(n虏) comparisons."""
 
     normalized = normalize_name(name)
     if not normalized:
@@ -111,3 +111,4 @@ __all__ = [
     "normalize_scope_name",
     "token_bucket",
 ]
+

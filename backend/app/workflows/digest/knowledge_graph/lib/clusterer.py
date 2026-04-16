@@ -15,12 +15,12 @@ from app.workflows.digest.knowledge_graph.lib.candidate_identity import (
     token_bucket,
 )
 from app.workflows.digest.knowledge_graph.lib.extractor import CandidateNode
-from app.models.kg_taxonomy import (
+from app.models.knowledge_taxonomy import (
     SECONDARY_KNOWLEDGE_UNIT_TYPES,
     normalize_knowledge_unit_type,
 )
 from app.shared.infra.embedding import aembed_texts
-from app.utils.kg_helpers import normalize_name
+from app.utils.knowledge_helpers import normalize_name
 
 logger = structlog.get_logger()
 _SECONDARY_NODE_TYPES = SECONDARY_KNOWLEDGE_UNIT_TYPES
@@ -97,7 +97,7 @@ async def cluster_candidates(
     repr_texts = [cluster[0][0].name + "：" + cluster[0][0].local_summary for cluster in proto_clusters]
     embeddings = await aembed_texts(repr_texts)
 
-    # 按 node_type + taxonomy bucket + token bucket 分桶，避免 O(n²) 扫整类。
+    # 按 node_type + taxonomy bucket + token bucket 分桶，避免 O(n2) 扫整类。
     bucket_to_indices: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for idx, cluster in enumerate(proto_clusters):
         representative = cluster[0][0]
@@ -164,10 +164,11 @@ async def cluster_candidates(
                 candidate_lookup_to_cluster_id[lookup_key] = cluster_idx
 
     logger.info(
-        "kg_cluster_complete",
+        "knowledge_cluster_complete",
         input_count=len(candidates),
         cluster_count=len(clustered),
         compared_pairs=compared_pairs,
         bucket_count=len(bucket_to_indices),
     )
     return clustered, candidate_lookup_to_cluster_id
+

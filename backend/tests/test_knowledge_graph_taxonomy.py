@@ -1,30 +1,27 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from app.models.kg_taxonomy import (
+from app.models.knowledge_taxonomy import (
     normalize_knowledge_unit_type,
     normalize_relation_type,
     validate_relation_direction,
 )
 
 
-def test_knowledge_unit_type_aliases_normalize_to_p1_standard_values() -> None:
-    assert normalize_knowledge_unit_type("Topic") == "concept"
-    assert normalize_knowledge_unit_type("Concept") == "concept"
-    assert normalize_knowledge_unit_type("Definition") == "definition"
-    assert normalize_knowledge_unit_type("Method") == "method"
-    assert normalize_knowledge_unit_type("Example") == "example"
-    assert normalize_knowledge_unit_type("proof-step") == "proof_step"
+def test_knowledge_unit_type_normalizes_only_p1_standard_values() -> None:
+    assert normalize_knowledge_unit_type("concept") == "concept"
+    assert normalize_knowledge_unit_type("definition") == "definition"
+    assert normalize_knowledge_unit_type("method") == "method"
+    assert normalize_knowledge_unit_type("example") == "example"
+    assert normalize_knowledge_unit_type("proof_step") == "proof_step"
     assert normalize_knowledge_unit_type("unknown") == "concept"
 
 
-def test_legacy_relation_aliases_normalize_to_p1_standard_values() -> None:
-    assert normalize_relation_type("prerequisite_of").edge_type == "prerequisite"
-    assert normalize_relation_type("defined_by").edge_type == "derivation"
-    assert normalize_relation_type("defined_by").swap_endpoints is True
-    assert normalize_relation_type("illustrated_by").edge_type == "example_of"
-    assert normalize_relation_type("illustrated_by").swap_endpoints is True
-    assert normalize_relation_type("belongs_to_topic").edge_type == "application"
-    assert normalize_relation_type("part_of").edge_type == "derivation"
+def test_relation_type_normalizes_only_p1_standard_values() -> None:
+    assert normalize_relation_type("prerequisite") == "prerequisite"
+    assert normalize_relation_type("derivation") == "derivation"
+    assert normalize_relation_type("application") == "application"
+    assert normalize_relation_type("example_of") == "example_of"
+    assert normalize_relation_type("unknown") == "application"
 
 
 def test_relation_direction_constraints_for_examples_and_prerequisites() -> None:
@@ -43,3 +40,4 @@ def test_relation_direction_constraints_for_examples_and_prerequisites() -> None
         source_type="example",
         target_type="concept",
     )
+

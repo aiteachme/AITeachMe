@@ -9,8 +9,8 @@ from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
     KnowledgeUnitNotFoundError,
 )
-from app.models.knowledge_graph import KnowledgeUnit
-from app.repositories import kg_repo, knowledge_repo
+from app.models.knowledge_unit import KnowledgeUnit
+from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo
 from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.knowledge import (
     AliasItem,
@@ -42,7 +42,7 @@ class KnowledgeGraphQueryService:
         size: int = 20,
     ) -> PaginatedData[KnowledgeUnitResponse]:
         offset = (page - 1) * size
-        knowledge_units, total = kg_repo.list_knowledge_units_by_subject(
+        knowledge_units, total = knowledge_unit_repo.list_knowledge_units_by_subject(
             self._session,
             subject,
             knowledge_unit_type=knowledge_unit_type,
@@ -88,7 +88,7 @@ class KnowledgeGraphQueryService:
         subject: str,
         knowledge_unit_id: int,
     ) -> KnowledgeUnitDetailResponse:
-        result = kg_repo.get_knowledge_unit_with_current_revision(self._session, knowledge_unit_id)
+        result = knowledge_unit_repo.get_knowledge_unit_with_current_revision(self._session, knowledge_unit_id)
         if result is None:
             raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
@@ -102,7 +102,7 @@ class KnowledgeGraphQueryService:
             body=revision.body,
         )
 
-        aliases_raw = kg_repo.list_aliases_by_knowledge_unit(self._session, knowledge_unit_id)
+        aliases_raw = knowledge_unit_repo.list_aliases_by_knowledge_unit(self._session, knowledge_unit_id)
         aliases = [
             AliasItem(
                 id=alias.id,  # type: ignore[arg-type]
@@ -115,7 +115,7 @@ class KnowledgeGraphQueryService:
             for alias in aliases_raw
         ]
 
-        evidence_raw = kg_repo.list_evidence_by_entity(self._session, "node", knowledge_unit_id)
+        evidence_raw = knowledge_relation_repo.list_evidence_by_entity(self._session, "node", knowledge_unit_id)
         evidence = [
             EvidenceSummary(
                 id=item.id,  # type: ignore[arg-type]
@@ -129,7 +129,7 @@ class KnowledgeGraphQueryService:
             for item in evidence_raw
         ]
 
-        edges_raw = kg_repo.list_edges_by_knowledge_unit(self._session, knowledge_unit_id)
+        edges_raw = knowledge_relation_repo.list_edges_by_knowledge_unit(self._session, knowledge_unit_id)
         incident_edges: list[IncidentEdgeItem] = []
         for edge in edges_raw:
             if edge.source_node_id == knowledge_unit_id:
@@ -186,13 +186,13 @@ class KnowledgeGraphQueryService:
         *,
         subject: str,
     ) -> FullGraphResponse:
-        nodes_raw, _ = kg_repo.list_knowledge_units_by_subject(
+        nodes_raw, _ = knowledge_unit_repo.list_knowledge_units_by_subject(
             self._session,
             subject,
             limit=5000,
             offset=0,
         )
-        edges_raw = kg_repo.list_all_edges_by_subject(self._session, subject)
+        edges_raw = knowledge_relation_repo.list_all_edges_by_subject(self._session, subject)
 
         nodes = [
             KnowledgeUnitResponse(
@@ -331,3 +331,4 @@ __all__ = [
     "get_knowledge_unit_detail",
     "get_knowledge_units",
 ]
+
