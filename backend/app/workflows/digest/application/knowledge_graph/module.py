@@ -24,7 +24,7 @@ from app.workflows.digest.application.knowledge_graph.query import KnowledgeGrap
 
 
 class KnowledgeGraphModule:
-    """Unified domain façade for KG query/build operations."""
+    """Domain façade for KG query/build operations."""
 
     def __init__(self, *, session: Session) -> None:
         self._query = KnowledgeGraphQueryService(session)
@@ -81,7 +81,7 @@ class KnowledgeGraphModule:
         prompt: str | None,
         embedding_resolution: str | None,
         confirmed_plan_id: str | None,
-        build_type: str = "all",
+        build_type: str = "graph",
     ) -> tuple[DocGenBuildData, list[int]]:
         return self._build.trigger_build(
             subject=subject,
@@ -109,27 +109,6 @@ class KnowledgeGraphModule:
             file_ids=file_ids,
             prompt=prompt,
             requested_at=requested_at,
-        )
-
-    async def run_unified_build_background(
-        self,
-        *,
-        subject: str,
-        file_ids: list[int],
-        prompt: str | None,
-        requested_at: datetime,
-        planner_session_id: str | None = None,
-        confirmed_plan_id: str | None = None,
-        user_id: str | None = None,
-    ) -> None:
-        await self._build.run_unified_build_background(
-            subject=subject,
-            file_ids=file_ids,
-            prompt=prompt,
-            requested_at=requested_at,
-            planner_session_id=planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            user_id=user_id,
         )
 
 

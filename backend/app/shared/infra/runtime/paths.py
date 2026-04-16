@@ -44,7 +44,11 @@ def log_legacy_runtime_path_warnings() -> None:
 
     backend_root = get_backend_root()
     current_db_path = get_sqlite_db_path()
-    legacy_candidates = [backend_root.parent / "data" / _LEGACY_DB_NAME]
+    legacy_candidates = [
+        backend_root.parent / "data" / _LEGACY_DB_NAME,
+        backend_root / "app" / "data" / _LEGACY_DB_NAME,
+        backend_root / "app" / "shared" / "data" / _LEGACY_DB_NAME,
+    ]
 
     for legacy_path in legacy_candidates:
         if legacy_path == current_db_path or not legacy_path.exists():

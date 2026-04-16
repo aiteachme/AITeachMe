@@ -114,7 +114,7 @@ Planner 现在通过 `planner/prompts/examples.py` 注入示例。
 
 做什么：
 
-- 调 `digest/shared/prepare.py::prepare_material_context(...)`
+- 调 `digest/common/prepare.py::prepare_material_context(...)`
 - 生成 `material_context`
 - 无正文时生成 seed context
 - 发 `planner.material.ready`

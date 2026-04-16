@@ -1,4 +1,4 @@
-"""Lightweight concept grounding for planner outline quality."""
+﻿"""Lightweight concept grounding for planner outline quality."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ from app.shared.infra.search import SourceCurator
 from app.shared.infra.search.factory import get_retriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
-from app.workflows.digest._shared.runtime_config import get_teaching_runtime_config
+from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
-from app.workflows.digest.shared.contracts import resolve_planner_retrieval_profile
-from app.workflows.digest.shared.models import SharedInputs
+from app.workflows.digest.common.contracts import resolve_planner_retrieval_profile
+from app.workflows.digest.common.models import SharedInputs
 
 logger = structlog.get_logger(__name__)
 
@@ -475,3 +475,4 @@ __all__ = [
     "build_planner_concept_queries",
     "collect_planner_concept_briefing",
 ]
+

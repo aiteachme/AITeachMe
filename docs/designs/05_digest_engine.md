@@ -14,9 +14,8 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 | Lane | 流程名 | 产物 | 触发方式 |
 |---|---|---|---|
 | **Planner Lane** | `digest.planner` | confirmed plan 草案 | 用户确认构建方案前触发 |
-| **DocGen Lane** | `digest.docgen` | 知识文档（多章节 Markdown） | 统一构建或 docs-only 构建 |
-| **Knowledge Graph Lane** | `digest.knowledge_graph` | 知识节点 + 知识边 + 证据链 | 统一构建或 graph-only 构建 |
-| **Unified Lane** | `digest.unified` | 共享准备 + docgen + graph 编排结果 | Digest Service 后台任务 |
+| **DocGen Lane** | `digest.docgen` | 知识文档（多章节 Markdown） | docs 构建 |
+| **Knowledge Graph Lane** | `digest.knowledge_graph` | 知识节点 + 知识边 + 证据链 | graph 构建 |
 
 **Digest 不做：**
 - ❌ 不处理原始文件（那是 Ingest 的事）
@@ -34,39 +33,25 @@ Digest（织网引擎）是 AITeachMe 的**知识加工中枢**，负责把 Inge
 | Planner | `backend/app/workflows/digest/planner/` | confirmed plan 生成链路 |
 | DocGen | `backend/app/workflows/digest/docgen/` | 文档生成链路 |
 | Knowledge Graph | `backend/app/workflows/digest/knowledge_graph/` | 知识图谱链路 |
-| Unified | `backend/app/workflows/digest/unified/` | 共享准备、DocGen 与 Knowledge Graph 编排 |
-| Shared | `backend/app/workflows/digest/shared/` | contracts / models / prepare / material_profile / metrics |
+| Shared | `backend/app/workflows/digest/common/` | contracts / models / prepare / material_profile / metrics |
 | DocGen Prompt | `backend/app/workflows/digest/docgen/prompts/` | 研究、标题、写作、资产 prompt |
 | KG Prompt | `backend/app/workflows/digest/knowledge_graph/prompts/` | 抽取/对齐/命名/主题树 prompt |
 | Reporting | 各链路 `lib/reporting.py` | 构建摘要与 token/timing 诊断 |
 
 ---
 
-## 3. 三 Lane 总体协作关系
+## 3. Lane 总体协作关系
 
 ```
 Ingest 产物 (raw_markdowns) 就绪
     │
-    ├────────────────────────────────┐
-    │                                │
-    ▼                                ▼
-┌─────────────┐              ┌─────────────┐
-│  KG Lane    │              │  Docs Lane  │  ← 并行运行
-│  (graph)    │              │  (docgen)   │
-└──────┬──────┘              └─────────────┘
-       │
-       │ finalize_graph 自动触发
-       ▼
-┌─────────────┐
-│ Curriculum  │
-│   Lane      │
-└─────────────┘
+    ├── docs 构建  -> DocGen Lane -> KnowledgeDoc
+    │
+    └── graph 构建 -> KG Lane     -> KnowledgeGraph -> Curriculum
 ```
 
-三个 Lane 共享一个 `UnifiedBuildSession`，通过 `build_session_id` 关联：
-- **shared_inputs**: 材料分析结果（subject_profile、material_profile、digest_mode 等）
-- **chunk 映射**: `chunk_uid ↔ chunk_id` 双向映射
-- **topic_anchor_snapshot**: KG Lane 在 cluster 和 finalize 阶段发布，Docs Lane 可消费
+DocGen 与 Knowledge Graph 是两条独立构建链路，不再通过统一构建层编排。二者可以复用
+`digest/common` 中的 shared input、chunk 物化、材料画像等基础能力，但不互相等待、不互相发布中间产物。
 
 ---
 
@@ -114,13 +99,13 @@ graph TD
 #### Node 2: `prepare`
 
 ```
-输入: build_session_id
+输入: subject, file_ids, build_session_id
 操作:
-  1. 从 UnifiedBuildSession 获取物化结果:
+  1. KG 独立调用 prepare_shared_inputs(...) 与 materialize_shared_inputs(...):
      - chunk_ids: 本次构建涉及的全部 retrieval_chunk 主键列表
      - chunk_uid_to_chunk_id: UID→ID 映射
      - chunk_id_to_chunk_uid: ID→UID 映射
-     - shared_inputs: 跨 Lane 共享的材料分析结果
+     - shared_inputs: 本次图谱构建自己的材料分析结果
   2. 校验: chunk_ids 非空，否则 error="no_ready_digest_inputs"
 输出: chunk_ids, shared_inputs, 双向映射
 写 DB: job progress=10, step="prepare"
@@ -136,8 +121,7 @@ graph TD
      - chunk_count ≤ 100 → min(chunk_count, 20)
      - chunk_count > 100 → min(chunk_count, 30)
      - 受限于 settings.kg_extract_max_parallelism 和 settings.llm_concurrency_limit
-  2. 可选: 从 UnifiedBuildSession 等待 chapter_priors (超时可配置)
-     → 用于为提取提供 taxonomy_hint 和 sibling_topics
+  2. 从 shared_inputs 的 subject_profile / fast_hints 生成 taxonomy_hint 和 sibling_topics
   3. 对每个 chunk 并行调用 extract_candidates():
      ┌─ 快速通道判断: 试卷类材料 + question_block_count ≥ 3 + 无概念性内容 → 跳过 LLM
      ├─ LLM 通道: 组装 prompt (见第 6 节) → 调用 LLM → 解析 JSON → CandidateNode + CandidateEdge
@@ -159,8 +143,7 @@ LLM 调用: ✅ kg_extract (每 chunk 一次)
      - 按 node_type + normalized_name 聚合
      - 产出 ClusteredCandidate: { representative, members, merged_summary, source_chunk_ids }
      - 产出 lookup_to_cluster_id: candidate_lookup_key → cluster_index
-  3. 构建 early_topic_snapshot → 发布到 UnifiedBuildSession
-     (供 Docs Lane 消费作为写作时的知识锚点)
+  3. 构建 early_topic_snapshot 写入 KG state，供图谱诊断与最终发布使用
 输出: clustered_candidates, candidate_lookup_to_cluster_id
 写 DB: job progress=50
 LLM 调用: ❌ (纯规则)
@@ -241,7 +224,7 @@ LLM 调用: ❌
 ```
 输入: clustered_candidates, impact_set
 操作:
-  1. 构建最终 topic_anchor_snapshot → 发布到 UnifiedBuildSession
+  1. 构建最终 topic_anchor_snapshot 写入 KG state
   2. 校验: topic_anchors 非空 且 resolved_node_count > 0
      失败 → error="finalize_failed: graph_not_usable"
   3. 激活全部 pending 实体:
@@ -390,7 +373,7 @@ graph TD
 操作:
   1. 从 raw_file 加载指定文件的 parsed_markdown
   2. 过滤空内容和未就绪文件
-  3. 构建 shared_inputs (如来自 UnifiedBuildSession)
+  3. 构建 DocGen 本轮 shared_inputs
 输出: file_contents, shared_inputs
 ```
 
@@ -790,3 +773,4 @@ LangSmith metadata 只保留少量关键字段和计数摘要，不再默认 dum
 3. Docs Lane 的 fan-out 使用 `langgraph.types.Send()` 原语，编集自带并发
 4. 语义匹配阈值 (Primary=0.80, Secondary=0.85) 是硬编码常量，未来可配置化
 5. 文档审校通过率偏高时 (passed=True)，缺少自动 rewrite 循环
+

@@ -669,7 +669,7 @@ function DocUpdatingBanner({
         : "正在更新知识文档";
   const description =
     viewMode === "draft"
-      ? "草稿仅用于预览当前构建结果，正式版仍以 unified publish 成功后的版本为准。"
+      ? "草稿仅用于预览当前构建结果，正式版会在文档发布完成后自动刷新。"
       : hasDraftVersion
         ? "正式版会持续可用；如果想提前看本轮结果，可以切换到草稿预览。"
         : hasLiveVersion

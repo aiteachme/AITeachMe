@@ -19,21 +19,6 @@ from app.workflows.digest.docgen.state import DocGenState
 logger = structlog.get_logger()
 
 
-def _is_standalone_mode(state: DocGenState) -> bool:
-    """Return True when running outside a unified build session."""
-
-    build_session_id = state.get("build_session_id", "")
-    if not build_session_id:
-        return True
-    try:
-        from app.workflows.digest.unified.session import get_unified_build_session
-
-        get_unified_build_session(build_session_id)
-        return False
-    except (KeyError, ImportError):
-        return True
-
-
 def build_publish_document_node(*, context: WorkflowContext):
     """Build the final staging or publishing node for docs outputs."""
 
@@ -49,7 +34,7 @@ def build_publish_document_node(*, context: WorkflowContext):
         document_context = dict(state.get("document_context") or {})
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
-        standalone = _is_standalone_mode(state)
+        standalone = True
 
         if not chapter_metadatas:
             return {"error": "当前没有可用于最终发布的章节内容。"}

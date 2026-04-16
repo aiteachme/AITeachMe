@@ -41,7 +41,6 @@ from app.workflows.digest.application.knowledge_docs.cleanup_service import clea
 from app.workflows.digest.application.knowledge_docs.digest_service import (
     get_docgen_result,
     run_docgen_background,
-    run_unified_build_background,
     trigger_docgen_build,
 )
 from app.workflows.digest.application.knowledge_docs.overview_service import get_knowledge_overview
@@ -323,10 +322,10 @@ async def knowledge_build(
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
-        build_type=body.build_type or "all",
+        build_type=body.build_type or "docs",
     )
 
-    build_type = body.build_type or "all"
+    build_type = body.build_type or "docs"
 
     if build_type == "docs":
         request.app.state.background_task_registry.spawn(
@@ -354,21 +353,6 @@ async def knowledge_build(
             kind="knowledge.build.graph",
             subject=normalized,
             name=f"knowledge.build.graph:{normalized}",
-        )
-    else:
-        request.app.state.background_task_registry.spawn(
-            run_unified_build_background(
-                subject=normalized,
-                file_ids=accepted_file_ids,
-                prompt=data.prompt,
-                requested_at=data.requested_at,
-                planner_session_id=data.planner_session_id,
-                confirmed_plan_id=data.confirmed_plan_id,
-                user_id=user.user_id,
-            ),
-            kind="knowledge.build",
-            subject=normalized,
-            name=f"knowledge.build:{normalized}",
         )
     return ok_response(data)
 

@@ -7,10 +7,9 @@ from pathlib import Path
 import app.models as _models
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.graph import get_langgraph_dev_docgen_graph
-from app.workflows.digest.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
+from app.workflows.digest.application.exports import WORKFLOW_EXPORTS as DIGEST_WORKFLOW_EXPORTS
 from app.workflows.digest.knowledge_graph.graph import build_kg_digest_graph
 from app.workflows.digest.planner.graph import get_langgraph_dev_planner_graph
-from app.workflows.digest.unified.graph import get_langgraph_dev_unified_graph
 from app.workflows.ingest.deep_enhance.graph import get_langgraph_dev_deep_enhance_graph
 from app.workflows.ingest.fast_parse.graph import get_langgraph_dev_fast_parse_graph
 from app.workflows.interact.chat.graph import get_langgraph_dev_interact_graph
@@ -40,9 +39,6 @@ def test_langgraph_dev_entrypoints_compile_expected_graphs() -> None:
     )
     assert {"load_context", "research_chapters", "publish_document"}.issubset(
         _node_ids(get_langgraph_dev_docgen_graph())
-    )
-    assert {"prepare_shared", "run_parallel_lanes", "publish_outputs"}.issubset(
-        _node_ids(get_langgraph_dev_unified_graph())
     )
     assert {"load_history_state", "stream_answer", "persist_turn"}.issubset(
         _node_ids(get_langgraph_dev_interact_graph())
@@ -132,8 +128,10 @@ def test_langgraph_json_registers_dev_entrypoints() -> None:
     )
 
 
-def test_digest_workflow_exports_include_planner_before_unified() -> None:
+def test_digest_workflow_exports_include_planner_docs_and_graph() -> None:
     keys = [export.key for export in DIGEST_WORKFLOW_EXPORTS]
 
     assert "digest_planner" in keys
-    assert keys.index("digest_planner") < keys.index("digest_unified")
+    assert "digest_docgen" in keys
+    assert "digest_graph" in keys
+    assert "digest_unified" not in keys

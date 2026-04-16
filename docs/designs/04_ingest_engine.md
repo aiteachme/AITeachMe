@@ -34,13 +34,13 @@ Ingest（透视引擎）是 AITeachMe 数据流的**入口**，负责把用户�
 | Fast Parse Helper | `backend/app/workflows/ingest/fast_parse/lib/` | Phase 1 节点内部实现 |
 | Deep Enhance 节点 | `backend/app/workflows/ingest/deep_enhance/nodes/` | Phase 2 LangGraph 节点 |
 | Deep Enhance Helper | `backend/app/workflows/ingest/deep_enhance/lib/` | Phase 2 节点内部实现 |
-| 解析分类器 | `backend/app/workflows/ingest/shared/parsing/classifier.py` | 文件分类 |
-| 解析策略 | `backend/app/workflows/ingest/shared/parsing/strategy.py` | 解析计划生成 |
-| 解析编排器 | `backend/app/workflows/ingest/shared/parsing/orchestrator.py` | Phase 1 / Phase 2 路由 |
-| 传统解析器 | `backend/app/workflows/ingest/shared/parsing/pdf.py` 等 | 各格式解析实现 |
-| Markdown 规范化 | `backend/app/workflows/ingest/shared/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
-| OCR 增强 | `backend/app/workflows/ingest/shared/parsing/asset_ocr.py` | LLM Vision OCR |
-| Prompt 模板 | `backend/app/workflows/ingest/shared/parsing/prompts.py` | OCR prompt 中/英文版 |
+| 解析分类器 | `backend/app/workflows/ingest/common/parsing/classifier.py` | 文件分类 |
+| 解析策略 | `backend/app/workflows/ingest/common/parsing/strategy.py` | 解析计划生成 |
+| 解析编排器 | `backend/app/workflows/ingest/common/parsing/orchestrator.py` | Phase 1 / Phase 2 路由 |
+| 传统解析器 | `backend/app/workflows/ingest/common/parsing/pdf.py` 等 | 各格式解析实现 |
+| Markdown 规范化 | `backend/app/workflows/ingest/common/parsing/canonicalizer.py` | 图片引用重写、嵌入图提取 |
+| OCR 增强 | `backend/app/workflows/ingest/common/parsing/asset_ocr.py` | LLM Vision OCR |
+| Prompt 模板 | `backend/app/workflows/ingest/common/parsing/prompts.py` | OCR prompt 中/英文版 |
 | 事件定义 | `backend/app/workflows/ingest/events.py` | 领域事件 |
 | 主要业务表 | `raw_file` + `raw_file_asset` | 文件元数据与资产记录 |
 
@@ -228,7 +228,7 @@ graph TD
 
 ### 6.1 分类器 `classify_file()`
 
-> 文件: `backend/app/workflows/ingest/shared/parsing/classifier.py`
+> 文件: `backend/app/workflows/ingest/common/parsing/classifier.py`
 
 **输入：** `file_path: Path`, `filetype: str`
 **输出：** `ClassificationResult`
@@ -280,7 +280,7 @@ class ClassificationResult(BaseModel):
 
 ### 6.2 解析策略 `build_parse_plan()`
 
-> 文件: `backend/app/workflows/ingest/shared/parsing/strategy.py`
+> 文件: `backend/app/workflows/ingest/common/parsing/strategy.py`
 
 **输入：** `file_path`, `filetype`, `file_size_bytes`, `classification`
 **输出：** `ParsePlan`
@@ -536,7 +536,7 @@ Phase 2 在后台 asyncio Task 中执行，不阻塞 HTTP 响应。
 
 ## 8. Prompt 模板
 
-> 文件: `backend/app/workflows/ingest/shared/parsing/prompts.py`
+> 文件: `backend/app/workflows/ingest/common/parsing/prompts.py`
 
 Ingest 只在 Phase 2 LLM Vision OCR 中使用 Prompt。以下是完整的 Prompt 模板：
 
@@ -763,3 +763,4 @@ raw_file → raw_markdowns (ContentStore) → retrieval_chunk
 2. 考虑统一通过 `graph.compile().ainvoke()` 执行，减少 runtime.py 的内联代码量
 3. 增加增量解析能力（文件内容未变化时跳过重解析）
 4. 为解析质量增加基于 LLM 的自动评估
+

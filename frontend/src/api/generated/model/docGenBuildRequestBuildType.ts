@@ -7,7 +7,7 @@
  */
 
 /**
- * Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only, 'all' for unified build.
+ * Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only.
  */
 export type DocGenBuildRequestBuildType = typeof DocGenBuildRequestBuildType[keyof typeof DocGenBuildRequestBuildType];
 
@@ -15,5 +15,4 @@ export type DocGenBuildRequestBuildType = typeof DocGenBuildRequestBuildType[key
 export const DocGenBuildRequestBuildType = {
   docs: 'docs',
   graph: 'graph',
-  all: 'all',
 } as const;

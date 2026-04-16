@@ -30,7 +30,6 @@
 - `ingest_deep_enhance`
 - `digest_planner`
 - `digest_docgen`
-- `digest_unified`
 - `digest_kg`
 - `interact_chat`
 - `examine_question_build`

@@ -8,7 +8,7 @@ from copy import deepcopy
 from app.shared.infra.config import get_settings
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
-from app.workflows.digest._shared.pedagogy import (
+from app.workflows.digest.common.pedagogy import (
     build_chapter_title_resolution_messages,
     coerce_resolved_chapter_title,
 )
@@ -158,3 +158,4 @@ def build_finalize_titles_node(*, context: WorkflowContext):
     return finalize_titles_node
 
 __all__ = ["build_finalize_titles_node"]
+

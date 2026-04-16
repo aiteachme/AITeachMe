@@ -24,10 +24,6 @@
       "path": "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph",
       "description": "Digest planner workflow for confirmed build plans."
     },
-    "digest_unified": {
-      "path": "./app/workflows/digest/unified/graph.py:get_langgraph_dev_unified_graph",
-      "description": "Digest unified build workflow."
-    },
     "interact_chat": {
       "path": "./app/workflows/interact/chat/graph.py:get_langgraph_dev_interact_graph",
       "description": "Interact chat workflow without the production SSE shell."

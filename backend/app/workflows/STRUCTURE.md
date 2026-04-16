@@ -1,4 +1,4 @@
-# Workflows 结构规范
+﻿# Workflows 结构规范
 
 最后更新：2026-04-16
 
@@ -20,7 +20,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - `workflows/` 负责业务用例、图编排、模块级协调
 - `shared.infra/` 只负责基础设施
 - `app/services` 源层已移除，不再作为代码落点或兼容入口
-- `app/teaching` 源层已移除，教学语义分别归位到 `digest/_shared`、具体 workflow lane 或 `shared.infra.tools`
+- `app/teaching` 源层已移除，教学语义分别归位到 `digest/common`、具体 workflow lane 或 `shared.infra.tools`
 
 ## 2. 顶层分区
 
@@ -52,7 +52,7 @@ workflows/<module>/
   application/
   <lane_a>/
   <lane_b>/
-  shared/                  # 仅当 >=2 条链路真实复用时才建立
+  common/                  # 仅当 >=2 条链路真实复用时才建立
 ```
 
 `application/` 的职责：
@@ -139,27 +139,27 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - 教学工具注册、枚举、执行、registry sync 属于基础设施，放在 `app.shared.infra.tools.teaching_registry`
 - 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`
 - 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`
-- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/_shared/pedagogy`
+- 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy`
 - 禁止为了“教学语义”重新创建 `app/teaching` 层
 
-## 7. 模块级 `shared/` 规则
+## 7. 模块级 `common/` 规则
 
-只有被两条及以上链路真实复用的内容，才允许进入模块级 `shared/`。
+只有被两条及以上链路真实复用的内容，才允许进入模块级 `common/`。
 
-允许进入模块级 `shared/` 的典型内容：
+允许进入模块级 `common/` 的典型内容：
 
 - Digest 的共享 contracts / models / prepare
 - Digest 的跨链路 metrics 基础模型与 token / slow-item 汇总
 - Ingest 的共享 parsing / recovery / logging
 
-不应进入模块级 `shared/` 的内容：
+不应进入模块级 `common/` 的内容：
 
 - 只有一条链路使用的 helper
 - 单个节点的 prompt
 - 只为了“可能复用”而提前上提的代码
 - 链路自己的 reporting / summary builder，这类应放回对应链路 `lib/`
 
-注意：`digest/_shared/` 不是通用共享层；它只保留当前真实存在的 Digest 教学语义入口，例如 `runtime_config.py` 与 `pedagogy/`。
+注意：`workflows/<module>/common/` 是模块内共享层；真正的全局共享层仍然只有 `app.shared.*`。
 
 ## 8. 命名与进度规则
 
@@ -186,18 +186,16 @@ digest/
   planner/
   docgen/
   knowledge_graph/
-  unified/
-  shared/
-  _shared/                 # 仅保留 runtime_config 与 pedagogy 等真实教学语义
+  common/
 ```
 
 说明：
 
 - `application/` 承接 knowledge_docs / knowledge_graph 的 API-facing 用例
 - `planner/` 与 `docgen/` 是当前优先维护的主链路
-- `knowledge_graph/` 与 `unified/` 先对齐门面与命名
-- `shared/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics 等复用能力
-- 不再保留只转发到 `shared/` 的 `_shared` 空门面
+- `knowledge_graph/` 是独立图谱构建链路
+- `common/` 是当前真实跨链路共享层，承载 contracts / models / prepare / material_profile / metrics / runtime_config / pedagogy 等复用能力
+
 
 ### 9.2 ingest
 
@@ -205,20 +203,18 @@ digest/
 ingest/
   __init__.py
   README.md
+  application/
   fast_parse/
   deep_enhance/
-  shared/
+  common/
     parsing/
-  runtime.py
-  recovery.py
 ```
 
 说明：
 
+- `application/` 是 ingest 模块级入口，承接 runtime / recovery / exports
 - `fast_parse/` 与 `deep_enhance/` 是真实链路
-- `shared/parsing/` 是当前两条链路共享的解析实现
-- `runtime.py` 与 `recovery.py` 是模块级兼容/启动恢复入口
-- 不再保留只转发到 `shared/parsing/`、`recovery.py` 的 `_shared` 空门面
+- `common/parsing/` 是当前两条链路共享的解析实现
 
 ### 9.3 interact
 
@@ -245,7 +241,7 @@ examine/
   application/
   question_build/
   exam_grade/
-  shared/                  # 未来确有复用时再建立
+  common/                  # 未来确有复用时再建立
 ```
 
 ### 9.5 profile
@@ -281,6 +277,8 @@ support/
 
 ## 11. 一句话总结
 
-- 五大引擎：`application + lanes + shared`
-- Digest 教学语义：`_shared/runtime_config.py + _shared/pedagogy/`
+- 五大引擎：`application + lanes + common`
+- Digest 教学语义：`common/runtime_config.py + common/pedagogy/`
 - 支撑业务：`support/<module> = commands + queries (+ streams/lib)`
+
+

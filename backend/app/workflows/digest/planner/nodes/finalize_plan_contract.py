@@ -14,7 +14,7 @@ from app.workflows.digest.planner.lib.plans import (
 )
 from app.workflows.digest.planner.lib.research_probe import PlanSketch
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.shared.contracts import resolve_digest_course_type, resolve_planner_retrieval_profile
+from app.workflows.digest.common.contracts import resolve_digest_course_type, resolve_planner_retrieval_profile
 
 _GENERIC_TITLE_MARKERS = (
     "当前主题",

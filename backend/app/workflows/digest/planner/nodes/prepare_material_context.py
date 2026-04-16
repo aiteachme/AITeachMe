@@ -12,10 +12,12 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.state import BuildPlannerState
-from app.workflows.digest.shared.contracts import resolve_digest_course_type, resolve_planner_retrieval_profile
-from app.workflows.digest.shared.material_context import DigestMaterialContext
-from app.workflows.digest.shared.models import FastTopicHints, SourcePacket, SubjectProfile
-from app.workflows.digest.shared.prepare import prepare_material_context
+from app.workflows.digest.common.contracts import (
+    resolve_digest_course_type,
+    resolve_planner_retrieval_profile,
+)
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket, SubjectProfile
+from app.workflows.digest.common.prepare import prepare_material_context
 
 _SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 
@@ -141,6 +143,5 @@ def build_prepare_material_context_node(*, context: WorkflowContext):
         }
 
     return prepare_material_context_node
-
 
 __all__ = ["build_prepare_material_context_node"]

@@ -1,4 +1,4 @@
-# Shared 层说明
+﻿# Shared 层说明
 
 最后更新：2026-04-16
 
@@ -84,7 +84,7 @@ infra  = 已经接上外部系统的共享能力
 
 对应落点应该是：
 
-- 引擎专属教学语义放对应 `app.workflows.<module>._shared`
+- 引擎专属教学语义放对应 `app.workflows.<module>.common`
 - 业务编排放 `app.workflows`
 
 ## 6. 新同学最常见的判断题
@@ -109,7 +109,7 @@ infra  = 已经接上外部系统的共享能力
 
 通常放对应业务模块：
 
-- Digest 文档教学语义放 `app.workflows.digest._shared.pedagogy`
+- Digest 文档教学语义放 `app.workflows.digest.common.pedagogy`
 - 通用可执行教学工具放 `app.shared.infra.tools.builtin.teaching_tools`
 
 ### 情况 3：我想改某条业务流程
@@ -148,3 +148,5 @@ infra  = 已经接上外部系统的共享能力
 - `kernel` 放原语。
 - `infra` 放共享基础设施。
 - `workflows` 放业务用例、引擎编排，以及“怎么教”的业务语义。
+
+

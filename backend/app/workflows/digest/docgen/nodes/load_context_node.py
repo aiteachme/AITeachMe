@@ -22,21 +22,12 @@ from app.workflows.digest.docgen.nodes.common import (
     serialize_section,
 )
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.shared.prepare import prepare_shared_inputs
+from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
 def build_load_context_node(*, context: WorkflowContext):
     async def load_context_node(state: DocGenState) -> dict:
         shared_inputs = state.get("shared_inputs")
-        if shared_inputs is None:
-            build_session_id = state.get("build_session_id", "")
-            if build_session_id:
-                try:
-                    from app.workflows.digest.unified.session import get_unified_build_session
-
-                    shared_inputs = get_unified_build_session(build_session_id).shared_inputs
-                except KeyError:
-                    shared_inputs = None
         if shared_inputs is None:
             shared_inputs = await prepare_shared_inputs(
                 state["subject"],
@@ -191,5 +182,6 @@ def build_load_context_node(*, context: WorkflowContext):
 
 
 __all__ = ["build_load_context_node"]
+
 
 

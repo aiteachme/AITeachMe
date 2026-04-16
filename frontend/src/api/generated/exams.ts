@@ -31,31 +31,31 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 /**
  * @summary Exams feature offline
  */
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponse200 = {
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse200 = {
   data: unknown
   status: 200
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponse404 = {
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponse422 = {
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponseSuccess = (examsOfflineRootApiV1SubjectsSubjectExamsGetResponse200) & {
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponseSuccess = (examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse200) & {
   headers: Headers;
 };
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponseError = (examsOfflineRootApiV1SubjectsSubjectExamsGetResponse404 | examsOfflineRootApiV1SubjectsSubjectExamsGetResponse422) & {
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponseError = (examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse404 | examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse422) & {
   headers: Headers;
 };
 
-export type examsOfflineRootApiV1SubjectsSubjectExamsGetResponse = (examsOfflineRootApiV1SubjectsSubjectExamsGetResponseSuccess | examsOfflineRootApiV1SubjectsSubjectExamsGetResponseError)
+export type examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse = (examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponseSuccess | examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponseError)
 
-export const getExamsOfflineRootApiV1SubjectsSubjectExamsGetUrl = (subject: string,) => {
+export const getExamsOfflineRootApiV1SubjectsSubjectExamsDeleteUrl = (subject: string,) => {
 
 
   
@@ -63,12 +63,12 @@ export const getExamsOfflineRootApiV1SubjectsSubjectExamsGetUrl = (subject: stri
   return `/api/v1/subjects/${subject}/exams/`
 }
 
-export const examsOfflineRootApiV1SubjectsSubjectExamsGet = async (subject: string, options?: RequestInit): Promise<examsOfflineRootApiV1SubjectsSubjectExamsGetResponse> => {
+export const examsOfflineRootApiV1SubjectsSubjectExamsDelete = async (subject: string, options?: RequestInit): Promise<examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse> => {
   
-  return orvalApiClient<examsOfflineRootApiV1SubjectsSubjectExamsGetResponse>(getExamsOfflineRootApiV1SubjectsSubjectExamsGetUrl(subject),
+  return orvalApiClient<examsOfflineRootApiV1SubjectsSubjectExamsDeleteResponse>(getExamsOfflineRootApiV1SubjectsSubjectExamsDeleteUrl(subject),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'PUT'
     
     
   }
@@ -77,11 +77,11 @@ export const examsOfflineRootApiV1SubjectsSubjectExamsGet = async (subject: stri
 
 
 
-export const getExamsOfflineRootApiV1SubjectsSubjectExamsGetMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>, TError,{subject: string}, TContext> => {
+export const getExamsOfflineRootApiV1SubjectsSubjectExamsDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>, TError,{subject: string}, TContext> => {
 
-const mutationKey = ['examsOfflineRootApiV1SubjectsSubjectExamsGet'];
+const mutationKey = ['examsOfflineRootApiV1SubjectsSubjectExamsDelete'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -91,10 +91,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>, {subject: string}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>, {subject: string}> = (props) => {
           const {subject} = props ?? {};
 
-          return  examsOfflineRootApiV1SubjectsSubjectExamsGet(subject,requestOptions)
+          return  examsOfflineRootApiV1SubjectsSubjectExamsDelete(subject,requestOptions)
         }
 
 
@@ -104,51 +104,51 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExamsOfflineRootApiV1SubjectsSubjectExamsGetMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>>
+    export type ExamsOfflineRootApiV1SubjectsSubjectExamsDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>>
     
-    export type ExamsOfflineRootApiV1SubjectsSubjectExamsGetMutationError = ErrorResponse | HTTPValidationError
+    export type ExamsOfflineRootApiV1SubjectsSubjectExamsDeleteMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary Exams feature offline
  */
-export const useExamsOfflineRootApiV1SubjectsSubjectExamsGet = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useExamsOfflineRootApiV1SubjectsSubjectExamsDelete = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>, TError,{subject: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsGet>>,
+        Awaited<ReturnType<typeof examsOfflineRootApiV1SubjectsSubjectExamsDelete>>,
         TError,
         {subject: string},
         TContext
       > => {
-      return useMutation(getExamsOfflineRootApiV1SubjectsSubjectExamsGetMutationOptions(options), queryClient);
+      return useMutation(getExamsOfflineRootApiV1SubjectsSubjectExamsDeleteMutationOptions(options), queryClient);
     }
     /**
  * @summary Exams feature offline
  */
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse200 = {
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse200 = {
   data: unknown
   status: 200
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse404 = {
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse422 = {
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse422 = {
   data: HTTPValidationError
   status: 422
 }
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponseSuccess = (examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse200) & {
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponseSuccess = (examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse200) & {
   headers: Headers;
 };
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponseError = (examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse404 | examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse422) & {
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponseError = (examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse404 | examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse422) & {
   headers: Headers;
 };
 
-export type examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse = (examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponseSuccess | examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponseError)
+export type examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse = (examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponseSuccess | examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponseError)
 
-export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathGetUrl = (subject: string,
+export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteUrl = (subject: string,
     path: string,) => {
 
 
@@ -157,13 +157,13 @@ export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathGetUrl = (subject: 
   return `/api/v1/subjects/${subject}/exams/${path}`
 }
 
-export const examsOfflinePathApiV1SubjectsSubjectExamsPathGet = async (subject: string,
-    path: string, options?: RequestInit): Promise<examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse> => {
+export const examsOfflinePathApiV1SubjectsSubjectExamsPathDelete = async (subject: string,
+    path: string, options?: RequestInit): Promise<examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse> => {
   
-  return orvalApiClient<examsOfflinePathApiV1SubjectsSubjectExamsPathGetResponse>(getExamsOfflinePathApiV1SubjectsSubjectExamsPathGetUrl(subject,path),
+  return orvalApiClient<examsOfflinePathApiV1SubjectsSubjectExamsPathDeleteResponse>(getExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteUrl(subject,path),
   {      
     ...options,
-    method: 'PATCH'
+    method: 'PUT'
     
     
   }
@@ -172,11 +172,11 @@ export const examsOfflinePathApiV1SubjectsSubjectExamsPathGet = async (subject: 
 
 
 
-export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathGetMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>, TError,{subject: string;path: string}, TContext> => {
+export const getExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>, TError,{subject: string;path: string}, TContext> => {
 
-const mutationKey = ['examsOfflinePathApiV1SubjectsSubjectExamsPathGet'];
+const mutationKey = ['examsOfflinePathApiV1SubjectsSubjectExamsPathDelete'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -186,10 +186,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>, {subject: string;path: string}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>, {subject: string;path: string}> = (props) => {
           const {subject,path} = props ?? {};
 
-          return  examsOfflinePathApiV1SubjectsSubjectExamsPathGet(subject,path,requestOptions)
+          return  examsOfflinePathApiV1SubjectsSubjectExamsPathDelete(subject,path,requestOptions)
         }
 
 
@@ -199,21 +199,21 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathGetMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>>
+    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>>
     
-    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathGetMutationError = ErrorResponse | HTTPValidationError
+    export type ExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary Exams feature offline
  */
-export const useExamsOfflinePathApiV1SubjectsSubjectExamsPathGet = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useExamsOfflinePathApiV1SubjectsSubjectExamsPathDelete = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>, TError,{subject: string;path: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathGet>>,
+        Awaited<ReturnType<typeof examsOfflinePathApiV1SubjectsSubjectExamsPathDelete>>,
         TError,
         {subject: string;path: string},
         TContext
       > => {
-      return useMutation(getExamsOfflinePathApiV1SubjectsSubjectExamsPathGetMutationOptions(options), queryClient);
+      return useMutation(getExamsOfflinePathApiV1SubjectsSubjectExamsPathDeleteMutationOptions(options), queryClient);
     }
     

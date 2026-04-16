@@ -262,7 +262,6 @@ class ConfirmedBuildPlanRequiredError(AITeachMeError):
     def __init__(self, build_type: str) -> None:
         build_label = {
             "docs": "知识文档构建",
-            "all": "统一知识构建",
         }.get(build_type, "当前构建")
         super().__init__(detail=f"{build_label}必须基于已确认的构建方案执行，请先完成 planner 确认。")
 

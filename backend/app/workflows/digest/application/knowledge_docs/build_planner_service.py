@@ -1,4 +1,4 @@
-"""Services for the persistent build planner flow."""
+﻿"""Services for the persistent build planner flow."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ from app.shared.infra.exceptions import (
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
 )
-from app.workflows.digest._shared.runtime_config import get_teaching_runtime_config
+from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
 from app.workflows.digest.planner import (
@@ -680,3 +680,4 @@ __all__ = [
     "get_latest_planner_session_service",
     "mark_confirmed_build_plan_status",
 ]
+

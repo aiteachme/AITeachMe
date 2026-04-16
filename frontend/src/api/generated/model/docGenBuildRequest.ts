@@ -17,8 +17,8 @@ export interface DocGenBuildRequest {
   prompt?: string | null;
   /** Optional subject-level embedding resolution chosen after a precheck conflict. */
   embedding_resolution?: 'rebuild' | 'disable' | null;
-  /** Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only, 'all' for unified build. */
+  /** Build type: 'docs' for knowledge documents only, 'graph' for knowledge graph only. */
   build_type?: DocGenBuildRequestBuildType;
-  /** Planner-generated and confirmed build plan ID. `docs` and `all` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and user goal. */
+  /** Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and user goal. */
   confirmed_plan_id?: string | null;
 }

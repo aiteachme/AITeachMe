@@ -37,6 +37,10 @@ from app.workflows.digest import run_docgen_workflow
 - `create_docgen_initial_state(...)`
 - `get_langgraph_dev_docgen_graph()`
 
+## 后续改造计划
+
+DocGen 的详细后续计划见 [IMPROVEMENT_PLAN.md](./IMPROVEMENT_PLAN.md)。这份文档记录了 confirmed plan 合同、Deep Research 式章节研究、证据账本、审校重写、Examine 练习注入、资产生命周期和发布恢复等改造方向。
+
 ## 目录结构
 
 ```text
@@ -67,7 +71,7 @@ api/knowledge_docs.py
   -> trigger_docgen_build(...)
   -> 校验 confirmed_plan_id
   -> 获取构建锁
-  -> run_docgen_background(...) 或 run_unified_build_background(...)
+  -> run_docgen_background(...)
   -> run_docgen_workflow(...)
   -> digest/docgen graph
 ```
@@ -330,12 +334,6 @@ load_context
 
 文件：`nodes/publish_document_node.py`
 
-发布分两种模式：
-
-### standalone DocGen
-
-如果没有有效 unified build session：
-
 1. `stage_knowledge_docs(...)` 写入 `_build/` 草稿。
 2. `publish_staged_knowledge_docs(...)` 发布正式版本：
    - 写章节 Markdown
@@ -345,14 +343,6 @@ load_context
    - 写 manifest
    - 清理 staging
 3. 返回 `doc_ids`。
-
-### unified build 中的 DocGen
-
-如果存在 unified build session：
-
-1. 只暂存 DocGen 草稿。
-2. 等 unified lane 后续统一发布。
-3. `doc_ids` 为空，但 `built_paths` 和 `merged_markdown` 可用。
 
 ## 当前明显优化点
 

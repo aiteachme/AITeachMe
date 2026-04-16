@@ -19,17 +19,18 @@ from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
 from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
-from app.workflows.ingest.shared.parsing.classifier import classify_file
-from app.workflows.ingest.shared.parsing.formats import (
+from app.workflows.ingest.common.parsing.classifier import classify_file
+from app.workflows.ingest.common.parsing.decision import build_parse_decision
+from app.workflows.ingest.common.parsing.formats import (
     categorize_text_extension,
     get_text_language_hint,
     is_text_extension,
 )
-from app.workflows.ingest.shared.parsing.orchestrator import fast_parse_file
-from app.workflows.ingest.shared.parsing.strategy import ParsePlan, build_parse_plan
-from app.workflows.ingest.shared.parsing.types import ParserRunOptions
-from app.workflows.ingest.shared.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
-from app.workflows.ingest.state import IngestParseState
+from app.workflows.ingest.common.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.common.parsing.strategy import ParsePlan, build_parse_plan
+from app.workflows.ingest.common.parsing.types import ParserRunOptions
+from app.workflows.ingest.common.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.workflows.ingest.fast_parse.state import IngestParseState
 
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
     _MinerUFastParseResult,
@@ -69,6 +70,7 @@ async def run_parse_file_workflow(
         mineru_enable_formula: bool = True
         mineru_enable_table: bool = True
         mineru_is_ocr: bool = False
+        parse_decision = None
 
         with managed_session() as session:
             raw_file = get_raw_file_by_id(session, file_id)
@@ -186,6 +188,22 @@ async def run_parse_file_workflow(
             # ── Fast Path: text/markdown/code files skip classify+plan entirely ──
             # (改进 2: RAGFlow Naive + LangChain 直通思路)
             ext = raw_file.file_ext.lower()
+            parse_decision = build_parse_decision(
+                extension=ext,
+                requested_provider=requested_parser_provider,
+                mineru_available=bool(mineru_token and mineru_token.strip()),
+            )
+            logger.info(
+                "ingest_parse_decision_built",
+                subject=subject,
+                file_id=file_id,
+                requested_provider=parse_decision.requested_provider,
+                primary_provider=parse_decision.primary_provider,
+                primary_reason=parse_decision.primary_reason,
+                unsupported_requested_provider=parse_decision.unsupported_requested_provider,
+                requested_provider_unavailable=parse_decision.requested_provider_unavailable,
+                fallback_chain=parse_decision.fallback_chain,
+            )
             if is_text_extension(ext):
                 t0 = time.perf_counter()
                 raw_text = file_path.read_text(encoding="utf-8", errors="replace")
@@ -227,6 +245,9 @@ async def run_parse_file_workflow(
                         "text_category": text_category,
                         "lang_hint": lang_hint,
                         "parse_elapsed_ms": round(elapsed * 1000, 1),
+                        "needs_quality_reparse": False,
+                        "needs_asset_ocr": False,
+                        "parse_decision": parse_decision.model_dump(mode="json"),
                     }, ensure_ascii=False),
                     parse_error_message=None,
                     status=TaskStatus.COMPLETED.value,
@@ -276,11 +297,11 @@ async def run_parse_file_workflow(
             )
 
             # Build parse plan
-            if requested_parser_provider == "mineru":
+            if parse_decision.uses_mineru:
                 parse_plan = ParsePlan(
                     mode="external_mineru",
                     parser_chain=["mineru"],
-                    decision_reason="用户在前端选择 MinerU 外部解析引擎。",
+                    decision_reason=parse_decision.primary_reason,
                     options=ParserRunOptions(),
                 )
             else:
@@ -324,7 +345,7 @@ async def run_parse_file_workflow(
         )
         provider_metadata: dict[str, object] | None = None
         # When MinerU is explicitly selected, bypass the local parser chain.
-        if requested_parser_provider == "mineru":
+        if parse_decision and parse_decision.uses_mineru:
             mineru_started_at = time.monotonic()
             logger.info(
                 "mineru_parse_started",
@@ -366,7 +387,7 @@ async def run_parse_file_workflow(
                             copied_assets += 1
 
                     # Canonicalize: rewrite image refs to ../assets/<file_id>/... and normalize markdown.
-                    from app.workflows.ingest.shared.parsing.canonicalizer import canonicalize_markdown
+                    from app.workflows.ingest.common.parsing.canonicalizer import canonicalize_markdown
 
                     canonical_result = canonicalize_markdown(
                         mineru_markdown_raw,
@@ -456,6 +477,7 @@ async def run_parse_file_workflow(
             "failed_feature": None,
             "provider_failure_reason": None,
             "requested_parser_provider": requested_parser_provider,
+            "parse_decision": parse_decision.model_dump(mode="json") if parse_decision else None,
             "mineru": {
                 "token_source": mineru_token_source,
                 "model_version": mineru_model_version,
@@ -472,6 +494,8 @@ async def run_parse_file_workflow(
             "asset_ocr_images": 0,
             "asset_ocr_replacements": 0,
             "needs_enhance": parse_result.needs_enhance,
+            "needs_quality_reparse": getattr(parse_result, "needs_quality_reparse", False),
+            "needs_asset_ocr": getattr(parse_result, "needs_asset_ocr", False),
             "raw_markdown_storage_key": md_storage_key,
             "asset_storage_dir": asset_storage_dir,
         }
@@ -527,6 +551,8 @@ async def run_parse_file_workflow(
             asset_count=len(asset_rows),
             quality_score=quality_score,
             needs_enhance=parse_result.needs_enhance,
+            needs_quality_reparse=getattr(parse_result, "needs_quality_reparse", False),
+            needs_asset_ocr=getattr(parse_result, "needs_asset_ocr", False),
         )
 
         # ── Phase 2: Background enhance (quality re-parse + optional OCR) ──

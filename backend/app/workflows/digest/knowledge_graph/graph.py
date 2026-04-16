@@ -165,7 +165,7 @@ def create_graph_digest_initial_state(
     file_ids: list[int],
     job_id: int,
     build_session_id: str | None = None,
-    doc_chapter_metadatas: list[dict[str, object]] | None = None,
+    user_prompt: str | None = None,
 ) -> KGDigestState:
     """Create the initial state for digest graph building."""
 
@@ -174,7 +174,7 @@ def create_graph_digest_initial_state(
         "file_ids": file_ids,
         "job_id": job_id,
         "build_session_id": build_session_id or "",
-        "doc_chapter_metadatas": list(doc_chapter_metadatas or []),
+        "user_prompt": user_prompt,
         "shared_inputs": None,
         "chunk_ids": [],
         "chunk_uid_to_chunk_id": {},
@@ -201,5 +201,4 @@ __all__ = [
     "build_kg_digest_graph",
     "create_graph_digest_initial_state",
 ]
-
 

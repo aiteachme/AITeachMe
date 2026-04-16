@@ -1,11 +1,11 @@
-"""Knowledge-graph lane reporting helpers."""
+﻿"""Knowledge-graph lane reporting helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
 
-from app.workflows.digest.shared.metrics import (
+from app.workflows.digest.common.metrics import (
     DigestTokenSummary,
     build_lane_llm_rollup,
     build_slow_items,
@@ -83,3 +83,4 @@ def _resolve_error_message(state: Mapping[str, Any], *, error_message: str | Non
 
 
 __all__ = ["build_kg_lane_summary"]
+

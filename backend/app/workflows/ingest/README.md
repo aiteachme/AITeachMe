@@ -1,4 +1,4 @@
-# Ingest 透视引擎链路说明
+﻿# Ingest 透视引擎链路说明
 
 最后更新：2026-04-16
 
@@ -28,6 +28,7 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 ingest/
   __init__.py
   README.md
+  application/
   fast_parse/
     graph.py
     state.py
@@ -38,19 +39,17 @@ ingest/
     state.py
     nodes/
     lib/
-  shared/
+  common/
     parsing/
-  runtime.py
-  recovery.py
 ```
 
 说明：
 
+- `application/` 是 ingest 模块级 canonical 入口，承接 parse-file runtime、恢复与 workflow exports。
 - `fast_parse/` 是 Phase 1 快速解析链路。
 - `deep_enhance/` 是 Phase 2 后台增强链路。
-- `shared/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
-- `runtime.py` 是模块稳定入口，当前真实运行会调 `fast_parse/lib/runtime.py`，而不是直接 `graph.compile().ainvoke()`。
-- `recovery.py` 负责服务启动后恢复卡在 `fast_parsed` / `enhancing` 的后台增强任务。
+- `common/parsing/` 放两条链路共享的分类、策略、解析器、Markdown 规范化与 OCR 实现。
+- 模块根的 `runtime.py`、`recovery.py`、`exports.py` 现在只保留兼容导入面。
 
 ## 对外入口
 
@@ -135,7 +134,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ### 4. 常规通道：分类
 
-非文本文件先走 `shared/parsing/classifier.py::classify_file()`。
+非文本文件先走 `common/parsing/classifier.py::classify_file()`。
 
 分类器是轻量、无 LLM 的特征判断：
 
@@ -155,7 +154,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ### 5. 常规通道：制定解析计划
 
-`shared/parsing/strategy.py::build_parse_plan()` 根据分类结果生成 `ParsePlan`：
+`common/parsing/strategy.py::build_parse_plan()` 根据分类结果生成 `ParsePlan`：
 
 - `mode`：解析模式，例如 `quality_pdf`、`fast_scanned_pdf`、`balanced_docx`。
 - `parser_chain`：解析器尝试顺序。
@@ -171,7 +170,7 @@ parser_chain = ["mineru"]
 
 ### 6. 常规通道：执行解析
 
-本地解析走 `shared/parsing/orchestrator.py::fast_parse_file()`：
+本地解析走 `common/parsing/orchestrator.py::fast_parse_file()`：
 
 ```text
 parser_chain 按顺序尝试
@@ -298,3 +297,4 @@ Phase 2 在 `asyncio.create_task()` 中后台执行。主解析请求会先返�
 ## 一句话总结
 
 Ingest 当前是“两阶段解析”：Phase 1 先给可用 Markdown，Phase 2 后台尽量把复杂 PDF 和图片资料补强。它的优化重点不是更会教学，而是更稳、更快、更可恢复地把资料变成 Digest 的标准输入。
+

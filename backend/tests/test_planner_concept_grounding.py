@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
@@ -16,7 +16,7 @@ from app.workflows.digest.planner.lib.grounding import (
 from app.workflows.digest.planner.graph import build_planner_graph
 from app.workflows.digest.planner.nodes.generate_plan_preview import build_generate_plan_preview_node
 from app.workflows.digest.planner.state import BuildPlannerGraphInput
-from app.workflows.digest.shared.models import DigestMaterialContext, FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SectionPacket, SharedInputs, SubjectProfile
 
 
 def _build_shared_inputs() -> SharedInputs:

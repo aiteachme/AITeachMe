@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
 from app.workflows.digest.planner.lib.research_probe import EvidenceBrief, LearningIntentProfile, PlanSketch, material_topic_hints
-from app.workflows.digest.shared.models import DigestMaterialContext
+from app.workflows.digest.common.models import DigestMaterialContext
 
 
 def build_plan_composer_messages(

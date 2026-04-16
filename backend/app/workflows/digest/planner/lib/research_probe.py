@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.workflows.digest.planner.lib.plans import BuildPlannerDraft
-from app.workflows.digest.shared.models import DigestMaterialContext
+from app.workflows.digest.common.models import DigestMaterialContext
 
 
 class PlannerQuery(BaseModel):

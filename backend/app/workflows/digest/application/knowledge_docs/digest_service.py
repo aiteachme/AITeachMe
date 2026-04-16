@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import uuid
@@ -37,9 +37,8 @@ from app.utils.job_helpers import cleanup_pending_by_subject
 from app.utils.path_helpers import build_merged_knowledge_base_build_path, build_merged_knowledge_base_path
 from app.utils.presenters import require_id, require_uid
 from app.utils.time import utcnow
-from app.workflows.digest.shared.metrics import build_token_summary
-from app.workflows.digest.shared.contracts import normalize_digest_confirmed_plan_payload
-from app.workflows.digest.unified import run_unified_digest_build
+from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.shared.infra.subject import inspect_subject_build_precheck, resolve_subject_build_vector_status
 
 logger = structlog.get_logger()
@@ -284,7 +283,7 @@ def _load_confirmed_plan_payload(*, subject: str, user_id: str, confirmed_plan_i
     return plan, _build_confirmed_plan_payload(plan)
 
 
-def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "all") -> tuple[DocGenBuildData, list[int]]:
+def trigger_docgen_build(session: Session, *, subject: Subject, user_id: str, file_uids: list[str] | None, prompt: str | None, embedding_resolution: str | None, confirmed_plan_id: str | None, build_type: str = "docs") -> tuple[DocGenBuildData, list[int]]:
     conflict = inspect_subject_build_precheck(session, subject=subject)
     vector_status = resolve_subject_build_vector_status(session, subject=subject, embedding_resolution=embedding_resolution)
     force_full_rebuild = bool(conflict is not None and conflict.requires_full_rebuild and vector_status.mode != "disabled")
@@ -456,55 +455,6 @@ async def run_docgen_background(*, subject: str, file_ids: list[int], prompt: st
         release_knowledge_build_lock(subject)
 
 
-async def run_unified_build_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime, planner_session_id: str | None = None, confirmed_plan_id: str | None = None, user_id: str | None = None) -> None:
-    build_session_id = _new_build_session_id()
-    confirmed_plan_payload = None
-    resolved_digest_mode = None
-    resolved_tone = None
-    if not confirmed_plan_id or not user_id:
-        _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="confirmed_plan_required", draft_available=False, staged_chapter_count=0)
-        logger.error("knowledge_unified_build_failed_missing_confirmed_plan", subject=subject)
-        release_knowledge_build_lock(subject)
-        return
-    if confirmed_plan_id and user_id:
-        plan, confirmed_plan_payload = _load_confirmed_plan_payload(subject=subject, user_id=user_id, confirmed_plan_id=confirmed_plan_id)
-        planner_session_id = planner_session_id or plan.planner_session_id
-        resolved_digest_mode = plan.digest_mode
-        resolved_tone = plan.tone
-        with managed_session() as session:
-            mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="building")
-    try:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="running", stage="prepare_shared", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, source_file_ids=file_ids, prompt=prompt)
-        _cleanup_pending_digest_outputs(subject)
-        result = await run_unified_digest_build(subject=subject, file_ids=file_ids, user_prompt=prompt, requested_at=requested_at, build_session_id=build_session_id, confirmed_plan=confirmed_plan_payload, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, tone=resolved_tone)
-        if not result.success:
-            _clear_docgen_staging_safely(subject)
-            _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=result.error, draft_available=False, staged_chapter_count=0)
-            if confirmed_plan_id and user_id:
-                with managed_session() as session:
-                    mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
-            logger.error("knowledge_unified_build_failed", subject=subject, error=result.error)
-            return
-        _write_build_status(subject, requested_at=requested_at, status="completed", stage="completed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message=None, draft_available=False, published_doc_count=result.doc_count)
-        if confirmed_plan_id and user_id:
-            with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="completed")
-    except asyncio.CancelledError:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="cancelled", stage="cancelled", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_cancelled", draft_available=False, staged_chapter_count=0)
-        raise
-    except Exception:
-        _clear_docgen_staging_safely(subject)
-        _write_build_status(subject, requested_at=requested_at, status="failed", stage="failed", build_session_id=build_session_id, planner_session_id=planner_session_id, confirmed_plan_id=confirmed_plan_id, digest_mode=resolved_digest_mode, error_message="build_crashed", draft_available=False, staged_chapter_count=0)
-        if confirmed_plan_id and user_id:
-            with managed_session() as session:
-                mark_confirmed_build_plan_status(session, subject=subject, user_id=user_id, plan_id=confirmed_plan_id, status="failed")
-        logger.exception("knowledge_unified_build_failed", subject=subject)
-        return
-    finally:
-        release_knowledge_build_lock(subject)
-
 async def run_graph_build_background(*, subject: str, file_ids: list[int], prompt: str | None, requested_at: datetime) -> None:
     from app.workflows.digest import run_graph_digest_workflow
     build_session_id = _new_build_session_id()
@@ -515,6 +465,7 @@ async def run_graph_build_background(*, subject: str, file_ids: list[int], promp
             subject=subject,
             job_id=_new_graph_run_id(),
             file_ids=file_ids,
+            user_prompt=prompt,
             build_session_id=build_session_id,
         )
         if result.failed:
@@ -552,4 +503,5 @@ def get_docgen_result(session: Session, *, subject: str) -> DocGenGetResponse:
     return DocGenGetResponse(exists=bool(merged_path.exists() and markdown.strip()), markdown=markdown, updated_at=updated_at, source_file_uids=source_file_uids, prompt=(manifest.prompt if manifest is not None else None), draft_markdown=draft_markdown, draft_updated_at=draft_updated_at, build=build_response, build_preview=build_preview, build_metrics=build_metrics, vector_status=get_subject_vector_status_by_slug(session, subject), planner_session_id=(build_response.planner_session_id if build_response is not None else None), confirmed_plan_id=(build_response.confirmed_plan_id if build_response is not None else None), digest_mode=(build_response.digest_mode if build_response is not None else None))
 
 
-__all__ = ["get_docgen_result", "run_docgen_background", "run_graph_build_background", "run_graph_digest_background", "run_unified_build_background", "trigger_docgen_build"]
+__all__ = ["get_docgen_result", "run_docgen_background", "run_graph_build_background", "run_graph_digest_background", "trigger_docgen_build"]
+

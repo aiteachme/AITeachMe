@@ -35,10 +35,12 @@ class _MinerUFastParseResult:
     extracted_data_images: int
     appended_asset_images: int
     needs_enhance: bool
+    needs_quality_reparse: bool = False
+    needs_asset_ocr: bool = False
 
 
 def create_parse_file_initial_state(*, subject: str, file_id: int):
-    from app.workflows.ingest.state import IngestParseState
+    from app.workflows.ingest.fast_parse.state import IngestParseState
 
     return {
         "subject": subject,
