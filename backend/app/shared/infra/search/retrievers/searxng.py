@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
@@ -20,7 +20,7 @@ class SearXngRetriever(BaseRetriever):
     def _base_url(cls) -> str:
         settings = get_settings()
         return (
-            str(getattr(settings, "searxng_base_url", "") or "").strip()
+            str(getattr(settings.search, "searxng_base_url", "") or "").strip()
             or (get_env("SEARXNG_BASE_URL") or "").strip()
         ).rstrip("/")
 
@@ -45,7 +45,7 @@ class SearXngRetriever(BaseRetriever):
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s, follow_redirects=True) as client:
                 response = await client.get(
                     f"{base_url}/search",
                     params={

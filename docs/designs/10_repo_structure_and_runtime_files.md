@@ -137,10 +137,10 @@ shared     = 提供共享基础能力
 
 ```text
 backend/app/api/knowledge_docs.py
--> backend/app/workflows/digest/application/knowledge_docs/build_planner_service.py
+-> backend/app/workflows/digest/planner/sessions.py
 -> backend/app/workflows/digest/planner/
 -> confirmed_plan
--> backend/app/workflows/digest/application/knowledge_docs/digest_service.py
+-> backend/app/workflows/digest/docgen/builds.py
 -> backend/app/workflows/digest.run_docgen_workflow
 ```
 
@@ -149,13 +149,13 @@ backend/app/api/knowledge_docs.py
 ### 5.1 Planner 阶段
 
 - API 先创建或修订 build planner session
-- `build_planner_service.py` 调 `app.workflows.digest.planner`
+- `planner/sessions.py` 调 `app.workflows.digest.planner`
 - planner 产出规范化的 plan payload
 - 用户确认后，固化成 confirmed plan
 
 ### 5.2 DocGen 阶段
 
-- `digest_service.py` 读取 confirmed plan
+- `docgen/builds.py` 读取 confirmed plan
 - 校验 build lock、文件选择、向量状态
 - 调 `app.workflows.digest.run_docgen_workflow`
 - docgen graph 再去执行 research / writer / assemble / publish
@@ -166,8 +166,10 @@ backend/app/api/knowledge_docs.py
 
 `backend/app/workflows/digest/` 下面还有：
 
-- `application/`
-  承接知识文档、知识图谱等 API-facing 用例入口。
+- `events.py`、`exports.py`
+  Digest 模块根级别入口。
+- `docgen/__init__.py`、`knowledge_graph/__init__.py`
+  Digest workflow runner 入口。
 - `planner/`
   负责确认式构建方案生成。
 - `docgen/`
@@ -189,12 +191,12 @@ backend/app/api/knowledge_docs.py
 
 - 仓库根 `.env`
 - 仓库根 `.env.sample`
-- 仓库根 `config.yaml`
+- 仓库根 `settings.yaml`
 
 使用口径：
 
 - 环境变量由 `backend/app/shared/infra/env_support.py` 读取
-- 项目级运行配置由 `backend/app/shared/infra/config/` 从 `config.yaml` 读取
+- 项目级运行配置由 `backend/app/shared/infra/settings/` 从 `settings.yaml` 读取
 
 ### 7.2 后端运行时根目录
 
@@ -315,8 +317,8 @@ backend/app/api/knowledge_docs.py
 5. `backend/app/workflows/README.md`
 6. `backend/app/workflows/support/README.md`
 7. `backend/app/api/knowledge_docs.py`
-8. `backend/app/workflows/digest/application/knowledge_docs/build_planner_service.py`
-9. `backend/app/workflows/digest/application/knowledge_docs/digest_service.py`
+8. `backend/app/workflows/digest/planner/sessions.py`
+9. `backend/app/workflows/digest/docgen/builds.py`
 10. `backend/app/workflows/digest/planner/`
 11. `backend/app/workflows/digest/docgen/`
 12. `frontend/src/App.tsx` 与 `frontend/src/pages/*`

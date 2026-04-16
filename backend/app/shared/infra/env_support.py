@@ -101,8 +101,10 @@ def get_project_root() -> Path:
     return _PROJECT_ROOT
 
 
-def resolve_project_config_path() -> Path:
-    configured = (get_env("PROJECT_CONFIG_PATH", "config.yaml") or "config.yaml").strip() or "config.yaml"
+def resolve_project_settings_path() -> Path:
+    configured = (get_env("PROJECT_SETTINGS_PATH") or "").strip()
+    if not configured:
+        configured = "settings.yaml"
     path = Path(configured)
     if path.is_absolute():
         return path
@@ -117,5 +119,5 @@ __all__ = [
     "get_env_optional_bool",
     "get_project_root",
     "load_local_dotenv",
-    "resolve_project_config_path",
+    "resolve_project_settings_path",
 ]

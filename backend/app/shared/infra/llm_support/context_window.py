@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger()
 
@@ -38,7 +38,7 @@ class ContextWindowManager:
     def __init__(self, budget: TokenBudget | None = None) -> None:
         if budget is None:
             settings = get_settings()
-            budget = TokenBudget(total=settings.default_token_budget)
+            budget = TokenBudget(total=settings.runtime.default_token_budget)
         self._budget = budget
 
     @property

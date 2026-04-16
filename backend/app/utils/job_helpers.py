@@ -8,7 +8,7 @@ from typing import Literal
 import structlog
 from sqlmodel import Session, select
 
-from app.models import KnowledgeEdge, KnowledgeNode
+from app.models import KnowledgeEdge, KnowledgeUnit
 from app.utils.time import utcnow
 
 logger = structlog.get_logger()
@@ -66,9 +66,9 @@ def _cleanup_graph_pending_by_subject(session: Session, *, subject: str) -> int:
 
     pending_nodes = list(
         session.exec(
-            select(KnowledgeNode).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status == "pending",
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status == "pending",
             )
         ).all()
     )
@@ -102,10 +102,10 @@ def cleanup_orphan_pending_by_subject(
 
     stale_nodes = list(
         session.exec(
-            select(KnowledgeNode).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status == "pending",
-                KnowledgeNode.created_at < cutoff,
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status == "pending",
+                KnowledgeUnit.created_at < cutoff,
             )
         ).all()
     )
@@ -127,9 +127,9 @@ def stamp_graph_revision_by_subject(
     total = 0
     nodes = list(
         session.exec(
-            select(KnowledgeNode).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status == "active",
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status == "active",
             )
         ).all()
     )
@@ -172,9 +172,9 @@ def activate_graph_entities_by_subject(session: Session, *, subject: str) -> int
 
     nodes = list(
         session.exec(
-            select(KnowledgeNode).where(
-                KnowledgeNode.subject == subject,
-                KnowledgeNode.status == "pending",
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.subject == subject,
+                KnowledgeUnit.status == "pending",
             )
         ).all()
     )
@@ -201,3 +201,4 @@ def activate_graph_entities_by_subject(session: Session, *, subject: str) -> int
     session.commit()
     logger.info("activate_graph_entities_by_subject", subject=subject, activated=total)
     return total
+

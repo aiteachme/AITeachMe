@@ -18,7 +18,7 @@ from app.models import IngestStatus, RawFileAsset, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import to_storage_key
-from app.workflows.ingest.application.events import (
+from app.workflows.ingest.events import (
     IngestFileFastParsedEvent,
     IngestFileParseFailedEvent,
     IngestFileReadyForDigestEvent,

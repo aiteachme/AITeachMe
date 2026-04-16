@@ -1,4 +1,4 @@
-﻿# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
+# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
 **状态**: 阶段 1 + 阶段 3 已完成（ContentStore 统一抽象 + OSS 接入）  
 **最后更新**: 2026-04-04  
@@ -284,7 +284,7 @@ ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径�
 
 主要文件：
 
-- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/config/settings.py)
+- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/settings/settings.py)
 
 需要补齐的配置契约：
 
@@ -402,7 +402,7 @@ EMBEDDING_MODEL=text-embedding-v3
 
 必改核心文件通常包括：
 
-- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/config/settings.py)
+- [`settings.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/settings/settings.py)
 - [`database/core.py`](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/database/core.py)
 - [`path_helpers.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/path_helpers.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
@@ -520,7 +520,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 主要涉及：
 
-- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - ingest workflow 相关文件
 - digest docs publish 相关文件
@@ -546,7 +546,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 高优先级文件通常包括：
 
-- [`workflows/support/files/commands.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/commands.py)
+- [`workflows/support/files/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/files/uploads.py)
 - [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`runtime.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/runtime.py)

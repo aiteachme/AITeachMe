@@ -1,4 +1,4 @@
-﻿import { HttpResponse, http } from "msw";
+import { HttpResponse, http } from "msw";
 
 type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
 type QuestionType = "single_choice" | "fill_blank" | "short_answer";
@@ -284,7 +284,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       options: item.options,
       explanation: item.explanation,
       teaching_unit_id: item.teaching_unit_id,
-      node_links: [],
+      knowledge_unit_links: [],
       user_answer: item.user_answer,
       is_correct: item.is_correct,
       score_obtained: item.score_obtained,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
@@ -44,7 +44,7 @@ class TavilyRetriever(BaseRetriever):
             "max_results": max_results,
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
                 response = await client.post(
                     "https://api.tavily.com/search",
                     json=payload,

@@ -8,7 +8,7 @@ from xml.etree import ElementTree
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -29,7 +29,7 @@ class ArxivRetriever(BaseRetriever):
             f"?search_query=all:{quote_plus(query)}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
         )
         try:
-            async with httpx.AsyncClient(timeout=settings.search_provider_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=settings.search.provider_timeout_s) as client:
                 response = await client.get(api_url)
                 response.raise_for_status()
         except Exception as exc:  # pragma: no cover - provider behavior

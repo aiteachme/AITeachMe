@@ -1,4 +1,4 @@
-"""Persistent embedding cache helpers for digest KG resolution."""
+﻿"""Persistent embedding cache helpers for digest knowledge graph resolution."""
 
 from __future__ import annotations
 

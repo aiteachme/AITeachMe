@@ -16,24 +16,39 @@
 workflows/support/<module>/
   __init__.py
   README.md
-  commands.py
-  queries.py
-  streams.py      # 可选
-  lib/            # 可选
+  <use_case_a>.py
+  <use_case_b>.py
+  streams.py                # 可选
+  lib/                      # 可选
 ```
+
+推荐做法：
+
+- 按用例或链路命名文件，例如 `catalog.py`、`uploads.py`、`deletion.py`
+- 没有真实调用方的旧兼容壳直接删除，不保留空门面
 
 ## 当前已落地模块
 
 - `auth/`
   访客身份、邮箱注册登录、token 与验证码的 canonical 代码位置，承接原 `app.services.auth_service`。
+- `auth/identity.py`、`auth/sessions.py`、`auth/smtp.py`
+  当前鉴权模块的 canonical 子入口。
 - `export_import/`
   学科级课程包导入导出的 canonical 代码位置，承接原 `app.services.export_import_service`。
+- `export_import/exports.py`、`export_import/imports.py`、`export_import/courses.py`
+  当前课程包模块的 canonical 子入口。
 - `files/`
   文件上传、列表、删除与解析触发的 canonical 代码位置，承接原 `app.services.file_service`。
+- `files/catalog.py`、`files/uploads.py`、`files/parsing.py`、`files/deletion.py`
+  当前文件模块的 canonical 子入口。
 - `system/`
   系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
+- `system/init.py`、`system/settings.py`
+  当前系统模块的 canonical 子入口。
 - `subjects/`
   学科注册、归属校验、删除预览与级联删除的 canonical 代码位置，承接原 `app.services.subject_service` 与 `subject_deletion_service`。
+- `subjects/catalog.py`、`subjects/deletion.py`
+  当前学科模块的 canonical 子入口。
 
 ## 一句话总结
 

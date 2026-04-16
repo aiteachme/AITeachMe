@@ -98,8 +98,8 @@ class QuestionBankItemResponse(BaseModel):
 
 
 class ExamNodeLinkResponse(BaseModel):
-    knowledge_node_id: int
-    knowledge_node_name: str
+    knowledge_unit_id: int
+    knowledge_unit_name: str
     coverage_weight: float
     role: str
     mastery_score: float | None = None
@@ -116,7 +116,7 @@ class ExamPaperItemResponse(BaseModel):
     correct_answer: str | None = None
     explanation: str
     teaching_unit_id: int
-    node_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
+    knowledge_unit_links: list[ExamNodeLinkResponse] = Field(default_factory=list)
     user_answer: str | None = None
     is_correct: bool | None = None
     score_obtained: float | None = None

@@ -1,11 +1,11 @@
-﻿"""Resolve final chapter titles from research context before writing."""
+"""Resolve final chapter titles from research context before writing."""
 
 from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.common.pedagogy import (
@@ -66,7 +66,7 @@ async def _resolve_material_title(material: dict[str, object], state: DocGenStat
     raw_title = await acompletion_with_fallback(
         messages,
         task_type=TaskType.DOCGEN_LIGHT,
-        tier="light",
+        model="light",
         max_tokens=48,
         temperature=0.2,
         extra_metadata={
@@ -110,7 +110,7 @@ def build_finalize_titles_node(*, context: WorkflowContext):
             current_stage_description=f"已完成 {len(materials)} 章研究，正在根据研究结果确定最终章节标题。",
         )
 
-        semaphore = asyncio.Semaphore(max(1, int(get_settings().docgen_max_parallel_chapters)))
+        semaphore = asyncio.Semaphore(max(1, int(get_settings().docgen.max_parallel_chapters)))
 
         async def _run_with_limit(material: dict[str, object]) -> dict[str, object]:
             async with semaphore:
@@ -158,4 +158,3 @@ def build_finalize_titles_node(*, context: WorkflowContext):
     return finalize_titles_node
 
 __all__ = ["build_finalize_titles_node"]
-

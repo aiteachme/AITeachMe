@@ -1,11 +1,11 @@
-﻿"""Knowledge-domain API schemas."""
+"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import PageParams
 
@@ -57,16 +57,57 @@ class DocGenBuildRequest(BaseModel):
     )
 
 
-class GraphNodesQueryRequest(PageParams):
-    """Paginated graph node query."""
+class KnowledgeUnitsQueryRequest(PageParams):
+    """Paginated KnowledgeUnit query."""
 
-    node_type: str | None = Field(default=None, description="Optional node type filter.")
+    knowledge_unit_type: str | None = Field(default=None, description="Optional KnowledgeUnit type filter.")
 
 
-class GraphNodeDetailRequest(BaseModel):
-    """Node detail query."""
+class KnowledgeUnitDetailRequest(BaseModel):
+    """KnowledgeUnit detail query."""
 
-    node_id: int = Field(description="Knowledge node ID.")
+    knowledge_unit_id: int = Field(description="KnowledgeUnit ID.")
+
+    @model_validator(mode="after")
+    def _normalize_knowledge_unit_id(self) -> "KnowledgeUnitDetailRequest":
+        self.knowledge_unit_id = int(self.knowledge_unit_id)
+        return self
+
+
+class KnowledgeUnitRelationsRequest(BaseModel):
+    """KnowledgeUnit relation query."""
+
+    knowledge_unit_id: int = Field(description="KnowledgeUnit ID.")
+    direction: Literal["both", "incoming", "outgoing"] = Field(default="both")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+
+
+class KnowledgeUnitPathRequest(BaseModel):
+    """KnowledgeUnit path query."""
+
+    source_knowledge_unit_id: int = Field(description="Path start KnowledgeUnit ID.")
+    target_knowledge_unit_id: int = Field(description="Path target KnowledgeUnit ID.")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+    max_depth: int = Field(default=4, ge=1, le=8)
+
+
+class KnowledgeSubgraphRequest(BaseModel):
+    """Focus subgraph query."""
+
+    center_knowledge_unit_id: int | None = Field(default=None, description="Optional center KnowledgeUnit ID.")
+    topic: str | None = Field(default=None, description="Optional topic/name text filter.")
+    edge_type: str | None = Field(default=None, description="Optional relation type filter.")
+    hops: int = Field(default=1, ge=0, le=3)
+    limit: int = Field(default=80, ge=1, le=300)
+
+
+class KnowledgeRelationExplanationRequest(BaseModel):
+    """Explain a relation path with evidence snippets."""
+
+    source_knowledge_unit_id: int
+    target_knowledge_unit_id: int
+    edge_type: str | None = None
+    max_depth: int = Field(default=3, ge=1, le=6)
 
 
 class KnowledgeOverviewRequest(BaseModel):
@@ -146,7 +187,7 @@ class BuildPreviewNodeResponse(BaseModel):
     """One lightweight node preview surfaced during digest polling."""
 
     name: str
-    node_type: str = Field(description="Topic / Concept / Method / Definition / Example")
+    knowledge_unit_type: str = Field(description="Standard KnowledgeUnit type")
 
 
 class BuildPreviewChapterProgressResponse(BaseModel):
@@ -251,15 +292,17 @@ class DocGenGetResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
-class KnowledgeNodeResponse(BaseModel):
-    """Knowledge node list item."""
+class KnowledgeUnitResponse(BaseModel):
+    """KnowledgeUnit list item."""
 
     id: int
     subject: str
-    node_type: str
+    knowledge_unit_type: str
     canonical_name: str
     status: str
     confidence: float
+    type_confidence: float = 1.0
+    type_source: str = "llm"
     created_at: datetime
     updated_at: datetime
 
@@ -318,16 +361,18 @@ class NodeRevisionItem(BaseModel):
     body: str
 
 
-class KnowledgeNodeDetailResponse(BaseModel):
-    """Knowledge node detail response."""
+class KnowledgeUnitDetailResponse(BaseModel):
+    """KnowledgeUnit detail response."""
 
     id: int
     subject: str
-    node_type: str
+    knowledge_unit_type: str
     canonical_name: str
     normalized_name: str
     status: str
     confidence: float
+    type_confidence: float = 1.0
+    type_source: str = "llm"
     current_revision: NodeRevisionItem | None = None
     aliases: list[AliasItem] = Field(default_factory=list)
     evidence: list[EvidenceSummary] = Field(default_factory=list)
@@ -347,11 +392,62 @@ class GraphEdgeResponse(BaseModel):
     confidence: float
 
 
+class KnowledgeRelationResponse(BaseModel):
+    """Knowledge relation with endpoint metadata."""
+
+    id: int
+    subject: str
+    source_node_id: int
+    source_node_name: str
+    source_node_type: str
+    target_node_id: int
+    target_node_name: str
+    target_node_type: str
+    edge_type: str
+    description: str = ""
+    weight: float
+    confidence: float
+
+
 class FullGraphResponse(BaseModel):
     """Full graph payload for force-graph visualization."""
 
-    nodes: list[KnowledgeNodeResponse] = Field(default_factory=list)
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
     edges: list[GraphEdgeResponse] = Field(default_factory=list)
+
+
+class KnowledgePathResponse(BaseModel):
+    """A path through the knowledge graph."""
+
+    found: bool = False
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
+    edges: list[KnowledgeRelationResponse] = Field(default_factory=list)
+
+
+class KnowledgeSubgraphResponse(BaseModel):
+    """Focused subgraph payload."""
+
+    nodes: list[KnowledgeUnitResponse] = Field(default_factory=list)
+    edges: list[KnowledgeRelationResponse] = Field(default_factory=list)
+    center_knowledge_unit_id: int | None = None
+
+
+class KnowledgeRelationEvidenceItem(BaseModel):
+    """Evidence surfaced for one relation path step."""
+
+    edge_id: int
+    edge_type: str
+    source_node_id: int
+    target_node_id: int
+    description: str = ""
+    evidence: list[EvidenceSummary] = Field(default_factory=list)
+
+
+class KnowledgeRelationExplanationResponse(BaseModel):
+    """Explainable relation path result."""
+
+    path: KnowledgePathResponse
+    evidence: list[KnowledgeRelationEvidenceItem] = Field(default_factory=list)
 
 
 class KnowledgeOverviewStats(BaseModel):

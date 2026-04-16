@@ -1,4 +1,4 @@
-﻿# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
+# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
 
 ## Context
 
@@ -25,7 +25,7 @@ AITeachMe 当前仅支持本地部署（SQLite + 本地文件系统）。需要�
 
 ### Step 1.1 — 扩展 config.py 配置字段
 
-**文件**: `backend/app/shared/infra/config.py`
+**文件**: `backend/app/shared/infra/settings/settings.py`
 
 在 `Settings` 类中新增：
 
@@ -398,7 +398,7 @@ def is_vec_ready() -> bool:
 
 ### Step 3.1 — 改造文件上传用例
 
-**文件**: `backend/app/workflows/support/files/commands.py`
+**文件**: `backend/app/workflows/support/files/uploads.py`
 
 当前流程：`temp写入 → shutil.move → 更新DB路径`
 
@@ -443,7 +443,7 @@ async def save_uploaded_file(subject, filename, content, ...):
 
 ### Step 3.2 — 改造文件读取/下载
 
-**文件**: `backend/app/workflows/support/files/queries.py` / `commands.py`
+**文件**: `backend/app/workflows/support/files/catalog.py` / `uploads.py` / `deletion.py`
 
 需要新增一个统一的文件读取方法：
 
@@ -623,7 +623,7 @@ def _register_static_mounts(app: FastAPI) -> None:
 
 ### Step 3.8 — 改造 Export/Import
 
-**文件**: `backend/app/workflows/support/export_import/commands.py`
+**文件**: `backend/app/workflows/support/export_import/exports.py`
 
 Export 时读取文件：
 ```python
@@ -835,16 +835,16 @@ Render 创建 PostgreSQL 后：
 
 | 文件 | 改动内容 |
 |------|----------|
-| `backend/app/shared/infra/config.py` | 新增云端配置字段 |
+| `backend/app/shared/infra/settings/settings.py` | 新增云端配置字段 |
 | `backend/app/shared/infra/database/core.py` | 双数据库引擎 + pgvector 初始化 |
 | `backend/app/shared/infra/runtime/paths.py` | cloud 模式下 data_dir 处理 |
 | `backend/app/utils/path_helpers.py` | 确保 storage_key 在 cloud 模式下正确 |
 | `backend/app/utils/docgen_store.py` | 文档读写走 store 抽象 |
 | `backend/app/models/raw_file.py` | storage_key 在 cloud 模式下的语义 |
 | `backend/app/repositories/knowledge/knowledge_repo.py` | 向量写入/检索按方言分支 |
-| `backend/app/workflows/support/files/commands.py` | 文件上传走 store |
+| `backend/app/workflows/support/files/uploads.py` | 文件上传走 store |
 | `backend/app/workflows/support/subjects/lib/deletion.py` | 删除走 store |
-| `backend/app/workflows/support/export_import/commands.py` | 导出导入走 store |
+| `backend/app/workflows/support/export_import/exports.py` | 导出导入走 store |
 | `backend/app/main.py` | 静态挂载条件化 + init_db 适配 |
 | `backend/app/workflows/ingest/fast_parse/lib/file.py` | 文件加载走 store |
 | `backend/app/workflows/ingest/fast_parse/lib/finalize.py` | 产物写回走 store |
@@ -909,4 +909,3 @@ EMBEDDING_MODEL=text-embedding-v4
 # ── 前端 ──
 VITE_API_URL=http://localhost:8000
 ```
-

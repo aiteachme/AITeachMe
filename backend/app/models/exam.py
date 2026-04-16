@@ -16,7 +16,7 @@ class QuestionTemplate(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             "subject",
-            "knowledge_node_id",
+            "knowledge_unit_id",
             "stem_hash",
             name="uq_template_subject_node_stem",
         ),
@@ -26,7 +26,7 @@ class QuestionTemplate(SQLModel, table=True):
     subject: str = Field(index=True)
     curriculum_version_id: int | None = Field(default=None, index=True)
     teaching_unit_id: int | None = Field(default=None, index=True)
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
+    knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     question_type: str
     difficulty: str
     stem: str
@@ -34,7 +34,7 @@ class QuestionTemplate(SQLModel, table=True):
     options_json: str | None = Field(default=None)
     answer: str
     explanation: str
-    node_refs_json: str = Field(default="[]")
+    knowledge_unit_refs_json: str = Field(default="[]")
     selection_hints_json: str = Field(default="{}")
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
@@ -82,9 +82,9 @@ class ExamPaperItem(SQLModel, table=True):
     options_snapshot_json: str | None = Field(default=None)
     answer_snapshot: str
     explanation_snapshot: str
-    knowledge_node_id: int | None = Field(default=None, foreign_key="knowledge_node.id", index=True)
+    knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     teaching_unit_id: int | None = Field(default=None, index=True)
-    node_refs_json: str = Field(default="[]")
+    knowledge_unit_refs_json: str = Field(default="[]")
     difficulty: str
     question_type: str
     score: float = Field(default=1.0, ge=0.0)

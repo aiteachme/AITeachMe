@@ -11,7 +11,6 @@ from app.models.subject import Subject
 from app.shared.infra.runtime import is_cloud_mode
 from app.utils.time import utcnow
 
-_LEGACY_VECTOR_TABLE = "chunk_embeddings"
 _SUBJECT_VECTOR_TABLE_PREFIX = "chunk_embeddings_"
 _POSTGRES_VECTOR_REF = "retrieval_chunk.embedding"
 _LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://local/"
@@ -40,12 +39,6 @@ class SubjectSettingsPayload(BaseModel):
     """Structured representation of ``subject.settings_json``."""
 
     embedding: SubjectEmbeddingBinding | None = None
-
-
-def get_legacy_vector_table_name() -> str:
-    """Return the legacy global vector table name."""
-
-    return _LEGACY_VECTOR_TABLE
 
 
 def build_subject_vector_table_name(subject_slug: str) -> str:
@@ -157,7 +150,6 @@ __all__ = [
     "build_subject_index_ref",
     "build_subject_vector_table_name",
     "dump_subject_settings",
-    "get_legacy_vector_table_name",
     "get_postgres_vector_ref",
     "get_subject_embedding_binding",
     "load_subject_settings",

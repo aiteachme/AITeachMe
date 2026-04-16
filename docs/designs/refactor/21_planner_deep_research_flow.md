@@ -20,18 +20,13 @@ prepare_material_context
 
 ## 当前实现重点
 
-### 1. 真实模型路由
+### 1. 显式模型选择
 
-- `stream_plan_sketch`：使用 `TaskType.REASONING`
-- `compose_plan_contract`：使用 `TaskType.REASONING`
-- `extract_learning_intent`：使用 `primary` tier override
+- `stream_plan_sketch`：`task_type=TaskType.REASONING`，`model="reason"`
+- `compose_plan_contract`：`task_type=TaskType.REASONING`，`model="reason"`
+- `extract_learning_intent`：`task_type=TaskType.DOCGEN_LIGHT`，`model="primary"`
 
-底层 `llm_support` 已支持真实的：
-
-- `tier_override`
-- `model_override`
-
-而不是只把 tier 写进 trace metadata。
+底层 `llm_support` 不再通过 `TaskType` 推导模型。`TaskType` 只负责温度、超时、重试和观测归类；模型选择统一通过 `model=` 读取 `settings.models.*`。
 
 ### 2. Few-shot 示例
 

@@ -1,4 +1,4 @@
-﻿"""Image parser used by the ingest workflow."""
+"""Image parser used by the ingest workflow."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
@@ -73,7 +73,7 @@ async def parse_image_bytes_with_llm_vision(
         return _UNCLEAR_MARKDOWN
 
     settings = get_settings()
-    ocr_model = settings.ocr_model or settings.llm_model
+    ocr_model = settings.models.ocr or settings.models.primary
     ocr_api_key = (get_env("OCR_API_KEY") or get_env("LLM_API_KEY") or "").strip()
     ocr_base_url = (
         get_env("OCR_BASE_URL")

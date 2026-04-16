@@ -6,6 +6,32 @@ import inspect
 from typing import Any, Mapping
 
 
+async def _invoke_callback(callback: Any, payload: Any) -> None:
+    if callback is None or not callable(callback):
+        return
+    try:
+        result = callback(payload)
+        if inspect.isawaitable(result):
+            await result
+    except Exception:
+        return
+
+
+def _build_event_message(
+    *,
+    event: str,
+    detail: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "stage": event,
+        "step": event,
+        "event": event,
+        "detail": detail,
+        **(payload or {}),
+    }
+
+
 async def emit_planner_event(
     state: Mapping[str, Any],
     *,
@@ -13,35 +39,16 @@ async def emit_planner_event(
     detail: str,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    callback = state.get("progress_callback")
-    if callback is None or not callable(callback):
-        return
-
-    message = {
-        "stage": event,
-        "step": event,
-        "event": event,
-        "detail": detail,
-        **(payload or {}),
-    }
-    try:
-        maybe_awaitable = callback(message)
-        if inspect.isawaitable(maybe_awaitable):
-            await maybe_awaitable
-    except Exception:
-        return
+    await _invoke_callback(
+        state.get("progress_callback"),
+        _build_event_message(event=event, detail=detail, payload=payload),
+    )
 
 
 async def emit_planner_token(state: Mapping[str, Any], token: str) -> None:
-    callback = state.get("token_callback")
-    if callback is None or not callable(callback) or not token:
+    if not token:
         return
-    try:
-        maybe_awaitable = callback(token)
-        if inspect.isawaitable(maybe_awaitable):
-            await maybe_awaitable
-    except Exception:
-        return
+    await _invoke_callback(state.get("token_callback"), token)
 
 
 __all__ = ["emit_planner_event", "emit_planner_token"]

@@ -8,7 +8,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.types import SearchResult
 
@@ -57,7 +57,7 @@ class WikipediaRetriever(BaseRetriever):
         results: list[SearchResult] = []
 
         async with httpx.AsyncClient(
-            timeout=settings.search_provider_timeout_s,
+            timeout=settings.search.provider_timeout_s,
             follow_redirects=True,
             headers=_REQUEST_HEADERS,
         ) as client:

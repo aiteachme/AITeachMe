@@ -31,20 +31,18 @@ async def acompletion(
     messages: list[ChatMessage],
     *,
     task_type: TaskType = TaskType.DEFAULT,
-    tier_override: str | None = None,
-    model_override: str | None = None,
+    model: str | None = None,
     **kwargs,
 ) -> str:
     """Async text completion."""
 
     context = build_completion_context(
         task_type,
-        tier_override=tier_override,
-        model_override=model_override,
+        model=model,
     )
     last_error: Exception | None = None
     call_started_at = time.monotonic()
-    tracked_model = context.profile.model
+    tracked_model = context.model
 
     async with get_semaphore():
         for attempt in range(1, context.profile.max_retries + 1):
@@ -56,7 +54,7 @@ async def acompletion(
             )
             call_model, provider, tracked_model = _resolved_trace_model(
                 call_kwargs,
-                context.profile.model,
+                context.model,
             )
             logger.info(
                 "llm_completion_started",

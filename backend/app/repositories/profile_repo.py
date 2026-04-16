@@ -1,4 +1,4 @@
-﻿"""Profile and mastery data access layer."""
+"""Profile and mastery data access layer."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlmodel import Session, select
 
-from app.models import ExamPaper, ExamPaperItem, KnowledgeNode, UserKnowledgeState
+from app.models import ExamPaper, ExamPaperItem, KnowledgeUnit, UserKnowledgeState
 from app.shared.infra.database import is_postgres
 from app.utils.time import utcnow
 
@@ -16,28 +16,28 @@ from app.utils.time import utcnow
 def _validate_target_ref(
     *,
     teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
+    knowledge_unit_id: int | None = None,
 ) -> tuple[str, int]:
     if teaching_unit_id is not None:
         return "unit", teaching_unit_id
-    if knowledge_node_id is not None:
-        return "node", knowledge_node_id
-    raise ValueError("teaching_unit_id or knowledge_node_id must be provided.")
+    if knowledge_unit_id is not None:
+        return "knowledge_unit", knowledge_unit_id
+    raise ValueError("teaching_unit_id or knowledge_unit_id must be provided.")
 
 
 def _apply_state_target_filter(
     stmt,
     *,
     teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
+    knowledge_unit_id: int | None = None,
     target_kind: str | None = None,
 ):
     if teaching_unit_id is not None:
         return stmt.where(UserKnowledgeState.teaching_unit_id == teaching_unit_id)
-    if knowledge_node_id is not None:
-        return stmt.where(UserKnowledgeState.knowledge_node_id == knowledge_node_id)
-    if target_kind == "node":
-        return stmt.where(UserKnowledgeState.knowledge_node_id.is_not(None))
+    if knowledge_unit_id is not None:
+        return stmt.where(UserKnowledgeState.knowledge_unit_id == knowledge_unit_id)
+    if target_kind == "knowledge_unit":
+        return stmt.where(UserKnowledgeState.knowledge_unit_id.is_not(None))
     if target_kind == "unit":
         return stmt.where(UserKnowledgeState.teaching_unit_id.is_not(None))
     return stmt
@@ -52,13 +52,13 @@ def upsert_knowledge_state(
     now = utcnow()
     target_kind, target_ref_id = _validate_target_ref(
         teaching_unit_id=state.teaching_unit_id,
-        knowledge_node_id=state.knowledge_node_id,
+        knowledge_unit_id=state.knowledge_unit_id,
     )
     insert_values = {
         "user_id": state.user_id,
         "subject": state.subject,
         "teaching_unit_id": state.teaching_unit_id,
-        "knowledge_node_id": state.knowledge_node_id,
+        "knowledge_unit_id": state.knowledge_unit_id,
         "mastery_score": state.mastery_score,
         "confidence_score": state.confidence_score,
         "stability_score": state.stability_score,
@@ -83,15 +83,15 @@ def upsert_knowledge_state(
     set_values = {
         key: value
         for key, value in insert_values.items()
-        if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_node_id"}
+        if key not in {"user_id", "subject", "teaching_unit_id", "knowledge_unit_id"}
     }
 
     if target_kind == "unit":
         conflict_columns = ["user_id", "subject", "teaching_unit_id"]
         conflict_where = "teaching_unit_id IS NOT NULL"
     else:
-        conflict_columns = ["user_id", "subject", "knowledge_node_id"]
-        conflict_where = "knowledge_node_id IS NOT NULL"
+        conflict_columns = ["user_id", "subject", "knowledge_unit_id"]
+        conflict_where = "knowledge_unit_id IS NOT NULL"
 
     if is_postgres():
         from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -122,7 +122,7 @@ def upsert_knowledge_state(
         user_id=state.user_id,
         subject=state.subject,
         teaching_unit_id=(target_ref_id if target_kind == "unit" else None),
-        knowledge_node_id=(target_ref_id if target_kind == "node" else None),
+        knowledge_unit_id=(target_ref_id if target_kind == "knowledge_unit" else None),
     )
     if persisted is None:
         raise ValueError("UserKnowledgeState upsert failed.")
@@ -135,7 +135,7 @@ def get_knowledge_state(
     user_id: str,
     subject: str,
     teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
+    knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
@@ -144,7 +144,7 @@ def get_knowledge_state(
     stmt = _apply_state_target_filter(
         stmt,
         teaching_unit_id=teaching_unit_id,
-        knowledge_node_id=knowledge_node_id,
+        knowledge_unit_id=knowledge_unit_id,
     )
     return session.exec(stmt).first()
 
@@ -207,7 +207,7 @@ def list_due_knowledge_states(
     return list(session.exec(stmt).all())
 
 
-def list_weak_node_summaries(
+def list_weak_knowledge_unit_summaries(
     session: Session,
     *,
     user_id: str,
@@ -216,14 +216,14 @@ def list_weak_node_summaries(
     limit: int = 10,
 ) -> list[tuple[str, float]]:
     stmt = (
-        select(KnowledgeNode.canonical_name, UserKnowledgeState.mastery_score)
-        .join(KnowledgeNode, UserKnowledgeState.knowledge_node_id == KnowledgeNode.id)
+        select(KnowledgeUnit.canonical_name, UserKnowledgeState.mastery_score)
+        .join(KnowledgeUnit, UserKnowledgeState.knowledge_unit_id == KnowledgeUnit.id)
         .where(
             UserKnowledgeState.user_id == user_id,
             UserKnowledgeState.subject == subject,
-            UserKnowledgeState.knowledge_node_id.is_not(None),
+            UserKnowledgeState.knowledge_unit_id.is_not(None),
             UserKnowledgeState.mastery_score < threshold,
-            KnowledgeNode.subject == subject,
+            KnowledgeUnit.subject == subject,
         )
         .order_by(
             UserKnowledgeState.mastery_score.asc(),
@@ -238,11 +238,11 @@ def list_weak_node_summaries(
     ]
 
 
-def _extract_node_ids_from_refs(node_refs_json: str | None) -> set[int]:
-    if not node_refs_json:
+def _extract_knowledge_unit_ids_from_refs(knowledge_unit_refs_json: str | None) -> set[int]:
+    if not knowledge_unit_refs_json:
         return set()
     try:
-        payload = json.loads(node_refs_json)
+        payload = json.loads(knowledge_unit_refs_json)
     except json.JSONDecodeError:
         return set()
     if not isinstance(payload, list):
@@ -251,7 +251,7 @@ def _extract_node_ids_from_refs(node_refs_json: str | None) -> set[int]:
         int(raw_node_id)
         for row in payload
         if isinstance(row, dict)
-        for raw_node_id in [row.get("knowledge_node_id")]
+        for raw_node_id in [row.get("knowledge_unit_id")]
         if isinstance(raw_node_id, int) and raw_node_id > 0
     }
 
@@ -262,16 +262,16 @@ def list_recent_wrong_attempt_summaries(
     user_id: str,
     subject: str,
     teaching_unit_id: int | None = None,
-    knowledge_node_ids: list[int] | None = None,
+    knowledge_unit_ids: list[int] | None = None,
     limit: int = 5,
 ) -> list[dict[str, str]]:
     candidate_limit = max(limit, 1)
-    target_node_ids = {
-        int(node_id)
-        for node_id in (knowledge_node_ids or [])
-        if int(node_id) > 0
+    target_knowledge_unit_ids = {
+        int(knowledge_unit_id)
+        for knowledge_unit_id in (knowledge_unit_ids or [])
+        if int(knowledge_unit_id) > 0
     }
-    if teaching_unit_id is not None or target_node_ids:
+    if teaching_unit_id is not None or target_knowledge_unit_ids:
         candidate_limit = max(candidate_limit * 8, 20)
 
     stmt = (
@@ -281,7 +281,7 @@ def list_recent_wrong_attempt_summaries(
             ExamPaperItem.answer_snapshot,
             ExamPaperItem.error_cause_label,
             ExamPaperItem.explanation_snapshot,
-            ExamPaperItem.node_refs_json,
+            ExamPaperItem.knowledge_unit_refs_json,
         )
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
@@ -297,18 +297,18 @@ def list_recent_wrong_attempt_summaries(
     rows = session.exec(stmt).all()
 
     ordered_rows = list(rows)
-    if target_node_ids:
+    if target_knowledge_unit_ids:
         overlapping_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
         other_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
         for row in rows:
-            if _extract_node_ids_from_refs(row[5]) & target_node_ids:
+            if _extract_knowledge_unit_ids_from_refs(row[5]) & target_knowledge_unit_ids:
                 overlapping_rows.append(row)
                 continue
             other_rows.append(row)
         ordered_rows = overlapping_rows + other_rows
 
     items: list[dict[str, str]] = []
-    for stem, answer_content, correct_answer, error_label, explanation, _node_refs_json in ordered_rows[:limit]:
+    for stem, answer_content, correct_answer, error_label, explanation, _knowledge_unit_refs_json in ordered_rows[:limit]:
         analysis = ""
         if error_label and error_label != "unknown":
             analysis = f"Possible error cause: {error_label}"
@@ -333,11 +333,11 @@ def find_pending_review(
     user_id: str,
     subject: str,
     teaching_unit_id: int | None = None,
-    knowledge_node_id: int | None = None,
+    knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
     _validate_target_ref(
         teaching_unit_id=teaching_unit_id,
-        knowledge_node_id=knowledge_node_id,
+        knowledge_unit_id=knowledge_unit_id,
     )
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
@@ -347,7 +347,7 @@ def find_pending_review(
     stmt = _apply_state_target_filter(
         stmt,
         teaching_unit_id=teaching_unit_id,
-        knowledge_node_id=knowledge_node_id,
+        knowledge_unit_id=knowledge_unit_id,
     )
     return session.exec(stmt).first()
 

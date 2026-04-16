@@ -1,4 +1,4 @@
-﻿"""Planner state definitions."""
+"""Planner state definitions."""
 
 from __future__ import annotations
 

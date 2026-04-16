@@ -14,4 +14,4 @@
 
 - This is a support module, not a LangGraph lane.
 - API routes and dependencies import public functions from `app.workflows.support.auth`.
-- SMTP helper internals stay in `commands.py` until there is a concrete need to split them into `lib/`.
+- `identity.py`, `sessions.py`, and `smtp.py` are the canonical use-case entrypoints.

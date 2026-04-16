@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -16,7 +16,7 @@ from app.models import (
     ExamPaperItem,
     KnowledgeDocument,
     KnowledgeEdge,
-    KnowledgeNode,
+    KnowledgeUnit,
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
@@ -45,7 +45,7 @@ _KNOWLEDGE_KEYS = [
     "curriculum",
     "knowledge_document",
     "knowledge_edge",
-    "knowledge_node",
+    "knowledge_unit",
     "taxonomy_anchor",
     "teaching_unit",
     "theme_tree_node",
@@ -91,7 +91,7 @@ def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str
         ),
         "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
         "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
-        "knowledge_node": _count_rows(session, KnowledgeNode, KnowledgeNode.subject == subject),
+        "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
         "curriculum": _count_rows(session, Curriculum, Curriculum.subject == subject),
         "taxonomy_anchor": _count_rows(session, TaxonomyAnchor, TaxonomyAnchor.subject == subject),
         "teaching_unit": _count_rows(session, TeachingUnit, TeachingUnit.subject == subject),
@@ -118,19 +118,19 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
         ),
         SubjectDeleteImpactItem(
             key="exam",
-            label="考试记录",
+            label="鑰冭瘯璁板綍",
             count=_sum_counts(detail_counts, _EXAM_KEYS),
             description="会删除题模板、试卷与试卷题目快照。",
         ),
         SubjectDeleteImpactItem(
             key="chat",
-            label="对话记录",
+            label="瀵硅瘽璁板綍",
             count=detail_counts["chat_message"] + detail_counts["chat_session"],
             description="会删除该学科下的会话与聊天消息。",
         ),
         SubjectDeleteImpactItem(
             key="profile",
-            label="学习画像",
+            label="瀛︿範鐢诲儚",
             count=_sum_counts(detail_counts, _PROFILE_KEYS),
             description="会删除 mastery 与复习状态。",
         ),
@@ -154,7 +154,7 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
     _delete_documents_and_chunks(session, subject=subject.slug)
     _delete_raw_files_and_artifacts(session, subject=subject.slug)
 
-    # 本地目录清理（cloud 文件由 delete_subject_artifacts_async 处理）
+    # Local directory cleanup; cloud artifacts are handled by delete_subject_artifacts_async.
     _delete_subject_directory(subject.slug)
 
     delete_subject(session, subject)
@@ -165,11 +165,11 @@ def delete_subject_with_all_content(session: Session, *, subject: Subject) -> di
 
 
 async def delete_subject_artifacts_async(subject_slug: str) -> None:
-    """异步删除该 subject 的所有存储文件（local 和 cloud 均走 ContentStore）。"""
+    """Delete all stored files for one subject through ContentStore."""
 
     cs = get_content_store()
     await cs.delete_prefix(cs.subject_prefix(subject_slug))
-    # 本地目录也清理（如果存在）
+    # Also clean local runtime directories when present.
     _delete_subject_directory(subject_slug)
 
 
@@ -232,7 +232,7 @@ def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
         Curriculum,
         KnowledgeDocument,
         KnowledgeEdge,
-        KnowledgeNode,
+        KnowledgeUnit,
     ):
         _bulk_delete_by_subject(session, model, subject=subject)
     session.commit()
@@ -256,7 +256,7 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
 
     for raw_file in raw_files:
         if is_local_mode():
-            # local 模式：原有逻辑，删除本地文件
+            # Local mode keeps the original direct file cleanup.
             for path_value in [raw_file.file_path, raw_file.markdown_path]:
                 if path_value:
                     Path(path_value).unlink(missing_ok=True)
@@ -268,7 +268,7 @@ def _delete_raw_files_and_artifacts(session: Session, *, subject: str) -> None:
                     file_id=raw_file.id,
                 ),
             )
-        # cloud 模式：文件清理由 delete_subject_artifacts_async() 统一处理
+        # Cloud artifact cleanup is handled by delete_subject_artifacts_async().
         session.delete(raw_file)
     session.commit()
 

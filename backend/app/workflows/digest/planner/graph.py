@@ -1,4 +1,4 @@
-﻿"""Planner graph definition and lane-local runtime entrypoints."""
+"""Planner graph definition and lane-local runtime entrypoints."""
 
 from __future__ import annotations
 
@@ -8,22 +8,22 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
+from app.workflows.digest.common.contracts import (
+    resolve_digest_course_type,
+    resolve_planner_retrieval_profile,
+)
 from app.workflows.digest.planner.nodes import (
-    build_compose_plan_contract_node,
+    build_bootstrap_plan_brief_node,
+    build_compose_build_plan_node,
     build_finalize_plan_contract_node,
-    build_generate_plan_preview_node,
     build_prepare_material_context_node,
-    build_probe_supporting_evidence_node,
+    build_probe_evidence_node,
     build_summarize_material_digest_node,
 )
 from app.workflows.digest.planner.state import (
     BuildPlannerGraphInput,
     BuildPlannerGraphOutput,
     BuildPlannerState,
-)
-from app.workflows.digest.common.contracts import (
-    resolve_digest_course_type,
-    resolve_planner_retrieval_profile,
 )
 
 
@@ -53,7 +53,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "generate_plan_preview",
         trace.node(
-            build_generate_plan_preview_node(context=context),
+            build_bootstrap_plan_brief_node(context=context),
             name="generate_plan_preview",
             timing_field="preview_ms",
         ),
@@ -61,7 +61,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "probe_supporting_evidence",
         trace.node(
-            build_probe_supporting_evidence_node(context=context),
+            build_probe_evidence_node(context=context),
             name="probe_supporting_evidence",
             timing_field="probe_ms",
         ),
@@ -69,7 +69,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_node(
         "compose_plan_contract",
         trace.node(
-            build_compose_plan_contract_node(context=context),
+            build_compose_build_plan_node(context=context),
             name="compose_plan_contract",
             timing_field="compose_ms",
         ),
@@ -83,11 +83,31 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         ),
     )
     workflow.set_entry_point("prepare_material_context")
-    workflow.add_conditional_edges("prepare_material_context", route_after_step, {"continue": "summarize_material_digest", "fail": END})
-    workflow.add_conditional_edges("summarize_material_digest", route_after_step, {"continue": "generate_plan_preview", "fail": END})
-    workflow.add_conditional_edges("generate_plan_preview", route_after_step, {"continue": "probe_supporting_evidence", "fail": END})
-    workflow.add_conditional_edges("probe_supporting_evidence", route_after_step, {"continue": "compose_plan_contract", "fail": END})
-    workflow.add_conditional_edges("compose_plan_contract", route_after_step, {"continue": "finalize_plan_contract", "fail": END})
+    workflow.add_conditional_edges(
+        "prepare_material_context",
+        route_after_step,
+        {"continue": "summarize_material_digest", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "summarize_material_digest",
+        route_after_step,
+        {"continue": "generate_plan_preview", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "generate_plan_preview",
+        route_after_step,
+        {"continue": "probe_supporting_evidence", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "probe_supporting_evidence",
+        route_after_step,
+        {"continue": "compose_plan_contract", "fail": END},
+    )
+    workflow.add_conditional_edges(
+        "compose_plan_contract",
+        route_after_step,
+        {"continue": "finalize_plan_contract", "fail": END},
+    )
     workflow.add_edge("finalize_plan_contract", END)
     return workflow
 
@@ -186,4 +206,3 @@ __all__ = [
     "route_after_step",
     "run_build_planner_workflow",
 ]
-

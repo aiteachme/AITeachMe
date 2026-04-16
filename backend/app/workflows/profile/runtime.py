@@ -48,6 +48,7 @@ async def generate_report_suggestions(
                 {"role": USER, "content": prompt},
             ],
             task_type=TaskType.SUMMARIZE,
+            model="light",
         )
         lines = [
             line.lstrip(_BULLET_PREFIX_CHARS).strip()

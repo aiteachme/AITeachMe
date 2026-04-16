@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import structlog
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 
 logger = structlog.get_logger()
 
@@ -44,7 +44,7 @@ class LLMCallTracker:
 
     def record(self, rec: LLMCallRecord) -> None:
         self._records.append(rec)
-        max_records = max(1, int(get_settings().llm_observability_max_records))
+        max_records = max(1, int(get_settings().observability.llm_observability_max_records))
         overflow = len(self._records) - max_records
         if overflow > 0:
             del self._records[:overflow]
@@ -84,10 +84,8 @@ class LLMCallTracker:
 
         settings = get_settings()
         light_model = ""
-        if settings.llm_model_light:
-            from app.shared.infra.llm_support.routing import TaskType, get_task_profile
-
-            light_model = get_task_profile(TaskType.DOCGEN_LIGHT).model
+        if settings.models.light:
+            light_model = settings.models.light
 
         total_latency_ms = int(round(sum(record.latency_s for record in records) * 1000))
         total_calls = len(records)

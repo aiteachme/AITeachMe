@@ -22,7 +22,7 @@ from llama_index.core.vector_stores.types import (
 )
 from sqlalchemy.engine.url import make_url
 
-from app.shared.infra.config import get_settings
+from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store, run_store_sync
